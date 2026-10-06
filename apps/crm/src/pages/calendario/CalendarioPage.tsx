@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Globe, Flag } from 'lucide-react';
@@ -43,6 +44,7 @@ import {
   readStoredNicheKey,
   writeStoredNicheKey,
 } from './nicheCalendars/registry';
+import AgendaTab from './agenda/AgendaTab';
 
 // ---- Types ----
 interface DeadlineEvent {
@@ -702,7 +704,27 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
 
 // ---- Main Page ----
 export default function CalendarioPage() {
-  const [activeTab, setActiveTab] = useState<'financeiro' | 'comemorativas'>('financeiro');
+  const [activeTab, setActiveTab] = useState<'agenda' | 'financeiro' | 'comemorativas'>('agenda');
+  const [searchParams] = useSearchParams();
+  const eventoParam = searchParams.get('evento');
+  const dataParam = searchParams.get('data');
+
+  // A notification can link here while the page is already open on another tab.
+  // Keyed on the values, not a boolean: a new ?evento= must switch back even when
+  // a previous one is still in the URL.
+  useEffect(() => {
+    if (eventoParam !== null || dataParam !== null) setActiveTab('agenda');
+  }, [eventoParam, dataParam]);
+
+  // App route outside usePageMeta: set the tab title and restore the previous one
+  // on unmount so it doesn't leak into the next route (EntregasPage pattern).
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'Agenda | Mesaas';
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
   const nicheKeys = NICHE_CALENDARS.map((n) => n.key);
   const [activeNicheKey, setActiveNicheKey] = useState(() =>
     readStoredNicheKey(nicheKeys, DEFAULT_NICHE_KEY),
@@ -784,14 +806,30 @@ export default function CalendarioPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <header className="header animate-up">
         <div className="header-title">
-          <h1>{activeTab === 'financeiro' ? 'Calendário' : activeNiche.title}</h1>
+          <h1>
+            {activeTab === 'agenda'
+              ? 'Agenda'
+              : activeTab === 'financeiro'
+                ? 'Calendário'
+                : activeNiche.title}
+          </h1>
           <p style={{ color: 'var(--text-muted)' }}>
-            {activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle}
+            {activeTab === 'agenda'
+              ? 'Eventos, reuniões e gravações da equipe.'
+              : activeTab === 'financeiro'
+                ? 'Visão geral mensal.'
+                : activeNiche.subtitle}
           </p>
         </div>
       </header>
 
       <div className="calendar-tabs animate-up">
+        <button
+          className={`calendar-tab${activeTab === 'agenda' ? ' active' : ''}`}
+          onClick={() => setActiveTab('agenda')}
+        >
+          Agenda
+        </button>
         <button
           className={`calendar-tab${activeTab === 'financeiro' ? ' active' : ''}`}
           onClick={() => setActiveTab('financeiro')}
@@ -807,7 +845,9 @@ export default function CalendarioPage() {
       </div>
 
       <div className="animate-up">
-        {activeTab === 'financeiro' ? (
+        {activeTab === 'agenda' ? (
+          <AgendaTab />
+        ) : activeTab === 'financeiro' ? (
           <FinanceiroCalendar
             clientes={clientes}
             membros={membros}

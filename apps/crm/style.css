@@ -4658,6 +4658,553 @@ select.form-input option {
   }
 }
 
+/* ===== Agenda (FullCalendar) ===== */
+/* Calendário > Agenda. FullCalendar reads its --fc-* variables, so they are
+   mapped to the CRM tokens once here; [data-theme='dark'] flips the tokens and
+   needs nothing extra. Event chips: toEventInput (agendaLogic.ts) sets the solid
+   ink as borderColor, a ~14% tint as backgroundColor and var(--text-main) as
+   textColor, all inline. */
+.agenda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20px 24px;
+}
+
+.agenda-aside {
+  flex: 0 0 260px;
+  max-width: 260px;
+}
+
+.agenda-main {
+  flex: 1 1 640px;
+  min-width: 0;
+}
+
+.agenda-barra {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agenda-sheet {
+  overflow-y: auto;
+}
+
+.agenda-sheet .agenda-sidebar {
+  margin-top: 16px;
+}
+
+/* ---- Sidebar ---- */
+.agenda-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.agenda-sidebar__criar {
+  width: 100%;
+}
+
+.agenda-sidebar__card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 6px;
+}
+
+.agenda-mini {
+  padding: 4px;
+}
+
+.agenda-mini table {
+  width: 100%;
+}
+
+.agenda-mini th,
+.agenda-mini td {
+  flex: 1 1 0;
+  width: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.agenda-mini td button {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.agenda-sidebar__grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agenda-sidebar__rotulo {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-light);
+}
+
+.agenda-pessoas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agenda-pessoa {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.agenda-pessoa:hover {
+  background: var(--surface-hover);
+}
+
+.agenda-pessoa__avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+  overflow: hidden;
+}
+
+.agenda-pessoa__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.agenda-pessoa__nome {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-legenda {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.agenda-legenda .agenda-sidebar__rotulo {
+  margin-top: 0;
+}
+
+.agenda-legenda__item {
+  display: flex;
+  align-items: center;
+}
+
+.agenda-legenda__nota {
+  margin-top: 4px;
+}
+
+/* ---- Segmented controls (Radix ToggleGroup) ---- */
+.agenda-segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+
+.agenda-segmented--full {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 4px;
+}
+
+.agenda-segmented__item {
+  height: auto;
+  min-width: 0;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.agenda-segmented__item:hover {
+  background: transparent;
+  color: var(--text-main);
+}
+
+.agenda-segmented__item[data-state='on'] {
+  background: var(--card-bg);
+  color: var(--text-main);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+/* ---- Calendar card + toolbar ---- */
+.agenda-view {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.agenda-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.agenda-toolbar__nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agenda-toolbar__titulo {
+  margin: 0 0 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.agenda-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.agenda-icon-btn:hover {
+  background: var(--surface-hover);
+}
+
+.agenda-icon-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* ---- FullCalendar theme ---- */
+.agenda-fc {
+  --fc-border-color: var(--border-color);
+  --fc-page-bg-color: var(--card-bg);
+  --fc-today-bg-color: var(--surface-hover);
+  --fc-now-indicator-color: #ef4444;
+  --fc-neutral-bg-color: var(--surface-1);
+  --fc-neutral-text-color: var(--text-muted);
+  --fc-list-event-hover-bg-color: var(--surface-hover);
+  --fc-highlight-color: rgba(255, 191, 48, 0.18);
+  --fc-more-link-bg-color: transparent;
+  --fc-more-link-text-color: var(--text-muted);
+  --fc-small-font-size: 12px;
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.agenda-fc .fc a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* The card draws the outer frame. */
+.agenda-fc .fc-theme-standard .fc-scrollgrid,
+.agenda-fc .fc-theme-standard .fc-list {
+  border: 0;
+}
+
+.agenda-fc .fc-col-header-cell-cushion {
+  padding: 6px 4px;
+}
+
+.agenda-dia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.agenda-dia__semana {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.agenda-dia__numero {
+  width: 32px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 999px;
+  font-size: 16px;
+  text-align: center;
+  color: var(--text-main);
+}
+
+.agenda-dia__numero--hoje {
+  background: var(--cta-bg);
+  color: var(--cta-fg);
+  font-weight: 700;
+}
+
+.agenda-fc .fc-timegrid-slot {
+  height: 26px;
+}
+
+.agenda-fc .fc-timegrid-slot-label-cushion,
+.agenda-fc .fc-timegrid-axis-cushion {
+  font-size: 11px;
+  color: var(--text-light);
+}
+
+.agenda-fc .fc-daygrid-day-top {
+  flex-direction: row;
+}
+
+.agenda-fc .fc-daygrid-day-number {
+  margin: 4px;
+  padding: 0 4px;
+  min-width: 24px;
+  height: 24px;
+  line-height: 24px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.agenda-fc .fc-day-today .fc-daygrid-day-number {
+  background: var(--cta-bg);
+  color: var(--cta-fg);
+  font-weight: 700;
+}
+
+.agenda-fc .fc-day-other .fc-daygrid-day-number {
+  color: var(--text-light);
+  opacity: 0.6;
+}
+
+.agenda-fc .fc-daygrid-more-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.agenda-fc .fc-popover {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.agenda-fc .fc-list-day-cushion {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.agenda-fc .fc-list-event td {
+  border-color: var(--border-color);
+}
+
+.agenda-fc .fc-list-event-time {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-fc .fc-list-event-title {
+  font-weight: 600;
+}
+
+.agenda-fc .fc-list-empty {
+  background: var(--card-bg);
+  color: var(--text-muted);
+}
+
+/* ---- Event chips ---- */
+.agenda-fc .fc-event.agenda-ev {
+  border-width: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.agenda-fc .fc-list-event.agenda-ev {
+  border-radius: 0;
+}
+
+.agenda-fc .fc-event.agenda-ev .fc-event-main {
+  padding: 4px 6px;
+}
+
+.agenda-fc .fc-daygrid-event.agenda-ev .fc-event-main {
+  padding: 2px 6px;
+}
+
+.agenda-ev__dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+
+.agenda-ev__bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.agenda-ev__bloco .agenda-ev__titulo {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.agenda-ev__detalhe {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-ev__linha {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.agenda-ev__linha .agenda-ev__dot {
+  margin-right: 1px;
+}
+
+.agenda-ev__linha .agenda-ev__titulo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.agenda-ev__hora {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Awaiting my answer: dashed border in the event ink (the colour stays inline). */
+.agenda-fc .fc-event.agenda-ev--pendente:not(.fc-list-event) {
+  border-width: 1.5px;
+  border-style: dashed;
+}
+
+.agenda-fc .fc-list-event.agenda-ev--pendente .fc-list-event-dot {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+  border-style: dashed;
+}
+
+/* I declined. */
+.agenda-fc .agenda-ev--recusado {
+  opacity: 0.6;
+}
+
+.agenda-fc .agenda-ev--recusado .agenda-ev__titulo,
+.agenda-fc .agenda-ev--recusado .fc-list-event-title {
+  text-decoration: line-through;
+}
+
+/* Private event I am not in: striped grey "Ocupado". background-image paints
+   over the inline tint without !important. */
+.agenda-fc .fc-event.agenda-ev--mascarado {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--surface-2) 0 6px,
+    var(--surface-3) 6px 12px
+  );
+}
+
+.agenda-fc .agenda-ev--mascarado .agenda-ev__titulo,
+.agenda-fc .agenda-ev--mascarado .agenda-ev__detalhe,
+.agenda-fc .agenda-ev--mascarado .agenda-ev__hora,
+.agenda-fc .agenda-ev--mascarado .fc-list-event-title {
+  color: var(--text-muted);
+}
+
+/* ---- Floating create button (phones; anchored to the viewport) ---- */
+.agenda-fab {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .agenda-toolbar {
+    padding: 12px;
+  }
+
+  .agenda-toolbar__titulo {
+    margin-left: 4px;
+    font-size: 14px;
+  }
+
+  .agenda-toolbar .agenda-segmented {
+    flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .agenda-fab {
+    position: fixed;
+    z-index: 39;
+    right: 18px;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+    cursor: pointer;
+  }
+}
+
 /* ===== Client Link ===== */
 .client-link {
   color: var(--text-main);

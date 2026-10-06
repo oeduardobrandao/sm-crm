@@ -112,7 +112,7 @@ export const MODULE_QUERY_KEYS: Record<PermissionModule, string[]> = {
     'post-media',
     'post-preview',
   ],
-  calendario: ['calendar-deadlines', 'allClienteDatas'],
+  calendario: ['calendar-deadlines', 'allClienteDatas', 'agenda-ocorrencias'],
   aprovacoes: [],
   arquivos: ['folder-contents', 'folder-tree', 'folder-info'],
   ideias: ['ideias', 'hub-ideias-all', 'ideia-images'],

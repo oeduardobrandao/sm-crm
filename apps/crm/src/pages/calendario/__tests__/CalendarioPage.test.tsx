@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { NicheCalendarDef } from '../nicheCalendars/types';
@@ -42,6 +43,12 @@ vi.mock('../nicheCalendars/registry', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../nicheCalendars/registry')>();
   return { ...actual, NICHE_CALENDARS: [NICHE_A, NICHE_B], DEFAULT_NICHE_KEY: 'niche-a' };
 });
+
+// The Agenda tab (FullCalendar + its own queries) has its own suite; here it only
+// has to prove it is the default tab and that the old tabs still work.
+vi.mock('../agenda/AgendaTab', () => ({
+  default: () => <div data-testid="agenda-tab">AgendaTab</div>,
+}));
 
 vi.mock('@/context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/context/AuthContext')>();
@@ -112,22 +119,57 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <CalendarioPage />
+      <MemoryRouter initialEntries={['/calendario']}>
+        <CalendarioPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
+function armStore() {
+  // vitest.setup.ts calls vi.restoreAllMocks() in afterEach, which wipes the resolved
+  // values these mock fns got inside the vi.mock factory — re-arm them every test.
+  vi.mocked(store.getClientes).mockResolvedValue([]);
+  vi.mocked(store.getMembros).mockResolvedValue([]);
+  vi.mocked(store.getTransacoes).mockResolvedValue([]);
+  vi.mocked(store.getWorkflows).mockResolvedValue([]);
+  vi.mocked(store.getWorkflowEtapas).mockResolvedValue([]);
+  vi.mocked(store.getAllClienteDatas).mockResolvedValue([]);
+}
+
+describe('CalendarioPage — Agenda', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    armStore();
+  });
+
+  it('opens on the Agenda tab by default', () => {
+    renderPage();
+
+    expect(screen.getByTestId('agenda-tab')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument();
+    expect(screen.getByText('Eventos, reuniões e gravações da equipe.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agenda' })).toHaveClass('active');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Calendário' }));
+    expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Calendário' })).toBeInTheDocument();
+  });
+
+  it('sets the tab title while mounted and restores the previous one on unmount', () => {
+    document.title = 'Anterior | Mesaas';
+    const { unmount } = renderPage();
+
+    expect(document.title).toBe('Agenda | Mesaas');
+    unmount();
+    expect(document.title).toBe('Anterior | Mesaas');
+  });
+});
+
 describe('CalendarioPage — Datas Comemorativas', () => {
   beforeEach(() => {
     localStorage.clear();
-    // vitest.setup.ts calls vi.restoreAllMocks() in afterEach, which wipes the resolved
-    // values these mock fns got inside the vi.mock factory — re-arm them every test.
-    vi.mocked(store.getClientes).mockResolvedValue([]);
-    vi.mocked(store.getMembros).mockResolvedValue([]);
-    vi.mocked(store.getTransacoes).mockResolvedValue([]);
-    vi.mocked(store.getWorkflows).mockResolvedValue([]);
-    vi.mocked(store.getWorkflowEtapas).mockResolvedValue([]);
-    vi.mocked(store.getAllClienteDatas).mockResolvedValue([]);
+    armStore();
   });
 
   it('switches to the niche tab, defaults to the first niche, and lets the user switch niches', async () => {
