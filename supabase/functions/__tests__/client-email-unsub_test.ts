@@ -56,7 +56,7 @@ function makeVerifyToken(map: Record<string, number | UnsubAlvo | null>) {
   };
 }
 
-/** Fake `descadastrarConvidado`: `rows[id] = contaId`, `null` = row gone; throws when `fail`. */
+/** Fake `descadastrarConvidado`: `rows[id] = contaId`, `null` = id unknown to every table; throws when `fail`. */
 function makeDescadastrar(rows: Record<number, string | null> = {}, fail = false) {
   const calls: number[] = [];
   const fn = (id: number): Promise<{ conta_id: string } | null> => {
@@ -294,7 +294,7 @@ Deno.test("client-email-unsub: guest POST replay is idempotent", async () => {
   assertEquals(desc.calls, [77, 77]);
 });
 
-Deno.test("client-email-unsub: guest row gone -- 200 page, no audit", async () => {
+Deno.test("client-email-unsub: guest id unknown to every table -- 200 page, no audit", async () => {
   const { db } = makeFakeDb();
   const desc = makeDescadastrar({ 77: null });
   const audit = makeAuditLog();
@@ -342,60 +342,61 @@ Deno.test("client-email-unsub: client one-click POST never calls the guest block
 
 // ─── createDescadastrarConvidado ────────────────────────────────────────────
 
-function makeGuestDb(opts: { row?: { conta_id: string } | null; lookupError?: string; rpcError?: string } = {}) {
-  const lookups: number[] = [];
+function makeGuestDb(opts: { conta?: string | null; rpcError?: string } = {}) {
   const rpcs: Array<{ fn: string; args: unknown }> = [];
   const db: DescadastrarConvidadoDb = {
-    from(_table) {
-      return {
-        select(_columns) {
-          return {
-            eq(_column, value) {
-              lookups.push(value);
-              return {
-                maybeSingle() {
-                  return Promise.resolve(
-                    opts.lookupError
-                      ? { data: null, error: { message: opts.lookupError } }
-                      : { data: opts.row === undefined ? { conta_id: "conta-g" } : opts.row, error: null },
-                  );
-                },
-              };
-            },
-          };
-        },
-      };
-    },
     rpc(fn, args) {
       rpcs.push({ fn, args });
-      return Promise.resolve({ data: null, error: opts.rpcError ? { message: opts.rpcError } : null });
+      return Promise.resolve(
+        opts.rpcError
+          ? { data: null, error: { message: opts.rpcError } }
+          : { data: opts.conta === undefined ? "conta-g" : opts.conta, error: null },
+      );
     },
   };
-  return { db, lookups, rpcs };
+  return { db, rpcs };
 }
 
-Deno.test("createDescadastrarConvidado: calls agenda_convite_descadastrar and returns the conta_id", async () => {
+Deno.test("createDescadastrarConvidado: calls only agenda_convite_descadastrar and returns its conta_id", async () => {
   const g = makeGuestDb();
   assertEquals(await createDescadastrarConvidado(g.db)(77), { conta_id: "conta-g" });
-  assertEquals(g.lookups, [77]);
   assertEquals(g.rpcs, [{ fn: "agenda_convite_descadastrar", args: { p_convidado: 77 } }]);
 });
 
-Deno.test("createDescadastrarConvidado: a missing row calls nothing and returns null", async () => {
-  const g = makeGuestDb({ row: null });
-  assertEquals(await createDescadastrarConvidado(g.db)(77), null);
-  assertEquals(g.rpcs.length, 0);
+Deno.test("createDescadastrarConvidado: guest row gone, queue row present -- the RPC still blocks and its conta_id is audited", async () => {
+  // The series DELETE cascaded the guest row away; the RPC resolves the address
+  // from the surviving queue item and returns that workspace. No pre-lookup on
+  // agenda_convidados can short-circuit the call any more.
+  const g = makeGuestDb({ conta: "conta-da-fila" });
+  const block = createDescadastrarConvidado(g.db);
+  const audit = makeAuditLog();
+  const { db } = makeFakeDb();
+  const handler = makeHandler({ db, tokens: { "g-token": GUEST }, descadastrar: block, auditLog: audit.fn });
+  const res = await handler(req("POST", "g-token"));
+  assertEquals(res.status, 200);
+  assert((await res.text()).includes("Pronto"));
+  assertEquals(g.rpcs, [{ fn: "agenda_convite_descadastrar", args: { p_convidado: 77 } }]);
+  assertEquals(audit.calls, [{
+    conta_id: "conta-da-fila",
+    action: "agenda_convidado_descadastro",
+    resource_type: "agenda_convidado",
+    resource_id: "77",
+  }]);
 });
 
-Deno.test("createDescadastrarConvidado: lookup or RPC errors throw", async () => {
-  for (const opts of [{ lookupError: "x" }, { rpcError: "y" }]) {
-    const g = makeGuestDb(opts);
-    let threw = false;
-    try {
-      await createDescadastrarConvidado(g.db)(77);
-    } catch {
-      threw = true;
-    }
-    assert(threw, JSON.stringify(opts));
+Deno.test("createDescadastrarConvidado: an id no table knows (RPC returns null) resolves null", async () => {
+  const g = makeGuestDb({ conta: null });
+  assertEquals(await createDescadastrarConvidado(g.db)(77), null);
+  assertEquals(g.rpcs.length, 1);
+});
+
+Deno.test("createDescadastrarConvidado: an RPC error throws", async () => {
+  const g = makeGuestDb({ rpcError: "y" });
+  let threw = false;
+  try {
+    await createDescadastrarConvidado(g.db)(77);
+  } catch {
+    threw = true;
   }
+  assert(threw);
 });

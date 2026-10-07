@@ -1637,14 +1637,36 @@ BEGIN
 END $$;
 
 -- Unsubscribe ({g: convidado_id} token of client-email-unsub): that
--- workspace sends no more Agenda e-mail to the address of this guest row
--- (removed rows included: the link of a cancellation e-mail still works).
+-- workspace sends no more Agenda e-mail to the address of this guest id.
+-- (conta_id, email) comes from the guest row (removed rows included: the link
+-- of a cancellation e-mail still works) or, once the series DELETE cascaded
+-- the row away, from the newest queue item of that id: the cancellation the
+-- guest is unsubscribing from survives the DELETE by design (no FK, section 2).
+-- Returns the conta_id it blocked (for the audit entry), or NULL when neither
+-- table knows the id. Idempotent (ON CONFLICT DO NOTHING).
 CREATE OR REPLACE FUNCTION public.agenda_convite_descadastrar(p_convidado bigint)
-RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS uuid LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_conta uuid;
+  v_email text;
+BEGIN
+  SELECT g.conta_id, g.email INTO v_conta, v_email
+    FROM public.agenda_convidados g WHERE g.id = p_convidado;
+  IF NOT FOUND THEN
+    SELECT q.conta_id, lower(q.convidado_email) INTO v_conta, v_email
+      FROM public.agenda_emails_cliente q
+     WHERE q.convidado_id = p_convidado
+     ORDER BY q.criado_em DESC, q.id DESC
+     LIMIT 1;
+  END IF;
+  IF v_conta IS NULL OR v_email IS NULL THEN
+    RETURN NULL;
+  END IF;
   INSERT INTO public.agenda_convidados_bloqueio (conta_id, email)
-  SELECT g.conta_id, g.email FROM public.agenda_convidados g WHERE g.id = p_convidado
+  VALUES (v_conta, v_email)
   ON CONFLICT (conta_id, email) DO NOTHING;
-$$;
+  RETURN v_conta;
+END $$;
 
 -- ============ (10) agenda_listar.convidados ============
 -- ---- client RPC: read ----

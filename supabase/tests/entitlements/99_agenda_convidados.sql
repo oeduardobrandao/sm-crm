@@ -8,7 +8,8 @@
 -- (same token, answers re-pointed), (5) the recipient-aware claim,
 -- (6) the public convite RPCs, (7) agenda_listar.convidados, (8) the advisory
 -- lock, (9) grants, (10) guest loss with a pending item, (11) guest lists
--- without the cliente's 90-day window.
+-- without the cliente's 90-day window, (12) unsubscribe after the series
+-- DELETE (resolved from the surviving queue item).
 --
 -- Fixtures are built from current_date (the convite RPCs filter on the real
 -- now()), app.agenda_hoje is pinned to current_date. now() is frozen for the
@@ -953,6 +954,56 @@ begin
   assert v_n = 50 and (q.ocorrencias->0->>'ocorrencia_id')::bigint = v_oc, format('cap: %s entries', v_n);
 
   raise notice 'PASS 99_agenda_convidados (guest lists without the 90-day window)';
+end $$;
+
+-- ============ block 12: unsubscribe after excluir todas ============
+-- The cancellation is the last e-mail of a deleted series and the one a guest
+-- unsubscribes from; the guest row is gone (cascade), the queue item is not.
+do $$
+declare
+  f jsonb := pg_temp.fx();
+  v_ws uuid := (f->>'ws')::uuid;
+  v_o uuid := (f->>'o')::uuid;
+  v_oc bigint; v_ev bigint; v_t bigint; v_n int;
+  v_g agenda_convidados;
+  v jsonb; v_err text; q agenda_emails_cliente;
+begin
+  update agenda_emails_cliente set status = 'enviado' where status = 'pendente';
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.cv(array['lia@ext.com'])));
+  v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'lia@ext.com');
+  update agenda_emails_cliente set status = 'enviado' where evento_id = v_ev;
+  v_err := pg_temp.erro(v_o, format('select public.agenda_evento_excluir(%s, %L)', v_oc, 'todas'));
+  assert v_err is null, format('excluir todas: %s', v_err);
+  assert not exists (select 1 from agenda_convidados where id = v_g.id), 'fixture: the guest row survived the DELETE';
+  assert exists (select 1 from agenda_emails_cliente where convidado_id = v_g.id and tipo = 'cancelamento'),
+    'fixture: no queue item for the deleted guest';
+  -- the {g} id resolves through the queue item and blocks the address
+  v := pg_temp.svc(format('select to_jsonb(public.agenda_convite_descadastrar(%s))', v_g.id));
+  assert (v #>> '{}')::uuid = v_ws, format('descadastrar after the DELETE: %s', v);
+  assert (select count(*) from agenda_convidados_bloqueio where conta_id = v_ws and email = 'lia@ext.com') = 1,
+    'no blocklist row after the DELETE';
+  -- replay: same conta_id, still one row
+  v := pg_temp.svc(format('select to_jsonb(public.agenda_convite_descadastrar(%s))', v_g.id));
+  assert (v #>> '{}')::uuid = v_ws, format('descadastrar replay: %s', v);
+  assert (select count(*) from agenda_convidados_bloqueio where conta_id = v_ws and email = 'lia@ext.com') = 1, 'replay duplicated the row';
+  -- a new invite to that address in that workspace is discarded by the claim
+  v_t := pg_temp.criar(v_o, pg_temp.p(pg_temp.cv(array['Lia@Ext.com'])));
+  update agenda_emails_cliente set enviar_apos = now() - interval '1 second' where evento_id = pg_temp.ev(v_t);
+  v := pg_temp.svc('select public.agenda_cliente_claim_emails(100)');
+  assert jsonb_typeof(v) = 'array', format('claim: %s', v);
+  assert not exists (select 1 from jsonb_array_elements(v) x where x->>'email' = 'lia@ext.com'), format('blocked address claimed: %s', v);
+  select * into q from agenda_emails_cliente where evento_id = pg_temp.ev(v_t);
+  assert q.convidado_email = 'lia@ext.com' and q.status = 'descartado', format('new invite after unsubscribe: %s', to_jsonb(q));
+
+  -- an id no table knows: NULL, nothing inserted
+  select count(*) into v_n from agenda_convidados_bloqueio;
+  v := pg_temp.svc(format('select to_jsonb(public.agenda_convite_descadastrar(%s))',
+    (select coalesce(max(id), 0) + 1000000 from agenda_convidados)));
+  assert v is null, format('unknown id: %s', v);
+  assert (select count(*) from agenda_convidados_bloqueio) = v_n, 'unknown id inserted a row';
+
+  raise notice 'PASS 99_agenda_convidados (unsubscribe after the series DELETE)';
 end $$;
 
 rollback;

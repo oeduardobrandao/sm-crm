@@ -59,9 +59,10 @@ export interface ClientEmailUnsubDeps {
   verifyToken: (token: string, secret: string) => Promise<UnsubAlvo | null>;
   /**
    * Blocks the guest's address for its workspace (`createDescadastrarConvidado`
-   * below in production). Resolves the guest row's `conta_id` for the audit
-   * entry, or `null` when the row no longer exists (series deleted). Throws on
-   * a database error.
+   * below in production). Resolves the blocked `conta_id` for the audit entry,
+   * or `null` when no table knows the id (the RPC also resolves a guest whose
+   * series was deleted, through its surviving queue item). Throws on a
+   * database error.
    */
   descadastrarConvidado: (convidadoId: number) => Promise<{ conta_id: string } | null>;
   /** TOKEN_ENCRYPTION_KEY, read via a throwing IIFE in index.ts. */
@@ -182,8 +183,8 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
         console.error("[client-email-unsub] guest block failed:", e instanceof Error ? e.message : String(e));
         return html(errorPage(), 500, cors);
       }
-      // A guest row that no longer exists (series deleted) blocks nothing and
-      // audits nothing; the page never reveals whether the id exists.
+      // An id no table knows blocks nothing and audits nothing; the page never
+      // reveals whether the id exists.
       if (row) {
         try {
           await deps.auditLog({
@@ -253,33 +254,23 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
 // ─── guest block (production implementation of `descadastrarConvidado`) ──────
 
 export interface DescadastrarConvidadoDb {
-  from(table: "agenda_convidados"): {
-    select(columns: "conta_id"): {
-      eq(column: "id", value: number): {
-        maybeSingle(): PromiseLike<{ data: { conta_id: string } | null; error: { message: string } | null }>;
-      };
-    };
-  };
   rpc(
     fn: "agenda_convite_descadastrar",
     args: { p_convidado: number },
-  ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+  ): PromiseLike<{ data: string | null; error: { message: string } | null }>;
 }
 
 /**
- * Reads the guest row's `conta_id` (for the audit entry; the RPC returns
- * void), then calls the service-role `agenda_convite_descadastrar`, which
- * inserts `(conta_id, email)` into `agenda_convidados_bloqueio`. A removed
- * guest (`removido_em` set) still has its row, so their link still works; a
- * row deleted with its series resolves `null` and calls nothing.
+ * Calls the service-role `agenda_convite_descadastrar`, which resolves
+ * `(conta_id, email)` from the guest row (removed rows included) or, when the
+ * series DELETE cascaded the row away, from the newest queue item of that id,
+ * inserts it into `agenda_convidados_bloqueio` and returns the `conta_id`
+ * (for the audit entry). `null` = no table knows the id, nothing blocked.
  */
 export function createDescadastrarConvidado(db: DescadastrarConvidadoDb) {
   return async (convidadoId: number): Promise<{ conta_id: string } | null> => {
-    const { data, error } = await db.from("agenda_convidados").select("conta_id").eq("id", convidadoId).maybeSingle();
-    if (error) throw new Error(`agenda_convidados lookup failed: ${error.message}`);
-    if (!data) return null;
-    const { error: rpcError } = await db.rpc("agenda_convite_descadastrar", { p_convidado: convidadoId });
-    if (rpcError) throw new Error(`agenda_convite_descadastrar failed: ${rpcError.message}`);
-    return { conta_id: data.conta_id };
+    const { data, error } = await db.rpc("agenda_convite_descadastrar", { p_convidado: convidadoId });
+    if (error) throw new Error(`agenda_convite_descadastrar failed: ${error.message}`);
+    return typeof data === "string" && data !== "" ? { conta_id: data } : null;
   };
 }
