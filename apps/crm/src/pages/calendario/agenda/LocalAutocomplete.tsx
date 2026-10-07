@@ -1,9 +1,12 @@
-import { useEffect, useId, useState, type Ref } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MapPin } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { buscarEnderecos, MIN_TEXTO_ENDERECO, type SugestaoEndereco } from './geoAutocomplete';
+
+/** Rough height of five suggestions plus the credit line. */
+const ALTURA_LISTA = 260;
 
 export interface LocalAutocompleteProps {
   value: string | null | undefined;
@@ -70,6 +73,17 @@ export function LocalAutocomplete({
 
   const aberta = focado && digitado && !fechada && sugestoes.length > 0 && !disabled;
 
+  // Opens upward when there isn't room below (the quick card often sits low on
+  // the grid). Measured before paint so the list never flashes off-screen.
+  const caixaRef = useRef<HTMLDivElement>(null);
+  const [acima, setAcima] = useState(false);
+  useLayoutEffect(() => {
+    if (!aberta || !caixaRef.current) return;
+    const r = caixaRef.current.getBoundingClientRect();
+    const abaixo = window.innerHeight - r.bottom;
+    setAcima(abaixo < ALTURA_LISTA && r.top > abaixo);
+  }, [aberta]);
+
   // Escape closes the list, not the popover or dialog around it. Radix listens
   // for Escape on document in the capture phase, so stop it earlier, on window.
   useEffect(() => {
@@ -90,7 +104,7 @@ export function LocalAutocomplete({
   };
 
   return (
-    <div className="relative">
+    <div ref={caixaRef} className="relative">
       <Input
         ref={ref}
         id={id}
@@ -138,7 +152,11 @@ export function LocalAutocomplete({
       />
       {aberta && (
         <div
-          className="absolute left-0 right-0 top-full z-[60] mt-1 overflow-hidden rounded-lg border"
+          data-lado={acima ? 'acima' : 'abaixo'}
+          className={cn(
+            'absolute left-0 right-0 z-[60] overflow-hidden rounded-lg border',
+            acima ? 'bottom-full mb-1' : 'top-full mt-1',
+          )}
           style={{
             background: 'var(--card-bg)',
             borderColor: 'var(--border-color)',
