@@ -1046,6 +1046,7 @@ DROP FUNCTION IF EXISTS
   public.agenda_definir_convidados(bigint, jsonb),
   public.agenda_envios_convidados(bigint[], text, jsonb),
   public.agenda_convidados_perda(bigint, bigint[]),
+  public.agenda_convidados_snapshot(bigint, text, bigint, date),
   public.agenda_envios_enfileirar(uuid, bigint, jsonb),
   public.agenda_ocorrencias_bump_sequencia(bigint[]);
 

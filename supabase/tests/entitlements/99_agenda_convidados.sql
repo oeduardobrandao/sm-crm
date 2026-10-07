@@ -7,7 +7,8 @@
 -- reschedule) and one sequencia bump per write, (4) the seguintes split
 -- (same token, answers re-pointed), (5) the recipient-aware claim,
 -- (6) the public convite RPCs, (7) agenda_listar.convidados, (8) the advisory
--- lock, (9) grants.
+-- lock, (9) grants, (10) guest loss with a pending item, (11) guest lists
+-- without the cliente's 90-day window.
 --
 -- Fixtures are built from current_date (the convite RPCs filter on the real
 -- now()), app.agenda_hoje is pinned to current_date. now() is frozen for the
@@ -725,6 +726,7 @@ begin
     'public.agenda_envios_enfileirar(uuid, bigint, jsonb)',
     'public.agenda_envios_convidados(bigint[], text, jsonb)',
     'public.agenda_convidados_perda(bigint, bigint[])',
+    'public.agenda_convidados_snapshot(bigint, text, bigint, date)',
     'public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint)',
     'public.agenda_cliente_claim_emails(int)'] loop
     assert to_regprocedure(v_fn) is not null, format('%s does not exist', v_fn);
@@ -847,6 +849,110 @@ begin
   assert not exists (select 1 from pg_temp.pend(v_ev) where convidado_id = v_g.id), 'unsent convite + removal left a pending item';
 
   raise notice 'PASS 99_agenda_convidados (guest loss with a pending item)';
+end $$;
+
+-- ============ block 11: guest lists without the 90-day window ============
+-- Fix round 2: a guest's convite, alteracao and cancellation lists take the
+-- next live occurrences (up to 50) with no 90-day bound; the cliente keeps its
+-- window (20261007000001). Every item is marked sent before the next write.
+do $$
+declare
+  f jsonb := pg_temp.fx();
+  v_o uuid := (f->>'o')::uuid;
+  v_ca bigint := (f->>'ca')::bigint;
+  v_oc bigint; v_o2 bigint; v_ev bigint; v_n int;
+  v_g agenda_convidados; v_g2 agenda_convidados;
+  v_err text; q agenda_emails_cliente;
+  v_regra jsonb;
+begin
+  update agenda_emails_cliente set status = 'enviado' where status = 'pendente';
+
+  -- (i) a shared series whose only occurrences are at day 120 and day 150:
+  -- the guest's convite carries both, the cliente (90-day window) gets nothing
+  v_regra := jsonb_build_object('regra', jsonb_build_object('freq','daily','intervalo',30,'dias_semana',null,
+               'mensal_modo',null,'mensal_ordinal',null,'ate',null,'contagem',2));
+  v_oc := pg_temp.criar(v_o, pg_temp.diaria(120, 2, v_regra || jsonb_build_object('cliente_id', v_ca, 'compartilhado_cliente', true)
+                                           || pg_temp.cv(array['pia@ext.com'])));
+  v_o2 := pg_temp.nth(v_oc, 2); v_ev := pg_temp.ev(v_oc);
+  assert (select count(*) from agenda_ocorrencias where evento_id = v_ev) = 2
+     and pg_temp.ini(v_oc) = pg_temp.ts(120) and pg_temp.ini(v_o2) = pg_temp.ts(150), 'fixture: days 120 and 150';
+  v_g := pg_temp.g(v_oc, 'pia@ext.com');
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'convite' and pg_temp.snap_ids(q.ocorrencias) = array[v_oc, v_o2]
+     and (select bool_and(x->>'estado' = 'ativa') from jsonb_array_elements(q.ocorrencias) x), format('(i) create convite: %s', to_jsonb(q));
+  -- (iii) the cliente of the same write: no item (nothing inside 90 days)
+  assert not exists (select 1 from pg_temp.pend(v_ev) where cliente_id = v_ca), '(iii) cliente convite outside its window';
+  assert (select bool_and(sequencia = 1) from agenda_ocorrencias where evento_id = v_ev), '(i) create did not bump exactly once';
+  -- a guest added later by an edit gets both too
+  update agenda_emails_cliente set status = 'enviado' where evento_id = v_ev;
+  v_err := pg_temp.editar(v_o, v_oc, 'todas', pg_temp.cv(array['pia@ext.com', 'quim@ext.com']));
+  assert v_err is null, format('(i) add by edit: %s', v_err);
+  v_g2 := pg_temp.g(v_oc, 'quim@ext.com');
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g2.id;
+  assert q.tipo = 'convite' and pg_temp.snap_ids(q.ocorrencias) = array[v_oc, v_o2], format('(i) edit convite: %s', to_jsonb(q));
+  assert not exists (select 1 from pg_temp.pend(v_ev) where convidado_id = v_g.id), '(i) the kept guest got an empty item';
+  assert not exists (select 1 from pg_temp.pend(v_ev) where cliente_id = v_ca), '(iii) cliente item on the add edit';
+
+  -- (iii) a shared series at day 80 and day 120: the cliente's convite stops at
+  -- 90 days, the guest's carries both
+  v_regra := jsonb_build_object('regra', jsonb_build_object('freq','daily','intervalo',40,'dias_semana',null,
+               'mensal_modo',null,'mensal_ordinal',null,'ate',null,'contagem',2));
+  v_oc := pg_temp.criar(v_o, pg_temp.diaria(80, 2, v_regra || jsonb_build_object('cliente_id', v_ca, 'compartilhado_cliente', true)
+                                          || pg_temp.cv(array['rui@ext.com'])));
+  v_o2 := pg_temp.nth(v_oc, 2); v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'rui@ext.com');
+  select * into q from pg_temp.pend(v_ev) where cliente_id = v_ca;
+  assert q.tipo = 'convite' and pg_temp.snap_ids(q.ocorrencias) = array[v_oc], format('(iii) cliente convite: %s', to_jsonb(q));
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'convite' and pg_temp.snap_ids(q.ocorrencias) = array[v_oc, v_o2], format('(iii) guest convite: %s', to_jsonb(q));
+
+  -- (ii) a todas edit moves an event from day 85 to day 95 after the guest got
+  -- it; then the guest is removed: the cancellation has the day-95 entry
+  v_oc := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('inicio_local', pg_temp.dia(85), 'fim_local', pg_temp.dia(85, '15:00:00'))
+                                       || pg_temp.cv(array['sol@ext.com'])));
+  v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'sol@ext.com');
+  update agenda_emails_cliente set status = 'enviado' where evento_id = v_ev;
+  v_err := pg_temp.editar(v_o, v_oc, 'todas', jsonb_build_object('inicio_local', pg_temp.dia(95), 'fim_local', pg_temp.dia(95, '15:00:00')));
+  assert v_err is null, format('(ii) move: %s', v_err);
+  select o.id into v_oc from agenda_ocorrencias o where o.evento_id = v_ev and not o.cancelada;
+  assert pg_temp.ini(v_oc) = pg_temp.ts(95), '(ii) fixture: moved to day 95';
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'alteracao'
+     and exists (select 1 from jsonb_array_elements(q.ocorrencias) x
+                  where (x->>'ocorrencia_id')::bigint = v_oc and x->>'estado' = 'ativa' and (x->>'inicio')::timestamptz = pg_temp.ts(95)),
+    format('(ii) alteracao: %s', to_jsonb(q));
+  update agenda_emails_cliente set status = 'enviado' where evento_id = v_ev;
+  v_err := pg_temp.editar(v_o, v_oc, 'todas', pg_temp.cv('{}'));
+  assert v_err is null, format('(ii) remove: %s', v_err);
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'cancelamento' and pg_temp.snap_ids(q.ocorrencias) = array[v_oc]
+     and q.ocorrencias->0->>'estado' = 'cancelada' and (q.ocorrencias->0->>'inicio')::timestamptz = pg_temp.ts(95),
+    format('(ii) cancellation: %s', coalesce(to_jsonb(q)::text, 'none'));
+
+  -- excluir todas after the guest got a series at day 100 and day 130
+  v_regra := jsonb_build_object('regra', jsonb_build_object('freq','daily','intervalo',30,'dias_semana',null,
+               'mensal_modo',null,'mensal_ordinal',null,'ate',null,'contagem',2));
+  v_oc := pg_temp.criar(v_o, pg_temp.diaria(100, 2, v_regra || pg_temp.cv(array['tea@ext.com'])));
+  v_o2 := pg_temp.nth(v_oc, 2); v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'tea@ext.com');
+  update agenda_emails_cliente set status = 'enviado' where evento_id = v_ev;
+  v_err := pg_temp.erro(v_o, format('select public.agenda_evento_excluir(%s, %L)', v_oc, 'todas'));
+  assert v_err is null, format('excluir todas: %s', v_err);
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'cancelamento' and pg_temp.snap_ids(q.ocorrencias) = array[v_oc, v_o2]
+     and (select bool_and(x->>'estado' = 'cancelada') from jsonb_array_elements(q.ocorrencias) x),
+    format('excluir cancellation: %s', coalesce(to_jsonb(q)::text, 'none'));
+
+  -- the 50-row cap still holds for guests
+  v_oc := pg_temp.criar(v_o, pg_temp.diaria(1, 60, pg_temp.cv(array['uma@ext.com'])));
+  v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'uma@ext.com');
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  v_n := jsonb_array_length(q.ocorrencias);
+  assert v_n = 50 and (q.ocorrencias->0->>'ocorrencia_id')::bigint = v_oc, format('cap: %s entries', v_n);
+
+  raise notice 'PASS 99_agenda_convidados (guest lists without the 90-day window)';
 end $$;
 
 rollback;

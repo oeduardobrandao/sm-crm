@@ -252,6 +252,47 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Internal: the guests' variant of agenda_cliente_ocorrencias_snapshot (same
+-- arguments, entry shape and expressions; keep them in sync). Controller
+-- decision (fix round 2): a guest has no Hub, the e-mail is its only channel,
+-- so its lists have NO 90-day bound: the next live occurrences (fim > now(),
+-- not cancelled) ORDER BY inicio LIMIT 50, optionally from p_desde. With
+-- p_ocorrencia: only that occurrence (as the cliente's). The cliente keeps its
+-- own windowed function, unchanged.
+CREATE OR REPLACE FUNCTION public.agenda_convidados_snapshot(
+  p_evento bigint, p_estado text, p_ocorrencia bigint DEFAULT NULL, p_desde date DEFAULT NULL)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT coalesce(jsonb_agg(x.e ORDER BY x.inicio, x.id), '[]'::jsonb)
+  FROM (
+    SELECT o.id, o.inicio, jsonb_build_object(
+             'ocorrencia_id', o.id,
+             'estado', p_estado,
+             'sequencia', o.sequencia,
+             'inicio', o.inicio,
+             'fim', o.fim,
+             'dia_inteiro', e.dia_inteiro,
+             'data_inicio_local', (o.inicio AT TIME ZONE e.tz)::date,
+             'data_fim_local', CASE WHEN e.dia_inteiro THEN (o.fim AT TIME ZONE e.tz)::date
+                                    ELSE ((o.fim AT TIME ZONE e.tz) - interval '1 microsecond')::date + 1 END,
+             'tz', e.tz,
+             'titulo', CASE WHEN 'titulo' = ANY (o.campos_sobrescritos) THEN o.titulo ELSE e.titulo END,
+             'descricao', CASE WHEN 'descricao' = ANY (o.campos_sobrescritos) THEN o.descricao ELSE e.descricao END,
+             'local', CASE WHEN 'local' = ANY (o.campos_sobrescritos) THEN o.local ELSE e.local END,
+             'link_reuniao', CASE WHEN 'link_reuniao' = ANY (o.campos_sobrescritos) THEN o.link_reuniao ELSE e.link_reuniao END
+           ) AS e
+      FROM public.agenda_ocorrencias o
+      JOIN public.agenda_eventos e ON e.id = o.evento_id AND e.conta_id = o.conta_id
+     WHERE NOT o.cancelada
+       AND o.fim > now()
+       AND CASE WHEN p_ocorrencia IS NOT NULL
+                THEN o.id = p_ocorrencia AND (p_evento IS NULL OR o.evento_id = p_evento)
+                ELSE o.evento_id = p_evento
+                     AND (p_desde IS NULL OR o.data_original >= p_desde) END
+     ORDER BY o.inicio, o.id
+     LIMIT 50
+  ) x;
+$$;
+
 -- Internal: the envio of one list to each active guest of a series (helper of
 -- the write RPCs).
 CREATE OR REPLACE FUNCTION public.agenda_envios_convidados(p_convidados bigint[], p_tipo text, p_ocorrencias jsonb)
@@ -615,7 +656,6 @@ DECLARE
   v_oc bigint;
   v_parts uuid[];
   v_conv_add bigint[] := '{}';   -- [convidados] guests added by the payload
-  v_snap jsonb;                  -- [convidados]
   v_envios jsonb := '[]'::jsonb; -- [convidados]
 BEGIN
   v_conta := get_my_conta_id(); v_user := auth.uid();
@@ -672,16 +712,17 @@ BEGIN
   END IF;
 
   -- [hub] shared with the client: 'convite' with the next occurrences
-  -- [convidados] and the same snapshot to each guest, with one bump for all
-  IF (v_e.compartilhado_cliente AND v_e.cliente_id IS NOT NULL) OR cardinality(v_conv_add) > 0 THEN
-    v_snap := public.agenda_cliente_ocorrencias_snapshot(v_id, 'ativa');
-    IF v_e.compartilhado_cliente AND v_e.cliente_id IS NOT NULL THEN
-      v_envios := jsonb_build_array(jsonb_build_object('cliente', v_e.cliente_id, 'convidado', NULL,
-                                                       'tipo', 'convite', 'ocorrencias', v_snap));
-    END IF;
-    v_envios := v_envios || public.agenda_envios_convidados(v_conv_add, 'convite', v_snap);
-    PERFORM public.agenda_envios_enfileirar(v_conta, v_id, v_envios);
+  -- [convidados] and each guest a 'convite' with its own (unbounded) snapshot,
+  -- with one bump for all
+  IF v_e.compartilhado_cliente AND v_e.cliente_id IS NOT NULL THEN
+    v_envios := jsonb_build_array(jsonb_build_object('cliente', v_e.cliente_id, 'convidado', NULL,
+      'tipo', 'convite', 'ocorrencias', public.agenda_cliente_ocorrencias_snapshot(v_id, 'ativa')));
   END IF;
+  IF cardinality(v_conv_add) > 0 THEN
+    v_envios := v_envios || public.agenda_envios_convidados(v_conv_add, 'convite',
+      public.agenda_convidados_snapshot(v_id, 'ativa'));
+  END IF;
+  PERFORM public.agenda_envios_enfileirar(v_conta, v_id, v_envios);
 
   RETURN QUERY SELECT v_id, v_oc, v_e.dtstart;
 END $$;
@@ -742,9 +783,13 @@ DECLARE
   v_conv_rem bigint[] := '{}';      -- [convidados] removed by this edit (on v_alvo)
   v_conv_manter bigint[] := '{}';   -- [convidados] active on v_alvo and not added now
   v_conv_n int;                     -- [convidados]
-  v_diff jsonb := '[]'::jsonb;      -- [convidados] the client's diff, reused for the guests
+  v_antes_g jsonb := '[]'::jsonb;   -- [convidados] same as v_antes, guest snapshot (no 90-day bound)
+  v_diff jsonb := '[]'::jsonb;      -- [convidados] the client's diff
+  v_diff_g jsonb := '[]'::jsonb;    -- [convidados] the guests' diff
   v_snap jsonb;                     -- [convidados]
+  v_snap_g jsonb;                   -- [convidados]
   v_cancel jsonb;                   -- [convidados] v_antes as 'cancelada'
+  v_cancel_g jsonb;                 -- [convidados] v_antes_g as 'cancelada'
   v_envios jsonb := '[]'::jsonb;    -- [convidados] every e-mail of this write
 BEGIN
   v_conta := get_my_conta_id(); v_user := auth.uid();
@@ -784,12 +829,18 @@ BEGIN
   -- [hub] what the client sees before the edit, scope-dependent: esta -> this
   -- occurrence; todas -> the series' future occurrences; seguintes -> those
   -- from the cut. Taken before any regenerate/split/delete.
-  -- [convidados] also when the series has an active guest
   v_cli_antes := CASE WHEN v_e.compartilhado_cliente THEN v_e.cliente_id END;
+  IF v_cli_antes IS NOT NULL THEN
+    v_antes := public.agenda_cliente_ocorrencias_snapshot(
+      v_e.id, 'ativa',
+      CASE WHEN v_escopo = 'esta' THEN v_o.id END,
+      CASE WHEN v_escopo = 'seguintes' THEN v_o.data_original END);
+  END IF;
+  -- [convidados] the same for the guests, from their unbounded snapshot
   v_convs_antes := ARRAY(SELECT g.id FROM public.agenda_convidados g
                           WHERE g.evento_id = v_e.id AND g.removido_em IS NULL ORDER BY g.id);
-  IF v_cli_antes IS NOT NULL OR cardinality(v_convs_antes) > 0 THEN
-    v_antes := public.agenda_cliente_ocorrencias_snapshot(
+  IF cardinality(v_convs_antes) > 0 THEN
+    v_antes_g := public.agenda_convidados_snapshot(
       v_e.id, 'ativa',
       CASE WHEN v_escopo = 'esta' THEN v_o.id END,
       CASE WHEN v_escopo = 'seguintes' THEN v_o.data_original END);
@@ -1128,10 +1179,11 @@ BEGIN
   -- on or switched: 'convite' to the new one. A split enqueues under the new
   -- series (v_alvo). Inside agenda_remarcacao_resolver the 'alteracao' becomes
   -- 'remarcacao_aceita' (GUC agenda.remarcacao, see agenda_cliente_enfileirar).
-  -- [convidados] Guests: the ones kept get the same 'alteracao' diff as the
-  -- client (computed once, before the bump); the ones added get 'convite'
+  -- [convidados] Guests, from their own unbounded snapshots
+  -- (agenda_convidados_snapshot): the ones kept get the 'alteracao' diff of
+  -- v_antes_g (computed once, before the bump); the ones added get 'convite'
   -- with the series' (the tail's) next occurrences; the ones removed get
-  -- 'cancelamento' with what they knew (v_antes). Every list is built first,
+  -- 'cancelamento' with what they knew (v_antes_g). Every list is built first,
   -- then agenda_envios_enfileirar bumps their union once and enqueues them.
   SELECT CASE WHEN ev.compartilhado_cliente THEN ev.cliente_id END INTO v_cli_depois
     FROM public.agenda_eventos ev WHERE ev.id = v_alvo;
@@ -1139,13 +1191,20 @@ BEGIN
                           WHERE g.evento_id = v_alvo AND g.removido_em IS NULL AND NOT (g.id = ANY (v_conv_add))
                           ORDER BY g.id);
   v_cancel := (SELECT coalesce(jsonb_agg(x || '{"estado":"cancelada"}'::jsonb), '[]'::jsonb) FROM jsonb_array_elements(v_antes) x);
-  IF (v_cli_antes IS NOT NULL AND v_cli_depois IS NOT DISTINCT FROM v_cli_antes) OR cardinality(v_conv_manter) > 0 THEN
+  v_cancel_g := (SELECT coalesce(jsonb_agg(x || '{"estado":"cancelada"}'::jsonb), '[]'::jsonb) FROM jsonb_array_elements(v_antes_g) x);
+  IF v_cli_antes IS NOT NULL AND v_cli_depois IS NOT DISTINCT FROM v_cli_antes THEN
     v_diff := public.agenda_cliente_diff(v_antes,
       public.agenda_cliente_ocorrencias_snapshot(v_alvo, 'ativa', CASE WHEN v_escopo = 'esta' THEN v_o.id END));
   END IF;
-  IF ((v_cli_antes IS NULL OR v_cli_depois IS DISTINCT FROM v_cli_antes) AND v_cli_depois IS NOT NULL)
-     OR cardinality(v_conv_add) > 0 THEN
+  IF cardinality(v_conv_manter) > 0 THEN
+    v_diff_g := public.agenda_cliente_diff(v_antes_g,
+      public.agenda_convidados_snapshot(v_alvo, 'ativa', CASE WHEN v_escopo = 'esta' THEN v_o.id END));
+  END IF;
+  IF (v_cli_antes IS NULL OR v_cli_depois IS DISTINCT FROM v_cli_antes) AND v_cli_depois IS NOT NULL THEN
     v_snap := public.agenda_cliente_ocorrencias_snapshot(v_alvo, 'ativa');
+  END IF;
+  IF cardinality(v_conv_add) > 0 THEN
+    v_snap_g := public.agenda_convidados_snapshot(v_alvo, 'ativa');
   END IF;
   IF v_cli_antes IS NOT NULL AND v_cli_depois IS NOT DISTINCT FROM v_cli_antes THEN
     v_envios := v_envios || jsonb_build_array(jsonb_build_object(
@@ -1161,9 +1220,9 @@ BEGIN
     END IF;
   END IF;
   v_envios := v_envios
-           || public.agenda_envios_convidados(v_conv_manter, 'alteracao', v_diff)
-           || public.agenda_envios_convidados(v_conv_add, 'convite', v_snap)
-           || public.agenda_envios_convidados(v_conv_rem, 'cancelamento', v_cancel);
+           || public.agenda_envios_convidados(v_conv_manter, 'alteracao', v_diff_g)
+           || public.agenda_envios_convidados(v_conv_add, 'convite', v_snap_g)
+           || public.agenda_envios_convidados(v_conv_rem, 'cancelamento', v_cancel_g);
   PERFORM public.agenda_envios_enfileirar(v_conta, v_alvo, v_envios);
   -- [convidados] a removed guest's pending items become a full cancellation
   PERFORM public.agenda_convidados_perda(v_alvo, v_conv_rem);
@@ -1205,7 +1264,6 @@ DECLARE
   v_escopo text;
   v_primeira boolean;
   v_convs bigint[];               -- [convidados] active guests, read before any DELETE
-  v_snap jsonb;                   -- [convidados]
   v_envios jsonb := '[]'::jsonb;  -- [convidados]
 BEGIN
   v_conta := get_my_conta_id(); v_user := auth.uid();
@@ -1254,14 +1312,17 @@ BEGIN
   v_convs := ARRAY(SELECT g.id FROM public.agenda_convidados g
                     WHERE g.evento_id = v_e.id AND g.removido_em IS NULL ORDER BY g.id);
   IF (v_e.compartilhado_cliente AND v_e.cliente_id IS NOT NULL) OR cardinality(v_convs) > 0 THEN
-    v_snap := public.agenda_cliente_ocorrencias_snapshot(v_e.id, 'cancelada',
-      CASE WHEN v_escopo = 'esta' THEN v_o.id END,
-      CASE WHEN v_escopo = 'seguintes' THEN v_o.data_original END);
     IF v_e.compartilhado_cliente AND v_e.cliente_id IS NOT NULL THEN
       v_envios := jsonb_build_array(jsonb_build_object('cliente', v_e.cliente_id, 'convidado', NULL,
-                                                       'tipo', 'cancelamento', 'ocorrencias', v_snap));
+        'tipo', 'cancelamento', 'ocorrencias', public.agenda_cliente_ocorrencias_snapshot(v_e.id, 'cancelada',
+          CASE WHEN v_escopo = 'esta' THEN v_o.id END,
+          CASE WHEN v_escopo = 'seguintes' THEN v_o.data_original END)));
     END IF;
-    v_envios := v_envios || public.agenda_envios_convidados(v_convs, 'cancelamento', v_snap);
+    -- the guests' list has no 90-day bound (agenda_convidados_snapshot)
+    v_envios := v_envios || public.agenda_envios_convidados(v_convs, 'cancelamento',
+      public.agenda_convidados_snapshot(v_e.id, 'cancelada',
+        CASE WHEN v_escopo = 'esta' THEN v_o.id END,
+        CASE WHEN v_escopo = 'seguintes' THEN v_o.data_original END));
     PERFORM public.agenda_envios_enfileirar(v_conta, v_e.id, v_envios);
     -- [convidados] the whole series goes: the guests' pending items become a
     -- full cancellation (esta/seguintes keep the guests, nothing to convert)
@@ -1746,6 +1807,7 @@ REVOKE ALL ON FUNCTION public.agenda_ocorrencias_bump_sequencia(bigint[]) FROM P
 REVOKE ALL ON FUNCTION public.agenda_envios_enfileirar(uuid, bigint, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_envios_convidados(bigint[], text, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_convidados_perda(bigint, bigint[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.agenda_convidados_snapshot(bigint, text, bigint, date) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_definir_convidados(bigint, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_claim_emails(int) FROM PUBLIC, anon, authenticated;
@@ -1759,6 +1821,7 @@ GRANT EXECUTE ON FUNCTION public.agenda_ocorrencias_bump_sequencia(bigint[]) TO 
 GRANT EXECUTE ON FUNCTION public.agenda_envios_enfileirar(uuid, bigint, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_envios_convidados(bigint[], text, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_convidados_perda(bigint, bigint[]) TO service_role;
+GRANT EXECUTE ON FUNCTION public.agenda_convidados_snapshot(bigint, text, bigint, date) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_definir_convidados(bigint, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_claim_emails(int) TO service_role;
@@ -1788,6 +1851,7 @@ BEGIN
     'public.agenda_envios_enfileirar(uuid, bigint, jsonb)',
     'public.agenda_envios_convidados(bigint[], text, jsonb)',
     'public.agenda_convidados_perda(bigint, bigint[])',
+    'public.agenda_convidados_snapshot(bigint, text, bigint, date)',
     'public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint)',
     'public.agenda_definir_convidados(bigint, jsonb)',
     'public.agenda_cliente_claim_emails(int)',
