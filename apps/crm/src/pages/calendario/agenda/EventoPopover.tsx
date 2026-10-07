@@ -183,6 +183,16 @@ const CLIENTE_RESPOSTA_LABEL: Record<AgendaClienteResposta, string> = {
   aguardando: 'Aguardando resposta',
 };
 
+/** Selo of an external guest: Confirmou / Recusou (the client's copy) or Aguardando. */
+function badgeConvidado(resposta: 'sim' | 'nao' | null): {
+  label: string;
+  variant: 'success' | 'danger' | 'neutral';
+} {
+  if (resposta === 'sim') return { label: CLIENTE_RESPOSTA_LABEL.sim, variant: 'success' };
+  if (resposta === 'nao') return { label: CLIENTE_RESPOSTA_LABEL.nao, variant: 'danger' };
+  return { label: BADGE.pendente.label, variant: 'neutral' };
+}
+
 /** "qui., 9 de out., 14:00" (all-day: no time). Timed in the browser zone like the
  *  grid; all-day as the series-local date. */
 function quandoSugerido(iso: string, o: AgendaOcorrencia): string {
@@ -404,6 +414,8 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
     !mascarado && o.compartilhado_cliente && o.cliente_resposta
       ? CLIENTE_RESPOSTA_LABEL[o.cliente_resposta]
       : null;
+  // External guests, hidden on masked events (the database sends null there).
+  const convidados = (!mascarado && o.convidados) || [];
   const pedidoRemarcacao = !mascarado && podeEditar ? o.remarcacao_pendente : null;
 
   return (
@@ -660,6 +672,37 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
                             {p.user_id === meuId && ' (você)'}
                             {p.user_id === o.organizador_id && (
                               <span style={{ color: 'var(--text-muted)' }}> · organizador</span>
+                            )}
+                          </span>
+                          <Badge variant={badge.variant} size="sm">
+                            {badge.label}
+                          </Badge>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {convidados.length > 0 && (
+                <div
+                  className="flex flex-col gap-2.5 border-t pt-3.5"
+                  style={{ borderColor: 'var(--border-color)' }}
+                >
+                  <div className="text-[13px] font-semibold">Convidados</div>
+                  <ul aria-label="Convidados" className="m-0 flex list-none flex-col gap-2.5 p-0">
+                    {convidados.map((c) => {
+                      const badge = badgeConvidado(c.resposta);
+                      return (
+                        <li key={c.id} className="flex items-center gap-2.5 text-[13px]">
+                          <span className="min-w-0 flex-1 truncate">
+                            {c.nome ? (
+                              <>
+                                {c.nome}
+                                <span style={{ color: 'var(--text-muted)' }}> · {c.email}</span>
+                              </>
+                            ) : (
+                              c.email
                             )}
                           </span>
                           <Badge variant={badge.variant} size="sm">

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { addDays, differenceInCalendarDays, format, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type {
+  AgendaConvidadoInput,
   AgendaCor,
   AgendaEscopo,
   AgendaEventoPayload,
@@ -28,6 +29,9 @@ import {
 /** Other people only: the organizer is not counted. */
 export const MAX_PARTICIPANTES = 50;
 export const MAX_LEMBRETES = 5;
+/** External guests per series (database cap). */
+export const MAX_CONVIDADOS = 20;
+const MAX_EMAIL_CHARS = 254;
 /** Database caps on duration: timed events (elapsed) and all-day events (days). */
 export const MAX_DIAS_COM_HORARIO = 14;
 export const MAX_DIAS_DIA_INTEIRO = 31;
@@ -53,6 +57,18 @@ const REPETIR = [
   'dias_uteis',
   'personalizado',
 ] as const;
+
+/** Same shape the database accepts for guest e-mails (plus zod's stricter TLD check,
+ *  so a value the chip input commits always survives the form schema). */
+const EMAIL_CONVIDADO_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const emailSchema = z.string().email();
+export function emailConvidadoValido(email: string): boolean {
+  return (
+    email.length <= MAX_EMAIL_CHARS &&
+    EMAIL_CONVIDADO_RE.test(email) &&
+    emailSchema.safeParse(email).success
+  );
+}
 
 const regraSchema = z.object({
   freq: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
@@ -94,6 +110,10 @@ export const eventoFormSchema = z
     participantes: z
       .array(z.string())
       .max(MAX_PARTICIPANTES, `Adicione no máximo ${MAX_PARTICIPANTES} pessoas.`),
+    /** External guests (e-mails lower-case). Hidden, and not sent, while `privado`. */
+    convidados: z
+      .array(z.object({ email: z.string().email(), nome: z.string().nullable() }))
+      .max(MAX_CONVIDADOS, `Convide no máximo ${MAX_CONVIDADOS} pessoas.`),
     local: maxChars(300),
     link_reuniao: maxChars(500),
     descricao: maxChars(5000),
@@ -186,6 +206,7 @@ const BASE: Omit<
   repetir: 'nao',
   regra: null,
   participantes: [],
+  convidados: [],
   local: '',
   link_reuniao: '',
   descricao: '',
@@ -252,6 +273,7 @@ export function valoresDeOcorrencia(o: AgendaOcorrencia): EventoFormValues {
     repetir: opcaoDaRegra(regra, dataInicio),
     regra,
     participantes: o.participantes.map((p) => p.user_id).filter((id) => id !== o.organizador_id),
+    convidados: (o.convidados ?? []).map((c) => ({ email: c.email, nome: c.nome })),
     local: o.local ?? '',
     link_reuniao: o.link_reuniao ?? '',
     descricao: o.descricao ?? '',
@@ -288,6 +310,9 @@ export function montarPayload(v: EventoFormValues): AgendaEventoPayload {
   const fimLocal = v.dia_inteiro
     ? localIso(addDays(startOfDay(v.data_fim), 1))
     : localIso(combinarDataHora(v.data_fim, v.hora_fim));
+  // The real current list, never an implicit []: the form blocks saving a private
+  // event that still has guests (EventoFormDialog), and the database refuses it too.
+  const convidados = v.convidados;
   return {
     titulo: v.titulo.trim(),
     descricao: v.descricao.trim() || null,
@@ -304,6 +329,11 @@ export function montarPayload(v: EventoFormValues): AgendaEventoPayload {
     fim_local: fimLocal,
     lembretes: [...new Set(v.lembretes)].sort((a, b) => a - b),
     regra: v.repetir === 'nao' ? null : v.regra,
+    // Only when there is someone: create sends no key otherwise, and the edit diff
+    // (montarPayloadEdicao) reads an absent key as "no guests".
+    ...(convidados.length > 0
+      ? { convidados: convidados.map((c) => ({ email: c.email, nome: c.nome })) }
+      : {}),
   };
 }
 
@@ -350,7 +380,8 @@ export type CampoSerie =
   | 'privado'
   | 'compartilhado_cliente'
   | 'dia_inteiro'
-  | 'participantes';
+  | 'participantes'
+  | 'convidados';
 
 const CAMPO_SERIE_LABEL: Record<CampoSerie, string> = {
   regra: 'a repetição',
@@ -362,6 +393,7 @@ const CAMPO_SERIE_LABEL: Record<CampoSerie, string> = {
   compartilhado_cliente: 'o compartilhamento com o cliente',
   dia_inteiro: 'a opção Dia inteiro',
   participantes: 'os participantes',
+  convidados: 'os convidados externos',
 };
 
 /** Series-level fields that changed, so "Este evento" is not allowed. A rule
@@ -369,7 +401,11 @@ const CAMPO_SERIE_LABEL: Record<CampoSerie, string> = {
 export function camposDeSerieAlterados(
   antes: AgendaEventoPayload,
   depois: AgendaEventoPayload,
-  opts: { participantesMudaram: boolean; regraAcompanhouData: boolean },
+  opts: {
+    participantesMudaram: boolean;
+    regraAcompanhouData: boolean;
+    convidadosMudaram?: boolean;
+  },
 ): CampoSerie[] {
   const out: CampoSerie[] = [];
   if (!opts.regraAcompanhouData && !mesmaRegra(antes.regra, depois.regra)) out.push('regra');
@@ -383,6 +419,7 @@ export function camposDeSerieAlterados(
   }
   if (antes.dia_inteiro !== depois.dia_inteiro) out.push('dia_inteiro');
   if (opts.participantesMudaram) out.push('participantes');
+  if (opts.convidadosMudaram) out.push('convidados');
   return out;
 }
 
@@ -447,7 +484,7 @@ export function chavesAlteradas(
  *    followed the date stays out.
  *  - "todas"/"seguintes": the rule (always explicit) and every series field;
  *    content keys only when changed, so an occurrence's title override is not
- *    promoted to the series. */
+ *    promoted to the series. Guests travel only when changed. */
 export function montarPayloadEdicao(
   antes: AgendaEventoPayload,
   depois: AgendaEventoPayload,
@@ -465,11 +502,30 @@ export function montarPayloadEdicao(
     por('regra');
     CHAVES_SERIE.forEach(por);
   }
+  // Series field: the database ignores it for "esta". Changed -> always the full list
+  // (`[]` removes everyone); unchanged -> the key stays out and the guests are kept.
+  if (opts.escopo !== 'esta' && !mesmosConvidados(antes.convidados, depois.convidados)) {
+    out.convidados = depois.convidados ?? [];
+  }
   if (mudou.has('inicio_local') || mudou.has('fim_local') || mudou.has('dia_inteiro')) {
     por('inicio_local');
     por('fim_local');
   }
   return out;
+}
+
+/** Same guests (by e-mail, case-insensitive) with the same names. Order is irrelevant. */
+export function mesmosConvidados(
+  a: readonly AgendaConvidadoInput[] | undefined,
+  b: readonly AgendaConvidadoInput[] | undefined,
+): boolean {
+  const mapa = (l: readonly AgendaConvidadoInput[] | undefined) =>
+    new Map((l ?? []).map((c) => [c.email.trim().toLowerCase(), c.nome ?? null]));
+  const ma = mapa(a);
+  const mb = mapa(b);
+  return (
+    ma.size === mb.size && [...ma].every(([email, nome]) => mb.has(email) && mb.get(email) === nome)
+  );
 }
 
 export function mesmasPessoas(a: string[], b: string[]): boolean {
