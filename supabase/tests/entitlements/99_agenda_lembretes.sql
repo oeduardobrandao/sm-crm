@@ -362,6 +362,10 @@ begin
 
   -- mark fence: a mark more than 5 minutes after the lease ended is dropped
   delete from agenda_lembretes where ocorrencia_id <> v_oc;
+  -- the claim settles a row whose occurrence ended before the REAL now()
+  -- (o.fim < now()), not the pinned app.agenda_hoje; keep the end ahead of the
+  -- clock so this fixture does not expire. inicio stays equal to inicio_alvo.
+  update agenda_ocorrencias set fim = now() + interval '1 day' where id = v_oc;
   execute 'set local role service_role';
   select count(*) into v_n from public.agenda_claim_emails_lembrete(10);
   execute 'reset role';
