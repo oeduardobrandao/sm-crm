@@ -177,6 +177,9 @@ export interface AgendaViewProps {
   /** Click on a layer item chip (extendedProps.camada). */
   onCamadaClick?: (item: CamadaItem, el: HTMLElement) => void;
   onMover: (o: AgendaOcorrencia, novoInicio: Date, novoFim: Date, revert: () => void) => void;
+  /** The parent gives the card a fixed height: every view fills it and scrolls
+   *  inside (the time grid scrolls its hours, the list its rows). */
+  preencher?: boolean;
 }
 
 export default function AgendaView({
@@ -190,6 +193,7 @@ export default function AgendaView({
   onEventClick,
   onCamadaClick,
   onMover,
+  preencher = false,
 }: AgendaViewProps) {
   const api = () => calRef.current?.getApi();
   // Read once: FullCalendar re-applies scrollTime whenever the option changes.
@@ -258,7 +262,7 @@ export default function AgendaView({
           dayMaxEvents
           slotMinTime="06:00:00"
           scrollTime={scrollTime}
-          height={alturaDaVisao(view, isMobile)}
+          height={preencher ? '100%' : alturaDaVisao(view, isMobile)}
           allDayText="Dia inteiro"
           noEventsText="Nenhum evento neste período."
           moreLinkText={(n) => `+${n} mais`}
