@@ -61,6 +61,7 @@ describe('slugDoTitulo', () => {
 describe('baixarIcsDaOcorrencia', () => {
   it('fetches the occurrence route with the session JWT and saves the blob as <slug>.ics', async () => {
     fetchMock.mockResolvedValue({ ok: true, blob: async () => new Blob(['BEGIN:VCALENDAR']) });
+    vi.useFakeTimers();
 
     await baixarIcsDaOcorrencia(o);
 
@@ -69,7 +70,11 @@ describe('baixarIcsDaOcorrencia', () => {
     expect(init.headers.Authorization).toBe('Bearer jwt-123');
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(clicked).toEqual([{ download: 'gravacao-clinica-sorriso.ics', href: 'blob:fake' }]);
+    // Revoked later, not synchronously (Safari would cancel the download).
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(10_000);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake');
+    vi.useRealTimers();
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 

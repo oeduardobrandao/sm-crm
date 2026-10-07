@@ -42,7 +42,8 @@ export async function baixarIcsDaOcorrencia(o: AgendaOcorrencia): Promise<void> 
       a.click();
       a.remove();
     } finally {
-      URL.revokeObjectURL(href);
+      // Safari starts the download asynchronously: revoking right away cancels it.
+      setTimeout(() => URL.revokeObjectURL(href), 10_000);
     }
   } catch {
     toast.error(ERRO);

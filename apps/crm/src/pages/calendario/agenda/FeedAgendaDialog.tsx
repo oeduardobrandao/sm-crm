@@ -137,7 +137,9 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
           )}
 
           {url && webcal && (
-            <div className="flex flex-col gap-4">
+            // ph-no-capture: the links carry the secret token; keep it out of
+            // PostHog autocapture and session replay.
+            <div className="ph-no-capture flex flex-col gap-4">
               <div className="flex items-center gap-2">
                 <Input
                   readOnly

@@ -100,7 +100,7 @@ function paraIcs(r: FeedEventoRow | OcorrenciaIcs): IcsEvento {
 export function slugAscii(titulo: string): string {
   const slug = titulo
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^A-Za-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase()

@@ -64,7 +64,10 @@ function data(d: string): string {
 }
 
 function urlSegura(u?: string | null): string | null {
-  return u && /^https?:\/\//i.test(u) ? u : null;
+  // No whitespace or control characters: URL: is emitted unescaped, so a CR/LF
+  // here would inject content lines (the DB only anchors ^https?://).
+  // deno-lint-ignore no-control-regex
+  return u && /^https?:\/\/[^\s\x00-\x1f\x7f]+$/i.test(u) ? u : null;
 }
 
 export function gerarCalendario(

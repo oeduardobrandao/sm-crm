@@ -161,3 +161,11 @@ Deno.test("gerarCalendario: one VEVENT block per event, in order", () => {
   assertEquals(out.match(/END:VEVENT/g)?.length, 2);
   assert(out.indexOf("agenda-oc-1@") < out.indexOf("agenda-oc-2@"));
 });
+
+Deno.test("gerarCalendario: a URL with CR/LF or spaces is dropped, so it cannot inject lines", () => {
+  for (const url of ["https://x.test/a\r\nATTENDEE:mailto:evil@x.test", "https://x.test/a b", "https://x.test/\u0007"]) {
+    const out = cal([evento({ url })]);
+    assert(!out.includes("\r\nURL:"), `URL line emitted for ${JSON.stringify(url)}`);
+    assert(!out.includes("\r\nATTENDEE"), "injected ATTENDEE line");
+  }
+});

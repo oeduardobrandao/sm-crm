@@ -88,8 +88,9 @@ BEGIN
 END $$;
 
 -- ---- 4a. sub-projeto 2: personal iCal feed (20261006000001_agenda_feed.sql) ----
--- Feed only (partial rollback): undeploy the agenda-feed edge function, run
--- just this step and stop. IF EXISTS keeps the full rollback valid in an
+-- Feed only (partial rollback): first revert the CRM UI (or turn feature_agenda
+-- off), since the merged CRM calls these RPCs; then undeploy the agenda-feed
+-- edge function, run just this step and stop. IF EXISTS keeps the full rollback valid in an
 -- environment that never received the feed migration.
 DROP FUNCTION IF EXISTS
   public.agenda_feed_eventos(text),
