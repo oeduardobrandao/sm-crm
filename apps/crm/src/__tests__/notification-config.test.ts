@@ -193,6 +193,40 @@ describe('getNotificationDisplay', () => {
       );
     });
 
+    it('event_client_rsvp uses cliente_nome and maps resposta', () => {
+      const meta = { ...base, ator_nome: undefined, cliente_nome: 'Clínica Sorriso' };
+      const sim = getNotificationDisplay('event_client_rsvp', { ...meta, resposta: 'sim' });
+      expect(sim.icon).toBe(CalendarCheck);
+      expect(sim.tone).toBe('success');
+      expect(sim.title).toBe('Clínica Sorriso confirmou Gravação: Clínica Sorriso');
+      expect(sim.body).toBe('seg., 5 de out., 14:00');
+      const nao = getNotificationDisplay('event_client_rsvp', { ...meta, resposta: 'nao' });
+      expect(nao.tone).toBe('warning');
+      expect(nao.title).toBe('Clínica Sorriso recusou Gravação: Clínica Sorriso');
+    });
+
+    it('event_client_rsvp falls back without cliente_nome and ignores ator_nome', () => {
+      const d = getNotificationDisplay('event_client_rsvp', { ...base, resposta: 'sim' });
+      expect(d.title).toBe('O cliente confirmou Gravação: Clínica Sorriso');
+      expect(
+        getNotificationDisplay('event_client_rsvp', { ...base, cliente_nome: 'X' }).title,
+      ).toBe('X respondeu a Gravação: Clínica Sorriso');
+    });
+
+    it('event_reschedule_requested uses cliente_nome and shows the suggestion', () => {
+      const d = getNotificationDisplay('event_reschedule_requested', {
+        ...base,
+        cliente_nome: 'Clínica Sorriso',
+        inicio_sugerido: '2026-10-09T14:00:00',
+      });
+      expect(d.icon).toBe(CalendarClock);
+      expect(d.title).toBe('Clínica Sorriso pediu para remarcar Gravação: Clínica Sorriso');
+      expect(d.body).toBe('Sugestão: sex., 9 de out., 14:00');
+      const sem = getNotificationDisplay('event_reschedule_requested', base);
+      expect(sem.title).toBe('O cliente pediu para remarcar Gravação: Clínica Sorriso');
+      expect(sem.body).toBe('seg., 5 de out., 14:00');
+    });
+
     it('event_reminder prefix by minutos', () => {
       const t = (minutos: number | undefined, dia_inteiro = false) =>
         getNotificationDisplay('event_reminder', { ...base, minutos, dia_inteiro });

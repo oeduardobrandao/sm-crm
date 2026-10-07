@@ -13,6 +13,7 @@ import {
   MapPin,
   Plus,
   Repeat,
+  Share2,
   Tag,
   Video,
   X,
@@ -65,6 +66,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
+import { useEntitlements } from '@/hooks/useEntitlements';
 import {
   AGENDA_QUERY_KEY,
   editarEvento,
@@ -268,6 +270,22 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
 
   const v = useWatch({ control: form.control }) as EventoFormValues;
   const clienteAtual = ocorrencia?.cliente_id ?? null;
+  const { hasFeature } = useEntitlements();
+  const temHub = hasFeature('feature_hub_portal');
+  const clienteSelecionado = useMemo(
+    () => clientes.find((c) => c.id != null && String(c.id) === v.cliente_id) ?? null,
+    [clientes, v.cliente_id],
+  );
+  // Unknown (client list still loading) counts as having an e-mail: no false warning.
+  const clienteSemEmail = clienteSelecionado ? !clienteSelecionado.email?.trim() : false;
+  const mostrarCompartilhar = !!v.cliente_id && v.cliente_id !== 'none' && !v.privado;
+  const ajudaCompartilhar = clienteSemEmail
+    ? temHub
+      ? 'Este cliente não tem e-mail cadastrado. O evento aparece só no portal.'
+      : 'Este cliente não tem e-mail cadastrado e o plano não inclui o Hub. O cliente não será avisado deste evento.'
+    : temHub
+      ? 'Aparece no portal do cliente e ele recebe o convite por e-mail.'
+      : 'O cliente recebe o convite por e-mail.';
   const clientesVisiveis = useMemo(
     () =>
       sortClientesByNome(
@@ -527,7 +545,15 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                         <Linha icone={Building2}>
                           <FormItem>
                             <FormLabel>Cliente</FormLabel>
-                            <Select value={field.value} onValueChange={field.onChange}>
+                            <Select
+                              value={field.value}
+                              onValueChange={(valor) => {
+                                field.onChange(valor);
+                                // Sharing needs a cliente.
+                                if (valor === 'none')
+                                  form.setValue('compartilhado_cliente', false, SUJO);
+                              }}
+                            >
                               <FormControl>
                                 <SelectTrigger aria-label="Cliente">
                                   <SelectValue />
@@ -554,6 +580,38 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                       )}
                     />
                   </div>
+
+                  {mostrarCompartilhar && (
+                    <FormField
+                      control={form.control}
+                      name="compartilhado_cliente"
+                      render={({ field }) => (
+                        <Linha icone={Share2} alinhar="centro">
+                          <div
+                            className="flex items-center justify-between gap-3 rounded-[10px] px-3.5 py-3"
+                            style={{ background: 'var(--surface-1)' }}
+                          >
+                            <div>
+                              <Label
+                                htmlFor={`${ids}-compartilhar`}
+                                className="text-sm font-semibold"
+                              >
+                                Compartilhar com o cliente
+                              </Label>
+                              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                {ajudaCompartilhar}
+                              </p>
+                            </div>
+                            <Switch
+                              id={`${ids}-compartilhar`}
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </div>
+                        </Linha>
+                      )}
+                    />
+                  )}
 
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <FormField
@@ -680,7 +738,11 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                           <Switch
                             id={`${ids}-privado`}
                             checked={field.value}
-                            onCheckedChange={field.onChange}
+                            onCheckedChange={(on) => {
+                              field.onChange(on);
+                              // A private event is never shared with the cliente.
+                              if (on) form.setValue('compartilhado_cliente', false, SUJO);
+                            }}
                           />
                         </div>
                       </Linha>

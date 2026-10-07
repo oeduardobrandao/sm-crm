@@ -17,6 +17,18 @@ export type AgendaCor =
   | 'amarelo';
 export type AgendaResposta = 'pendente' | 'sim' | 'nao' | 'talvez';
 export type AgendaEscopo = 'esta' | 'seguintes' | 'todas';
+/** The client's answer to a shared occurrence ('aguardando' = not answered or the answer expired). */
+export type AgendaClienteResposta = 'sim' | 'nao' | 'aguardando';
+
+/** A reschedule request from the client (Hub), waiting for the team. */
+export interface AgendaRemarcacaoPendente {
+  id: number;
+  /** ISO instants with offset. */
+  inicio_sugerido: string;
+  fim_sugerido: string;
+  mensagem: string | null;
+  criado_em: string;
+}
 
 /** Recurrence rule. Weekdays use 0 = domingo; weeks start on Monday (WKST=MO). */
 export interface AgendaRegra {
@@ -68,6 +80,13 @@ export interface AgendaOcorrencia {
   pode_editar: boolean;
   pode_responder: boolean;
   tz: string;
+  /** Shared with the client (Hub portal + e-mail). Always false/null when masked. */
+  compartilhado_cliente: boolean;
+  /** null when the occurrence is not shared with a client. */
+  cliente_resposta: AgendaClienteResposta | null;
+  remarcacao_pendente: AgendaRemarcacaoPendente | null;
+  /** iCal SEQUENCE of the occurrence. */
+  sequencia: number;
 }
 
 /** p_evento for agenda_evento_criar / agenda_evento_editar. `tz` only on create
@@ -82,6 +101,8 @@ export interface AgendaEventoPayload {
   cor: AgendaCor | null;
   cliente_id: number | null;
   privado: boolean;
+  /** Series-level, like cliente_id. Only valid with a cliente and not privado. */
+  compartilhado_cliente?: boolean;
   dia_inteiro: boolean;
   tz?: string;
   inicio_local: string;
@@ -159,6 +180,22 @@ export async function responderEvento(
     p_ocorrencia_id: ocorrenciaId,
     p_resposta: resposta,
     p_escopo: escopo,
+  });
+  if (error) throw error;
+}
+
+/** Team answer to a client's reschedule request (Hub). Accepting moves the
+ *  occurrence (same semantics as editing "este evento"); declining keeps the
+ *  time and optionally tells the client why. Errors come back as 'agenda: ...'. */
+export async function resolverRemarcacao(
+  id: number,
+  aceitar: boolean,
+  mensagem?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('agenda_remarcacao_resolver', {
+    p_remarcacao: id,
+    p_aceitar: aceitar,
+    p_mensagem: mensagem?.trim() ? mensagem.trim() : null,
   });
   if (error) throw error;
 }
