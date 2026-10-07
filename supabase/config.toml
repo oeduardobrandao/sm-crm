@@ -207,6 +207,9 @@ verify_jwt = false
 [functions.agenda-feed]
 verify_jwt = false
 
+[functions.agenda-cliente-email]
+verify_jwt = false
+
 [functions.crisp-sync-cron]
 verify_jwt = false
 
