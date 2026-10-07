@@ -49,7 +49,9 @@
 | `apps/crm/src/pages/cliente-detalhe/tabs/RedesSociaisTab.tsx` | Renders the section |
 | `packages/i18n/locales/{pt,en}/automations.json` | `contacts.*` keys |
 
-**Parallelism:** Tasks 1→2 (DB) are independent of Tasks 3–6 (pure frontend modules with mocked store). Tasks 7–10 depend on 3–6. Task 11 is last.
+**Parallelism:** `{1→2}` (DB) runs alongside the frontend. Frontend order: `{3, 4}` in parallel; then `{5, 6}` (5 needs 3+4, 6 needs 4); then `7` (needs 4, 5, 6); then `{8, 9, 10}` in parallel (8 and 10 need 7; 9 needs only 4); `11` last.
+
+**CSV BOM:** always write it as the escape `'\uFEFF'`, never a literal invisible character (a dropped literal makes every BOM test pass trivially).
 
 ---
 
@@ -58,6 +60,7 @@
 **Files:**
 - Create: `supabase/migrations/20261008000001_instagram_automation_contacts.sql`
 - Create: `supabase/tests/entitlements/99_instagram_automation_contacts.sql` (sections 1–7; Task 2 appends 8–9)
+- Modify: `supabase/tests/entitlements/96_lockdown_definer_function_grants.sql` (first array, service-role-only set: append `'public.rebuild_instagram_automation_contacts(uuid, uuid)'` and `'public.instagram_automation_contact_source(uuid, uuid)'` so their grants are pinned)
 
 **Interfaces:**
 - Produces tables `instagram_automation_contacts`, `instagram_automation_contact_automations` (columns exactly as below), functions `instagram_automation_contact_source(uuid, uuid)`, `rebuild_instagram_automation_contacts(uuid, uuid) RETURNS int`, triggers `ias_z1_sync_contact_insert`, `ias_z2_sync_contact_reached`, `ica_z1_sync_contact_names`, `ica_z2_snapshot_contacts_before_delete`.
@@ -126,14 +129,18 @@ begin
   perform et_iac_send('c2', f.auto_a2, f.ws, 'u1', 'ana', 'eu tb', '2026-10-02 10:00Z');
   perform et_iac_send('c3', f.auto_b1, f.ws, 'u1', 'ana', 'oi', '2026-10-03 10:00Z');
   perform et_iac_send('c4', f.auto_a1, f.ws, null, null, 'anon', '2026-10-03 11:00Z');
+  -- cooldown-skipped repeat (24h cooldown, u1 already has an in-window send on A1):
+  -- status 'skipped', still an interaction
+  perform claim_automation_send('c5', f.auto_a1, f.ws, 'media-1', 'u1', 'ana', 'de novo', '2026-10-02 12:00Z', 24);
 
   select count(*) into v_n from instagram_automation_contacts where conta_id = f.ws;
   assert v_n = 2, format('expected 2 contacts (A and B), got %s', v_n);
 
   select * into v_c from instagram_automation_contacts where client_id = f.cli_a and commenter_id = 'u1';
-  assert v_c.interactions_count = 2, format('count %s', v_c.interactions_count);
-  assert v_c.first_interaction_at = '2026-10-01 10:00Z' and v_c.last_interaction_at = '2026-10-02 10:00Z', 'first/last';
-  assert v_c.last_comment_text = 'eu tb' and v_c.last_automation_name = 'A2', 'latest fields';
+  assert v_c.interactions_count = 3, format('count %s (2 claimed + 1 cooldown-skipped)', v_c.interactions_count);
+  assert v_c.first_interaction_at = '2026-10-01 10:00Z' and v_c.last_interaction_at = '2026-10-02 12:00Z', 'first/last';
+  assert v_c.last_comment_text = 'de novo' and v_c.last_automation_name = 'A1', 'latest fields';
+  assert (select status from instagram_automation_sends where comment_id = 'c5') = 'skipped', 'c5 must be cooldown-skipped';
   assert v_c.reached = false, 'not reached before any DM';
 
   select count(*) into v_n from instagram_automation_contact_automations where contact_id = v_c.id;
@@ -313,6 +320,15 @@ begin
   exception when insufficient_privilege then v_rejected := true;
   end;
   assert v_rejected, 'authenticated must not update contacts';
+
+  v_rejected := false;
+  begin
+    delete from instagram_automation_contacts;
+    get diagnostics v_n = row_count;
+    v_rejected := v_n = 0;
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  assert v_rejected, 'authenticated must not delete contacts';
 
   v_rejected := false;
   begin
@@ -694,14 +710,14 @@ npx supabase db reset --local
 psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f supabase/tests/entitlements/99_instagram_automation_contacts.sql
 bash scripts/test-entitlements.sh
 ```
-Expected: `PASS 99 iac 1` … `PASS 99 iac 7`; the full script still green (suite 65 inserts sends with `commenter_id NULL`, so the trigger ignores them).
+Expected: `PASS 99 iac 1` … `PASS 99 iac 7`; the full script still green. Suites 65/66/81 DO insert sends with a non-null `commenter_id` (e.g. 65:332, :761), so `ias_z1` fires there; it is expected to be a no-op for their assertions (each block rolls back, and they assert nothing about contacts).
 
 If section 7's UPDATE raises `insufficient_privilege` vs affecting 0 rows, either outcome passes (the test accepts both). If `et_grant_hosted_parity()` grants the new tables more than SELECT to `authenticated`, check the helper's exclusion parameter.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261008000001_instagram_automation_contacts.sql supabase/tests/entitlements/99_instagram_automation_contacts.sql
+git add supabase/migrations/20261008000001_instagram_automation_contacts.sql supabase/tests/entitlements/99_instagram_automation_contacts.sql supabase/tests/entitlements/96_lockdown_definer_function_grants.sql
 git commit -m "feat(automations): derived contacts tables maintained from sends"
 ```
 
@@ -732,6 +748,11 @@ begin
   perform et_iac_send('c2', f.auto_a2, f.ws, 'u1', 'ana_1', 'a2 text', '2026-10-05 10:00Z');
   perform et_iac_send('c3', f.auto_a1, f.ws, 'u2', 'bia%x', 'b', '2026-10-03 10:00Z');
   perform et_iac_send('c4', f.auto_b1, f.ws, 'u3', 'caio', 'c', '2026-10-04 10:00Z');
+  -- now() is constant inside the transaction: stagger created_at so the keyset
+  -- leg on created_at is actually exercised.
+  update instagram_automation_contacts
+     set created_at = created_at - make_interval(mins => (case commenter_id when 'u1' then 2 when 'u2' then 1 else 0 end))
+   where conta_id = f.ws;
 
   set local role authenticated;
   perform set_config('request.jwt.claims',
@@ -825,6 +846,12 @@ begin
   exception when insufficient_privilege then v_rejected := true;
   end;
   assert v_rejected, 'anon must not execute list';
+  v_rejected := false;
+  begin
+    perform * from instagram_automation_contact_counts();
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  assert v_rejected, 'anon must not execute counts';
   reset role;
 
   -- Custom role with automacoes = 'none' sees nothing (table nor RPC).
@@ -957,7 +984,7 @@ import { CSV_BOM, CSV_EOL, csvField, csvRow } from '../csvExport';
 
 describe('csvExport', () => {
   it('exposes BOM and CRLF', () => {
-    expect(CSV_BOM).toBe('﻿');
+    expect(CSV_BOM).toBe('\uFEFF');
     expect(CSV_EOL).toBe('\r\n');
   });
 
@@ -1000,7 +1027,7 @@ describe('csvExport', () => {
  * automation contacts export (`;`-separated) and analytics (`,`) share one
  * formula guard.
  */
-export const CSV_BOM = '﻿';
+export const CSV_BOM = '\uFEFF';
 
 export const CSV_EOL = '\r\n';
 
@@ -1370,7 +1397,7 @@ describe('buildContactsCsv', () => {
   it('writes BOM, pt-BR header, ; separator, CRLF, sorted by last interaction desc', () => {
     const older = { ...base, id: 'c2', commenter_username: 'bia', last_interaction_at: '2026-09-01T10:00:00.000Z', reached: false };
     const csv = buildContactsCsv([older, base], new Map([[14, 'ACME']]));
-    expect(csv.startsWith('﻿')).toBe(true);
+    expect(csv.startsWith('\uFEFF')).toBe(true);
     const lines = csv.slice(1).split('\r\n');
     expect(lines[0]).toBe('usuario;perfil_url;cliente;recebeu_dm;interacoes;primeira_interacao;ultima_interacao;automacao;ultimo_comentario');
     expect(lines[1].startsWith('ana.souza;https://instagram.com/ana.souza;ACME;sim;2;')).toBe(true);
@@ -1508,7 +1535,7 @@ export interface ContactsUrlState extends ContactFilters { page: number }
 export function parseContactsParams(sp: URLSearchParams): ContactsUrlState
 export function writeContactsParams(sp: URLSearchParams, patch: Partial<ContactsUrlState>): URLSearchParams
 export function contactsHref(opts?: { clientId?: number | null; automationId?: string | null }): string
-export function useAutomacoesTab(): [AutomacoesTab, (tab: AutomacoesTab) => void]
+export function useAutomacoesTab(): [AutomacoesTab, (tab: AutomacoesTab) => void, boolean]  // third = `aba` explicitly set in the URL
 export function useContactsFilters(): { state: ContactsUrlState; setFilters: (patch: Partial<ContactFilters>) => void; setPage: (page: number) => void }
 ```
 Params: `aba`, `cliente`, `automacao`, `de`, `ate`, `todos=1` (reachedOnly false), `q`, `pagina`.
@@ -1645,23 +1672,26 @@ export function contactsHref(
   return `/automacoes?${sp.toString()}`;
 }
 
-export function useAutomacoesTab(): [AutomacoesTab, (tab: AutomacoesTab) => void] {
+/** Third value: whether `aba` is explicitly in the URL. The page forces the
+ * Contatos tab in the contacts-only (downgraded, no automations) state ONLY
+ * while the user hasn't picked a tab, so `setTab` always writes `aba`. */
+export function useAutomacoesTab(): [AutomacoesTab, (tab: AutomacoesTab) => void, boolean] {
   const [sp, setSp] = useSearchParams();
+  const explicit = sp.has('aba');
   const tab: AutomacoesTab = sp.get('aba') === 'contatos' ? 'contatos' : 'automacoes';
   const setTab = useCallback(
     (t: AutomacoesTab) =>
       setSp(
         (prev) => {
           const next = new URLSearchParams(prev);
-          if (t === 'contatos') next.set('aba', 'contatos');
-          else next.delete('aba');
+          next.set('aba', t);
           return next;
         },
         { replace: true },
       ),
     [setSp],
   );
-  return [tab, setTab];
+  return [tab, setTab, explicit];
 }
 
 export function useContactsFilters() {
@@ -2181,7 +2211,8 @@ New tests (inside the top-level describe):
   describe('contatos', () => {
     it('switches to the Contatos tab from the tab bar', async () => {
       renderPage();
-      fireEvent.click(await screen.findByRole('tab', { name: 'contacts.tabContacts' }));
+      // Radix Tabs activate on mouseDown/keyDown/focus, not click.
+      fireEvent.mouseDown(await screen.findByRole('tab', { name: 'contacts.tabContacts' }));
       expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
     });
 
@@ -2195,14 +2226,15 @@ New tests (inside the top-level describe):
         { automation_id: 'auto-1', automation_name: 'Promo de agosto', client_id: 14, automation_deleted: false, reached_count: 3, total_count: 4 },
       ]);
       renderPage();
-      fireEvent.click(await screen.findByRole('button', { name: /Promo de agosto/i }));
+      // The expandable row is a TableRow/div with aria-expanded, not a button.
+      // jsdom's matchMedia stub is false, so the page renders the MOBILE branch.
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
+      fireEvent.click(row);
       const link = await screen.findByRole('link', { name: 'contacts.viewContacts:{"count":3}' });
       expect(link).toHaveAttribute('href', '/automacoes?aba=contatos&cliente=14&automacao=auto-1');
     });
   });
 ```
-
-(Use the same selector the existing "expands a row to load and show its sends log" test uses to expand; copy it if it differs from the one above.)
 
 In `describe('gate de página (flag off)')` add:
 
@@ -2249,7 +2281,7 @@ and to the store import list: `getContactCounts, countInstagramContacts, CONTACT
 
 Inside the component, after `sendsQuery`:
 ```tsx
-  const [tab, setTab] = useAutomacoesTab();
+  const [tab, setTab, tabExplicit] = useAutomacoesTab();
   const countsQuery = useQuery({ queryKey: CONTACT_COUNTS_KEY, queryFn: getContactCounts });
   const reachedByAutomation = useMemo(() => {
     const m = new Map<string, number>();
@@ -2275,7 +2307,7 @@ Inside the component, after `sendsQuery`:
 
 Gate (replace the three `flagOff` blocks' conditions):
 ```tsx
-  if (flagOff && (automationsQuery.isPending || contactsCountQuery.isPending)) { /* existing spinner */ }
+  if (flagOff && (automationsQuery.isPending || (automations.length === 0 && contactsCountQuery.isPending))) { /* existing spinner */ }
   if (flagOff && automationsQuery.isError) { /* existing error */ }
   if (flagOff && automations.length === 0 && !hasContacts) { /* existing UpgradeLockedScreen */ }
 ```
@@ -2283,7 +2315,8 @@ Gate (replace the three `flagOff` blocks' conditions):
 Locked-but-has-contacts: the page renders normally and forces the Contatos tab. Right after the gate:
 ```tsx
   const contactsOnly = flagOff && automations.length === 0;
-  const activeTab = contactsOnly ? 'contatos' : tab;
+  // Forced only until the user picks a tab, so Automações stays reachable.
+  const activeTab = contactsOnly && !tabExplicit ? 'contatos' : tab;
 ```
 
 After the `tiebreakHint` paragraph, before the checklist, insert the tab bar and branch the rest of the body:
@@ -2305,7 +2338,7 @@ After the `tiebreakHint` paragraph, before the checklist, insert the tab bar and
 ```
 Move the `tiebreakHint` paragraph and the "Nova automação" header button inside the Automações branch only if it reads oddly on Contatos during the browser check; default: leave the header as is.
 
-When `contactsOnly` is true, the Automações tab body shows the existing `FeatureGate`-locked create button only (it is already gated); no extra copy needed.
+When `contactsOnly` is true and the user switches to Automações, nothing extra is needed: the header's `FeatureGate`-locked create button is the upgrade copy, and the list shows its existing empty state.
 
 "Ver contatos (N)" link: in both expanded areas (desktop `TableCell` around line 525 and mobile block around line 686), right before `<SendsLog …/>`:
 ```tsx
@@ -2394,7 +2427,7 @@ export function useEffectiveNavFeatures(
 ```
 Keep the existing doc comments, extending the first one with "OR whether it has retained automation contacts (they survive automation deletion)".
 
-- [ ] **Step 4:** run → PASS; also `npx vitest run apps/crm/src/components/layout` (nav tests that mock `@/store` may need `countInstagramContacts` added to their mock — add `countInstagramContacts: vi.fn().mockResolvedValue(0)` wherever `countInstagramAutomations` is mocked: `grep -rn "countInstagramAutomations" apps/crm/src --include=*.test.tsx`).
+- [ ] **Step 4:** run → PASS; then `npx vitest run apps/crm/src/components/layout apps/crm/src/hooks` to confirm. No existing test needs a new mock (Sidebar/MobileNav tests mock `useEffectiveNavFeatures` wholesale; AppLayout mocks `../Sidebar`).
 - [ ] **Step 5: Commit** `feat(automations): keep nav item while retained contacts exist`.
 
 ---
@@ -2462,7 +2495,9 @@ describe('AutomationContactsSection', () => {
     mockCounts.mockResolvedValue([{ automation_id: 'a1', automation_name: 'Promo', client_id: 14, automation_deleted: false, reached_count: 1, total_count: 1 }]);
     renderSection();
     expect(await screen.findByText('contacts.sectionTitle')).toBeInTheDocument();
-    expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ clientId: 14, reachedOnly: true }), 1, 10);
+    await waitFor(() =>
+      expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ clientId: 14, reachedOnly: true }), 1, 10),
+    );
     expect(screen.getByRole('link', { name: 'contacts.viewAll' })).toHaveAttribute('href', '/automacoes?aba=contatos&cliente=14');
   });
 
@@ -2581,7 +2616,7 @@ In `RedesSociaisTab.tsx`, import and render right after `<InstagramSection … /
       <AutomationContactsSection clienteId={clienteId} clienteNome={cliente?.nome ?? ''} />
 ```
 
-- [ ] **Step 4:** run → PASS; `npx vitest run apps/crm/src/pages/cliente-detalhe` stays green (add `getContactCounts: vi.fn().mockResolvedValue([])` to any RedesSociaisTab test that mocks `@/store` wholesale).
+- [ ] **Step 4:** run → PASS; `npx vitest run apps/crm/src/pages/cliente-detalhe` stays green. No existing test needs a new mock (ClienteDetalhePage.test stubs the redes-sociais route).
 - [ ] **Step 5: Commit** `feat(clientes): automation contacts section in Redes sociais`.
 
 ---
