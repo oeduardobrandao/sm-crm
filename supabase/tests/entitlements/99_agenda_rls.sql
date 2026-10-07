@@ -8,6 +8,12 @@
 -- are excluded from the parity helper so the suite asserts the migration's
 -- REVOKE instead of undoing it. One DO block per area; later tasks append
 -- blocks before the final rollback.
+--
+-- Literal dates are safe here only because nothing in this suite reads the real
+-- clock: every fixture is a literal date and app.agenda_hoje is pinned to a
+-- literal too. Anything that compares against now() (the reminder e-mail claim
+-- and mark fence, the iCal feed, the Hub, agenda_responder 'todas') must build
+-- its fixtures from current_date instead, as 99_agenda_lembretes.sql does.
 
 begin;
 -- Agenda rollout flag (feature_agenda, migration A): on for every plan inside

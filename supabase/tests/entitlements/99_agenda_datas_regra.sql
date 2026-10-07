@@ -5,7 +5,15 @@
 -- (agenda_datas_regra), dtstart normalization, inicio/fim generation (DST),
 -- materialization, regeneration after a rule change and the horizon generator.
 -- Events are real rows inserted as service_role into a throwaway workspace;
--- "today" is pinned with app.agenda_hoje.
+-- "today" is pinned with app.agenda_hoje. The specific calendar is the point
+-- here (a leap day, a New York DST change, weekday-anchored rules, row counts
+-- over a 24-month horizon), so the dates stay literal.
+--
+-- Literal dates are safe here only because nothing in this suite reads the real
+-- clock: every fixture is a literal date and app.agenda_hoje is pinned to a
+-- literal too. Anything that compares against now() (the reminder e-mail claim
+-- and mark fence, the iCal feed, the Hub, agenda_responder 'todas') must build
+-- its fixtures from current_date instead, as 99_agenda_lembretes.sql does.
 
 begin;
 -- Agenda rollout flag (feature_agenda, migration A): on for every plan inside

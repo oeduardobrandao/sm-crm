@@ -6,6 +6,12 @@
 -- materialization, event_invited fan-out); block 2 the notification types and
 -- the digest claim. Later tasks append blocks (edit/delete/RSVP) before the
 -- final rollback.
+--
+-- Blocks 1-5 use literal dates. That is safe only because no literal there is
+-- compared with the real clock: app.agenda_hoje is pinned to a literal too, and
+-- block 2's digest rows are stamped relative to now(). Anything that compares against now() (the reminder e-mail claim
+-- and mark fence, the iCal feed, the Hub, agenda_responder 'todas') must build
+-- its fixtures from current_date instead, as block 6 does.
 
 begin;
 -- Agenda rollout flag (feature_agenda, migration A): on for every plan inside

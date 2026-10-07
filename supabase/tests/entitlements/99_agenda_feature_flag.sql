@@ -10,6 +10,12 @@
 -- returns no rows when the flag is off; an override on a false plan enables
 -- creation. Block 2: the tick creates reminders only for enabled workspaces.
 -- Block 3: the e-mail claim never sends a row whose workspace lost the flag.
+--
+-- The claim settles a row whose occurrence already ended against the real
+-- now() (o.fim < now()), so every fixture is built from current_date
+-- (pg_temp.dia / pg_temp.ts) and app.agenda_hoje is pinned to current_date.
+-- Never use a literal date here: the suite would start failing once that date
+-- passes.
 
 begin;
 select et_grant_hosted_parity(array['agenda_eventos','agenda_ocorrencias','agenda_participantes','agenda_respostas','agenda_lembretes']);
@@ -19,11 +25,23 @@ grant all on public.agenda_eventos, public.agenda_ocorrencias, public.agenda_par
 revoke all on public.agenda_lembretes from anon, authenticated;
 grant all on public.agenda_lembretes to service_role;
 
+-- 'YYYY-MM-DD"T"HH:MI:SS' for current_date + p_dias at p_hora
+create or replace function pg_temp.dia(p_dias int, p_hora text default '14:00:00') returns text language sql as $f$
+  select to_char(current_date + p_dias, 'YYYY-MM-DD') || 'T' || p_hora;
+$f$;
+-- the instant of that wall clock in Sao Paulo
+create or replace function pg_temp.ts(p_dias int, p_hora text default '14:00:00') returns timestamptz language sql as $f$
+  select pg_temp.dia(p_dias, p_hora)::timestamp at time zone 'America/Sao_Paulo';
+$f$;
+-- inicio_local / fim_local overrides for a 14:00-15:00 event on current_date + p_dias
+create or replace function pg_temp.em(p_dias int) returns jsonb language sql as $f$
+  select jsonb_build_object('inicio_local', pg_temp.dia(p_dias), 'fim_local', pg_temp.dia(p_dias, '15:00:00'));
+$f$;
 create or replace function pg_temp.p(p jsonb default '{}') returns jsonb language sql as $f$
   select jsonb_build_object(
     'titulo', 'Evento', 'descricao', null, 'local', null, 'link_reuniao', null,
     'tipo', 'reuniao', 'cor', null, 'cliente_id', null, 'privado', false, 'dia_inteiro', false,
-    'tz', 'America/Sao_Paulo', 'inicio_local', '2026-10-05T14:00:00', 'fim_local', '2026-10-05T15:00:00',
+    'tz', 'America/Sao_Paulo', 'inicio_local', pg_temp.dia(0), 'fim_local', pg_temp.dia(0, '15:00:00'),
     'lembretes', jsonb_build_array(10), 'regra', null) || p;
 $f$;
 -- create an event as p_user; returns its (only) occurrence id
@@ -91,7 +109,7 @@ declare
   v_edit jsonb;
   v_flag constant text := 'P0001:feature_disabled:feature_agenda';
 begin
-  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  perform set_config('app.agenda_hoje', current_date::text, true);
 
   assert exists (select 1 from information_schema.columns
                   where table_schema = 'public' and table_name = 'plans' and column_name = 'feature_agenda'
@@ -119,14 +137,14 @@ begin
   v_oc := pg_temp.criar(v_o, pg_temp.p('{"titulo":"Reunião"}'), array[v_b]);
   assert v_oc is not null, 'criar with the override on returned no occurrence';
   select o.evento_id into v_ev from agenda_ocorrencias o where o.id = v_oc;
-  assert pg_temp.listar(v_o, '2026-10-05 00:00-03', '2026-10-06 00:00-03') = 1, 'listar with the flag on: expected 1 row';
+  assert pg_temp.listar(v_o, pg_temp.ts(0, '00:00'), pg_temp.ts(1, '00:00')) = 1, 'listar with the flag on: expected 1 row';
   assert pg_temp.listar(v_b, null, null, v_oc) = 1, 'listar by occurrence with the flag on: expected 1 row';
   v_err := pg_temp.erro(v_b, format('select public.agenda_responder(%s, %L, %L)', v_oc, 'sim', 'esta'));
   assert v_err is null, format('responder with the flag on: %s', v_err);
 
   -- the workspace loses the flag: every write raises, listar returns nothing
   perform pg_temp.flag(v_ws_on, false);
-  assert pg_temp.listar(v_o, '2026-10-05 00:00-03', '2026-10-06 00:00-03') = 0, 'listar by range with the flag off returned rows';
+  assert pg_temp.listar(v_o, pg_temp.ts(0, '00:00'), pg_temp.ts(1, '00:00')) = 0, 'listar by range with the flag off returned rows';
   assert pg_temp.listar(v_b, null, null, v_oc) = 0, 'listar by occurrence with the flag off returned rows';
   -- no raise either for an otherwise invalid range: the gate comes first
   assert pg_temp.listar(v_o, null, null) = 0, 'listar with the flag off and no range';
@@ -153,9 +171,9 @@ begin
 
   -- removing the override falls back to the plan (off); turning it back on restores everything
   perform pg_temp.flag(v_ws_on, null);
-  assert pg_temp.listar(v_o, '2026-10-05 00:00-03', '2026-10-06 00:00-03') = 0, 'listar with the override removed returned rows';
+  assert pg_temp.listar(v_o, pg_temp.ts(0, '00:00'), pg_temp.ts(1, '00:00')) = 0, 'listar with the override removed returned rows';
   perform pg_temp.flag(v_ws_on, true);
-  assert pg_temp.listar(v_o, '2026-10-05 00:00-03', '2026-10-06 00:00-03') = 1, 'listar after re-enabling: expected 1 row';
+  assert pg_temp.listar(v_o, pg_temp.ts(0, '00:00'), pg_temp.ts(1, '00:00')) = 1, 'listar after re-enabling: expected 1 row';
   v_err := pg_temp.erro(v_o, format('select public.agenda_evento_excluir(%s, %L)', v_oc, 'todas'));
   assert v_err is null, format('excluir after re-enabling: %s', v_err);
 
@@ -171,7 +189,7 @@ declare
   v_oc_on bigint; v_oc_off bigint;
   v_n int;
 begin
-  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  perform set_config('app.agenda_hoje', current_date::text, true);
   delete from agenda_lembretes;
   v_ws_on := et_make_workspace('start');
   v_ws_off := et_make_workspace('start');
@@ -184,12 +202,12 @@ begin
   -- and falls back to its plan (off)
   perform pg_temp.flag(v_ws_on, true);
   perform pg_temp.flag(v_ws_off, true);
-  v_oc_on := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-12T14:00:00","fim_local":"2026-10-12T15:00:00"}'), '{}');
-  v_oc_off := pg_temp.criar(v_x, pg_temp.p('{"inicio_local":"2026-10-12T14:00:00","fim_local":"2026-10-12T15:00:00"}'), '{}');
+  v_oc_on := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(7)), '{}');
+  v_oc_off := pg_temp.criar(v_x, pg_temp.p(pg_temp.em(7)), '{}');
   delete from workspace_plan_overrides where workspace_id = v_ws_off;
   assert not effective_plan_feature(v_ws_off, 'feature_agenda'), 'ws_off still resolves feature_agenda on';
 
-  v_n := pg_temp.tick('2026-10-12 13:50-03');
+  v_n := pg_temp.tick(pg_temp.ts(7, '13:50'));
   assert v_n = 1, format('tick with one enabled workspace: %s claims', v_n);
   assert exists (select 1 from agenda_lembretes where ocorrencia_id = v_oc_on and user_id = v_o), 'the enabled workspace got no reminder';
   assert not exists (select 1 from agenda_lembretes where conta_id = v_ws_off), 'the disabled workspace got a ledger row';
@@ -198,7 +216,7 @@ begin
 
   -- re-enabled while the window is still open: the next tick claims it
   perform pg_temp.flag(v_ws_off, true);
-  v_n := pg_temp.tick('2026-10-12 13:51-03');
+  v_n := pg_temp.tick(pg_temp.ts(7, '13:51'));
   assert v_n = 1, format('tick after re-enabling: %s claims', v_n);
   assert exists (select 1 from agenda_lembretes where ocorrencia_id = v_oc_off and user_id = v_x), 'the re-enabled workspace got no reminder';
 
@@ -215,7 +233,7 @@ declare
   v_users uuid[];
   v_status text;
 begin
-  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  perform set_config('app.agenda_hoje', current_date::text, true);
   delete from agenda_lembretes;
   v_ws_on := et_make_workspace('start');
   v_ws_off := et_make_workspace('start');
@@ -226,10 +244,11 @@ begin
   perform pg_temp.flag(v_ws_on, true);
   perform pg_temp.flag(v_ws_off, true);
 
-  -- far in the future so the claim's ended-event settling never touches them
-  v_oc_on := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2027-05-03T14:00:00","fim_local":"2027-05-03T15:00:00"}'), '{}');
-  v_oc_off := pg_temp.criar(v_x, pg_temp.p('{"inicio_local":"2027-05-03T14:00:00","fim_local":"2027-05-03T15:00:00"}'), '{}');
-  assert pg_temp.tick('2027-05-03 13:50-03') = 2, 'claim setup: expected 2 pendente rows';
+  -- a month ahead of the real clock so the claim's ended-event settling
+  -- (o.fim < now()) never touches them
+  v_oc_on := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(30)), '{}');
+  v_oc_off := pg_temp.criar(v_x, pg_temp.p(pg_temp.em(30)), '{}');
+  assert pg_temp.tick(pg_temp.ts(30, '13:50')) = 2, 'claim setup: expected 2 pendente rows';
 
   -- ws_off loses the flag between the tick and the e-mail run
   perform pg_temp.flag(v_ws_off, false);
