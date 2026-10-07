@@ -98,7 +98,6 @@ export interface IcsEvento {
   descricao?: string | null;
   local?: string | null;
   url?: string | null;                   // link_reuniao; só http(s)
-  atualizadoEm?: Date | null;
 }
 export function gerarCalendario(opts: { nome: string; eventos: IcsEvento[]; agora: Date }): string;
 ```
@@ -109,7 +108,7 @@ Regras (RFC 5545):
 - Horário: `DTSTART:YYYYMMDDTHHMMSSZ` / `DTEND` em UTC (sem `VTIMEZONE`). Dia inteiro: `DTSTART;VALUE=DATE:YYYYMMDD`, `DTEND;VALUE=DATE` exclusivo.
 - `DESCRIPTION` = descrição + (se houver) linha em branco + `Link da reunião: <url>`; `URL:` só se `url` começa com `http://` ou `https://`.
 - Cabeçalho: `VERSION:2.0`, `PRODID:-//Mesaas//Agenda//PT-BR`, `CALSCALE:GREGORIAN`, `METHOD:PUBLISH`, `X-WR-CALNAME:Mesaas: <workspace>`, `REFRESH-INTERVAL;VALUE=DURATION:PT1H`, `X-PUBLISHED-TTL:PT1H`.
-- Cada `VEVENT`: `UID`, `DTSTAMP` (= `agora`), `DTSTART`, `DTEND`, `SUMMARY`, opcionais, `LAST-MODIFIED` quando houver, `TRANSP:OPAQUE`.
+- Cada `VEVENT`: `UID`, `DTSTAMP` (= `agora`), `DTSTART`, `DTEND`, `SUMMARY`, opcionais, `TRANSP:OPAQUE`.
 
 Testes Deno: escape, dobra com acentos e emoji no limite de 75 octetos, dia inteiro com fim exclusivo, horário em UTC, URL `javascript:` descartada, calendário vazio válido, handler (404 por formato sem chamar o banco; token desconhecido → rate limit por IP + 404; 429 nos dois limites; `desligado` → calendário vazio 200; HEAD sem corpo; rota de ocorrência: OPTIONS 204 com CORS, sem JWT → 401, JWT expirado (erro 401 do RPC) → 401, zero linhas → 404, mascarado → 404, erro de permissão → 404, id inválido → 404).
 
