@@ -10,47 +10,15 @@ import {
   SEM_DADOS,
 } from './format';
 import type { Periodo } from './useFluxosFilters';
+import { CSV_BOM, CSV_EOL as EOL, csvRow as row } from '@/lib/csvExport';
+
+export { CSV_BOM, downloadCsv } from '@/lib/csvExport';
 
 /**
  * CSV export of the page. Values are formatted exactly as the page shows them
  * (pt-BR decimals, "Sem dados" for missing metrics) so the spreadsheet and the
  * screen never disagree about a number.
  */
-
-/** Excel only reads a UTF-8 CSV as UTF-8 when it opens with the byte order mark. */
-export const CSV_BOM = '﻿';
-
-const EOL = '\r\n';
-
-/**
- * A field a spreadsheet would evaluate: one of `= + - @` as the first character
- * that is not whitespace or a control character.
- *
- * The leading run matters. Excel and Sheets trim it before parsing, so `\t=SUM(A1)`
- * and `  =1+1` evaluate exactly like `=SUM(A1)` would; anchoring the guard
- * strictly at position 0 lets a payload walk straight past it behind one space.
- *
- * The prefix run covers control characters as well as whitespace. `\s` alone leaves
- * the C0 range through, and `\p{Cc}` states that without putting a literal control
- * character in the pattern (which is what `no-control-regex` objects to).
- */
-const FORMULA_LEAD = /^[\s\p{Cc}]*[=+\-@]/u;
-
-/**
- * One CSV field: formula-neutralized first, then quoted. Order matters. A value
- * like `=1,2` must get its leading apostrophe BEFORE the quotes, or the
- * apostrophe ends up outside them and the cell evaluates anyway.
- */
-function field(value: string | number): string {
-  let out = String(value);
-  if (FORMULA_LEAD.test(out)) out = `'${out}`;
-  if (/[",\n\r]/.test(out)) out = `"${out.replace(/"/g, '""')}"`;
-  return out;
-}
-
-function row(cells: (string | number)[]): string {
-  return cells.map(field).join(',');
-}
 
 export function buildAnalyticsCsv(
   data: WorkflowAnalytics,
@@ -201,17 +169,4 @@ function pad(n: number): string {
 export function csvFilename(periodo: Periodo, now: Date = new Date()): string {
   const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   return `analytics-fluxos-${periodo}-${stamp}.csv`;
-}
-
-/** Hands the built CSV to the browser as a download. */
-export function downloadCsv(csv: string, filename: string): void {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
 }
