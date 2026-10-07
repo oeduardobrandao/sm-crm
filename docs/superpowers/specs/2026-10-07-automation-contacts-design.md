@@ -237,8 +237,9 @@ CREATE POLICY iac_select ON instagram_automation_contacts
 ```
 
 No INSERT/UPDATE/DELETE policies for `authenticated`: writes only via the
-SECURITY DEFINER functions. Grants: `REVOKE ALL ... FROM PUBLIC, anon;
-GRANT SELECT ... TO authenticated; GRANT ALL ... TO service_role`.
+SECURITY DEFINER functions. Grants: `REVOKE ALL ... FROM PUBLIC, anon,
+authenticated; GRANT SELECT ... TO authenticated; GRANT ALL ... TO service_role`
+(hosted default ACLs grant ALL on new tables to `authenticated`).
 
 Note: the sends log (`ias_select`) was never rewired to `has_permission` and is
 visible to any member; contacts deliberately follow the stricter `ica_select`.
