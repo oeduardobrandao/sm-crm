@@ -180,3 +180,54 @@ Deno.test("resolveDigestItem: event_cancelled with motivo 'removido' says you we
   const semTitulo = resolveDigestItem({ type: "event_cancelled", metadata: { motivo: "removido" }, link: null });
   assertEquals(semTitulo.heading, "Você foi removido de um evento");
 });
+
+Deno.test("resolveDigestItem: event_client_rsvp reads cliente_nome and resposta, never an actor", () => {
+  const meta = {
+    evento_id: 1,
+    ocorrencia_id: 9,
+    titulo: "Gravação <b>",
+    inicio: "2026-10-09T17:00:00Z",
+    cliente_nome: "Clínica X",
+    ator_nome: "NUNCA",
+  };
+  const sim = resolveDigestItem({ type: "event_client_rsvp", metadata: { ...meta, resposta: "sim" }, link: "/calendario?evento=9" });
+  assertEquals(sim.heading, "Cliente confirmou presença: Gravação <b>");
+  assertEquals(sim.context, "Clínica X");
+  assertEquals(sim.link, "/calendario?evento=9");
+  assertEquals(sim.priority, 4);
+  const nao = resolveDigestItem({ type: "event_client_rsvp", metadata: { ...meta, resposta: "nao" }, link: "/calendario?evento=9" });
+  assertEquals(nao.heading, "Cliente recusou o evento: Gravação <b>");
+  for (const it of [sim, nao]) {
+    assert(!it.heading.includes("NUNCA") && !(it.context ?? "").includes("NUNCA"), "must not read ator_nome");
+    assert(!it.heading.includes("—"));
+  }
+  const html = buildDigestHtml([sim], "https://app.example.test");
+  assert(html.includes("Gravação &lt;b&gt;"));
+
+  const vazio = resolveDigestItem({ type: "event_client_rsvp", metadata: null, link: null });
+  assertEquals(vazio.heading, "Cliente respondeu ao evento");
+  assertEquals(vazio.context, undefined);
+  assertEquals(vazio.link, "/");
+});
+
+Deno.test("resolveDigestItem: event_reschedule_requested is actionable and has no actor", () => {
+  const item = resolveDigestItem({
+    type: "event_reschedule_requested",
+    metadata: {
+      evento_id: 1,
+      ocorrencia_id: 9,
+      titulo: "Gravação",
+      inicio: "2026-10-09T17:00:00Z",
+      inicio_sugerido: "2026-10-10T17:00:00Z",
+      cliente_nome: "Clínica X",
+    },
+    link: "/calendario?evento=9",
+  });
+  assertEquals(item.heading, "Cliente pediu para remarcar: Gravação");
+  assertEquals(item.context, "Clínica X");
+  assertEquals(item.priority, 2);
+  assertEquals(item.link, "/calendario?evento=9");
+  const vazio = resolveDigestItem({ type: "event_reschedule_requested", metadata: null, link: null });
+  assertEquals(vazio.heading, "Cliente pediu para remarcar");
+  assertEquals(vazio.context, undefined);
+});

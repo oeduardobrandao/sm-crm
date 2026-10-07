@@ -65,6 +65,25 @@ export function resolveDigestItem(
         : eventHeading("Evento cancelado", s(m, "titulo"));
       return { priority: 3, heading, context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
     }
+    // The two client-side Agenda types have no actor (the Hub client is not a
+    // user): the copy reads `cliente_nome` and never `ator_nome`. The metadata
+    // carries no time zone, so `inicio`/`inicio_sugerido` are not rendered.
+    case "event_client_rsvp": {
+      const resposta = s(m, "resposta");
+      const prefix = resposta === "sim"
+        ? "Cliente confirmou presença"
+        : resposta === "nao"
+        ? "Cliente recusou o evento"
+        : "Cliente respondeu ao evento";
+      return { priority: 4, heading: eventHeading(prefix, s(m, "titulo")), context: s(m, "cliente_nome"), link };
+    }
+    case "event_reschedule_requested":
+      return {
+        priority: 2,
+        heading: eventHeading("Cliente pediu para remarcar", s(m, "titulo")),
+        context: s(m, "cliente_nome"),
+        link,
+      };
     default:
       return { priority: 9, heading: "Nova notificação no Mesaas", context: undefined, link };
   }

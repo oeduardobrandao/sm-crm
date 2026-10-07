@@ -284,6 +284,13 @@ export function buildFounderSubscriptionNotice(p: {
   return { subject, html: noticeLayout("💰 Nova assinatura no Mesaas", rows) };
 }
 
+/** Resend API attachment shape (`content` is base64). */
+export interface ResendAttachment {
+  filename: string;
+  content: string;
+  content_type: string;
+}
+
 /**
  * Throwing Resend POST. The Idempotency-Key makes retries after ambiguous
  * failures (lost response, crash after acceptance) safe: Resend dedupes the
@@ -302,6 +309,10 @@ export async function sendViaResend(
   from: string = LIFECYCLE_FROM,
   replyTo?: string,
   headers?: Record<string, string>,
+  /** Resend attachment objects; `content` is base64. Omitted from the request
+   *  body entirely when absent or empty, so existing callers send the same
+   *  payload as before. */
+  attachments?: ResendAttachment[],
 ): Promise<void> {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
@@ -319,6 +330,7 @@ export async function sendViaResend(
       html,
       ...(replyTo ? { reply_to: [replyTo] } : {}),
       ...(headers ? { headers } : {}),
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
     }),
     signal: AbortSignal.timeout(10_000),
   });
