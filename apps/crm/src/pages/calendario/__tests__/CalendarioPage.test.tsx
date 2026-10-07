@@ -61,10 +61,12 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ features: mockFeatures.current, isLoading: mockLoading.current }),
 }));
 
+const { mockFinanceiro } = vi.hoisted(() => ({ mockFinanceiro: { current: false } }));
 vi.mock('@/context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/context/AuthContext')>();
-  return { ...actual, useAuth: () => ({ canSeeFinancials: false }) };
+  return { ...actual, useAuth: () => ({ canSeeFinancials: mockFinanceiro.current }) };
 });
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 
 vi.mock('../../../store', async () => {
   const actual = await vi.importActual<typeof import('../../../store')>('../../../store');
@@ -76,6 +78,7 @@ vi.mock('../../../store', async () => {
     getWorkflows: vi.fn(),
     getWorkflowEtapas: vi.fn(),
     getAllClienteDatas: vi.fn(),
+    addTransacao: vi.fn(),
   };
 });
 
@@ -153,6 +156,7 @@ function renderPage() {
 }
 
 function armStore() {
+  mockFinanceiro.current = false;
   // vitest.setup.ts calls vi.restoreAllMocks() in afterEach, which wipes the resolved
   // values these mock fns got inside the vi.mock factory — re-arm them every test.
   vi.mocked(store.getClientes).mockResolvedValue([]);
@@ -351,5 +355,52 @@ describe('CalendarioPage — Datas Comemorativas (flag off)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nicho B' }));
     await waitFor(() => expect(screen.getByText('Evento Exclusivo B')).toBeInTheDocument());
     expect(screen.getByPlaceholderText('Buscar data...')).toHaveValue('');
+  });
+});
+
+describe('CalendarioPage — payment confirm (flag off)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    armStore();
+    mockLoading.current = false;
+    mockFeatures.current = { feature_agenda: false };
+  });
+
+  it('confirms a receivable through the same AlertDialog and payload as before', async () => {
+    mockFinanceiro.current = true;
+    const hoje = new Date();
+    vi.mocked(store.getClientes).mockResolvedValue([
+      {
+        id: 12,
+        nome: 'Clínica Sorriso',
+        sigla: 'CS',
+        cor: '#123',
+        plano: 'pro',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 1500,
+        data_pagamento: hoje.getDate(),
+      },
+    ]);
+    vi.mocked(store.addTransacao).mockResolvedValue({} as never);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /CONFIRMAR/ }));
+    expect(await screen.findByText('Confirmar Agendamento')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => expect(store.addTransacao).toHaveBeenCalledTimes(1));
+    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+    expect(store.addTransacao).toHaveBeenCalledWith({
+      descricao: 'Clínica Sorriso',
+      detalhe: 'Baixa efetuada pelo Calendário',
+      categoria: 'Mensalidade Cliente',
+      valor: 1500,
+      data: new Date().toISOString().split('T')[0],
+      tipo: 'entrada',
+      status: 'pago',
+      referencia_agendamento: `cliente_12_${hoje.getFullYear()}_${mm}`,
+    });
   });
 });

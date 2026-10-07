@@ -285,6 +285,13 @@ const ROSTER = [
   { id: 'u-carla', nome: 'Carla Mendes', avatar_url: null },
 ];
 
+// Layer mocks and financial access start clean in every block.
+beforeEach(() => {
+  verFinanceiro = undefined;
+  camadasMock.itens = [];
+  camadasMock.chamadas = [];
+});
+
 function LocationProbe() {
   const loc = useLocation();
   return <div data-testid="location">{loc.search}</div>;
