@@ -82,6 +82,8 @@ end $f$;
 create or replace function pg_temp.feed(p_token text) returns jsonb language plpgsql as $f$
 declare v jsonb;
 begin
+  -- no user claims leak into the service-role call (the edge function has none)
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   execute 'set local role service_role';
   v := public.agenda_feed_eventos(p_token);
   execute 'reset role';
@@ -145,7 +147,9 @@ begin
   v_t1 := pg_temp.valor(v_a, 'select public.agenda_feed_gerar()');
   assert v_t1 ~ '^[0-9a-f]{64}$', format('gerar returned %s', v_t1);
   assert pg_temp.valor(v_a, 'select public.agenda_feed_obter()') = v_t1, 'obter does not return the generated token';
-  assert pg_temp.feed(v_t1) is not null, 'the generated token does not resolve';
+  -- A has no events yet: an ok feed with an empty array, never NULL eventos
+  assert pg_temp.feed(v_t1) = jsonb_build_object('estado', 'ok', 'workspace_nome', 'ET test ws', 'eventos', '[]'::jsonb),
+    format('feed with no events: %s', pg_temp.feed(v_t1));
   perform 1 from agenda_feed_tokens where user_id = v_a and conta_id = v_ws and token = v_t1;
   assert found, 'gerar stored no row for (user, workspace)';
 
@@ -355,7 +359,9 @@ begin
 
   -- ---- the session's active workspace scopes the token ----
   v_tx := pg_temp.valor(v_x, 'select public.agenda_feed_gerar()');
+  update workspaces set name = 'WS dois' where id = v_ws2;
   v_feed := pg_temp.feed(v_tx);
+  assert v_feed->>'workspace_nome' = 'WS dois', format('ws2 feed workspace_nome: %s', v_feed->>'workspace_nome');
   assert pg_temp.ids(v_feed) = array[v_outro_ws], format('X''s feed: %s', v_feed);
   assert (select conta_id from agenda_feed_tokens where token = v_tx) = v_ws2, 'X''s token is not bound to X''s workspace';
   -- A in two workspaces: one token per workspace, each feed sees only its own
