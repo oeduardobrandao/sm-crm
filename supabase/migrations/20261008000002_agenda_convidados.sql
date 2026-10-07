@@ -262,6 +262,30 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = public AS $$
    WHERE coalesce(jsonb_array_length(p_ocorrencias), 0) > 0;
 $$;
 
+-- Internal: guests who LOST the series (removed by an edit, a private edit
+-- included, or excluir todas). Called after the write enqueued their
+-- 'cancelamento'. Every unsent, unleased pending item of those guest rows on
+-- p_evento becomes a full cancellation: a 'convite' was never announced, so
+-- it is descartado; anything else becomes tipo 'cancelamento' with every entry
+-- 'cancelada' (a merged 'alteracao' can hold entries outside the snapshot
+-- window of the cancellation, e.g. an esta move past 90 days, which would
+-- otherwise stay 'ativa' and get the item discarded by the claim). versao + 1
+-- (the content changed; nothing under lease is touched).
+CREATE OR REPLACE FUNCTION public.agenda_convidados_perda(p_evento bigint, p_convidados bigint[])
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  UPDATE public.agenda_emails_cliente q
+     SET status = CASE WHEN q.tipo = 'convite' THEN 'descartado' ELSE q.status END,
+         tipo = CASE WHEN q.tipo = 'convite' THEN q.tipo ELSE 'cancelamento' END,
+         ocorrencias = CASE WHEN q.tipo = 'convite' THEN q.ocorrencias
+                            ELSE (SELECT coalesce(jsonb_agg(y || '{"estado":"cancelada"}'::jsonb
+                                                            ORDER BY (y->>'inicio')::timestamptz, (y->>'ocorrencia_id')::bigint), '[]'::jsonb)
+                                    FROM jsonb_array_elements(q.ocorrencias) y) END,
+         versao = q.versao + 1
+   WHERE q.convidado_id = ANY (coalesce(p_convidados, '{}'::bigint[]))
+     AND q.evento_id = p_evento
+     AND q.status = 'pendente' AND q.lease_ate IS NULL;
+$$;
+
 -- ============ (5) agenda_cliente_enfileirar WITH A GUEST RECIPIENT ============
 -- Body copied verbatim from 20261007000001_agenda_hub.sql; changes marked
 -- "-- [convidados]". The 6-arg signature is dropped (its grant would otherwise
@@ -1141,6 +1165,8 @@ BEGIN
            || public.agenda_envios_convidados(v_conv_add, 'convite', v_snap)
            || public.agenda_envios_convidados(v_conv_rem, 'cancelamento', v_cancel);
   PERFORM public.agenda_envios_enfileirar(v_conta, v_alvo, v_envios);
+  -- [convidados] a removed guest's pending items become a full cancellation
+  PERFORM public.agenda_convidados_perda(v_alvo, v_conv_rem);
 
   -- ---- notifications (the actor is excluded by agenda_notificar) ----
   IF v_notifica THEN
@@ -1237,6 +1263,11 @@ BEGIN
     END IF;
     v_envios := v_envios || public.agenda_envios_convidados(v_convs, 'cancelamento', v_snap);
     PERFORM public.agenda_envios_enfileirar(v_conta, v_e.id, v_envios);
+    -- [convidados] the whole series goes: the guests' pending items become a
+    -- full cancellation (esta/seguintes keep the guests, nothing to convert)
+    IF v_escopo = 'todas' THEN
+      PERFORM public.agenda_convidados_perda(v_e.id, v_convs);
+    END IF;
   END IF;
 
   IF v_escopo = 'todas' THEN
@@ -1270,9 +1301,10 @@ GRANT EXECUTE ON FUNCTION public.agenda_evento_excluir(bigint, text) TO authenti
 --    cancelamento or a snapshot with no 'ativa' entry) the event no longer
 --    shared with this cliente.
 --  * [convidados] guest items: feature_agenda off; the address in the
---    workspace's agenda_convidados_bloqueio; the series private while it
---    still exists; or (except a cancellation, same rule) the guest row removed
---    or gone.
+--    workspace's agenda_convidados_bloqueio; or (except a cancellation, same
+--    rule as the cliente) the series private or the guest row removed or gone.
+--    A cancellation always goes out: removing the guests to make the series
+--    private, removing one, or deleting the series must reach them.
 -- Then claims due 'pendente' items and expired leases (FOR UPDATE SKIP
 -- LOCKED): status 'enviando', a 2-minute lease, one more attempt. Returns
 -- what the e-mail needs, the brand header included, with a discriminated
@@ -1315,12 +1347,12 @@ BEGIN
      AND (NOT public.effective_plan_feature(q.conta_id, 'feature_agenda')
           OR EXISTS (SELECT 1 FROM public.agenda_convidados_bloqueio b
                       WHERE b.conta_id = q.conta_id AND b.email = lower(q.convidado_email))
-          OR EXISTS (SELECT 1 FROM public.agenda_eventos e
-                      WHERE e.id = q.evento_id AND e.conta_id = q.conta_id AND e.privado)
           OR (q.tipo <> 'cancelamento'
               AND EXISTS (SELECT 1 FROM jsonb_array_elements(q.ocorrencias) y WHERE y->>'estado' = 'ativa')
-              AND NOT EXISTS (SELECT 1 FROM public.agenda_convidados g
-                               WHERE g.id = q.convidado_id AND g.conta_id = q.conta_id AND g.removido_em IS NULL)));
+              AND (EXISTS (SELECT 1 FROM public.agenda_eventos e
+                            WHERE e.id = q.evento_id AND e.conta_id = q.conta_id AND e.privado)
+                   OR NOT EXISTS (SELECT 1 FROM public.agenda_convidados g
+                                   WHERE g.id = q.convidado_id AND g.conta_id = q.conta_id AND g.removido_em IS NULL))));
 
   WITH alvo AS (
     SELECT q.id FROM public.agenda_emails_cliente q
@@ -1713,6 +1745,7 @@ GRANT EXECUTE ON FUNCTION public.agenda_listar(timestamptz, timestamptz, bigint)
 REVOKE ALL ON FUNCTION public.agenda_ocorrencias_bump_sequencia(bigint[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_envios_enfileirar(uuid, bigint, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_envios_convidados(bigint[], text, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.agenda_convidados_perda(bigint, bigint[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_definir_convidados(bigint, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_claim_emails(int) FROM PUBLIC, anon, authenticated;
@@ -1725,6 +1758,7 @@ REVOKE ALL ON FUNCTION public.agenda_convite_descadastrar(bigint) FROM PUBLIC, a
 GRANT EXECUTE ON FUNCTION public.agenda_ocorrencias_bump_sequencia(bigint[]) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_envios_enfileirar(uuid, bigint, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_envios_convidados(bigint[], text, jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.agenda_convidados_perda(bigint, bigint[]) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_definir_convidados(bigint, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_claim_emails(int) TO service_role;
@@ -1753,6 +1787,7 @@ BEGIN
     'public.agenda_ocorrencias_bump_sequencia(bigint[])',
     'public.agenda_envios_enfileirar(uuid, bigint, jsonb)',
     'public.agenda_envios_convidados(bigint[], text, jsonb)',
+    'public.agenda_convidados_perda(bigint, bigint[])',
     'public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint)',
     'public.agenda_definir_convidados(bigint, jsonb)',
     'public.agenda_cliente_claim_emails(int)',

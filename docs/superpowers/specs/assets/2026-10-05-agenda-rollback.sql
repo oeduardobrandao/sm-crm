@@ -1045,6 +1045,7 @@ DROP FUNCTION IF EXISTS
   public.agenda_convite_item(bigint, bigint),
   public.agenda_definir_convidados(bigint, jsonb),
   public.agenda_envios_convidados(bigint[], text, jsonb),
+  public.agenda_convidados_perda(bigint, bigint[]),
   public.agenda_envios_enfileirar(uuid, bigint, jsonb),
   public.agenda_ocorrencias_bump_sequencia(bigint[]);
 
@@ -1099,7 +1100,15 @@ BEGIN
   END IF;
 END $$;
 
--- 4c.5 the new tables, then the queue columns, CHECKs and index
+-- 4c.5 the new tables, then the queue columns, CHECKs and index. The guest
+-- items are deleted again first: in a guests-only rollback the old write RPCs
+-- stayed live between 4c.1 and 4c.2 and may have enqueued new ones.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'agenda_emails_cliente' AND column_name = 'convidado_id') THEN
+    EXECUTE 'DELETE FROM public.agenda_emails_cliente WHERE convidado_id IS NOT NULL';
+  END IF;
+END $$;
 DROP TABLE IF EXISTS public.agenda_respostas_convidado;
 DROP TABLE IF EXISTS public.agenda_convidados_bloqueio;
 DROP TABLE IF EXISTS public.agenda_convidados;

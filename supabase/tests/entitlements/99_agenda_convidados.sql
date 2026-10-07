@@ -723,6 +723,8 @@ begin
     'public.agenda_definir_convidados(bigint, jsonb)',
     'public.agenda_ocorrencias_bump_sequencia(bigint[])',
     'public.agenda_envios_enfileirar(uuid, bigint, jsonb)',
+    'public.agenda_envios_convidados(bigint[], text, jsonb)',
+    'public.agenda_convidados_perda(bigint, bigint[])',
     'public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint)',
     'public.agenda_cliente_claim_emails(int)'] loop
     assert to_regprocedure(v_fn) is not null, format('%s does not exist', v_fn);
@@ -749,6 +751,102 @@ begin
   end loop;
 
   raise notice 'PASS 99_agenda_convidados (grants)';
+end $$;
+
+-- ============ block 10: guest loss while an item is still pending ============
+-- Unlike the blocks above, the pending items are NOT marked sent before the
+-- next write, so the cancellation merges into them (fix round 1).
+do $$
+declare
+  f jsonb := pg_temp.fx();
+  v_ws uuid := (f->>'ws')::uuid;
+  v_o uuid := (f->>'o')::uuid;
+  v_oc bigint; v_o2 bigint; v_ev bigint;
+  v_g agenda_convidados;
+  v jsonb; v_it jsonb; v_err text; q agenda_emails_cliente;
+begin
+  update agenda_emails_cliente set status = 'enviado' where status = 'pendente';
+
+  -- (a) remove a guest while its alteracao is pending, one entry past 90 days
+  v_oc := pg_temp.criar(v_o, pg_temp.diaria(5, 2, pg_temp.cv(array['lia@ext.com'])));
+  v_o2 := pg_temp.nth(v_oc, 2); v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'lia@ext.com');
+  update agenda_emails_cliente set status = 'enviado' where evento_id = v_ev;   -- the convite went out
+  v_err := pg_temp.editar(v_o, v_oc, 'todas', '{"titulo":"Novo título"}');
+  assert v_err is null, format('todas: %s', v_err);
+  v_err := pg_temp.editar(v_o, v_o2, 'esta', jsonb_build_object('inicio_local', pg_temp.dia(120), 'fim_local', pg_temp.dia(120, '15:00:00')));
+  assert v_err is null, format('esta past 90 days: %s', v_err);
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'alteracao' and jsonb_array_length(q.ocorrencias) = 2
+     and (select bool_and(x->>'estado' = 'ativa') from jsonb_array_elements(q.ocorrencias) x), format('fixture alteracao: %s', to_jsonb(q));
+  v_err := pg_temp.editar(v_o, v_oc, 'todas', pg_temp.cv('{}'));
+  assert v_err is null, format('remove: %s', v_err);
+  assert (select count(*) from pg_temp.pend(v_ev) where convidado_id = v_g.id) = 1, 'removal left more than one item';
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'cancelamento' and pg_temp.snap_ids(q.ocorrencias) = array[v_oc, v_o2]
+     and (select bool_and(x->>'estado' = 'cancelada') from jsonb_array_elements(q.ocorrencias) x), format('(a) merged removal: %s', to_jsonb(q));
+  update agenda_emails_cliente set enviar_apos = now() - interval '1 second' where id = q.id;
+  v := pg_temp.svc('select public.agenda_cliente_claim_emails(100)');
+  select x into v_it from jsonb_array_elements(v) x where (x->>'id')::bigint = q.id;
+  assert v_it->>'tipo' = 'cancelamento' and jsonb_array_length(v_it->'ocorrencias') = 2
+     and (select bool_and(x->>'estado' = 'cancelada') from jsonb_array_elements(v_it->'ocorrencias') x)
+     and v_it->'convidado_token' = 'null'::jsonb, format('(a) claim: %s', coalesce(v_it::text, 'not returned'));
+
+  -- (b) a private edit removes every guest; their cancellation is claimed
+  v_oc := pg_temp.criar(v_o, pg_temp.diaria(6, 2, pg_temp.cv(array['mel@ext.com'])));
+  v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'mel@ext.com');
+  update agenda_emails_cliente set status = 'enviado' where evento_id = v_ev;
+  v_err := pg_temp.editar(v_o, v_oc, 'todas', '{"local":"Sala 9"}');                  -- pending alteracao
+  assert v_err is null, format('local: %s', v_err);
+  v_err := pg_temp.editar(v_o, v_oc, 'todas', pg_temp.cv('{}') || '{"privado":true}');
+  assert v_err is null, format('private + remove all: %s', v_err);
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'cancelamento' and jsonb_array_length(q.ocorrencias) = 2
+     and (select bool_and(x->>'estado' = 'cancelada') from jsonb_array_elements(q.ocorrencias) x), format('(b) item: %s', to_jsonb(q));
+  update agenda_emails_cliente set enviar_apos = now() - interval '1 second' where id = q.id;
+  v := pg_temp.svc('select public.agenda_cliente_claim_emails(100)');
+  select x into v_it from jsonb_array_elements(v) x where (x->>'id')::bigint = q.id;
+  assert v_it->>'tipo' = 'cancelamento' and v_it->>'email' = 'mel@ext.com'
+     and (select bool_and(x->>'estado' = 'cancelada') from jsonb_array_elements(v_it->'ocorrencias') x),
+    format('(b) claim: %s (status %s)', coalesce(v_it::text, 'not returned'), (select status from agenda_emails_cliente where id = q.id));
+  -- a non-cancellation to a guest of a private series is still discarded
+  insert into agenda_emails_cliente (conta_id, convidado_id, convidado_email, evento_id, tipo, ocorrencias, enviar_apos)
+    values (v_ws, v_g.id, v_g.email, v_ev, 'alteracao', jsonb_build_array(jsonb_build_object('ocorrencia_id', v_oc, 'estado', 'ativa',
+            'inicio', pg_temp.ini(v_oc))), now() - interval '1 second')
+    returning * into q;
+  perform pg_temp.svc('select public.agenda_cliente_claim_emails(100)');
+  assert (select status from agenda_emails_cliente where id = q.id) = 'descartado', 'alteracao to a guest of a private series not discarded';
+
+  -- (c) excluir todas with a pending guest alteracao (one entry past 90 days)
+  v_oc := pg_temp.criar(v_o, pg_temp.diaria(7, 2, pg_temp.cv(array['nina@ext.com'])));
+  v_o2 := pg_temp.nth(v_oc, 2); v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'nina@ext.com');
+  update agenda_emails_cliente set status = 'enviado' where evento_id = v_ev;
+  v_err := pg_temp.editar(v_o, v_o2, 'esta', jsonb_build_object('inicio_local', pg_temp.dia(130), 'fim_local', pg_temp.dia(130, '15:00:00')));
+  assert v_err is null, format('esta past 90 days: %s', v_err);
+  v_err := pg_temp.erro(v_o, format('select public.agenda_evento_excluir(%s, %L)', v_oc, 'todas'));
+  assert v_err is null, format('excluir todas: %s', v_err);
+  assert not exists (select 1 from agenda_convidados where id = v_g.id), 'guest row survived';
+  assert (select count(*) from pg_temp.pend(v_ev) where convidado_id = v_g.id) = 1, 'excluir left more than one item';
+  select * into q from pg_temp.pend(v_ev) where convidado_id = v_g.id;
+  assert q.tipo = 'cancelamento' and pg_temp.snap_ids(q.ocorrencias) = array[v_oc, v_o2]
+     and (select bool_and(x->>'estado' = 'cancelada') from jsonb_array_elements(q.ocorrencias) x), format('(c) item: %s', to_jsonb(q));
+  update agenda_emails_cliente set enviar_apos = now() - interval '1 second' where id = q.id;
+  v := pg_temp.svc('select public.agenda_cliente_claim_emails(100)');
+  select x into v_it from jsonb_array_elements(v) x where (x->>'id')::bigint = q.id;
+  assert v_it->>'tipo' = 'cancelamento' and v_it->>'email' = 'nina@ext.com'
+     and (select bool_and(x->>'estado' = 'cancelada') from jsonb_array_elements(v_it->'ocorrencias') x), format('(c) claim: %s', coalesce(v_it::text, 'not returned'));
+
+  -- a pending convite of a guest removed before the send: discarded, nothing to cancel
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.cv(array['olivia@ext.com'])));
+  v_ev := pg_temp.ev(v_oc);
+  v_g := pg_temp.g(v_oc, 'olivia@ext.com');
+  v_err := pg_temp.editar(v_o, v_oc, 'todas', pg_temp.cv('{}'));
+  assert v_err is null, format('remove before send: %s', v_err);
+  assert not exists (select 1 from pg_temp.pend(v_ev) where convidado_id = v_g.id), 'unsent convite + removal left a pending item';
+
+  raise notice 'PASS 99_agenda_convidados (guest loss with a pending item)';
 end $$;
 
 rollback;
