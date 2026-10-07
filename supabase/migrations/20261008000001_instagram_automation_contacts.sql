@@ -303,13 +303,15 @@ REVOKE ALL ON FUNCTION snapshot_instagram_automation_contacts() FROM PUBLIC, ano
 -- lock, o backfill e os CREATE TRIGGER são atômicos junto com a linha de
 -- schema_migrations em qualquer versão do CLI. O lock fecha a corrida
 -- backfill x trigger (nenhum send novo entre o backfill e os triggers); o
--- worker espera (segundos) e segue. Ordem de lock: automações antes de sends.
+-- worker espera (segundos) e segue.
 DO $mig$
 DECLARE v_contacts bigint; v_pairs bigint;
 BEGIN
   SET LOCAL lock_timeout = '30s';
-  EXECUTE 'LOCK TABLE instagram_comment_automations IN SHARE ROW EXCLUSIVE MODE';
+  -- Sends antes de automações: é a ordem em que mark_automation_dm_sent escreve,
+  -- então o worker de DM não pode ser a vítima de um deadlock com esta migration.
   EXECUTE 'LOCK TABLE instagram_automation_sends IN SHARE ROW EXCLUSIVE MODE';
+  EXECUTE 'LOCK TABLE instagram_comment_automations IN SHARE ROW EXCLUSIVE MODE';
 
   PERFORM rebuild_instagram_automation_contacts();
 
