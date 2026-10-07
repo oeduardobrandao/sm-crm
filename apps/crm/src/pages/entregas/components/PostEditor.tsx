@@ -381,7 +381,13 @@ export function PostEditor({
 
   // Click handler for comment-highlighted text and @-mention chips
   useEffect(() => {
-    if (!editor) return;
+    // The editor from this render can already be destroyed by the time effects run:
+    // useEditor schedules a destroy 1ms after creating it and only cancels that from its
+    // own passive effect, so when React runs passive effects later (a slow phone, WebKit
+    // yielding to paint) the timer wins and useEditor swaps in a new instance on the next
+    // render. `editor.view` throws on a destroyed editor, which took the whole app down
+    // on iOS Safari. Skip it here; this effect re-runs with the new instance.
+    if (!editor || editor.isDestroyed) return;
     const editorDom = editor.view.dom;
     const handleEditorClick = (e: Event) => {
       const target = e.target as HTMLElement;
