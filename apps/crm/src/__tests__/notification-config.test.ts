@@ -227,6 +227,16 @@ describe('getNotificationDisplay', () => {
       expect(sem.body).toBe('seg., 5 de out., 14:00');
     });
 
+    it('event_reschedule_requested shows an all-day suggestion as a date only', () => {
+      const d = getNotificationDisplay('event_reschedule_requested', {
+        ...base,
+        dia_inteiro: true,
+        data_local: '2026-10-05',
+        inicio_sugerido: '2026-10-09T00:00:00',
+      });
+      expect(d.body).toBe('Sugestão: sex., 9 de out.');
+    });
+
     it('event_reminder prefix by minutos', () => {
       const t = (minutos: number | undefined, dia_inteiro = false) =>
         getNotificationDisplay('event_reminder', { ...base, minutos, dia_inteiro });

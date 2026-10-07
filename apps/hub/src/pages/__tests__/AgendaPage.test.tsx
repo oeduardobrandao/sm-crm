@@ -236,7 +236,7 @@ describe('AgendaPage', () => {
     const c = await screen.findByRole('article', { name: 'Visita técnica' });
     expect(within(c).getByText('14:00 às 15:00 (America/Manaus)')).toBeInTheDocument();
     fireEvent.click(within(c).getByRole('button', { name: 'Mais opções' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Pedir para remarcar/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Pedir para remarcar/ }));
 
     const data = await screen.findByLabelText('Nova data');
     const hora = screen.getByLabelText('Novo horário');
@@ -277,7 +277,7 @@ describe('AgendaPage', () => {
     const c = await screen.findByRole('article', { name: 'Feira' });
     expect(within(c).getByText('Dia inteiro')).toBeInTheDocument();
     fireEvent.click(within(c).getByRole('button', { name: 'Mais opções' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Pedir para remarcar/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Pedir para remarcar/ }));
 
     const data = await screen.findByLabelText('Nova data');
     expect(screen.queryByLabelText('Novo horário')).not.toBeInTheDocument();
@@ -292,7 +292,7 @@ describe('AgendaPage', () => {
 
     const c = await screen.findByRole('article', { name: 'Gravação de reels' });
     fireEvent.click(within(c).getByRole('button', { name: 'Mais opções' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Pedir para remarcar/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Pedir para remarcar/ }));
     fireEvent.change(await screen.findByLabelText('Nova data'), {
       target: { value: '2026-10-06' },
     });
@@ -323,11 +323,11 @@ describe('AgendaPage', () => {
     ).toBeInTheDocument();
     // No second request while one is pending.
     fireEvent.click(within(c).getByRole('button', { name: 'Mais opções' }));
-    expect(await screen.findByRole('menuitem', { name: /Baixar \.ics/ })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /Baixar \.ics/ })).toHaveAttribute(
       'href',
       'https://x.supabase.co/functions/v1/hub-agenda/ocorrencia/10.ics?token=tk',
     );
-    expect(screen.queryByRole('menuitem', { name: /Pedir para remarcar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pedir para remarcar/ })).not.toBeInTheDocument();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
 
     fireEvent.click(within(c).getByRole('button', { name: 'Cancelar pedido' }));
@@ -342,7 +342,7 @@ describe('AgendaPage', () => {
     renderPage();
     const c = await screen.findByRole('article', { name: 'Gravação de reels' });
     fireEvent.click(within(c).getByRole('button', { name: 'Mais opções' }));
-    const google = await screen.findByRole('menuitem', { name: /Adicionar ao Google Agenda/ });
+    const google = await screen.findByRole('link', { name: /Adicionar ao Google Agenda/ });
     const href = new URL(google.getAttribute('href')!);
     expect(href.hostname).toBe('calendar.google.com');
     expect(href.searchParams.get('dates')).toBe('20261020T180000Z/20261020T190000Z');

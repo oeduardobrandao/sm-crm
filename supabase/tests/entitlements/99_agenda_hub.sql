@@ -429,6 +429,10 @@ begin
   select count(*) into v_n from agenda_emails_cliente where cliente_id = v_ca and tipo = 'remarcacao_aceita'
      and (remarcacao->>'remarcacao_id')::bigint = v_r and pg_temp.snap_ids(ocorrencias) = array[v_s2];
   assert v_n = 1, format('remarcacao_aceita items: %s', v_n);
+  -- a pending convite keeps the moved occurrence (the reschedule e-mail does not strip it)
+  assert exists (select 1 from agenda_emails_cliente where cliente_id = v_ca and tipo = 'convite' and status = 'pendente'
+                  and evento_id = pg_temp.ev(v_s2) and v_s2 = any (pg_temp.snap_ids(ocorrencias))),
+    'aceitar stripped the occurrence from the pending convite';
   assert not exists (select 1 from agenda_emails_cliente where cliente_id = v_ca and tipo = 'alteracao'
                       and pg_temp.ev(v_s1) = evento_id), 'aceitar also enqueued an alteracao';
   -- the GUC does not leak: a later edit is a plain alteracao
@@ -440,10 +444,12 @@ begin
   -- decline, with a message
   v := pg_temp.remarcar(v_ws, v_ca, v_s3, current_date + 15, '09:00', null);
   v_r2 := (v->'remarcacao'->>'id')::bigint;
+  select sequencia into v_n from agenda_ocorrencias where id = v_s3;
   v_err := pg_temp.erro(v_o, format('select public.agenda_remarcacao_resolver(%s, false, %L)', v_r2, 'Não temos agenda'));
   assert v_err is null, format('recusar: %s', v_err);
   assert (select status = 'recusada' and resposta_equipe = 'Não temos agenda' from agenda_remarcacoes where id = v_r2), 'status recusada';
   assert pg_temp.ini(v_s3) = pg_temp.ts(7), 'recusar moved the occurrence';
+  assert (select sequencia from agenda_ocorrencias where id = v_s3) = v_n, 'recusar bumped the sequencia';
   select count(*) into v_n from agenda_emails_cliente where tipo = 'remarcacao_recusada'
      and (remarcacao->>'remarcacao_id')::bigint = v_r2 and remarcacao->>'resposta_equipe' = 'Não temos agenda'
      and pg_temp.snap_ids(ocorrencias) = array[v_s3];
@@ -718,6 +724,13 @@ begin
   perform pg_temp.svc(format('select ''{}''::jsonb from public.agenda_cliente_marcar_email(%s, %s, false, %L)', q.id, q.versao, 'resend 500'));
   select * into q from agenda_emails_cliente where id = q.id;
   assert q.status = 'pendente' and q.lease_ate is null and q.ultimo_erro = 'resend 500', format('failed mark: %s', to_jsonb(q));
+  -- released by a run that hit its deadline: pendente again, attempt refunded
+  update agenda_emails_cliente set enviar_apos = now() - interval '1 second' where id = q.id;
+  perform pg_temp.svc('select public.agenda_cliente_claim_emails(100)');
+  assert (select status = 'enviando' and tentativas = 2 from agenda_emails_cliente where id = q.id), 'second claim';
+  perform pg_temp.svc(format('select ''{}''::jsonb from public.agenda_cliente_liberar_emails(array[%s]::bigint[])', q.id));
+  assert (select status = 'pendente' and lease_ate is null and tentativas = 1 from agenda_emails_cliente where id = q.id),
+    'liberar did not refund the attempt';
   -- expired lease is re-claimed; the third failure is final
   update agenda_emails_cliente set tentativas = 2 where id = q.id;
   perform pg_temp.svc('select public.agenda_cliente_claim_emails(100)');
@@ -918,6 +931,7 @@ begin
     'public.agenda_cliente_substituir_pedidos(bigint, bigint, date)',
     'public.agenda_cliente_claim_emails(int)',
     'public.agenda_cliente_marcar_email(bigint, int, boolean, text)',
+    'public.agenda_cliente_liberar_emails(bigint[])',
     'public.agenda_cliente_tick()',
     'public.agenda_cliente_lembretes_pendentes(uuid, bigint, timestamptz)',
     'public.agenda_cliente_lembretes_marcar(uuid, bigint, jsonb)'] loop

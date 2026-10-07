@@ -114,7 +114,10 @@ DROP TABLE IF EXISTS public.agenda_feed_tokens;
 -- and Hub Agenda page), undeploy hub-agenda and agenda-cliente-email, and
 -- redeploy the previous hub-bootstrap, client-event-email-cron, agenda-feed and
 -- notification-email-cron (they read the objects removed here); then run just
--- this step and stop. In the full rollback it runs after steps 2-3 already
+-- this step and stop. Those four redeploys are hygiene, not a gate: each one
+-- degrades cleanly without these objects (reminders fetch falls back to [],
+-- sequencia is optional, the bootstrap flag lookup catches, the digest cases
+-- go dead), so never hold a rollback on them. Only 4b.1 and the drops matter. In the full rollback it runs after steps 2-3 already
 -- removed every agenda notification type, so its literal edit finds nothing
 -- to remove and skips; and after 4a dropped agenda_feed_eventos, so the
 -- feed restore is skipped too.
@@ -1052,6 +1055,7 @@ DROP FUNCTION IF EXISTS
   public.agenda_cliente_lembretes_pendentes(uuid, bigint, timestamptz),
   public.agenda_cliente_tick(),
   public.agenda_cliente_marcar_email(bigint, int, boolean, text),
+  public.agenda_cliente_liberar_emails(bigint[]),
   public.agenda_cliente_claim_emails(int),
   public.agenda_remarcacao_resolver(bigint, boolean, text),
   public.agenda_hub_cancelar_remarcacao(uuid, bigint, bigint),

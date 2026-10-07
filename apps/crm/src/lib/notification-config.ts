@@ -331,7 +331,12 @@ export function getNotificationDisplay(
       };
     }
     case 'event_reschedule_requested': {
-      const sugestao = formatEventWhen({ inicio: m.inicio_sugerido });
+      // All-day suggestions are local midnight: show the date only.
+      const sugestao = formatEventWhen({
+        inicio: m.inicio_sugerido,
+        dia_inteiro: m.dia_inteiro,
+        data_local: m.inicio_sugerido,
+      });
       return {
         icon: CalendarClock,
         tone: 'warning',

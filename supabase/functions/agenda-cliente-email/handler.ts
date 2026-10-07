@@ -11,8 +11,9 @@
  * bumps `tentativas`. Each claimed item is settled through
  * `agenda_cliente_marcar_email(id, versao, ok, erro)` (ok -> 'enviado'; not
  * ok -> back to 'pendente' until 3 attempts, then 'falhou'). Items the 50 s
- * deadline keeps us from reaching are left untouched: the lease expires and
- * the next run re-claims them.
+ * deadline keeps us from reaching are handed back through
+ * `agenda_cliente_liberar_emails` (attempt refunded) so a slow run never
+ * counts against an item it did not try to send.
  *
  * The idempotency key is `agenda-cliente:<id>:<versao>`: an item under lease
  * never changes, so one key always maps to one content.
@@ -35,7 +36,7 @@ interface DbError {
 
 export interface AgendaClienteEmailDb {
   rpc(
-    fn: "agenda_cliente_claim_emails" | "agenda_cliente_marcar_email",
+    fn: "agenda_cliente_claim_emails" | "agenda_cliente_marcar_email" | "agenda_cliente_liberar_emails",
     args: Record<string, unknown>,
   ): PromiseLike<{ data: unknown; error: DbError | null }>;
 }
@@ -91,8 +92,14 @@ export async function runAgendaClienteEmail(
     if (markErr) console.error(`[agenda-cliente-email] mark failed item=${item.id}:`, markErr.message);
   };
 
-  for (const item of items) {
-    if (deps.now() - startedAt > deadline) break;
+  for (const [i, item] of items.entries()) {
+    if (deps.now() - startedAt > deadline) {
+      const ids = items.slice(i).map((it) => it.id);
+      const { error: relErr } = await deps.db.rpc("agenda_cliente_liberar_emails", { p_ids: ids });
+      // Not fatal: the lease expires and the next run re-claims them anyway.
+      if (relErr) console.error("[agenda-cliente-email] release failed:", relErr.message);
+      break;
+    }
     let ok = false;
     let erro: string | null = null;
     try {

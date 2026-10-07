@@ -186,11 +186,10 @@ export function AgendaCard({ item, token, agora, highlighted = false }: AgendaCa
                     '0 12px 32px -12px rgba(28, 25, 23, 0.25), 0 2px 6px rgba(28, 25, 23, 0.08)',
                 }}
               >
-                <div role="menu" aria-label={t('menu.abrir', 'Mais opções')}>
+                <div role="group" aria-label={t('menu.abrir', 'Mais opções')}>
                   {podeRemarcar && (
                     <button
                       type="button"
-                      role="menuitem"
                       className={MENU_ITEM}
                       onClick={() => {
                         setMenuAberto(false);
@@ -202,7 +201,6 @@ export function AgendaCard({ item, token, agora, highlighted = false }: AgendaCa
                     </button>
                   )}
                   <a
-                    role="menuitem"
                     className={MENU_ITEM}
                     href={linkGoogleAgenda(item, t('google.linkReuniao', 'Link da reunião'))}
                     target="_blank"
@@ -213,7 +211,6 @@ export function AgendaCard({ item, token, agora, highlighted = false }: AgendaCa
                     {t('menu.google', 'Adicionar ao Google Agenda')}
                   </a>
                   <a
-                    role="menuitem"
                     className={MENU_ITEM}
                     href={agendaIcsUrl(token, item.ocorrencia_id)}
                     download

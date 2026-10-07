@@ -409,8 +409,8 @@ Deno.test("run: empty snapshot is not sent and is marked with SnapshotVazioError
   assertEquals(marks()[0].args.p_erro, "SnapshotVazioError");
 });
 
-Deno.test("run: deadline leaves remaining items unsent and unmarked", async () => {
-  const { db, marks } = makeDb([item({ id: 1 }), item({ id: 2 }), item({ id: 3 })]);
+Deno.test("run: deadline leaves remaining items unsent, unmarked and released", async () => {
+  const { db, marks, calls } = makeDb([item({ id: 1 }), item({ id: 2 }), item({ id: 3 })]);
   let t = 0;
   let sends = 0;
   const { deps } = baseDeps(db, {
@@ -427,6 +427,8 @@ Deno.test("run: deadline leaves remaining items unsent and unmarked", async () =
   assertEquals(sends, 2);
   assertEquals(r.enviados, 2);
   assertEquals(marks().map((m) => m.args.p_id), [1, 2]);
+  const rel = calls.filter((c) => c.fn === "agenda_cliente_liberar_emails");
+  assertEquals(rel.map((c) => c.args.p_ids), [[3]]);
 });
 
 Deno.test("run: empty claim is a no-op; claim error throws", async () => {

@@ -654,8 +654,12 @@ BEGIN
       INTO v_rem FROM public.agenda_remarcacoes rm WHERE rm.id = v_guc::bigint;
   END IF;
 
-  -- bump sequencia and rewrite the entries with it
+  -- bump sequencia and rewrite the entries with it. A declined reschedule
+  -- changes nothing on the calendar (no .ics), so it keeps the sequence.
   v_ids := ARRAY(SELECT DISTINCT (x->>'ocorrencia_id')::bigint FROM jsonb_array_elements(p_ocorrencias) x);
+  IF v_tipo = 'remarcacao_recusada' THEN
+    v_novas := p_ocorrencias;
+  ELSE
   WITH b AS (
     UPDATE public.agenda_ocorrencias o SET sequencia = o.sequencia + 1
      WHERE o.id = ANY (v_ids)
@@ -665,6 +669,7 @@ BEGIN
     INTO v_novas
     FROM jsonb_array_elements(p_ocorrencias) x
     LEFT JOIN b ON b.id = (x->>'ocorrencia_id')::bigint;
+  END IF;
 
   -- one live entry per occurrence per cliente
   FOR r IN
@@ -672,6 +677,9 @@ BEGIN
      WHERE q.cliente_id = p_cliente AND q.status = 'pendente' AND q.lease_ate IS NULL AND q.enviar_apos > now()
        AND q.tipo NOT IN ('remarcacao_aceita', 'remarcacao_recusada')
        AND (v_tipo IN ('remarcacao_aceita', 'remarcacao_recusada') OR q.evento_id <> p_evento)
+       -- a reschedule outcome never steals the occurrence from an unsent
+       -- invite: the client must get "Novo evento" first
+       AND NOT (v_tipo IN ('remarcacao_aceita', 'remarcacao_recusada') AND q.tipo = 'convite')
        AND EXISTS (SELECT 1 FROM jsonb_array_elements(q.ocorrencias) y WHERE (y->>'ocorrencia_id')::bigint = ANY (v_ids))
      ORDER BY q.id
      FOR UPDATE
@@ -2017,6 +2025,16 @@ RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS 
    WHERE q.id = p_id AND q.versao = p_versao AND q.status = 'enviando';
 $$;
 
+-- Internal (service_role). Gives back items a run claimed but never reached
+-- (the 50 s deadline): 'pendente' again, no lease, and the claim's attempt
+-- refunded, so a slow run never pushes an unsent item to 'falhou'.
+CREATE OR REPLACE FUNCTION public.agenda_cliente_liberar_emails(p_ids bigint[])
+RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+  UPDATE public.agenda_emails_cliente q
+     SET status = 'pendente', lease_ate = NULL, tentativas = greatest(q.tentativas - 1, 0)
+   WHERE q.id = ANY (p_ids) AND q.status = 'enviando';
+$$;
+
 -- Internal (pg_cron, every minute). Removes settled items older than 30 days,
 -- then calls agenda-cliente-email through pg_net only when an item is due
 -- (pattern of agenda_tick_lembretes: x-cron-secret from the vault, http_post
@@ -2123,6 +2141,7 @@ REVOKE ALL ON FUNCTION public.agenda_hub_remarcar(uuid, bigint, bigint, date, ti
 REVOKE ALL ON FUNCTION public.agenda_hub_cancelar_remarcacao(uuid, bigint, bigint) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_claim_emails(int) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_marcar_email(bigint, int, boolean, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.agenda_cliente_liberar_emails(bigint[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_tick() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_lembretes_pendentes(uuid, bigint, timestamptz) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.agenda_cliente_lembretes_marcar(uuid, bigint, jsonb) FROM PUBLIC, anon, authenticated;
@@ -2135,6 +2154,7 @@ GRANT EXECUTE ON FUNCTION public.agenda_hub_remarcar(uuid, bigint, bigint, date,
 GRANT EXECUTE ON FUNCTION public.agenda_hub_cancelar_remarcacao(uuid, bigint, bigint) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_claim_emails(int) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_marcar_email(bigint, int, boolean, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.agenda_cliente_liberar_emails(bigint[]) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_tick() TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_lembretes_pendentes(uuid, bigint, timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_cliente_lembretes_marcar(uuid, bigint, jsonb) TO service_role;
@@ -2177,6 +2197,7 @@ BEGIN
     'public.agenda_cliente_destinatarios(uuid, uuid)',
     'public.agenda_cliente_claim_emails(int)',
     'public.agenda_cliente_marcar_email(bigint, int, boolean, text)',
+    'public.agenda_cliente_liberar_emails(bigint[])',
     'public.agenda_cliente_tick()',
     'public.agenda_cliente_lembretes_pendentes(uuid, bigint, timestamptz)',
     'public.agenda_cliente_lembretes_marcar(uuid, bigint, jsonb)'] LOOP
