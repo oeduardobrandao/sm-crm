@@ -268,8 +268,11 @@ export function PostEditor({
     [beginUpload, editor, endUpload, onUpdate, onUploadInlineImage],
   );
 
+  // `false`: TipTap's setEditable emits `update` by default, which reached onUpdate (and
+  // the drawers' content autosave) on every open, since in a real browser the editor's
+  // deferred `create` usually lands before this effect. Editability isn't a content edit.
   useEffect(() => {
-    if (editor) editor.setEditable(!disabled);
+    if (editor) editor.setEditable(!disabled, false);
   }, [editor, disabled]);
 
   // Close dropdowns on outside click

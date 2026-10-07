@@ -115,8 +115,9 @@ export function ArticleEditor({
     }
   }, [editor, initialContent]);
 
+  // `false`: setEditable emits `update` by default, which reads as an edit in onUpdate.
   useEffect(() => {
-    if (editor) editor.setEditable(!disabled);
+    if (editor) editor.setEditable(!disabled, false);
   }, [editor, disabled]);
 
   useEffect(() => {

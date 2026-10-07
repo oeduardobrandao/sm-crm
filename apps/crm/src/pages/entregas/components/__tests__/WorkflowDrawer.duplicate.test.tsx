@@ -132,6 +132,7 @@ vi.mock('@/services/inlineImage', () => ({
   uploadInlineImage: vi.fn(),
   extractR2Keys: () => [],
   injectSignedUrls: (doc: unknown) => doc,
+  stripSignedUrls: (doc: unknown) => doc,
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
 
