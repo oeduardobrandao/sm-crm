@@ -37,7 +37,7 @@ describe('buildContactsCsv', () => {
       reached: false,
     };
     const csv = buildContactsCsv([older, base], new Map([[14, 'ACME']]));
-    expect(csv.startsWith('﻿')).toBe(true);
+    expect(csv.startsWith('\uFEFF')).toBe(true);
     const lines = csv.slice(1).split('\r\n');
     expect(lines[0]).toBe(
       'usuario;perfil_url;cliente;recebeu_dm;interacoes;primeira_interacao;ultima_interacao;automacao;ultimo_comentario',
