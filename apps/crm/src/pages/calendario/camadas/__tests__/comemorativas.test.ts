@@ -203,3 +203,25 @@ describe('expandirComemorativas', () => {
     expect(itens.some((i) => 'dia' in i && i.dia === '2027-02-09')).toBe(true); // Carnaval 2027
   });
 });
+
+describe('expandirComemorativas ids', () => {
+  it('never carry the entry name (they end up in a CSS attribute selector)', () => {
+    const niche: NicheCalendarDef = {
+      key: 'n',
+      label: 'N',
+      title: 'N',
+      subtitle: '',
+      filterLabels: {},
+      data: [
+        {
+          month: 'Maio',
+          num: '05',
+          events: [{ date: '12/05', name: 'Dia do "Teste"', type: 'br', tags: [] }],
+        },
+      ],
+    };
+    const [item] = expandirComemorativas(niche, new Date(2026, 4, 1), new Date(2026, 5, 1));
+    expect(item.id).toBe('comemorativas:n:0-0:2026-05-12');
+    expect(() => document.querySelector(`[data-ocorrencia-id="camada:${item.id}"]`)).not.toThrow();
+  });
+});

@@ -227,38 +227,42 @@ export function expandirComemorativas(
   const ultimo = diaLocal(new Date(fim.getTime() - 1));
   const anos = [...new Set(mesesDoIntervalo(inicio, fim).map((x) => x.ano))];
 
-  const adicionar = (e: NicheEvent, data: string, r: ResolucaoComemorativa) => {
+  // The id carries the entry's position, never its name: ids end up inside a
+  // querySelector attribute value, where a quote in a name would break it.
+  const adicionar = (e: NicheEvent, pos: string, data: string, r: ResolucaoComemorativa) => {
     if (data < primeiro || data > ultimo) return;
     const chave = `${e.name}|${data}`;
     if (vistos.has(chave)) return;
     vistos.add(chave);
     itens.push({
       camada: 'comemorativas',
-      id: `comemorativas:${niche.key}:${chave}`,
+      id: `comemorativas:${niche.key}:${pos}:${data}`,
       dia: data,
       nome: e.name,
       tipo: e.type,
       tags: e.tags ?? [],
       rotulo: rotuloDe(e.type, r),
       ...(r.tipo === 'dia' && r.ate ? { ate: r.ate } : {}),
+      ...(r.tipo === 'mes' ? { mesInteiro: true } : {}),
     });
   };
 
   for (const ano of anos) {
-    for (const cartao of niche.data) {
+    niche.data.forEach((cartao, ci) => {
       const mes = parseInt(cartao.num, 10);
-      if (isNaN(mes)) continue;
-      for (const e of cartao.events) {
+      if (isNaN(mes)) return;
+      cartao.events.forEach((e, ei) => {
+        const pos = `${ci}-${ei}`;
         const r = resolverDataComemorativa(e, mes, ano);
         if (r.tipo === 'dia') {
-          adicionar(e, r.data, r);
+          adicionar(e, pos, r.data, r);
         } else {
           for (const m0 of mesesCobertos(e.date, mes - 1)) {
-            adicionar(e, `${ano}-${pad2(m0 + 1)}-01`, r);
+            adicionar(e, pos, `${ano}-${pad2(m0 + 1)}-01`, r);
           }
         }
-      }
-    }
+      });
+    });
   }
   return itens.sort((a, b) => ('dia' in a && 'dia' in b ? a.dia.localeCompare(b.dia) : 0));
 }

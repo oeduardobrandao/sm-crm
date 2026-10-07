@@ -53,6 +53,8 @@ export type CamadaItem =
       rotulo: 'dia' | 'mes' | 'semana';
       /** Last day of a range entry ("01–07/08" → "07/08"). */
       ate?: string;
+      /** Not day-shaped: placed on the 1st and stands for the whole month. */
+      mesInteiro?: boolean;
     };
 
 export type CamadasAtivas = Record<CamadaId, boolean>;
