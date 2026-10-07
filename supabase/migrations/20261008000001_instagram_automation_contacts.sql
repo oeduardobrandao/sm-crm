@@ -3,14 +3,6 @@
 -- Tabelas DERIVADAS de instagram_automation_sends, mantidas por trigger, que
 -- sobrevivem à exclusão da automação (sends cascateiam com ela).
 
--- LOCK TABLE exige bloco de transação; o db push executa cada statement fora
--- de uma, então o arquivo inteiro vai em BEGIN/COMMIT explícito.
-BEGIN;
-
--- Fecha a corrida backfill × trigger: nenhum send novo entre o backfill e o
--- CREATE TRIGGER. O worker espera o lock (segundos) e segue.
-LOCK TABLE instagram_automation_sends IN SHARE ROW EXCLUSIVE MODE;
-
 CREATE TABLE instagram_automation_contacts (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   conta_id              uuid NOT NULL,
@@ -285,7 +277,7 @@ BEGIN
     UPDATE instagram_automation_contacts SET last_automation_name = NEW.name, updated_at = now()
      WHERE conta_id = NEW.conta_id AND last_automation_id = NEW.id;
     UPDATE instagram_automation_contact_automations SET automation_name = NEW.name
-     WHERE automation_id = NEW.id;
+     WHERE conta_id = NEW.conta_id AND automation_id = NEW.id;
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'sync_instagram_automation_contact_names: %', SQLERRM;
   END;
@@ -307,36 +299,47 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION snapshot_instagram_automation_contacts() FROM PUBLIC, anon, authenticated;
 
--- Backfill com a tabela de sends travada, ANTES dos triggers.
-SELECT rebuild_instagram_automation_contacts();
-
-CREATE TRIGGER ias_z1_sync_contact_insert
-  AFTER INSERT ON instagram_automation_sends
-  FOR EACH ROW WHEN (NEW.commenter_id IS NOT NULL)
-  EXECUTE FUNCTION sync_instagram_automation_contact();
-
-CREATE TRIGGER ias_z2_sync_contact_reached
-  AFTER UPDATE OF dm_status ON instagram_automation_sends
-  FOR EACH ROW WHEN (
-    OLD.dm_status IS DISTINCT FROM 'sent' AND NEW.dm_status = 'sent'
-    AND NEW.commenter_id IS NOT NULL
-  )
-  EXECUTE FUNCTION sync_instagram_automation_contact();
-
-CREATE TRIGGER ica_z1_sync_contact_names
-  AFTER UPDATE OF name ON instagram_comment_automations
-  FOR EACH ROW WHEN (OLD.name IS DISTINCT FROM NEW.name)
-  EXECUTE FUNCTION sync_instagram_automation_contact_names();
-
-CREATE TRIGGER ica_z2_snapshot_contacts_before_delete
-  BEFORE DELETE ON instagram_comment_automations
-  FOR EACH ROW EXECUTE FUNCTION snapshot_instagram_automation_contacts();
-
--- Sanidade do backfill: WARNING, nunca EXCEPTION (um erro num lote do db push
--- pode gravar a versão com o DDL revertido).
-DO $$
+-- Backfill + triggers num único bloco DO: ele roda como UM statement, então o
+-- lock, o backfill e os CREATE TRIGGER são atômicos junto com a linha de
+-- schema_migrations em qualquer versão do CLI. O lock fecha a corrida
+-- backfill x trigger (nenhum send novo entre o backfill e os triggers); o
+-- worker espera (segundos) e segue. Ordem de lock: automações antes de sends.
+DO $mig$
 DECLARE v_contacts bigint; v_pairs bigint;
 BEGIN
+  SET LOCAL lock_timeout = '30s';
+  EXECUTE 'LOCK TABLE instagram_comment_automations IN SHARE ROW EXCLUSIVE MODE';
+  EXECUTE 'LOCK TABLE instagram_automation_sends IN SHARE ROW EXCLUSIVE MODE';
+
+  PERFORM rebuild_instagram_automation_contacts();
+
+  EXECUTE $t$
+    CREATE TRIGGER ias_z1_sync_contact_insert
+      AFTER INSERT ON instagram_automation_sends
+      FOR EACH ROW WHEN (NEW.commenter_id IS NOT NULL)
+      EXECUTE FUNCTION sync_instagram_automation_contact()$t$;
+
+  EXECUTE $t$
+    CREATE TRIGGER ias_z2_sync_contact_reached
+      AFTER UPDATE OF dm_status ON instagram_automation_sends
+      FOR EACH ROW WHEN (
+        OLD.dm_status IS DISTINCT FROM 'sent' AND NEW.dm_status = 'sent'
+        AND NEW.commenter_id IS NOT NULL
+      )
+      EXECUTE FUNCTION sync_instagram_automation_contact()$t$;
+
+  EXECUTE $t$
+    CREATE TRIGGER ica_z1_sync_contact_names
+      AFTER UPDATE OF name ON instagram_comment_automations
+      FOR EACH ROW WHEN (OLD.name IS DISTINCT FROM NEW.name)
+      EXECUTE FUNCTION sync_instagram_automation_contact_names()$t$;
+
+  EXECUTE $t$
+    CREATE TRIGGER ica_z2_snapshot_contacts_before_delete
+      BEFORE DELETE ON instagram_comment_automations
+      FOR EACH ROW EXECUTE FUNCTION snapshot_instagram_automation_contacts()$t$;
+
+  -- Sanidade do backfill: WARNING, nunca EXCEPTION.
   SELECT count(*) INTO v_contacts FROM instagram_automation_contacts;
   SELECT count(DISTINCT (a.client_id, s.commenter_id)) INTO v_pairs
     FROM instagram_automation_sends s
@@ -345,6 +348,5 @@ BEGIN
   IF v_contacts <> v_pairs THEN
     RAISE WARNING 'instagram_automation_contacts backfill: % contacts vs % pairs', v_contacts, v_pairs;
   END IF;
-END $$;
-
-COMMIT;
+END
+$mig$;

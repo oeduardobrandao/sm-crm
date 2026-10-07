@@ -115,7 +115,7 @@ begin
   assert v_r and v_lr, 'reached on contact and link';
 
   v_s2 := et_iac_send('c2', f.auto_a1, f.ws, 'u1', 'ana', 'de novo', '2026-10-02 10:00Z');
-  update instagram_automation_sends set status = 'failed', error_code = 'dm_permanent' where id = v_s2;
+  update instagram_automation_sends set status = 'failed', dm_status = 'failed', error_code = 'dm_permanent' where id = v_s2;
   select reached into v_r from instagram_automation_contacts where commenter_id = 'u1';
   assert v_r, 'a later failure must not unset reached';
   raise notice 'PASS 99 iac 3 reached';
@@ -265,6 +265,16 @@ begin
   end;
   assert v_rejected, 'authenticated must not execute rebuild';
   reset role;
+
+  -- Regression: workspace B reuses workspace A's DELETED automation uuid and
+  -- renames it; A's surviving link rows must keep their name.
+  delete from instagram_comment_automations where id = f.auto_a1;
+  insert into instagram_comment_automations (id, conta_id, client_id, name, keywords, dm_message)
+    values (f.auto_a1, g.ws, g.cli_a, 'B reusou', array['x'], 'm');
+  update instagram_comment_automations set name = 'B renomeou' where id = f.auto_a1;
+  assert (select automation_name from instagram_automation_contact_automations
+           where conta_id = f.ws and automation_id = f.auto_a1) = 'A1',
+    'rename in another workspace must not touch this workspace''s link rows';
   raise notice 'PASS 99 iac 7 security';
 end $$;
 rollback;
