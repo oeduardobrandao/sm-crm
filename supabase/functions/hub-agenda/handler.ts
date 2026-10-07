@@ -152,7 +152,7 @@ export function createHubAgendaHandler(deps: HubAgendaHandlerDeps) {
     const fail = (status: number, message: string) => json({ error: message }, status);
 
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-    if (req.method !== "GET" && req.method !== "POST") return fail(405, "Method not allowed");
+    if (req.method !== "GET" && req.method !== "POST") return fail(405, "Método não permitido.");
 
     const url = new URL(req.url);
     const pathParts = url.pathname.split("/").filter(Boolean);
