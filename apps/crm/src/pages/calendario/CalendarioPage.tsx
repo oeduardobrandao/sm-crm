@@ -1,18 +1,6 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Globe, Flag } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -26,7 +14,6 @@ import {
   getTransacoes,
   getWorkflows,
   getWorkflowEtapasByWorkflowIds,
-  addTransacao,
   formatDate,
   getAllClienteDatas,
   type Cliente,
@@ -44,22 +31,14 @@ import {
   readStoredNicheKey,
   writeStoredNicheKey,
 } from './nicheCalendars/registry';
+import { calcularPrazos, workflowsAtivosIds, type DeadlineEvent } from './camadas/prazos';
+import { useConfirmarPagamento } from './camadas/useConfirmarPagamento';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 
 // Lazy: FullCalendar is heavy and workspaces without feature_agenda never render it.
 const AgendaTab = lazy(() => import('./agenda/AgendaTab'));
-
-// ---- Types ----
-interface DeadlineEvent {
-  workflowTitle: string;
-  etapaNome: string;
-  clienteNome: string;
-  clienteCor: string;
-  deadlineDate: Date;
-  diasRestantes: number;
-  estourado: boolean;
-}
 
 // ---- Financeiro Calendar ----
 function FinanceiroCalendar({
@@ -77,16 +56,9 @@ function FinanceiroCalendar({
   datasImportantes: ClienteData[];
   canSeeFinancials: FinancialAccess;
 }) {
-  const qc = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date().getDate());
-  const [confirmPayload, setConfirmPayload] = useState<{
-    refId: string;
-    desc: string;
-    val: number;
-    cat: string;
-    tipo: 'entrada' | 'saida';
-  } | null>(null);
+  const { pedirConfirmacao, dialog: confirmDialog } = useConfirmarPagamento(canSeeFinancials);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -157,30 +129,7 @@ function FinanceiroCalendar({
     cat: string,
     tipo: 'entrada' | 'saida',
   ) => {
-    setConfirmPayload({ refId, desc, val, cat, tipo });
-  };
-
-  const handleConfirmExecute = async () => {
-    if (!confirmPayload) return;
-    const { refId, desc, val, cat, tipo } = confirmPayload;
-    try {
-      await addTransacao({
-        descricao: desc,
-        detalhe: 'Baixa efetuada pelo Calendário',
-        categoria: cat,
-        valor: val,
-        data: new Date().toISOString().split('T')[0],
-        tipo,
-        status: 'pago',
-        referencia_agendamento: refId,
-      });
-      toast.success('Pagamento confirmado!');
-      qc.invalidateQueries({ queryKey: ['transacoes'] });
-    } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro');
-    } finally {
-      setConfirmPayload(null);
-    }
+    pedirConfirmacao({ refId, desc, val, cat, tipo });
   };
 
   return (
@@ -521,26 +470,7 @@ function FinanceiroCalendar({
         </div>
       </div>
 
-      <AlertDialog
-        open={confirmPayload !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmPayload(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Agendamento</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmPayload &&
-                `Confirmar o recebimento/pagamento agendado de ${confirmPayload.desc} (${formatFinancialBRL(confirmPayload.val, canSeeFinancials)})?`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmExecute}>Confirmar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {confirmDialog}
     </>
   );
 }
@@ -706,47 +636,14 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
   );
 }
 
-// ---- Main Page ----
-export default function CalendarioPage() {
-  // Agenda ships behind the `feature_agenda` plan flag. Off (or still unknown): the page is
-  // the one that existed before the Agenda, with no Agenda tab.
-  const { features } = useWorkspaceLimits();
-  const agendaAtiva = features?.feature_agenda === true;
-  // The user's own pick; the effective tab is derived so the default follows the flag
-  // without an effect (and never selects a tab that is not rendered).
-  const [escolha, setEscolha] = useState<'agenda' | 'financeiro' | 'comemorativas' | null>(null);
-  const activeTab: 'agenda' | 'financeiro' | 'comemorativas' =
-    escolha && (escolha !== 'agenda' || agendaAtiva)
-      ? escolha
-      : agendaAtiva
-        ? 'agenda'
-        : 'financeiro';
-  const [searchParams] = useSearchParams();
-  const eventoParam = searchParams.get('evento');
-  const dataParam = searchParams.get('data');
+// ---- Classic page (flag off) ----
+/** The page from before the Agenda: the "Calendário" and "Datas Comemorativas"
+ *  tabs. With `feature_agenda` on, both become layers of the Agenda instead. */
+function CalendarioClassico() {
+  const [activeTab, setActiveTab] = useState<'financeiro' | 'comemorativas'>('financeiro');
 
-  // A notification can link here while the page is already open on another tab.
-  // Keyed on the values, not a boolean: a new ?evento= must switch back even when
-  // a previous one is still in the URL.
   useEffect(() => {
-    if (agendaAtiva && (eventoParam !== null || dataParam !== null)) setEscolha('agenda');
-  }, [agendaAtiva, eventoParam, dataParam]);
-
-  // App route outside usePageMeta: set the tab title and restore the previous one
-  // on unmount so it doesn't leak into the next route (EntregasPage pattern).
-  useEffect(() => {
-    const previousTitle = document.title;
-    return () => {
-      document.title = previousTitle;
-    };
-  }, []);
-  useEffect(() => {
-    const nome =
-      activeTab === 'agenda'
-        ? 'Agenda'
-        : activeTab === 'financeiro'
-          ? 'Calendário'
-          : 'Datas Comemorativas';
+    const nome = activeTab === 'financeiro' ? 'Calendário' : 'Datas Comemorativas';
     document.title = `${nome} | Mesaas`;
   }, [activeTab]);
   const nicheKeys = NICHE_CALENDARS.map((n) => n.key);
@@ -784,104 +681,46 @@ export default function CalendarioPage() {
     queryFn: getAllClienteDatas,
   });
 
-  // Build deadline events from active workflows
-  const { data: deadlineEvents = [] } = useQuery({
+  // Active stages of the active workflows (same key and value as the Agenda's
+  // "Prazos de entrega" layer); the deadlines are computed at render.
+  const { data: etapasPorWorkflow } = useQuery({
     queryKey: ['calendar-deadlines', workflows.map((w) => w.id).join(',')],
-    queryFn: async () => {
-      const activeWfs = workflows.filter((w) => w.status === 'ativo');
-      const etapasByWorkflow = await getWorkflowEtapasByWorkflowIds(activeWfs.map((w) => w.id!));
-      const events: DeadlineEvent[] = [];
-      activeWfs.forEach((w) => {
-        const etapas = etapasByWorkflow.get(w.id!) ?? [];
-        const activeEtapa = etapas.find((e) => e.status === 'ativo');
-        if (!activeEtapa || !activeEtapa.iniciado_em) return;
-        const cliente = clientes.find((c) => c.id === w.cliente_id);
-        const inicio = new Date(activeEtapa.iniciado_em);
-        const deadlineDate = new Date(inicio);
-        if (activeEtapa.tipo_prazo === 'uteis') {
-          let added = 0;
-          while (added < activeEtapa.prazo_dias) {
-            deadlineDate.setDate(deadlineDate.getDate() + 1);
-            const dow = deadlineDate.getDay();
-            if (dow !== 0 && dow !== 6) added++;
-          }
-        } else {
-          deadlineDate.setDate(deadlineDate.getDate() + activeEtapa.prazo_dias);
-        }
-        const now = new Date();
-        const diffMs = deadlineDate.getTime() - now.getTime();
-        const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        events.push({
-          workflowTitle: w.titulo,
-          etapaNome: activeEtapa.nome,
-          clienteNome: cliente?.nome || '—',
-          clienteCor: cliente?.cor || '#888',
-          deadlineDate,
-          diasRestantes,
-          estourado: diasRestantes < 0,
-        });
-      });
-      return events;
-    },
+    queryFn: () => getWorkflowEtapasByWorkflowIds(workflowsAtivosIds(workflows)),
     enabled: workflows.length > 0,
   });
+  const deadlineEvents = useMemo<DeadlineEvent[]>(
+    () => (etapasPorWorkflow ? calcularPrazos(workflows, etapasPorWorkflow, clientes) : []),
+    [workflows, etapasPorWorkflow, clientes],
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <header className="header animate-up">
         <div className="header-title">
-          <h1>
-            {activeTab === 'agenda'
-              ? 'Agenda'
-              : activeTab === 'financeiro'
-                ? 'Calendário'
-                : activeNiche.title}
-          </h1>
+          <h1>{activeTab === 'financeiro' ? 'Calendário' : activeNiche.title}</h1>
           <p style={{ color: 'var(--text-muted)' }}>
-            {activeTab === 'agenda'
-              ? 'Eventos, reuniões e gravações da equipe.'
-              : activeTab === 'financeiro'
-                ? 'Visão geral mensal.'
-                : activeNiche.subtitle}
+            {activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle}
           </p>
         </div>
       </header>
 
       <div className="calendar-tabs animate-up">
-        {agendaAtiva && (
-          <button
-            className={`calendar-tab${activeTab === 'agenda' ? ' active' : ''}`}
-            onClick={() => setEscolha('agenda')}
-          >
-            Agenda
-          </button>
-        )}
         <button
           className={`calendar-tab${activeTab === 'financeiro' ? ' active' : ''}`}
-          onClick={() => setEscolha('financeiro')}
+          onClick={() => setActiveTab('financeiro')}
         >
           Calendário
         </button>
         <button
           className={`calendar-tab${activeTab === 'comemorativas' ? ' active' : ''}`}
-          onClick={() => setEscolha('comemorativas')}
+          onClick={() => setActiveTab('comemorativas')}
         >
           Datas Comemorativas
         </button>
       </div>
 
       <div className="animate-up">
-        {activeTab === 'agenda' ? (
-          <Suspense
-            fallback={
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-                <Spinner />
-              </div>
-            }
-          >
-            <AgendaTab />
-          </Suspense>
-        ) : activeTab === 'financeiro' ? (
+        {activeTab === 'financeiro' ? (
           <FinanceiroCalendar
             clientes={clientes}
             membros={membros}
@@ -912,4 +751,76 @@ export default function CalendarioPage() {
       </div>
     </div>
   );
+}
+
+// ---- Agenda page (flag on) ----
+/** No tab bar: the old tabs live on as layers of the Agenda. `?evento=` and
+ *  `?data=` are read by AgendaTab itself. */
+function AgendaPagina() {
+  useEffect(() => {
+    document.title = 'Agenda | Mesaas';
+  }, []);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <header className="header animate-up">
+        <div className="header-title">
+          <h1>Agenda</h1>
+          <p style={{ color: 'var(--text-muted)' }}>Eventos, reuniões e gravações da equipe.</p>
+        </div>
+      </header>
+
+      <div className="animate-up">
+        <Suspense
+          fallback={
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+              <Spinner />
+            </div>
+          }
+        >
+          <AgendaTab />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+function CalendarioEsqueleto() {
+  return (
+    <div
+      role="status"
+      aria-label="Carregando calendário"
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
+    >
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-72" />
+      </div>
+      <Skeleton className="h-[560px] w-full rounded-xl" />
+    </div>
+  );
+}
+
+// ---- Main Page ----
+export default function CalendarioPage() {
+  // Agenda ships behind the `feature_agenda` plan flag. On: the Agenda alone, with
+  // the old tabs folded into its layers. Off, unknown or failed to load: the page
+  // that existed before the Agenda. Only while the limits are loading is there a
+  // skeleton, so the page never flashes the old tabs before switching.
+  const { features, isLoading } = useWorkspaceLimits();
+  const agendaAtiva = features?.feature_agenda === true;
+
+  // App route outside usePageMeta: each branch sets the tab title; the one from
+  // before the route is captured at first render (ahead of any child effect) and
+  // restored on unmount so it doesn't leak into the next route.
+  const [tituloAnterior] = useState(() => document.title);
+  useEffect(
+    () => () => {
+      document.title = tituloAnterior;
+    },
+    [tituloAnterior],
+  );
+
+  if (isLoading) return <CalendarioEsqueleto />;
+  return agendaAtiva ? <AgendaPagina /> : <CalendarioClassico />;
 }

@@ -32,6 +32,23 @@ import { EventoPopover } from './EventoPopover';
 import { EventoRapidoCard, type RascunhoEvento } from './EventoRapidoCard';
 import { valoresIniciaisCriar, type EventoFormValues } from './eventoFormSchema';
 import { useAgendaMutations } from './useAgendaMutations';
+import { gravarCamadas, lerCamadas } from '../camadas/camadasStorage';
+import { CamadaPopover } from '../camadas/CamadaPopover';
+import {
+  CAMADAS_FINANCEIRAS,
+  ORDEM_AGENDA,
+  type CamadaItem,
+  type CamadasAtivas,
+} from '../camadas/tipos';
+import { toCamadaEventInput } from '../camadas/toCamadaEventInput';
+import { useCamadas } from '../camadas/useCamadas';
+import { useConfirmarPagamento } from '../camadas/useConfirmarPagamento';
+import {
+  DEFAULT_NICHE_KEY,
+  NICHE_CALENDARS,
+  readStoredNicheKey,
+  writeStoredNicheKey,
+} from '../nicheCalendars/registry';
 
 const FILTRO_KEY = 'agenda-filtro';
 const NAO_ENCONTRADO = 'Este evento não existe mais ou você não tem acesso.';
@@ -118,7 +135,7 @@ function rascunhoEventInput(r: RascunhoEvento): EventInput {
     backgroundColor: `${cor}24`,
     borderColor: cor,
     textColor: 'var(--text-main)',
-    extendedProps: { rascunho: 1 },
+    extendedProps: { rascunho: 1, ordem: ORDEM_AGENDA },
   };
 }
 
@@ -135,7 +152,7 @@ const inicioDaOcorrencia = (o: AgendaOcorrencia) =>
   o.dia_inteiro ? parseDateOnly(o.data_inicio_local) : new Date(o.inicio);
 
 export default function AgendaTab() {
-  const { user, can } = useAuth();
+  const { user, can, canSeeFinancials } = useAuth();
   const meuId = user?.id ?? null;
   // View-only roles never see the create entry points ('unknown' = still resolving).
   const podeCriar = can('calendario', 'editar') === true;
@@ -168,6 +185,24 @@ export default function AgendaTab() {
   const [sheetAberto, setSheetAberto] = useState(false);
   const [feedAberto, setFeedAberto] = useState(false);
   const { mover, dialog } = useAgendaMutations();
+  // Read-only layers (spec §1): toggles and niche are per browser.
+  const [camadasAtivas, setCamadasAtivas] = useState<CamadasAtivas>(lerCamadas);
+  const [nichoKey, setNichoKey] = useState(() =>
+    readStoredNicheKey(
+      NICHE_CALENDARS.map((n) => n.key),
+      DEFAULT_NICHE_KEY,
+    ),
+  );
+  // Same shape as `popover`: the item is re-read from the current layer data.
+  const [camadaPopover, setCamadaPopover] = useState<{
+    id: string;
+    snapshot: CamadaItem;
+    anchorEl: HTMLElement;
+  } | null>(null);
+  const { pedirConfirmacao, dialog: confirmarPagamentoDialog } = useConfirmarPagamento(
+    canSeeFinancials ?? 'unknown',
+  );
+  const itensCamadas = useCamadas(periodo, camadasAtivas, canSeeFinancials, nichoKey);
 
   const { data: ocorrencias = [], isFetching } = useQuery({
     queryKey: [AGENDA_QUERY_KEY, periodo?.start.toISOString(), periodo?.end.toISOString()],
@@ -193,23 +228,40 @@ export default function AgendaTab() {
 
   const eventosDasOcorrencias = useMemo<EventInput[]>(
     () =>
-      filtrarPorPessoas(ocorrencias, idsDoFiltro(filtro, meuId, pessoas)).map((o) =>
-        toEventInput(o, meuId ?? ''),
-      ),
+      filtrarPorPessoas(ocorrencias, idsDoFiltro(filtro, meuId, pessoas)).map((o) => {
+        const ev = toEventInput(o, meuId ?? '');
+        // `ordem` leads eventOrder: Agenda events before every layer item.
+        return { ...ev, extendedProps: { ...ev.extendedProps, ordem: ORDEM_AGENDA } };
+      }),
     [ocorrencias, filtro, meuId, pessoas],
+  );
+  // The people filter applies to Agenda events only (spec §1.5).
+  const eventosDasCamadas = useMemo<EventInput[]>(
+    () => itensCamadas.map(toCamadaEventInput),
+    [itensCamadas],
   );
   const rascunhoVisivel = rascunho && !isMobile ? rascunho : null;
   const eventos = useMemo(
     () =>
       rascunhoVisivel
-        ? [...eventosDasOcorrencias, rascunhoEventInput(rascunhoVisivel)]
-        : eventosDasOcorrencias,
-    [eventosDasOcorrencias, rascunhoVisivel],
+        ? [...eventosDasOcorrencias, ...eventosDasCamadas, rascunhoEventInput(rascunhoVisivel)]
+        : [...eventosDasOcorrencias, ...eventosDasCamadas],
+    [eventosDasOcorrencias, eventosDasCamadas, rascunhoVisivel],
   );
 
   function mudarFiltro(f: AgendaFiltro) {
     setFiltro(f);
     gravarFiltro(f);
+  }
+
+  function mudarCamadas(a: CamadasAtivas) {
+    setCamadasAtivas(a);
+    gravarCamadas(a);
+  }
+
+  function mudarNicho(key: string) {
+    setNichoKey(key);
+    writeStoredNicheKey(key);
   }
 
   const onDatesSet = useCallback((arg: DatesSetArg) => {
@@ -241,6 +293,7 @@ export default function AgendaTab() {
     const i = inicio ?? addHours(startOfHour(new Date()), 1);
     const f = fim ?? addHours(i, 1);
     setPopover(null);
+    setCamadaPopover(null);
     setSheetAberto(false);
     descartarRascunho();
     setForm({ modo: 'criar', inicial: { inicio: i, fim: f, diaInteiro } });
@@ -270,6 +323,7 @@ export default function AgendaTab() {
     // The draft chip replaces FullCalendar's selection mirror.
     calRef.current?.getApi().unselect();
     setPopover(null);
+    setCamadaPopover(null);
     selecaoRef.current += 1;
     setSelecao(selecaoRef.current);
     setAnchorRascunho(null);
@@ -308,7 +362,16 @@ export default function AgendaTab() {
     setRascunho(null);
     setRascunhoInicial(null);
     setAnchorRascunho(null);
+    setCamadaPopover(null);
     setPopover({ id: o.ocorrencia_id, snapshot: o, anchorEl });
+  }, []);
+
+  const abrirCamada = useCallback((item: CamadaItem, anchorEl: HTMLElement) => {
+    setRascunho(null);
+    setRascunhoInicial(null);
+    setAnchorRascunho(null);
+    setPopover(null);
+    setCamadaPopover({ id: item.id, snapshot: item, anchorEl });
   }, []);
 
   /** The chip FullCalendar currently shows for an event id, if mounted. */
@@ -357,6 +420,34 @@ export default function AgendaTab() {
     });
     return () => cancelAnimationFrame(raf);
   }, [rascunhoVisivel, eventos, resolverAnchorRascunho]);
+
+  const itemDoCamadaPopover = camadaPopover
+    ? (itensCamadas.find((i) => i.id === camadaPopover.id) ?? camadaPopover.snapshot)
+    : null;
+  const anchorDoCamadaPopover = camadaPopover
+    ? camadaPopover.anchorEl.isConnected
+      ? camadaPopover.anchorEl
+      : (chipDoEvento(`camada:${camadaPopover.id}`) ?? containerRef.current)
+    : null;
+
+  // Same as the event popover below: swap a detached chip for the new one.
+  useEffect(() => {
+    if (!camadaPopover) return;
+    const raf = requestAnimationFrame(() => {
+      if (camadaPopover.anchorEl.isConnected) return;
+      const novo = chipDoEvento(`camada:${camadaPopover.id}`);
+      if (novo) {
+        setCamadaPopover((p) => (p && p.id === camadaPopover.id ? { ...p, anchorEl: novo } : p));
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [camadaPopover, eventos, chipDoEvento]);
+
+  // Losing financial access mid-session closes an open receivables/payments popover.
+  useEffect(() => {
+    if (canSeeFinancials === true) return;
+    setCamadaPopover((p) => (p && CAMADAS_FINANCEIRAS.has(p.snapshot.camada) ? null : p));
+  }, [canSeeFinancials]);
 
   const ocorrenciaDoPopover = popover
     ? (ocorrencias.find((o) => o.ocorrencia_id === popover.id) ?? popover.snapshot)
@@ -489,6 +580,13 @@ export default function AgendaTab() {
         setSheetAberto(false);
         setFeedAberto(true);
       }}
+      camadas={{
+        ativas: camadasAtivas,
+        onChange: mudarCamadas,
+        canSeeFinancials,
+        nichoKey,
+        onNichoChange: mudarNicho,
+      }}
     />
   );
 
@@ -541,6 +639,7 @@ export default function AgendaTab() {
               : undefined
           }
           onEventClick={abrirPopover}
+          onCamadaClick={abrirCamada}
           onMover={mover}
         />
       </div>
@@ -573,6 +672,17 @@ export default function AgendaTab() {
         />
       )}
       {dialog}
+
+      {itemDoCamadaPopover && anchorDoCamadaPopover && (
+        <CamadaPopover
+          item={itemDoCamadaPopover}
+          anchor={anchorDoCamadaPopover}
+          onClose={() => setCamadaPopover(null)}
+          onConfirmar={pedirConfirmacao}
+          canSeeFinancials={canSeeFinancials}
+        />
+      )}
+      {confirmarPagamentoDialog}
 
       {rascunhoVisivel && rascunhoInicial && anchorRascunho && (
         <EventoRapidoCard
