@@ -2,12 +2,15 @@ import { describe, it, expect } from 'vitest';
 import type { AgendaOcorrencia, AgendaRegra } from '../../../../store/agenda';
 import {
   HORARIOS,
+  MAX_CONVIDADOS,
   MAX_LEMBRETES,
   MAX_PARTICIPANTES,
   camposDeSerieAlterados,
   chavesAlteradas,
   duracaoRotulo,
+  emailConvidadoValido,
   eventoFormSchema,
+  mesmosConvidados,
   montarPayload,
   montarPayloadEdicao,
   motivoSerie,
@@ -90,6 +93,7 @@ function ocorrencia(p: Partial<AgendaOcorrencia> = {}): AgendaOcorrencia {
     cliente_resposta: null,
     remarcacao_pendente: null,
     sequencia: 0,
+    convidados: [],
     ...p,
   };
 }
@@ -598,5 +602,94 @@ describe('rotuloDtstart', () => {
   it('formats the normalised series start', () => {
     expect(rotuloDtstart('2026-10-06T14:00:00')).toBe('terça, 6 de outubro');
     expect(rotuloDtstart('2026-10-05 00:00:00')).toBe('segunda, 5 de outubro');
+  });
+});
+
+describe('external guests', () => {
+  const ana = { email: 'ana@exemplo.com', nome: null };
+  const bia = { email: 'bia@exemplo.com', nome: 'Bia' };
+  const serieBase = montarPayload(valoresDeOcorrencia(ocorrencia()));
+
+  it('caps guests at 20 with the schema message', () => {
+    expect(MAX_CONVIDADOS).toBe(20);
+    const mk = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ email: `p${i}@exemplo.com`, nome: null }));
+    expect(erros(valores({ convidados: mk(20) }))).toEqual({});
+    expect(erros(valores({ convidados: mk(21) }))).toEqual({
+      convidados: 'Convide no máximo 20 pessoas.',
+    });
+  });
+
+  it('validates addresses like the database (and like the schema)', () => {
+    expect(emailConvidadoValido('ana@exemplo.com')).toBe(true);
+    expect(emailConvidadoValido('ana@exemplo')).toBe(false);
+    expect(emailConvidadoValido('ana @exemplo.com')).toBe(false);
+    expect(emailConvidadoValido(`${'a'.repeat(250)}@x.com`)).toBe(false);
+    expect(erros(valores({ convidados: [{ email: 'ana@exemplo', nome: null }] }))).not.toEqual({});
+  });
+
+  it('create payload carries guests only when there are some', () => {
+    expect('convidados' in montarPayload(valores())).toBe(false);
+    expect(montarPayload(valores({ convidados: [ana, bia] })).convidados).toEqual([ana, bia]);
+  });
+
+  it('a private event sends no guests', () => {
+    expect('convidados' in montarPayload(valores({ privado: true, convidados: [ana] }))).toBe(
+      false,
+    );
+  });
+
+  it('reads guests from the occurrence, and tolerates null (masked)', () => {
+    const o = ocorrencia({
+      convidados: [{ id: 1, email: 'bia@exemplo.com', nome: 'Bia', resposta: 'sim' }],
+    });
+    expect(valoresDeOcorrencia(o).convidados).toEqual([bia]);
+    expect(valoresDeOcorrencia(ocorrencia({ convidados: null })).convidados).toEqual([]);
+  });
+
+  it('compares guests by e-mail and name, ignoring order and case', () => {
+    expect(mesmosConvidados([ana, bia], [bia, ana])).toBe(true);
+    expect(mesmosConvidados([ana], [{ email: 'ANA@exemplo.com', nome: null }])).toBe(true);
+    expect(mesmosConvidados(undefined, [])).toBe(true);
+    expect(mesmosConvidados([ana], [])).toBe(false);
+    expect(mesmosConvidados([ana], [{ ...ana, nome: 'Ana' }])).toBe(false);
+    expect(mesmosConvidados([ana], [bia])).toBe(false);
+  });
+
+  it('edit payload: unchanged guests stay out, changed ones go as the full list', () => {
+    const antes = montarPayload(valores({ convidados: [ana] }));
+    expect('convidados' in montarPayloadEdicao(antes, antes, { escopo: 'todas' })).toBe(false);
+    const depois = montarPayload(valores({ convidados: [ana, bia] }));
+    expect(montarPayloadEdicao(antes, depois, { escopo: 'todas' }).convidados).toEqual([ana, bia]);
+    expect(montarPayloadEdicao(antes, depois, { escopo: 'seguintes' }).convidados).toEqual([
+      ana,
+      bia,
+    ]);
+  });
+
+  it('edit payload: removing everyone sends [], and never rides with "esta"', () => {
+    const antes = montarPayload(valores({ convidados: [ana] }));
+    const sem = montarPayload(valores());
+    expect(montarPayloadEdicao(antes, sem, { escopo: 'todas' }).convidados).toEqual([]);
+    expect('convidados' in montarPayloadEdicao(antes, sem, { escopo: 'esta' })).toBe(false);
+  });
+
+  it('making the event private sends [] so the guests are cancelled', () => {
+    const antes = montarPayload(valores({ convidados: [ana] }));
+    const privado = montarPayload(valores({ convidados: [ana], privado: true }));
+    expect(montarPayloadEdicao(antes, privado, { escopo: 'todas' }).convidados).toEqual([]);
+  });
+
+  it('guests are a series field: they lock "Este evento"', () => {
+    expect(
+      camposDeSerieAlterados(serieBase, serieBase, {
+        participantesMudaram: false,
+        regraAcompanhouData: true,
+        convidadosMudaram: true,
+      }),
+    ).toEqual(['convidados']);
+    expect(motivoSerie(['convidados'])).toBe(
+      'Vale para toda a série: você mudou os convidados externos.',
+    );
   });
 });

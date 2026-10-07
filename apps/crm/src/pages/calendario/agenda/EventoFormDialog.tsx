@@ -91,6 +91,7 @@ import {
   type RepetirOpcaoId,
 } from './agendaLogic';
 import {
+  MAX_CONVIDADOS,
   MAX_LEMBRETES,
   MAX_PARTICIPANTES,
   camposDeSerieAlterados,
@@ -98,6 +99,7 @@ import {
   combinarDataHora,
   eventoFormSchema,
   mesmasPessoas,
+  mesmosConvidados,
   montarPayload,
   montarPayloadEdicao,
   motivoSerie,
@@ -108,6 +110,7 @@ import {
   type CampoSerie,
   type EventoFormValues,
 } from './eventoFormSchema';
+import { ConvidadosInput } from './ConvidadosInput';
 import { EscopoEventoDialog } from './EscopoEventoDialog';
 import { PessoasCombobox, type PessoaEquipe } from './PessoasCombobox';
 import { LocalAutocomplete } from './LocalAutocomplete';
@@ -349,17 +352,20 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     const depois = montarPayload(valores);
     const acompanhou = regraAcompanhouData(b.opcao, b.regra, valores.data_inicio, depois.regra);
     const pessoasMudaram = !mesmasPessoas(b.participantes, valores.participantes);
+    // Compared on the payloads: a private event sends no guests (montarPayload).
+    const convidadosMudaram = !mesmosConvidados(b.antes.convidados, depois.convidados);
     const pendente: EscopoPendente = {
       depois,
       participantes: pessoasMudaram ? valores.participantes : null,
       campos: camposDeSerieAlterados(b.antes, depois, {
         participantesMudaram: pessoasMudaram,
         regraAcompanhouData: acompanhou,
+        convidadosMudaram,
       }),
     };
     // The payload is not a pure diff (todas always carries the rule and series
     // fields), so "nothing changed" comes from the diff helper.
-    if (chavesAlteradas(b.antes, depois).length === 0 && !pessoasMudaram) {
+    if (chavesAlteradas(b.antes, depois).length === 0 && !pessoasMudaram && !convidadosMudaram) {
       fechar();
       return;
     }
@@ -794,6 +800,32 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                       </FormItem>
                     )}
                   />
+
+                  {!v.privado && (
+                    <FormField
+                      control={form.control}
+                      name="convidados"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-[15px] font-semibold">
+                            Convidados externos
+                          </FormLabel>
+                          <FormControl>
+                            <ConvidadosInput
+                              value={field.value}
+                              onChange={field.onChange}
+                              max={MAX_CONVIDADOS}
+                            />
+                          </FormControl>
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            Recebem o convite por e-mail, com título, horário, local, link e
+                            descrição, e respondem por um link, sem precisar de conta.
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </section>
               </div>
             </div>

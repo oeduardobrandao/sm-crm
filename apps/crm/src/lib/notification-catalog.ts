@@ -201,6 +201,13 @@ export const NOTIFICATION_CATALOG = {
     recipients: ORGANIZADOR_OU_ADMINS,
     emailEligible: true,
   },
+  event_guest_rsvp: {
+    category: 'agenda',
+    label: 'Convidado externo respondeu a um evento',
+    when: 'um convidado externo confirma ou recusa um evento seu',
+    recipients: ORGANIZADOR_OU_ADMINS,
+    emailEligible: true,
+  },
   event_reschedule_requested: {
     category: 'agenda',
     label: 'Cliente pediu para remarcar',

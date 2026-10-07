@@ -330,6 +330,22 @@ export function getNotificationDisplay(
         body: formatEventWhen(m),
       };
     }
+    case 'event_guest_rsvp': {
+      const quem =
+        typeof m.convidado_nome === 'string' && m.convidado_nome.trim()
+          ? m.convidado_nome
+          : typeof m.convidado_email === 'string' && m.convidado_email
+            ? m.convidado_email
+            : 'Um convidado';
+      const titulo = s(m.titulo, 'Evento');
+      const verbo = m.resposta === 'sim' ? 'confirmou' : m.resposta === 'nao' ? 'recusou' : null;
+      return {
+        icon: CalendarCheck,
+        tone: m.resposta === 'nao' ? 'warning' : 'success',
+        title: verbo ? `${quem} ${verbo} ${titulo}` : `${quem} respondeu a ${titulo}`,
+        body: formatEventWhen(m),
+      };
+    }
     case 'event_reschedule_requested': {
       // All-day suggestions are local midnight: show the date only.
       const sugestao = formatEventWhen({
