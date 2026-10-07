@@ -154,6 +154,19 @@ wrapped in `BEGIN ... EXCEPTION WHEN OTHERS THEN RAISE WARNING
 'sync_instagram_automation_contact: %', SQLERRM; RETURN NULL; END`, and the
 tables are rebuildable from sends via a repair function (below).
 
+**Closing the swallowed-error gap before sends disappear.** A swallowed failure is
+only recoverable while the automation's sends still exist; deleting the automation
+cascades them away. So a `BEFORE DELETE ON instagram_comment_automations` trigger
+(`ica_z2_snapshot_contacts_before_delete`, `SECURITY DEFINER`) runs
+`rebuild_instagram_automation_contacts(p_automation_id => OLD.id)` first: the
+parent's BEFORE row trigger fires before the FK cascade, so every send of that
+automation is still readable and its link rows / contacts are reconciled
+(idempotent: a healthy state is rewritten to the same values). This one is **not**
+wrapped in an exception handler: if the snapshot fails, the delete fails and the
+user sees the existing delete-error toast, which is the right trade (a delete can be
+retried; lost contacts cannot). The same trigger covers the window in which the
+`ias_z*` triggers are dropped during a rollback.
+
 ### Name snapshot freshness
 
 `ica_z1_sync_contact_names` — `AFTER UPDATE OF name ON instagram_comment_automations
@@ -172,11 +185,12 @@ order as the hot path, so a rename concurrent with a send cannot deadlock). Afte
 
 ### Backfill and repair (same migration)
 
-`rebuild_instagram_automation_contacts(p_conta_id uuid DEFAULT NULL)`:
+`rebuild_instagram_automation_contacts(p_conta_id uuid DEFAULT NULL, p_automation_id uuid DEFAULT NULL)`:
 `SECURITY DEFINER`, **non-destructive**. It must never delete: sends of deleted
 automations are gone, so contacts/links that only exist because of them cannot be
 re-derived and are exactly what this feature retains. Steps, scoped to
-`p_conta_id` (or all workspaces):
+`p_automation_id` when given (its sends only), else `p_conta_id`, else all
+workspaces:
 1. Source = `instagram_automation_sends` joined to `instagram_comment_automations`
    (sends carry no `client_id`), `commenter_id IS NOT NULL`.
 2. Insert missing contact rows (skeleton) per `(client_id, commenter_id)`,
@@ -255,9 +269,10 @@ p_reached_only   boolean     DEFAULT true
 p_search         text        DEFAULT NULL  -- ILIKE on commenter_username; '\', '%', '_' escaped
 p_limit          int         DEFAULT 50    -- clamped to [1, 500]
 p_offset         int         DEFAULT 0     -- UI paging
-p_cursor_at      timestamptz DEFAULT NULL  -- keyset paging (export): rows strictly after
-p_cursor_id      uuid        DEFAULT NULL  --   (p_cursor_at, p_cursor_id) in sort order;
-                                           --   when a cursor is given, p_offset is ignored
+p_export         boolean     DEFAULT false -- export mode: stable order + keyset cursor below
+p_cursor_at      timestamptz DEFAULT NULL  -- export only: contact created_at of last row seen
+p_cursor_id      uuid        DEFAULT NULL  -- export only: contact id of last row seen
+                                           -- (p_offset is ignored in export mode)
 RETURNS TABLE (
   id, client_id, commenter_username, first_interaction_at, last_interaction_at,
   interactions_count, reached, last_comment_text,
@@ -278,8 +293,15 @@ Semantics:
   the browser's local timezone to `[start of first day, start of the day after the
   last day)`. Labelled "Última interação".
 - `automation_deleted` = `NOT EXISTS (SELECT 1 FROM instagram_comment_automations WHERE id = ...)`.
-- Order: `last_interaction_at DESC, id DESC`. Cursor predicate:
-  `(last_interaction_at, id) < (p_cursor_at, p_cursor_id)`.
+- UI order: `last_interaction_at DESC, id DESC` with offset paging.
+- Export order (`p_export = true`): contact `created_at ASC, id ASC`, cursor
+  predicate `(c.created_at, c.id) > (p_cursor_at, p_cursor_id)`. `created_at` and
+  `id` never change, so a contact that gets a new interaction mid-export does not
+  move and cannot fall behind the cursor. Contacts **created** after the export
+  started may or may not be included (they sort last); filter values (`reached`,
+  dates) are read per page, so a contact that changes mid-export is exported with
+  whichever state its page saw. Documented as acceptable for a point-in-time-ish
+  export. The RPC returns `created_at` too, for the cursor.
 - `count(*) OVER ()` yields no row when empty: callers treat "no rows" as total 0.
 - `ILIKE '%term%'` is unindexed; fine at expected scale (thousands of contacts per
   workspace).
@@ -352,15 +374,17 @@ the "none reached yet" empty copy and "Ver todos" (which the user can switch to
 
 "Exportar CSV" button in both places; exports exactly the active filters.
 
-- Pages through `list_instagram_automation_contacts` with **keyset** paging
-  (`p_cursor_at/p_cursor_id`, 500 per call) until a call returns fewer than 500
-  rows. Keyset (not offset) so contacts updated mid-export cannot shift rows into
-  gaps; rows de-duplicated by `id` client-side as a belt-and-braces. Button shows a
-  spinner and is disabled while running; wrapped in `trackUnsavedWork`.
+- Pages through `list_instagram_automation_contacts` in export mode (immutable
+  `created_at, id` keyset, 500 per call) until a call returns fewer than 500 rows.
+  The finished file is then sorted client-side by `ultima_interacao` desc for
+  reading. Button shows a spinner and is disabled while running; wrapped in
+  `trackUnsavedWork`.
 - Columns (pt-BR header): `usuario`, `perfil_url`, `cliente`, `recebeu_dm`
   (sim/não), `interacoes`, `primeira_interacao`, `ultima_interacao`
   (`yyyy-MM-dd HH:mm`, local time), `automacao`, `ultimo_comentario`.
-- UTF-8 with BOM, `;` separator, CRLF, RFC 4180 quoting.
+- UTF-8 with BOM, `;` separator, CRLF, RFC 4180 quoting. A field is quoted when it
+  contains the **active separator**, `"`, CR or LF (the current analytics writer only
+  checks `,`; with `;` output an unquoted `;` in a comment would split columns).
 - Formula-injection guard on every cell (comment text is attacker-controlled).
 - `commenter_id` is **not** exported (app-scoped Meta id, meaningless outside).
 - Filename `contatos-<slugify(cliente.nome)|todos>-<yyyy-MM-dd>.csv` (`clientes`
@@ -368,8 +392,9 @@ the "none reached yet" empty copy and "Ver todos" (which the user can switch to
 - **Reuse, don't copy:** extract `CSV_BOM`, field quoting, the formula guard
   (`FORMULA_LEAD` + `'` prefix) and `downloadCsv` from
   `apps/crm/src/pages/analytics-fluxos/csv.ts` into `apps/crm/src/lib/csvExport.ts`
-  with a `separator` parameter (analytics keeps `,`); analytics-fluxos imports it
-  back unchanged in behaviour. The new `buildContactsCsv(rows, clientesById)` in
+  with a `separator` parameter (analytics keeps `,`); the quoting rule keys off the
+  separator passed in, so analytics output is byte-identical (its tests stay
+  green) and `;` output quotes semicolons. The new `buildContactsCsv(rows, clientesById)` in
   `apps/crm/src/pages/automacoes/contacts/contactsCsv.ts` composes it.
   `StepCommit.tsx`'s second copy is left alone (out of scope). `lib/csv.ts` is a
   parser and stays untouched.
@@ -387,6 +412,13 @@ the "none reached yet" empty copy and "Ver todos" (which the user can switch to
     !hasContacts`; with the flag off and only contacts, the page opens on the
     Contatos tab and the Automações tab shows the existing upgrade copy instead of
     the create button.
+  - The locked-screen decision waits for **both** queries: while the contacts count
+    is pending, the page shows its existing loading state (never the locked screen).
+    If the contacts count errors, it **fails open** (treats `hasContacts` as true):
+    the locked screen is only an upsell, the data stays protected by RLS, and the
+    worst case is a downgraded workspace with nothing to show seeing an empty
+    Contatos tab plus the upgrade copy. The nav count fails open the same way only
+    when it errors; while pending it keeps today's behaviour.
   - The nav item rule (`useEffectiveNavFeatures`, visible after downgrade while
     `countInstagramAutomations() > 0`) becomes `automations > 0 || contacts > 0`,
     with `contacts` from a head+count select on `instagram_automation_contacts`
@@ -437,6 +469,9 @@ the "none reached yet" empty copy and "Ver todos" (which the user can switch to
     send does not flip it back; public-reply-only update does not set `reached`.
   - Duplicate `comment_id` → no double count.
   - Delete automation → contact and link survive; RPC `automation_deleted = true`.
+  - Swallowed-error recovery: with the `ias_z1` trigger disabled, insert sends,
+    then delete the automation → the `BEFORE DELETE` snapshot still creates the
+    contact and link.
   - Rename automation (as `authenticated`) → snapshots updated.
   - Delete client → contacts and links gone.
   - Composite FK rejects a link row whose `conta_id` differs from its contact's.
@@ -450,10 +485,11 @@ the "none reached yet" empty copy and "Ver todos" (which the user can switch to
     and link rows intact (non-destructive).
 - **Vitest**: `csvExport` (BOM, separator, quoting, formula guard) incl. existing
   analytics-fluxos CSV tests still green; `buildContactsCsv` (null username, sim/não,
-  dates); export keyset loop (stops on short page, de-dupes); `useContactsFilters`
+  dates, `;` inside a comment is quoted); export keyset loop (stops on short page);
+  `useContactsFilters`
   round-trip; "Ver contatos" deep link; ContactsTab empty/error/list states;
   AutomacoesPage gate with `flagOff` + no automations + contacts → Contatos tab, not
-  locked screen; client-detail section hidden without contacts or permission.
+  locked screen; contacts count pending → loading, errored → page (fail open); client-detail section hidden without contacts or permission.
 - **Browser**: both placements, filters, paging, CSV opens in Numbers/Excel with
   accents intact, mobile cards, dark mode.
 
@@ -464,7 +500,8 @@ the "none reached yet" empty copy and "Ver todos" (which the user can switch to
 2. No edge-function changes and no new env vars.
 3. Rollback: the frontend can be reverted independently; tables, functions and
    triggers are additive. Dropping the two `ias_z*` triggers stops maintenance
-   without affecting sends; `rebuild_instagram_automation_contacts()` resyncs after
+   without affecting sends; the `BEFORE DELETE` snapshot keeps deletions safe in
+   the meantime, and `rebuild_instagram_automation_contacts()` resyncs after
    re-adding them.
 
 ## Open questions
