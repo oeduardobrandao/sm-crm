@@ -557,9 +557,12 @@ describe('AgendaTab', () => {
       selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
       await screen.findByTestId('evento-rapido');
       selecionar(new Date(2026, 9, 7, 14), new Date(2026, 9, 7, 15));
-      await waitFor(() =>
-        expect(screen.getByTestId('evento-rapido')).toHaveTextContent('inicio:14h'),
-      );
+      // Also wait for the second card's mount effect: the stub records onClose
+      // after commit, so the text can match before the close exists.
+      await waitFor(() => {
+        expect(screen.getByTestId('evento-rapido')).toHaveTextContent('inicio:14h');
+        expect(rapido.fechamentos).toHaveLength(2);
+      });
       // What the first card's save calls when it resolves after the second select.
       act(() => rapido.fechamentos[0]());
       expect(screen.getByTestId('evento-rapido')).toHaveTextContent('inicio:14h');

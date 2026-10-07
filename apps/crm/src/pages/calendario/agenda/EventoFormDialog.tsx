@@ -108,6 +108,7 @@ import {
 } from './eventoFormSchema';
 import { EscopoEventoDialog } from './EscopoEventoDialog';
 import { PessoasCombobox, type PessoaEquipe } from './PessoasCombobox';
+import { LocalAutocomplete } from './LocalAutocomplete';
 import { RecorrenciaPersonalizadaDialog } from './RecorrenciaPersonalizadaDialog';
 import { QuandoCampos } from './QuandoCampos';
 import { RepetirSelect } from './RepetirSelect';
@@ -563,7 +564,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                           <FormItem>
                             <FormLabel>Local</FormLabel>
                             <FormControl>
-                              <Input maxLength={300} {...field} />
+                              <LocalAutocomplete maxLength={300} {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>

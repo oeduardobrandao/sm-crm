@@ -198,6 +198,9 @@ verify_jwt = false
 [functions.agenda-lembretes-email]
 verify_jwt = false
 
+[functions.geo-autocomplete]
+verify_jwt = false
+
 [functions.agenda-feed]
 verify_jwt = false
 
