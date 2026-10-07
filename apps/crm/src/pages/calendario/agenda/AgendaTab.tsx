@@ -32,6 +32,7 @@ import { EventoPopover } from './EventoPopover';
 import { EventoRapidoCard, type RascunhoEvento } from './EventoRapidoCard';
 import { valoresIniciaisCriar, type EventoFormValues } from './eventoFormSchema';
 import { useAgendaMutations } from './useAgendaMutations';
+import { useAlturaAteOFim } from './useAlturaAteOFim';
 import { gravarCamadas, lerCamadas } from '../camadas/camadasStorage';
 import { CamadaPopover } from '../camadas/CamadaPopover';
 import {
@@ -162,6 +163,8 @@ export default function AgendaTab() {
 
   const calRef = useRef<FullCalendar | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Desktop: the Agenda fills the screen; sidebar and calendar scroll on their own.
+  const alturaTela = useAlturaAteOFim(containerRef, !sidebarEmSheet);
   const [periodo, setPeriodo] = useState<Periodo | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState(() => new Date());
   const [filtro, setFiltro] = useState<AgendaFiltro>(lerFiltro);
@@ -591,7 +594,11 @@ export default function AgendaTab() {
   );
 
   return (
-    <div className="agenda" ref={containerRef}>
+    <div
+      className={alturaTela !== null ? 'agenda agenda--tela' : 'agenda'}
+      style={alturaTela !== null ? { height: alturaTela } : undefined}
+      ref={containerRef}
+    >
       {sidebarEmSheet ? (
         <>
           <div className="agenda-barra">
@@ -641,6 +648,7 @@ export default function AgendaTab() {
           onEventClick={abrirPopover}
           onCamadaClick={abrirCamada}
           onMover={mover}
+          preencher={alturaTela !== null}
         />
       </div>
 

@@ -4692,6 +4692,39 @@ select.form-input option {
   overflow-y: auto;
 }
 
+/* Desktop: the Agenda fills the rest of the screen (useAlturaAteOFim sets the
+   height inline) so the page never scrolls. The sidebar scrolls on its own and
+   the calendar card stretches, scrolling its hours/rows inside FullCalendar. */
+.agenda--tela {
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.agenda--tela .agenda-aside {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.agenda--tela .agenda-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.agenda--tela .agenda-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.agenda--tela .agenda-fc {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .agenda-sheet .agenda-sidebar {
   margin-top: 16px;
 }
