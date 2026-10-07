@@ -86,7 +86,7 @@ Deno.test("convite with one occurrence: subject, .ics with SEQUENCE, button to t
   assert(html.includes(`href="${HUB}/agenda?ocorrencia=11"`), "button to the occurrence in the Hub");
   assert(html.includes("Confirmar presença"));
   assert(html.includes("Sexta, 9 de outubro · 14:00 a 15:00"), "time in the event zone");
-  assert(html.includes("Olá, Ana!"));
+  assert(html.includes("Olá, Ana Cliente!"));
   assert(html.includes(UNSUB), "unsubscribe link in the footer");
   assert(!html.includes("—") && !subject.includes("—"));
 });
@@ -462,4 +462,9 @@ Deno.test("handler: 401 without the right cron secret, before any work", async (
   assertEquals(called, false);
   assertEquals((await handler(new Request("https://x.test/", { headers: { "x-cron-secret": "s" } }))).status, 200);
   assertEquals(called, true);
+});
+
+Deno.test("montarEmailAgendaCliente: greets the client by the full name", () => {
+  const e = montarEmailAgendaCliente(item({ cliente_nome: "Clínica Sorriso" }), CTX);
+  assert(e.html.includes("Olá, Clínica Sorriso!"));
 });

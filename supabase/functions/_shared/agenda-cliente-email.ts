@@ -366,8 +366,10 @@ export function montarEmailAgendaCliente(
   const workspaceName = item.workspace_nome?.trim() || "Mesaas";
   const safeWorkspace = escapeHtml(workspaceName);
   const brandColor = corSegura(item.brand_color);
-  const primeiroNome = (item.cliente_nome ?? "").trim().split(/\s+/)[0];
-  const saudacao = primeiroNome ? `Olá, ${escapeHtml(primeiroNome)}!` : "Olá!";
+  // Full name, like the digest: clientes are usually businesses ("Clínica
+  // Sorriso"), so a first-word greeting reads "Olá, Clínica!".
+  const nome = (item.cliente_nome ?? "").trim();
+  const saudacao = nome ? `Olá, ${escapeHtml(nome)}!` : "Olá!";
 
   const subject = `${AGENDA_CLIENTE_ASSUNTOS[variante]}${sanitizeSubjectValue(titulo)}`;
 
