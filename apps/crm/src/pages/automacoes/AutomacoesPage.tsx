@@ -15,10 +15,13 @@ import {
   Plus,
   Reply,
   Trash2,
+  Users,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
@@ -68,6 +71,11 @@ import {
   sortClientesByNome,
   getInitials,
   hasAutomationReadyAccount,
+  getContactCounts,
+  countInstagramContacts,
+  CONTACT_COUNTS_KEY,
+  CONTACTS_COUNT_KEY,
+  CONTACTS_KEY,
   type InstagramCommentAutomation,
   type InstagramAutomationSend,
   type Cliente,
@@ -75,6 +83,8 @@ import {
 import AutomationFormDialog from './AutomationFormDialog';
 import { AutomationTargetCell } from './AutomationTargetCell';
 import AutomacoesChecklist from './AutomacoesChecklist';
+import { ContactsTab } from './contacts/ContactsTab';
+import { contactsHref, useAutomacoesTab } from './contacts/useContactsFilters';
 import TourOverlay from './tour/TourOverlay';
 import { useAutomationTour } from './tour/useAutomationTour';
 import { TOUR_STEPS } from './tour/tourSteps';
@@ -155,12 +165,31 @@ export default function AutomacoesPage() {
     enabled: expandedId != null,
   });
 
+  const [tab, setTab, tabExplicit] = useAutomacoesTab();
+  const countsQuery = useQuery({ queryKey: CONTACT_COUNTS_KEY, queryFn: getContactCounts });
+  const reachedByAutomation = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of countsQuery.data ?? []) m.set(c.automation_id, c.reached_count);
+    return m;
+  }, [countsQuery.data]);
+  const contactsCountQuery = useQuery({
+    queryKey: CONTACTS_COUNT_KEY,
+    queryFn: countInstagramContacts,
+    staleTime: 300_000,
+  });
+  // Fail open: the locked screen is an upsell only (RLS guards the data), so an
+  // errored count must never hide retained contacts behind it.
+  const hasContacts = contactsCountQuery.isError || (contactsCountQuery.data ?? 0) > 0;
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: AUTOMATIONS_KEY });
     // Sidebar/MobileNav's automations-count query (useEffectiveNavFeatures)
     // has its own 5min staleTime -- without this, deleting the last
     // automation leaves the nav item visible for up to 5 minutes.
     qc.invalidateQueries({ queryKey: ['instagram-automations-count'] });
+    qc.invalidateQueries({ queryKey: [CONTACTS_KEY] });
+    qc.invalidateQueries({ queryKey: CONTACT_COUNTS_KEY });
+    qc.invalidateQueries({ queryKey: CONTACTS_COUNT_KEY });
   };
   const onMutationError = (err: unknown, fallback: string) => {
     if (!handleEntitlementMutationError(err, profile?.conta_id ?? null)) toast.error(fallback);
@@ -288,7 +317,10 @@ export default function AutomacoesPage() {
     prevFormOpenRef.current = formOpen;
   }, [formOpen, tour]);
 
-  if (flagOff && automationsQuery.isPending) {
+  if (
+    flagOff &&
+    (automationsQuery.isPending || (automations.length === 0 && contactsCountQuery.isPending))
+  ) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
         <Spinner size="lg" />
@@ -305,7 +337,7 @@ export default function AutomacoesPage() {
       </div>
     );
   }
-  if (flagOff && automations.length === 0) {
+  if (flagOff && automations.length === 0 && !hasContacts) {
     return (
       <UpgradeLockedScreen featureLabel={t('featureLabel')} feature="feature_instagram_automation">
         <p className="text-sm max-w-md" style={{ color: 'var(--text-muted)' }}>
@@ -330,6 +362,10 @@ export default function AutomacoesPage() {
       </UpgradeLockedScreen>
     );
   }
+
+  const contactsOnly = flagOff && automations.length === 0;
+  // Forced only until the user picks a tab, so Automações stays reachable.
+  const activeTab = contactsOnly && !tabExplicit ? 'contatos' : tab;
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -357,150 +393,360 @@ export default function AutomacoesPage() {
         {t('tiebreakHint')}
       </p>
 
-      {!checklistDismissed && automationsQuery.isSuccess && readyQuery.isSuccess && (
-        <AutomacoesChecklist
-          accountReady={readyQuery.data === true}
-          hasAutomation={automations.length > 0}
-          hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
-          canCreate={canCreate}
-          onCreate={openCreateAndAdvanceTour}
-          onDismiss={dismissChecklist}
-          onStartTour={canCreate ? tour.start : undefined}
-        />
-      )}
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setTab(v as 'automacoes' | 'contatos')}
+        style={{ marginBottom: '1rem' }}
+      >
+        <TabsList>
+          <TabsTrigger value="automacoes">{t('contacts.tabAutomations')}</TabsTrigger>
+          <TabsTrigger value="contatos">{t('contacts.tabContacts')}</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      {clientesComAutomacao.length > 0 && (
-        <div style={{ marginBottom: '1rem', maxWidth: 260 }}>
-          <Select
-            value={String(clientFilter)}
-            onValueChange={(v) => setClientFilter(v === 'todos' ? 'todos' : Number(v))}
-          >
-            <SelectTrigger aria-label={t('filterByClient')}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">{t('allClients')}</SelectItem>
-              {clientesComAutomacao.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+      {activeTab === 'contatos' ? (
+        <ContactsTab />
+      ) : (
+        <>
+          {!checklistDismissed && automationsQuery.isSuccess && readyQuery.isSuccess && (
+            <AutomacoesChecklist
+              accountReady={readyQuery.data === true}
+              hasAutomation={automations.length > 0}
+              hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
+              canCreate={canCreate}
+              onCreate={openCreateAndAdvanceTour}
+              onDismiss={dismissChecklist}
+              onStartTour={canCreate ? tour.start : undefined}
+            />
+          )}
 
-      {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
-      ) : isDesktop ? (
-        <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead style={{ width: 32 }} />
-                <TableHead style={{ paddingLeft: '0.5rem' }}>{t('table.automation')}</TableHead>
-                <TableHead>{t('table.client')}</TableHead>
-                <TableHead>{t('table.target')}</TableHead>
-                <TableHead>{t('table.keywords')}</TableHead>
-                <TableHead>{t('table.dmsSent')}</TableHead>
-                <TableHead>{t('table.lastTriggered')}</TableHead>
-                <TableHead>{t('table.active')}</TableHead>
-                <TableHead style={{ width: 60 }} />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          {clientesComAutomacao.length > 0 && (
+            <div style={{ marginBottom: '1rem', maxWidth: 260 }}>
+              <Select
+                value={String(clientFilter)}
+                onValueChange={(v) => setClientFilter(v === 'todos' ? 'todos' : Number(v))}
+              >
+                <SelectTrigger aria-label={t('filterByClient')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">{t('allClients')}</SelectItem>
+                  {clientesComAutomacao.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="flex justify-center p-8">
+              <Spinner size="lg" />
+            </div>
+          ) : isDesktop ? (
+            <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead style={{ width: 32 }} />
+                    <TableHead style={{ paddingLeft: '0.5rem' }}>{t('table.automation')}</TableHead>
+                    <TableHead>{t('table.client')}</TableHead>
+                    <TableHead>{t('table.target')}</TableHead>
+                    <TableHead>{t('table.keywords')}</TableHead>
+                    <TableHead>{t('table.dmsSent')}</TableHead>
+                    <TableHead>{t('table.lastTriggered')}</TableHead>
+                    <TableHead>{t('table.active')}</TableHead>
+                    <TableHead style={{ width: 60 }} />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columnCount}
+                        style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
+                      >
+                        {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filtered.map((a) => {
+                    const cliente = clientesById.get(a.client_id);
+                    const expanded = expandedId === a.id;
+                    return (
+                      <Fragment key={a.id}>
+                        <TableRow
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setExpandedId(expanded ? null : a.id)}
+                          aria-expanded={expanded}
+                        >
+                          <TableCell>
+                            {expanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </TableCell>
+                          <TableCell style={{ fontWeight: 600, paddingLeft: '0.5rem' }}>
+                            {a.name}
+                          </TableCell>
+                          <TableCell>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <div
+                                className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
+                                style={{
+                                  width: 24,
+                                  height: 24,
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {cliente ? getInitials(cliente.nome) : '?'}
+                              </div>
+                              <span>{cliente?.nome ?? t('clientRemoved')}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <AutomationTargetCell
+                              automation={a}
+                              canEdit={can('automacoes', 'editar') === true}
+                              onRetarget={openRetarget}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {a.keywords.map((k) => (
+                                <Badge key={k} variant="outline" size="sm">
+                                  {k}
+                                </Badge>
+                              ))}
+                              {(a.dm_buttons ?? []).length > 0 && (
+                                <Badge variant="neutral" size="sm">
+                                  {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
+                                </Badge>
+                              )}
+                              {a.dm_media && (
+                                <Badge variant="neutral" size="sm">
+                                  {t('table.cardBadge')}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{a.dms_sent_count}</TableCell>
+                          <TableCell style={{ whiteSpace: 'nowrap' }}>
+                            {a.last_triggered_at
+                              ? formatDate(a.last_triggered_at, i18n.language)
+                              : t('neverTriggered')}
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Switch
+                              checked={a.ativo}
+                              aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
+                              onCheckedChange={(ativo) =>
+                                toggleMutation.mutate({ id: a.id, ativo })
+                              }
+                            />
+                          </TableCell>
+                          <TableCell
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ textAlign: 'right' }}
+                          >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  aria-label={t('rowActions', { name: a.name })}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openEdit(a)}>
+                                  <Pencil
+                                    className="h-3.5 w-3.5"
+                                    style={{ marginRight: '0.5rem' }}
+                                  />
+                                  {t('edit')}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setDeleteTarget(a)}
+                                  className="text-destructive"
+                                >
+                                  <Trash2
+                                    className="h-3.5 w-3.5"
+                                    style={{ marginRight: '0.5rem' }}
+                                  />
+                                  {t('delete')}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                        {expanded && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={columnCount}
+                              style={{ background: 'var(--surface-hover)' }}
+                            >
+                              {(reachedByAutomation.get(a.id) ?? 0) > 0 && (
+                                <Link
+                                  to={contactsHref({ clientId: a.client_id, automationId: a.id })}
+                                  className="inline-flex items-center gap-1.5 hover:underline"
+                                  style={{
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    marginTop: '0.5rem',
+                                  }}
+                                >
+                                  <Users className="h-3.5 w-3.5" />
+                                  {t('contacts.viewContacts', {
+                                    count: reachedByAutomation.get(a.id),
+                                  })}
+                                </Link>
+                              )}
+                              <SendsLog
+                                sends={sendsQuery.data}
+                                isLoading={sendsQuery.isLoading}
+                                isError={sendsQuery.isError}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={columnCount}
-                    style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
-                  >
-                    {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
-                  </TableCell>
-                </TableRow>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem 0' }}>
+                  {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
+                </p>
               )}
               {filtered.map((a) => {
                 const cliente = clientesById.get(a.client_id);
                 const expanded = expandedId === a.id;
                 return (
-                  <Fragment key={a.id}>
-                    <TableRow
-                      style={{ cursor: 'pointer' }}
+                  <div key={a.id} className="team-card card animate-up">
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '0.75rem',
+                        cursor: 'pointer',
+                      }}
                       onClick={() => setExpandedId(expanded ? null : a.id)}
                       aria-expanded={expanded}
                     >
-                      <TableCell>
+                      <div style={{ paddingTop: '0.15rem', flexShrink: 0 }}>
                         {expanded ? (
-                          <ChevronDown className="h-4 w-4" />
+                          <ChevronDown className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
                         ) : (
-                          <ChevronRight className="h-4 w-4" />
+                          <ChevronRight
+                            className="h-4 w-4"
+                            style={{ color: 'var(--text-muted)' }}
+                          />
                         )}
-                      </TableCell>
-                      <TableCell style={{ fontWeight: 600, paddingLeft: '0.5rem' }}>
-                        {a.name}
-                      </TableCell>
-                      <TableCell>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{a.name}</span>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            marginTop: 4,
+                            fontSize: '0.75rem',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
                           <div
                             className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
-                            style={{ width: 24, height: 24, fontSize: '0.65rem', flexShrink: 0 }}
+                            style={{ width: 18, height: 18, fontSize: '0.6rem', flexShrink: 0 }}
                           >
                             {cliente ? getInitials(cliente.nome) : '?'}
                           </div>
                           <span>{cliente?.nome ?? t('clientRemoved')}</span>
                         </div>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <AutomationTargetCell
-                          automation={a}
-                          canEdit={can('automacoes', 'editar') === true}
-                          onRetarget={openRetarget}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {a.keywords.map((k) => (
-                            <Badge key={k} variant="outline" size="sm">
-                              {k}
-                            </Badge>
-                          ))}
-                          {(a.dm_buttons ?? []).length > 0 && (
-                            <Badge variant="neutral" size="sm">
-                              {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
-                            </Badge>
-                          )}
-                          {a.dm_media && (
-                            <Badge variant="neutral" size="sm">
-                              {t('table.cardBadge')}
-                            </Badge>
-                          )}
+                        <div
+                          className="flex flex-wrap items-center gap-1"
+                          style={{ marginTop: 6 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <AutomationTargetCell
+                            automation={a}
+                            canEdit={can('automacoes', 'editar') === true}
+                            onRetarget={openRetarget}
+                          />
                         </div>
-                      </TableCell>
-                      <TableCell>{a.dms_sent_count}</TableCell>
-                      <TableCell style={{ whiteSpace: 'nowrap' }}>
-                        {a.last_triggered_at
-                          ? formatDate(a.last_triggered_at, i18n.language)
-                          : t('neverTriggered')}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {(a.keywords.length > 0 ||
+                          (a.dm_buttons ?? []).length > 0 ||
+                          a.dm_media) && (
+                          <div className="flex flex-wrap gap-1" style={{ marginTop: 6 }}>
+                            {a.keywords.map((k) => (
+                              <Badge key={k} variant="outline" size="sm">
+                                {k}
+                              </Badge>
+                            ))}
+                            {(a.dm_buttons ?? []).length > 0 && (
+                              <Badge variant="neutral" size="sm">
+                                {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
+                              </Badge>
+                            )}
+                            {a.dm_media && (
+                              <Badge variant="neutral" size="sm">
+                                {t('table.cardBadge')}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '0.4rem',
+                            marginTop: 6,
+                            fontSize: '0.75rem',
+                            color: 'var(--text-muted)',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <span>{t('table.dmsSent')}:</span>
+                          <span>{a.dms_sent_count}</span>
+                          <span>&bull;</span>
+                          <span>
+                            {a.last_triggered_at
+                              ? formatDate(a.last_triggered_at, i18n.language)
+                              : t('neverTriggered')}
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-end',
+                          gap: '0.5rem',
+                          flexShrink: 0,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Switch
                           checked={a.ativo}
                           aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
                           onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
                         />
-                      </TableCell>
-                      <TableCell
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ textAlign: 'right' }}
-                      >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-8 w-8 shrink-0 mb-0"
                               aria-label={t('rowActions', { name: a.name })}
                             >
                               <MoreVertical className="h-4 w-4" />
@@ -520,188 +766,45 @@ export default function AutomacoesPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                    </div>
                     {expanded && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={columnCount}
-                          style={{ background: 'var(--surface-hover)' }}
-                        >
-                          <SendsLog
-                            sends={sendsQuery.data}
-                            isLoading={sendsQuery.isLoading}
-                            isError={sendsQuery.isError}
-                          />
-                        </TableCell>
-                      </TableRow>
+                      <div
+                        style={{
+                          marginTop: '0.75rem',
+                          paddingTop: '0.75rem',
+                          borderTop: '1px solid var(--border-color)',
+                        }}
+                      >
+                        {(reachedByAutomation.get(a.id) ?? 0) > 0 && (
+                          <Link
+                            to={contactsHref({ clientId: a.client_id, automationId: a.id })}
+                            className="inline-flex items-center gap-1.5 hover:underline"
+                            style={{
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              marginTop: '0.5rem',
+                            }}
+                          >
+                            <Users className="h-3.5 w-3.5" />
+                            {t('contacts.viewContacts', {
+                              count: reachedByAutomation.get(a.id),
+                            })}
+                          </Link>
+                        )}
+                        <SendsLog
+                          sends={sendsQuery.data}
+                          isLoading={sendsQuery.isLoading}
+                          isError={sendsQuery.isError}
+                        />
+                      </div>
                     )}
-                  </Fragment>
+                  </div>
                 );
               })}
-            </TableBody>
-          </Table>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {filtered.length === 0 && (
-            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem 0' }}>
-              {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
-            </p>
+            </div>
           )}
-          {filtered.map((a) => {
-            const cliente = clientesById.get(a.client_id);
-            const expanded = expandedId === a.id;
-            return (
-              <div key={a.id} className="team-card card animate-up">
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.75rem',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setExpandedId(expanded ? null : a.id)}
-                  aria-expanded={expanded}
-                >
-                  <div style={{ paddingTop: '0.15rem', flexShrink: 0 }}>
-                    {expanded ? (
-                      <ChevronDown className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
-                    )}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{a.name}</span>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        marginTop: 4,
-                        fontSize: '0.75rem',
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      <div
-                        className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
-                        style={{ width: 18, height: 18, fontSize: '0.6rem', flexShrink: 0 }}
-                      >
-                        {cliente ? getInitials(cliente.nome) : '?'}
-                      </div>
-                      <span>{cliente?.nome ?? t('clientRemoved')}</span>
-                    </div>
-                    <div
-                      className="flex flex-wrap items-center gap-1"
-                      style={{ marginTop: 6 }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <AutomationTargetCell
-                        automation={a}
-                        canEdit={can('automacoes', 'editar') === true}
-                        onRetarget={openRetarget}
-                      />
-                    </div>
-                    {(a.keywords.length > 0 || (a.dm_buttons ?? []).length > 0 || a.dm_media) && (
-                      <div className="flex flex-wrap gap-1" style={{ marginTop: 6 }}>
-                        {a.keywords.map((k) => (
-                          <Badge key={k} variant="outline" size="sm">
-                            {k}
-                          </Badge>
-                        ))}
-                        {(a.dm_buttons ?? []).length > 0 && (
-                          <Badge variant="neutral" size="sm">
-                            {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
-                          </Badge>
-                        )}
-                        {a.dm_media && (
-                          <Badge variant="neutral" size="sm">
-                            {t('table.cardBadge')}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '0.4rem',
-                        marginTop: 6,
-                        fontSize: '0.75rem',
-                        color: 'var(--text-muted)',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <span>{t('table.dmsSent')}:</span>
-                      <span>{a.dms_sent_count}</span>
-                      <span>&bull;</span>
-                      <span>
-                        {a.last_triggered_at
-                          ? formatDate(a.last_triggered_at, i18n.language)
-                          : t('neverTriggered')}
-                      </span>
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-end',
-                      gap: '0.5rem',
-                      flexShrink: 0,
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Switch
-                      checked={a.ativo}
-                      aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
-                      onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
-                    />
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 mb-0"
-                          aria-label={t('rowActions', { name: a.name })}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(a)}>
-                          <Pencil className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
-                          {t('edit')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setDeleteTarget(a)}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
-                          {t('delete')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-                {expanded && (
-                  <div
-                    style={{
-                      marginTop: '0.75rem',
-                      paddingTop: '0.75rem',
-                      borderTop: '1px solid var(--border-color)',
-                    }}
-                  >
-                    <SendsLog
-                      sends={sendsQuery.data}
-                      isLoading={sendsQuery.isLoading}
-                      isError={sendsQuery.isError}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        </>
       )}
 
       {/* Sem !formOpen aqui, o overlay de página ficaria preso por cima de
