@@ -126,7 +126,7 @@ Tudo fica atrás de `feature_agenda` (nenhuma coluna de plano nova). O que é do
 
 **Popover (`EventoPopover`):**
 - Linha "Cliente: Clínica X · Confirmou" (ou "Recusou", "Aguardando resposta").
-- Pedido pendente em destaque: "A Clínica X pediu para remarcar para qui., 9 de out., 14:00", com a mensagem e os botões "Aceitar" e "Recusar". Recusar abre um campo de mensagem opcional.
+- Pedido pendente em destaque: "Clínica X pediu para remarcar para qui., 9 de out., 14:00", com a mensagem e os botões "Aceitar" e "Recusar". Recusar abre um campo de mensagem opcional.
 - Não há pergunta de escopo: a remarcação vale só para aquela ocorrência.
 
 **Hub, página Agenda (`/:workspace/hub/:token/agenda`):**

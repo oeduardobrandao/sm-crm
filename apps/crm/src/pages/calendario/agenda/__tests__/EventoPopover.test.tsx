@@ -608,7 +608,7 @@ describe('EventoPopover: cliente e remarcação', () => {
     abrir(compartilhado({ remarcacao_pendente: PEDIDO }));
     const bloco = await screen.findByRole('group', { name: 'Pedido de remarcação' });
     expect(
-      within(bloco).getByText('A Clínica Sorriso pediu para remarcar para sex., 9 de out., 14:00'),
+      within(bloco).getByText('Clínica Sorriso pediu para remarcar para sex., 9 de out., 14:00'),
     ).toBeInTheDocument();
     expect(
       within(bloco).getByText('Sexta fica melhor para a equipe da clínica.'),

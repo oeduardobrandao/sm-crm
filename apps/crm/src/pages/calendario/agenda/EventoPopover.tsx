@@ -552,7 +552,7 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
                   style={{ background: 'var(--surface-1)', borderColor: 'var(--warning)' }}
                 >
                   <div className="font-semibold">
-                    {`${o.cliente_nome ? `A ${o.cliente_nome}` : 'O cliente'} pediu para remarcar para ${quandoSugerido(pedidoRemarcacao.inicio_sugerido, o)}`}
+                    {`${o.cliente_nome || 'O cliente'} pediu para remarcar para ${quandoSugerido(pedidoRemarcacao.inicio_sugerido, o)}`}
                   </div>
                   {pedidoRemarcacao.mensagem && (
                     <div
