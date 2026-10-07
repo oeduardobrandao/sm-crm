@@ -84,7 +84,7 @@ describe('FeedAgendaDialog', () => {
     abrir();
     expect(
       await screen.findByText(
-        'Gere um link secreto para ver seus eventos do Mesaas no Google Agenda, Apple ou Outlook.',
+        'Gere um link secreto e assine no seu calendário. Aparecem os eventos que você organiza ou em que foi convidado, exceto os recusados.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Sincronizar com seu calendário' })).toBeVisible();

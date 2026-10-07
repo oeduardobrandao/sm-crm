@@ -170,7 +170,7 @@ export default function AgendaSidebar({
         <Button
           type="button"
           variant="outline"
-          className="w-full justify-start"
+          className="h-auto min-h-10 w-full justify-start whitespace-normal py-2 text-left"
           onClick={onSincronizar}
         >
           <CalendarSync aria-hidden="true" />

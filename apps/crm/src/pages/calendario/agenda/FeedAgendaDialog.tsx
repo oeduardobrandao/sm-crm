@@ -127,8 +127,8 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
           {!isPending && !isError && !url && (
             <div className="flex flex-col items-start gap-4">
               <p className="m-0 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                Gere um link secreto para ver seus eventos do Mesaas no Google Agenda, Apple ou
-                Outlook.
+                Gere um link secreto e assine no seu calendário. Aparecem os eventos que você
+                organiza ou em que foi convidado, exceto os recusados.
               </p>
               <Button type="button" disabled={ocupado} onClick={() => gerar.mutate()}>
                 Gerar link
