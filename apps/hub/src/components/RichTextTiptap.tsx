@@ -120,7 +120,8 @@ function RichTextEditor({
 
   useEffect(() => {
     if (editor && editor.isEditable !== editable) {
-      editor.setEditable(editable);
+      // `false`: setEditable emits `update` by default, which reads as an edit in onUpdate.
+      editor.setEditable(editable, false);
     }
   }, [editor, editable]);
 
