@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Contatos das automações (migrations 20261008000001/2, spec
+-- Contatos das automações (migrations 20261009000001/2, spec
 -- docs/superpowers/specs/2026-10-07-automation-contacts-design.md).
 -- Sends are inserted through claim_automation_send (the only real insert
 -- path) as the table owner, standing in for the service-role worker.
@@ -276,5 +276,136 @@ begin
            where conta_id = f.ws and automation_id = f.auto_a1) = 'A1',
     'rename in another workspace must not touch this workspace''s link rows';
   raise notice 'PASS 99 iac 7 security';
+end $$;
+rollback;
+
+-- 8. list RPC: filters, link-level values, escaping, clamp, keyset, empty.
+begin;
+select et_grant_hosted_parity();
+do $$
+declare f record; v_s uuid; v_n int; r record; v_last record;
+begin
+  select * into f from et_iac_fixture();
+  v_s := et_iac_send('c1', f.auto_a1, f.ws, 'u1', 'ana_1', 'a1 text', '2026-10-01 10:00Z');
+  perform mark_automation_dm_sent(v_s, 'text');
+  perform et_iac_send('c2', f.auto_a2, f.ws, 'u1', 'ana_1', 'a2 text', '2026-10-05 10:00Z');
+  perform et_iac_send('c3', f.auto_a1, f.ws, 'u2', 'bia%x', 'b', '2026-10-03 10:00Z');
+  perform et_iac_send('c4', f.auto_b1, f.ws, 'u3', 'caio', 'c', '2026-10-04 10:00Z');
+  -- now() is constant inside the transaction: stagger created_at so the keyset
+  -- leg on created_at is actually exercised.
+  update instagram_automation_contacts
+     set created_at = created_at - make_interval(mins => (case commenter_id when 'u1' then 2 when 'u2' then 1 else 0 end))
+   where conta_id = f.ws;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', f.owner, 'role', 'authenticated')::text, true);
+
+  select count(*) into v_n from list_instagram_automation_contacts();
+  assert v_n = 1, format('default reached_only: 1 row, got %s', v_n);
+
+  select count(*) into v_n from list_instagram_automation_contacts(p_reached_only => false);
+  assert v_n = 3, format('all: 3, got %s', v_n);
+
+  select * into r from list_instagram_automation_contacts(p_reached_only => false) limit 1;
+  assert r.total_count = 3 and r.commenter_username = 'ana_1', 'order by last_interaction desc + total';
+
+  select * into r from list_instagram_automation_contacts(
+    p_automation_id => f.auto_a1, p_reached_only => false) where id = (
+      select id from instagram_automation_contacts where commenter_id = 'u1');
+  assert r.last_comment_text = 'a1 text' and r.last_interaction_at = '2026-10-01 10:00Z'
+    and r.automation_name = 'A1' and r.interactions_count = 1, 'link-level values when filtered';
+
+  select count(*) into v_n from list_instagram_automation_contacts(p_client_id => f.cli_b, p_reached_only => false);
+  assert v_n = 1, 'client filter';
+
+  select count(*) into v_n from list_instagram_automation_contacts(
+    p_reached_only => false, p_from => '2026-10-03 00:00Z', p_to => '2026-10-04 00:00Z');
+  assert v_n = 1, format('[from,to) range, got %s', v_n);
+
+  select count(*) into v_n from list_instagram_automation_contacts(p_reached_only => false, p_search => '_');
+  assert v_n = 1, format('_ must be literal, got %s', v_n);
+  select count(*) into v_n from list_instagram_automation_contacts(p_reached_only => false, p_search => '%');
+  assert v_n = 1, format('%% must be literal, got %s', v_n);
+
+  select count(*) into v_n from list_instagram_automation_contacts(p_reached_only => false, p_limit => 100000);
+  assert v_n = 3, 'clamp does not drop rows below 500';
+  select count(*) into v_n from list_instagram_automation_contacts(p_reached_only => false, p_limit => 0);
+  assert v_n = 1, 'limit clamps up to 1';
+
+  -- keyset: first page of 2, then the rest after the cursor
+  select * into v_last from (
+    select * from list_instagram_automation_contacts(p_reached_only => false, p_export => true, p_limit => 2)
+  ) x order by created_at desc, id desc limit 1;
+  select count(*) into v_n from list_instagram_automation_contacts(
+    p_reached_only => false, p_export => true, p_limit => 2,
+    p_cursor_at => v_last.created_at, p_cursor_id => v_last.id);
+  assert v_n = 1, format('keyset remainder 1, got %s', v_n);
+
+  select count(*) into v_n from list_instagram_automation_contacts(p_search => 'ninguem');
+  assert v_n = 0, 'empty result returns no rows';
+
+  reset role;
+  delete from instagram_comment_automations where id = f.auto_a2;
+  set local role authenticated;
+  select automation_deleted into r from list_instagram_automation_contacts(
+    p_automation_id => f.auto_a2, p_reached_only => false);
+  assert r.automation_deleted, 'deleted automation flagged';
+  reset role;
+  raise notice 'PASS 99 iac 8 list rpc';
+end $$;
+rollback;
+
+-- 9. counts RPC + grants + custom role without automacoes 'ver'.
+begin;
+select et_grant_hosted_parity();
+do $$
+declare f record; v_s uuid; r record; v_rejected boolean; v_n int;
+  v_none uuid := gen_random_uuid(); v_role uuid;
+begin
+  select * into f from et_iac_fixture();
+  insert into auth.users (id) values (v_none);
+  insert into workspace_roles (conta_id, nome, permissions)
+    values (f.ws, 'IAC sem automacoes', '{"automacoes":"none"}'::jsonb) returning id into v_role;
+  insert into workspace_members (user_id, workspace_id, role, role_id)
+    values (v_none, f.ws, 'agent', v_role);
+  update profiles set conta_id = f.ws, active_workspace_id = f.ws where id = v_none;
+  v_s := et_iac_send('c1', f.auto_a1, f.ws, 'u1', 'ana', 'a', '2026-10-01 10:00Z');
+  perform mark_automation_dm_sent(v_s, 'text');
+  perform et_iac_send('c2', f.auto_a1, f.ws, 'u2', 'bia', 'b', '2026-10-02 10:00Z');
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', f.owner, 'role', 'authenticated')::text, true);
+  select * into r from instagram_automation_contact_counts() where automation_id = f.auto_a1;
+  assert r.reached_count = 1 and r.total_count = 2 and r.client_id = f.cli_a
+    and r.automation_name = 'A1' and not r.automation_deleted, format('counts %s', row_to_json(r));
+  reset role;
+
+  set local role anon;
+  v_rejected := false;
+  begin
+    perform * from list_instagram_automation_contacts();
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  assert v_rejected, 'anon must not execute list';
+  v_rejected := false;
+  begin
+    perform * from instagram_automation_contact_counts();
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  assert v_rejected, 'anon must not execute counts';
+  reset role;
+
+  -- Custom role with automacoes = 'none' sees nothing (table nor RPC).
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_none, 'role', 'authenticated')::text, true);
+  select count(*) into v_n from instagram_automation_contacts;
+  assert v_n = 0, format('no-permission role saw %s contacts', v_n);
+  select count(*) into v_n from list_instagram_automation_contacts(p_reached_only => false);
+  assert v_n = 0, format('no-permission role saw %s rows via RPC', v_n);
+  reset role;
+  raise notice 'PASS 99 iac 9 counts + grants';
 end $$;
 rollback;
