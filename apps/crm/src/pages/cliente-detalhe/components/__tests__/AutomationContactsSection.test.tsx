@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const { mockList, mockCounts, mockCan } = vi.hoisted(() => ({
+const { mockList, mockCounts, mockCan, mockExport } = vi.hoisted(() => ({
+  mockExport: vi.fn(),
   mockList: vi.fn(),
   mockCounts: vi.fn(),
   mockCan: vi.fn(),
@@ -22,6 +24,8 @@ vi.mock('@/store', async () => {
   const actual = await vi.importActual<typeof import('@/store')>('@/store');
   return { ...actual, listInstagramContacts: mockList, getContactCounts: mockCounts };
 });
+
+vi.mock('../../../automacoes/contacts/contactsCsv', () => ({ exportContactsCsv: mockExport }));
 
 import { AutomationContactsSection } from '../AutomationContactsSection';
 
@@ -51,24 +55,24 @@ function renderSection() {
   );
 }
 
+const COUNT_14 = {
+  automation_id: 'a1',
+  automation_name: 'Promo',
+  client_id: 14,
+  automation_deleted: false,
+  reached_count: 1,
+  total_count: 1,
+};
+
 describe('AutomationContactsSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCan.mockReturnValue(true);
     mockList.mockResolvedValue({ rows: [ROW], total: 1 });
+    mockCounts.mockResolvedValue([COUNT_14]);
   });
 
   it('renders the 10 latest reached contacts with Ver todos', async () => {
-    mockCounts.mockResolvedValue([
-      {
-        automation_id: 'a1',
-        automation_name: 'Promo',
-        client_id: 14,
-        automation_deleted: false,
-        reached_count: 1,
-        total_count: 1,
-      },
-    ]);
     renderSection();
     expect(await screen.findByText('contacts.sectionTitle')).toBeInTheDocument();
     await waitFor(() =>
@@ -78,6 +82,10 @@ describe('AutomationContactsSection', () => {
         10,
       ),
     );
+    expect(await screen.findByRole('link', { name: '@ana' })).toHaveAttribute(
+      'href',
+      'https://instagram.com/ana',
+    );
     expect(screen.getByRole('link', { name: 'contacts.viewAll' })).toHaveAttribute(
       'href',
       '/automacoes?aba=contatos&cliente=14',
@@ -85,19 +93,15 @@ describe('AutomationContactsSection', () => {
   });
 
   it('is hidden when the client has no contacts', async () => {
-    mockCounts.mockResolvedValue([
-      {
-        automation_id: 'a9',
-        automation_name: 'X',
-        client_id: 99,
-        automation_deleted: false,
-        reached_count: 1,
-        total_count: 1,
-      },
-    ]);
+    mockCounts.mockResolvedValue([{ ...COUNT_14, automation_id: 'a9', client_id: 99 }]);
     const { container } = renderSection();
     await waitFor(() => expect(mockCounts).toHaveBeenCalled());
+    // let the counts query resolve and the component re-render
+    await act(async () => {
+      await mockCounts.mock.results[0].value;
+    });
     expect(container).toBeEmptyDOMElement();
+    expect(mockList).not.toHaveBeenCalled();
   });
 
   it('is hidden without automacoes:ver (including unknown)', async () => {
@@ -105,5 +109,39 @@ describe('AutomationContactsSection', () => {
     const { container } = renderSection();
     expect(container).toBeEmptyDOMElement();
     expect(mockCounts).not.toHaveBeenCalled();
+  });
+
+  it('shows the none-reached copy when contacts exist but none was reached', async () => {
+    mockList.mockResolvedValue({ rows: [], total: 0 });
+    renderSection();
+    expect(await screen.findByText('contacts.emptyNoneReached')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'contacts.viewAll' })).toBeInTheDocument();
+  });
+
+  it('shows the load error, not the empty copy, when the list fails', async () => {
+    mockList.mockRejectedValue(new Error('boom'));
+    renderSection();
+    expect(await screen.findByText('contacts.loadError')).toBeInTheDocument();
+    expect(screen.queryByText('contacts.emptyNoneReached')).not.toBeInTheDocument();
+  });
+
+  it('exports with the client filter and name, disabling the button meanwhile', async () => {
+    let finish!: (n: number) => void;
+    mockExport.mockReturnValue(new Promise<number>((res) => (finish = res)));
+    renderSection();
+    const btn = await screen.findByRole('button', { name: 'contacts.export' });
+    await waitFor(() => expect(btn).toBeEnabled());
+    await userEvent.click(btn);
+
+    expect(mockExport).toHaveBeenCalledTimes(1);
+    const [filters, byId, nome] = mockExport.mock.calls[0];
+    expect(filters).toEqual(expect.objectContaining({ clientId: 14, reachedOnly: true }));
+    expect(byId.get(14)).toBe('ACME');
+    expect(nome).toBe('ACME');
+
+    const busy = await screen.findByRole('button', { name: 'contacts.exporting' });
+    expect(busy).toBeDisabled();
+    await act(async () => finish(1));
+    expect(await screen.findByRole('button', { name: 'contacts.export' })).toBeEnabled();
   });
 });

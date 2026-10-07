@@ -97,17 +97,21 @@ export function AutomationContactsSection({
             ) : (
               <Download className="h-4 w-4" style={{ marginRight: '0.4rem' }} />
             )}
-            {t('contacts.export')}
+            {exporting ? t('contacts.exporting') : t('contacts.export')}
           </Button>
           <Button variant="ghost" size="sm" asChild>
             <Link to={contactsHref({ clientId: clienteId })}>{t('contacts.viewAll')}</Link>
           </Button>
         </div>
       </div>
-      {listQuery.isLoading ? (
+      {listQuery.isPending ? (
         <div className="flex justify-center p-4">
           <Spinner size="sm" />
         </div>
+      ) : listQuery.isError ? (
+        <p role="alert" style={{ color: 'var(--danger-text)', fontSize: '0.85rem' }}>
+          {t('contacts.loadError')}
+        </p>
       ) : rows.length === 0 ? (
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
           {t('contacts.emptyNoneReached')}
