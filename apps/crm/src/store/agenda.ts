@@ -163,6 +163,35 @@ export async function responderEvento(
   if (error) throw error;
 }
 
+// ---- Personal iCal feed -------------------------------------------------------------
+// One secret URL per user and workspace. The database owns the token; the
+// agenda-feed edge function serves the calendar. Spec:
+// docs/superpowers/specs/2026-10-06-agenda-google-ics-feed-design.md
+
+/** The current feed token, or null when there is no link. */
+export async function obterFeedToken(): Promise<string | null> {
+  const { data, error } = await supabase.rpc('agenda_feed_obter');
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
+/** Creates the link, or replaces it (the old URL stops working). */
+export async function gerarFeedToken(): Promise<string> {
+  const { data, error } = await supabase.rpc('agenda_feed_gerar');
+  if (error) throw error;
+  if (typeof data !== 'string' || !data) throw new Error('agenda_feed_gerar returned no token');
+  return data;
+}
+
+export async function desativarFeedToken(): Promise<void> {
+  const { error } = await supabase.rpc('agenda_feed_desativar');
+  if (error) throw error;
+}
+
+export function urlFeedAgenda(token: string): string {
+  return `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/agenda-feed/${token}.ics`;
+}
+
 const AGENDA_ERRO_GENERICO = 'Não foi possível salvar o evento. Tente novamente.';
 
 /** True for the RPCs' 'agenda: este evento não existe mais' (the occurrence or
@@ -177,9 +206,9 @@ export function ehAgendaNaoExiste(e: unknown): boolean {
 }
 
 /** 'agenda: x' (RAISE from the agenda RPCs) -> 'X'; plan entitlement errors -> their
- *  plan copy; anything else -> generic copy.
+ *  plan copy; anything else -> `fallback` (the save-event copy by default).
  *  Accepts Error instances and PostgrestError-like `{ message }` objects. */
-export function formatAgendaError(err: unknown): string {
+export function formatAgendaError(err: unknown, fallback: string = AGENDA_ERRO_GENERICO): string {
   // A workspace whose plan lacks the Agenda gets 'feature_disabled:feature_agenda'
   // (no 'agenda:' prefix): say so instead of the generic save error.
   const entitlement = mapEntitlementError(err);
@@ -188,10 +217,10 @@ export function formatAgendaError(err: unknown): string {
     err && typeof err === 'object' && typeof (err as { message?: unknown }).message === 'string'
       ? (err as { message: string }).message
       : null;
-  if (!message) return AGENDA_ERRO_GENERICO;
+  if (!message) return fallback;
   const m = /^agenda:\s*(.+)$/is.exec(message.trim());
-  if (!m) return AGENDA_ERRO_GENERICO;
+  if (!m) return fallback;
   const texto = m[1].trim();
-  if (!texto) return AGENDA_ERRO_GENERICO;
+  if (!texto) return fallback;
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ptBR } from 'date-fns/locale';
-import { Plus } from 'lucide-react';
+import { CalendarSync, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -52,6 +52,9 @@ export interface AgendaSidebarProps {
   onDataChange: (d: Date) => void;
   /** Absent for roles without calendario:editar: the button is not rendered. */
   onCriar?: () => void;
+  /** Opens the personal calendar feed dialog. Read-only for the user, so it is
+   *  not gated by calendario:editar; absent, the entry is not rendered. */
+  onSincronizar?: () => void;
 }
 
 export default function AgendaSidebar({
@@ -62,6 +65,7 @@ export default function AgendaSidebar({
   dataSelecionada,
   onDataChange,
   onCriar,
+  onSincronizar,
 }: AgendaSidebarProps) {
   const [mes, setMes] = useState(dataSelecionada);
   useEffect(() => setMes(dataSelecionada), [dataSelecionada]);
@@ -161,6 +165,18 @@ export default function AgendaSidebar({
         ))}
         <div className="agenda-legenda__nota">Borda tracejada: aguardando sua resposta</div>
       </div>
+
+      {onSincronizar && (
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto min-h-10 w-full justify-start whitespace-normal py-2 text-left"
+          onClick={onSincronizar}
+        >
+          <CalendarSync aria-hidden="true" />
+          Sincronizar com seu calendário
+        </Button>
+      )}
     </div>
   );
 }

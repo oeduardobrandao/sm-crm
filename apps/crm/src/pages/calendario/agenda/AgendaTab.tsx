@@ -27,6 +27,7 @@ import AgendaSidebar, {
   type AgendaPessoa,
 } from './AgendaSidebar';
 import { EventoFormDialog } from './EventoFormDialog';
+import { FeedAgendaDialog } from './FeedAgendaDialog';
 import { EventoPopover } from './EventoPopover';
 import { EventoRapidoCard, type RascunhoEvento } from './EventoRapidoCard';
 import { valoresIniciaisCriar, type EventoFormValues } from './eventoFormSchema';
@@ -165,6 +166,7 @@ export default function AgendaTab() {
   const selecaoRef = useRef(0);
   const [anchorRascunho, setAnchorRascunho] = useState<HTMLElement | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
+  const [feedAberto, setFeedAberto] = useState(false);
   const { mover, dialog } = useAgendaMutations();
 
   const { data: ocorrencias = [], isFetching } = useQuery({
@@ -481,6 +483,12 @@ export default function AgendaTab() {
         setSheetAberto(false);
       }}
       onCriar={podeCriar ? () => abrirCriar() : undefined}
+      onSincronizar={() => {
+        // On mobile the sidebar lives in a modal Sheet: close it first so two
+        // modal layers never fight over focus.
+        setSheetAberto(false);
+        setFeedAberto(true);
+      }}
     />
   );
 
@@ -576,6 +584,8 @@ export default function AgendaTab() {
           onMaisOpcoes={abrirMaisOpcoes}
         />
       )}
+
+      <FeedAgendaDialog open={feedAberto} onOpenChange={setFeedAberto} />
 
       {form?.modo === 'criar' && (
         <EventoFormDialog

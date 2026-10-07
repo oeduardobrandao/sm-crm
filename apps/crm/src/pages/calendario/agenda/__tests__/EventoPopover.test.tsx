@@ -13,6 +13,8 @@ const {
   toastMock,
   toastSuccessMock,
   toastErrorMock,
+  baixarIcsMock,
+  linkGoogleMock,
 } = vi.hoisted(() => ({
   responderEventoMock: vi.fn(),
   excluirEventoMock: vi.fn(),
@@ -20,6 +22,8 @@ const {
   toastMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  baixarIcsMock: vi.fn(),
+  linkGoogleMock: vi.fn(),
 }));
 
 vi.mock('@/store/agenda', async (importOriginal) => ({
@@ -27,6 +31,8 @@ vi.mock('@/store/agenda', async (importOriginal) => ({
   responderEvento: responderEventoMock,
   excluirEvento: excluirEventoMock,
 }));
+vi.mock('../baixarIcs', () => ({ baixarIcsDaOcorrencia: baixarIcsMock }));
+vi.mock('../googleAgenda', () => ({ linkGoogleAgenda: linkGoogleMock }));
 vi.mock('@/store/workspace', () => ({ getWorkspaceUsers: getWorkspaceUsersMock }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'me' } }) }));
 vi.mock('sonner', () => ({
@@ -114,6 +120,8 @@ beforeEach(() => {
   toastMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
+  baixarIcsMock.mockReset().mockResolvedValue(undefined);
+  linkGoogleMock.mockReset().mockReturnValue('https://calendar.google.com/calendar/render?x=1');
 });
 
 afterEach(() => {
@@ -512,5 +520,52 @@ describe('EventoPopover', () => {
     anchor.remove();
     abrir(ocorrencia());
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  describe('more actions menu', () => {
+    // Radix opens a DropdownMenuTrigger on pointerdown, which jsdom lacks;
+    // Enter on the trigger is the supported keyboard route.
+    const abrirMenu = async () => {
+      await screen.findByRole('dialog');
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Mais ações' }), { key: 'Enter' });
+    };
+
+    it('offers the Google link and the .ics download', async () => {
+      abrir(ocorrencia());
+      await abrirMenu();
+      expect(
+        await screen.findByRole('menuitem', { name: 'Adicionar ao Google Agenda' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Baixar .ics' })).toBeInTheDocument();
+    });
+
+    it('is not offered for a masked event', async () => {
+      abrir(ocorrencia({ mascarado: true }));
+      await screen.findByRole('dialog');
+      expect(screen.queryByRole('button', { name: 'Mais ações' })).not.toBeInTheDocument();
+    });
+
+    it('opens the Google link in a new tab without an opener', async () => {
+      const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const o = ocorrencia();
+      abrir(o);
+      await abrirMenu();
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Adicionar ao Google Agenda' }));
+      expect(linkGoogleMock).toHaveBeenCalledWith(o);
+      expect(open).toHaveBeenCalledTimes(1);
+      const [url, alvo, features] = open.mock.calls[0];
+      expect(String(url)).toContain('calendar.google.com');
+      expect(alvo).toBe('_blank');
+      expect(features).toBe('noopener,noreferrer');
+      open.mockRestore();
+    });
+
+    it('downloads the occurrence as .ics', async () => {
+      const o = ocorrencia();
+      abrir(o);
+      await abrirMenu();
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Baixar .ics' }));
+      expect(baixarIcsMock).toHaveBeenCalledWith(o);
+    });
   });
 });

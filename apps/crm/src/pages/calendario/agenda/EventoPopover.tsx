@@ -3,7 +3,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { AlignLeft, Bell, Building2, MapPin, Pencil, Trash2, Video, X } from 'lucide-react';
+import {
+  AlignLeft,
+  Bell,
+  Building2,
+  MapPin,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Video,
+  X,
+} from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -14,6 +24,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { useAuth } from '@/context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
@@ -33,7 +49,9 @@ import { sanitizeUrl } from '@/utils/security';
 import { WEEKDAY_NAMES } from '../../tarefas/recorrenciaLogic';
 import { parseDateOnly } from '../../tarefas/tarefasLogic';
 import { corDoEvento, descreverRegra, emFuso, rotuloLembrete } from './agendaLogic';
+import { baixarIcsDaOcorrencia } from './baixarIcs';
 import { EscopoEventoDialog } from './EscopoEventoDialog';
+import { linkGoogleAgenda } from './googleAgenda';
 
 export interface EventoPopoverProps {
   ocorrencia: AgendaOcorrencia;
@@ -373,6 +391,36 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
               >
                 <Trash2 aria-hidden="true" />
               </Button>
+            )}
+            {!mascarado && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="mb-0 h-9 w-9 rounded-lg"
+                    style={{ color: 'var(--text-muted)' }}
+                    aria-label="Mais ações"
+                  >
+                    <MoreVertical aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                {/* z-index above the popover (9012): both portal to <body>, so the
+                    menu's default 9011 would open behind the card it belongs to. */}
+                <DropdownMenuContent align="end" className="z-[9013]">
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      window.open(linkGoogleAgenda(o), '_blank', 'noopener,noreferrer')
+                    }
+                  >
+                    Adicionar ao Google Agenda
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void baixarIcsDaOcorrencia(o)}>
+                    Baixar .ics
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             <Button
               type="button"

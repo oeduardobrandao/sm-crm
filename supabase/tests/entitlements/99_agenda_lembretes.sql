@@ -506,6 +506,7 @@ begin
   assert has_function_privilege('service_role', 'public.claim_notification_emails(timestamptz, timestamptz, int)', 'EXECUTE'),
     'rollback dropped the claim grant';
   assert to_regclass('public.agenda_eventos') is null and to_regclass('public.agenda_lembretes') is null, 'agenda tables survived the rollback';
+  assert to_regclass('public.agenda_feed_tokens') is null, 'agenda_feed_tokens survived the rollback';
   assert not exists (select 1 from pg_proc where proname like 'agenda\_%'), 'agenda functions survived the rollback';
   assert not exists (select 1 from cron.job where jobname in ('agenda-lembretes', 'agenda-horizonte')), 'agenda cron jobs survived the rollback';
   assert not exists (select 1 from information_schema.columns
