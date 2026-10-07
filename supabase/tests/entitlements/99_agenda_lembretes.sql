@@ -477,7 +477,7 @@ begin
   insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
 
   foreach v_t in array array['event_invited','event_updated','event_cancelled','event_rsvp','event_reminder',
-                            'event_client_rsvp','event_reschedule_requested'] loop
+                            'event_client_rsvp','event_reschedule_requested','event_guest_rsvp'] loop
     v_rejected := false;
     begin
       insert into notifications (workspace_id, user_id, type) values (v_ws, v_user, v_t);
@@ -510,6 +510,8 @@ begin
   assert to_regclass('public.agenda_feed_tokens') is null, 'agenda_feed_tokens survived the rollback';
   assert to_regclass('public.agenda_respostas_cliente') is null and to_regclass('public.agenda_remarcacoes') is null
      and to_regclass('public.agenda_emails_cliente') is null, 'agenda Hub tables survived the rollback';
+  assert to_regclass('public.agenda_convidados') is null and to_regclass('public.agenda_respostas_convidado') is null
+     and to_regclass('public.agenda_convidados_bloqueio') is null, 'agenda guest tables survived the rollback';
   assert not exists (select 1 from pg_proc where proname like 'agenda\_%'), 'agenda functions survived the rollback';
   assert not exists (select 1 from cron.job where jobname in ('agenda-lembretes', 'agenda-horizonte', 'agenda-cliente-email')), 'agenda cron jobs survived the rollback';
   assert not exists (select 1 from information_schema.columns
