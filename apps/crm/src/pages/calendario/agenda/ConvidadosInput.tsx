@@ -1,20 +1,36 @@
 import {
+  useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type ChangeEvent,
   type ClipboardEvent,
   type KeyboardEvent,
+  type Ref,
 } from 'react';
 import { X } from 'lucide-react';
 import type { AgendaConvidadoInput } from '@/store/agenda';
 import { emailConvidadoValido, MAX_CONVIDADOS } from './eventoFormSchema';
+
+/** What the form calls before submitting (see `controleRef`). */
+export interface ConvidadosInputControle {
+  /** Commits the text still in the field. `true` when nothing is left (empty, or
+   *  every address became a chip); `false` when an invalid address stays, in which
+   *  case the inline message shows and the field takes focus. */
+  comitarPendente: () => boolean;
+}
 
 interface ConvidadosInputProps {
   value: AgendaConvidadoInput[];
   onChange: (convidados: AgendaConvidadoInput[]) => void;
   max?: number;
   disabled?: boolean;
+  /** Lets the form commit the pending text on submit (a click on Salvar does not
+   *  always blur the field first, and Enter in another field never does). */
+  controleRef?: Ref<ConvidadosInputControle>;
+  /** `true` while an invalid address waits in the field; `false` again on unmount. */
+  onInvalidoChange?: (invalido: boolean) => void;
   /** Set by FormControl so the FormLabel points at the text field. */
   id?: string;
   'aria-describedby'?: string;
@@ -32,6 +48,8 @@ export function ConvidadosInput({
   onChange,
   max = MAX_CONVIDADOS,
   disabled,
+  controleRef,
+  onInvalidoChange,
   id,
   'aria-describedby': describedBy,
 }: ConvidadosInputProps) {
@@ -65,6 +83,25 @@ export function ConvidadosInput({
     setErro(mensagem);
     return resto;
   };
+
+  // No deps: the handle must see the current text and chips.
+  useImperativeHandle(controleRef, () => ({
+    comitarPendente: () => {
+      if (!texto.trim()) return true;
+      const resto = comitar(texto);
+      setTexto(resto);
+      if (resto === '') return true;
+      inputRef.current?.focus();
+      return false;
+    },
+  }));
+
+  const invalido = erro !== null;
+  useEffect(() => {
+    onInvalidoChange?.(invalido);
+  }, [invalido, onInvalidoChange]);
+  // Hidden (Privado on) or closed: never leave the form blocked by a field it no longer shows.
+  useEffect(() => () => onInvalidoChange?.(false), [onInvalidoChange]);
 
   const aoDigitar = (e: ChangeEvent<HTMLInputElement>) => {
     const bruto = e.target.value;

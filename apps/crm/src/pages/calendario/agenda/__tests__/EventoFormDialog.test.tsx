@@ -1036,14 +1036,85 @@ describe('EventoFormDialog: convidados externos', () => {
     expect('convidados' in criarEventoMock.mock.calls[0][0]).toBe(false);
   });
 
-  it('create: an invalid address blocks nothing but is not sent', async () => {
+  it('create: an invalid address left in the field disables Salvar until it is fixed', async () => {
     criar();
     fireEvent.change(titulo(), { target: { value: 'Pauta' } });
     digitar('ana@exemplo');
     expect(screen.getByRole('alert')).toHaveTextContent('Informe um e-mail válido.');
+    expect(botaoSalvar()).toBeDisabled();
+    salvar();
+    fireEvent.submit(titulo().closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(criarEventoMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // Fixing the address re-enables Salvar and the guest goes out.
+    digitar('ana@exemplo.com');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(botaoSalvar()).toBeEnabled();
     salvar();
     await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
-    expect('convidados' in criarEventoMock.mock.calls[0][0]).toBe(false);
+    expect(criarEventoMock.mock.calls[0][0].convidados).toEqual([
+      { email: 'ana@exemplo.com', nome: null },
+    ]);
+  });
+
+  it('create: a valid address still typed in the field (no Enter, no blur) is saved as a guest', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('ana@exemplo.com');
+    fireEvent.change(campo(), { target: { value: 'Bia@Exemplo.com' } });
+    salvar();
+    await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    expect(criarEventoMock.mock.calls[0][0].convidados).toEqual([
+      { email: 'ana@exemplo.com', nome: null },
+      { email: 'bia@exemplo.com', nome: null },
+    ]);
+  });
+
+  it('create: an invalid address still typed in the field blocks Salvar, keeps the dialog open and shows the error', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    fireEvent.change(campo(), { target: { value: 'joao@empresa' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    salvar();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(criarEventoMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Informe um e-mail válido.');
+    expect(campo()).toHaveValue('joao@empresa');
+    expect(campo()).toHaveFocus();
+    expect(botaoSalvar()).toBeDisabled();
+  });
+
+  it('Enter in the title with an invalid address still typed in the field does not submit', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    fireEvent.change(campo(), { target: { value: 'joao@empresa' } });
+    fireEvent.submit(titulo().closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(criarEventoMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Informe um e-mail válido.');
+  });
+
+  it('edit: a valid address still typed in the field is saved with the existing guests', async () => {
+    editar(ocorrencia({ convidados: [GUEST] }));
+    fireEvent.change(campo(), { target: { value: 'bia@exemplo.com' } });
+    salvar();
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalledTimes(1));
+    expect(editarEventoMock.mock.calls[0][2].convidados).toEqual([
+      { email: 'ana@exemplo.com', nome: 'Ana Souza' },
+      { email: 'bia@exemplo.com', nome: null },
+    ]);
+  });
+
+  it('Privado hiding the field never leaves Salvar blocked by an invalid address', () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('joao@empresa');
+    expect(botaoSalvar()).toBeDisabled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(screen.queryByText('Convidados externos')).toBeNull();
+    expect(botaoSalvar()).toBeEnabled();
   });
 
   it('edit: pre-fills the existing guests and leaves them out of the payload when untouched', async () => {

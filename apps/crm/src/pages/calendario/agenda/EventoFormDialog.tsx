@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -110,7 +110,7 @@ import {
   type CampoSerie,
   type EventoFormValues,
 } from './eventoFormSchema';
-import { ConvidadosInput } from './ConvidadosInput';
+import { ConvidadosInput, type ConvidadosInputControle } from './ConvidadosInput';
 import { EscopoEventoDialog } from './EscopoEventoDialog';
 import { PessoasCombobox, type PessoaEquipe } from './PessoasCombobox';
 import { LocalAutocomplete } from './LocalAutocomplete';
@@ -284,6 +284,10 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
   // Private + guests is refused by the database: keep the field visible with a warning
   // and block saving until the chips go (or Privado is turned off).
   const privadoComConvidados = !!v.privado && (v.convidados?.length ?? 0) > 0;
+  // Text left in the guest field is committed on submit; an invalid address there
+  // blocks saving (with the field's inline message) instead of being dropped.
+  const convidadosRef = useRef<ConvidadosInputControle>(null);
+  const [convidadoInvalido, setConvidadoInvalido] = useState(false);
   const mostrarCompartilhar = !!v.cliente_id && v.cliente_id !== 'none' && !v.privado;
   const ajudaCompartilhar = clienteSemEmail
     ? temHub
@@ -381,6 +385,16 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     setEscopo(pendente);
   };
 
+  const enviar = (e: FormEvent<HTMLFormElement>) => {
+    // Before handleSubmit reads the values: field.onChange writes them synchronously,
+    // so a valid pending address goes out as a chip. No ref = field hidden (Privado).
+    if (convidadosRef.current && !convidadosRef.current.comitarPendente()) {
+      e.preventDefault();
+      return;
+    }
+    void form.handleSubmit(onSubmit)(e);
+  };
+
   // ---- Changes with side effects (not effects: a reset must not trigger them) ----
 
   const mudarDiaInteiro = (on: boolean) => {
@@ -425,7 +439,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
         <Form {...form}>
           {/* Mobile: the whole form scrolls and the top bar sticks. md+: only the body scrolls. */}
           <form
-            onSubmit={form.handleSubmit(onSubmit)}
+            onSubmit={enviar}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden"
             noValidate
           >
@@ -470,7 +484,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
               />
               <Button
                 type="submit"
-                disabled={salvando || privadoComConvidados}
+                disabled={salvando || privadoComConvidados || convidadoInvalido}
                 className="mb-0 mt-1 shrink-0"
               >
                 Salvar
@@ -824,6 +838,8 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                               value={field.value}
                               onChange={field.onChange}
                               max={MAX_CONVIDADOS}
+                              controleRef={convidadosRef}
+                              onInvalidoChange={setConvidadoInvalido}
                             />
                           </FormControl>
                           {privadoComConvidados && (
