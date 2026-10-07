@@ -163,6 +163,35 @@ export async function responderEvento(
   if (error) throw error;
 }
 
+// ---- Personal iCal feed -------------------------------------------------------------
+// One secret URL per user and workspace. The database owns the token; the
+// agenda-feed edge function serves the calendar. Spec:
+// docs/superpowers/specs/2026-10-06-agenda-google-ics-feed-design.md
+
+/** The current feed token, or null when there is no link. */
+export async function obterFeedToken(): Promise<string | null> {
+  const { data, error } = await supabase.rpc('agenda_feed_obter');
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
+/** Creates the link, or replaces it (the old URL stops working). */
+export async function gerarFeedToken(): Promise<string> {
+  const { data, error } = await supabase.rpc('agenda_feed_gerar');
+  if (error) throw error;
+  if (typeof data !== 'string' || !data) throw new Error('agenda_feed_gerar returned no token');
+  return data;
+}
+
+export async function desativarFeedToken(): Promise<void> {
+  const { error } = await supabase.rpc('agenda_feed_desativar');
+  if (error) throw error;
+}
+
+export function urlFeedAgenda(token: string): string {
+  return `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/agenda-feed/${token}.ics`;
+}
+
 const AGENDA_ERRO_GENERICO = 'Não foi possível salvar o evento. Tente novamente.';
 
 /** True for the RPCs' 'agenda: este evento não existe mais' (the occurrence or
