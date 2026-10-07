@@ -30,6 +30,11 @@ export interface HubBootstrap {
    * novo pode falar com um hub-bootstrap ainda antigo: ausente = desligado.
    */
   feature_briefing_audio?: boolean;
+  /**
+   * Agenda compartilhada com o cliente (plano com feature_agenda). Optional for the same
+   * reason: a hub-bootstrap deployed before the Agenda omits it, which means off.
+   */
+  feature_agenda?: boolean;
   /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
   hub_theme?: HubThemeInfo;
 }
@@ -414,4 +419,45 @@ export interface MensagensCursor {
   before: string;
   beforeSource: MensagemFeedItem['source'];
   beforeItemId: number;
+}
+
+/** A pending reschedule request the client made for one occurrence. */
+export interface HubAgendaRemarcacao {
+  id: number;
+  inicio_sugerido: string;
+  fim_sugerido: string;
+  mensagem: string | null;
+  criado_em: string;
+}
+
+/** One shared occurrence, as hub-agenda returns it (`Item` in the Agenda Hub plan). */
+export interface HubAgendaItem {
+  ocorrencia_id: number;
+  sequencia: number;
+  inicio: string;
+  fim: string;
+  dia_inteiro: boolean;
+  /** YYYY-MM-DD in `tz`. */
+  data_inicio_local: string;
+  /** YYYY-MM-DD in `tz`; exclusive for all-day occurrences. */
+  data_fim_local: string;
+  tz: string;
+  titulo: string;
+  descricao: string | null;
+  local: string | null;
+  link_reuniao: string | null;
+  /** Effective answer: null = waiting (never answered, or the start moved since). */
+  resposta: 'sim' | 'nao' | null;
+  remarcacao: HubAgendaRemarcacao | null;
+}
+
+/** Keyset cursor for the next page (`apos_inicio` / `apos_id`). */
+export interface HubAgendaCursor {
+  inicio: string;
+  id: number;
+}
+
+export interface HubAgendaResponse {
+  itens: HubAgendaItem[];
+  proximo: HubAgendaCursor | null;
 }

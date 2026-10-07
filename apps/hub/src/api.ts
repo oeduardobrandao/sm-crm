@@ -23,6 +23,9 @@ import type {
   PendingEditSuggestion,
   HubMensagensResponse,
   MensagensCursor,
+  HubAgendaCursor,
+  HubAgendaItem,
+  HubAgendaResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -432,4 +435,74 @@ export function sendHubMensagem(token: string, content: string) {
 
 export function markMensagensSeen(token: string) {
   return post<{ ok: boolean }>('hub-mensagens/seen', { token });
+}
+
+// ── Agenda ──────────────────────────────────────────────────────────────────
+
+export function fetchAgenda(token: string, apos?: HubAgendaCursor) {
+  return get<HubAgendaResponse>('hub-agenda', {
+    token,
+    ...(apos ? { apos_inicio: apos.inicio, apos_id: String(apos.id) } : {}),
+  });
+}
+
+/** Deep link: one occurrence that may not be on the first page. */
+export function fetchAgendaItem(token: string, ocorrenciaId: number) {
+  return get<{ item: HubAgendaItem }>('hub-agenda', {
+    token,
+    ocorrencia: String(ocorrenciaId),
+  });
+}
+
+/** `inicioVisto` is the item's `inicio` as shown: the server answers 409 if it moved since. */
+export function responderAgenda(
+  token: string,
+  ocorrenciaId: number,
+  resposta: 'sim' | 'nao',
+  inicioVisto: string,
+) {
+  return post<{ item: HubAgendaItem }>('hub-agenda', {
+    token,
+    acao: 'responder',
+    ocorrencia_id: ocorrenciaId,
+    resposta,
+    inicio_visto: inicioVisto,
+  });
+}
+
+/** `data` (YYYY-MM-DD) and `hora` (HH:MM, null for all-day) are wall time in the item's tz. */
+export function remarcarAgenda(
+  token: string,
+  ocorrenciaId: number,
+  data: string,
+  hora: string | null,
+  mensagem: string,
+) {
+  return post<{ item: HubAgendaItem }>('hub-agenda', {
+    token,
+    acao: 'remarcar',
+    ocorrencia_id: ocorrenciaId,
+    data,
+    hora,
+    mensagem,
+  });
+}
+
+export function cancelarRemarcacao(token: string, remarcacaoId: number) {
+  return post<{ ok: true }>('hub-agenda', {
+    token,
+    acao: 'cancelar_remarcacao',
+    remarcacao_id: remarcacaoId,
+  });
+}
+
+/**
+ * Direct download link for one occurrence's .ics. A plain GET with no headers, like the
+ * agenda-feed subscription and the client-email-unsub link: hub-agenda runs with
+ * verify_jwt = false and authenticates by the token in the query.
+ */
+export function agendaIcsUrl(token: string, ocorrenciaId: number) {
+  const url = new URL(`${BASE}/functions/v1/hub-agenda/ocorrencia/${ocorrenciaId}.ics`);
+  url.searchParams.set('token', token);
+  return url.toString();
 }

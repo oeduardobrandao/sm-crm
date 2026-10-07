@@ -1,0 +1,85 @@
+{
+  "page": {
+    "title": "Agenda",
+    "description": "Eventos que a equipe compartilhou com você.",
+    "indisponivel": "A agenda não está disponível neste portal."
+  },
+  "loadError": {
+    "title": "Erro ao carregar a agenda",
+    "retry": "Tentar novamente"
+  },
+  "empty": {
+    "title": "Nenhum evento por aqui ainda.",
+    "description": "Quando a equipe compartilhar um evento com você, ele aparece aqui."
+  },
+  "secoes": {
+    "proximos": "Próximos",
+    "anteriores": "Anteriores ({{count}})",
+    "semProximos": "Nenhum evento marcado daqui para frente."
+  },
+  "carregarMais": "Carregar mais",
+  "deepLink": {
+    "indisponivel": "Este evento não está mais disponível."
+  },
+  "quando": {
+    "diaInteiro": "Dia inteiro",
+    "diaInteiroDia": "{{dia}} · Dia inteiro",
+    "diaInteiroPeriodo": "{{inicio}} a {{fim}} · Dia inteiro",
+    "horario": "{{inicio}} às {{fim}}",
+    "horarioPeriodo": "{{dia}}, {{inicio}} até {{diaFim}}, {{fim}}"
+  },
+  "selo": {
+    "sim": "Confirmado",
+    "nao": "Você recusou",
+    "aguardando": "Aguardando sua resposta",
+    "semResposta": "Sem resposta"
+  },
+  "acoes": {
+    "confirmar": "Confirmar",
+    "naoVou": "Não vou",
+    "entrar": "Entrar na reunião"
+  },
+  "card": {
+    "verDescricao": "Ver descrição",
+    "ocultarDescricao": "Ocultar descrição"
+  },
+  "menu": {
+    "abrir": "Mais opções",
+    "remarcar": "Pedir para remarcar",
+    "google": "Adicionar ao Google Agenda",
+    "ics": "Baixar .ics"
+  },
+  "google": {
+    "linkReuniao": "Link da reunião"
+  },
+  "pedido": {
+    "pendente": "Você pediu para remarcar para {{quando}}. Aguardando a equipe.",
+    "cancelar": "Cancelar pedido"
+  },
+  "remarcar": {
+    "tituloDialogo": "Remarcar evento",
+    "titulo": "Pedir para remarcar",
+    "fechar": "Fechar",
+    "data": "Nova data",
+    "hora": "Novo horário",
+    "fuso": "Horário no fuso do evento ({{fuso}}).",
+    "diaInteiro": "Evento de dia inteiro: escolha só a nova data.",
+    "mensagem": "Mensagem para a equipe (opcional)",
+    "mensagemPh": "Ex: Nesse dia estou viajando.",
+    "erroObrigatorio": "Informe a nova data e o horário.",
+    "erroIgual": "Escolha uma data ou horário diferente do atual.",
+    "erroPassado": "Escolha um horário no futuro.",
+    "cancelar": "Voltar",
+    "enviar": "Enviar pedido"
+  },
+  "erros": {
+    "generico": "Não foi possível salvar. Tente novamente."
+  },
+  "home": {
+    "titulo": "Próximos eventos",
+    "subtitulo": "Compartilhados pela equipe",
+    "verAgenda": "Ver agenda",
+    "aguardando_one": "Você tem 1 evento aguardando sua resposta",
+    "aguardando_other": "Você tem {{count}} eventos aguardando sua resposta"
+  }
+}

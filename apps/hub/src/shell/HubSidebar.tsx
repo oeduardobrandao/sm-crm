@@ -28,7 +28,10 @@ export function HubSidebar() {
     aprovacoes: pendingCount,
     mensagens: mensagensUnread,
   };
-  const navItems = getVisibleNavItems(bootstrap.feature_mensagens);
+  const navItems = getVisibleNavItems(
+    bootstrap.feature_mensagens,
+    bootstrap.feature_agenda ?? false,
+  );
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-[240px] z-30 flex-col hub-bg-card border-r hub-border">

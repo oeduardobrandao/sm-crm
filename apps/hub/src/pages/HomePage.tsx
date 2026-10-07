@@ -18,6 +18,7 @@ import { isInProduction, localMonthRange } from '../lib/postView';
 import { PostCalendar } from '../components/PostCalendar';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
 import { ClientAvatar } from '../components/ClientAvatar';
+import { HomeAgenda } from './agenda/HomeAgenda';
 
 const RESOURCE_LINKS = [
   { labelKey: 'home.resources.marca', label: 'Marca', icon: Palette, path: '/marca' },
@@ -206,6 +207,8 @@ export function HomePage() {
           />
         </button>
       )}
+
+      {bootstrap.feature_agenda && <HomeAgenda token={token} base={base} />}
 
       <section className="hub-card p-5">
         <h3 className="font-semibold text-[16px] tracking-tight hub-txt">

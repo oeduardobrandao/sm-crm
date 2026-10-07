@@ -8,6 +8,7 @@ import {
   Lightbulb,
   BarChart3,
   MessageCircle,
+  CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -32,6 +33,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
     badge: 'aprovacoes',
   },
   { label: 'Postagens', labelKey: 'nav.postagens', icon: LayoutList, path: '/postagens' },
+  { label: 'Agenda', labelKey: 'nav.agenda', icon: CalendarDays, path: '/agenda' },
   { label: 'Páginas', labelKey: 'nav.paginas', icon: LayoutTemplate, path: '/paginas' },
   { label: 'Briefing', labelKey: 'nav.briefing', icon: FileText, path: '/briefing' },
   { label: 'Marca', labelKey: 'nav.marca', icon: CircleDot, path: '/marca' },
@@ -47,6 +49,10 @@ const BASE_NAV_ITEMS: NavItem[] = [
 ];
 
 /** Shared between HubSidebar and HubMobileNav so the two nav surfaces can never drift. */
-export function getVisibleNavItems(featureMensagens: boolean): NavItem[] {
-  return BASE_NAV_ITEMS.filter((item) => item.path !== '/mensagens' || featureMensagens);
+export function getVisibleNavItems(featureMensagens: boolean, featureAgenda = false): NavItem[] {
+  return BASE_NAV_ITEMS.filter(
+    (item) =>
+      (item.path !== '/mensagens' || featureMensagens) &&
+      (item.path !== '/agenda' || featureAgenda),
+  );
 }

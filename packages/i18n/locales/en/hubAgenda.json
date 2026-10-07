@@ -1,0 +1,85 @@
+{
+  "page": {
+    "title": "Events",
+    "description": "Events the team has shared with you.",
+    "indisponivel": "Events are not available in this portal."
+  },
+  "loadError": {
+    "title": "Could not load your events",
+    "retry": "Try again"
+  },
+  "empty": {
+    "title": "No events here yet.",
+    "description": "When the team shares an event with you, it shows up here."
+  },
+  "secoes": {
+    "proximos": "Upcoming",
+    "anteriores": "Past ({{count}})",
+    "semProximos": "Nothing scheduled from now on."
+  },
+  "carregarMais": "Load more",
+  "deepLink": {
+    "indisponivel": "This event is no longer available."
+  },
+  "quando": {
+    "diaInteiro": "All day",
+    "diaInteiroDia": "{{dia}} · All day",
+    "diaInteiroPeriodo": "{{inicio}} to {{fim}} · All day",
+    "horario": "{{inicio}} to {{fim}}",
+    "horarioPeriodo": "{{dia}}, {{inicio}} to {{diaFim}}, {{fim}}"
+  },
+  "selo": {
+    "sim": "Confirmed",
+    "nao": "You declined",
+    "aguardando": "Awaiting your reply",
+    "semResposta": "No reply"
+  },
+  "acoes": {
+    "confirmar": "Confirm",
+    "naoVou": "Can't attend",
+    "entrar": "Join meeting"
+  },
+  "card": {
+    "verDescricao": "Show description",
+    "ocultarDescricao": "Hide description"
+  },
+  "menu": {
+    "abrir": "More options",
+    "remarcar": "Ask to reschedule",
+    "google": "Add to Google Calendar",
+    "ics": "Download .ics"
+  },
+  "google": {
+    "linkReuniao": "Meeting link"
+  },
+  "pedido": {
+    "pendente": "You asked to reschedule to {{quando}}. Waiting for the team.",
+    "cancelar": "Cancel request"
+  },
+  "remarcar": {
+    "tituloDialogo": "Reschedule event",
+    "titulo": "Ask to reschedule",
+    "fechar": "Close",
+    "data": "New date",
+    "hora": "New time",
+    "fuso": "Time in the event's time zone ({{fuso}}).",
+    "diaInteiro": "All-day event: just pick the new date.",
+    "mensagem": "Message to the team (optional)",
+    "mensagemPh": "E.g. I'll be traveling that day.",
+    "erroObrigatorio": "Enter the new date and time.",
+    "erroIgual": "Pick a date or time different from the current one.",
+    "erroPassado": "Pick a time in the future.",
+    "cancelar": "Back",
+    "enviar": "Send request"
+  },
+  "erros": {
+    "generico": "Could not save. Please try again."
+  },
+  "home": {
+    "titulo": "Upcoming events",
+    "subtitulo": "Shared by the team",
+    "verAgenda": "See all events",
+    "aguardando_one": "You have 1 event awaiting your reply",
+    "aguardando_other": "You have {{count}} events awaiting your reply"
+  }
+}
