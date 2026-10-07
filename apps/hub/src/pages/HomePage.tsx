@@ -8,11 +8,15 @@ import {
   ChevronRight,
   CheckSquare,
   ArrowRight,
+  X,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
-import { hubPostsQuery, hubPostsRangeQuery } from '../queries';
+import { hubAgendaPeriodoQuery, hubPostsQuery, hubPostsRangeQuery } from '../queries';
+import type { HubAgendaItem } from '../types';
+import { HubDialog } from '../components/ui/HubDialog';
+import { AgendaCard } from './agenda/AgendaCard';
 import { mergeById } from '../lib/mergeById';
 import { isInProduction, localMonthRange } from '../lib/postView';
 import { PostCalendar } from '../components/PostCalendar';
@@ -73,6 +77,20 @@ export function HomePage() {
     enabled: needsRange,
   });
   // Plain computation: `posts` is a fresh filter every render, so a memo would never hit.
+  // Shared events: every month shown, whatever historyCutoff says (the shell has none).
+  const agendaAtiva = bootstrap.feature_agenda === true;
+  const periodoQuery = useQuery({
+    ...hubAgendaPeriodoQuery(token, monthRange?.from ?? '', monthRange?.to ?? ''),
+    enabled: agendaAtiva && monthRange !== null,
+  });
+  const [eventoAberto, setEventoAberto] = useState<HubAgendaItem | null>(null);
+  // The open card follows the month query (an answer patches it), falling back to the
+  // clicked snapshot while that month refetches or after the event left it.
+  const eventoAtual = eventoAberto
+    ? (periodoQuery.data?.find((i) => i.ocorrencia_id === eventoAberto.ocorrencia_id) ??
+      eventoAberto)
+    : null;
+
   const calendarPosts = mergeById(posts, needsRange ? (rangeQuery.data?.posts ?? []) : []).filter(
     (p) => CALENDAR_STATUSES.has(p.status) || isInProduction(p),
   );
@@ -224,6 +242,10 @@ export function HomePage() {
         ) : (
           <PostCalendar
             posts={calendarPosts}
+            eventos={agendaAtiva ? (periodoQuery.data ?? []) : undefined}
+            eventosErro={agendaAtiva && periodoQuery.isError && !periodoQuery.isFetching}
+            onRetryEventos={() => void periodoQuery.refetch()}
+            onEventoClick={setEventoAberto}
             onMonthChange={handleMonthChange}
             loading={needsRange && rangeQuery.isFetching}
             notice={
@@ -243,6 +265,25 @@ export function HomePage() {
           />
         )}
       </section>
+
+      {eventoAtual && (
+        <HubDialog open onRequestClose={() => setEventoAberto(null)} title={eventoAtual.titulo}>
+          {/* Bottom sheet on mobile, centered card on desktop. */}
+          <div className="w-full md:max-w-[520px] self-end md:self-center max-h-full overflow-y-auto px-3 pb-3 md:p-0">
+            <div className="flex justify-end mb-2">
+              <button
+                type="button"
+                onClick={() => setEventoAberto(null)}
+                aria-label={t('calendar.fecharEvento', 'Fechar')}
+                className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--hub-card)] hub-txt shadow-sm"
+              >
+                <X size={17} aria-hidden="true" />
+              </button>
+            </div>
+            <AgendaCard item={eventoAtual} token={token} agora={Date.now()} />
+          </div>
+        </HubDialog>
+      )}
 
       <section className="hub-card p-5">
         <h3 className="font-semibold text-[16px] tracking-tight hub-txt">

@@ -1,0 +1,25 @@
+{
+  "cabecalho": {
+    "de": "Invitation from {{nome}}",
+    "instrucao": "Accept or decline each date below."
+  },
+  "selo": {
+    "sim": "You accepted",
+    "nao": "You declined",
+    "aguardando": "Awaiting your reply",
+    "semResposta": "No reply"
+  },
+  "secoes": {
+    "anteriores": "Already happened"
+  },
+  "vazio": "No dates to answer in this invitation.",
+  "indisponivel": {
+    "titulo": "This invitation is no longer available.",
+    "descricao": "The event may have been cancelled or the invitation removed. Contact whoever invited you."
+  },
+  "erro": {
+    "titulo": "Couldn't load the invitation.",
+    "retry": "Try again"
+  },
+  "rodape": "Sent by Mesaas on behalf of {{workspace}}."
+}
