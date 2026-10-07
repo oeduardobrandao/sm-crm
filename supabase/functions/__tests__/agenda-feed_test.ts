@@ -238,6 +238,26 @@ Deno.test("feed: tolerates the /functions/v1 gateway prefix", async () => {
   assertEquals(res.status, 200);
 });
 
+Deno.test("feed: emits SEQUENCE per occurrence when the row carries it, and nothing when it does not", async () => {
+  const h = comFeed({
+    estado: "ok",
+    workspace_nome: "Agência",
+    eventos: [
+      feedRow({ ocorrencia_id: 11, sequencia: 3 }),
+      feedRow({ ocorrencia_id: 12, sequencia: 0 }),
+      feedRow({ ocorrencia_id: 13 }),
+    ],
+  });
+  const body = await (await h.handler(get(`/${TOKEN}.ics`))).text();
+  const evento = (id: number) => {
+    const ini = body.indexOf(`UID:agenda-oc-${id}@mesaas.com.br`);
+    return body.slice(ini, body.indexOf("END:VEVENT", ini));
+  };
+  assertStringIncludes(evento(11), "\r\nSEQUENCE:3\r\n");
+  assertStringIncludes(evento(12), "\r\nSEQUENCE:0\r\n");
+  assertEquals(evento(13).includes("SEQUENCE"), false);
+});
+
 // ------------------------------------------------------------ download route
 
 const JWT = "header.payload.sig";
@@ -345,6 +365,18 @@ Deno.test("download: ok answers 200 with an attachment, CORS and the occurrence 
   assertStringIncludes(body, "X-WR-CALNAME:Reunião de planejamento: Q4/2026\r\n");
   assertStringIncludes(body, "SUMMARY:Reunião de planejamento: Q4/2026\r\n");
   assertStringIncludes(body, "DESCRIPTION:Pauta\r\n");
+});
+
+Deno.test("download: emits the current SEQUENCE from agenda_listar, and nothing for an older database", async () => {
+  const comSeq = harness({
+    listarOcorrencia: () => Promise.resolve({ rows: [ocRow({ sequencia: 5 })] }),
+  });
+  const body = await (await comSeq.handler(get("/ocorrencia/42.ics", { headers: auth }))).text();
+  assertStringIncludes(body, "\r\nDTSTAMP:20261006T120000Z\r\nSEQUENCE:5\r\n");
+
+  const semSeq = harness();
+  const antigo = await (await semSeq.handler(get("/ocorrencia/42.ics", { headers: auth }))).text();
+  assertEquals(antigo.includes("SEQUENCE"), false);
 });
 
 Deno.test("download: an emoji-only title falls back to an ASCII stem and keeps the UTF-8 name", async () => {
