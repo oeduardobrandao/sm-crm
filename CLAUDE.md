@@ -200,6 +200,11 @@ Monorepo with npm workspaces:
   `runPool`'s abort-on-first-error path is unreachable, and `last_sync_attempt_at` is
   stamped for the whole batch BEFORE any work, so a dead account can never re-claim the
   queue head. Both are plain edge-function secrets: changing them needs no deploy
+- `GEOAPIFY_API_KEY` -- Geoapify key for address suggestions in the Agenda "Local" field
+  (geo-autocomplete, which proxies Geoapify's autocomplete so the key never reaches the
+  browser). Optional, no default: unset, the function answers 503 and the field stays plain
+  text. Free plan = 3000 requests/day and requires the "Powered by Geoapify" credit the
+  suggestion list shows; per-user limit 60/min (`geo-autocomplete:<user>`)
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
 - `REPORT_PRINT_BASE` -- origem pública que serve a página de print do relatório
   de blocos (ex.: https://mesaas.com.br). Usada por report-docs POST /:id/pdf

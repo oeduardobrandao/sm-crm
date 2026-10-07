@@ -7,7 +7,6 @@ import { Clock, MapPin, Users, X } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/context/AuthContext';
@@ -24,6 +23,7 @@ import {
 import { ancoraVirtual } from './EventoPopover';
 import { PessoasCombobox, type PessoaEquipe } from './PessoasCombobox';
 import { QuandoCampos } from './QuandoCampos';
+import { LocalAutocomplete } from './LocalAutocomplete';
 import { useCriarEvento } from './useCriarEvento';
 
 export interface RascunhoEvento {
@@ -263,7 +263,7 @@ export function EventoRapidoCard({
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>
-                      <Input
+                      <LocalAutocomplete
                         {...field}
                         aria-label="Local"
                         placeholder="Adicionar local"
