@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'a'.repeat(64);
 const TOKEN_NOVO = 'b'.repeat(64);
+const ERRO_LINK = 'Não foi possível atualizar o link. Tente novamente.';
 const BASE = 'https://abc.supabase.co';
 const URL_FEED = `${BASE}/functions/v1/agenda-feed/${TOKEN}.ics`;
 
@@ -29,6 +30,7 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: toastSuccessMock, error: toastErrorMock } }));
 
+import { formatAgendaError } from '@/store/agenda';
 import { FeedAgendaDialog } from '../FeedAgendaDialog';
 
 let qc: QueryClient;
@@ -180,14 +182,35 @@ describe('FeedAgendaDialog', () => {
     expect(screen.queryByDisplayValue(URL_FEED)).not.toBeInTheDocument();
   });
 
-  it('shows the formatted error when generating fails', async () => {
+  it('shows the plan message when the Agenda is not in the plan', async () => {
     obterMock.mockResolvedValue(null);
     gerarMock.mockRejectedValue({ message: 'feature_disabled:feature_agenda' });
     abrir();
     fireEvent.click(await screen.findByRole('button', { name: 'Gerar link' }));
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledTimes(1));
-    expect(typeof toastErrorMock.mock.calls[0][0]).toBe('string');
+    const esperado = formatAgendaError({ message: 'feature_disabled:feature_agenda' });
+    expect(toastErrorMock).toHaveBeenCalledWith(esperado);
+    expect(esperado).not.toMatch(/atualizar o link|salvar o evento/);
     expect(screen.getByRole('button', { name: 'Gerar link' })).toBeInTheDocument();
+  });
+
+  it('uses the link copy, not the save-event copy, for a generic failure', async () => {
+    obterMock.mockResolvedValue(null);
+    gerarMock.mockRejectedValue(new Error('boom'));
+    abrir();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar link' }));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith(ERRO_LINK));
+  });
+
+  it('uses the link copy when deactivating fails generically', async () => {
+    desativarMock.mockRejectedValue(new Error('boom'));
+    abrir();
+    await screen.findByDisplayValue(URL_FEED);
+    fireEvent.click(screen.getByRole('button', { name: 'Desativar link' }));
+    const confirmacao = await screen.findByRole('alertdialog');
+    fireEvent.click(within(confirmacao).getByRole('button', { name: 'Desativar link' }));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith(ERRO_LINK));
+    expect(screen.getByDisplayValue(URL_FEED)).toBeInTheDocument();
   });
 
   it('keys the token query by workspace so another workspace never sees this link', async () => {

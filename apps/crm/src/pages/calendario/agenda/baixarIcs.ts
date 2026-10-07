@@ -8,7 +8,7 @@ const ERRO = 'Não foi possível baixar o arquivo.';
 export function slugDoTitulo(titulo: string): string {
   const slug = titulo
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
@@ -34,13 +34,16 @@ export async function baixarIcsDaOcorrencia(o: AgendaOcorrencia): Promise<void> 
     if (!res.ok) throw new Error(`agenda-feed ${res.status}`);
 
     const href = URL.createObjectURL(await res.blob());
-    const a = document.createElement('a');
-    a.href = href;
-    a.download = `${slugDoTitulo(o.titulo)}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(href);
+    try {
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `${slugDoTitulo(o.titulo)}.ics`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      URL.revokeObjectURL(href);
+    }
   } catch {
     toast.error(ERRO);
   }

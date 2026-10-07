@@ -33,6 +33,8 @@ export interface FeedAgendaDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const ERRO_LINK = 'Não foi possível atualizar o link. Tente novamente.';
+
 type Confirmacao = 'gerar' | 'desativar';
 
 /** "Sincronizar com seu calendário": the personal secret iCal URL (spec:
@@ -62,7 +64,7 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
       setConfirmando(null);
     },
     onError: (err) => {
-      toast.error(formatAgendaError(err));
+      toast.error(formatAgendaError(err, ERRO_LINK));
       setConfirmando(null);
     },
   });
@@ -75,7 +77,7 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
       toast.success('Link desativado');
     },
     onError: (err) => {
-      toast.error(formatAgendaError(err));
+      toast.error(formatAgendaError(err, ERRO_LINK));
       setConfirmando(null);
     },
   });

@@ -206,9 +206,9 @@ export function ehAgendaNaoExiste(e: unknown): boolean {
 }
 
 /** 'agenda: x' (RAISE from the agenda RPCs) -> 'X'; plan entitlement errors -> their
- *  plan copy; anything else -> generic copy.
+ *  plan copy; anything else -> `fallback` (the save-event copy by default).
  *  Accepts Error instances and PostgrestError-like `{ message }` objects. */
-export function formatAgendaError(err: unknown): string {
+export function formatAgendaError(err: unknown, fallback: string = AGENDA_ERRO_GENERICO): string {
   // A workspace whose plan lacks the Agenda gets 'feature_disabled:feature_agenda'
   // (no 'agenda:' prefix): say so instead of the generic save error.
   const entitlement = mapEntitlementError(err);
@@ -217,10 +217,10 @@ export function formatAgendaError(err: unknown): string {
     err && typeof err === 'object' && typeof (err as { message?: unknown }).message === 'string'
       ? (err as { message: string }).message
       : null;
-  if (!message) return AGENDA_ERRO_GENERICO;
+  if (!message) return fallback;
   const m = /^agenda:\s*(.+)$/is.exec(message.trim());
-  if (!m) return AGENDA_ERRO_GENERICO;
+  if (!m) return fallback;
   const texto = m[1].trim();
-  if (!texto) return AGENDA_ERRO_GENERICO;
+  if (!texto) return fallback;
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
