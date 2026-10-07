@@ -412,8 +412,10 @@ Deno.test("run: empty snapshot is not sent and is marked with SnapshotVazioError
 Deno.test("run: deadline leaves remaining items unsent and unmarked", async () => {
   const { db, marks } = makeDb([item({ id: 1 }), item({ id: 2 }), item({ id: 3 })]);
   let t = 0;
-  const { deps, sent } = baseDeps(db, {
+  let sends = 0;
+  const { deps } = baseDeps(db, {
     sendEmail: () => {
+      sends++;
       t += 40_000;
       return Promise.resolve();
     },
@@ -421,7 +423,8 @@ Deno.test("run: deadline leaves remaining items unsent and unmarked", async () =
     deadlineMs: 50_000,
   });
   const r = await runAgendaClienteEmail(deps);
-  assertEquals(sent.length, 0); // sendEmail overridden: count via marks
+  // item 1 at t=0 sends (t=40s), item 2 at t=40s sends (t=80s), item 3 at t=80s is past the deadline
+  assertEquals(sends, 2);
   assertEquals(r.enviados, 2);
   assertEquals(marks().map((m) => m.args.p_id), [1, 2]);
 });
