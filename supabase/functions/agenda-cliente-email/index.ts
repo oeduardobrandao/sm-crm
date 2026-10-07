@@ -4,6 +4,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder } from "../_shared/http.ts";
 import { sendViaResend } from "../_shared/lifecycle-emails.ts";
 import { resolveHubUrl as resolveHubUrlImpl } from "../_shared/hub-url.ts";
+import { appBaseUrl } from "../_shared/app-url.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import {
   type AgendaClienteEmailDb,
@@ -50,6 +51,7 @@ Deno.serve(createAgendaClienteEmailHandler({
         db: svc as unknown as AgendaClienteEmailDb,
         sendEmail: sendViaResend,
         resolveHubUrl: (clienteId, contaId) => resolveHubUrlImpl(svc, clienteId, contaId),
+        appBaseUrl,
         tokenSecret: TOKEN_ENCRYPTION_KEY,
         unsubBaseUrl: SUPABASE_URL,
         now: () => Date.now(),

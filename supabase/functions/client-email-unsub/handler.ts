@@ -23,14 +23,23 @@
  * couldn't already get. This mirrors every commercial ESP's one-click
  * unsubscribe endpoint.
  *
- * Token verification: verifyUnsubToken (_shared/client-event-email.ts)
- * returns `number | null`, and clienteId 0 is a technically valid id --
+ * Two token kinds (Agenda sub-project 4, spec §3.6): `{c: clienteId}` opts a
+ * Hub client out of the client e-mails (the update below), `{g: convidadoId}`
+ * blocks an external Agenda guest's address for that workspace through
+ * `agenda_convite_descadastrar` (row in `agenda_convidados_bloqueio`; the
+ * invite page itself keeps working). Same path, same HMAC key, same GET/POST
+ * contract, so a guest's RFC 8058 One-Click POST works exactly like a client's.
+ *
+ * Token verification: verifyUnsubTokenKind (_shared/client-event-email.ts)
+ * returns `{ tipo, id } | null`, and id 0 is a technically valid id --
  * every check below uses `=== null`, never a truthiness check.
  *
  * The service-role update bypasses trg_cliente_notify_guard (migration
  * 20260904000001_client_event_emails.sql: `IF auth.role() = 'service_role'
  * THEN RETURN NEW`), so no extra RPC or role check is needed for the write.
  */
+
+import type { UnsubAlvo } from "../_shared/client-event-email.ts";
 
 export interface ClientEmailUnsubDb {
   from(table: "clientes"): {
@@ -46,8 +55,15 @@ export interface ClientEmailUnsubDb {
 
 export interface ClientEmailUnsubDeps {
   db: ClientEmailUnsubDb;
-  /** verifyUnsubToken from _shared/client-event-email.ts. */
-  verifyToken: (token: string, secret: string) => Promise<number | null>;
+  /** verifyUnsubTokenKind from _shared/client-event-email.ts. */
+  verifyToken: (token: string, secret: string) => Promise<UnsubAlvo | null>;
+  /**
+   * Blocks the guest's address for its workspace (`createDescadastrarConvidado`
+   * below in production). Resolves the guest row's `conta_id` for the audit
+   * entry, or `null` when the row no longer exists (series deleted). Throws on
+   * a database error.
+   */
+  descadastrarConvidado: (convidadoId: number) => Promise<{ conta_id: string } | null>;
   /** TOKEN_ENCRYPTION_KEY, read via a throwing IIFE in index.ts. */
   tokenSecret: string;
   now: () => Date;
@@ -97,6 +113,15 @@ function confirmPage(): string {
   );
 }
 
+function confirmPageConvidado(): string {
+  return page(
+    "Cancelar avisos",
+    "Deixar de receber estes avisos?",
+    `<p>Você vai parar de receber convites e avisos de eventos desta agência neste endereço.</p>
+<form method="post"><button type="submit">Cancelar avisos</button></form>`,
+  );
+}
+
 function donePage(): string {
   return page("Pronto", "Pronto.", `<p>Você não vai mais receber estes avisos.</p>`);
 }
@@ -135,17 +160,46 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
     const pathParts = url.pathname.split("/").filter(Boolean);
     const token = pathParts[pathParts.length - 1] ?? "";
 
-    // clienteId can be 0 -- a technically valid id. Only `=== null` means
-    // "invalid token"; a truthiness check would wrongly 404 that client.
-    const clienteId = await deps.verifyToken(token, deps.tokenSecret);
-    if (clienteId === null) {
+    // The id can be 0 -- a technically valid id. Only `=== null` means
+    // "invalid token"; a truthiness check would wrongly 404 that row.
+    const alvo = await deps.verifyToken(token, deps.tokenSecret);
+    if (alvo === null) {
       return html(invalidPage(), 404, cors);
     }
 
     if (req.method === "GET") {
       // NEVER mutates -- see file header.
-      return html(confirmPage(), 200, cors);
+      return html(alvo.tipo === "convidado" ? confirmPageConvidado() : confirmPage(), 200, cors);
     }
+
+    if (alvo.tipo === "convidado") {
+      // POST, guest: idempotent (`ON CONFLICT DO NOTHING` in the RPC), same
+      // no-CSRF reasoning as the client path.
+      let row: { conta_id: string } | null;
+      try {
+        row = await deps.descadastrarConvidado(alvo.id);
+      } catch (e) {
+        console.error("[client-email-unsub] guest block failed:", e instanceof Error ? e.message : String(e));
+        return html(errorPage(), 500, cors);
+      }
+      // A guest row that no longer exists (series deleted) blocks nothing and
+      // audits nothing; the page never reveals whether the id exists.
+      if (row) {
+        try {
+          await deps.auditLog({
+            conta_id: row.conta_id,
+            action: "agenda_convidado_descadastro",
+            resource_type: "agenda_convidado",
+            resource_id: String(alvo.id),
+          });
+        } catch (e) {
+          console.error("[client-email-unsub] audit log failed:", e instanceof Error ? e.message : String(e));
+        }
+      }
+      return html(donePage(), 200, cors);
+    }
+
+    const clienteId = alvo.id;
 
     // POST: idempotent mutation, no CSRF token required -- see file header.
     // .select("conta_id") rides the same round trip as the update (no
@@ -193,5 +247,39 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
     }
 
     return html(donePage(), 200, cors);
+  };
+}
+
+// ─── guest block (production implementation of `descadastrarConvidado`) ──────
+
+export interface DescadastrarConvidadoDb {
+  from(table: "agenda_convidados"): {
+    select(columns: "conta_id"): {
+      eq(column: "id", value: number): {
+        maybeSingle(): PromiseLike<{ data: { conta_id: string } | null; error: { message: string } | null }>;
+      };
+    };
+  };
+  rpc(
+    fn: "agenda_convite_descadastrar",
+    args: { p_convidado: number },
+  ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+}
+
+/**
+ * Reads the guest row's `conta_id` (for the audit entry; the RPC returns
+ * void), then calls the service-role `agenda_convite_descadastrar`, which
+ * inserts `(conta_id, email)` into `agenda_convidados_bloqueio`. A removed
+ * guest (`removido_em` set) still has its row, so their link still works; a
+ * row deleted with its series resolves `null` and calls nothing.
+ */
+export function createDescadastrarConvidado(db: DescadastrarConvidadoDb) {
+  return async (convidadoId: number): Promise<{ conta_id: string } | null> => {
+    const { data, error } = await db.from("agenda_convidados").select("conta_id").eq("id", convidadoId).maybeSingle();
+    if (error) throw new Error(`agenda_convidados lookup failed: ${error.message}`);
+    if (!data) return null;
+    const { error: rpcError } = await db.rpc("agenda_convite_descadastrar", { p_convidado: convidadoId });
+    if (rpcError) throw new Error(`agenda_convite_descadastrar failed: ${rpcError.message}`);
+    return { conta_id: data.conta_id };
   };
 }

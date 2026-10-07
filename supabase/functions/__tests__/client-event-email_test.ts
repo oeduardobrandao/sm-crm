@@ -3,7 +3,9 @@ import {
   buildClientEventEmail,
   clientEventSubject,
   signUnsubToken,
+  signUnsubTokenFor,
   verifyUnsubToken,
+  verifyUnsubTokenKind,
 } from "../_shared/client-event-email.ts";
 
 const SECRET = "test-secret";
@@ -344,6 +346,61 @@ Deno.test("malformed tokens return null without throwing", async () => {
   assertEquals(await verifyUnsubToken("a.b", SECRET), null);
   assertEquals(await verifyUnsubToken(".", SECRET), null);
   assertEquals(await verifyUnsubToken("", SECRET), null);
+});
+
+// --- kind-aware tokens (Agenda guests, sub-project 4 spec §3.6) ------------------
+
+function b64urlJson(v: unknown): string {
+  return btoa(JSON.stringify(v)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+Deno.test("signUnsubTokenFor({c}) is byte-identical to signUnsubToken (tokens already in inboxes keep working)", async () => {
+  assertEquals(await signUnsubTokenFor({ c: 42 }, SECRET), await signUnsubToken(42, SECRET));
+});
+
+Deno.test("verifyUnsubTokenKind: {c} is a cliente, {g} is a convidado, id 0 is valid", async () => {
+  assertEquals(await verifyUnsubTokenKind(await signUnsubTokenFor({ c: 42 }, SECRET), SECRET), { tipo: "cliente", id: 42 });
+  assertEquals(await verifyUnsubTokenKind(await signUnsubTokenFor({ g: 7 }, SECRET), SECRET), { tipo: "convidado", id: 7 });
+  assertEquals(await verifyUnsubTokenKind(await signUnsubTokenFor({ g: 0 }, SECRET), SECRET), { tipo: "convidado", id: 0 });
+});
+
+Deno.test("verifyUnsubTokenKind: tampered, wrong secret and malformed are null", async () => {
+  const token = await signUnsubTokenFor({ g: 7 }, SECRET);
+  const [payload, sig] = token.split(".");
+  assertEquals(await verifyUnsubTokenKind(`${payload}.AAAA`, SECRET), null);
+  assertEquals(await verifyUnsubTokenKind(`${b64urlJson({ g: 8 })}.${sig}`, SECRET), null);
+  assertEquals(await verifyUnsubTokenKind(`${b64urlJson({ c: 7 })}.${sig}`, SECRET), null);
+  assertEquals(await verifyUnsubTokenKind(token, "other-secret"), null);
+  for (const t of ["garbage", "a.b", ".", ""]) assertEquals(await verifyUnsubTokenKind(t, SECRET), null);
+});
+
+Deno.test("verifyUnsubTokenKind: a signed payload with both keys, neither, or a non-integer id is null", async () => {
+  // Sign arbitrary payloads with the real HMAC so only the payload check can reject them.
+  const assinar = async (corpo: unknown) => {
+    const payload = b64urlJson(corpo);
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(SECRET),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)));
+    let bin = "";
+    for (const b of sig) bin += String.fromCharCode(b);
+    return `${payload}.${btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+  };
+  // Sanity: the helper produces tokens the verifier accepts.
+  assertEquals(await verifyUnsubTokenKind(await assinar({ g: 3 }), SECRET), { tipo: "convidado", id: 3 });
+  for (const corpo of [{ c: 1, g: 2 }, {}, { g: "7" }, { g: 1.5 }, { c: null }, null, [1]]) {
+    assertEquals(await verifyUnsubTokenKind(await assinar(corpo), SECRET), null, JSON.stringify(corpo));
+  }
+});
+
+Deno.test("verifyUnsubToken (client-only) rejects a guest {g} token", async () => {
+  const guest = await signUnsubTokenFor({ g: 42 }, SECRET);
+  assertEquals(await verifyUnsubToken(guest, SECRET), null);
+  assert((await verifyUnsubToken(await signUnsubToken(42, SECRET), SECRET)) === 42);
 });
 
 // --- Agenda reminders section (sub-project 3, spec §9) -----------------------

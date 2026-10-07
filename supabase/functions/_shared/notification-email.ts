@@ -77,6 +77,19 @@ export function resolveDigestItem(
         : "Cliente respondeu ao evento";
       return { priority: 4, heading: eventHeading(prefix, s(m, "titulo")), context: s(m, "cliente_nome"), link };
     }
+    // External guest answered on the public invite page (sub-project 4, spec
+    // §3.8). Like the client types there is no actor: the guest is named by
+    // `convidado_nome`, falling back to the address they were invited at.
+    case "event_guest_rsvp": {
+      const quem = s(m, "convidado_nome") ?? s(m, "convidado_email") ?? "Convidado";
+      const resposta = s(m, "resposta");
+      const prefix = resposta === "sim"
+        ? `${quem} confirmou presença`
+        : resposta === "nao"
+        ? `${quem} recusou o evento`
+        : `${quem} respondeu ao evento`;
+      return { priority: 4, heading: eventHeading(prefix, s(m, "titulo")), context: "Convidado externo", link };
+    }
     case "event_reschedule_requested":
       return {
         priority: 2,
