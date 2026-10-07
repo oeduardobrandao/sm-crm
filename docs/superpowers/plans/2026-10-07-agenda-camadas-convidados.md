@@ -92,7 +92,7 @@ Functions:
 
 **Files:**
 - Create: `supabase/migrations/20261008000002_agenda_convidados.sql`, `supabase/tests/entitlements/99_agenda_convidados.sql`
-- Modify: `supabase/tests/entitlements/99_agenda_edicao.sql` (type lists), `99_agenda_hub.sql` (claim shape, enfileirar signature if referenced), `docs/superpowers/specs/assets/2026-10-05-agenda-rollback.sql` (step 4c)
+- Modify: `supabase/tests/entitlements/99_agenda_edicao.sql` (type lists), `99_agenda_lembretes.sql` (type list at the runbook check), `docs/superpowers/specs/assets/2026-10-05-agenda-rollback.sql` (step 4c, placed before 4a; see amendment 4)
 
 - [ ] **Step 1: Write `99_agenda_convidados.sql` first** (pattern of `99_agenda_hub.sql`: fixtures from `current_date`, `pg_temp` helpers, `et_grant_hosted_parity()`, Hub/convite RPCs under `set local role service_role`). Blocks, each `RAISE EXCEPTION` on failure:
   1. Validation: invalid e-mail; 21 guests; private event with guests; making a series private with active guests; member e-mail (case-insensitive) with the exact message; duplicate e-mails collapse to one row.
@@ -205,3 +205,59 @@ export type CamadaItem =
 - [ ] Browser verification on the local stack: layers on/off, popovers and navigation, payment confirm, flag off page identical; Hub home calendar desktop + 375 px with events, open card, confirm; invite page desktop + 375 px, answer, 404; e-mail HTML for a guest (captured `montarEmailAgendaCliente`).
 - [ ] Final whole-branch review (Fable), open PR, check Codex review.
 - [ ] Rollout (authorized only after the user's OK): `db push --linked` (both migrations) → verify objects/grants → deploy `agenda-convite`, `hub-agenda`, `agenda-cliente-email`, `client-email-unsub`, `notification-email-cron` (`--no-verify-jwt --use-api --project-ref skjzpekeqefvlojenfsw`) → smoke (`agenda-convite` malformed token 404, OPTIONS has CORS; `hub-agenda` period bad token 404) → merge → pilot.
+
+---
+
+## Fable plan review: amendments (binding; they override the task text above)
+
+Line refs: `M3` = `supabase/migrations/20261007000001_agenda_hub.sql`.
+
+### Critical
+
+1. **Grant assertion in B names a dropped signature.** The pattern block (`M3:2185-2204`) and the REVOKE/GRANT pair (`M3:784-785`) list `agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb)`; after B's DROP, `has_function_privilege` on that signature raises and the migration fails. B lists the 7-arg signature everywhere. `agenda_remarcacao_resolver` keeps its two direct 6-arg calls (`M3:1904-1906` `remarcacao_recusada`, `M3:1934-1935` no-change `alteracao`): they bind to the new function via `DEFAULT NULL`, and neither needs a bump (no calendar change). The resolver is not replaced (grants already `authenticated, service_role`, `M3:2163-2164`).
+
+2. **`signUnsubToken`/`verifyUnsubToken` signature change breaks files no lane owns.** Callers: `client-event-email-cron/handler.ts:565`, `__tests__/client-event-email-cron_test.ts:340`, `__tests__/client-event-email_test.ts:318-346` (five tests asserting `42`), `ClientEmailUnsubDeps.verifyToken: (token, secret) => Promise<number | null>` (`client-email-unsub/handler.ts:49`) and `makeVerifyToken` (`client-email-unsub_test.ts:73`). Keep both exports unchanged; add `signUnsubTokenFor({ c: id } | { g: id }, secret)` and `verifyUnsubTokenKind(): Promise<{ tipo: 'cliente' | 'convidado'; id: number } | null>` (the old pair become wrappers). Only `agenda-cliente-email` and `client-email-unsub` switch.
+
+3. **`et_grant_hosted_parity` grants ALL on every non-excluded table** (`tests/entitlements/_helpers.sql:32-43`). Suite block 9 ("anon/authenticated cannot select the three new tables") fails unless `99_agenda_convidados.sql` excludes `agenda_convidados`, `agenda_respostas_convidado`, `agenda_convidados_bloqueio` (pattern `99_agenda_hub.sql:20-21`). The member-e-mail block needs `insert into auth.users (id, email)`: the fixture inserts `id` only (`99_agenda_hub.sql:158`).
+
+4. **The rollback runbook runs in CI.** `99_agenda_lembretes.sql:466` `\i`s `assets/2026-10-05-agenda-rollback.sql` inside its transaction. So: (a) step 4c uses `DROP ... IF EXISTS` for A's objects (`agenda_hub_periodo`, `agenda_hub_visivel`) and `DELETE`s guarded by `to_regclass`, because Lane DB's worktree has no migration A and Lane Hub API's has no B; (b) 4c runs BEFORE 4a (newest sub-project first): 4b.2 pastes the pre-M3 bodies and 4b.3 drops the 6-arg `enfileirar` and `agenda_hub_listar` (`:1053-1070`), so a 4c placed after 4b would re-create M3 objects 4b just removed, and 4b's `DROP IF EXISTS` of the 6-arg would leave the 7-arg alive. 4c drops the 7-arg, re-creates the M3 6-arg `enfileirar` and M3 `agenda_hub_listar`, then drops `agenda_hub_visivel`/`agenda_hub_periodo`; (c) counts `:62-66` 7/7/6 → 8/8/7, `:88` 5 → 6, every regex (`:75,:79,:80,:87,:91,:92`) and the DELETE lists (`:45-52`) gain `guest_rsvp`; (d) `99_agenda_lembretes.sql:479-480` list gains `event_guest_rsvp`. Both files belong to Lane DB's Modify list.
+
+5. **Two lanes start a local stack at once.** Lane DB and Lane Hub API both run `supabase start`; defaults collide (memory "Local Supabase runs on colima"). Lane DB: api/db/studio 54421/54422/54423; Lane Hub API: 54521/54522/54523. Override in the lane's own `supabase/config.toml`, never committed; `SUPABASE_DB_URL` must match.
+
+### Important
+
+6. **The item helper is cliente-bound.** `agenda_hub_item(p_conta, p_cliente, p_ocorrencia)` (`M3:1618-1651`) reads `resposta` from `agenda_respostas_cliente` with `rc.cliente_id = e.cliente_id`, filters `remarcacao` by `p_cliente` and carries the visibility WHERE. `agenda_hub_periodo` reuses it as `agenda_hub_listar` does (`M3:1689-1690`). The convite RPCs must NOT call it: Lane DB writes `agenda_convite_item(p_convidado bigint, p_ocorrencia bigint) RETURNS jsonb` copying the field expressions at `M3:1620-1640` (no `remarcacao`), `resposta` from `agenda_respostas_convidado` valid only when `inicio_respondido = o.inicio`. B never references `agenda_hub_visivel` (A's object).
+
+7. **Bump mechanics, exact.** `enfileirar` bumps at `M3:660-672` (`UPDATE ... sequencia + 1` and the rewrite of `sequencia` into entries): delete both, so every tipo takes the `v_novas := p_ocorrencias` path. Hook order per write: mutate → build every recipient's list first (client diff, guest diff, any `convite` full snapshot, `cancelamento` set) → `agenda_ocorrencias_bump_sequencia(p_ids)` ONCE on the UNION of their ids, `RETURNING id, sequencia` → patch each list with `coalesce(returned, old + 1)` (a `cancelada` entry has no row; today's rule, `M3:667`) → enqueue. Never recompute a diff after the bump, and never bump per recipient: a newly-shared `convite` (`M3:1275-1276`) and a guest `alteracao` in one edit overlap. `criar` bumps once (suite expects `sequencia = 1`); nothing bumps in the resolver's direct calls.
+
+8. **Reply-To is positional.** `sendViaResend(to, subject, html, key, from, replyTo?, headers?, attachments?)` (`_shared/lifecycle-emails.ts:304-316`); `agenda-cliente-email_test.ts:355` already asserts `replyTo === undefined` positionally. Never put it in `headers`.
+
+9. **Template and item types.** `AgendaClienteEmailItem.cliente_id: number` (`_shared/agenda-cliente-email.ts:60`) becomes `number | null`; the button is hardcoded `${hubBase}/agenda?ocorrencia=` (`:458-461`), so `AgendaClienteEmailCtx` gains `botaoUrl: string | null` (handler builds Hub or convite URL; `null` = no button). Inject `appBaseUrl: () => string` into `AgendaClienteEmailDeps` (index.ts wires `_shared/app-url.ts:12`) so the throw path is testable. Claim: `organizador_id` via LEFT JOIN `agenda_eventos` (gone after `excluir todas`), `organizador_email` = `lower(auth.users.email)` only while in `workspace_members`; template tolerates `organizador_nome` NULL.
+
+10. **`resolveHubTheme(config: HubThemeConfig, dark)`** (`packages/hub-theme/theme.ts:9-17, :261`), not `(brand_color, isDark)`. `ConvitePage` builds `{ ...DEFAULT_HUB_THEME, accent: workspace.brand_color }` (`HubShell.tsx:148`), takes `dark` from `useTheme()` (`hooks/useTheme.ts:24`), injects `<style>{`:root { ${vars} }`}</style>` (`HubShell.tsx:153-161`) inside a `.hub-root`. `AgendaCard`, `RemarcarDialog` and `HubDialog` do not call `useHub()` (verified); `AgendaCardView` must stay context-free.
+
+11. **Hub test facts.** `homeCalendarRange.test.tsx:8-12` mocks `../../api` with only `fetchPosts/fetchPostsInRange/fetchAgenda`: add `fetchAgendaPeriodo` or HomePage queries get `undefined`. It mocks `PostCalendar` entirely (`:15`), so event rendering tests go in `components/__tests__/PostCalendar.test.tsx`. `request()` throws `Error(body.error)` without status (`api.ts:62-73`): `ConvitePage` distinguishes the 404 from the two 409s by the exact message strings (contract above); say so in the tests.
+
+12. **`AgendaOcorrencia.convidados` non-optional breaks tsc on fixtures** in `agenda/__tests__/EventoFormDialog.test.tsx`, `eventoFormSchema.test.ts`, `EventoPopover.test.tsx` (the `sequencia:` fixtures); `eventoFormSchema.test.ts` is missing from Lane CRM Guests' list. Controller re-runs CRM tsc after merging Lane CRM Layers (its new fixtures).
+
+13. **Rendering branch.** `ConteudoDoEvento` (`AgendaView.tsx:83-85`) reads `extendedProps.ocorrencia`; camada events need their own branch (icon + title) or they render empty. `eventOrder` is `"rascunho,start,-duration,allDay,title"` (`:244`): add numeric `extendedProps.ordem` (agenda 0, posts 1, prazos 2, financeiro 3, datas 4, comemorativas 5) and prepend it.
+
+14. **Count surfaces, exact:** `__tests__/notification-catalog.test.ts:14` 15 → 16, `:40-50` expected map gains `event_guest_rsvp`, `:60` recipients ternary, `:66` "seis" → "sete"; `__tests__/notification-prefs-store.test.ts:12` 15 → 16; `99_agenda_edicao.sql:285-286, :292-293, :298`. `notification-config.ts:322-331` (`event_client_rsvp`) is the template; the body helper is `formatEventWhen(m)`.
+
+15. **Rate-limit keys need `convidado_id` before any read or write.** Add to B `agenda_convite_resolver(p_token text) RETURNS jsonb` → `{ "convidado_id", "conta_id" }` or NULL (service_role, index lookup only). Handler: format check → resolver → NULL spends `convite-badtoken:<ip>` → else spends the read/write key → then `ler`/`ocorrencia`/`responder`. Lane Convite API fakes it like the other RPCs.
+
+16. **`agenda_hub_periodo` and the inactive cliente (spec §2.1 override).** `agenda_hub_listar` has no `cliente_inativo`: it RAISEs `agenda_hub:nao_encontrado` (`M3:1668-1670`). Mirror that (`estado` ∈ `ok|desligado`, raise for non-`ativo`) so the handler's existing error map applies unchanged; the suite asserts the exception. `isIso` (`hub-agenda/handler.ts:74,93`) accepts full datetimes only; `localMonthRange` (`hub/src/lib/postView.ts:286-290`) returns `toISOString()`, compatible. The 46-day suite case uses `now()`/`now() + 46 days` timestamptz.
+
+17. **Cap counting rule, so lanes agree.** Workspace: `count(DISTINCT email) FROM agenda_convidados WHERE conta_id = X AND criado_em > now() - interval '24 hours'` plus the new e-mails not already in that set must be ≤ 50; platform: the same over all rows (distinct `(conta_id, email)`) ≤ 1000. Split copies keep the source row's `criado_em`/`adicionado_por`; re-adds are the same e-mail. Both therefore never count.
+
+### Minor
+
+18. `DeadlineEvent` is a local, unexported interface (`CalendarioPage.tsx:54-58`): `prazos.ts` owns and exports it; `formatDeadlineStatus` is `calendario/deadlineStatus.ts:9`. `PUBLISH_STATE_LABELS`/`PUBLISH_STATE_CLASS` are `entregas/postLabels.ts:124,129`. Existing keys: `['scheduled-posts', startISO, endISO]` (`dashboard/useTodayAgenda.ts:115`), `['clientes']`, `['membros']`, `['transacoes']`, `['workflows']`, `['allClienteDatas']` (`CalendarioPage.tsx:765-783`); the confirm flow is `:162-187` plus the `AlertDialog` JSX.
+19. `CalendarioPage.test.tsx:59-60` mocks `useWorkspaceLimits: () => ({ features })`: add `isLoading` for the skeleton test (`useWorkspaceLimits.ts:97` exposes it). Task 4 Step 5 also tests spec §1.9's "`?evento=`/`?data=` keep working flag-on" (today `:731-733`).
+20. Lane Hub UI also edits `apps/crm/src/content/__tests__/vercel-routing.test.ts`: add rewrite + noindex tests for `/convite/:token` mirroring the print pair (`:53-62`). Do NOT add `convite` to `APP_ROUTE_PREFIXES` (`content/site-meta.ts:18`): it is a Hub route and the guard test would demand it in the app-shell source.
+21. `99_agenda_hub.sql` has no `enfileirar` call and asserts only surviving claim keys (`:712-713`): drop it from Lane DB's Modify list.
+22. Guest selo in the popover: reuse `CLIENTE_RESPOSTA_LABEL` (`EventoPopover.tsx:181-183`).
+23. `agenda_validar_payload` only checks required keys (`M3:260-261`); unknown keys pass, so B does not replace it and 4c does not restore it.
+24. `agenda-convite/index.ts`: `getClientIP` and `gerarCalendario` are imported by the handler (`hub-agenda/handler.ts:15-16`), not injected; inject only `createDb`, `rateLimit`, `auditLog`, `buildCorsHeaders`, `now` (`hub-agenda/index.ts`).
+25. Task 4 Step 1 date math is verified correct (Easter 2026-2030, Carnaval 02-17, Corpus Christi 06-04, 2º dom. 05-10, Últ. sex. 11-27, Seg. pós-BF 11-30, Feb 2026 = 28 days, `2026-10-07T23:30-03:00` = day 7 local). Nobody "fixes" them.
+26. README says 88 functions (`README.md:27`); the directory count is 88, so 89 is right.
