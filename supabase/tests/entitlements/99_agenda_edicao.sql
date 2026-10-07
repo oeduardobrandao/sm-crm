@@ -279,7 +279,7 @@ declare
   v_user uuid := gen_random_uuid();
   v_t text;
   v_inv uuid; v_rem uuid; v_rsvp uuid; v_upd uuid; v_canc uuid;
-  v_crsvp uuid; v_resched uuid;
+  v_crsvp uuid; v_resched uuid; v_grsvp uuid;
   v_claimed uuid[];
   v_rejected boolean;
 begin
@@ -289,20 +289,21 @@ begin
 
   execute 'set local role service_role';
   foreach v_t in array array['event_invited','event_updated','event_cancelled','event_rsvp','event_reminder',
-                            'event_client_rsvp','event_reschedule_requested'] loop
+                            'event_client_rsvp','event_reschedule_requested','event_guest_rsvp'] loop
     insert into notifications (workspace_id, user_id, type, metadata, link)
       values (v_ws, v_user, v_t, '{}', '/calendario');
   end loop;
   execute 'reset role';
 
   foreach v_t in array array['event_invited','event_updated','event_cancelled','event_rsvp','event_reminder',
-                            'event_client_rsvp','event_reschedule_requested','__all__'] loop
+                            'event_client_rsvp','event_reschedule_requested','event_guest_rsvp','__all__'] loop
     insert into notification_inapp_prefs (user_id, type, enabled) values (v_user, v_t, true)
       on conflict (user_id, type) do nothing;
   end loop;
-  -- event_client_rsvp / event_reschedule_requested (20261007000001_agenda_hub.sql) go to the team digest
+  -- event_client_rsvp / event_reschedule_requested (20261007000001_agenda_hub.sql) and
+  -- event_guest_rsvp (20261008000002_agenda_convidados.sql) go to the team digest
   foreach v_t in array array['event_invited','event_updated','event_cancelled','event_reminder',
-                            'event_client_rsvp','event_reschedule_requested'] loop
+                            'event_client_rsvp','event_reschedule_requested','event_guest_rsvp'] loop
     insert into notification_email_prefs (user_id, type, enabled) values (v_user, v_t, true);
   end loop;
   v_rejected := false;
@@ -320,6 +321,7 @@ begin
   insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_cancelled', now() - interval '15 minutes') returning id into v_canc;
   insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_client_rsvp', now() - interval '15 minutes') returning id into v_crsvp;
   insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_reschedule_requested', now() - interval '15 minutes') returning id into v_resched;
+  insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_guest_rsvp', now() - interval '15 minutes') returning id into v_grsvp;
   insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_reminder', now() - interval '15 minutes') returning id into v_rem;
   insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_rsvp', now() - interval '15 minutes') returning id into v_rsvp;
 
@@ -330,6 +332,7 @@ begin
   assert v_canc = any (v_claimed), 'claim_notification_emails did not claim an event_cancelled row';
   assert v_crsvp = any (v_claimed), 'claim_notification_emails did not claim an event_client_rsvp row';
   assert v_resched = any (v_claimed), 'claim_notification_emails did not claim an event_reschedule_requested row';
+  assert v_grsvp = any (v_claimed), 'claim_notification_emails did not claim an event_guest_rsvp row';
   assert not (v_rem = any (v_claimed)) and not (v_rsvp = any (v_claimed)), 'claim_notification_emails claimed a reminder or RSVP row';
   execute 'reset role';
   perform 1 from notifications where id = v_rem and emailed_at is null;

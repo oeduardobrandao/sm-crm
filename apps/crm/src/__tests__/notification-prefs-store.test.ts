@@ -4,12 +4,12 @@ import { NOTIFICATION_CATALOG } from '@/lib/notification-catalog';
 import type { NotificationType } from '@/store/notifications';
 
 describe('notificationPrefs', () => {
-  it('deriva os 15 tipos de e-mail do catálogo, na ordem do catálogo', () => {
+  it('deriva os 16 tipos de e-mail do catálogo, na ordem do catálogo', () => {
     const eligible = (Object.keys(NOTIFICATION_CATALOG) as NotificationType[]).filter(
       (t) => NOTIFICATION_CATALOG[t].emailEligible,
     );
     expect(EMAIL_NOTIFICATION_TYPES.map((e) => e.type)).toEqual(eligible);
-    expect(EMAIL_NOTIFICATION_TYPES).toHaveLength(15);
+    expect(EMAIL_NOTIFICATION_TYPES).toHaveLength(16);
   });
   it('usa o label e o "quando" do catálogo como copy', () => {
     for (const e of EMAIL_NOTIFICATION_TYPES) {

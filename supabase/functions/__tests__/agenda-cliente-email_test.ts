@@ -15,7 +15,7 @@ import {
   createAgendaClienteEmailHandler,
   runAgendaClienteEmail,
 } from "../agenda-cliente-email/handler.ts";
-import { signUnsubToken } from "../_shared/client-event-email.ts";
+import { signUnsubToken, signUnsubTokenFor } from "../_shared/client-event-email.ts";
 
 const HUB = "https://app.mesaas.com.br/agencia-x/hub/tok123";
 const UNSUB = "https://x.supabase.co/functions/v1/client-email-unsub/abc";
@@ -469,4 +469,199 @@ Deno.test("handler: 401 without the right cron secret, before any work", async (
 Deno.test("montarEmailAgendaCliente: greets the client by the full name", () => {
   const e = montarEmailAgendaCliente(item({ cliente_nome: "Clínica Sorriso" }), CTX);
   assert(e.html.includes("Olá, Clínica Sorriso!"));
+});
+
+// ─── Guest recipients (sub-project 4, spec §3.5/§3.6) ─────────────────────────
+
+const TOKEN_CONVIDADO = "a".repeat(64);
+const APP = "https://app.mesaas.com.br";
+
+function guest(over: Partial<AgendaClienteEmailItem> = {}): AgendaClienteEmailItem {
+  return item({
+    cliente_id: null,
+    cliente_email: null,
+    cliente_nome: null,
+    destinatario: "convidado",
+    email: "convidada@fora.test",
+    nome: "Bia Convidada",
+    convidado_id: 77,
+    convidado_token: TOKEN_CONVIDADO,
+    organizador_nome: "Carla Organizadora",
+    organizador_email: "carla@agencia.test",
+    ...over,
+  });
+}
+
+const GUEST_CTX = { hubUrl: "", botaoUrl: `${APP}/convite/${TOKEN_CONVIDADO}?ocorrencia=11`, unsubUrl: UNSUB, agora: AGORA };
+
+Deno.test("guest convite: greeting by name, organizer line, invite button, no Hub copy", () => {
+  const { subject, html, attachments } = montarEmailAgendaCliente(guest(), GUEST_CTX);
+  assertEquals(subject, "Convite: Gravação");
+  assert(html.includes("Olá, Bia Convidada!"));
+  assert(html.includes("Carla Organizadora convidou você em nome de Agencia X."));
+  assert(html.includes(`href="${APP}/convite/${TOKEN_CONVIDADO}?ocorrencia=11"`));
+  assert(html.includes("Responder ao convite"));
+  for (const hub of ["compartilhou", "Confirmar presença", "Ver no portal", "portal", "/agenda?ocorrencia="]) {
+    assert(!html.includes(hub), `guest e-mail must not carry Hub copy: ${hub}`);
+  }
+  assertEquals(attachments.length, 1);
+  assert(decodeAnexo(attachments[0].content).includes("SEQUENCE:2"));
+  assert(html.includes(UNSUB));
+  assert(!html.includes("—") && !subject.includes("—"));
+});
+
+Deno.test("guest convite without a name greets 'Olá!' and without an organizer names the workspace", () => {
+  const { html } = montarEmailAgendaCliente(guest({ nome: null, organizador_nome: null }), GUEST_CTX);
+  assert(html.includes("Olá! Agencia X convidou você para um evento."));
+  assert(!html.includes("Olá, "));
+  assert(!html.includes("em nome de"));
+});
+
+Deno.test("guest organizer and name are escaped", () => {
+  const { html } = montarEmailAgendaCliente(
+    guest({ nome: "<b>Bia</b>", organizador_nome: "<img src=x>" }),
+    GUEST_CTX,
+  );
+  assert(html.includes("Olá, &lt;b&gt;Bia&lt;/b&gt;!"));
+  assert(html.includes("&lt;img src=x&gt; convidou você"));
+  assert(!html.includes("<img src=x>"));
+});
+
+Deno.test("guest alteracao: no organizer line (only on convite), button kept, update hint", () => {
+  const { subject, html, attachments } = montarEmailAgendaCliente(guest({ tipo: "alteracao" }), GUEST_CTX);
+  assertEquals(subject, "Evento atualizado: Gravação");
+  assert(!html.includes("convidou você"));
+  assert(html.includes("Agencia X atualizou um evento."));
+  assert(html.includes(AVISO_ALTERACAO));
+  assert(html.includes("Responder ao convite"));
+  assertEquals(attachments.length, 1);
+});
+
+Deno.test("guest cancelamento: no button even with a URL, no attachment, removal hint", () => {
+  const { subject, html, attachments } = montarEmailAgendaCliente(
+    guest({ tipo: "cancelamento", convidado_token: null, ocorrencias: [oc({ estado: "cancelada" })] }),
+    GUEST_CTX,
+  );
+  assertEquals(subject, "Evento cancelado: Gravação");
+  assertEquals(attachments, []);
+  assert(html.includes(AVISO_CANCELAMENTO));
+  assert(!html.includes("Responder ao convite"));
+  assert(!html.includes("/convite/"));
+  assert(!html.includes("convidou você"));
+});
+
+Deno.test("guest with botaoUrl null: no button, attachment kept", () => {
+  const { html, attachments } = montarEmailAgendaCliente(guest(), { ...GUEST_CTX, botaoUrl: null });
+  assert(!html.includes("Responder ao convite"));
+  assertEquals(attachments.length, 1);
+});
+
+function guestDeps(db: AgendaClienteEmailDb, over: Record<string, unknown> = {}) {
+  let hubCalls = 0;
+  const built = baseDeps(db, {
+    resolveHubUrl: () => {
+      hubCalls++;
+      return Promise.resolve(HUB);
+    },
+    appBaseUrl: () => APP,
+    ...over,
+  });
+  return { ...built, hubCalls: () => hubCalls };
+}
+
+type Sent = [string, string, string, string, string, string | undefined, Record<string, string>, Array<{ filename: string }>];
+
+Deno.test("run guest: to the guest address, invite button, Reply-To = organizer (positional), {g} unsubscribe, no Hub lookup", async () => {
+  const { db, marks } = makeDb([guest()]);
+  const { deps, sent, hubCalls } = guestDeps(db);
+  const r = await runAgendaClienteEmail(deps);
+  assertEquals(r, { enviados: 1, falhas: 0 });
+  const [to, subject, html, key, from, replyTo, headers, attachments] = sent[0] as Sent;
+  assertEquals(to, "convidada@fora.test");
+  assertEquals(subject, "Convite: Gravação");
+  assert(html.includes(`href="${APP}/convite/${TOKEN_CONVIDADO}?ocorrencia=11"`));
+  assert(html.includes("Olá, Bia Convidada!"));
+  assertEquals(key, "agenda-cliente:5:3");
+  assertEquals(from, '"Agencia X" <notificacoes@mesaas.com.br>');
+  assertEquals(replyTo, "carla@agencia.test");
+  const unsubUrl = `https://x.supabase.co/functions/v1/client-email-unsub/${await signUnsubTokenFor({ g: 77 }, "test-secret")}`;
+  assertEquals(headers, { "List-Unsubscribe": `<${unsubUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+  assert(!("Reply-To" in headers));
+  assert(html.includes(unsubUrl));
+  assert(!html.includes(await signUnsubToken(77, "test-secret")), "never a {c} token for a guest");
+  assertEquals(attachments.map((a) => a.filename), ["evento.ics"]);
+  assertEquals(hubCalls(), 0);
+  assertEquals(marks().map((m) => m.args), [{ p_id: 5, p_versao: 3, p_ok: true, p_erro: null }]);
+});
+
+Deno.test("run guest: the button deep-links the first ACTIVE occurrence", async () => {
+  const { db } = makeDb([guest({
+    tipo: "alteracao",
+    ocorrencias: [oc({ ocorrencia_id: 10, estado: "cancelada" }), oc({ ocorrencia_id: 12 })],
+  })]);
+  const { deps, sent } = guestDeps(db, { appBaseUrl: () => `${APP}/` });
+  await runAgendaClienteEmail(deps);
+  assert((sent[0][2] as string).includes(`href="${APP}/convite/${TOKEN_CONVIDADO}?ocorrencia=12"`));
+});
+
+Deno.test("run guest: appBaseUrl throwing sends without a button, .ics still attached", async () => {
+  const { db, marks } = makeDb([guest()]);
+  const { deps, sent } = guestDeps(db, {
+    appBaseUrl: () => {
+      throw new Error("APP_BASE_URL environment variable is required");
+    },
+  });
+  const r = await runAgendaClienteEmail(deps);
+  assertEquals(r, { enviados: 1, falhas: 0 });
+  const html = sent[0][2] as string;
+  assert(!html.includes("Responder ao convite"));
+  assert(!html.includes("/convite/"));
+  assertEquals((sent[0][7] as unknown[]).length, 1);
+  assertEquals(marks()[0].args.p_ok, true);
+});
+
+Deno.test("run guest: no Reply-To when the organizer is gone or the address is unsafe", async () => {
+  for (const organizador_email of [null, "", "a@b.c\r\nBcc: x@y.z", "dois@a.test, tres@b.test"]) {
+    const { db } = makeDb([guest({ organizador_email })]);
+    const { deps, sent } = guestDeps(db);
+    await runAgendaClienteEmail(deps);
+    assertEquals(sent[0][5], undefined, String(organizador_email));
+  }
+});
+
+Deno.test("run guest: removed guest's cancelamento (token NULL) still goes out, no button, no appBaseUrl call", async () => {
+  let appCalls = 0;
+  const { db } = makeDb([guest({ tipo: "cancelamento", convidado_token: null, ocorrencias: [oc({ estado: "cancelada" })] })]);
+  const { deps, sent, hubCalls } = guestDeps(db, {
+    appBaseUrl: () => {
+      appCalls++;
+      return APP;
+    },
+  });
+  const r = await runAgendaClienteEmail(deps);
+  assertEquals(r, { enviados: 1, falhas: 0 });
+  assert(!(sent[0][2] as string).includes("Responder ao convite"));
+  assertEquals(sent[0][7], []);
+  assertEquals(appCalls, 0);
+  assertEquals(hubCalls(), 0);
+});
+
+Deno.test("run guest: a guest row without e-mail or id is marked failed, never sent", async () => {
+  const { db, marks } = makeDb([guest({ email: null }), guest({ id: 6, convidado_id: null })]);
+  const { deps, sent } = guestDeps(db);
+  const r = await runAgendaClienteEmail(deps);
+  assertEquals(r, { enviados: 0, falhas: 2 });
+  assertEquals(sent.length, 0);
+  assertEquals(marks().map((m) => m.args.p_ok), [false, false]);
+});
+
+Deno.test("run: a client item tagged destinatario 'cliente' keeps the Hub path and no Reply-To", async () => {
+  const { db } = makeDb([item({ destinatario: "cliente", organizador_email: "carla@agencia.test" })]);
+  const { deps, sent, hubCalls } = guestDeps(db);
+  await runAgendaClienteEmail(deps);
+  assert((sent[0][2] as string).includes(`${HUB}/agenda?ocorrencia=11`));
+  assertEquals(sent[0][5], undefined);
+  assertEquals(hubCalls(), 1);
+  const unsubUrl = `https://x.supabase.co/functions/v1/client-email-unsub/${await signUnsubToken(42, "test-secret")}`;
+  assert((sent[0][2] as string).includes(unsubUrl));
 });

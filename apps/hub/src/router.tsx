@@ -73,6 +73,11 @@ export const router = createBrowserRouter([
     }),
   },
   {
+    // Public guest invite (agenda-convite): its own token, no portal shell.
+    path: '/convite/:token',
+    lazy: async () => ({ Component: (await import('./pages/ConvitePage')).ConvitePage }),
+  },
+  {
     path: '*',
     element: (
       <div

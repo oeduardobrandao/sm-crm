@@ -52,25 +52,54 @@ export interface AgendaClienteRemarcacao {
   resposta_equipe: string | null;
 }
 
-/** One row of `agenda_cliente_claim_emails` (plus amendment 15's branding). */
+export type AgendaDestinatario = "cliente" | "convidado";
+
+/** One row of `agenda_cliente_claim_emails` (plus amendment 15's branding).
+ * Sub-project 4 made the queue two-recipient: a row is either for the Hub
+ * client (`cliente_id`) or for an external guest (`convidado_id`). */
 export interface AgendaClienteEmailItem {
   id: number;
   versao: number;
   tipo: AgendaClienteTipo;
   conta_id: string;
-  cliente_id: number;
+  /** NULL for guest rows. */
+  cliente_id: number | null;
   ocorrencias: AgendaClienteOcorrencia[] | null;
   remarcacao: AgendaClienteRemarcacao | null;
+  /** Kept for compatibility; NULL for guest rows (use `email`/`nome`). */
   cliente_email: string | null;
   cliente_nome: string | null;
   workspace_nome: string | null;
   brand_color: string | null;
   logo_url: string | null;
+  /** Absent only on rows claimed before sub-project 4: treated as "cliente". */
+  destinatario?: AgendaDestinatario;
+  /** Recipient address and name for either kind (guest `nome` may be NULL). */
+  email?: string | null;
+  nome?: string | null;
+  convidado_id?: number | null;
+  /** NULL for clients and for a guest removed since (their `cancelamento`). */
+  convidado_token?: string | null;
+  /** NULL when the organizer is no longer a member (or the series is gone). */
+  organizador_nome?: string | null;
+  organizador_email?: string | null;
+}
+
+/** "convidado" only when the claim said so; anything else is the client path. */
+export function ehConvidado(item: Pick<AgendaClienteEmailItem, "destinatario">): boolean {
+  return item.destinatario === "convidado";
 }
 
 export interface AgendaClienteEmailCtx {
-  /** The client's live Hub URL, or "" (no Hub: e-mail goes out without a button). */
+  /** The client's live Hub URL, or "" (no Hub: e-mail goes out without a button).
+   * Ignored when `botaoUrl` is given. */
   hubUrl: string;
+  /**
+   * Full button destination built by the caller (the guest's invite page,
+   * `${APP_BASE_URL}/convite/<token>?ocorrencia=<id>`). `null` = no button.
+   * When omitted, the client button is derived from `hubUrl` as before.
+   */
+  botaoUrl?: string | null;
   /** `${SUPABASE_URL}/functions/v1/client-email-unsub/<signed token>`. */
   unsubUrl: string;
   /** DTSTAMP for the attached calendar. */
@@ -334,6 +363,9 @@ export const AGENDA_CLIENTE_ASSUNTOS = {
   remarcacao_recusada: "Remarcação não aceita: ",
 } as const;
 
+/** Guest invite subject: the guest has no relationship with the workspace yet. */
+export const ASSUNTO_CONVITE_CONVIDADO = "Convite: ";
+
 export const AVISO_CANCELAMENTO = "Se você adicionou este evento ao seu calendário, remova-o.";
 export const AVISO_ALTERACAO =
   "Se você adicionou este evento ao seu calendário, abra o arquivo anexo para atualizá-lo.";
@@ -363,15 +395,21 @@ export function montarEmailAgendaCliente(
   const principal = ativas[0] ?? ocorrencias[0] ?? null;
   const titulo = principal?.titulo?.trim() || "Evento";
 
+  const convidado = ehConvidado(item);
   const workspaceName = item.workspace_nome?.trim() || "Mesaas";
   const safeWorkspace = escapeHtml(workspaceName);
   const brandColor = corSegura(item.brand_color);
   // Full name, like the digest: clientes are usually businesses ("Clínica
-  // Sorriso"), so a first-word greeting reads "Olá, Clínica!".
-  const nome = (item.cliente_nome ?? "").trim();
+  // Sorriso"), so a first-word greeting reads "Olá, Clínica!". A guest's name
+  // is optional (the team may only have typed the e-mail).
+  const nome = ((convidado ? item.nome : item.cliente_nome ?? item.nome) ?? "").trim();
   const saudacao = nome ? `Olá, ${escapeHtml(nome)}!` : "Olá!";
+  const organizador = item.organizador_nome?.trim() || null;
 
-  const subject = `${AGENDA_CLIENTE_ASSUNTOS[variante]}${sanitizeSubjectValue(titulo)}`;
+  const prefixoAssunto = convidado && variante === "convite"
+    ? ASSUNTO_CONVITE_CONVIDADO
+    : AGENDA_CLIENTE_ASSUNTOS[variante];
+  const subject = `${prefixoAssunto}${sanitizeSubjectValue(titulo)}`;
 
   const remarcacao = item.remarcacao;
   const respostaEquipe = remarcacao?.resposta_equipe?.trim() || null;
@@ -383,9 +421,22 @@ export function montarEmailAgendaCliente(
 
   switch (variante) {
     case "convite": {
-      h1 = "Novo evento";
-      preheader = `${workspaceName} compartilhou um evento com você.`;
-      secoes.push(linha(paragrafo(`${saudacao} ${safeWorkspace} compartilhou um evento com você.`)));
+      if (convidado) {
+        // Guest copy (spec §3.6): no Hub, the organizer invites on the workspace's behalf.
+        h1 = "Convite";
+        const frase = organizador
+          ? `${organizador} convidou você em nome de ${workspaceName}.`
+          : `${workspaceName} convidou você para um evento.`;
+        preheader = frase;
+        const fraseHtml = organizador
+          ? `${escapeHtml(organizador)} convidou você em nome de ${safeWorkspace}.`
+          : `${safeWorkspace} convidou você para um evento.`;
+        secoes.push(linha(paragrafo(`${saudacao} ${fraseHtml}`)));
+      } else {
+        h1 = "Novo evento";
+        preheader = `${workspaceName} compartilhou um evento com você.`;
+        secoes.push(linha(paragrafo(`${saudacao} ${safeWorkspace} compartilhou um evento com você.`)));
+      }
       if (ativas.length > 0) secoes.push(cartaoEvento(ativas));
       aviso = "Para adicionar ao seu calendário, abra o arquivo anexo.";
       break;
@@ -455,15 +506,29 @@ export function montarEmailAgendaCliente(
     }]
     : [];
 
-  const hubBase = ctx.hubUrl.replace(/\/+$/, "");
   const confirmar = variante === "convite" || variante === "alteracao";
-  const destino = ativas.length > 0 ? `${hubBase}/agenda?ocorrencia=${ativas[0].ocorrencia_id}` : `${hubBase}/agenda`;
-  const botao = hubBase
+  let destino: string | null;
+  let rotuloBotao: string;
+  if (convidado) {
+    // A guest has nothing to answer on a cancellation (spec §3.6: no button).
+    destino = variante === "cancelamento" ? null : linkSeguro(ctx.botaoUrl ?? null);
+    rotuloBotao = "Responder ao convite";
+  } else if (ctx.botaoUrl !== undefined) {
+    destino = linkSeguro(ctx.botaoUrl);
+    rotuloBotao = confirmar ? "Confirmar presença" : "Ver no portal";
+  } else {
+    const hubBase = ctx.hubUrl.replace(/\/+$/, "");
+    destino = !hubBase
+      ? null
+      : ativas.length > 0
+      ? `${hubBase}/agenda?ocorrencia=${ativas[0].ocorrencia_id}`
+      : `${hubBase}/agenda`;
+    rotuloBotao = confirmar ? "Confirmar presença" : "Ver no portal";
+  }
+  const botao = destino
     ? `<a href="${escapeHtml(destino)}" style="display: inline-block; background: ${brandColor}; color: ${
       pickHeaderTextColor(brandColor)
-    }; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 600;">${
-      confirmar ? "Confirmar presença" : "Ver no portal"
-    }</a>`
+    }; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 600;">${rotuloBotao}</a>`
     : "";
 
   const avisoHtml = aviso

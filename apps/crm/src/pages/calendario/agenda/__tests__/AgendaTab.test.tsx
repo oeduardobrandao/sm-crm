@@ -178,11 +178,41 @@ vi.mock('../useAgendaMutations', () => ({
   useAgendaMutations: () => ({ mover: moverMock, dialog: null }),
 }));
 
+// ---- Layers: the data hook and the popover have their own suites --------------------
+const { camadasMock } = vi.hoisted(() => ({
+  camadasMock: {
+    itens: [] as unknown[],
+    chamadas: [] as { ativas: Record<string, boolean>; fin: unknown; nicho: string }[],
+  },
+}));
+vi.mock('../../camadas/useCamadas', () => ({
+  useCamadas: (_periodo: unknown, ativas: Record<string, boolean>, fin: unknown, nicho: string) => {
+    camadasMock.chamadas.push({ ativas, fin, nicho });
+    return camadasMock.itens;
+  },
+}));
+vi.mock('../../camadas/CamadaPopover', () => ({
+  CamadaPopover: (p: { item: { id: string }; anchor: HTMLElement; onClose: () => void }) => (
+    <div
+      data-testid="camada-popover"
+      data-anchor-id={p.anchor.dataset.ocorrenciaId ?? 'container'}
+      data-anchor-connected={String(p.anchor.isConnected)}
+    >
+      {p.item.id}
+      <button type="button" onClick={p.onClose}>
+        fechar-camada-stub
+      </button>
+    </div>
+  ),
+}));
+
 // ---- App modules ------------------------------------------------------------------
 let podeEditar: boolean | 'unknown' = true;
+let verFinanceiro: boolean | 'unknown' | undefined = undefined;
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'u-me' },
+    canSeeFinancials: verFinanceiro,
     can: (mod: string, acao?: string) =>
       mod === 'calendario' && acao === 'editar' ? podeEditar : true,
   }),
@@ -259,6 +289,13 @@ const ROSTER = [
   { id: 'u-carla', nome: 'Carla Mendes', avatar_url: null },
 ];
 
+// Layer mocks and financial access start clean in every block.
+beforeEach(() => {
+  verFinanceiro = undefined;
+  camadasMock.itens = [];
+  camadasMock.chamadas = [];
+});
+
 function LocationProbe() {
   const loc = useLocation();
   return <div data-testid="location">{loc.search}</div>;
@@ -314,6 +351,9 @@ function resizeTo(matching: (q: string) => boolean) {
 describe('AgendaTab', () => {
   beforeEach(() => {
     podeEditar = true;
+    verFinanceiro = undefined;
+    camadasMock.itens = [];
+    camadasMock.chamadas = [];
     localStorage.clear();
     fc.props = null;
     Object.values(fc.api).forEach((f) => f.mockReset());
@@ -608,11 +648,12 @@ describe('AgendaTab', () => {
         editable: false,
         classNames: ['agenda-ev', 'agenda-ev--rascunho'],
         borderColor: '#3b82f6',
-        extendedProps: { rascunho: 1 },
+        extendedProps: { rascunho: 1, ordem: 0 },
       });
       expect(draft!.extendedProps.ocorrencia).toBeUndefined();
-      // The draft sorts first, so "+N mais" never folds it away.
-      expect(fc.props!.eventOrder).toBe('rascunho,start,-duration,allDay,title');
+      // Agenda events (ordem 0) before layers, the draft first among them, so
+      // "+N mais" never folds it away.
+      expect(fc.props!.eventOrder).toBe('ordem,rascunho,start,-duration,allDay,title');
     });
 
     it('the chip follows the card without remounting it, on a live anchor', async () => {
@@ -745,6 +786,211 @@ describe('AgendaTab', () => {
     const end = new Date(2026, 9, 7, 10);
     fc.props!.eventDrop({ event: { start, end, extendedProps: { ocorrencia: MEU } }, revert });
     expect(moverMock).toHaveBeenCalledWith(MEU, start, end, revert);
+  });
+});
+
+describe('AgendaTab layers', () => {
+  const POST = {
+    camada: 'posts',
+    id: 'posts:9',
+    inicio: '2026-10-06T13:00:00.000Z',
+    post: { id: 9, titulo: 'Carrossel', cliente_nome: 'Clínica', platform: 'instagram' },
+    estado: 'agendado',
+  };
+
+  beforeEach(() => {
+    podeEditar = true;
+    verFinanceiro = undefined;
+    camadasMock.itens = [];
+    camadasMock.chamadas = [];
+    localStorage.clear();
+    fc.props = null;
+    Object.values(fc.api).forEach((f) => f.mockReset());
+    moverMock.mockReset();
+    stubMatchMedia(() => false);
+    vi.mocked(agendaStore.listAgenda).mockResolvedValue([MEU]);
+    vi.mocked(agendaStore.getAgendaOcorrencia).mockResolvedValue(null);
+    vi.mocked(workspaceStore.getWorkspaceUsers).mockResolvedValue(ROSTER);
+  });
+
+  const ultimaChamada = () => camadasMock.chamadas[camadasMock.chamadas.length - 1];
+
+  it('the sidebar has a Camadas group between Pessoas and Legenda, financial ones hidden', async () => {
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+
+    const grupo = screen.getByRole('group', { name: 'Camadas' });
+    for (const nome of [
+      'Posts agendados',
+      'Prazos de entrega',
+      'Datas dos clientes',
+      'Datas comemorativas',
+    ]) {
+      expect(screen.getByRole('checkbox', { name: nome })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('checkbox', { name: 'Recebimentos' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Pagamentos da equipe' })).toBeNull();
+    // DOM order: people list, layers, legend.
+    const pessoas = screen.getByText('Pessoas');
+    const legenda = screen.getByText('Legenda');
+    expect(pessoas.compareDocumentPosition(grupo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(grupo.compareDocumentPosition(legenda) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(ultimaChamada().fin).toBeUndefined();
+  });
+
+  it('shows the financial toggles and forwards access with canSeeFinancials === true', async () => {
+    verFinanceiro = true;
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    expect(screen.getByRole('checkbox', { name: 'Recebimentos' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Pagamentos da equipe' })).toBeChecked();
+    expect(ultimaChamada().fin).toBe(true);
+  });
+
+  it('a toggle reaches useCamadas and is remembered; the niche picker follows its layer', async () => {
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    expect(ultimaChamada().ativas.comemorativas).toBe(false);
+    expect(screen.queryByRole('combobox', { name: 'Nicho' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Datas comemorativas' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Posts agendados' }));
+
+    expect(ultimaChamada().ativas).toMatchObject({ comemorativas: true, posts: false });
+    expect(JSON.parse(localStorage.getItem('agenda-camadas')!)).toMatchObject({
+      comemorativas: true,
+      posts: false,
+    });
+    expect(screen.getByRole('combobox', { name: 'Nicho' })).toBeInTheDocument();
+    expect(ultimaChamada().nicho).toBe('medico');
+  });
+
+  it('layer items join the grid read-only, after Agenda events', async () => {
+    camadasMock.itens = [POST];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+
+    const eventos = fc.props!.events as Array<Record<string, any>>;
+    const agenda = eventos.find((e) => e.id === String(MEU.ocorrencia_id));
+    const camada = eventos.find((e) => e.id === 'camada:posts:9');
+    expect(agenda!.extendedProps.ordem).toBe(0);
+    expect(camada).toMatchObject({ editable: false, extendedProps: { ordem: 1, camada: POST } });
+    expect(camada!.classNames).toEqual(['agenda-camada', 'agenda-camada--posts']);
+  });
+
+  it('clicking a layer chip opens its popover, never the event popover', async () => {
+    camadasMock.itens = [POST];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+
+    const chip = document.querySelector<HTMLElement>('[data-ocorrencia-id="camada:posts:9"]')!;
+    act(() => {
+      fc.props!.eventClick({
+        jsEvent: { preventDefault: vi.fn() },
+        event: { extendedProps: { camada: POST } },
+        el: chip,
+      });
+    });
+    expect(screen.getByTestId('camada-popover')).toHaveTextContent('posts:9');
+    expect(screen.getByTestId('camada-popover')).toHaveAttribute(
+      'data-anchor-id',
+      'camada:posts:9',
+    );
+    expect(screen.queryByTestId('evento-popover')).toBeNull();
+
+    // Opening an Agenda event swaps the popovers.
+    const evChip = document.querySelector<HTMLElement>(
+      `[data-ocorrencia-id="${MEU.ocorrencia_id}"]`,
+    )!;
+    act(() => {
+      fc.props!.eventClick({
+        jsEvent: { preventDefault: vi.fn() },
+        event: { extendedProps: { ocorrencia: MEU } },
+        el: evChip,
+      });
+    });
+    expect(screen.queryByTestId('camada-popover')).toBeNull();
+    expect(screen.getByTestId('evento-popover')).toBeInTheDocument();
+  });
+
+  function abrirCamada(item: { id: string }) {
+    const chip = document.querySelector<HTMLElement>(`[data-ocorrencia-id="camada:${item.id}"]`)!;
+    act(() => {
+      fc.props!.eventClick({
+        jsEvent: { preventDefault: vi.fn() },
+        event: { extendedProps: { camada: item } },
+        el: chip,
+      });
+    });
+  }
+
+  it('re-anchors the layer popover when the grid replaces its chip', async () => {
+    camadasMock.itens = [POST];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    abrirCamada(POST);
+    expect(screen.getByTestId('camada-popover')).toHaveAttribute('data-anchor-connected', 'true');
+
+    // A new title re-keys the chip in the FullCalendar mock: the old node detaches.
+    camadasMock.itens = [{ ...POST, post: { ...POST.post, titulo: 'Carrossel novo' } }];
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Datas dos clientes' }));
+    await screen.findByText('Carrossel novo');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('camada-popover')).toHaveAttribute('data-anchor-connected', 'true'),
+    );
+    expect(screen.getByTestId('camada-popover')).toHaveAttribute(
+      'data-anchor-id',
+      'camada:posts:9',
+    );
+  });
+
+  it('closes an open receivables popover when financial access goes away', async () => {
+    verFinanceiro = true;
+    const RECEB = {
+      camada: 'recebimentos',
+      id: 'recebimentos:2026-10-06',
+      dia: '2026-10-06',
+      itens: [],
+    };
+    camadasMock.itens = [POST, RECEB];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    abrirCamada(RECEB);
+    expect(screen.getByTestId('camada-popover')).toHaveTextContent('recebimentos:2026-10-06');
+
+    verFinanceiro = false;
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Datas dos clientes' }));
+    await waitFor(() => expect(screen.queryByTestId('camada-popover')).toBeNull());
+  });
+
+  it('keeps a non-financial popover open when financial access goes away', async () => {
+    verFinanceiro = true;
+    camadasMock.itens = [POST];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    abrirCamada(POST);
+
+    verFinanceiro = false;
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Datas dos clientes' }));
+    expect(screen.getByTestId('camada-popover')).toBeInTheDocument();
+  });
+
+  it('a layer item can never be dragged: eventAllow refuses, a drop reverts', async () => {
+    camadasMock.itens = [POST];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+
+    expect(
+      fc.props!.eventAllow({ allDay: false }, { allDay: false, extendedProps: { camada: POST } }),
+    ).toBe(false);
+    const revert = vi.fn();
+    fc.props!.eventDrop({
+      event: { start: new Date(), end: null, extendedProps: { camada: POST } },
+      revert,
+    });
+    expect(revert).toHaveBeenCalled();
+    expect(moverMock).not.toHaveBeenCalled();
   });
 });
 

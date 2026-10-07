@@ -1,8 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
-import { verifyUnsubToken } from "../_shared/client-event-email.ts";
-import { type ClientEmailUnsubDb, createClientEmailUnsubHandler } from "./handler.ts";
+import { verifyUnsubTokenKind } from "../_shared/client-event-email.ts";
+import {
+  type ClientEmailUnsubDb,
+  createClientEmailUnsubHandler,
+  createDescadastrarConvidado,
+  type DescadastrarConvidadoDb,
+} from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -29,7 +34,8 @@ const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 Deno.serve(createClientEmailUnsubHandler({
   db: svc as unknown as ClientEmailUnsubDb,
-  verifyToken: verifyUnsubToken,
+  verifyToken: verifyUnsubTokenKind,
+  descadastrarConvidado: createDescadastrarConvidado(svc as unknown as DescadastrarConvidadoDb),
   tokenSecret: TOKEN_ENCRYPTION_KEY,
   now: () => new Date(),
   auditLog: (entry) => insertAuditLog(svc, entry),

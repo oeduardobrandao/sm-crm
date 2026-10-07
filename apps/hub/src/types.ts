@@ -430,8 +430,11 @@ export interface HubAgendaRemarcacao {
   criado_em: string;
 }
 
-/** One shared occurrence, as hub-agenda returns it (`Item` in the Agenda Hub plan). */
-export interface HubAgendaItem {
+/**
+ * The fields every Agenda card shows: an occurrence as hub-agenda returns it, minus the
+ * client-only reschedule request. The guest invite page (agenda-convite) returns exactly this.
+ */
+export interface AgendaItemBase {
   ocorrencia_id: number;
   sequencia: number;
   inicio: string;
@@ -448,6 +451,10 @@ export interface HubAgendaItem {
   link_reuniao: string | null;
   /** Effective answer: null = waiting (never answered, or the start moved since). */
   resposta: 'sim' | 'nao' | null;
+}
+
+/** One shared occurrence, as hub-agenda returns it (`Item` in the Agenda Hub plan). */
+export interface HubAgendaItem extends AgendaItemBase {
   remarcacao: HubAgendaRemarcacao | null;
 }
 
@@ -460,4 +467,18 @@ export interface HubAgendaCursor {
 export interface HubAgendaResponse {
   itens: HubAgendaItem[];
   proximo: HubAgendaCursor | null;
+}
+
+// ── Guest invite (agenda-convite) ───────────────────────────────────────────
+
+/** One occurrence on the guest invite page: `Item` without `remarcacao`; `resposta` is the guest's. */
+export type ConviteItem = AgendaItemBase;
+
+/** GET agenda-convite?token=T */
+export interface ConviteResponse {
+  workspace: { nome: string; brand_color: string | null; logo_url: string | null };
+  /** null when the organizer is no longer a member. */
+  organizador_nome: string | null;
+  titulo: string;
+  itens: ConviteItem[];
 }

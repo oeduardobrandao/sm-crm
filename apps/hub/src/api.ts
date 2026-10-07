@@ -26,6 +26,8 @@ import type {
   HubAgendaCursor,
   HubAgendaItem,
   HubAgendaResponse,
+  ConviteItem,
+  ConviteResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -446,6 +448,11 @@ export function fetchAgenda(token: string, apos?: HubAgendaCursor) {
   });
 }
 
+/** The shared occurrences overlapping [de, ate) (ISO instants, at most 45 days apart). */
+export function fetchAgendaPeriodo(token: string, de: string, ate: string) {
+  return get<{ itens: HubAgendaItem[] }>('hub-agenda', { token, de, ate });
+}
+
 /** Deep link: one occurrence that may not be on the first page. */
 export function fetchAgendaItem(token: string, ocorrenciaId: number) {
   return get<{ item: HubAgendaItem }>('hub-agenda', {
@@ -503,6 +510,41 @@ export function cancelarRemarcacao(token: string, remarcacaoId: number) {
  */
 export function agendaIcsUrl(token: string, ocorrenciaId: number) {
   const url = new URL(`${BASE}/functions/v1/hub-agenda/ocorrencia/${ocorrenciaId}.ics`);
+  url.searchParams.set('token', token);
+  return url.toString();
+}
+
+// ── Guest invite (agenda-convite) ───────────────────────────────────────────
+
+// request() throws Error(body.error) without the HTTP status, so the invite page tells
+// the states apart by these exact messages (the agenda-convite error contract).
+export const CONVITE_INDISPONIVEL = 'Este convite não está mais disponível.';
+export const CONVITE_HORARIO_MUDOU = 'Este evento mudou de horário. Atualize a página.';
+export const CONVITE_JA_ACONTECEU = 'Este evento já aconteceu.';
+
+export function fetchConvite(token: string) {
+  return get<ConviteResponse>('agenda-convite', { token });
+}
+
+/** `inicioVisto` is the item's `inicio` as shown: the server answers 409 if it moved since. */
+export function responderConvite(
+  token: string,
+  ocorrenciaId: number,
+  resposta: 'sim' | 'nao',
+  inicioVisto: string,
+) {
+  return post<{ item: ConviteItem }>('agenda-convite', {
+    token,
+    acao: 'responder',
+    ocorrencia_id: ocorrenciaId,
+    resposta,
+    inicio_visto: inicioVisto,
+  });
+}
+
+/** Direct .ics download for one occurrence of the invite (plain GET, token in the query). */
+export function conviteIcsUrl(token: string, ocorrenciaId: number) {
+  const url = new URL(`${BASE}/functions/v1/agenda-convite/ocorrencia/${ocorrenciaId}.ics`);
   url.searchParams.set('token', token);
   return url.toString();
 }

@@ -89,6 +89,7 @@ function ocorrencia(p: Partial<AgendaOcorrencia> = {}): AgendaOcorrencia {
     cliente_resposta: null,
     remarcacao_pendente: null,
     sequencia: 0,
+    convidados: [],
     ...p,
   };
 }
@@ -716,5 +717,53 @@ describe('EventoPopover: cliente e remarcação', () => {
     await screen.findByRole('dialog', { name: 'Ocupado' });
     expect(screen.queryByText(/Cliente:/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Aceitar' })).toBeNull();
+  });
+});
+
+describe('EventoPopover: convidados externos', () => {
+  const GUESTS = [
+    { id: 1, email: 'ana@exemplo.com', nome: 'Ana Souza', resposta: 'sim' as const },
+    { id: 2, email: 'bia@exemplo.com', nome: null, resposta: 'nao' as const },
+    { id: 3, email: 'caio@exemplo.com', nome: null, resposta: null },
+  ];
+
+  it('lists each guest with a selo for the answer', async () => {
+    abrir(ocorrencia({ convidados: GUESTS }));
+    const lista = await screen.findByRole('list', { name: 'Convidados' });
+    const linhas = within(lista).getAllByRole('listitem');
+    expect(linhas).toHaveLength(3);
+    expect(linhas[0]).toHaveTextContent('Ana Souza');
+    expect(linhas[0]).toHaveTextContent('ana@exemplo.com');
+    expect(within(linhas[0]).getByText('Confirmou')).toBeInTheDocument();
+    expect(linhas[1]).toHaveTextContent('bia@exemplo.com');
+    expect(within(linhas[1]).getByText('Recusou')).toBeInTheDocument();
+    expect(within(linhas[2]).getByText('Aguardando')).toBeInTheDocument();
+    expect(screen.getByText('Convidados')).toBeInTheDocument();
+  });
+
+  it('is hidden when there are no guests (empty or null)', async () => {
+    const { unmount } = abrir(ocorrencia({ convidados: [] }));
+    await screen.findByRole('list', { name: 'Participantes' });
+    expect(screen.queryByRole('list', { name: 'Convidados' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Convidados')).not.toBeInTheDocument();
+    unmount();
+    abrir(ocorrencia({ convidados: null }));
+    await screen.findByRole('list', { name: 'Participantes' });
+    expect(screen.queryByRole('list', { name: 'Convidados' })).not.toBeInTheDocument();
+  });
+
+  it('is hidden on a masked event even if guests came along', async () => {
+    abrir(
+      ocorrencia({
+        titulo: 'Ocupado',
+        mascarado: true,
+        privado: true,
+        pode_editar: false,
+        pode_responder: false,
+        convidados: GUESTS,
+      }),
+    );
+    await screen.findByRole('dialog', { name: 'Ocupado' });
+    expect(screen.queryByRole('list', { name: 'Convidados' })).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import type { HubAgendaItem } from '../../types';
+import type { AgendaItemBase, HubAgendaItem } from '../../types';
 
 /**
  * Pure date/time helpers for the Hub Agenda. Every instant is shown in the
@@ -63,12 +63,12 @@ export function somarDias(ymd: string, dias: number): string {
 }
 
 /** The local day an occurrence starts on, in its tz. */
-export function diaLocal(item: HubAgendaItem): string {
+export function diaLocal(item: AgendaItemBase): string {
   return item.dia_inteiro ? item.data_inicio_local : paredeNoFuso(item.inicio, item.tz).data;
 }
 
 /** Last day of an occurrence (inclusive), in its tz. All-day ends are exclusive in the data. */
-export function ultimoDiaLocal(item: HubAgendaItem): string {
+export function ultimoDiaLocal(item: AgendaItemBase): string {
   if (item.dia_inteiro) {
     const ultimo = somarDias(item.data_fim_local, -1);
     return ultimo < item.data_inicio_local ? item.data_inicio_local : ultimo;
@@ -126,7 +126,7 @@ export interface Quando {
   fuso: string | null;
 }
 
-export function quando(item: HubAgendaItem, locale: string): Quando {
+export function quando(item: AgendaItemBase, locale: string): Quando {
   const inicioDia = diaLocal(item);
   const fimDia = ultimoDiaLocal(item);
   return {
@@ -142,7 +142,7 @@ export function quando(item: HubAgendaItem, locale: string): Quando {
 /** A reschedule suggestion in the occurrence's tz: "qui., 9 de out., 14:00" or just the day. */
 export function formatarSugestao(
   inicioSugerido: string,
-  item: Pick<HubAgendaItem, 'tz' | 'dia_inteiro'>,
+  item: Pick<AgendaItemBase, 'tz' | 'dia_inteiro'>,
   locale: string,
 ): string {
   const parede = paredeNoFuso(inicioSugerido, item.tz);
@@ -153,15 +153,15 @@ export function formatarSugestao(
   return fuso ? `${texto} (${fuso})` : texto;
 }
 
-export interface GrupoDia {
+export interface GrupoDia<T extends AgendaItemBase = HubAgendaItem> {
   dia: string;
-  itens: HubAgendaItem[];
+  itens: T[];
 }
 
 /** Groups items (already in display order) by their local start day, keeping that order. */
-export function agruparPorDia(itens: HubAgendaItem[]): GrupoDia[] {
-  const grupos: GrupoDia[] = [];
-  const porDia = new Map<string, GrupoDia>();
+export function agruparPorDia<T extends AgendaItemBase>(itens: T[]): GrupoDia<T>[] {
+  const grupos: GrupoDia<T>[] = [];
+  const porDia = new Map<string, GrupoDia<T>>();
   for (const item of itens) {
     const dia = diaLocal(item);
     let g = porDia.get(dia);
@@ -176,7 +176,7 @@ export function agruparPorDia(itens: HubAgendaItem[]): GrupoDia[] {
 }
 
 /** Ascending by start instant, then id (the API's keyset order). */
-export function compararInicio(a: HubAgendaItem, b: HubAgendaItem): number {
+export function compararInicio(a: AgendaItemBase, b: AgendaItemBase): number {
   const d = Date.parse(a.inicio) - Date.parse(b.inicio);
   return d !== 0 ? d : a.ocorrencia_id - b.ocorrencia_id;
 }
@@ -214,7 +214,7 @@ const diaCompacto = (d: string) => d.replace(/-/g, '');
  * CRM's linkGoogleAgenda). All-day uses the local dates with the exclusive end
  * Google expects; timed uses UTC instants.
  */
-export function linkGoogleAgenda(item: HubAgendaItem, rotuloLink = 'Link da reunião'): string {
+export function linkGoogleAgenda(item: AgendaItemBase, rotuloLink = 'Link da reunião'): string {
   const datas = item.dia_inteiro
     ? `${diaCompacto(item.data_inicio_local)}/${diaCompacto(item.data_fim_local)}`
     : `${utc(item.inicio)}/${utc(item.fim)}`;
