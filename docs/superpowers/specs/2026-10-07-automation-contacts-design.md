@@ -88,7 +88,6 @@ CREATE TABLE instagram_automation_contact_automations (
   contact_id            uuid NOT NULL,
   conta_id              uuid NOT NULL,
   automation_id         uuid NOT NULL,          -- NO FK: survives deletion
-  client_id             bigint NOT NULL,        -- denormalized for per-client counts
   automation_name       text NOT NULL,          -- snapshot, kept fresh while the automation exists
   first_interaction_at  timestamptz NOT NULL,
   last_interaction_at   timestamptz NOT NULL,
@@ -162,8 +161,9 @@ FOR EACH ROW WHEN (OLD.name IS DISTINCT FROM NEW.name)` → function
 `sync_instagram_automation_contact_names()`, **`SECURITY DEFINER SET search_path =
 public`** (the rename runs as `authenticated` under `ica_update`, and the new tables
 have no UPDATE policy for it; a plain trigger would silently update 0 rows).
-Updates `automation_name` on matching link rows and `last_automation_name` on
-contacts whose `last_automation_id` matches. After deletion the snapshot freezes.
+Updates `last_automation_name` on contacts whose `last_automation_id` matches
+first, then `automation_name` on matching link rows (same contact-then-link lock
+order as the hot path, so a rename concurrent with a send cannot deadlock). After deletion the snapshot freezes.
 
 "(removida)" is computed at read time: the automation id no longer exists in
 `instagram_comment_automations`. The contacts RLS predicate is identical to
@@ -197,13 +197,15 @@ if the trigger ever swallows an error.
 
 Migration order (closes the backfill/trigger race):
 1. `LOCK TABLE instagram_automation_sends IN SHARE ROW EXCLUSIVE MODE;` (blocks the
-   webhook worker's inserts/updates only for the migration's few seconds; the
-   worker retries).
+   webhook worker's inserts/updates for the migration's few seconds; writers wait
+   on the lock and then proceed).
 2. Create tables, functions, RLS.
 3. `SELECT rebuild_instagram_automation_contacts();`
 4. Create the triggers.
 5. Sanity `DO` block: contact count = number of distinct `(a.client_id,
-   s.commenter_id)` over sends joined to automations; `RAISE EXCEPTION` otherwise.
+   s.commenter_id)` over sends joined to automations; `RAISE WARNING` on mismatch
+   (not EXCEPTION: a failed migration inside a `db push` batch can leave the version
+   row recorded with the DDL rolled back; the entitlement suite asserts correctness).
 
 ### RLS and grants
 
@@ -254,7 +256,8 @@ p_search         text        DEFAULT NULL  -- ILIKE on commenter_username; '\', 
 p_limit          int         DEFAULT 50    -- clamped to [1, 500]
 p_offset         int         DEFAULT 0     -- UI paging
 p_cursor_at      timestamptz DEFAULT NULL  -- keyset paging (export): rows strictly after
-p_cursor_id      uuid        DEFAULT NULL  --   (p_cursor_at, p_cursor_id) in sort order
+p_cursor_id      uuid        DEFAULT NULL  --   (p_cursor_at, p_cursor_id) in sort order;
+                                           --   when a cursor is given, p_offset is ignored
 RETURNS TABLE (
   id, client_id, commenter_username, first_interaction_at, last_interaction_at,
   interactions_count, reached, last_comment_text,
@@ -285,13 +288,14 @@ Semantics:
 
 `RETURNS TABLE (automation_id uuid, automation_name text, client_id bigint,
 automation_deleted boolean, reached_count bigint, total_count bigint)` grouped over
-the link table for the caller's workspace. One query serves:
+the link table joined to contacts (for `client_id`) in the caller's workspace. One query serves:
 - "Ver contatos (N)" on cards (N = `reached_count`, matching the default filter the
   link lands on);
 - the Contatos tab's client and automation selects (including deleted automations
   and clients whose automations were all deleted);
-- the client-detail section's existence check;
-- the page gate (`hasContacts`).
+- the client-detail section's existence check.
+
+The page gate and nav (`hasContacts`) use `countInstagramContacts()` (head+count), not this RPC.
 
 ## UI
 
