@@ -149,6 +149,7 @@ vi.mock('@/services/inlineImage', async (importOriginal) => {
     uploadInlineImage: vi.fn(),
     extractR2Keys: actual.extractR2Keys,
     injectSignedUrls: actual.injectSignedUrls,
+    stripSignedUrls: actual.stripSignedUrls,
     resolveInlineImageUrls: vi.fn(async () => ({})),
   };
 });

@@ -138,3 +138,25 @@ export function injectSignedUrls(
   }
   return walk(content);
 }
+
+/**
+ * Inverse of `injectSignedUrls`, for the save path. The editor is seeded with signed
+ * display URLs (sign-r2-urls / file-upload-finalize, both expiring), so its JSON carries
+ * them in `src`; persisting that would store a URL that dies within hours and log a
+ * content version per open. Every reader re-signs from `r2Key`, so drop `src` wherever
+ * an `r2Key` is present (same shape hub-edit-suggestion stores). Images without an
+ * `r2Key` (external `src` only, or an upload still in flight) are left untouched.
+ */
+export function stripSignedUrls(content: Record<string, unknown>): Record<string, unknown> {
+  function walk(node: any): any {
+    if (node?.type === 'inlineImage' && node.attrs?.r2Key) {
+      const { src: _src, ...attrs } = node.attrs;
+      return { ...node, attrs };
+    }
+    if (Array.isArray(node?.content)) {
+      return { ...node, content: node.content.map(walk) };
+    }
+    return node;
+  }
+  return walk(content);
+}

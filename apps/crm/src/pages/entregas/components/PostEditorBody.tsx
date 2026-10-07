@@ -25,6 +25,7 @@ import {
   extractR2Keys,
   injectSignedUrls,
   resolveInlineImageUrls,
+  stripSignedUrls,
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
@@ -586,7 +587,7 @@ export function PostEditorBody({
         <PostEditor
           key={editorKey}
           initialContent={resolvedContent}
-          onUpdate={onContentUpdate}
+          onUpdate={(json, plain) => onContentUpdate(stripSignedUrls(json), plain)}
           onUploadInlineImage={
             post.id
               ? async (file) => {
