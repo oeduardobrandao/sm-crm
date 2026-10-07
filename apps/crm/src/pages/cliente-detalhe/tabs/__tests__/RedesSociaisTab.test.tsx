@@ -43,6 +43,13 @@ const { toastInfoMock, toastErrorMock } = vi.hoisted(() => ({
 }));
 vi.mock('sonner', () => ({ toast: { info: toastInfoMock, error: toastErrorMock } }));
 
+// AutomationContactsSection has its own suite (it needs AuthContext and the
+// contacts store, neither relevant here); stub it so query isolation stays
+// about this tab's own queries.
+vi.mock('../../components/AutomationContactsSection', () => ({
+  AutomationContactsSection: () => null,
+}));
+
 // InstagramSection has its own dedicated render-behavior suite; stub it here
 // so this suite can focus on OAuth processing, composition, and query
 // isolation without pulling in chart.js / the imperative ref renderers.
