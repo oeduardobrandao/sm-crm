@@ -4,7 +4,7 @@
  * automation contacts export (`;`-separated) and analytics (`,`) share one
  * formula guard.
  */
-export const CSV_BOM = '﻿';
+export const CSV_BOM = '\uFEFF';
 
 export const CSV_EOL = '\r\n';
 
@@ -17,14 +17,32 @@ const FORMULA_LEAD = /^[\s\p{Cc}]*[=+\-@]/u;
 
 /**
  * One CSV field: formula-neutralized first, then quoted. The apostrophe must go
- * in BEFORE the quotes, or it ends up outside them and the cell evaluates. A
- * field is quoted when it contains the active separator, a quote or a line
- * break, so `;` output quotes semicolons and `,` output keeps its old shape.
+ * in BEFORE the quotes, or it ends up outside them and the cell evaluates.
+ *
+ * Quoting: a field is quoted when it contains any of the common separators (`,`,
+ * `;`, tab), a quote, or a line break. This guards against parser differential:
+ * a file written with `;` but opened where the list separator is `,` (or vice
+ * versa) would split cells, and we must quote to keep them whole.
+ *
+ * Formula guard: checked after splitting the field on `,`, `;`, or tab. If any
+ * segment would evaluate as a formula in a spreadsheet (starts with `=`, `+`,
+ * `-`, or `@` after whitespace/control chars), the whole field is prefixed with
+ * apostrophe to neutralize it.
  */
-export function csvField(value: string | number, separator = ','): string {
+export function csvField(value: string | number, _separator = ','): string {
   let out = String(value);
-  if (FORMULA_LEAD.test(out)) out = `'${out}`;
-  if (out.includes(separator) || /["\n\r]/.test(out)) out = `"${out.replace(/"/g, '""')}"`;
+
+  // Check if any segment (when split by common separators) is a formula lead
+  const segments = out.split(/[,;\t]/);
+  if (segments.some((seg) => FORMULA_LEAD.test(seg))) {
+    out = `'${out}`;
+  }
+
+  // Quote if contains any separator, quote, or line break
+  if (/[,;\t"\n\r]/.test(out)) {
+    out = `"${out.replace(/"/g, '""')}"`;
+  }
+
   return out;
 }
 
