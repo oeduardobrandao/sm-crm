@@ -79,6 +79,16 @@ describe('HubMobileNav', () => {
     }
   });
 
+  it('lists Agenda in the drawer only when feature_agenda is on', () => {
+    const { unmount } = renderMobileNav();
+    fireEvent.click(screen.getByRole('button', { name: /abrir menu|open menu/i }));
+    expect(screen.queryByText('Agenda')).not.toBeInTheDocument();
+    unmount();
+    renderMobileNav({ ...BOOTSTRAP, feature_agenda: true });
+    fireEvent.click(screen.getByRole('button', { name: /abrir menu|open menu/i }));
+    expect(screen.getByText('Agenda').closest('a')).toHaveAttribute('href', '/ws/hub/tok/agenda');
+  });
+
   it('marks the active drawer nav item with hub-nav-active (color: var(--hub-primary), a no-op in neutral)', () => {
     renderMobileNav();
     fireEvent.click(screen.getByRole('button', { name: /abrir menu|open menu/i }));

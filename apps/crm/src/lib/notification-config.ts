@@ -319,6 +319,31 @@ export function getNotificationDisplay(
         body: eventBody(m),
       };
     }
+    case 'event_client_rsvp': {
+      const cliente = s(m.cliente_nome, 'O cliente');
+      const titulo = s(m.titulo, 'Evento');
+      const verbo = m.resposta === 'sim' ? 'confirmou' : m.resposta === 'nao' ? 'recusou' : null;
+      return {
+        icon: CalendarCheck,
+        tone: m.resposta === 'nao' ? 'warning' : 'success',
+        title: verbo ? `${cliente} ${verbo} ${titulo}` : `${cliente} respondeu a ${titulo}`,
+        body: formatEventWhen(m),
+      };
+    }
+    case 'event_reschedule_requested': {
+      // All-day suggestions are local midnight: show the date only.
+      const sugestao = formatEventWhen({
+        inicio: m.inicio_sugerido,
+        dia_inteiro: m.dia_inteiro,
+        data_local: m.inicio_sugerido,
+      });
+      return {
+        icon: CalendarClock,
+        tone: 'warning',
+        title: `${s(m.cliente_nome, 'O cliente')} pediu para remarcar ${s(m.titulo, 'Evento')}`,
+        body: sugestao ? `Sugestão: ${sugestao}` : formatEventWhen(m),
+      };
+    }
     case 'event_reminder':
       return {
         icon: AlarmClock,

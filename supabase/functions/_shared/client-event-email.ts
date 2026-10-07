@@ -1,6 +1,7 @@
 import { escapeHtml } from "./report-template/escape.ts";
 import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
 import { buildBrandHeaderBand, buildPreheader, pickHeaderTextColor } from "./report-template/brand-header.ts";
+import { formatarQuandoAgenda } from "./agenda-cliente-email.ts";
 
 /**
  * Client-facing "you have pending items" email (Fase 2 do Hub: pendências).
@@ -17,7 +18,23 @@ export interface ClientEventEmailParams {
   unreadMessages: number;
   hubUrl: string;
   unsubUrl: string;
+  /** Shared Agenda occurrences still waiting for the client's answer (spec §9).
+   *  Optional so every pre-Agenda caller keeps its exact output. */
+  pendingEvents?: ClientEventReminder[];
 }
+
+/** One row of `agenda_cliente_lembretes_pendentes`. */
+export interface ClientEventReminder {
+  ocorrencia_id: number;
+  inicio: string;
+  fim: string;
+  dia_inteiro: boolean;
+  data_inicio_local: string | null;
+  tz: string;
+  titulo: string;
+}
+
+export const CLIENT_EVENT_REMINDERS_HEADING = "Eventos aguardando sua confirmação";
 
 /** Max pending-post titles rendered as a list before folding the rest into "e mais N...". */
 const RENDERED_POSTS_CAP = 20;
@@ -49,13 +66,16 @@ export function clientEventSubject(workspaceName: string): string {
 }
 
 /** Adaptive <h1> (spec §11): posts, when present, always win the count --
- * messages only surface in the title when there are zero posts. Both zero is
- * unreachable in production (the cron releases the lease without sending in
- * that case), but the builder still needs a sane, non-crashing fallback for
- * a direct/manual call. */
-function buildPendingTitle(postsCount: number, messagesCount: number): string {
+ * then Agenda events waiting for an answer (they are time-bound), then
+ * messages. All zero is unreachable in production (the cron releases the
+ * lease without sending in that case), but the builder still needs a sane,
+ * non-crashing fallback for a direct/manual call. */
+function buildPendingTitle(postsCount: number, messagesCount: number, eventsCount = 0): string {
   if (postsCount > 0) {
     return postsCount === 1 ? "1 post espera sua aprovação" : `${postsCount} posts esperam sua aprovação`;
+  }
+  if (eventsCount > 0) {
+    return eventsCount === 1 ? "1 evento aguarda sua confirmação" : `${eventsCount} eventos aguardam sua confirmação`;
   }
   if (messagesCount > 0) {
     return messagesCount === 1 ? "1 mensagem espera você" : `${messagesCount} mensagens esperam você`;
@@ -66,10 +86,15 @@ function buildPendingTitle(postsCount: number, messagesCount: number): string {
 /** Dynamic preheader text (spec §8/§11): "{N} posts aguardando sua aprovação
  * e {M} mensagens." with the zeroed part omitted entirely and singular forms
  * for exactly 1 of either. */
-function buildPendingPreheaderText(postsCount: number, messagesCount: number): string {
+function buildPendingPreheaderText(postsCount: number, messagesCount: number, eventsCount = 0): string {
   const parts: string[] = [];
   if (postsCount > 0) {
     parts.push(postsCount === 1 ? "1 post aguardando sua aprovação" : `${postsCount} posts aguardando sua aprovação`);
+  }
+  if (eventsCount > 0) {
+    parts.push(
+      eventsCount === 1 ? "1 evento aguardando sua confirmação" : `${eventsCount} eventos aguardando sua confirmação`,
+    );
   }
   if (messagesCount > 0) {
     parts.push(messagesCount === 1 ? "1 mensagem" : `${messagesCount} mensagens`);
@@ -95,20 +120,45 @@ function buildPostRow(post: { titulo: string; tipo: string }): string {
   </td></tr>`;
 }
 
+/** One reminder row: calendar icon + title (deep link to the occurrence in
+ * the Hub Agenda when there is a Hub URL) + when, in the event's time zone. */
+function buildEventRow(ev: ClientEventReminder, hubUrl: string): string {
+  const titulo = escapeHtml(ev.titulo);
+  const tituloHtml = hubUrl
+    ? `<a href="${
+      escapeHtml(`${hubUrl.replace(/\/+$/, "")}/agenda?ocorrencia=${ev.ocorrencia_id}`)
+    }" style="color: #111827; text-decoration: none; font-weight: 600;">${titulo}</a>`
+    : `<span style="font-weight: 600;">${titulo}</span>`;
+  const quando = escapeHtml(formatarQuandoAgenda(ev));
+  return `<tr><td style="padding: 0 0 8px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #eceef2; border-radius: 8px;">
+      <tr>
+        <td width="24" align="center" valign="top" style="width: 24px; padding: 10px 0 10px 12px; font-size: 16px;">📅</td>
+        <td valign="middle" style="padding: 10px 12px 10px 8px; font-size: 14px; color: #374151;">${tituloHtml}<br><span style="font-size: 13px; color: #6b7280;">${quando}</span></td>
+      </tr>
+    </table>
+  </td></tr>`;
+}
+
 export function buildClientEventEmail(p: ClientEventEmailParams): string {
   const {
     clienteNome, workspaceName, brandColor, logoUrl,
     pendingPosts, unreadMessages, hubUrl, unsubUrl,
   } = p;
+  const pendingEvents = p.pendingEvents ?? [];
 
   const safeName = escapeHtml(clienteNome.split(" ")[0]);
   const safeWorkspace = escapeHtml(workspaceName);
 
   const headerBand = buildBrandHeaderBand({ workspaceName, brandColor, logoUrl });
-  const preheader = buildPreheader(buildPendingPreheaderText(pendingPosts.length, unreadMessages));
-  const title = buildPendingTitle(pendingPosts.length, unreadMessages);
+  const preheader = buildPreheader(
+    buildPendingPreheaderText(pendingPosts.length, unreadMessages, pendingEvents.length),
+  );
+  const title = buildPendingTitle(pendingPosts.length, unreadMessages, pendingEvents.length);
   const greeting = pendingPosts.length > 0
     ? `Olá, ${safeName}! Quando puder, dá uma olhada no que a equipe preparou:`
+    : pendingEvents.length > 0
+    ? `Olá, ${safeName}! Confirme sua presença nos próximos eventos:`
     : `Olá, ${safeName}!`;
 
   // A pathologically dense digest window (see client-event-email-cron/handler.ts's
@@ -144,11 +194,24 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
        </td></tr>`
     : "";
 
-  const ctaLabel = pendingPosts.length > 0 ? "Revisar e aprovar" : "Ver mensagens";
+  const eventsSection = pendingEvents.length > 0
+    ? `<tr><td style="padding: 0 30px 20px;">
+        <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #111827;">${CLIENT_EVENT_REMINDERS_HEADING}</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          ${pendingEvents.map((ev) => buildEventRow(ev, hubUrl)).join("")}
+        </table>
+       </td></tr>`
+    : "";
+
+  // Posts keep their CTA; an events-only digest (no posts) leads to the Hub
+  // Agenda instead of the Hub home.
+  const eventsCta = pendingPosts.length === 0 && pendingEvents.length > 0;
+  const ctaLabel = pendingPosts.length > 0 ? "Revisar e aprovar" : eventsCta ? "Confirmar presença" : "Ver mensagens";
+  const ctaHref = eventsCta ? `${hubUrl.replace(/\/+$/, "")}/agenda` : hubUrl;
   const textColor = pickHeaderTextColor(brandColor);
   const hubButton = hubUrl
     ? `<a href="${
-      escapeHtml(hubUrl)
+      escapeHtml(ctaHref)
     }" style="display: inline-block; background: ${brandColor}; color: ${textColor}; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 600;">${ctaLabel}</a>`
     : "";
 
@@ -166,6 +229,7 @@ ${headerBand}
   <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.5; color: #4b5563;">${greeting}</p>
 </td></tr>
 ${postsSection}
+${eventsSection}
 ${unreadSection}
 <tr><td align="center" style="padding: 24px 30px 30px;">
   ${hubButton}

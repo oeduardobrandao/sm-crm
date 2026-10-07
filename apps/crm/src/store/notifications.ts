@@ -27,6 +27,8 @@ export type NotificationType =
   | 'event_updated'
   | 'event_cancelled'
   | 'event_rsvp'
+  | 'event_client_rsvp'
+  | 'event_reschedule_requested'
   | 'event_reminder';
 
 export interface Notification {

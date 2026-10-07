@@ -15,6 +15,8 @@ export interface FeedEventoRow {
   local: string | null;
   link_reuniao: string | null;
   tz: string;
+  /** Per-occurrence SEQUENCE; absent on older database versions. */
+  sequencia?: number;
 }
 
 /** `agenda_feed_eventos` result; the RPC returning NULL is surfaced as `null`. */
@@ -37,6 +39,8 @@ export interface OcorrenciaIcs {
   local: string | null;
   link_reuniao: string | null;
   mascarado: boolean;
+  /** Per-occurrence SEQUENCE; absent on older database versions. */
+  sequencia?: number;
 }
 
 export type ListarOcorrenciaResultado =
@@ -93,6 +97,8 @@ function paraIcs(r: FeedEventoRow | OcorrenciaIcs): IcsEvento {
     descricao: r.descricao,
     local: r.local,
     url: r.link_reuniao,
+    // undefined (older RPC) keeps SEQUENCE out of the output, as before.
+    sequencia: r.sequencia,
   };
 }
 

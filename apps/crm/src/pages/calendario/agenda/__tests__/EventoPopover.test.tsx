@@ -9,6 +9,7 @@ import { EventoPopover } from '../EventoPopover';
 const {
   responderEventoMock,
   excluirEventoMock,
+  resolverRemarcacaoMock,
   getWorkspaceUsersMock,
   toastMock,
   toastSuccessMock,
@@ -18,6 +19,7 @@ const {
 } = vi.hoisted(() => ({
   responderEventoMock: vi.fn(),
   excluirEventoMock: vi.fn(),
+  resolverRemarcacaoMock: vi.fn(),
   getWorkspaceUsersMock: vi.fn(),
   toastMock: vi.fn(),
   toastSuccessMock: vi.fn(),
@@ -30,6 +32,7 @@ vi.mock('@/store/agenda', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store/agenda')>()),
   responderEvento: responderEventoMock,
   excluirEvento: excluirEventoMock,
+  resolverRemarcacao: resolverRemarcacaoMock,
 }));
 vi.mock('../baixarIcs', () => ({ baixarIcsDaOcorrencia: baixarIcsMock }));
 vi.mock('../googleAgenda', () => ({ linkGoogleAgenda: linkGoogleMock }));
@@ -82,6 +85,10 @@ function ocorrencia(p: Partial<AgendaOcorrencia> = {}): AgendaOcorrencia {
     pode_editar: true,
     pode_responder: true,
     tz: TZ,
+    compartilhado_cliente: false,
+    cliente_resposta: null,
+    remarcacao_pendente: null,
+    sequencia: 0,
     ...p,
   };
 }
@@ -116,6 +123,7 @@ beforeEach(() => {
   document.body.appendChild(anchor);
   responderEventoMock.mockReset().mockResolvedValue(undefined);
   excluirEventoMock.mockReset().mockResolvedValue(undefined);
+  resolverRemarcacaoMock.mockReset().mockResolvedValue(undefined);
   getWorkspaceUsersMock.mockReset().mockResolvedValue(ROSTER);
   toastMock.mockReset();
   toastSuccessMock.mockReset();
@@ -567,5 +575,146 @@ describe('EventoPopover', () => {
       fireEvent.click(await screen.findByRole('menuitem', { name: 'Baixar .ics' }));
       expect(baixarIcsMock).toHaveBeenCalledWith(o);
     });
+  });
+});
+
+describe('EventoPopover: cliente e remarcação', () => {
+  const PEDIDO = {
+    id: 41,
+    // Friday, 9 Oct 2026 14:00 in the runner's zone (timed events render in the browser zone).
+    inicio_sugerido: new Date(2026, 9, 9, 14, 0).toISOString(),
+    fim_sugerido: new Date(2026, 9, 9, 16, 0).toISOString(),
+    mensagem: 'Sexta fica melhor para a equipe da clínica.',
+    criado_em: new Date(2026, 9, 3, 10, 0).toISOString(),
+  };
+  const compartilhado = (p: Partial<AgendaOcorrencia> = {}) =>
+    ocorrencia({ compartilhado_cliente: true, cliente_resposta: 'aguardando', ...p });
+
+  it.each([
+    ['sim', 'Confirmou'],
+    ['nao', 'Recusou'],
+    ['aguardando', 'Aguardando resposta'],
+  ] as const)('shows the client state: %s -> %s', async (resposta, rotulo) => {
+    abrir(compartilhado({ cliente_resposta: resposta }));
+    expect(await screen.findByText(`Cliente: Clínica Sorriso · ${rotulo}`)).toBeInTheDocument();
+  });
+
+  it('shows no client state for an event that is not shared', async () => {
+    abrir(ocorrencia());
+    expect(await screen.findByText('Cliente: Clínica Sorriso')).toBeInTheDocument();
+  });
+
+  it('renders the pending request with the formatted date and the client message', async () => {
+    abrir(compartilhado({ remarcacao_pendente: PEDIDO }));
+    const bloco = await screen.findByRole('group', { name: 'Pedido de remarcação' });
+    expect(
+      within(bloco).getByText('Clínica Sorriso pediu para remarcar para sex., 9 de out., 14:00'),
+    ).toBeInTheDocument();
+    expect(
+      within(bloco).getByText('Sexta fica melhor para a equipe da clínica.'),
+    ).toBeInTheDocument();
+    expect(within(bloco).getByRole('button', { name: 'Aceitar' })).toBeInTheDocument();
+    expect(within(bloco).getByRole('button', { name: 'Recusar' })).toBeInTheDocument();
+  });
+
+  it('Aceitar resolves the request, refreshes the agenda and closes', async () => {
+    const { onClose } = abrir(compartilhado({ remarcacao_pendente: PEDIDO }));
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+    await waitFor(() => expect(resolverRemarcacaoMock).toHaveBeenCalledWith(41, true, undefined));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Remarcação aceita');
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('Recusar opens an optional message; Enviar sends it', async () => {
+    const { onClose } = abrir(compartilhado({ remarcacao_pendente: PEDIDO }));
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    fireEvent.click(await screen.findByRole('button', { name: 'Recusar' }));
+    expect(screen.queryByRole('button', { name: 'Aceitar' })).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Mensagem para o cliente' }), {
+      target: { value: 'Sexta o estúdio está fechado.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+    await waitFor(() =>
+      expect(resolverRemarcacaoMock).toHaveBeenCalledWith(
+        41,
+        false,
+        'Sexta o estúdio está fechado.',
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Remarcação recusada');
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('Voltar returns to the two buttons and drops the typed message', async () => {
+    abrir(compartilhado({ remarcacao_pendente: PEDIDO }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Recusar' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Mensagem para o cliente' }), {
+      target: { value: 'x' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Recusar' }));
+    expect(screen.getByRole('textbox', { name: 'Mensagem para o cliente' })).toHaveValue('');
+  });
+
+  it('shows the RPC error, keeps the popover open and re-enables the buttons', async () => {
+    resolverRemarcacaoMock.mockRejectedValue({
+      message: 'agenda: esse horário já passou. Combine outro com o cliente.',
+    });
+    const { onClose } = abrir(compartilhado({ remarcacao_pendente: PEDIDO }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'Esse horário já passou. Combine outro com o cliente.',
+      ),
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Aceitar' })).toBeEnabled();
+  });
+
+  it('closes and refreshes when someone already resolved the request', async () => {
+    resolverRemarcacaoMock.mockRejectedValue({
+      message: 'agenda: este pedido já foi resolvido.',
+    });
+    const { onClose } = abrir(compartilhado({ remarcacao_pendente: PEDIDO }));
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith('Este pedido já foi resolvido.'),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('hides the request block without edit permission but keeps the client state', async () => {
+    abrir(
+      compartilhado({
+        pode_editar: false,
+        cliente_resposta: 'aguardando',
+        remarcacao_pendente: PEDIDO,
+      }),
+    );
+    expect(
+      await screen.findByText('Cliente: Clínica Sorriso · Aguardando resposta'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Pedido de remarcação' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aceitar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Recusar' })).toBeNull();
+  });
+
+  it('shows nothing of the client on a masked (private) event', async () => {
+    abrir(
+      compartilhado({
+        mascarado: true,
+        pode_editar: false,
+        titulo: 'Ocupado',
+        remarcacao_pendente: PEDIDO,
+      }),
+    );
+    await screen.findByRole('dialog', { name: 'Ocupado' });
+    expect(screen.queryByText(/Cliente:/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aceitar' })).toBeNull();
   });
 });

@@ -19,6 +19,7 @@ import {
   formatAgendaError,
   getAgendaOcorrencia,
   listAgenda,
+  resolverRemarcacao,
   responderEvento,
   type AgendaEventoPayload,
 } from '../agenda';
@@ -174,6 +175,44 @@ describe('agenda store', () => {
     const err = { message: 'x' };
     mockRpc.mockResolvedValue({ data: null, error: err });
     await expect(responderEvento(9, 'sim', 'esta')).rejects.toBe(err);
+  });
+});
+
+describe('resolverRemarcacao', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('accepts: calls agenda_remarcacao_resolver with a null message', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null });
+    await resolverRemarcacao(5, true);
+    expect(mockRpc).toHaveBeenCalledWith('agenda_remarcacao_resolver', {
+      p_remarcacao: 5,
+      p_aceitar: true,
+      p_mensagem: null,
+    });
+  });
+
+  it('declines with a trimmed message, and blank becomes null', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null });
+    await resolverRemarcacao(5, false, '  Sexta não dá.  ');
+    expect(mockRpc).toHaveBeenLastCalledWith('agenda_remarcacao_resolver', {
+      p_remarcacao: 5,
+      p_aceitar: false,
+      p_mensagem: 'Sexta não dá.',
+    });
+    await resolverRemarcacao(5, false, '   ');
+    expect(mockRpc).toHaveBeenLastCalledWith('agenda_remarcacao_resolver', {
+      p_remarcacao: 5,
+      p_aceitar: false,
+      p_mensagem: null,
+    });
+  });
+
+  it('propagates errors', async () => {
+    const error = { message: 'agenda: este pedido já foi resolvido.' };
+    mockRpc.mockResolvedValue({ data: null, error });
+    await expect(resolverRemarcacao(5, true)).rejects.toBe(error);
   });
 });
 

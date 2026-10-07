@@ -14,6 +14,7 @@ import {
   sendFounderSignupNotice,
   sendFounderSubscriptionNotice,
   sendThankYouEmail,
+  sendViaResend,
   subscriptionValueLine,
   sendWelcomeEmail,
   THANKYOU_SUBJECT,
@@ -500,4 +501,43 @@ Deno.test("welcome email stays intact with no WhatsApp number set", () => {
   } finally {
     if (prev !== undefined) Deno.env.set("WHATSAPP_SUPPORT_NUMBER", prev);
   }
+});
+
+// --- sendViaResend attachments (Agenda client e-mails) -----------------------
+
+async function capturedResendBody(send: () => Promise<void>): Promise<Record<string, unknown>> {
+  const original = globalThis.fetch;
+  const previousKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  let body = "";
+  globalThis.fetch = ((_i: unknown, init?: RequestInit) => {
+    body = String(init?.body ?? "");
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await send();
+  } finally {
+    globalThis.fetch = original;
+    if (previousKey === undefined) Deno.env.delete("RESEND_API_KEY");
+    else Deno.env.set("RESEND_API_KEY", previousKey);
+  }
+  return JSON.parse(body);
+}
+
+Deno.test("sendViaResend posts attachments as given when present", async () => {
+  const attachments = [{ filename: "evento.ics", content: "QkVHSU4=", content_type: "text/calendar; charset=utf-8" }];
+  const payload = await capturedResendBody(() =>
+    sendViaResend("a@b.test", "S", "<p>x</p>", "k1", "X <n@mesaas.com.br>", undefined, { "X-H": "1" }, attachments)
+  );
+  assertEquals(payload.attachments, attachments);
+  assertEquals(payload.headers, { "X-H": "1" });
+});
+
+Deno.test("sendViaResend omits the attachments key when absent or empty", async () => {
+  const semAnexo = await capturedResendBody(() => sendViaResend("a@b.test", "S", "<p>x</p>", "k1"));
+  assert(!("attachments" in semAnexo), "no attachments key expected");
+  const vazio = await capturedResendBody(() =>
+    sendViaResend("a@b.test", "S", "<p>x</p>", "k1", "X <n@mesaas.com.br>", undefined, undefined, [])
+  );
+  assert(!("attachments" in vazio), "empty list must not be sent");
 });

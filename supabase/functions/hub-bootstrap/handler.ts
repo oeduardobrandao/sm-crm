@@ -107,8 +107,15 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       }
     };
 
-    const [, { data: cliente }, igFotoUrl, featureMensagens, featureBriefingAudio, brandCustomization] =
-      await Promise.all([
+    const [
+      ,
+      { data: cliente },
+      igFotoUrl,
+      featureMensagens,
+      featureBriefingAudio,
+      brandCustomization,
+      featureAgenda,
+    ] = await Promise.all([
         touch(),
         db
           .from("clientes")
@@ -119,6 +126,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
         feature("feature_mensagens"),
         feature("feature_briefing_audio"),
         feature("feature_brand_customization"),
+        feature("feature_agenda"),
       ]);
     const clienteFotoUrl = cliente?.foto_url || igFotoUrl || null;
 
@@ -153,6 +161,8 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       cliente_id: hubToken.cliente_id,
       feature_mensagens: featureMensagens,
       feature_briefing_audio: featureBriefingAudio,
+      // Optional on the wire: an older Hub bundle simply ignores it.
+      feature_agenda: featureAgenda,
       hub_theme: brandCustomization
         ? {
             customized: true,

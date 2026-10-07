@@ -3,15 +3,15 @@ import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/not
 import { EMAIL_NOTIFICATION_TYPES } from '@/store/notificationPrefs';
 
 describe('notification-catalog', () => {
-  it('cobre exatamente os 27 tipos', () => {
-    expect(Object.keys(NOTIFICATION_CATALOG)).toHaveLength(27);
+  it('cobre exatamente os 29 tipos', () => {
+    expect(Object.keys(NOTIFICATION_CATALOG)).toHaveLength(29);
   });
   it('todo tipo elegível a e-mail está marcado emailEligible', () => {
     for (const t of EMAIL_NOTIFICATION_TYPES.map((e) => e.type)) {
       expect(NOTIFICATION_CATALOG[t].emailEligible).toBe(true);
     }
     const eligible = Object.values(NOTIFICATION_CATALOG).filter((e) => e.emailEligible);
-    expect(eligible).toHaveLength(13);
+    expect(eligible).toHaveLength(15);
   });
   it('toda categoria usada existe em ORDER e LABELS', () => {
     for (const e of Object.values(NOTIFICATION_CATALOG)) {
@@ -25,7 +25,7 @@ describe('notification-catalog', () => {
       expect(e.recipients).not.toMatch(/—/);
     }
   });
-  it('os 5 tipos de agenda ficam na categoria agenda, com copy final', () => {
+  it('os 7 tipos de agenda ficam na categoria agenda, com copy final', () => {
     expect(CATEGORY_LABELS.agenda).toBe('Agenda');
     // `when` e um fragmento: a UI prefixa "Quando: " (e a descricao de e-mail "Quando ... .").
     const expected = {
@@ -40,22 +40,36 @@ describe('notification-catalog', () => {
         'um participante responde a um evento que você organizou',
       ],
       event_reminder: ['Lembretes de eventos', 'no horário dos lembretes que você definiu'],
+      event_client_rsvp: [
+        'Cliente respondeu a um evento',
+        'o cliente confirma ou recusa um evento compartilhado com ele',
+      ],
+      event_reschedule_requested: [
+        'Cliente pediu para remarcar',
+        'o cliente pede para remarcar um evento compartilhado com ele',
+      ],
     } as const;
     for (const [type, [label, when]] of Object.entries(expected)) {
       const e = NOTIFICATION_CATALOG[type as keyof typeof expected];
       expect(e.category).toBe('agenda');
       expect(e.label).toBe(label);
       expect(e.when).toBe(when);
-      expect(e.recipients).toBe(
-        type === 'event_rsvp' ? 'Organizador do evento' : 'Participantes do evento',
-      );
+      const recipients =
+        type === 'event_rsvp'
+          ? 'Organizador do evento'
+          : type === 'event_client_rsvp' || type === 'event_reschedule_requested'
+            ? 'Organizador do evento (ou donos e admins)'
+            : 'Participantes do evento';
+      expect(e.recipients).toBe(recipients);
     }
   });
-  it('event_rsvp nao e elegivel a e-mail; os outros quatro sao', () => {
+  it('event_rsvp nao e elegivel a e-mail; os outros seis sao', () => {
     expect(NOTIFICATION_CATALOG.event_rsvp.emailEligible).toBe(false);
     expect(NOTIFICATION_CATALOG.event_invited.emailEligible).toBe(true);
     expect(NOTIFICATION_CATALOG.event_updated.emailEligible).toBe(true);
     expect(NOTIFICATION_CATALOG.event_cancelled.emailEligible).toBe(true);
     expect(NOTIFICATION_CATALOG.event_reminder.emailEligible).toBe(true);
+    expect(NOTIFICATION_CATALOG.event_client_rsvp.emailEligible).toBe(true);
+    expect(NOTIFICATION_CATALOG.event_reschedule_requested.emailEligible).toBe(true);
   });
 });

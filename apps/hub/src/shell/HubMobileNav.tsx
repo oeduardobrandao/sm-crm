@@ -29,7 +29,10 @@ export function HubMobileNav() {
     aprovacoes: pendingCount,
     mensagens: mensagensUnread,
   };
-  const navItems = getVisibleNavItems(bootstrap.feature_mensagens);
+  const navItems = getVisibleNavItems(
+    bootstrap.feature_mensagens,
+    bootstrap.feature_agenda ?? false,
+  );
 
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);

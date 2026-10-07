@@ -303,8 +303,10 @@ begin
   v_it := pg_temp.item(v_feed, v_meu);
   assert (select array_agg(k order by k) from jsonb_object_keys(v_it) k)
        = array['data_fim_local','data_inicio_local','data_original','descricao','dia_inteiro','evento_id','fim',
-               'inicio','link_reuniao','local','ocorrencia_id','titulo','tz'],
+               'inicio','link_reuniao','local','ocorrencia_id','sequencia','titulo','tz'],
     format('item keys: %s', v_it);
+  -- sequencia (20261007000001_agenda_hub.sql): 0 until the client is e-mailed about it
+  assert v_it->'sequencia' = '0'::jsonb, format('sequencia: %s', v_it);
   assert v_it->>'titulo' = 'Meu evento' and v_it->>'descricao' = 'Pauta' and v_it->>'local' = 'Sala 2'
      and v_it->>'link_reuniao' = 'https://meet.example.com/abc' and v_it->>'tz' = 'America/Sao_Paulo',
     format('own event content: %s', v_it);

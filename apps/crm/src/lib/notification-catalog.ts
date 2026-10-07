@@ -37,6 +37,7 @@ export interface NotificationCatalogEntry {
 const RESP_ADMINS = 'responsável pelo item + donos e admins';
 const ADMINS = 'donos e admins';
 const PARTICIPANTES = 'Participantes do evento';
+const ORGANIZADOR_OU_ADMINS = 'Organizador do evento (ou donos e admins)';
 
 export const NOTIFICATION_CATALOG = {
   post_approved: {
@@ -192,6 +193,20 @@ export const NOTIFICATION_CATALOG = {
     when: 'um participante responde a um evento que você organizou',
     recipients: 'Organizador do evento',
     emailEligible: false,
+  },
+  event_client_rsvp: {
+    category: 'agenda',
+    label: 'Cliente respondeu a um evento',
+    when: 'o cliente confirma ou recusa um evento compartilhado com ele',
+    recipients: ORGANIZADOR_OU_ADMINS,
+    emailEligible: true,
+  },
+  event_reschedule_requested: {
+    category: 'agenda',
+    label: 'Cliente pediu para remarcar',
+    when: 'o cliente pede para remarcar um evento compartilhado com ele',
+    recipients: ORGANIZADOR_OU_ADMINS,
+    emailEligible: true,
   },
   event_reminder: {
     category: 'agenda',

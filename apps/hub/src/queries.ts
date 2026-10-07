@@ -1,6 +1,14 @@
-import { QueryClient, queryOptions } from '@tanstack/react-query';
+import { QueryClient, infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { matchPath } from 'react-router-dom';
-import { fetchBootstrap, fetchPost, fetchPosts, fetchPostsInRange } from './api';
+import {
+  fetchAgenda,
+  fetchAgendaItem,
+  fetchBootstrap,
+  fetchPost,
+  fetchPosts,
+  fetchPostsInRange,
+} from './api';
+import type { HubAgendaCursor, HubAgendaItem, HubAgendaResponse } from './types';
 
 // Fetched once per visit, like the effect it replaced: a refetch on window
 // focus would spend the shared hub-read budget for data that never changes
@@ -63,6 +71,60 @@ export function invalidateHubPosts(qc: QueryClient, token: string) {
     qc.invalidateQueries({ queryKey: [HUB_POSTS_KEY, token, 'post'] }),
     qc.invalidateQueries({ queryKey: [HUB_POSTS_KEY, token, 'history'], refetchType: 'none' }),
     qc.invalidateQueries({ queryKey: [HUB_POSTS_KEY, token, 'range'], refetchType: 'none' }),
+  ]);
+}
+
+// ── Agenda ──────────────────────────────────────────────────────────────────
+
+export const HUB_AGENDA_KEY = 'hub-agenda';
+export const HUB_AGENDA_ITEM_KEY = 'hub-agenda-item';
+
+/**
+ * The Agenda page and the Home block share this one infinite query (Home reads
+ * `pages[0]`), so the cache entry always has the infinite shape. A short
+ * staleTime keeps Home -> Agenda navigation from spending a second hub-read hit.
+ */
+export const hubAgendaQuery = (token: string) =>
+  infiniteQueryOptions({
+    queryKey: [HUB_AGENDA_KEY, token],
+    queryFn: ({ pageParam }) => fetchAgenda(token, pageParam),
+    initialPageParam: undefined as HubAgendaCursor | undefined,
+    getNextPageParam: (last: HubAgendaResponse) => last.proximo ?? undefined,
+    staleTime: 30_000,
+  });
+
+// A 404 (gone, or another client's) is an answer, not a failure to retry.
+export const hubAgendaItemQuery = (token: string, ocorrenciaId: number) =>
+  queryOptions({
+    queryKey: [HUB_AGENDA_ITEM_KEY, token, ocorrenciaId],
+    queryFn: () => fetchAgendaItem(token, ocorrenciaId).then((r) => r.item),
+    retry: false,
+    staleTime: 30_000,
+  });
+
+/** Writes the item a mutation returned into every cached copy (list pages + deep link). */
+export function setHubAgendaItem(qc: QueryClient, token: string, item: HubAgendaItem) {
+  qc.setQueryData(hubAgendaQuery(token).queryKey, (data) =>
+    data
+      ? {
+          ...data,
+          pages: data.pages.map((page) => ({
+            ...page,
+            itens: page.itens.map((i) => (i.ocorrencia_id === item.ocorrencia_id ? item : i)),
+          })),
+        }
+      : data,
+  );
+  qc.setQueryData([HUB_AGENDA_ITEM_KEY, token, item.ocorrencia_id], (old: unknown) =>
+    old ? item : old,
+  );
+}
+
+/** After a failed write (moved, ended, already resolved): reload what the client sees. */
+export function invalidateHubAgenda(qc: QueryClient, token: string) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: [HUB_AGENDA_KEY, token] }),
+    qc.invalidateQueries({ queryKey: [HUB_AGENDA_ITEM_KEY, token] }),
   ]);
 }
 

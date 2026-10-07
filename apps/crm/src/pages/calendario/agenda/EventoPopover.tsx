@@ -31,6 +31,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { getInitials } from '@/lib/initials';
@@ -39,7 +40,9 @@ import {
   ehAgendaNaoExiste,
   excluirEvento,
   formatAgendaError,
+  resolverRemarcacao,
   responderEvento,
+  type AgendaClienteResposta,
   type AgendaEscopo,
   type AgendaOcorrencia,
   type AgendaResposta,
@@ -174,6 +177,32 @@ const BADGE: Record<
   pendente: { label: 'Aguardando', variant: 'neutral' },
 };
 
+const CLIENTE_RESPOSTA_LABEL: Record<AgendaClienteResposta, string> = {
+  sim: 'Confirmou',
+  nao: 'Recusou',
+  aguardando: 'Aguardando resposta',
+};
+
+/** "qui., 9 de out., 14:00" (all-day: no time). Timed in the browser zone like the
+ *  grid; all-day as the series-local date. */
+function quandoSugerido(iso: string, o: AgendaOcorrencia): string {
+  if (o.dia_inteiro) {
+    return format(emFuso(iso, o.tz), "EEEEEE'.,' d 'de' MMM'.'", { locale: ptBR });
+  }
+  return format(new Date(iso), "EEEEEE'.,' d 'de' MMM'.,' HH:mm", { locale: ptBR });
+}
+
+/** Max length of the team's message to the client (database limit). */
+const MAX_MENSAGEM_REMARCACAO = 1000;
+
+/** The RPC says 'agenda: este pedido já foi resolvido.' when someone got there first. */
+const ehPedidoResolvido = (e: unknown) =>
+  /^agenda:\s*este pedido já foi resolvido/i.test(
+    e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string'
+      ? (e as { message: string }).message.trim()
+      : '',
+  );
+
 const RESPOSTAS: { id: Resposta; label: string }[] = [
   { id: 'sim', label: 'Sim' },
   { id: 'nao', label: 'Não' },
@@ -258,6 +287,8 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
   const tituloId = useId();
   const [sub, setSub] = useState<SubDialogo | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [recusando, setRecusando] = useState(false);
+  const [mensagemRecusa, setMensagemRecusa] = useState('');
 
   const { data: roster = [] } = useQuery<Pessoa[]>({
     queryKey: ['workspace-users'],
@@ -333,6 +364,31 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
     }
   };
 
+  const resolver = async (aceitar: boolean) => {
+    const pedido = o.remarcacao_pendente;
+    if (!pedido) return;
+    setEnviando(true);
+    try {
+      await resolverRemarcacao(pedido.id, aceitar, aceitar ? undefined : mensagemRecusa);
+      void invalidarAgenda();
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+      void qc.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      toast.success(aceitar ? 'Remarcação aceita' : 'Remarcação recusada');
+      setEnviando(false);
+      // The occurrence moved (or the request is gone): this card is stale.
+      onClose();
+    } catch (err) {
+      toast.error(formatAgendaError(err, 'Não foi possível resolver o pedido. Tente novamente.'));
+      setEnviando(false);
+      if (ehPedidoResolvido(err)) {
+        void invalidarAgenda();
+        onClose();
+        return;
+      }
+      fecharSeSumiu(err);
+    }
+  };
+
   const fecharSub = () => {
     if (!enviando) setSub(null);
   };
@@ -344,6 +400,11 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
   const href = mascarado ? null : linkSeguro(o.link_reuniao);
   const textoLembretes = mascarado ? null : lembretes(o);
   const respostaAtual = o.minha_resposta;
+  const clienteResposta =
+    !mascarado && o.compartilhado_cliente && o.cliente_resposta
+      ? CLIENTE_RESPOSTA_LABEL[o.cliente_resposta]
+      : null;
+  const pedidoRemarcacao = !mascarado && podeEditar ? o.remarcacao_pendente : null;
 
   return (
     <>
@@ -477,7 +538,91 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
                 </Linha>
               )}
               {o.cliente_nome && (
-                <Linha icone={<Building2 {...ICONE} />}>Cliente: {o.cliente_nome}</Linha>
+                <Linha icone={<Building2 {...ICONE} />}>
+                  {clienteResposta
+                    ? `Cliente: ${o.cliente_nome} · ${clienteResposta}`
+                    : `Cliente: ${o.cliente_nome}`}
+                </Linha>
+              )}
+              {pedidoRemarcacao && (
+                <div
+                  role="group"
+                  aria-label="Pedido de remarcação"
+                  className="flex flex-col gap-2.5 rounded-[10px] border p-3.5 text-[13px] leading-[18px]"
+                  style={{ background: 'var(--surface-1)', borderColor: 'var(--warning)' }}
+                >
+                  <div className="font-semibold">
+                    {`${o.cliente_nome || 'O cliente'} pediu para remarcar para ${quandoSugerido(pedidoRemarcacao.inicio_sugerido, o)}`}
+                  </div>
+                  {pedidoRemarcacao.mensagem && (
+                    <div
+                      className="whitespace-pre-line break-words"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {pedidoRemarcacao.mensagem}
+                    </div>
+                  )}
+                  {recusando ? (
+                    <div className="flex flex-col gap-2">
+                      <Textarea
+                        aria-label="Mensagem para o cliente"
+                        placeholder="Mensagem para o cliente (opcional)"
+                        rows={3}
+                        maxLength={MAX_MENSAGEM_REMARCACAO}
+                        value={mensagemRecusa}
+                        onChange={(e) => setMensagemRecusa(e.target.value)}
+                        disabled={enviando}
+                        className="resize-none"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mb-0"
+                          disabled={enviando}
+                          onClick={() => {
+                            setRecusando(false);
+                            setMensagemRecusa('');
+                          }}
+                        >
+                          Voltar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="mb-0"
+                          disabled={enviando}
+                          onClick={() => void resolver(false)}
+                        >
+                          Enviar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mb-0"
+                        disabled={enviando}
+                        onClick={() => void resolver(true)}
+                      >
+                        Aceitar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mb-0"
+                        disabled={enviando}
+                        onClick={() => setRecusando(true)}
+                      >
+                        Recusar
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
               {textoLembretes && <Linha icone={<Bell {...ICONE} />}>{textoLembretes}</Linha>}
               {o.descricao && (

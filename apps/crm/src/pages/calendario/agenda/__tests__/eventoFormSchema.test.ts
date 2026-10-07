@@ -86,6 +86,10 @@ function ocorrencia(p: Partial<AgendaOcorrencia> = {}): AgendaOcorrencia {
     pode_editar: true,
     pode_responder: false,
     tz: 'America/Sao_Paulo',
+    compartilhado_cliente: false,
+    cliente_resposta: null,
+    remarcacao_pendente: null,
+    sequencia: 0,
     ...p,
   };
 }
@@ -244,6 +248,7 @@ describe('montarPayload', () => {
       cor: null,
       cliente_id: 12,
       privado: false,
+      compartilhado_cliente: false,
       dia_inteiro: false,
       inicio_local: '2026-10-05T14:00:00',
       fim_local: '2026-10-05T16:00:00',
@@ -251,6 +256,26 @@ describe('montarPayload', () => {
       regra: null,
     });
     expect('tz' in p).toBe(false);
+  });
+
+  it('shares with the cliente only with a cliente and a non-private event', () => {
+    const compartilha = (p: Partial<EventoFormValues>) =>
+      montarPayload(valores({ compartilhado_cliente: true, ...p })).compartilhado_cliente;
+    expect(compartilha({ cliente_id: '12' })).toBe(true);
+    expect(compartilha({ cliente_id: 'none' })).toBe(false);
+    expect(compartilha({ cliente_id: '12', privado: true })).toBe(false);
+    expect(montarPayload(valores({ cliente_id: '12' })).compartilhado_cliente).toBe(false);
+  });
+
+  it('reads compartilhado_cliente back from the occurrence (never for a private one)', () => {
+    expect(
+      valoresDeOcorrencia(ocorrencia({ compartilhado_cliente: true })).compartilhado_cliente,
+    ).toBe(true);
+    expect(valoresDeOcorrencia(ocorrencia()).compartilhado_cliente).toBe(false);
+    expect(
+      valoresDeOcorrencia(ocorrencia({ compartilhado_cliente: true, privado: true }))
+        .compartilhado_cliente,
+    ).toBe(false);
   });
 
   it('sends the day after the last day at 00:00 for all-day events', () => {
@@ -415,6 +440,7 @@ describe('edit payload', () => {
     cor: null,
     cliente_id: 12,
     privado: false,
+    compartilhado_cliente: false,
     dia_inteiro: false,
     lembretes: [10],
   };
@@ -442,6 +468,27 @@ describe('edit payload', () => {
       montarPayloadEdicao(antes, { ...antes, titulo: 'Novo', local: null }, { escopo: 'todas' }),
     ).toEqual({ ...SERIE, titulo: 'Novo', local: null });
     expect(montarPayloadEdicao(antes, antes, { escopo: 'seguintes' })).toEqual(SERIE);
+  });
+
+  it('sharing is a series field: it locks "Este evento", rides along with todas, never with esta', () => {
+    const ligou = { ...antes, compartilhado_cliente: true };
+    expect(chavesAlteradas(antes, ligou)).toEqual(['compartilhado_cliente']);
+    expect(
+      camposDeSerieAlterados(antes, ligou, {
+        participantesMudaram: false,
+        regraAcompanhouData: true,
+      }),
+    ).toEqual(['compartilhado_cliente']);
+    expect(motivoSerie(['compartilhado_cliente'])).toBe(
+      'Vale para toda a série: você mudou o compartilhamento com o cliente.',
+    );
+    expect(montarPayloadEdicao(antes, ligou, { escopo: 'todas' })).toEqual({
+      ...SERIE,
+      compartilhado_cliente: true,
+    });
+    expect('compartilhado_cliente' in montarPayloadEdicao(antes, ligou, { escopo: 'esta' })).toBe(
+      false,
+    );
   });
 
   it('"todas" from an occurrence with a title override keeps the override out', () => {

@@ -17,6 +17,9 @@ export interface IcsEvento {
   local?: string | null;
   /** Meeting link; only http(s) is emitted. */
   url?: string | null;
+  /** RFC 5545 SEQUENCE; omitted (not written) when undefined so the
+   *  personal feed's output is unchanged when callers don't pass it. */
+  sequencia?: number;
 }
 
 const CRLF = "\r\n";
@@ -89,6 +92,7 @@ export function gerarCalendario(
       .filter(Boolean)
       .join("\n\n");
     l.push("BEGIN:VEVENT", `UID:${e.uid}`, `DTSTAMP:${utc(agora)}`);
+    if (e.sequencia !== undefined) l.push(`SEQUENCE:${Math.max(0, Math.trunc(e.sequencia))}`);
     if (e.diaInteiro) {
       if (!e.dataInicio || !e.dataFim) {
         // Caller bug (all-day row without local dates): fail loudly rather

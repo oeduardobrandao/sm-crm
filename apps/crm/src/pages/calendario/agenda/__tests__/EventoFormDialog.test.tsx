@@ -12,6 +12,7 @@ const {
   toastMock,
   toastSuccessMock,
   toastErrorMock,
+  hasFeatureMock,
 } = vi.hoisted(() => ({
   criarEventoMock: vi.fn(),
   editarEventoMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   toastMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  hasFeatureMock: vi.fn(),
 }));
 
 vi.mock('@/store/agenda', async (importOriginal) => ({
@@ -33,6 +35,9 @@ vi.mock('@/store/clients', async (importOriginal) => ({
 }));
 vi.mock('@/store/workspace', () => ({ getWorkspaceUsers: getWorkspaceUsersMock }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'me' } }) }));
+vi.mock('@/hooks/useEntitlements', () => ({
+  useEntitlements: () => ({ hasFeature: hasFeatureMock }),
+}));
 // The runner's zone must not matter: the "browser" is in São Paulo.
 vi.mock('../agendaLogic', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../agendaLogic')>()),
@@ -134,9 +139,11 @@ const PESSOAS = [
 ];
 
 beforeEach(() => {
+  hasFeatureMock.mockReset().mockReturnValue(true);
   getClientesMock.mockResolvedValue([
-    { id: 12, nome: 'Clínica Sorriso', status: 'ativo' },
-    { id: 13, nome: 'Antiga', status: 'encerrado' },
+    { id: 12, nome: 'Clínica Sorriso', status: 'ativo', email: 'contato@sorriso.com' },
+    { id: 13, nome: 'Antiga', status: 'encerrado', email: 'antiga@x.com' },
+    { id: 14, nome: 'Sem Email', status: 'ativo', email: '' },
   ]);
   getWorkspaceUsersMock.mockResolvedValue(PESSOAS);
   criarEventoMock.mockResolvedValue({
@@ -181,6 +188,10 @@ function ocorrencia(p: Partial<AgendaOcorrencia> = {}): AgendaOcorrencia {
     pode_editar: true,
     pode_responder: false,
     tz: 'America/Sao_Paulo',
+    compartilhado_cliente: false,
+    cliente_resposta: null,
+    remarcacao_pendente: null,
+    sequencia: 0,
     ...p,
   };
 }
@@ -305,6 +316,7 @@ describe('EventoFormDialog: criar', () => {
       cor: null,
       cliente_id: null,
       privado: false,
+      compartilhado_cliente: false,
       dia_inteiro: false,
       tz: 'America/Sao_Paulo',
       inicio_local: '2026-10-05T14:00:00',
@@ -556,6 +568,7 @@ const SERIE = {
   cor: null,
   cliente_id: 12,
   privado: false,
+  compartilhado_cliente: false,
   dia_inteiro: false,
   lembretes: [10],
 };
@@ -822,5 +835,106 @@ describe('EventoFormDialog: editar', () => {
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('Link da reunião inválido'));
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Editar evento' })).toBeInTheDocument();
+  });
+});
+
+describe('EventoFormDialog: Compartilhar com o cliente', () => {
+  const interruptor = () => screen.queryByRole('switch', { name: 'Compartilhar com o cliente' });
+
+  it('shows the switch only once a cliente is picked', async () => {
+    criar();
+    expect(interruptor()).toBeNull();
+    await screen.findByRole('option', { name: 'Clínica Sorriso' });
+    fireEvent.change(select('Cliente'), { target: { value: '12' } });
+    expect(interruptor()).toBeInTheDocument();
+    expect(
+      screen.getByText('Aparece no portal do cliente e ele recebe o convite por e-mail.'),
+    ).toBeInTheDocument();
+    fireEvent.change(select('Cliente'), { target: { value: 'none' } });
+    expect(interruptor()).toBeNull();
+  });
+
+  it('hides when Privado is on, and turning Privado on clears it', async () => {
+    criar();
+    await screen.findByRole('option', { name: 'Clínica Sorriso' });
+    fireEvent.change(select('Cliente'), { target: { value: '12' } });
+    fireEvent.click(interruptor()!);
+    expect(interruptor()).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(interruptor()).toBeNull();
+    // Back to public: the switch returns off, not remembered as on.
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(interruptor()).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('clears when the cliente goes back to "Sem cliente"', async () => {
+    criar();
+    await screen.findByRole('option', { name: 'Clínica Sorriso' });
+    fireEvent.change(select('Cliente'), { target: { value: '12' } });
+    fireEvent.click(interruptor()!);
+    fireEvent.change(select('Cliente'), { target: { value: 'none' } });
+    fireEvent.change(select('Cliente'), { target: { value: '12' } });
+    expect(interruptor()).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('sends compartilhado_cliente in the create payload', async () => {
+    criar();
+    await screen.findByRole('option', { name: 'Clínica Sorriso' });
+    fireEvent.change(titulo(), { target: { value: 'Gravação' } });
+    fireEvent.change(select('Cliente'), { target: { value: '12' } });
+    fireEvent.click(interruptor()!);
+    salvar();
+    await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    expect(criarEventoMock.mock.calls[0][0]).toMatchObject({
+      cliente_id: 12,
+      compartilhado_cliente: true,
+    });
+  });
+
+  it('warns when the cliente has no e-mail', async () => {
+    criar();
+    await screen.findByRole('option', { name: 'Sem Email' });
+    fireEvent.change(select('Cliente'), { target: { value: '14' } });
+    expect(
+      screen.getByText('Este cliente não tem e-mail cadastrado. O evento aparece só no portal.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says the client gets the invite by e-mail when the workspace has no Hub', async () => {
+    hasFeatureMock.mockImplementation((flag: string) => flag !== 'feature_hub_portal');
+    criar();
+    await screen.findByRole('option', { name: 'Clínica Sorriso' });
+    fireEvent.change(select('Cliente'), { target: { value: '12' } });
+    expect(screen.getByText('O cliente recebe o convite por e-mail.')).toBeInTheDocument();
+  });
+
+  it('says nobody is told when there is neither e-mail nor Hub', async () => {
+    hasFeatureMock.mockReturnValue(false);
+    criar();
+    await screen.findByRole('option', { name: 'Sem Email' });
+    fireEvent.change(select('Cliente'), { target: { value: '14' } });
+    expect(screen.getByText(/O cliente não será avisado deste evento\./)).toBeInTheDocument();
+  });
+
+  it('edit: starts on for a shared event; turning it off is a series change that locks "Este evento"', async () => {
+    editar(ocorrencia({ recorrente: true, regra: SEMANAL_SEG, compartilhado_cliente: true }));
+    await waitFor(() => expect(select('Cliente').value).toBe('12'));
+    expect(interruptor()).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(interruptor()!);
+    salvar();
+    const dlg = await screen.findByRole('alertdialog', { name: 'Editar evento recorrente' });
+    expect(within(dlg).getByRole('radio', { name: 'Este evento' })).toBeDisabled();
+    expect(
+      within(dlg).getByText('Vale para toda a série: você mudou o compartilhamento com o cliente.'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(editarEventoMock).toHaveBeenCalledWith(
+        7,
+        'seguintes',
+        { ...SERIE, regra: SEMANAL_SEG, compartilhado_cliente: false },
+        null,
+      ),
+    );
   });
 });

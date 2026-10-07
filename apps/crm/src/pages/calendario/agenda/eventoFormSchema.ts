@@ -101,6 +101,8 @@ export const eventoFormSchema = z
       .array(z.number().int())
       .max(MAX_LEMBRETES, `Use no máximo ${MAX_LEMBRETES} lembretes.`),
     privado: z.boolean(),
+    /** Share with the cliente (Hub + e-mail). Only meaningful with a cliente and not privado. */
+    compartilhado_cliente: z.boolean(),
   })
   .superRefine((v, ctx) => {
     if (!v.titulo.trim()) {
@@ -188,6 +190,7 @@ const BASE: Omit<
   link_reuniao: '',
   descricao: '',
   privado: false,
+  compartilhado_cliente: false,
 };
 
 /** Create mode. `fim` is exclusive for all-day selections (FullCalendar). */
@@ -254,6 +257,7 @@ export function valoresDeOcorrencia(o: AgendaOcorrencia): EventoFormValues {
     descricao: o.descricao ?? '',
     lembretes: [...(o.lembretes ?? [])],
     privado: o.privado,
+    compartilhado_cliente: o.compartilhado_cliente === true && !o.privado,
     data_inicio: dataInicio,
   };
   if (o.dia_inteiro) {
@@ -293,6 +297,8 @@ export function montarPayload(v: EventoFormValues): AgendaEventoPayload {
     cor: v.cor,
     cliente_id: v.cliente_id === 'none' ? null : parseInt(v.cliente_id, 10),
     privado: v.privado,
+    // Shared needs a cliente and a non-private event; the database enforces the same.
+    compartilhado_cliente: v.cliente_id !== 'none' && !v.privado && v.compartilhado_cliente,
     dia_inteiro: v.dia_inteiro,
     inicio_local: inicioLocal,
     fim_local: fimLocal,
@@ -342,6 +348,7 @@ export type CampoSerie =
   | 'cor'
   | 'cliente_id'
   | 'privado'
+  | 'compartilhado_cliente'
   | 'dia_inteiro'
   | 'participantes';
 
@@ -352,6 +359,7 @@ const CAMPO_SERIE_LABEL: Record<CampoSerie, string> = {
   cor: 'a cor',
   cliente_id: 'o cliente',
   privado: 'a opção Evento privado',
+  compartilhado_cliente: 'o compartilhamento com o cliente',
   dia_inteiro: 'a opção Dia inteiro',
   participantes: 'os participantes',
 };
@@ -370,6 +378,9 @@ export function camposDeSerieAlterados(
   if (antes.cor !== depois.cor) out.push('cor');
   if (antes.cliente_id !== depois.cliente_id) out.push('cliente_id');
   if (antes.privado !== depois.privado) out.push('privado');
+  if (!!antes.compartilhado_cliente !== !!depois.compartilhado_cliente) {
+    out.push('compartilhado_cliente');
+  }
   if (antes.dia_inteiro !== depois.dia_inteiro) out.push('dia_inteiro');
   if (opts.participantesMudaram) out.push('participantes');
   return out;
@@ -391,6 +402,7 @@ const CHAVES_EDICAO = [
   'cor',
   'cliente_id',
   'privado',
+  'compartilhado_cliente',
   'dia_inteiro',
   'inicio_local',
   'fim_local',
@@ -401,7 +413,15 @@ const CHAVES_EDICAO = [
 export type ChaveEdicao = (typeof CHAVES_EDICAO)[number];
 
 const CHAVES_CONTEUDO = ['titulo', 'descricao', 'local', 'link_reuniao'] as const;
-const CHAVES_SERIE = ['tipo', 'cor', 'cliente_id', 'privado', 'dia_inteiro', 'lembretes'] as const;
+const CHAVES_SERIE = [
+  'tipo',
+  'cor',
+  'cliente_id',
+  'privado',
+  'compartilhado_cliente',
+  'dia_inteiro',
+  'lembretes',
+] as const;
 
 /** Keys whose value differs between the form as opened and as submitted
  *  (reminders compared as a set, the rule deep). Drives the no-op check and the
@@ -413,6 +433,7 @@ export function chavesAlteradas(
   return CHAVES_EDICAO.filter((k) => {
     if (k === 'lembretes') return !mesmoConjunto(antes.lembretes, depois.lembretes);
     if (k === 'regra') return !mesmaRegra(antes.regra, depois.regra);
+    if (k === 'compartilhado_cliente') return !!antes[k] !== !!depois[k];
     return antes[k] !== depois[k];
   });
 }

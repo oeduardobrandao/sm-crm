@@ -53,6 +53,18 @@
  * successive ticks instead of stranding a chunk permanently -- see
  * EVENTS_QUERY_CAP's comment for the full reasoning.
  *
+ * Agenda reminders (sub-project 3, spec §9): shared occurrences still
+ * waiting for the client's answer, starting between now+1h and now+48h, come
+ * from `agenda_cliente_lembretes_pendentes` (gated by feature_agenda; `[]`
+ * when the flag is off, which leaves the digest exactly as before). They
+ * count as content, so a reminders-only digest is sent; each one adds
+ * `oc:<ocorrencia_id>:<inicio>` to the idempotency key (two reminders-only
+ * digests on the same day would otherwise share a key and Resend would
+ * drop the second as a duplicate). After a successful send and cursor
+ * advance, `agenda_cliente_lembretes_marcar` records `lembrado_inicio` so
+ * each start time is reminded once. A failed reminders query degrades to
+ * "no reminders" for this run instead of failing the whole digest.
+ *
  * Per-client failures (a bad query, a Resend rejection, a failed cursor
  * advance after an already-sent email, ...) are caught individually and
  * release that ONE client's lease; they never abort the batch loop,
@@ -60,6 +72,7 @@
  */
 import {
   buildClientEventEmail,
+  type ClientEventReminder,
   clientEventSubject,
   signUnsubToken,
 } from "../_shared/client-event-email.ts";
@@ -100,6 +113,14 @@ export interface ClientEventEmailDb {
     fn: "claim_client_event_emails",
     args: { p_now: string; p_limit: number },
   ): Promise<{ data: ClaimedClientEventRow[] | null; error: DbError | null }>;
+  rpc(
+    fn: "agenda_cliente_lembretes_pendentes",
+    args: { p_conta: string; p_cliente: number; p_now: string },
+  ): PromiseLike<{ data: unknown; error: DbError | null }>;
+  rpc(
+    fn: "agenda_cliente_lembretes_marcar",
+    args: { p_conta: string; p_cliente: number; p_itens: Array<{ ocorrencia_id: number; inicio: string }> },
+  ): PromiseLike<{ data: unknown; error: DbError | null }>;
   from(table: string): {
     // deno-lint-ignore no-explicit-any
     select(columns: string): FilterChain<any>;
@@ -280,6 +301,37 @@ async function releaseLease(db: ClientEventEmailDb, ids: number[]): Promise<void
     .in("id", ids);
   if (error) {
     console.error(`[client-event-email-cron] release failed for ${ids.length} ids:`, error.message);
+  }
+}
+
+/** `agenda_cliente_lembretes_pendentes` for one claimed client. Any error (or
+ * a malformed payload) degrades to no reminders: the Agenda section is an
+ * add-on and must never block the posts/messages digest. */
+async function fetchReminders(
+  db: ClientEventEmailDb,
+  row: ClaimedClientEventRow,
+  now: Date,
+): Promise<ClientEventReminder[]> {
+  try {
+    const { data, error } = await db.rpc("agenda_cliente_lembretes_pendentes", {
+      p_conta: row.conta_id,
+      p_cliente: row.id,
+      p_now: now.toISOString(),
+    });
+    if (error) {
+      console.error(`[client-event-email-cron] agenda_cliente_lembretes_pendentes failed for cliente=${row.id}:`, error.message);
+      return [];
+    }
+    if (!Array.isArray(data)) return [];
+    return (data as ClientEventReminder[]).filter((r) =>
+      r != null && typeof r.ocorrencia_id === "number" && typeof r.inicio === "string" && typeof r.fim === "string"
+    );
+  } catch (e) {
+    console.error(
+      `[client-event-email-cron] agenda_cliente_lembretes_pendentes threw for cliente=${row.id}:`,
+      e instanceof Error ? e.message : String(e),
+    );
+    return [];
   }
 }
 
@@ -477,7 +529,13 @@ export async function runClientEventEmailCron(
       const approvalIds: string[] = Array.from(latestByPost.values()).map((p) => `pse:${p.id}`);
       const messageIds = messages.map((m) => `msg:${m.id}`);
 
-      if (pendingPosts.length === 0 && messages.length === 0) {
+      // ---- agenda reminders (spec §9) -------------------------------------------
+      const reminders = await fetchReminders(deps.db, row, now);
+      // `inicio` exactly as the RPC returned it: the same string goes back to
+      // agenda_cliente_lembretes_marcar, and one RPC call is self-consistent.
+      const reminderIds = reminders.map((r) => `oc:${r.ocorrencia_id}:${r.inicio}`);
+
+      if (pendingPosts.length === 0 && messages.length === 0 && reminders.length === 0) {
         skippedNoContent++;
         await releaseLease(deps.db, [row.id]);
         continue;
@@ -516,8 +574,13 @@ export async function runClientEventEmailCron(
         unreadMessages: messages.length,
         hubUrl,
         unsubUrl,
+        pendingEvents: reminders,
       });
-      const idempotencyKey = await buildClientEventIdempotencyKey(row.id, [...approvalIds, ...messageIds]);
+      const idempotencyKey = await buildClientEventIdempotencyKey(row.id, [
+        ...approvalIds,
+        ...messageIds,
+        ...reminderIds,
+      ]);
 
       await deps.sendEmail({
         to: row.email,
@@ -560,6 +623,25 @@ export async function runClientEventEmailCron(
         .in("id", [row.id]);
       if (successErr) throw new Error(`cursor advance failed: ${successErr.message}`);
 
+      // Reminders are marked only after the send AND the cursor advance: a
+      // retry after a failed advance rebuilds the same key (reminders still
+      // pending) and Resend dedupes it. A failed mark is logged, not counted
+      // as a failure: the e-mail is out and the cursor moved; the worst case
+      // is the same reminder in a later digest.
+      if (reminders.length > 0) {
+        const { error: marcarErr } = await deps.db.rpc("agenda_cliente_lembretes_marcar", {
+          p_conta: row.conta_id,
+          p_cliente: row.id,
+          p_itens: reminders.map((r) => ({ ocorrencia_id: r.ocorrencia_id, inicio: r.inicio })),
+        });
+        if (marcarErr) {
+          console.error(
+            `[client-event-email-cron] agenda_cliente_lembretes_marcar failed for cliente=${row.id}:`,
+            marcarErr.message,
+          );
+        }
+      }
+
       // Delivery + cursor advance define "emailed"; the audit trail is
       // best-effort from here on and must never recast an already-delivered,
       // already-advanced client as a failure (which would also needlessly
@@ -571,7 +653,11 @@ export async function runClientEventEmailCron(
           action: "client_event_email_sent",
           resource_type: "cliente",
           resource_id: String(row.id),
-          metadata: { posts: pendingPosts.length, messages: messages.length },
+          metadata: {
+            posts: pendingPosts.length,
+            messages: messages.length,
+            ...(reminders.length > 0 ? { events: reminders.length } : {}),
+          },
         });
       } catch (auditErr) {
         const auditMessage = auditErr instanceof Error ? auditErr.message : String(auditErr);
