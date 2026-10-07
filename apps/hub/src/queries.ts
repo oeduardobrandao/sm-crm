@@ -1,12 +1,20 @@
-import { QueryClient, infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
+import {
+  QueryClient,
+  infiniteQueryOptions,
+  keepPreviousData,
+  queryOptions,
+} from '@tanstack/react-query';
 import { matchPath } from 'react-router-dom';
 import {
   fetchAgenda,
   fetchAgendaItem,
+  fetchAgendaPeriodo,
   fetchBootstrap,
+  fetchConvite,
   fetchPost,
   fetchPosts,
   fetchPostsInRange,
+  CONVITE_INDISPONIVEL,
 } from './api';
 import type { HubAgendaCursor, HubAgendaItem, HubAgendaResponse } from './types';
 
@@ -102,7 +110,25 @@ export const hubAgendaItemQuery = (token: string, ocorrenciaId: number) =>
     staleTime: 30_000,
   });
 
-/** Writes the item a mutation returned into every cached copy (list pages + deep link). */
+/**
+ * The home calendar's month of events. Unlike the posts range, it runs for EVERY month shown.
+ * Under the `[HUB_AGENDA_KEY, token]` prefix so `invalidateHubAgenda` drops it too; the
+ * previous month stays on screen while the next one loads.
+ */
+export const hubAgendaPeriodoQuery = (token: string, de: string, ate: string) =>
+  queryOptions({
+    queryKey: [HUB_AGENDA_KEY, token, 'periodo', de],
+    queryFn: () => fetchAgendaPeriodo(token, de, ate).then((r) => r.itens),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+    // Fail fast like the posts range: the calendar keeps working, the panel offers a retry.
+    retry: 1,
+    retryDelay: 300,
+  });
+
+export const hubAgendaPeriodoPrefix = (token: string) => [HUB_AGENDA_KEY, token, 'periodo'];
+
+/** Writes the item a mutation returned into every cached copy (list pages, deep link, months). */
 export function setHubAgendaItem(qc: QueryClient, token: string, item: HubAgendaItem) {
   qc.setQueryData(hubAgendaQuery(token).queryKey, (data) =>
     data
@@ -118,6 +144,9 @@ export function setHubAgendaItem(qc: QueryClient, token: string, item: HubAgenda
   qc.setQueryData([HUB_AGENDA_ITEM_KEY, token, item.ocorrencia_id], (old: unknown) =>
     old ? item : old,
   );
+  qc.setQueriesData<HubAgendaItem[]>({ queryKey: hubAgendaPeriodoPrefix(token) }, (itens) =>
+    itens?.map((i) => (i.ocorrencia_id === item.ocorrencia_id ? item : i)),
+  );
 }
 
 /** After a failed write (moved, ended, already resolved): reload what the client sees. */
@@ -127,6 +156,18 @@ export function invalidateHubAgenda(qc: QueryClient, token: string) {
     qc.invalidateQueries({ queryKey: [HUB_AGENDA_ITEM_KEY, token] }),
   ]);
 }
+
+// ── Guest invite ────────────────────────────────────────────────────────────
+
+/** The invite page. Its 404 ("não está mais disponível") is an answer, never retried. */
+export const conviteQuery = (token: string) =>
+  queryOptions({
+    queryKey: ['convite', token],
+    queryFn: () => fetchConvite(token),
+    retry: (falhas, erro) => erro.message !== CONVITE_INDISPONIVEL && falhas < 1,
+    retryDelay: 300,
+    staleTime: 30_000,
+  });
 
 export function createHubQueryClient() {
   const queryClient = new QueryClient();

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -9,6 +9,11 @@ vi.mock('../../api', () => ({
   fetchPosts: vi.fn(),
   fetchPostsInRange: vi.fn(),
   fetchAgenda: vi.fn(),
+  fetchAgendaPeriodo: vi.fn(),
+  responderAgenda: vi.fn(),
+  cancelarRemarcacao: vi.fn(),
+  agendaIcsUrl: (token: string, id: number) =>
+    `https://x.supabase.co/functions/v1/hub-agenda/ocorrencia/${id}.ics?token=${token}`,
 }));
 vi.mock('../../components/dashboard/DashboardSection', () => ({ DashboardSection: () => null }));
 // The fake calendar exposes what Home passes and lets the test pick the shown month.
@@ -18,9 +23,18 @@ vi.mock('../../components/PostCalendar', () => ({
     onMonthChange?: (y: number, m: number) => void;
     loading?: boolean;
     notice?: ReactNode;
+    eventos?: Array<{ titulo: string }>;
+    eventosErro?: boolean;
+    onRetryEventos?: () => void;
+    onEventoClick?: (item: unknown) => void;
   }) => (
     <div>
       <span>Cal: {props.posts.map((p) => p.titulo).join(', ')}</span>
+      {props.eventos && <span>Ev: {props.eventos.map((e) => e.titulo).join(', ')}</span>}
+      {props.eventosErro && <button onClick={() => props.onRetryEventos?.()}>erro-eventos</button>}
+      {props.eventos?.[0] && (
+        <button onClick={() => props.onEventoClick?.(props.eventos![0])}>abrir-evento</button>
+      )}
       {props.loading && <span>carregando-mes</span>}
       {props.notice}
       <button onClick={() => props.onMonthChange?.(2025, 10)}>nov-2025</button>
@@ -29,13 +43,21 @@ vi.mock('../../components/PostCalendar', () => ({
   ),
 }));
 
-import { fetchAgenda, fetchPosts, fetchPostsInRange } from '../../api';
+import {
+  fetchAgenda,
+  fetchAgendaPeriodo,
+  fetchPosts,
+  fetchPostsInRange,
+  responderAgenda,
+} from '../../api';
 import { localMonthRange } from '../../lib/postView';
 import { HomePage } from '../HomePage';
 
 const posts = vi.mocked(fetchPosts);
 const range = vi.mocked(fetchPostsInRange);
 const agenda = vi.mocked(fetchAgenda);
+const periodo = vi.mocked(fetchAgendaPeriodo);
+const responder = vi.mocked(responderAgenda);
 const hubValue = {
   bootstrap: {
     workspace: { name: 'M', logo_url: '', brand_color: '#0f766e' },
@@ -216,5 +238,105 @@ describe('Home agenda block', () => {
     await screen.findByText('Cal:');
     expect(screen.queryByText('Próximos eventos')).not.toBeInTheDocument();
     expect(screen.queryByText(/aguardando sua resposta/)).not.toBeInTheDocument();
+  });
+});
+
+describe('Home calendar events', () => {
+  const comAgenda = {
+    ...(hubValue as { bootstrap: object }),
+    bootstrap: { ...(hubValue as { bootstrap: object }).bootstrap, feature_agenda: true },
+  };
+  const ev = (over: Record<string, unknown> = {}) => ({
+    ocorrencia_id: 7,
+    sequencia: 1,
+    inicio: '2026-09-15T17:00:00.000Z',
+    fim: '2026-09-15T18:00:00.000Z',
+    dia_inteiro: false,
+    data_inicio_local: '2026-09-15',
+    data_fim_local: '2026-09-15',
+    tz: 'America/Sao_Paulo',
+    titulo: 'Reunião de pauta',
+    descricao: null,
+    local: null,
+    link_reuniao: null,
+    resposta: null as 'sim' | 'nao' | null,
+    remarcacao: null,
+    ...over,
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-01T15:00:00Z'));
+    posts.mockReset();
+    agenda.mockReset();
+    periodo.mockReset();
+    responder.mockReset();
+    posts.mockResolvedValue({
+      posts: [p(1, 'Recente')],
+      postApprovals: [],
+      historyCutoff: '2026-07-04T00:00:00.000Z',
+    } as never);
+    agenda.mockResolvedValue({ itens: [], proximo: null });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('never asks for the month events without feature_agenda', async () => {
+    renderHome();
+    fireEvent.click(await screen.findByText('set-2026'));
+    await screen.findByText('Cal: Recente');
+    expect(periodo).not.toHaveBeenCalled();
+    expect(screen.queryByText(/^Ev:/)).not.toBeInTheDocument();
+  });
+
+  it('fetches the events of every month shown, also after historyCutoff, by its local bounds', async () => {
+    periodo.mockImplementation(async () => ({ itens: [ev()] }) as never);
+    renderHome(comAgenda);
+
+    fireEvent.click(await screen.findByText('set-2026'));
+    expect(await screen.findByText('Ev: Reunião de pauta')).toBeInTheDocument();
+    const set = localMonthRange(2026, 8);
+    expect(periodo).toHaveBeenCalledWith('tk', set.from, set.to);
+
+    fireEvent.click(screen.getByText('nov-2025'));
+    const nov = localMonthRange(2025, 10);
+    await waitFor(() => expect(periodo).toHaveBeenCalledWith('tk', nov.from, nov.to));
+  });
+
+  it('keeps the posts and passes the error (with a working retry) when the events fail', async () => {
+    periodo.mockRejectedValue(new Error('x'));
+    renderHome(comAgenda);
+    fireEvent.click(await screen.findByText('set-2026'));
+    const retry = await screen.findByText('erro-eventos', {}, { timeout: 3000 });
+    expect(screen.getByText('Cal: Recente')).toBeInTheDocument();
+
+    periodo.mockResolvedValue({ itens: [ev()] } as never);
+    fireEvent.click(retry);
+    expect(await screen.findByText('Ev: Reunião de pauta')).toBeInTheDocument();
+    expect(screen.queryByText('erro-eventos')).not.toBeInTheDocument();
+  });
+
+  it('opens the event card in a dialog; confirming answers and reloads the month', async () => {
+    periodo.mockResolvedValueOnce({ itens: [ev()] } as never);
+    periodo.mockResolvedValue({ itens: [ev({ resposta: 'sim' })] } as never);
+    responder.mockResolvedValue({ item: ev({ resposta: 'sim' }) } as never);
+    renderHome(comAgenda);
+
+    fireEvent.click(await screen.findByText('set-2026'));
+    fireEvent.click(await screen.findByText('abrir-evento'));
+
+    const dialogo = await screen.findByRole('dialog');
+    const cartao = within(dialogo).getByRole('article', { name: 'Reunião de pauta' });
+    expect(within(cartao).getByText('Aguardando sua resposta')).toBeInTheDocument();
+
+    fireEvent.click(within(cartao).getByRole('button', { name: /Confirmar/ }));
+    await waitFor(() =>
+      expect(responder).toHaveBeenCalledWith('tk', 7, 'sim', '2026-09-15T17:00:00.000Z'),
+    );
+    expect(await within(dialogo).findByText('Confirmado')).toBeInTheDocument();
+    // The success path invalidates the month query under ['hub-agenda', token]: it refetches.
+    await waitFor(() => expect(periodo).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 });
