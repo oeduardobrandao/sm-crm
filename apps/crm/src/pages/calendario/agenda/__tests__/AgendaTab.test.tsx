@@ -92,6 +92,16 @@ vi.mock('../EventoFormDialog', () => ({
       </div>
     ) : null,
 }));
+vi.mock('../FeedAgendaDialog', () => ({
+  FeedAgendaDialog: (p: { open: boolean; onOpenChange: (v: boolean) => void }) =>
+    p.open ? (
+      <div data-testid="feed-dialog">
+        <button type="button" onClick={() => p.onOpenChange(false)}>
+          fechar-feed-stub
+        </button>
+      </div>
+    ) : null,
+}));
 vi.mock('../EventoRapidoCard', async () => {
   const React = await vi.importActual<typeof import('react')>('react');
   return {
@@ -323,6 +333,22 @@ describe('AgendaTab', () => {
       await waitFor(() => expect(fc.props).not.toBeNull());
       expect(screen.queryByRole('button', { name: 'Criar evento' })).toBeNull();
       expect(fc.props?.selectable).toBe(false);
+    },
+  );
+
+  it.each([true, false, 'unknown'] as const)(
+    'the sync button opens the feed dialog whatever the edit permission (%s)',
+    async (valor) => {
+      podeEditar = valor;
+      renderTab();
+      await waitFor(() => expect(fc.props).not.toBeNull());
+      expect(screen.queryByTestId('feed-dialog')).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sincronizar com seu calendário' }));
+      expect(screen.getByTestId('feed-dialog')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'fechar-feed-stub' }));
+      expect(screen.queryByTestId('feed-dialog')).toBeNull();
     },
   );
 

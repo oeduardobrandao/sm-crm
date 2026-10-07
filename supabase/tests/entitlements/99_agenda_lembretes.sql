@@ -362,6 +362,10 @@ begin
 
   -- mark fence: a mark more than 5 minutes after the lease ended is dropped
   delete from agenda_lembretes where ocorrencia_id <> v_oc;
+  -- the claim settles a row whose occurrence ended before the REAL now()
+  -- (o.fim < now()), not the pinned app.agenda_hoje; keep the end ahead of the
+  -- clock so this fixture does not expire. inicio stays equal to inicio_alvo.
+  update agenda_ocorrencias set fim = now() + interval '1 day' where id = v_oc;
   execute 'set local role service_role';
   select count(*) into v_n from public.agenda_claim_emails_lembrete(10);
   execute 'reset role';
@@ -502,6 +506,7 @@ begin
   assert has_function_privilege('service_role', 'public.claim_notification_emails(timestamptz, timestamptz, int)', 'EXECUTE'),
     'rollback dropped the claim grant';
   assert to_regclass('public.agenda_eventos') is null and to_regclass('public.agenda_lembretes') is null, 'agenda tables survived the rollback';
+  assert to_regclass('public.agenda_feed_tokens') is null, 'agenda_feed_tokens survived the rollback';
   assert not exists (select 1 from pg_proc where proname like 'agenda\_%'), 'agenda functions survived the rollback';
   assert not exists (select 1 from cron.job where jobname in ('agenda-lembretes', 'agenda-horizonte')), 'agenda cron jobs survived the rollback';
   assert not exists (select 1 from information_schema.columns

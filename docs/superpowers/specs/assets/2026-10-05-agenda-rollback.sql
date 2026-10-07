@@ -4,7 +4,8 @@
 -- Spec: docs/superpowers/specs/2026-10-05-agenda-eventos-core-design.md ("Rollout").
 -- Migrations undone: 20261005000001_agenda_eventos.sql (A) and
 -- 20261005000002_agenda_lembretes.sql (B), including A's plans.feature_agenda
--- column (step 5).
+-- column (step 5). Also undoes sub-projeto 2's 20261006000001_agenda_feed.sql
+-- (step 4a); undeploy the agenda-feed edge function before running it.
 --
 -- Before step 5 runs in a real environment, "feature_agenda" must already be gone
 -- from FEATURE_COLUMNS (supabase/functions/_shared/entitlements.ts) and
@@ -85,6 +86,19 @@ BEGIN
   -- CREATE OR REPLACE keeps the existing grants (service_role only)
   EXECUTE v_new;
 END $$;
+
+-- ---- 4a. sub-projeto 2: personal iCal feed (20261006000001_agenda_feed.sql) ----
+-- Feed only (partial rollback): first revert the CRM UI (or turn feature_agenda
+-- off), since the merged CRM calls these RPCs; then undeploy the agenda-feed
+-- edge function, run just this step and stop. IF EXISTS keeps the full rollback valid in an
+-- environment that never received the feed migration.
+DROP FUNCTION IF EXISTS
+  public.agenda_feed_eventos(text),
+  public.agenda_feed_desativar(),
+  public.agenda_feed_gerar(),
+  public.agenda_feed_obter(),
+  public.agenda_feed_contexto();
+DROP TABLE IF EXISTS public.agenda_feed_tokens;
 
 -- ---- 4. drop the agenda objects (functions first: several take agenda_eventos rows) ----
 DROP FUNCTION IF EXISTS
