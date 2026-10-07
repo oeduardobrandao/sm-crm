@@ -169,3 +169,12 @@ Deno.test("gerarCalendario: a URL with CR/LF or spaces is dropped, so it cannot 
     assert(!out.includes("\r\nATTENDEE"), "injected ATTENDEE line");
   }
 });
+
+Deno.test("gerarCalendario: SEQUENCE follows DTSTAMP only when sequencia is given", () => {
+  const com = gerarCalendario({ nome: "X", eventos: [evento({ sequencia: 2 })], agora: AGORA });
+  assertStringIncludes(com, "DTSTAMP:20261006T120000Z\r\nSEQUENCE:2\r\n");
+  const sem = gerarCalendario({ nome: "X", eventos: [evento()], agora: AGORA });
+  assert(!sem.includes("SEQUENCE"));
+  const zero = gerarCalendario({ nome: "X", eventos: [evento({ sequencia: 0 })], agora: AGORA });
+  assertStringIncludes(zero, "SEQUENCE:0\r\n");
+});
