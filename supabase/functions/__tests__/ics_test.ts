@@ -24,7 +24,16 @@ function desdobrar(texto: string): string {
 }
 
 Deno.test("escaparTexto: escapes backslash, semicolon, comma and newline", () => {
-  assertEquals(escaparTexto("a\\b;c,d\ne"), "a\\\\b\;c\\,d\\ne");
+  assertEquals(escaparTexto("a\\b;c,d\ne"), "a\\\\b\\;c\\,d\\ne");
+});
+
+Deno.test("gerarCalendario: SUMMARY escapes backslash, semicolon and comma end to end", () => {
+  // Actual title characters: a ; b , c \ d  (one backslash)
+  const titulo = String.raw`a;b,c\d`;
+  assertEquals(titulo.length, 7);
+  const out = cal([evento({ titulo })]);
+  // Actual SUMMARY bytes: a \; b \, c \\ d  (every special char gets one backslash)
+  assertStringIncludes(out, String.raw`SUMMARY:a\;b\,c\\d` + "\r\n");
 });
 
 Deno.test("escaparTexto: normalizes CRLF and strips control characters", () => {

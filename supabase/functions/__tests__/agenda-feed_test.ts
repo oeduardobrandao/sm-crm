@@ -181,6 +181,15 @@ Deno.test("feed: ok answers 200 with headers, UIDs and the workspace calendar na
   assertEquals(h.calls.rateLimit, [{ key: `agenda-feed:h:${TOKEN}`, max: 60, win: 3600 }]);
 });
 
+Deno.test("feed: ok with a missing eventos array answers an empty calendar", async () => {
+  const feed = { estado: "ok", workspace_nome: "Agência" } as unknown as FeedResultado;
+  const res = await comFeed(feed).handler(get(`/${TOKEN}.ics`));
+  assertEquals(res.status, 200);
+  const body = await res.text();
+  assertStringIncludes(body, "END:VCALENDAR\r\n");
+  assertEquals(body.includes("VEVENT"), false);
+});
+
 Deno.test("feed: HEAD mirrors GET status and headers with an empty body", async () => {
   const feed: FeedResultado = { estado: "ok", workspace_nome: "Agência", eventos: [feedRow()] };
   const g = await comFeed(feed).handler(get(`/${TOKEN}.ics`));

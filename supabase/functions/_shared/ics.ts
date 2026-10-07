@@ -20,6 +20,7 @@ export interface IcsEvento {
 }
 
 const CRLF = "\r\n";
+const enc = new TextEncoder();
 
 /** TEXT value escaping (RFC 5545 3.3.11); also drops control characters. */
 export function escaparTexto(v: string): string {
@@ -28,14 +29,13 @@ export function escaparTexto(v: string): string {
     // deno-lint-ignore no-control-regex
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "")
     .replace(/\\/g, "\\\\")
-    .replace(/;/g, "\;")
+    .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
     .replace(/\n/g, "\\n");
 }
 
 /** Folds at 75 octets without splitting a UTF-8 sequence (RFC 5545 3.1). */
 export function dobrar(linha: string): string {
-  const enc = new TextEncoder();
   const partes: string[] = [];
   let atual = "";
   let bytes = 0;

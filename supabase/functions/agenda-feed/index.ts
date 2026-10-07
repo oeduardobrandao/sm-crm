@@ -26,8 +26,12 @@ Deno.serve(createAgendaFeedHandler({
   },
   getUser: async (jwt: string) => {
     const { data, error } = await db.auth.getUser(jwt);
-    if (error || !data?.user) return null;
-    return { id: data.user.id };
+    if (error) {
+      // A bad/expired token is the caller's problem (401); anything else is ours (500).
+      if (error.status === 401 || error.status === 403) return null;
+      throw new Error(`auth.getUser: ${error.message}`);
+    }
+    return data?.user ? { id: data.user.id } : null;
   },
   listarOcorrencia: async (jwt: string, id: number) => {
     // Anon key + the caller's JWT: RLS and auth.uid() inside agenda_listar apply.

@@ -214,7 +214,7 @@ export function createAgendaFeedHandler(deps: AgendaFeedDeps): (req: Request) =>
 
       const corpo = gerarCalendario({
         nome: `Mesaas: ${feed.workspace_nome}`,
-        eventos: feed.estado === "ok" ? feed.eventos.map(paraIcs) : [],
+        eventos: feed.estado === "ok" ? (feed.eventos ?? []).map(paraIcs) : [],
         agora: deps.now(),
       });
       return new Response(req.method === "HEAD" ? null : corpo, {
