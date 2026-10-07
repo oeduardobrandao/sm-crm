@@ -49,26 +49,19 @@ export function situacaoDoPrazo(diasRestantes: number, estourado: boolean): stri
   return diasRestantes === 1 ? 'Falta 1 dia' : `Faltam ${diasRestantes} dias`;
 }
 
-const TIPO_COMEMORATIVA: Record<string, string> = {
-  br: 'Brasil',
-  world: 'Mundial',
-  prof: 'Profissões',
-  week: 'Semana',
-  month: 'Mês temático',
-};
-
-/** Tag labels of every niche plus the base ones ("br", "world", "prof"). */
-function rotulosDasTags(): Record<string, string> {
-  const r: Record<string, string> = {
+/** One vocabulary for a commemorative date's type and its tags: the base words
+ *  of the Datas Comemorativas tab filters ("Brasil", "Mundial", "Profissional"),
+ *  the week/month types, then every niche's own filter labels. */
+const ROTULO_COMEMORATIVA: Record<string, string> = Object.assign(
+  {
     br: 'Brasil',
     world: 'Mundial',
     prof: 'Profissional',
     week: 'Semana',
-    month: 'Mês',
-  };
-  for (const n of NICHE_CALENDARS) Object.assign(r, n.filterLabels);
-  return r;
-}
+    month: 'Mês temático',
+  },
+  ...NICHE_CALENDARS.map((n) => n.filterLabels),
+);
 
 /** Subtitle under the title: when the item happens. */
 function quando(item: CamadaItem): string {
@@ -269,17 +262,16 @@ export function CamadaPopover({
       );
       break;
     case 'comemorativas': {
-      const rotulos = rotulosDasTags();
       const tags = item.tags.filter((t) => t !== item.tipo);
       corpo = (
         <>
-          <Linha icone={<Flag {...ICONE} />}>{TIPO_COMEMORATIVA[item.tipo] ?? item.tipo}</Linha>
+          <Linha icone={<Flag {...ICONE} />}>{ROTULO_COMEMORATIVA[item.tipo] ?? item.tipo}</Linha>
           {tags.length > 0 && (
             <Linha icone={<Tag {...ICONE} />}>
               <div className="flex flex-wrap gap-1.5">
                 {tags.map((t) => (
                   <span key={t} className="badge badge-neutral badge--sm">
-                    {rotulos[t] ?? t}
+                    {ROTULO_COMEMORATIVA[t] ?? t}
                   </span>
                 ))}
               </div>

@@ -34,7 +34,12 @@ import { valoresIniciaisCriar, type EventoFormValues } from './eventoFormSchema'
 import { useAgendaMutations } from './useAgendaMutations';
 import { gravarCamadas, lerCamadas } from '../camadas/camadasStorage';
 import { CamadaPopover } from '../camadas/CamadaPopover';
-import { ORDEM_AGENDA, type CamadaItem, type CamadasAtivas } from '../camadas/tipos';
+import {
+  CAMADAS_FINANCEIRAS,
+  ORDEM_AGENDA,
+  type CamadaItem,
+  type CamadasAtivas,
+} from '../camadas/tipos';
 import { toCamadaEventInput } from '../camadas/toCamadaEventInput';
 import { useCamadas } from '../camadas/useCamadas';
 import { useConfirmarPagamento } from '../camadas/useConfirmarPagamento';
@@ -424,6 +429,25 @@ export default function AgendaTab() {
       ? camadaPopover.anchorEl
       : (chipDoEvento(`camada:${camadaPopover.id}`) ?? containerRef.current)
     : null;
+
+  // Same as the event popover below: swap a detached chip for the new one.
+  useEffect(() => {
+    if (!camadaPopover) return;
+    const raf = requestAnimationFrame(() => {
+      if (camadaPopover.anchorEl.isConnected) return;
+      const novo = chipDoEvento(`camada:${camadaPopover.id}`);
+      if (novo) {
+        setCamadaPopover((p) => (p && p.id === camadaPopover.id ? { ...p, anchorEl: novo } : p));
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [camadaPopover, eventos, chipDoEvento]);
+
+  // Losing financial access mid-session closes an open receivables/payments popover.
+  useEffect(() => {
+    if (canSeeFinancials === true) return;
+    setCamadaPopover((p) => (p && CAMADAS_FINANCEIRAS.has(p.snapshot.camada) ? null : p));
+  }, [canSeeFinancials]);
 
   const ocorrenciaDoPopover = popover
     ? (ocorrencias.find((o) => o.ocorrencia_id === popover.id) ?? popover.snapshot)

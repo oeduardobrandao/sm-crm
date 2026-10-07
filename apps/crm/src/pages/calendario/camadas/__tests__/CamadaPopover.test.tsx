@@ -169,7 +169,7 @@ describe('CamadaPopover', () => {
       dia: '2026-10-01',
       nome: 'Outubro Rosa',
       tipo: 'month',
-      tags: ['br', 'cancer'],
+      tags: ['br', 'prof', 'cancer'],
       rotulo: 'mes',
       mesInteiro: true,
     });
@@ -178,6 +178,8 @@ describe('CamadaPopover', () => {
     expect(screen.getByText('Mês temático')).toBeInTheDocument();
     expect(screen.getByText('Brasil')).toBeInTheDocument();
     expect(screen.getByText('Câncer')).toBeInTheDocument();
+    // Same words as the Datas Comemorativas tab filters.
+    expect(screen.getByText('Profissional')).toBeInTheDocument();
   });
 
   it('a range shows its closing day', () => {

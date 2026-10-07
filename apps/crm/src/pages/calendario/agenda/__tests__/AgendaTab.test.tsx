@@ -193,7 +193,11 @@ vi.mock('../../camadas/useCamadas', () => ({
 }));
 vi.mock('../../camadas/CamadaPopover', () => ({
   CamadaPopover: (p: { item: { id: string }; anchor: HTMLElement; onClose: () => void }) => (
-    <div data-testid="camada-popover" data-anchor-id={p.anchor.dataset.ocorrenciaId ?? 'container'}>
+    <div
+      data-testid="camada-popover"
+      data-anchor-id={p.anchor.dataset.ocorrenciaId ?? 'container'}
+      data-anchor-connected={String(p.anchor.isConnected)}
+    >
       {p.item.id}
       <button type="button" onClick={p.onClose}>
         fechar-camada-stub
@@ -907,6 +911,69 @@ describe('AgendaTab layers', () => {
     });
     expect(screen.queryByTestId('camada-popover')).toBeNull();
     expect(screen.getByTestId('evento-popover')).toBeInTheDocument();
+  });
+
+  function abrirCamada(item: { id: string }) {
+    const chip = document.querySelector<HTMLElement>(`[data-ocorrencia-id="camada:${item.id}"]`)!;
+    act(() => {
+      fc.props!.eventClick({
+        jsEvent: { preventDefault: vi.fn() },
+        event: { extendedProps: { camada: item } },
+        el: chip,
+      });
+    });
+  }
+
+  it('re-anchors the layer popover when the grid replaces its chip', async () => {
+    camadasMock.itens = [POST];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    abrirCamada(POST);
+    expect(screen.getByTestId('camada-popover')).toHaveAttribute('data-anchor-connected', 'true');
+
+    // A new title re-keys the chip in the FullCalendar mock: the old node detaches.
+    camadasMock.itens = [{ ...POST, post: { ...POST.post, titulo: 'Carrossel novo' } }];
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Datas dos clientes' }));
+    await screen.findByText('Carrossel novo');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('camada-popover')).toHaveAttribute('data-anchor-connected', 'true'),
+    );
+    expect(screen.getByTestId('camada-popover')).toHaveAttribute(
+      'data-anchor-id',
+      'camada:posts:9',
+    );
+  });
+
+  it('closes an open receivables popover when financial access goes away', async () => {
+    verFinanceiro = true;
+    const RECEB = {
+      camada: 'recebimentos',
+      id: 'recebimentos:2026-10-06',
+      dia: '2026-10-06',
+      itens: [],
+    };
+    camadasMock.itens = [POST, RECEB];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    abrirCamada(RECEB);
+    expect(screen.getByTestId('camada-popover')).toHaveTextContent('recebimentos:2026-10-06');
+
+    verFinanceiro = false;
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Datas dos clientes' }));
+    await waitFor(() => expect(screen.queryByTestId('camada-popover')).toBeNull());
+  });
+
+  it('keeps a non-financial popover open when financial access goes away', async () => {
+    verFinanceiro = true;
+    camadasMock.itens = [POST];
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    abrirCamada(POST);
+
+    verFinanceiro = false;
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Datas dos clientes' }));
+    expect(screen.getByTestId('camada-popover')).toBeInTheDocument();
   });
 
   it('a layer item can never be dragged: eventAllow refuses, a drop reverts', async () => {

@@ -169,7 +169,9 @@ export default function AgendaSidebar({
             {TIPO_LABEL[t]}
           </div>
         ))}
-        <div className="agenda-legenda__nota">Borda tracejada: aguardando sua resposta</div>
+        <div className="agenda-legenda__nota">
+          Evento com fundo colorido e borda tracejada: aguardando sua resposta
+        </div>
       </div>
 
       {onSincronizar && (
