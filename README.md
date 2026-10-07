@@ -24,7 +24,7 @@ Monorepo com npm workspaces (`apps/*`, `packages/*`) — **três aplicações Re
 | Pasta | O que é |
 |---|---|
 | `packages/ui`, `packages/i18n` | Primitivos e traduções compartilhados |
-| `supabase/functions/` | 88 edge functions em **Deno** (+ `_shared/` e `__tests__/`) |
+| `supabase/functions/` | 89 edge functions em **Deno** (+ `_shared/` e `__tests__/`) |
 | `supabase/migrations/` | Migrations SQL |
 | `workers/media-proxy/`, `workers/transcribe/` | Cloudflare Workers (deploy manual com `wrangler deploy` dentro da pasta; testes com `npm test` lá) |
 | `e2e/` | Playwright |
