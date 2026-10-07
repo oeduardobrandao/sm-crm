@@ -160,7 +160,8 @@ begin
   assert (select count(distinct created_at) from post_status_events where post_id = v_p9) = 1,
     'setup sanity: P9''s open and close events must share one transaction-time timestamp';
 
-  select get_workflow_analytics(timestamptz '2020-01-01', timestamptz '2027-01-01') into v_result;
+  -- the window must end after now(): P9's events keep the real transaction time
+  select get_workflow_analytics(timestamptz '2020-01-01', now() + interval '1 hour') into v_result;
   v_aprov := v_result -> 'aprovacao_cliente';
 
   assert (v_aprov->>'amostras')::int = 5,

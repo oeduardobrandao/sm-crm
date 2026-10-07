@@ -7,6 +7,12 @@
 -- runbook (docs/superpowers/specs/assets/2026-10-05-agenda-rollback.sql), which
 -- runs last inside this transaction and is rolled back with it. The tick is
 -- called with p_chamar_email => false except where the e-mail kick is under test.
+--
+-- The e-mail claim settles a row whose occurrence already ended against the
+-- real now() (o.fim < now()) and the mark fence reads the real now() too, so
+-- every fixture is built from current_date (pg_temp.dia / pg_temp.ts) and
+-- app.agenda_hoje is pinned to current_date. Never use a literal date here:
+-- the suite would start failing once that date passes.
 
 begin;
 -- Agenda rollout flag (feature_agenda, migration A): on for every plan inside
@@ -19,11 +25,23 @@ grant all on public.agenda_eventos, public.agenda_ocorrencias, public.agenda_par
 revoke all on public.agenda_lembretes from anon, authenticated;
 grant all on public.agenda_lembretes to service_role;
 
+-- 'YYYY-MM-DD"T"HH:MI:SS' for current_date + p_dias at p_hora
+create or replace function pg_temp.dia(p_dias int, p_hora text default '14:00:00') returns text language sql as $f$
+  select to_char(current_date + p_dias, 'YYYY-MM-DD') || 'T' || p_hora;
+$f$;
+-- the instant of that wall clock in Sao Paulo
+create or replace function pg_temp.ts(p_dias int, p_hora text default '14:00:00') returns timestamptz language sql as $f$
+  select pg_temp.dia(p_dias, p_hora)::timestamp at time zone 'America/Sao_Paulo';
+$f$;
+-- inicio_local / fim_local overrides for a 14:00-15:00 event on current_date + p_dias
+create or replace function pg_temp.em(p_dias int) returns jsonb language sql as $f$
+  select jsonb_build_object('inicio_local', pg_temp.dia(p_dias), 'fim_local', pg_temp.dia(p_dias, '15:00:00'));
+$f$;
 create or replace function pg_temp.p(p jsonb default '{}') returns jsonb language sql as $f$
   select jsonb_build_object(
     'titulo', 'Evento', 'descricao', null, 'local', null, 'link_reuniao', null,
     'tipo', 'reuniao', 'cor', null, 'cliente_id', null, 'privado', false, 'dia_inteiro', false,
-    'tz', 'America/Sao_Paulo', 'inicio_local', '2026-10-05T14:00:00', 'fim_local', '2026-10-05T15:00:00',
+    'tz', 'America/Sao_Paulo', 'inicio_local', pg_temp.dia(0), 'fim_local', pg_temp.dia(0, '15:00:00'),
     'lembretes', jsonb_build_array(10), 'regra', null) || p;
 $f$;
 -- create an event as p_user; returns its (only) occurrence id
@@ -59,7 +77,7 @@ declare
   v_t text;
   r record;
 begin
-  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  perform set_config('app.agenda_hoje', current_date::text, true);
   v_ws := et_make_workspace('max');
   insert into auth.users (id) values (v_o), (v_b1), (v_b2), (v_b3);
   insert into workspace_members (user_id, workspace_id, role) values
@@ -83,11 +101,11 @@ begin
 
   -- ---- the 10-minute window: 14:00 event, organizer + B1 ----
   v_oc := pg_temp.criar(v_o, pg_temp.p('{"titulo":"Gravação 14h"}'), array[v_b1]);
-  assert pg_temp.tick('2026-10-05 13:49-03') = 0, 'tick at 13:49 claimed';
-  v_n := pg_temp.tick('2026-10-05 13:50-03');
+  assert pg_temp.tick(pg_temp.ts(0, '13:49')) = 0, 'tick at 13:49 claimed';
+  v_n := pg_temp.tick(pg_temp.ts(0, '13:50'));
   assert v_n = 2, format('tick at 13:50: %s claims', v_n);
   select count(*) into v_c from agenda_lembretes where ocorrencia_id = v_oc and email_status = 'pendente'
-     and minutos = 10 and inicio_alvo = '2026-10-05 17:00+00' and notification_id is not null;
+     and minutos = 10 and inicio_alvo = pg_temp.ts(0) and notification_id is not null;
   assert v_c = 2, format('ledger rows: %s', v_c);
   select count(*) into v_c from notifications where type = 'event_reminder' and emailed_at is not null
      and user_id in (v_o, v_b1) and (metadata->>'ocorrencia_id')::bigint = v_oc;
@@ -95,47 +113,48 @@ begin
   select n.metadata, n.link into v_meta, v_link from notifications n where n.type = 'event_reminder' and n.user_id = v_b1;
   assert v_link = '/calendario?evento=' || v_oc, format('reminder link %s', v_link);
   assert v_meta->>'titulo' = 'Gravação 14h' and (v_meta->>'minutos')::int = 10
-     and (v_meta->>'inicio')::timestamptz = '2026-10-05 17:00+00' and (v_meta->>'fim')::timestamptz = '2026-10-05 18:00+00'
+     and (v_meta->>'inicio')::timestamptz = pg_temp.ts(0) and (v_meta->>'fim')::timestamptz = pg_temp.ts(0, '15:00')
      and v_meta->'dia_inteiro' = 'false'::jsonb and (v_meta->>'ocorrencia_id')::bigint = v_oc and v_meta ? 'evento_id',
     format('reminder metadata: %s', v_meta);
   perform 1 from agenda_lembretes l join notifications n on n.id = l.notification_id
    where l.ocorrencia_id = v_oc and l.user_id = v_b1 and n.user_id = v_b1;
   assert found, 'ledger notification_id does not point at the user''s notification';
-  assert pg_temp.tick('2026-10-05 13:51-03') = 0, 'tick at 13:51 claimed again';
+  assert pg_temp.tick(pg_temp.ts(0, '13:51')) = 0, 'tick at 13:51 claimed again';
 
   -- ---- more than 15 minutes late: dropped ----
-  v_oc_late := pg_temp.criar(v_o, pg_temp.p('{"titulo":"Atrasado","inicio_local":"2026-10-06T14:00:00","fim_local":"2026-10-06T15:00:00"}'), '{}');
-  assert pg_temp.tick('2026-10-06 14:06-03') = 0, 'a reminder 16 minutes late was claimed';
-  assert pg_temp.tick('2026-10-06 14:04-03') = 1, 'a reminder 14 minutes late was not claimed';
+  v_oc_late := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(1) || '{"titulo":"Atrasado"}'), '{}');
+  assert pg_temp.tick(pg_temp.ts(1, '14:06')) = 0, 'a reminder 16 minutes late was claimed';
+  assert pg_temp.tick(pg_temp.ts(1, '14:04')) = 1, 'a reminder 14 minutes late was not claimed';
 
   -- ---- negative minutes: all-day, "no dia às 9h" (-540) fires at 09:00 local ----
-  v_oc_dia := pg_temp.criar(v_o, pg_temp.p('{"titulo":"Dia todo","dia_inteiro":true,"inicio_local":"2026-10-07T00:00:00","fim_local":"2026-10-08T00:00:00","lembretes":[-540]}'), '{}');
-  assert pg_temp.tick('2026-10-07 08:59-03') = 0, 'all-day -540 fired before 09:00';
-  assert pg_temp.tick('2026-10-07 09:00-03') = 1, 'all-day -540 did not fire at 09:00';
+  v_oc_dia := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('titulo', 'Dia todo', 'dia_inteiro', true,
+    'inicio_local', pg_temp.dia(2, '00:00:00'), 'fim_local', pg_temp.dia(3, '00:00:00'), 'lembretes', jsonb_build_array(-540))), '{}');
+  assert pg_temp.tick(pg_temp.ts(2, '08:59')) = 0, 'all-day -540 fired before 09:00';
+  assert pg_temp.tick(pg_temp.ts(2, '09:00')) = 1, 'all-day -540 did not fire at 09:00';
   select n.metadata into v_meta from notifications n where n.type = 'event_reminder' and (n.metadata->>'ocorrencia_id')::bigint = v_oc_dia;
-  assert (v_meta->>'minutos')::int = -540 and v_meta->'dia_inteiro' = 'true'::jsonb and v_meta->>'data_local' = '2026-10-07',
+  assert (v_meta->>'minutos')::int = -540 and v_meta->'dia_inteiro' = 'true'::jsonb and v_meta->>'data_local' = to_char(current_date + 2, 'YYYY-MM-DD'),
     format('all-day reminder metadata: %s', v_meta);
 
   -- ---- effective nao (series-level and per-occurrence) and ex-members get nothing ----
-  v_oc_nao := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-08T14:00:00","fim_local":"2026-10-08T15:00:00"}'), array[v_b1, v_b2, v_b3]);
+  v_oc_nao := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(3)), array[v_b1, v_b2, v_b3]);
   update agenda_participantes set resposta = 'nao' where user_id = v_b1 and evento_id = (select evento_id from agenda_ocorrencias where id = v_oc_nao);
   insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (v_oc_nao, v_ws, v_b2, 'nao');
   delete from workspace_members where user_id = v_b3 and workspace_id = v_ws;
-  assert pg_temp.tick('2026-10-08 13:50-03') = 1, 'nao / ex-member got a reminder';
+  assert pg_temp.tick(pg_temp.ts(3, '13:50')) = 1, 'nao / ex-member got a reminder';
   perform 1 from agenda_lembretes where ocorrencia_id = v_oc_nao and user_id = v_o;
   assert found, 'the organizer did not get the reminder';
   insert into workspace_members (user_id, workspace_id, role) values (v_b3, v_ws, 'agent');
   -- a per-occurrence sim overrides a series-level nao
-  v_oc_ex := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-09T14:00:00","fim_local":"2026-10-09T15:00:00","lembretes":[30]}'), array[v_b1]);
+  v_oc_ex := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(4) || '{"lembretes":[30]}'), array[v_b1]);
   update agenda_participantes set resposta = 'nao' where user_id = v_b1 and evento_id = (select evento_id from agenda_ocorrencias where id = v_oc_ex);
   insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (v_oc_ex, v_ws, v_b1, 'sim');
-  assert pg_temp.tick('2026-10-09 13:30-03') = 2, 'per-occurrence sim did not override series nao';
+  assert pg_temp.tick(pg_temp.ts(4, '13:30')) = 2, 'per-occurrence sim did not override series nao';
 
   -- ---- e-mail prefs off: claimed in-app, e-mail status nao ----
   insert into notification_email_prefs (user_id, type, enabled) values (v_b1, 'event_reminder', false);
   insert into notification_email_prefs (user_id, type, enabled) values (v_b2, '__all__', false);
-  v_oc_pref := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-10T14:00:00","fim_local":"2026-10-10T15:00:00"}'), array[v_b1, v_b2]);
-  assert pg_temp.tick('2026-10-10 13:50-03') = 3, 'prefs: expected 3 claims';
+  v_oc_pref := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(5)), array[v_b1, v_b2]);
+  assert pg_temp.tick(pg_temp.ts(5, '13:50')) = 3, 'prefs: expected 3 claims';
   select count(*) into v_c from agenda_lembretes where ocorrencia_id = v_oc_pref and user_id in (v_b1, v_b2) and email_status = 'nao';
   assert v_c = 2, format('prefs off: %s rows with email_status nao', v_c);
   perform 1 from agenda_lembretes where ocorrencia_id = v_oc_pref and user_id = v_o and email_status = 'pendente';
@@ -144,16 +163,16 @@ begin
   assert v_c = 3, 'prefs off still gets the in-app reminder';
 
   -- ---- moving an already-reminded occurrence re-targets the reminder ----
-  update agenda_ocorrencias set inicio = '2026-10-05 18:00+00', fim = '2026-10-05 19:00+00', horario_alterado = true where id = v_oc;
-  v_n := pg_temp.tick('2026-10-05 14:50-03');
+  update agenda_ocorrencias set inicio = pg_temp.ts(0, '15:00'), fim = pg_temp.ts(0, '16:00'), horario_alterado = true where id = v_oc;
+  v_n := pg_temp.tick(pg_temp.ts(0, '14:50'));
   assert v_n = 2, format('moved occurrence: %s new claims', v_n);
   select count(*) into v_c from agenda_lembretes where ocorrencia_id = v_oc;
   assert v_c = 4, format('moved occurrence ledger rows: %s', v_c);
 
   -- ---- cancelled occurrence: nothing ----
-  v_oc_canc := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-11T14:00:00","fim_local":"2026-10-11T15:00:00"}'), array[v_b1]);
+  v_oc_canc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(6)), array[v_b1]);
   update agenda_ocorrencias set cancelada = true where id = v_oc_canc;
-  assert pg_temp.tick('2026-10-11 13:50-03') = 0, 'cancelled occurrence got a reminder';
+  assert pg_temp.tick(pg_temp.ts(6, '13:50')) = 0, 'cancelled occurrence got a reminder';
 
   raise notice 'PASS 99_agenda_lembretes (tick)';
 end $$;
@@ -168,19 +187,20 @@ declare
   r record;
   v_status text; v_tent int;
 begin
-  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  perform set_config('app.agenda_hoje', current_date::text, true);
   -- clean slate for the claim counts (rolled back with the suite)
   delete from agenda_lembretes;
   v_ws := et_make_workspace('start');
   insert into auth.users (id) values (v_o);
   insert into workspace_members (user_id, workspace_id, role) values (v_o, v_ws, 'owner');
   update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_o;
-  -- far in the future so the claim's stale-row settling never touches them
-  v_oc := pg_temp.criar(v_o, pg_temp.p('{"titulo":"Lembrar <b>","local":"Sala 1","link_reuniao":"https://meet.example/a","inicio_local":"2027-03-01T14:00:00","fim_local":"2027-03-01T15:00:00","lembretes":[10,60]}'), '{}');
-  v_oc2 := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2027-03-02T14:00:00","fim_local":"2027-03-02T15:00:00","lembretes":[10]}'), '{}');
-  assert pg_temp.tick('2027-03-01 13:00-03') = 1, 'claim setup: 60-min reminder';
-  assert pg_temp.tick('2027-03-01 13:50-03') = 1, 'claim setup: 10-min reminder';
-  assert pg_temp.tick('2027-03-02 13:50-03') = 1, 'claim setup: second event';
+  -- a month ahead of the real clock so the claim's stale-row settling
+  -- (o.fim < now()) never touches them
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(30) || '{"titulo":"Lembrar <b>","local":"Sala 1","link_reuniao":"https://meet.example/a","lembretes":[10,60]}'), '{}');
+  v_oc2 := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(31)), '{}');
+  assert pg_temp.tick(pg_temp.ts(30, '13:00')) = 1, 'claim setup: 60-min reminder';
+  assert pg_temp.tick(pg_temp.ts(30, '13:50')) = 1, 'claim setup: 10-min reminder';
+  assert pg_temp.tick(pg_temp.ts(31, '13:50')) = 1, 'claim setup: second event';
 
   execute 'set local role service_role';
   select count(*) into v_n from public.agenda_claim_emails_lembrete(10);
@@ -205,17 +225,17 @@ begin
   execute 'set local role service_role';
   select * into r from public.agenda_claim_emails_lembrete(10);
   execute 'reset role';
-  assert r.ocorrencia_id = v_oc and r.user_id = v_o and r.minutos = 60 and r.inicio_alvo = '2027-03-01 17:00+00'
-     and r.notification_id is not null and r.titulo = 'Lembrar <b>' and r.inicio = '2027-03-01 17:00+00'
-     and r.fim = '2027-03-01 18:00+00' and not r.dia_inteiro and r.local = 'Sala 1'
+  assert r.ocorrencia_id = v_oc and r.user_id = v_o and r.minutos = 60 and r.inicio_alvo = pg_temp.ts(30)
+     and r.notification_id is not null and r.titulo = 'Lembrar <b>' and r.inicio = pg_temp.ts(30)
+     and r.fim = pg_temp.ts(30, '15:00') and not r.dia_inteiro and r.local = 'Sala 1'
      and r.link_reuniao = 'https://meet.example/a' and r.tz = 'America/Sao_Paulo' and r.tentativas = 3,
     format('claim row: %s', to_jsonb(r));
 
   -- mark: ok -> enviado; failure -> pendente below 3 attempts, falhou at 3
   execute 'set local role service_role';
-  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, '2027-03-01 17:00+00', true);
-  perform public.agenda_marcar_email_lembrete(v_oc2, v_o, 10, '2027-03-02 17:00+00', false);
-  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 60, '2027-03-01 17:00+00', false);
+  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, pg_temp.ts(30), true);
+  perform public.agenda_marcar_email_lembrete(v_oc2, v_o, 10, pg_temp.ts(31), false);
+  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 60, pg_temp.ts(30), false);
   execute 'reset role';
   select email_status into v_status from agenda_lembretes where ocorrencia_id = v_oc and minutos = 10 and email_lease_ate is null;
   assert v_status = 'enviado', format('ok mark: %s', v_status);
@@ -225,7 +245,7 @@ begin
   assert v_status = 'falhou' and v_tent = 3, format('failed mark at the cap: %s / %s', v_status, v_tent);
   -- marking a row that is not being sent is a no-op
   execute 'set local role service_role';
-  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, '2027-03-01 17:00+00', false);
+  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, pg_temp.ts(30), false);
   execute 'reset role';
   select email_status into v_status from agenda_lembretes where ocorrencia_id = v_oc and minutos = 10;
   assert v_status = 'enviado', format('marking a settled row changed it: %s', v_status);
@@ -254,7 +274,7 @@ declare
   v_n int;
   v_status text;
 begin
-  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  perform set_config('app.agenda_hoje', current_date::text, true);
   delete from agenda_lembretes;
   v_ws := et_make_workspace('start');
   insert into auth.users (id) values (v_o);
@@ -262,10 +282,12 @@ begin
   update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_o;
 
   -- a pending row whose occurrence moved or was cancelled is never e-mailed
-  v_oc := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2027-04-01T14:00:00","fim_local":"2027-04-01T15:00:00"}'), '{}');
-  v_oc_canc := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2027-04-02T14:00:00","fim_local":"2027-04-02T15:00:00"}'), '{}');
-  perform pg_temp.tick('2027-04-01 13:50-03');
-  perform pg_temp.tick('2027-04-02 13:50-03');
+  -- (two months ahead, so only the move / the cancellation makes them stale;
+  -- the tick is global, so every block keeps its own days)
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(60)), '{}');
+  v_oc_canc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(61)), '{}');
+  perform pg_temp.tick(pg_temp.ts(60, '13:50'));
+  perform pg_temp.tick(pg_temp.ts(61, '13:50'));
   update agenda_ocorrencias set inicio = inicio + interval '1 hour', fim = fim + interval '1 hour', horario_alterado = true where id = v_oc;
   update agenda_ocorrencias set cancelada = true where id = v_oc_canc;
   execute 'set local role service_role';
@@ -277,9 +299,9 @@ begin
 
   -- the tick with the e-mail kick and no vault secrets still commits its claims (WARNING only)
   delete from vault.secrets where name in ('project_url', 'cron_secret');
-  v_oc := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2027-04-03T14:00:00","fim_local":"2027-04-03T15:00:00"}'), '{}');
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(62)), '{}');
   execute 'set local role service_role';
-  v_n := public.agenda_tick_lembretes('2027-04-03 13:50-03', true);
+  v_n := public.agenda_tick_lembretes(pg_temp.ts(62, '13:50'), true);
   execute 'reset role';
   assert v_n = 1, format('tick with e-mail kick: %s claims', v_n);
   perform 1 from agenda_lembretes where ocorrencia_id = v_oc and email_status = 'pendente';
@@ -307,7 +329,7 @@ declare
   v_n int;
   v_status text;
 begin
-  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  perform set_config('app.agenda_hoje', current_date::text, true);
   delete from agenda_lembretes;
   v_ws := et_make_workspace('start');
   insert into auth.users (id) values (v_o);
@@ -316,69 +338,68 @@ begin
 
   -- edge of the bound: a -1440 reminder on yesterday's one-off and on the last
   -- occurrence of a daily series that ended yesterday still fire
-  v_oc := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-04T14:00:00","fim_local":"2026-10-04T15:00:00","lembretes":[-1440]}'), '{}');
-  assert pg_temp.tick('2026-10-05 14:05-03') = 1, 'one-off: -1440 reminder at the bound not fired';
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(-1) || '{"lembretes":[-1440]}'), '{}');
+  assert pg_temp.tick(pg_temp.ts(0, '14:05')) = 1, 'one-off: -1440 reminder at the bound not fired';
   -- each case retires its occurrences so later ticks count only the next one
   update agenda_ocorrencias set cancelada = true where conta_id = v_ws;
-  v_oc := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('inicio_local', '2026-09-28T14:00:00', 'fim_local', '2026-09-28T15:00:00',
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(-7) || jsonb_build_object(
     'lembretes', jsonb_build_array(-1440),
-    'regra', jsonb_build_object('freq','daily','intervalo',1,'dias_semana',null,'mensal_modo',null,'mensal_ordinal',null,'ate','2026-10-04','contagem',null))), '{}');
-  assert pg_temp.tick('2026-10-05 14:05-03') = 1, 'series ended yesterday: -1440 reminder on its last occurrence not fired';
+    'regra', jsonb_build_object('freq','daily','intervalo',1,'dias_semana',null,'mensal_modo',null,'mensal_ordinal',null,'ate',(current_date - 1)::text,'contagem',null))), '{}');
+  assert pg_temp.tick(pg_temp.ts(0, '14:05')) = 1, 'series ended yesterday: -1440 reminder on its last occurrence not fired';
   update agenda_ocorrencias set cancelada = true where conta_id = v_ws;
 
   -- a one-off 3 days old is not probed: its occurrence is forced into the
   -- window (an inconsistent state no RPC produces) and still gets no claim
-  v_oc := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-02T14:00:00","fim_local":"2026-10-02T15:00:00","lembretes":[10]}'), '{}');
-  update agenda_ocorrencias set inicio = '2026-10-05 14:05-03', fim = '2026-10-05 15:05-03' where id = v_oc;
-  assert pg_temp.tick('2026-10-05 14:00-03') = 0, 'a one-off 3 days old was probed';
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(-3) || '{"lembretes":[10]}'), '{}');
+  update agenda_ocorrencias set inicio = pg_temp.ts(0, '14:05'), fim = pg_temp.ts(0, '15:05') where id = v_oc;
+  assert pg_temp.tick(pg_temp.ts(0, '14:00')) = 0, 'a one-off 3 days old was probed';
   perform 1 from agenda_lembretes where ocorrencia_id = v_oc;
   assert not found, 'ledger row for a one-off 3 days old';
   update agenda_ocorrencias set cancelada = true where conta_id = v_ws;
 
   -- a series whose ate passed 3 days ago is not probed either
-  v_oc := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('inicio_local', '2026-09-28T14:00:00', 'fim_local', '2026-09-28T15:00:00',
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(-7) || jsonb_build_object(
     'lembretes', jsonb_build_array(10),
-    'regra', jsonb_build_object('freq','daily','intervalo',1,'dias_semana',null,'mensal_modo',null,'mensal_ordinal',null,'ate','2026-10-02','contagem',null))), '{}');
+    'regra', jsonb_build_object('freq','daily','intervalo',1,'dias_semana',null,'mensal_modo',null,'mensal_ordinal',null,'ate',(current_date - 3)::text,'contagem',null))), '{}');
   select o.evento_id into v_ev from agenda_ocorrencias o where o.id = v_oc;
-  select o.id into v_oc from agenda_ocorrencias o where o.evento_id = v_ev and o.data_original = '2026-10-02';
-  update agenda_ocorrencias set inicio = '2026-10-05 16:05-03', fim = '2026-10-05 17:05-03' where id = v_oc;
-  assert pg_temp.tick('2026-10-05 16:00-03') = 0, 'a series ended 3 days ago was probed';
+  select o.id into v_oc from agenda_ocorrencias o where o.evento_id = v_ev and o.data_original = current_date - 3;
+  update agenda_ocorrencias set inicio = pg_temp.ts(0, '16:05'), fim = pg_temp.ts(0, '17:05') where id = v_oc;
+  assert pg_temp.tick(pg_temp.ts(0, '16:00')) = 0, 'a series ended 3 days ago was probed';
   perform 1 from agenda_lembretes where ocorrencia_id = v_oc;
   assert not found, 'ledger row for a series ended 3 days ago';
   -- but an occurrence moved by hand past that ate (horario_alterado) is found
   update agenda_ocorrencias set horario_alterado = true where id = v_oc;
-  assert pg_temp.tick('2026-10-05 16:00-03') = 1, 'occurrence moved past ate missed';
-  assert pg_temp.tick('2026-10-05 16:01-03') = 0, 'moved occurrence claimed twice';
-  perform 1 from agenda_lembretes where ocorrencia_id = v_oc and minutos = 10 and inicio_alvo = '2026-10-05 16:05-03';
+  assert pg_temp.tick(pg_temp.ts(0, '16:00')) = 1, 'occurrence moved past ate missed';
+  assert pg_temp.tick(pg_temp.ts(0, '16:01')) = 0, 'moved occurrence claimed twice';
+  perform 1 from agenda_lembretes where ocorrencia_id = v_oc and minutos = 10 and inicio_alvo = pg_temp.ts(0, '16:05');
   assert found, 'moved occurrence ledger row';
   update agenda_ocorrencias set cancelada = true where conta_id = v_ws;
   -- a moved occurrence of a live series is claimed once (the branches never overlap)
-  v_oc := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+  v_oc := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('inicio_local', pg_temp.dia(0, '09:00:00'), 'fim_local', pg_temp.dia(0, '10:00:00'),
     'lembretes', jsonb_build_array(10), 'regra', jsonb_build_object('freq','daily','intervalo',1,'dias_semana',null,'mensal_modo',null,'mensal_ordinal',null,'ate',null,'contagem',null))), '{}');
   select o.evento_id into v_ev from agenda_ocorrencias o where o.id = v_oc;
-  select o.id into v_oc from agenda_ocorrencias o where o.evento_id = v_ev and o.data_original = '2026-10-06';
-  update agenda_ocorrencias set inicio = '2026-10-06 18:05-03', fim = '2026-10-06 19:05-03', horario_alterado = true where id = v_oc;
-  assert pg_temp.tick('2026-10-06 18:00-03') = 1, 'moved occurrence of a live series not claimed exactly once';
+  select o.id into v_oc from agenda_ocorrencias o where o.evento_id = v_ev and o.data_original = current_date + 1;
+  update agenda_ocorrencias set inicio = pg_temp.ts(1, '18:05'), fim = pg_temp.ts(1, '19:05'), horario_alterado = true where id = v_oc;
+  assert pg_temp.tick(pg_temp.ts(1, '18:00')) = 1, 'moved occurrence of a live series not claimed exactly once';
 
   -- mark fence: a mark more than 5 minutes after the lease ended is dropped
   delete from agenda_lembretes where ocorrencia_id <> v_oc;
   -- the claim settles a row whose occurrence ended before the REAL now()
-  -- (o.fim < now()), not the pinned app.agenda_hoje; keep the end ahead of the
-  -- clock so this fixture does not expire. inicio stays equal to inicio_alvo.
-  update agenda_ocorrencias set fim = now() + interval '1 day' where id = v_oc;
+  -- (o.fim < now()): tomorrow 19:05 in Sao Paulo is always ahead of it
+  assert (select o.fim from agenda_ocorrencias o where o.id = v_oc) > now(), 'fence fixture not ahead of the clock';
   execute 'set local role service_role';
   select count(*) into v_n from public.agenda_claim_emails_lembrete(10);
   execute 'reset role';
   assert v_n = 1, format('fence setup: %s claimed', v_n);
   update agenda_lembretes set email_lease_ate = now() - interval '6 minutes' where ocorrencia_id = v_oc;
   execute 'set local role service_role';
-  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, '2026-10-06 18:05-03', true);
+  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, pg_temp.ts(1, '18:05'), true);
   execute 'reset role';
   select email_status into v_status from agenda_lembretes where ocorrencia_id = v_oc;
   assert v_status = 'enviando', format('a very stale mark landed: %s', v_status);
   update agenda_lembretes set email_lease_ate = now() - interval '4 minutes' where ocorrencia_id = v_oc;
   execute 'set local role service_role';
-  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, '2026-10-06 18:05-03', true);
+  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, pg_temp.ts(1, '18:05'), true);
   execute 'reset role';
   select email_status into v_status from agenda_lembretes where ocorrencia_id = v_oc;
   assert v_status = 'enviado', format('a mark within 5 minutes of the lease did not land: %s', v_status);
@@ -401,7 +422,7 @@ declare
   v_users uuid[];
   v_f text;
 begin
-  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  perform set_config('app.agenda_hoje', current_date::text, true);
   delete from agenda_lembretes;
   v_ws := et_make_workspace('max');
   insert into auth.users (id) values (v_o), (v_rem), (v_sai), (v_occ), (v_ser), (v_fica);
@@ -410,11 +431,12 @@ begin
     (v_occ, v_ws, 'agent'), (v_ser, v_ws, 'agent'), (v_fica, v_ws, 'agent');
   update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_o, v_rem, v_sai, v_occ, v_ser, v_fica);
 
-  -- a private event; the tick writes pendente rows for all six
-  v_oc := pg_temp.criar(v_o, pg_temp.p('{"titulo":"Privado","privado":true,"inicio_local":"2027-05-03T14:00:00","fim_local":"2027-05-03T15:00:00"}'),
+  -- a private event three months ahead (never ended for the claim, and on a
+  -- day no earlier block uses); the tick writes pendente rows for all six
+  v_oc := pg_temp.criar(v_o, pg_temp.p(pg_temp.em(90) || '{"titulo":"Privado","privado":true}'),
                         array[v_rem, v_sai, v_occ, v_ser, v_fica]);
   select o.evento_id into v_ev from agenda_ocorrencias o where o.id = v_oc;
-  assert pg_temp.tick('2027-05-03 13:50-03') = 6, 'involvement setup: six claims';
+  assert pg_temp.tick(pg_temp.ts(90, '13:50')) = 6, 'involvement setup: six claims';
   select count(*) into v_n from agenda_lembretes where ocorrencia_id = v_oc and email_status = 'pendente';
   assert v_n = 6, format('involvement setup: %s pendente', v_n);
 
