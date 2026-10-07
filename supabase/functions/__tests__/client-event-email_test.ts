@@ -345,3 +345,68 @@ Deno.test("malformed tokens return null without throwing", async () => {
   assertEquals(await verifyUnsubToken(".", SECRET), null);
   assertEquals(await verifyUnsubToken("", SECRET), null);
 });
+
+// --- Agenda reminders section (sub-project 3, spec §9) -----------------------
+
+const LEMBRETE = {
+  ocorrencia_id: 9,
+  inicio: "2026-10-09T17:00:00+00:00",
+  fim: "2026-10-09T18:00:00+00:00",
+  dia_inteiro: false,
+  data_inicio_local: "2026-10-09",
+  tz: "America/Sao_Paulo",
+  titulo: "Gravação <i>",
+};
+
+Deno.test("no pendingEvents: output identical to passing an empty list", () => {
+  const sem = buildClientEventEmail(BASE_PARAMS);
+  const vazio = buildClientEventEmail({ ...BASE_PARAMS, pendingEvents: [] });
+  assertEquals(sem, vazio);
+  assert(!sem.includes("Eventos aguardando sua confirmação"));
+});
+
+Deno.test("events-only variant: own title, preheader, greeting and CTA to the Hub Agenda", () => {
+  const html = buildClientEventEmail({ ...BASE_PARAMS, pendingPosts: [], pendingEvents: [LEMBRETE] });
+  assert(html.includes("1 evento aguarda sua confirmação"), "events-only title");
+  assert(html.includes("1 evento aguardando sua confirmação."), "events preheader");
+  assert(html.includes("Confirme sua presença nos próximos eventos"), "events greeting");
+  assert(html.includes("Confirmar presença"), "events CTA label");
+  assert(html.includes('href="https://app.mesaas.com.br/w/agencia-x/hub/tok123/agenda"'), "CTA goes to the Agenda");
+  assert(html.includes("/hub/tok123/agenda?ocorrencia=9"), "row deep link");
+  assert(html.includes("Sexta, 9 de outubro · 14:00 a 15:00"), "time in the event zone");
+  assert(html.includes("Gravação &lt;i&gt;") && !html.includes("Gravação <i>"), "titulo escaped");
+  assert(!html.includes("—"));
+});
+
+Deno.test("events plural title, and posts still win the title when present", () => {
+  const dois = buildClientEventEmail({
+    ...BASE_PARAMS,
+    pendingPosts: [],
+    pendingEvents: [LEMBRETE, { ...LEMBRETE, ocorrencia_id: 10 }],
+  });
+  assert(dois.includes("2 eventos aguardam sua confirmação"));
+  const comPost = buildClientEventEmail({ ...BASE_PARAMS, pendingEvents: [LEMBRETE] });
+  assert(comPost.includes("1 post espera sua aprovação"));
+  assert(comPost.includes("Eventos aguardando sua confirmação"));
+  assert(comPost.includes("Revisar e aprovar"));
+});
+
+Deno.test("reminder in another zone shows the zone name; all-day shows the date only", () => {
+  const manaus = buildClientEventEmail({
+    ...BASE_PARAMS,
+    pendingPosts: [],
+    pendingEvents: [{ ...LEMBRETE, tz: "America/Manaus" }],
+  });
+  assert(manaus.includes("13:00 a 14:00 (America/Manaus)"), "zone suffix");
+  const diaInteiro = buildClientEventEmail({
+    ...BASE_PARAMS,
+    pendingPosts: [],
+    pendingEvents: [{
+      ...LEMBRETE,
+      dia_inteiro: true,
+      inicio: "2026-10-09T03:00:00+00:00",
+      fim: "2026-10-10T03:00:00+00:00",
+    }],
+  });
+  assert(diaInteiro.includes("Sexta, 9 de outubro · dia inteiro"));
+});

@@ -122,6 +122,10 @@ function makeFakeDb(
     mensagens?: Row[];
     mensagensLastSeen?: Row[];
     workspaces?: Row[];
+    /** agenda_cliente_lembretes_pendentes result per cliente id (default []). */
+    lembretes?: Record<number, Row[]>;
+    /** Makes agenda_cliente_lembretes_pendentes return this error. */
+    lembretesError?: string;
   } = {},
 ) {
   // Captures the FULL patch object (not just ids) so tests can assert that a
@@ -130,14 +134,33 @@ function makeFakeDb(
   // controller ruling on anti-starvation backoff/rotation in handler.ts).
   const releaseCalls: Array<{ ids: number[]; patch: Record<string, unknown> }> = [];
   const successCalls: Array<{ ids: number[]; patch: Record<string, unknown> }> = [];
+  const lembretesCalls: Array<Record<string, unknown>> = [];
+  const marcarCalls: Array<Record<string, unknown>> = [];
   let rpcCalls = 0;
   const db = {
     releaseCalls,
     successCalls,
+    lembretesCalls,
+    marcarCalls,
     rpcCallCount: () => rpcCalls,
-    rpc(_fn: string, _args: unknown) {
+    // Dispatches on the function name: the handler now issues three RPCs.
+    rpc(fn: string, args: Record<string, unknown>) {
       rpcCalls++;
-      return Promise.resolve({ data: claimReturn, error: null });
+      if (fn === "claim_client_event_emails") {
+        return Promise.resolve({ data: claimReturn, error: null });
+      }
+      if (fn === "agenda_cliente_lembretes_pendentes") {
+        lembretesCalls.push(args);
+        if (tables.lembretesError) {
+          return Promise.resolve({ data: null, error: { message: tables.lembretesError } });
+        }
+        return Promise.resolve({ data: tables.lembretes?.[args.p_cliente as number] ?? [], error: null });
+      }
+      if (fn === "agenda_cliente_lembretes_marcar") {
+        marcarCalls.push(args);
+        return Promise.resolve({ data: null, error: null });
+      }
+      return Promise.resolve({ data: null, error: { message: `unexpected rpc ${fn}` } });
     },
     from(table: string) {
       if (table === "clientes") {
@@ -1305,4 +1328,171 @@ Deno.test("handler rejects a wrong cron secret with 401 before any db call", asy
   });
   const res = await handler(new Request("https://x.test/", { headers: { "x-cron-secret": "no" } }));
   assertEquals(res.status, 401);
+});
+
+// --- 19. Agenda reminders (sub-project 3, spec §9) ------------------------------------------
+
+const LEMBRETE = {
+  ocorrencia_id: 9,
+  inicio: "2026-08-14T15:00:00+00:00",
+  fim: "2026-08-14T16:00:00+00:00",
+  dia_inteiro: false,
+  data_inicio_local: "2026-08-14",
+  tz: "America/Sao_Paulo",
+  titulo: "Gravação <b>",
+};
+
+function reminderOnlyDb(clienteId: number, lembretes: Row[], extra: { lembretesError?: string } = {}) {
+  return makeFakeDb(
+    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: "2026-08-13T00:00:00.000Z" })],
+    {
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+      lembretes: { [clienteId]: lembretes },
+      ...extra,
+    },
+  );
+}
+
+Deno.test("reminders only: zero posts and messages + one reminder is sent with the events-only variant", async () => {
+  const db = reminderOnlyDb(20, [LEMBRETE]);
+  const { deps, sent, auditCalls } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r, { claimed: 1, emailed: 1, skippedNoContent: 0, skippedNoHub: 0, failed: 0, released: 0 });
+  assertEquals(sent.length, 1);
+  const html = sent[0].html;
+  assert(html.includes("1 evento aguarda sua confirmação"), "expected the events-only title");
+  assert(html.includes("Eventos aguardando sua confirmação"), "expected the events section heading");
+  assert(html.includes("Confirmar presença"), "expected the events CTA");
+  assert(html.includes('href="https://app.mesaas.com.br/w/x/hub/tok/agenda"'), "CTA must open the Hub Agenda");
+  assert(html.includes("/agenda?ocorrencia=9"), "expected the occurrence deep link");
+  assert(html.includes("12:00 a 13:00"), "expected the time in the event's own zone");
+  assert(html.includes("Gravação &lt;b&gt;") && !html.includes("Gravação <b>"), "titulo must be escaped");
+  // Query args: the claimed client and the run's clock.
+  assertEquals(db.lembretesCalls, [{ p_conta: "ws1", p_cliente: 20, p_now: NOW.toISOString() }]);
+  // Key carries oc:<id>:<inicio> exactly as the RPC returned it.
+  assertEquals(
+    sent[0].idempotencyKey,
+    await buildClientEventIdempotencyKey(20, ["oc:9:2026-08-14T15:00:00+00:00"]),
+  );
+  // Marked after success, with the same strings.
+  assertEquals(db.marcarCalls, [
+    { p_conta: "ws1", p_cliente: 20, p_itens: [{ ocorrencia_id: 9, inicio: "2026-08-14T15:00:00+00:00" }] },
+  ]);
+  assertEquals(db.successCalls.length, 1);
+  assertEquals(auditCalls[0].metadata, { posts: 0, messages: 0, events: 1 });
+});
+
+Deno.test("reminders: a moved start time yields a different idempotency key (one reminder per horário)", async () => {
+  const a = reminderOnlyDb(21, [LEMBRETE]);
+  const da = makeDeps(a);
+  await runClientEventEmailCron(da.deps);
+  const b = reminderOnlyDb(21, [{ ...LEMBRETE, inicio: "2026-08-14T18:00:00+00:00", fim: "2026-08-14T19:00:00+00:00" }]);
+  const dbb = makeDeps(b);
+  await runClientEventEmailCron(dbb.deps);
+  assertEquals(da.sent.length, 1);
+  assertEquals(dbb.sent.length, 1);
+  assert(da.sent[0].idempotencyKey !== dbb.sent[0].idempotencyKey, "moved start must not reuse the key");
+});
+
+Deno.test("reminders: send failure does not mark them; lease released", async () => {
+  const db = reminderOnlyDb(22, [LEMBRETE]);
+  const { deps } = makeDeps(db, { sendEmail: () => Promise.reject(new Error("resend down")) });
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.failed, 1);
+  assertEquals(db.marcarCalls.length, 0);
+  assertEquals(db.successCalls.length, 0);
+  assertEquals(db.releaseCalls, [{ ids: [22], patch: { event_claim_through: null } }]);
+});
+
+Deno.test("reminders: no Hub URL skips the digest without marking", async () => {
+  const db = reminderOnlyDb(23, [LEMBRETE]);
+  const { deps, sent } = makeDeps(db, { resolveHubUrl: () => Promise.resolve("") });
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.skippedNoHub, 1);
+  assertEquals(sent.length, 0);
+  assertEquals(db.marcarCalls.length, 0);
+});
+
+Deno.test("reminders: flag off (RPC returns []) leaves the digest unchanged", async () => {
+  // No content at all -> still skippedNoContent, nothing marked.
+  const empty = reminderOnlyDb(24, []);
+  const e = makeDeps(empty);
+  const r1 = await runClientEventEmailCron(e.deps);
+  assertEquals(r1.skippedNoContent, 1);
+  assertEquals(e.sent.length, 0);
+  assertEquals(empty.marcarCalls.length, 0);
+
+  // A posts digest keeps its old key, title, CTA and audit metadata.
+  const db = makeFakeDb(
+    [claimedRow({ id: 25, conta_id: "ws1", event_cursor_at: "2026-08-13T00:00:00.000Z" })],
+    {
+      postStatusEvents: [{
+        id: 250,
+        post_id: 2500,
+        conta_id: "ws1",
+        to_status: "enviado_cliente",
+        created_at: "2026-08-13T05:00:00.000Z",
+        workflow_posts: { cliente_id: 25, status: "enviado_cliente", tipo: "feed", titulo: "Post" },
+      }],
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+    },
+  );
+  const { deps, sent, auditCalls } = makeDeps(db);
+  await runClientEventEmailCron(deps);
+  assertEquals(sent[0].idempotencyKey, await buildClientEventIdempotencyKey(25, ["pse:250"]));
+  assert(!sent[0].html.includes("Eventos aguardando sua confirmação"));
+  assert(sent[0].html.includes("Revisar e aprovar"));
+  assertEquals(auditCalls[0].metadata, { posts: 1, messages: 0 });
+  assertEquals(db.marcarCalls.length, 0);
+});
+
+Deno.test("reminders: posts + reminder share one digest, key covers both, posts keep the title", async () => {
+  const db = makeFakeDb(
+    [claimedRow({ id: 26, conta_id: "ws1", event_cursor_at: "2026-08-13T00:00:00.000Z" })],
+    {
+      postStatusEvents: [{
+        id: 260,
+        post_id: 2600,
+        conta_id: "ws1",
+        to_status: "enviado_cliente",
+        created_at: "2026-08-13T05:00:00.000Z",
+        workflow_posts: { cliente_id: 26, status: "enviado_cliente", tipo: "feed", titulo: "Post" },
+      }],
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+      lembretes: { 26: [LEMBRETE] },
+    },
+  );
+  const { deps, sent } = makeDeps(db);
+  await runClientEventEmailCron(deps);
+  assertEquals(
+    sent[0].idempotencyKey,
+    await buildClientEventIdempotencyKey(26, ["pse:260", "oc:9:2026-08-14T15:00:00+00:00"]),
+  );
+  assert(sent[0].html.includes("1 post espera sua aprovação"));
+  assert(sent[0].html.includes("Eventos aguardando sua confirmação"));
+  assert(sent[0].html.includes("Revisar e aprovar"));
+  assertEquals(db.marcarCalls.length, 1);
+});
+
+Deno.test("reminders: a failing reminders query degrades to no reminders, the digest still goes out", async () => {
+  const db = makeFakeDb(
+    [claimedRow({ id: 27, conta_id: "ws1", event_cursor_at: "2026-08-13T00:00:00.000Z" })],
+    {
+      postStatusEvents: [{
+        id: 270,
+        post_id: 2700,
+        conta_id: "ws1",
+        to_status: "enviado_cliente",
+        created_at: "2026-08-13T05:00:00.000Z",
+        workflow_posts: { cliente_id: 27, status: "enviado_cliente", tipo: "feed", titulo: "Post" },
+      }],
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+      lembretesError: "function does not exist",
+    },
+  );
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assertEquals(sent[0].idempotencyKey, await buildClientEventIdempotencyKey(27, ["pse:270"]));
+  assertEquals(db.marcarCalls.length, 0);
 });
