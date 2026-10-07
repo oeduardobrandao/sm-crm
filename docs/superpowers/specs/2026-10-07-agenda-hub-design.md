@@ -33,7 +33,7 @@ Tudo fica atrás de `feature_agenda` (nenhuma coluna de plano nova). O que é do
 ## Decisões
 
 1. **Compartilhar é opt-in explícito**, coluna de série `agenda_eventos.compartilhado_cliente boolean NOT NULL DEFAULT false`. Ter `cliente_id` não basta: muitos eventos são internos sobre o cliente ("planejamento de março da Clínica X"), e eventos já criados no piloto com cliente não podem aparecer no Hub nem disparar e-mail depois do deploy.
-   - A opção só aparece com cliente escolhido. `privado` e `compartilhado_cliente` não convivem: `agenda_validar_payload` rejeita com "Evento privado não pode ser compartilhado com o cliente.", e `cliente_id` NULL força `false`.
+   - A opção só aparece com cliente escolhido. `privado` e `compartilhado_cliente` não convivem: `agenda_validar_payload` rejeita com "Evento privado não pode ser compartilhado com o cliente.", e o payload sem cliente grava `false`. No banco, o CHECK cobre só `NOT (compartilhado_cliente AND privado)`: excluir um cliente aciona o `ON DELETE SET NULL (cliente_id)` existente, e um CHECK que exigisse `cliente_id` faria a exclusão do cliente falhar. Por isso "compartilhado" é sempre lido como `compartilhado_cliente AND cliente_id IS NOT NULL`; as linhas das tabelas novas daquele cliente somem pelo cascade das FKs compostas, inclusive os itens da fila (cliente excluído não recebe e-mail).
    - Campo de série, como `cliente_id`: muda só com escopo `todas`/`seguintes`. O split de `seguintes` copia a coluna para a série nova (a lista de colunas do `INSERT` do split precisa dela, senão a cauda deixa de ser compartilhada).
    - Trocar o cliente ou desligar a opção: cancelamento ao cliente anterior; as respostas e os pedidos pendentes do cliente anterior são apagados e marcados `substituida`, respectivamente, na mesma transação.
 
@@ -67,7 +67,7 @@ Tudo fica atrás de `feature_agenda` (nenhuma coluna de plano nova). O que é do
    - **Coalescência só em item ainda não pego:** uma escrita no mesmo `(cliente_id, evento_id)` enquanto existe item `pendente` sem lease e com `enviar_apos` no futuro mescla nele por `ocorrencia_id` (estado mais recente vence; ocorrência que entrou como nova e foi cancelada antes do envio sai da lista) e incrementa `versao`. Item com lease nunca é alterado: a escrita cria um item novo. Item que fica sem ocorrências é `descartado`. `enviar_apos = now() + 60 s`. Remarcações têm item próprio, sem mescla.
    - **Tipo do e-mail na hora do envio** (a partir do snapshot): `remarcacao_*` como gravado. Senão: todas canceladas = "Evento cancelado"; tipo `convite` = "Novo evento"; resto = "Evento atualizado".
    - **Idempotência:** chave `agenda-cliente:<item_id>:<versao>`. Como item em lease não muda, a chave sempre corresponde a um conteúdo só.
-   - **Entrega:** um cron de 1 min roda `agenda_cliente_tick()`, que só chama a função por pg_net quando há item vencido (padrão do `agenda_tick_lembretes`, com `BEGIN/EXCEPTION` em volta do `net.http_post`). Sem chamada imediata a cada escrita: com `enviar_apos` de 60 s ela não acharia nada.
+   - **Entrega:** um cron de 1 min roda `agenda_cliente_tick()`, que só chama a função por pg_net quando há item vencido (padrão do `agenda_tick_lembretes`, com `BEGIN/EXCEPTION` em volta do `net.http_post`), mandando o `x-cron-secret` do vault. A função recusa com 401 qualquer chamada sem o segredo certo antes de qualquer trabalho. Sem chamada imediata a cada escrita: com `enviar_apos` de 60 s ela não acharia nada.
    - **Portões no envio:** `feature_agenda` ligado, cliente `ativo`, `clientes.email` não vazio, `send_event_email = true`, `event_email_unsub_at IS NULL`, e (exceto cancelamento) o evento ainda compartilhado com esse cliente. Portão fechado = item `descartado`, sem retry.
    - **Remetente e descadastro** iguais ao digest: `"<Workspace> <notificacoes@mesaas.com.br>"`, `List-Unsubscribe` RFC 8058 com o mesmo token assinado de `client-email-unsub` (descadastrar vale para os dois tipos de e-mail, como hoje).
    - **Assunto** estático por tipo mais o título passado por `sanitizeSubjectValue` (ex.: "Novo evento: Gravação de reels"). Texto livre (`titulo`, `descricao`, `mensagem`, `resposta_equipe`) passa por `escapeHtml` no HTML e por `escaparTexto` no ICS.
@@ -193,6 +193,7 @@ Tudo fica atrás de `feature_agenda` (nenhuma coluna de plano nova). O que é do
 
 Ordem:
 
+0. `supabase/config.toml` ganha `[functions.hub-agenda]` e `[functions.agenda-cliente-email]` com `verify_jwt = false`, como as demais funções de token e de cron.
 1. Migration (`db push`), que cria o cron `agenda-cliente-email` de 1 min. Até o deploy do passo 2 as chamadas falham e os itens ficam pendentes, sem perda.
 2. Logo em seguida, deploy de:
    - `agenda-cliente-email` e `hub-agenda` (novas, `--no-verify-jwt`);
@@ -208,7 +209,7 @@ Ordem:
    - `agenda_validar_payload`, `agenda_evento_criar`, `agenda_evento_editar`, `agenda_evento_excluir`;
    - `agenda_listar`, com `DROP` e recriação no formato antigo;
    - `claim_notification_emails`.
-3. Apagar notificações dos dois tipos novos e restaurar os 3 CHECKs.
+3. Apagar as linhas dos dois tipos novos em `notifications`, `notification_inapp_prefs` e `notification_email_prefs`, e só então restaurar os 3 CHECKs.
 4. Dropar as tabelas novas, `agenda_ocorrencias.sequencia` e `agenda_eventos.compartilhado_cliente`.
 5. Redeployar as funções da versão anterior.
 
@@ -249,6 +250,7 @@ Revisão do Fable e revisão externa (Codex) sobre a primeira versão:
   - sem chamada pg_net imediata (Fable 11);
   - precedente de auditoria corrigido, `NOT cancelada` no lembrete, enfileirar antes do `DELETE` em `excluir todas` (Fable 12);
   - assunto sanitizado e escape (Fable 13).
+- **Aceitas na segunda rodada do Codex:** `x-cron-secret` obrigatório em `agenda-cliente-email` (P0); CHECK sem `cliente_id` para não quebrar a exclusão de cliente, com "compartilhado" lido como `compartilhado_cliente AND cliente_id IS NOT NULL` (P1); rollback apaga as preferências dos tipos novos antes de restaurar os CHECKs (P1); entradas no `config.toml` (P2).
 - **Rejeitadas:**
   - **`RRULE` no convite de série (Fable 3):** reproduzir exceções e splits em `RRULE`/`EXDATE` é o risco que o sub-projeto 2 já recusou.
   - **Cortar o cancelamento de pedido pelo cliente (Fable 14):** é barato e é o único jeito de o cliente desfazer um pedido errado.

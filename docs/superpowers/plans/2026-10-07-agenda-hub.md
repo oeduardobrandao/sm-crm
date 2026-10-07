@@ -30,7 +30,7 @@
 ### SQL objects (Lane DB produces; everyone else consumes)
 
 Columns:
-- `agenda_eventos.compartilhado_cliente boolean NOT NULL DEFAULT false`, CHECK `agenda_eventos_compartilhado_ck`: `NOT compartilhado_cliente OR (cliente_id IS NOT NULL AND NOT privado)`.
+- `agenda_eventos.compartilhado_cliente boolean NOT NULL DEFAULT false`, CHECK `agenda_eventos_compartilhado_ck`: `NOT (compartilhado_cliente AND privado)`. Never require `cliente_id` in the CHECK: the existing FK is `ON DELETE SET NULL (cliente_id)` and deleting a client would fail. Everywhere, "shared" means `e.compartilhado_cliente AND e.cliente_id IS NOT NULL`.
 - `agenda_ocorrencias.sequencia int NOT NULL DEFAULT 0`.
 
 Tables: `agenda_respostas_cliente`, `agenda_remarcacoes`, `agenda_emails_cliente` exactly as spec §3, §4, §5. Queue columns: `id bigserial PK, conta_id uuid, cliente_id bigint, evento_id bigint, tipo text CHECK IN ('convite','alteracao','cancelamento','remarcacao_aceita','remarcacao_recusada'), ocorrencias jsonb NOT NULL DEFAULT '[]', remarcacao jsonb NULL, versao int NOT NULL DEFAULT 1, status text CHECK IN ('pendente','enviando','enviado','falhou','descartado') DEFAULT 'pendente', enviar_apos timestamptz, tentativas int DEFAULT 0, lease_ate timestamptz, enviado_em timestamptz, ultimo_erro text, criado_em timestamptz DEFAULT now()`. Index `(status, enviar_apos)`.
