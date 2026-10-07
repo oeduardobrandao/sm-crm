@@ -17,6 +17,7 @@ const BOOTSTRAP: HubBootstrap = {
   is_active: true,
   cliente_id: 1,
   feature_mensagens: true,
+  feature_agenda: false,
 };
 
 function renderSidebar(pathname: string, bootstrap: HubBootstrap = BOOTSTRAP) {
@@ -74,6 +75,23 @@ describe('HubSidebar', () => {
     for (const label of ['Início', 'Aprovações', 'Postagens', 'Relatórios']) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it('shows Agenda right after Postagens only when feature_agenda is on', () => {
+    const { unmount } = renderSidebar('/ws/hub/tok');
+    expect(screen.queryByText('Agenda')).not.toBeInTheDocument();
+    unmount();
+    renderSidebar('/ws/hub/tok', { ...BOOTSTRAP, feature_agenda: true });
+    const agenda = screen.getByText('Agenda').closest('a');
+    expect(agenda).toHaveAttribute('href', '/ws/hub/tok/agenda');
+    const labels = screen.getAllByRole('link').map((a) => a.textContent);
+    expect(labels.indexOf('Agenda')).toBe(labels.indexOf('Postagens') + 1);
+  });
+
+  it('hides Agenda when an older hub-bootstrap omits feature_agenda', () => {
+    const { feature_agenda: _omit, ...antigo } = BOOTSTRAP;
+    renderSidebar('/ws/hub/tok', antigo);
+    expect(screen.queryByText('Agenda')).not.toBeInTheDocument();
   });
 
   it('marks the active nav item with hub-nav-active (color: var(--hub-primary), a no-op in neutral)', () => {

@@ -1,11 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
 
-vi.mock('../../api', () => ({ fetchPosts: vi.fn(), fetchPostsInRange: vi.fn() }));
+vi.mock('../../api', () => ({
+  fetchPosts: vi.fn(),
+  fetchPostsInRange: vi.fn(),
+  fetchAgenda: vi.fn(),
+}));
 vi.mock('../../components/dashboard/DashboardSection', () => ({ DashboardSection: () => null }));
 // The fake calendar exposes what Home passes and lets the test pick the shown month.
 vi.mock('../../components/PostCalendar', () => ({
@@ -25,12 +29,13 @@ vi.mock('../../components/PostCalendar', () => ({
   ),
 }));
 
-import { fetchPosts, fetchPostsInRange } from '../../api';
+import { fetchAgenda, fetchPosts, fetchPostsInRange } from '../../api';
 import { localMonthRange } from '../../lib/postView';
 import { HomePage } from '../HomePage';
 
 const posts = vi.mocked(fetchPosts);
 const range = vi.mocked(fetchPostsInRange);
+const agenda = vi.mocked(fetchAgenda);
 const hubValue = {
   bootstrap: {
     workspace: { name: 'M', logo_url: '', brand_color: '#0f766e' },
@@ -50,11 +55,11 @@ const p = (id: number, titulo: string, status = 'agendado') => ({
   scheduled_at: '2026-09-10T10:00:00.000Z',
 });
 
-function renderHome() {
+function renderHome(value: unknown = hubValue) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <HubContext.Provider value={hubValue}>
+      <HubContext.Provider value={value as never}>
         <MemoryRouter initialEntries={['/mesaas/hub/tk']}>
           <Routes>
             <Route path="/:workspace/hub/:token/*" element={<HomePage />} />
@@ -130,5 +135,86 @@ describe('Home calendar range', () => {
     range.mockResolvedValue({ posts: [p(2, 'Antigo', 'postado')], postApprovals: [] } as never);
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     await waitFor(() => expect(screen.getByText('Cal: Recente, Antigo')).toBeInTheDocument());
+  });
+});
+
+describe('Home agenda block', () => {
+  const comAgenda = {
+    ...(hubValue as { bootstrap: object }),
+    bootstrap: { ...(hubValue as { bootstrap: object }).bootstrap, feature_agenda: true },
+  };
+  const ev = (id: number, titulo: string, inicio: string, resposta: 'sim' | 'nao' | null) => ({
+    ocorrencia_id: id,
+    sequencia: 0,
+    inicio,
+    fim: new Date(Date.parse(inicio) + 3_600_000).toISOString(),
+    dia_inteiro: false,
+    data_inicio_local: inicio.slice(0, 10),
+    data_fim_local: inicio.slice(0, 10),
+    tz: 'America/Sao_Paulo',
+    titulo,
+    descricao: null,
+    local: null,
+    link_reuniao: null,
+    resposta,
+    remarcacao: null,
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-07T15:00:00Z'));
+    posts.mockReset();
+    agenda.mockReset();
+    posts.mockResolvedValue({ posts: [], postApprovals: [], historyCutoff: null } as never);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('is hidden and never fetches without feature_agenda', async () => {
+    renderHome();
+    await screen.findByText('Cal:');
+    expect(screen.queryByText('Próximos eventos')).not.toBeInTheDocument();
+    expect(agenda).not.toHaveBeenCalled();
+  });
+
+  it('shows up to 3 upcoming events, the Ver agenda link and the pending-answer notice', async () => {
+    agenda.mockResolvedValue({
+      itens: [
+        ev(1, 'Passado', '2026-10-01T15:00:00Z', null),
+        ev(2, 'Primeiro', '2026-10-08T15:00:00Z', null),
+        ev(3, 'Segundo', '2026-10-09T15:00:00Z', 'sim'),
+        ev(4, 'Terceiro', '2026-10-10T15:00:00Z', null),
+        ev(5, 'Quarto', '2026-10-11T15:00:00Z', 'nao'),
+      ],
+      proximo: null,
+    });
+    renderHome(comAgenda);
+
+    expect(await screen.findByText('Próximos eventos')).toBeInTheDocument();
+    for (const titulo of ['Primeiro', 'Segundo', 'Terceiro']) {
+      expect(screen.getByText(titulo)).toBeInTheDocument();
+    }
+    expect(screen.queryByText('Quarto')).not.toBeInTheDocument();
+    expect(screen.queryByText('Passado')).not.toBeInTheDocument();
+    expect(screen.getByText('Primeiro').closest('a')).toHaveAttribute(
+      'href',
+      '/mesaas/hub/tk/agenda?ocorrencia=2',
+    );
+    expect(screen.getByRole('link', { name: /Ver agenda/ })).toHaveAttribute(
+      'href',
+      '/mesaas/hub/tk/agenda',
+    );
+    expect(screen.getByText('Você tem 2 eventos aguardando sua resposta')).toBeInTheDocument();
+  });
+
+  it('renders nothing when there is no upcoming event', async () => {
+    agenda.mockResolvedValue({
+      itens: [ev(1, 'Passado', '2026-10-01T15:00:00Z', null)],
+      proximo: null,
+    });
+    renderHome(comAgenda);
+    await waitFor(() => expect(agenda).toHaveBeenCalled());
+    await screen.findByText('Cal:');
+    expect(screen.queryByText('Próximos eventos')).not.toBeInTheDocument();
+    expect(screen.queryByText(/aguardando sua resposta/)).not.toBeInTheDocument();
   });
 });
