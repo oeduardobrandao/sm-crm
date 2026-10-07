@@ -74,7 +74,9 @@ declare
     'public.agenda_definir_participantes(bigint, uuid, uuid, uuid[])',
     'public.agenda_tick_lembretes(timestamptz, boolean)',
     'public.agenda_claim_emails_lembrete(int)',
-    'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)'
+    'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)',
+    'public.rebuild_instagram_automation_contacts(uuid, uuid)',
+    'public.instagram_automation_contact_source(uuid, uuid)'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
