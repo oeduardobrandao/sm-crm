@@ -202,9 +202,14 @@ Monorepo with npm workspaces:
   queue head. Both are plain edge-function secrets: changing them needs no deploy
 - `GEOAPIFY_API_KEY` -- Geoapify key for address suggestions in the Agenda "Local" field
   (geo-autocomplete, which proxies Geoapify's autocomplete so the key never reaches the
-  browser). Optional, no default: unset, the function answers 503 and the field stays plain
-  text. Free plan = 3000 requests/day and requires the "Powered by Geoapify" credit the
-  suggestion list shows; per-user limit 60/min (`geo-autocomplete:<user>`)
+  browser). Optional, no default: unset, the function answers 503, the CRM pauses its calls
+  for 10 minutes and the field stays plain text. Free plan = 3000 requests/day and requires
+  the "Powered by Geoapify" / OpenStreetMap credit the suggestion list shows. Limits: 60/min
+  per user (`geo-autocomplete:<user>`) and a platform-wide hourly cap
+- `GEOAPIFY_HOURLY_CAP` -- platform-wide geo-autocomplete calls per hour (default 120, i.e.
+  at most 2880/day, under the free plan's 3000). Hourly because `rate_limit_log` is pruned
+  every hour (`rate-limit-cleanup`), so a daily window would never count past one hour.
+  Raise it together with the Geoapify plan; changing it needs no deploy
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
 - `REPORT_PRINT_BASE` -- origem pública que serve a página de print do relatório
   de blocos (ex.: https://mesaas.com.br). Usada por report-docs POST /:id/pdf
@@ -306,7 +311,7 @@ Monorepo with npm workspaces:
 - Page param validation: `Math.max(1, parseInt(pageStr) || 1)`
 - localStorage iteration: collect keys first, then remove. Modifying during iteration skips items
 - Roles are `owner | admin | agent` -- always check via `AuthContext`, never hardcode
-- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing` (token do hub) and `briefing-audio` (verifies the user JWT itself) both need it too
+- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing` (token do hub), `briefing-audio` and `geo-autocomplete` (verify the user JWT themselves) need it too
 - Hub app uses token-based access (no Supabase auth), builds to `dist/hub/` with base path `/hub/`
 - Vercel rewrites in `vercel.json` route Hub URLs to `/hub/index.html` and CRM URLs to `/index.html`
 - `membros` and `clientes` use column-level `GRANT SELECT` allowlists (Migration `20260728000002`). Any column added to either table is invisible to the CRM until it is added to the grant, to `membros_v`/`clientes_v`, and to the `*_SAFE_COLUMNS` constants in `store/team.ts` / `store/clients.ts`. The failure surfaces as a confusing missing-column error. The same allowlist also keeps six PostgREST embeds, ten dependent RLS policies and `get_client_health_aggregates()` working -- none of which a `from('clientes')` grep finds.

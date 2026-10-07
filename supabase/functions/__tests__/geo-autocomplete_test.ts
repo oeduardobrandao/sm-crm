@@ -19,6 +19,7 @@ function harness(over: Partial<GeoAutocompleteDeps> = {}) {
       return Promise.resolve(true);
     },
     apiKey: () => KEY,
+    limiteHora: () => 120,
     fetch: (url) => {
       calls.fetch.push(url);
       return Promise.resolve(Response.json({
@@ -91,7 +92,7 @@ Deno.test("geo-autocomplete: ok maps suggestions, debits the user's key, never r
       linha2: "Bela Vista, São Paulo - SP, Brasil",
     }],
   });
-  assertEquals(calls.rate, [["geo-autocomplete:u1", 60, 60]]);
+  assertEquals(calls.rate, [["geo-autocomplete:u1", 60, 60], ["geo-autocomplete:global", 120, 3600]]);
   const up = new URL(calls.fetch[0]);
   assertEquals(up.origin + up.pathname, "https://api.geoapify.com/v1/geocode/autocomplete");
   assertEquals(up.searchParams.get("text"), "av paulista");
@@ -149,4 +150,29 @@ Deno.test("urlGeoapify: encodes the query", () => {
   const u = new URL(urlGeoapify("Rua & Cia, 10", "k"));
   assertEquals(u.searchParams.get("text"), "Rua & Cia, 10");
   assertEquals(u.searchParams.get("limit"), String(LIMITE_SUGESTOES));
+});
+
+Deno.test("geo-autocomplete: the platform-wide hourly cap answers 503 without upstream call", async () => {
+  const { handler, calls } = harness({
+    rateLimit: (k) => {
+      calls.rate.push([k, 0, 0]);
+      return Promise.resolve(k !== "geo-autocomplete:global");
+    },
+  });
+  const res = await handler(req("paulista"));
+  assertEquals(res.status, 503);
+  assertEquals(calls.rate.map((r) => r[0]), ["geo-autocomplete:u1", "geo-autocomplete:global"]);
+  assertEquals(calls.fetch.length, 0);
+});
+
+Deno.test("geo-autocomplete: a non-JSON upstream body is a 502", async () => {
+  const { handler } = harness({ fetch: () => Promise.resolve(new Response("<html>", { status: 200 })) });
+  assertEquals((await handler(req("paulista"))).status, 502);
+});
+
+Deno.test("geo-autocomplete: an upstream timeout is a 502", async () => {
+  const { handler } = harness({
+    fetch: () => Promise.reject(new DOMException("The signal has been aborted", "TimeoutError")),
+  });
+  assertEquals((await handler(req("paulista"))).status, 502);
 });

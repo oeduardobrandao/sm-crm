@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
-import { createGeoAutocompleteHandler } from "./handler.ts";
+import { createGeoAutocompleteHandler, HORA_PADRAO } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -22,5 +22,9 @@ Deno.serve(createGeoAutocompleteHandler({
   rateLimit: (key, max, win) => checkRateLimit(db, key, max, win),
   // Optional: unset means the CRM field stays a plain text input (503 here).
   apiKey: () => Deno.env.get("GEOAPIFY_API_KEY") || undefined,
+  limiteHora: () => {
+    const n = parseInt(Deno.env.get("GEOAPIFY_HOURLY_CAP") ?? "", 10);
+    return Number.isInteger(n) && n > 0 ? n : HORA_PADRAO;
+  },
   fetch: (url, init) => fetch(url, init),
 }));

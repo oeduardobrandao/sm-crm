@@ -63,13 +63,23 @@ export function LocalAutocomplete({
     return () => clearTimeout(t);
   }, [texto, digitado, debounceMs]);
 
-  const { data: sugestoes = [] } = useQuery({
+  const buscar = digitado && termo.length >= MIN_TEXTO_ENDERECO;
+  const { data } = useQuery({
     queryKey: ['geo-autocomplete', termo],
     queryFn: ({ signal }) => buscarEnderecos(termo, signal),
-    enabled: digitado && termo.length >= MIN_TEXTO_ENDERECO,
+    enabled: buscar,
     staleTime: 10 * 60_000,
     retry: false,
   });
+  // While the next term loads, keep showing the last list (no blink between
+  // keystrokes). Picking a suggestion clears it, so a stale list never returns.
+  const [ultimas, setUltimas] = useState<SugestaoEndereco[]>([]);
+  const [dataVista, setDataVista] = useState(data);
+  if (data !== dataVista) {
+    setDataVista(data);
+    if (data) setUltimas(data);
+  }
+  const sugestoes = buscar ? (data ?? ultimas) : [];
 
   const aberta = focado && digitado && !fechada && sugestoes.length > 0 && !disabled;
 
@@ -80,7 +90,9 @@ export function LocalAutocomplete({
   useLayoutEffect(() => {
     if (!aberta || !caixaRef.current) return;
     const r = caixaRef.current.getBoundingClientRect();
-    const abaixo = window.innerHeight - r.bottom;
+    // visualViewport: on iOS the keyboard shrinks it, not innerHeight.
+    const altura = window.visualViewport?.height ?? window.innerHeight;
+    const abaixo = altura - r.bottom;
     setAcima(abaixo < ALTURA_LISTA && r.top > abaixo);
   }, [aberta]);
 
@@ -97,10 +109,13 @@ export function LocalAutocomplete({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [aberta]);
 
-  const escolher = (s: SugestaoEndereco) => {
+  const escolher = (s: SugestaoEndereco | undefined) => {
+    if (!s) return;
     onChange(s.rotulo.slice(0, maxLength));
     setDigitado(false);
     setAtivo(-1);
+    setTermo('');
+    setUltimas([]);
   };
 
   return (
@@ -136,7 +151,17 @@ export function LocalAutocomplete({
           onBlur?.();
         }}
         onKeyDown={(e) => {
-          if (!aberta) return;
+          // IME: Enter/arrows commit the composition, not the list.
+          if (e.nativeEvent.isComposing) return;
+          if (!aberta) {
+            // APG combobox: ArrowDown reopens a list closed with Escape.
+            if (e.key === 'ArrowDown' && fechada && sugestoes.length > 0) {
+              e.preventDefault();
+              setFechada(false);
+              setAtivo(0);
+            }
+            return;
+          }
           if (e.key === 'ArrowDown') {
             e.preventDefault();
             setAtivo((i) => (i + 1) % sugestoes.length);
@@ -219,6 +244,17 @@ export function LocalAutocomplete({
               style={{ color: 'inherit' }}
             >
               Powered by Geoapify
+            </a>
+            {' · '}
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noopener noreferrer"
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
+              style={{ color: 'inherit' }}
+            >
+              © OpenStreetMap
             </a>
           </div>
         </div>

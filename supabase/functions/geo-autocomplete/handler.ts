@@ -17,6 +17,8 @@ export interface GeoAutocompleteDeps {
   getUser: (jwt: string) => Promise<{ id: string } | null>;
   rateLimit: (key: string, max: number, windowSeconds: number) => Promise<boolean>;
   apiKey: () => string | undefined;
+  /** Platform-wide calls per hour (GEOAPIFY_HOURLY_CAP, default HORA_PADRAO). */
+  limiteHora: () => number;
   fetch: (url: string, init?: RequestInit) => Promise<Response>;
 }
 
@@ -26,6 +28,9 @@ export const LIMITE_SUGESTOES = 5;
 /** Per user: a debounced input fires at most a few calls per second. */
 export const RATE_MAX = 60;
 export const RATE_JANELA_S = 60;
+/** The free plan allows 3000 requests/day; rate_limit_log keeps one hour, so
+ *  the platform cap is hourly: 120/h is at most 2880/day. */
+export const HORA_PADRAO = 120;
 
 const GEOAPIFY_URL = "https://api.geoapify.com/v1/geocode/autocomplete";
 const TIMEOUT_MS = 5000;
@@ -99,6 +104,10 @@ export function createGeoAutocompleteHandler(deps: GeoAutocompleteDeps) {
       if (!(await deps.rateLimit(`geo-autocomplete:${user.id}`, RATE_MAX, RATE_JANELA_S))) {
         return json({ error: "Muitas requisições" }, 429);
       }
+      // One runaway tab must not spend the whole platform's daily quota.
+      if (!(await deps.rateLimit("geo-autocomplete:global", deps.limiteHora(), 3600))) {
+        return json({ error: "Indisponível" }, 503);
+      }
 
       let res: Response;
       try {
@@ -112,7 +121,14 @@ export function createGeoAutocompleteHandler(deps: GeoAutocompleteDeps) {
         console.error("[geo-autocomplete] upstream status", res.status);
         return json({ error: "Indisponível" }, 502);
       }
-      const sugestoes = mapearResultados(await res.json());
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        console.error("[geo-autocomplete] upstream body is not JSON");
+        return json({ error: "Indisponível" }, 502);
+      }
+      const sugestoes = mapearResultados(body);
       return json({ sugestoes }, 200, { "Cache-Control": "private, max-age=3600" });
     } catch (err) {
       console.error("[geo-autocomplete] error:", (err as Error)?.name ?? "erro");

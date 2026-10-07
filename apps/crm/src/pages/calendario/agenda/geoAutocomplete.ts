@@ -8,6 +8,19 @@ export interface SugestaoEndereco {
 }
 
 export const MIN_TEXTO_ENDERECO = 3;
+/** The function rejects longer queries (400). */
+export const MAX_TEXTO_ENDERECO = 200;
+
+// After a 503 (service off or platform quota spent) or 429 (this user's
+// limit), stop calling for a while: every call still costs an auth round-trip.
+const PAUSA_503_MS = 10 * 60_000;
+const PAUSA_429_MS = 60_000;
+let pausadoAte = 0;
+
+/** Tests only. */
+export function _resetPausaEnderecos() {
+  pausadoAte = 0;
+}
 
 /** Address suggestions through the geo-autocomplete edge function (the
  *  Geoapify key stays server-side). Throws on any failure; callers treat that
@@ -17,7 +30,8 @@ export async function buscarEnderecos(
   signal?: AbortSignal,
 ): Promise<SugestaoEndereco[]> {
   const q = texto.trim();
-  if (q.length < MIN_TEXTO_ENDERECO) return [];
+  if (q.length < MIN_TEXTO_ENDERECO || q.length > MAX_TEXTO_ENDERECO) return [];
+  if (Date.now() < pausadoAte) return [];
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -27,6 +41,8 @@ export async function buscarEnderecos(
     `${base}/functions/v1/geo-autocomplete?${new URLSearchParams({ q }).toString()}`,
     { headers: { Authorization: `Bearer ${session.access_token}` }, signal },
   );
+  if (res.status === 503) pausadoAte = Date.now() + PAUSA_503_MS;
+  if (res.status === 429) pausadoAte = Date.now() + PAUSA_429_MS;
   if (!res.ok) throw new Error(`geo-autocomplete ${res.status}`);
   const body = (await res.json()) as { sugestoes?: SugestaoEndereco[] };
   return Array.isArray(body.sugestoes) ? body.sugestoes : [];

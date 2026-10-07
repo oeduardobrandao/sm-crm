@@ -146,6 +146,48 @@ describe('LocalAutocomplete', () => {
     expect(buscarMock).not.toHaveBeenCalled();
   });
 
+  it('after a pick, typing again never shows the previous list while the new one loads', async () => {
+    renderCampo();
+    digitar('pau');
+    fireEvent.click(await screen.findByText('Rua Augusta, 500'));
+    buscarMock.mockImplementation(() => new Promise(() => {}));
+    fireEvent.change(input(), { target: { value: 'Rua Augusta, 500 - São Paulo - SP, Brasil 2' } });
+    // Before the debounce fires: the old term's cached list must not come back.
+    expect(screen.queryByRole('listbox')).toBeNull();
+    await waitFor(() => expect(buscarMock).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('keeps the current list while the next keystroke loads (no blink)', async () => {
+    renderCampo();
+    digitar('pau');
+    await screen.findByRole('listbox');
+    buscarMock.mockImplementation(() => new Promise(() => {}));
+    fireEvent.change(input(), { target: { value: 'paul' } });
+    await waitFor(() => expect(buscarMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('listbox')).toBeVisible();
+  });
+
+  it('ArrowDown reopens a list closed with Escape', async () => {
+    renderCampo();
+    digitar('pau');
+    await screen.findByRole('listbox');
+    fireEvent.keyDown(input(), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    fireEvent.keyDown(input(), { key: 'ArrowDown' });
+    expect(screen.getByRole('listbox')).toBeVisible();
+    expect(input()).toHaveAttribute('aria-activedescendant', screen.getAllByRole('option')[0].id);
+  });
+
+  it('Enter during IME composition does not pick', async () => {
+    renderCampo();
+    digitar('pau');
+    await screen.findByRole('listbox');
+    fireEvent.keyDown(input(), { key: 'ArrowDown' });
+    fireEvent.keyDown(input(), { key: 'Enter', isComposing: true });
+    expect(screen.getByTestId('valor')).toHaveTextContent('pau');
+  });
+
   it('blur closes the list', async () => {
     renderCampo();
     digitar('pau');
