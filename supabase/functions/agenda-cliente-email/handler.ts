@@ -18,15 +18,24 @@
  * The idempotency key is `agenda-cliente:<id>:<versao>`: an item under lease
  * never changes, so one key always maps to one content.
  *
+ * Two recipient kinds (sub-project 4, spec §3.5/§3.6): the claim tags each
+ * item with `destinatario`. A client item keeps today's path (Hub button via
+ * `resolveHubUrl`, `{c}` unsubscribe token). A guest item never touches the
+ * Hub: its button goes to the public invite page
+ * `${APP_BASE_URL}/convite/<token>?ocorrencia=<id>`, its unsubscribe token is
+ * `{g}`, and `Reply-To` is the organizer's e-mail while they are a member.
+ *
  * There is no RESEND_API_KEY gate here (same as agenda-lembretes-email): a
  * missing key makes every send throw, so items end 'falhou' after 3 attempts
  * instead of silently piling up.
  */
 import {
   type AgendaClienteEmailItem,
+  ehConvidado,
   montarEmailAgendaCliente,
+  varianteAgendaCliente,
 } from "../_shared/agenda-cliente-email.ts";
-import { signUnsubToken } from "../_shared/client-event-email.ts";
+import { signUnsubTokenFor } from "../_shared/client-event-email.ts";
 import { sanitizeFromName } from "../_shared/email-headers.ts";
 import type { sendViaResend } from "../_shared/lifecycle-emails.ts";
 
@@ -46,6 +55,9 @@ export interface AgendaClienteEmailDeps {
   sendEmail: typeof sendViaResend;
   /** `resolveHubUrl(svc, clienteId, contaId)` from _shared/hub-url.ts ("" when no Hub). */
   resolveHubUrl: (clienteId: number, contaId: string) => Promise<string>;
+  /** `appBaseUrl()` from _shared/app-url.ts. Throws when APP_BASE_URL is unset:
+   * the guest e-mail then goes out without a button (the .ics stays attached). */
+  appBaseUrl: () => string;
   /** TOKEN_ENCRYPTION_KEY, read via a throwing IIFE in index.ts. */
   tokenSecret: string;
   /** SUPABASE_URL -- the unsub link is `${unsubBaseUrl}/functions/v1/client-email-unsub/<token>`. */
@@ -65,6 +77,38 @@ const DEADLINE_MS = 50_000;
 /** Resend dedupes on this for 24 h; `versao` changes whenever the content does. */
 export function chaveIdempotenciaAgendaCliente(id: number, versao: number): string {
   return `agenda-cliente:${id}:${versao}`;
+}
+
+// Reply-To must be one plain address: anything with whitespace or control
+// characters (header smuggling) is dropped rather than forwarded.
+const REPLY_TO_RE = /^[^@\s<>",;]+@[^@\s<>",;]+\.[^@\s<>",;]+$/;
+
+function replyToSeguro(v: string | null | undefined): string | undefined {
+  const t = v?.trim();
+  return t && t.length <= 254 && REPLY_TO_RE.test(t) ? t : undefined;
+}
+
+/** First still-active occurrence of the snapshot (the button's deep link). */
+function primeiraAtiva(item: AgendaClienteEmailItem): number | null {
+  return (item.ocorrencias ?? []).find((o) => o.estado === "ativa")?.ocorrencia_id ?? null;
+}
+
+/** Guest button: the public invite page, or null (cancellation, removed guest, no APP_BASE_URL). */
+function botaoConvidado(item: AgendaClienteEmailItem, appBaseUrl: () => string): string | null {
+  const token = item.convidado_token?.trim();
+  if (!token || varianteAgendaCliente(item) === "cancelamento") return null;
+  let base: string;
+  try {
+    base = appBaseUrl().replace(/\/+$/, "");
+  } catch (e) {
+    // Same degradation as resolveHubUrl: a missing env is a logged omission, never a broken link.
+    console.error("[agenda-cliente-email] appBaseUrl unavailable:", e instanceof Error ? e.message : "unknown");
+    return null;
+  }
+  if (!base) return null;
+  const ocorrencia = primeiraAtiva(item);
+  const destino = `${base}/convite/${encodeURIComponent(token)}`;
+  return ocorrencia === null ? destino : `${destino}?ocorrencia=${ocorrencia}`;
 }
 
 export async function runAgendaClienteEmail(
@@ -103,16 +147,32 @@ export async function runAgendaClienteEmail(
     let ok = false;
     let erro: string | null = null;
     try {
-      const to = item.cliente_email?.trim();
-      // The claim RPC already discards items without an e-mail; defensive only.
-      if (!to) throw new Error("cliente sem e-mail");
+      let to: string | undefined;
+      let unsubToken: string;
+      let replyTo: string | undefined;
+      let ctxBotao: { hubUrl: string; botaoUrl?: string | null };
 
-      const hubUrl = await deps.resolveHubUrl(item.cliente_id, item.conta_id);
-      const unsubToken = await signUnsubToken(item.cliente_id, deps.tokenSecret);
+      if (ehConvidado(item)) {
+        to = item.email?.trim();
+        // The claim RPC guarantees both; defensive only.
+        if (!to) throw new Error("convidado sem e-mail");
+        if (typeof item.convidado_id !== "number") throw new Error("convidado sem id");
+        unsubToken = await signUnsubTokenFor({ g: item.convidado_id }, deps.tokenSecret);
+        replyTo = replyToSeguro(item.organizador_email);
+        // Never resolveHubUrl: a guest has no Hub.
+        ctxBotao = { hubUrl: "", botaoUrl: botaoConvidado(item, deps.appBaseUrl) };
+      } else {
+        to = (item.cliente_email ?? item.email)?.trim();
+        // The claim RPC already discards items without an e-mail; defensive only.
+        if (!to) throw new Error("cliente sem e-mail");
+        if (typeof item.cliente_id !== "number") throw new Error("cliente sem id");
+        unsubToken = await signUnsubTokenFor({ c: item.cliente_id }, deps.tokenSecret);
+        ctxBotao = { hubUrl: await deps.resolveHubUrl(item.cliente_id, item.conta_id) };
+      }
       const unsubUrl = `${deps.unsubBaseUrl}/functions/v1/client-email-unsub/${unsubToken}`;
 
       const { subject, html, attachments } = montarEmailAgendaCliente(item, {
-        hubUrl,
+        ...ctxBotao,
         unsubUrl,
         agora: new Date(deps.now()),
       });
@@ -124,7 +184,8 @@ export async function runAgendaClienteEmail(
         html,
         chaveIdempotenciaAgendaCliente(item.id, item.versao),
         `${sanitizeFromName(workspaceName)} <notificacoes@mesaas.com.br>`,
-        undefined,
+        // Positional Reply-To (6th arg), never a header: the organizer while still a member.
+        replyTo,
         {
           // RFC 8058 one-click unsubscribe, same token as the Hub digest.
           "List-Unsubscribe": `<${unsubUrl}>`,

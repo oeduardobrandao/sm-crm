@@ -283,17 +283,34 @@ function hmacKey(secret: string, usages: KeyUsage[]): Promise<CryptoKey> {
   );
 }
 
-export async function signUnsubToken(clienteId: number, secret: string): Promise<string> {
-  const payload = b64url(enc.encode(JSON.stringify({ c: clienteId })));
+/** Who an unsubscribe token opts out: a Hub client (`{c}`) or an Agenda guest (`{g}`). */
+export type UnsubAlvo = { tipo: "cliente"; id: number } | { tipo: "convidado"; id: number };
+
+/** Signs `{c: id}` (client) or `{g: id}` (Agenda guest, spec §3.6). Same key and format for both. */
+export async function signUnsubTokenFor(alvo: { c: number } | { g: number }, secret: string): Promise<string> {
+  // Exactly one key, in this shape: `signUnsubToken(42)` must stay byte-identical
+  // to every token already sitting in an inbox.
+  const corpo = "c" in alvo ? { c: alvo.c } : { g: alvo.g };
+  const payload = b64url(enc.encode(JSON.stringify(corpo)));
   const key = await hmacKey(secret, ["sign"]);
   const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(payload)));
   return `${payload}.${b64url(sig)}`;
 }
 
-export async function verifyUnsubToken(
+/** Client-only signer kept for the existing callers (client-event-email-cron). */
+export function signUnsubToken(clienteId: number, secret: string): Promise<string> {
+  return signUnsubTokenFor({ c: clienteId }, secret);
+}
+
+/**
+ * Verifies the HMAC and decodes the payload. `null` on a bad signature, a
+ * malformed token, or a payload that is not exactly one of `{c}` / `{g}`
+ * with an integer id (id 0 is valid: callers must check `=== null`).
+ */
+export async function verifyUnsubTokenKind(
   token: string,
   secret: string,
-): Promise<number | null> {
+): Promise<UnsubAlvo | null> {
   const dot = token.indexOf(".");
   if (dot <= 0 || dot === token.length - 1) return null;
   const payloadB64 = token.slice(0, dot);
@@ -311,9 +328,25 @@ export async function verifyUnsubToken(
   const payloadBytes = b64urlDecode(payloadB64);
   if (!payloadBytes) return null;
   try {
-    const parsed = JSON.parse(new TextDecoder().decode(payloadBytes)) as { c?: unknown };
-    return typeof parsed.c === "number" ? parsed.c : null;
+    const parsed = JSON.parse(new TextDecoder().decode(payloadBytes)) as { c?: unknown; g?: unknown } | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    const temC = parsed.c !== undefined;
+    const temG = parsed.g !== undefined;
+    if (temC === temG) return null;
+    const id = temC ? parsed.c : parsed.g;
+    if (typeof id !== "number" || !Number.isInteger(id)) return null;
+    return temC ? { tipo: "cliente", id } : { tipo: "convidado", id };
   } catch {
     return null;
   }
+}
+
+/** Client-only verifier kept for the existing callers: a `{g}` token is `null`
+ * here, so a guest's link can never opt a client out. */
+export async function verifyUnsubToken(
+  token: string,
+  secret: string,
+): Promise<number | null> {
+  const alvo = await verifyUnsubTokenKind(token, secret);
+  return alvo?.tipo === "cliente" ? alvo.id : null;
 }
