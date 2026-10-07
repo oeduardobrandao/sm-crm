@@ -27,8 +27,8 @@ Deno.serve(createAgendaFeedHandler({
   getUser: async (jwt: string) => {
     const { data, error } = await db.auth.getUser(jwt);
     if (error) {
-      // A bad/expired token is the caller's problem (401); anything else is ours (500).
-      if (error.status === 401 || error.status === 403) return null;
+      // A malformed, bad or expired token (GoTrue 400/401/403) is the caller's problem (401); anything else is ours (500).
+      if (error.status === 400 || error.status === 401 || error.status === 403) return null;
       throw new Error(`auth.getUser: ${error.message}`);
     }
     return data?.user ? { id: data.user.id } : null;
