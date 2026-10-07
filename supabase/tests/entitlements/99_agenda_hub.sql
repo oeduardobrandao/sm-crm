@@ -515,6 +515,42 @@ begin
     format('split deleted a request that was %s', (select status from pg_temp.remarcacoes_apagadas where id = v_r2));
   assert (select compartilhado_cliente and cliente_id = v_ca from agenda_eventos where id = pg_temp.ev(v_t3)),
     'the split series is not shared';
+  -- accepting on one-offs (agenda_evento_editar turns esta into todas: the
+  -- one-off moves data_original along and regenerates): timed and all-day
+  v_t := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('titulo', 'Avulso', 'cliente_id', v_ca, 'compartilhado_cliente', true,
+    'inicio_local', pg_temp.dia(50), 'fim_local', pg_temp.dia(50, '15:30:00'))));
+  v_r := (pg_temp.remarcar(v_ws, v_ca, v_t, current_date + 52, '09:00', null)->'remarcacao'->>'id')::bigint;
+  v_err := pg_temp.erro(v_o, format('select public.agenda_remarcacao_resolver(%s, true)', v_r));
+  assert v_err is null, format('aceitar one-off: %s', v_err);
+  select * into r from agenda_ocorrencias where id = v_t;
+  assert r.id is not null and r.inicio = pg_temp.ts(52, '09:00:00') and r.fim = pg_temp.ts(52, '10:30:00')
+     and r.data_original = current_date + 52, format('one-off after aceitar: %s', to_jsonb(r));
+  assert (select resposta = 'sim' and inicio_respondido = r.inicio from agenda_respostas_cliente where ocorrencia_id = v_t),
+    'one-off: no sim for the new inicio';
+  assert (select count(*) from agenda_emails_cliente where evento_id = pg_temp.ev(v_t) and tipo = 'remarcacao_aceita'
+           and (remarcacao->>'remarcacao_id')::bigint = v_r and pg_temp.snap_ids(ocorrencias) = array[v_t]) = 1,
+    'one-off: remarcacao_aceita item';
+  assert not exists (select 1 from agenda_emails_cliente where evento_id = pg_temp.ev(v_t) and tipo = 'alteracao'),
+    'one-off: aceitar enqueued an alteracao';
+  assert (select status from agenda_remarcacoes where id = v_r) = 'aceita', 'one-off: status';
+  assert coalesce(current_setting('agenda.remarcacao', true), '') = '', 'one-off: agenda.remarcacao left set';
+  -- all-day one-off (v_di, 2 days from +7; the earlier request moved nothing yet)
+  v_r := (select id from agenda_remarcacoes where ocorrencia_id = v_di and status = 'pendente');
+  assert v_r is not null, 'all-day fixture request missing';
+  v_err := pg_temp.erro(v_o, format('select public.agenda_remarcacao_resolver(%s, true)', v_r));
+  assert v_err is null, format('aceitar all-day: %s', v_err);
+  select * into r from agenda_ocorrencias where id = v_di;
+  assert r.id is not null and r.inicio = pg_temp.ts(14, '00:00:00') and r.fim = pg_temp.ts(16, '00:00:00')
+     and r.data_original = current_date + 14, format('all-day after aceitar: %s', to_jsonb(r));
+  assert (select dtstart = (current_date + 14)::timestamp and duracao_dias = 2 from agenda_eventos where id = pg_temp.ev(v_di)),
+    'all-day series not moved';
+  assert (select resposta = 'sim' and inicio_respondido = r.inicio from agenda_respostas_cliente where ocorrencia_id = v_di),
+    'all-day: no sim for the new inicio';
+  assert (select count(*) from agenda_emails_cliente where evento_id = pg_temp.ev(v_di) and tipo = 'remarcacao_aceita'
+           and (remarcacao->>'remarcacao_id')::bigint = v_r) = 1, 'all-day: remarcacao_aceita item';
+  assert not exists (select 1 from agenda_emails_cliente where evento_id = pg_temp.ev(v_di) and tipo = 'alteracao'),
+    'all-day: aceitar enqueued an alteracao';
+
   -- nothing was ever deleted while pending
   assert not exists (select 1 from pg_temp.remarcacoes_apagadas where status = 'pendente'), 'a pending request was cascaded';
 
