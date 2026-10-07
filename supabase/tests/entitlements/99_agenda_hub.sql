@@ -926,7 +926,7 @@ begin
     'public.agenda_hub_responder(uuid, bigint, bigint, text, timestamptz)',
     'public.agenda_hub_remarcar(uuid, bigint, bigint, date, time, text)',
     'public.agenda_hub_cancelar_remarcacao(uuid, bigint, bigint)',
-    'public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb)',
+    'public.agenda_cliente_enfileirar(uuid, bigint, bigint, text, jsonb, jsonb, bigint)',
     'public.agenda_cliente_ocorrencias_snapshot(bigint, text, bigint, date)',
     'public.agenda_cliente_substituir_pedidos(bigint, bigint, date)',
     'public.agenda_cliente_claim_emails(int)',
@@ -994,7 +994,8 @@ begin
        = array['ocorrencia_id','evento_id','data_original','inicio','fim','dia_inteiro','data_inicio_local','data_fim_local',
                'titulo','descricao','local','link_reuniao','tipo','cor','cliente_id','cliente_nome','privado','mascarado',
                'recorrente','regra','lembretes','organizador_id','participantes','minha_resposta','pode_editar',
-               'pode_responder','tz','compartilhado_cliente','cliente_resposta','remarcacao_pendente','sequencia'],
+               'pode_responder','tz','compartilhado_cliente','cliente_resposta','remarcacao_pendente','sequencia',
+               'convidados'],
     'agenda_listar column order';
   -- masked for the admin (not a participant): all four NULL
   v := pg_temp.como(v_ad, format('select to_jsonb(l) from public.agenda_listar(null, null, %s) l', v_priv));
