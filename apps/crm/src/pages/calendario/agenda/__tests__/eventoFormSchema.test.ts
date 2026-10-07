@@ -633,10 +633,9 @@ describe('external guests', () => {
     expect(montarPayload(valores({ convidados: [ana, bia] })).convidados).toEqual([ana, bia]);
   });
 
-  it('a private event sends no guests', () => {
-    expect('convidados' in montarPayload(valores({ privado: true, convidados: [ana] }))).toBe(
-      false,
-    );
+  it('the payload carries the real current list, private or not (never an implicit [])', () => {
+    expect(montarPayload(valores({ privado: true, convidados: [ana] })).convidados).toEqual([ana]);
+    expect('convidados' in montarPayload(valores({ privado: true }))).toBe(false);
   });
 
   it('reads guests from the occurrence, and tolerates null (masked)', () => {
@@ -674,10 +673,10 @@ describe('external guests', () => {
     expect('convidados' in montarPayloadEdicao(antes, sem, { escopo: 'esta' })).toBe(false);
   });
 
-  it('making the event private sends [] so the guests are cancelled', () => {
+  it('making the event private with the same guests does not touch them', () => {
     const antes = montarPayload(valores({ convidados: [ana] }));
     const privado = montarPayload(valores({ convidados: [ana], privado: true }));
-    expect(montarPayloadEdicao(antes, privado, { escopo: 'todas' }).convidados).toEqual([]);
+    expect('convidados' in montarPayloadEdicao(antes, privado, { escopo: 'todas' })).toBe(false);
   });
 
   it('guests are a series field: they lock "Este evento"', () => {

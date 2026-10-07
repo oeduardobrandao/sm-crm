@@ -964,14 +964,51 @@ describe('EventoFormDialog: convidados externos', () => {
     expect(screen.getByLabelText('Convidados externos')).toBe(campo());
   });
 
-  it('hides while Privado is on, and brings the chips back when it is turned off', () => {
+  const AVISO = 'Remova os convidados externos antes de tornar o evento privado.';
+  const botaoSalvar = () => screen.getByRole('button', { name: 'Salvar' });
+
+  it('Privado with no guests hides the field', () => {
     criar();
-    digitar('ana@exemplo.com');
     fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
     expect(screen.queryByText('Convidados externos')).toBeNull();
     expect(screen.queryByText(AJUDA)).toBeNull();
+    expect(screen.queryByText(AVISO)).toBeNull();
+  });
+
+  it('Privado with guests keeps the field, warns and disables Salvar; Privado off clears the block', () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('ana@exemplo.com');
+    expect(botaoSalvar()).toBeEnabled();
     fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(screen.getByText('Convidados externos')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remover ana@exemplo.com' })).toBeInTheDocument();
+    expect(screen.getByText(AVISO)).toBeInTheDocument();
+    expect(botaoSalvar()).toBeDisabled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(screen.queryByText(AVISO)).toBeNull();
+    expect(botaoSalvar()).toBeEnabled();
+  });
+
+  it('removing the last chip re-enables Salvar and hides the field', () => {
+    criar();
+    digitar('ana@exemplo.com');
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(botaoSalvar()).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover ana@exemplo.com' }));
+    expect(screen.queryByText('Convidados externos')).toBeNull();
+    expect(screen.queryByText(AVISO)).toBeNull();
+    expect(botaoSalvar()).toBeEnabled();
+  });
+
+  it('Enter in the title cannot submit a private event that still has guests', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('ana@exemplo.com');
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    fireEvent.submit(titulo().closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(criarEventoMock).not.toHaveBeenCalled();
   });
 
   it('create: sends the guests in the payload', async () => {
@@ -987,13 +1024,15 @@ describe('EventoFormDialog: convidados externos', () => {
     ]);
   });
 
-  it('create: a private event with typed guests sends none', async () => {
+  it('create: removing the chips of a private event sends a private event without guests', async () => {
     criar();
     fireEvent.change(titulo(), { target: { value: 'Pauta' } });
     digitar('ana@exemplo.com');
     fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover ana@exemplo.com' }));
     salvar();
     await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    expect(criarEventoMock.mock.calls[0][0].privado).toBe(true);
     expect('convidados' in criarEventoMock.mock.calls[0][0]).toBe(false);
   });
 
@@ -1036,11 +1075,17 @@ describe('EventoFormDialog: convidados externos', () => {
     expect(editarEventoMock.mock.calls[0][2].convidados).toEqual([]);
   });
 
-  it('edit: turning Privado on cancels the guests with []', async () => {
+  it('edit: turning Privado on with guests blocks Salvar; removing them first sends privado with []', async () => {
     editar(ocorrencia({ convidados: [GUEST] }));
     fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(botaoSalvar()).toBeDisabled();
+    salvar();
+    expect(editarEventoMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover ana@exemplo.com' }));
+    expect(botaoSalvar()).toBeEnabled();
     salvar();
     await waitFor(() => expect(editarEventoMock).toHaveBeenCalledTimes(1));
+    expect(editarEventoMock.mock.calls[0][2].privado).toBe(true);
     expect(editarEventoMock.mock.calls[0][2].convidados).toEqual([]);
   });
 

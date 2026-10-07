@@ -281,6 +281,9 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
   );
   // Unknown (client list still loading) counts as having an e-mail: no false warning.
   const clienteSemEmail = clienteSelecionado ? !clienteSelecionado.email?.trim() : false;
+  // Private + guests is refused by the database: keep the field visible with a warning
+  // and block saving until the chips go (or Privado is turned off).
+  const privadoComConvidados = !!v.privado && (v.convidados?.length ?? 0) > 0;
   const mostrarCompartilhar = !!v.cliente_id && v.cliente_id !== 'none' && !v.privado;
   const ajudaCompartilhar = clienteSemEmail
     ? temHub
@@ -344,6 +347,8 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
   };
 
   const onSubmit = (valores: EventoFormValues) => {
+    // Enter in a text field submits without the button: same block.
+    if (valores.privado && valores.convidados.length > 0) return;
     if (!ocorrencia) {
       criar.criar(valores);
       return;
@@ -463,7 +468,11 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                   </FormItem>
                 )}
               />
-              <Button type="submit" disabled={salvando} className="mb-0 mt-1 shrink-0">
+              <Button
+                type="submit"
+                disabled={salvando || privadoComConvidados}
+                className="mb-0 mt-1 shrink-0"
+              >
                 Salvar
               </Button>
             </div>
@@ -801,7 +810,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                     )}
                   />
 
-                  {!v.privado && (
+                  {(!v.privado || privadoComConvidados) && (
                     <FormField
                       control={form.control}
                       name="convidados"
@@ -817,6 +826,15 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                               max={MAX_CONVIDADOS}
                             />
                           </FormControl>
+                          {privadoComConvidados && (
+                            <p
+                              role="alert"
+                              className="m-0 text-xs"
+                              style={{ color: 'var(--danger-text)' }}
+                            >
+                              Remova os convidados externos antes de tornar o evento privado.
+                            </p>
+                          )}
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                             Recebem o convite por e-mail, com título, horário, local, link e
                             descrição, e respondem por um link, sem precisar de conta.

@@ -310,8 +310,9 @@ export function montarPayload(v: EventoFormValues): AgendaEventoPayload {
   const fimLocal = v.dia_inteiro
     ? localIso(addDays(startOfDay(v.data_fim), 1))
     : localIso(combinarDataHora(v.data_fim, v.hora_fim));
-  // A private event takes no external guests (the database refuses them).
-  const convidados = v.privado ? [] : v.convidados;
+  // The real current list, never an implicit []: the form blocks saving a private
+  // event that still has guests (EventoFormDialog), and the database refuses it too.
+  const convidados = v.convidados;
   return {
     titulo: v.titulo.trim(),
     descricao: v.descricao.trim() || null,
