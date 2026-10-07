@@ -260,6 +260,133 @@ Deno.test("hub-agenda: list with the flag off (estado desligado) is a 404", asyn
   assertEquals(await res.json(), { error: "Evento não encontrado." });
 });
 
+// ------------------------------------------------------------------ period read (de / ate)
+
+const DE = "2026-10-01T03:00:00.000Z";
+const ATE = "2026-11-01T03:00:00.000Z";
+
+Deno.test("hub-agenda: de+ate call agenda_hub_periodo with the ISO values and the token's tenant, and answer { itens }", async () => {
+  const h = harness();
+  tokenOk(h.db);
+  h.db.queueRpc("agenda_hub_periodo", { data: { estado: "ok", itens: [ITEM] }, error: null });
+  const res = await h.handler(get(`?token=t&de=${encodeURIComponent(DE)}&ate=${encodeURIComponent(ATE)}&conta_id=outra&cliente_id=99`));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { itens: [ITEM] });
+  const calls = rpcCalls(h.db, "agenda_hub_periodo");
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].payload, { p_conta: "conta-1", p_cliente: 14, p_de: DE, p_ate: ATE });
+  assertEquals(rpcCalls(h.db, "agenda_hub_listar").length, 0);
+});
+
+Deno.test("hub-agenda: the period read accepts an explicit offset (encoded +)", async () => {
+  const h = harness();
+  tokenOk(h.db);
+  h.db.queueRpc("agenda_hub_periodo", { data: { estado: "ok", itens: [] }, error: null });
+  const res = await h.handler(get("?token=t&de=2026-10-01T00:00:00%2B00:00&ate=2026-10-31T00:00:00-03:00"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { itens: [] });
+  assertEquals(rpcCalls(h.db, "agenda_hub_periodo")[0].payload, {
+    p_conta: "conta-1",
+    p_cliente: 14,
+    p_de: "2026-10-01T00:00:00+00:00",
+    p_ate: "2026-10-31T00:00:00-03:00",
+  });
+});
+
+Deno.test("hub-agenda: only one of de/ate is a 400 without reaching the RPC", async () => {
+  for (const q of [`&de=${DE}`, `&ate=${ATE}`]) {
+    const h = harness();
+    tokenOk(h.db);
+    const res = await h.handler(get(`?token=t${q}`));
+    assertEquals(res.status, 400, q);
+    assertEquals(await res.json(), { error: "Dados inválidos." }, q);
+    assertEquals(agendaRpcCalls(h.db).length, 0, q);
+  }
+});
+
+Deno.test("hub-agenda: de/ate combined with ocorrencia or any cursor half is a 400", async () => {
+  for (const extra of [
+    "&ocorrencia=7",
+    "&apos_inicio=2026-10-09T17:00:00Z&apos_id=7",
+    "&apos_inicio=2026-10-09T17:00:00Z",
+    "&apos_id=7",
+  ]) {
+    const h = harness();
+    tokenOk(h.db);
+    const res = await h.handler(get(`?token=t&de=${DE}&ate=${ATE}${extra}`));
+    assertEquals(res.status, 400, extra);
+    assertEquals(await res.json(), { error: "Dados inválidos." }, extra);
+    assertEquals(agendaRpcCalls(h.db).length, 0, extra);
+  }
+});
+
+Deno.test("hub-agenda: non-ISO de/ate are a 400 without reaching the RPC", async () => {
+  for (const [de, ate] of [
+    ["ontem", ATE],
+    [DE, "amanha"],
+    ["2026-10-01", "2026-11-01"], // dates alone: the period is a pair of instants
+    ["2026-10-01T03:00:00", ATE], // no offset
+    ["2026-13-01T03:00:00Z", ATE], // not a real date
+    [DE, ""],
+    ["", ""],
+  ]) {
+    const h = harness();
+    tokenOk(h.db);
+    const res = await h.handler(get(`?token=t&de=${encodeURIComponent(de)}&ate=${encodeURIComponent(ate)}`));
+    assertEquals(res.status, 400, `${de} / ${ate}`);
+    assertEquals(await res.json(), { error: "Dados inválidos." }, `${de} / ${ate}`);
+    assertEquals(agendaRpcCalls(h.db).length, 0, `${de} / ${ate}`);
+  }
+});
+
+Deno.test("hub-agenda: periodo_invalido from the RPC (window too long or ate <= de) is a 400", async () => {
+  const h = harness();
+  tokenOk(h.db);
+  h.db.queueRpc("agenda_hub_periodo", { data: null, error: { code: "P0001", message: "agenda_hub:periodo_invalido" } });
+  const { result, logged } = await captureErrors(() => h.handler(get(`?token=t&de=${DE}&ate=${ATE}`)));
+  assertEquals(result.status, 400);
+  assertEquals(await result.json(), { error: "Dados inválidos." });
+  assertEquals(rpcCalls(h.db, "agenda_hub_periodo").length, 1);
+  assertEquals(h.audits.length, 0);
+  assert(logged.every((l) => !l.includes("conta-1")), "the log must not carry tenant data");
+});
+
+Deno.test("hub-agenda: the period read with estado desligado is a 404", async () => {
+  const h = harness();
+  tokenOk(h.db);
+  h.db.queueRpc("agenda_hub_periodo", { data: { estado: "desligado", itens: [] }, error: null });
+  const res = await h.handler(get(`?token=t&de=${DE}&ate=${ATE}`));
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "Evento não encontrado." });
+});
+
+Deno.test("hub-agenda: an inactive cliente (agenda_hub:nao_encontrado) is a 404 on the period read", async () => {
+  const h = harness();
+  tokenOk(h.db);
+  h.db.queueRpc("agenda_hub_periodo", { data: null, error: { code: "P0001", message: "agenda_hub:nao_encontrado" } });
+  const { result } = await captureErrors(() => h.handler(get(`?token=t&de=${DE}&ate=${ATE}`)));
+  assertEquals(result.status, 404);
+  assertEquals(await result.json(), { error: "Evento não encontrado." });
+});
+
+Deno.test("hub-agenda: the period read spends hub-read once and no write budget", async () => {
+  const h = harness();
+  tokenOk(h.db);
+  h.db.queueRpc("agenda_hub_periodo", { data: { estado: "ok", itens: [] }, error: null });
+  const res = await h.handler(get(`?token=t&de=${DE}&ate=${ATE}`));
+  assertEquals(res.status, 200);
+  assertEquals(h.limits, [{ key: "hub-read:conta-1:14", max: 300, win: 300 }]);
+
+  // An exhausted hub-read budget stops the period read before the RPC.
+  const hd = harness({ deny: ["hub-read:"] });
+  tokenOk(hd.db);
+  const denied = await hd.handler(get(`?token=t&de=${DE}&ate=${ATE}`));
+  assertEquals(denied.status, 429);
+  assertEquals(agendaRpcCalls(hd.db).length, 0);
+});
+
+// ------------------------------------------------------------------ deep link
+
 Deno.test("hub-agenda: a single occurrence by deep link returns the item, or 404 when the RPC says NULL", async () => {
   const h = harness();
   tokenOk(h.db);
@@ -293,6 +420,7 @@ Deno.test("hub-agenda: every agenda_hub:<codigo> maps to its status and message"
     hora_obrigatoria: [400, "Informe o horário."],
     pedido_pendente: [409, "Já existe um pedido de remarcação para este evento."],
     ja_resolvido: [409, "Este pedido já foi resolvido."],
+    periodo_invalido: [400, "Dados inválidos."],
   };
   for (const [codigo, [status, msg]] of Object.entries(mapa)) {
     const h = harness();

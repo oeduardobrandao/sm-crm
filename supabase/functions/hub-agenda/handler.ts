@@ -8,7 +8,8 @@
  * rate-limit gates, body validation, the `agenda_hub:<codigo>` error map, the
  * per-occurrence `.ics` download and the audit trail for writes.
  *
- * Spec: docs/superpowers/specs/2026-10-07-agenda-hub-design.md (sections 6, 7)
+ * Spec: docs/superpowers/specs/2026-10-07-agenda-hub-design.md (sections 6, 7);
+ * the `de`/`ate` period read: 2026-10-07-agenda-camadas-convidados-design.md (section 2)
  */
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
@@ -68,6 +69,8 @@ const RPC_ERRORS: Record<string, { status: number; message: string }> = {
   hora_obrigatoria: { status: 400, message: "Informe o horário." },
   pedido_pendente: { status: 409, message: "Já existe um pedido de remarcação para este evento." },
   ja_resolvido: { status: 409, message: "Este pedido já foi resolvido." },
+  // agenda_hub_periodo: ate <= de, or a window longer than 45 days.
+  periodo_invalido: { status: 400, message: MSG_INVALID },
 };
 
 const RPC_CODE_RE = /^\s*agenda_hub:(\w+)\s*$/;
@@ -251,8 +254,31 @@ export function createHubAgendaHandler(deps: HubAgendaHandlerDeps) {
         });
       }
 
-      // ---- GET ?token=[&ocorrencia=N | &apos_inicio=&apos_id=] ------------
+      // ---- GET ?token=[&de=&ate= | &ocorrencia=N | &apos_inicio=&apos_id=]
       if (req.method === "GET") {
+        // Period read (the Hub home calendar): both ISO bounds or neither, and
+        // never combined with a deep link or the keyset cursor. The RPC checks
+        // the window itself (ate > de, at most 45 days: periodo_invalido).
+        const de = url.searchParams.get("de");
+        const ate = url.searchParams.get("ate");
+        if (de !== null || ate !== null) {
+          if (
+            de === null || ate === null || !isIso(de) || !isIso(ate) ||
+            url.searchParams.has("ocorrencia") || url.searchParams.has("apos_inicio") ||
+            url.searchParams.has("apos_id")
+          ) {
+            return fail(400, MSG_INVALID);
+          }
+          const periodo = await rpc("agenda_hub_periodo", {
+            p_conta: contaId,
+            p_cliente: clienteId,
+            p_de: de,
+            p_ate: ate,
+          }) as { estado?: string; itens?: unknown[] } | null;
+          if (!periodo || periodo.estado !== "ok") return fail(404, MSG_NOT_FOUND);
+          return json({ itens: periodo.itens ?? [] });
+        }
+
         const ocParam = url.searchParams.get("ocorrencia");
         if (ocParam !== null) {
           const id = parseId(ocParam);
