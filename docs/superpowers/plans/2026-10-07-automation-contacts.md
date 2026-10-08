@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Migration versions above main's tail `20261007000001`: this plan uses `20261008000001` and `20261008000002`. Re-check `ls supabase/migrations | tail -3` on `origin/main` before opening the PR and renumber if taken.
+- Migration versions: `20261009000001` and `20261009000002` (main took `20261008000001/2`). Re-check `ls supabase/migrations | tail -3` on `origin/main` before opening the PR and renumber if taken.
 - A contact = every send row with non-null `commenter_id`, any status. `reached` = at least one send with `dm_status = 'sent'` (DM only, never public reply).
 - Contacts keyed per client: `UNIQUE (client_id, commenter_id)`.
 - RLS on both tables: `conta_id IN (SELECT public.get_my_conta_id()) AND (SELECT public.has_permission('automacoes', 'ver'))`; no write policies for `authenticated`.
@@ -21,7 +21,7 @@
 - `rebuild_instagram_automation_contacts` never deletes rows.
 - UI copy pt-BR + en, no em-dashes in user-facing strings. Icons: `lucide-react` only. Toasts: `sonner`.
 - `can('automacoes','ver') === true` (never truthy check; `can` returns `boolean | 'unknown'`).
-- CSV: UTF-8 BOM, `;` separator, CRLF, quote a field containing the active separator, `"`, CR or LF; formula guard on every cell; `commenter_id` never exported.
+- CSV: UTF-8 BOM, `;` separator, CRLF, quote a field containing any of `,` `;` tab `"` CR LF (controller ruling, Task 3); formula guard on every cell and on every segment after a separator; `commenter_id` never exported.
 - Username link only when `/^[A-Za-z0-9._]{1,30}$/`, `https://instagram.com/${encodeURIComponent(u)}` through `sanitizeUrl()`.
 - Page size 50 (UI, offset), export chunk 500 (keyset on contact `created_at, id`), RPC limit clamp `[1, 500]`.
 - Before pushing: `npm run lint`, `npm run format:check`, the four `tsc` commands, `npm run test`. `npm run test:db` needs Docker locally (colima, see memory); CI runs the suites regardless.
@@ -31,11 +31,11 @@
 
 | File | Responsibility |
 |---|---|
-| `supabase/migrations/20261008000001_instagram_automation_contacts.sql` | Tables, RLS, grants, source/rebuild functions, triggers, backfill |
-| `supabase/migrations/20261008000002_instagram_automation_contacts_rpcs.sql` | `list_instagram_automation_contacts`, `instagram_automation_contact_counts` |
+| `supabase/migrations/20261009000001_instagram_automation_contacts.sql` | Tables, RLS, grants, source/rebuild functions, triggers, backfill |
+| `supabase/migrations/20261009000002_instagram_automation_contacts_rpcs.sql` | `list_instagram_automation_contacts`, `instagram_automation_contact_counts` |
 | `supabase/tests/entitlements/99_instagram_automation_contacts.sql` | CI-gated suite for both migrations |
 | `apps/crm/src/lib/csvExport.ts` (+ test) | Shared CSV writer (BOM, EOL, field/row with separator, formula guard, download) |
-| `apps/crm/src/pages/analytics-fluxos/csv.ts` | Now imports the writer (behaviour byte-identical) |
+| `apps/crm/src/pages/analytics-fluxos/csv.ts` | Now imports the writer (unchanged except `;`/tab and post-separator formula cells, now quoted/prefixed) |
 | `apps/crm/src/store/instagramContacts.ts` (+ test) | Types, RPC wrappers, export keyset loop, query keys, date mapping |
 | `apps/crm/src/pages/automacoes/contacts/profileUrl.ts` (+ test) | Username → safe profile URL or null |
 | `apps/crm/src/pages/automacoes/contacts/contactsCsv.ts` (+ test) | `buildContactsCsv`, `contactsCsvFilename`, `exportContactsCsv` |
@@ -58,7 +58,7 @@
 ### Task 1: Contacts tables, maintenance triggers, rebuild + backfill
 
 **Files:**
-- Create: `supabase/migrations/20261008000001_instagram_automation_contacts.sql`
+- Create: `supabase/migrations/20261009000001_instagram_automation_contacts.sql`
 - Create: `supabase/tests/entitlements/99_instagram_automation_contacts.sql` (sections 1–7; Task 2 appends 8–9)
 - Modify: `supabase/tests/entitlements/96_lockdown_definer_function_grants.sql` (first array, service-role-only set: append `'public.rebuild_instagram_automation_contacts(uuid, uuid)'` and `'public.instagram_automation_contact_source(uuid, uuid)'` so their grants are pinned)
 
@@ -73,7 +73,7 @@ Create `supabase/tests/entitlements/99_instagram_automation_contacts.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Contatos das automações (migrations 20261008000001/2, spec
+-- Contatos das automações (migrations 20261009000001/2, spec
 -- docs/superpowers/specs/2026-10-07-automation-contacts-design.md).
 -- Sends are inserted through claim_automation_send (the only real insert
 -- path) as the table owner, standing in for the service-role worker.
@@ -354,7 +354,7 @@ Expected: FAIL — `relation "instagram_automation_contacts" does not exist`.
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/20261008000001_instagram_automation_contacts.sql`:
+Create `supabase/migrations/20261009000001_instagram_automation_contacts.sql`:
 
 ```sql
 -- Contatos das automações do Instagram (spec
@@ -717,7 +717,7 @@ If section 7's UPDATE raises `insufficient_privilege` vs affecting 0 rows, eithe
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261008000001_instagram_automation_contacts.sql supabase/tests/entitlements/99_instagram_automation_contacts.sql supabase/tests/entitlements/96_lockdown_definer_function_grants.sql
+git add supabase/migrations/20261009000001_instagram_automation_contacts.sql supabase/tests/entitlements/99_instagram_automation_contacts.sql supabase/tests/entitlements/96_lockdown_definer_function_grants.sql
 git commit -m "feat(automations): derived contacts tables maintained from sends"
 ```
 
@@ -726,7 +726,7 @@ git commit -m "feat(automations): derived contacts tables maintained from sends"
 ### Task 2: Read RPCs (list + counts)
 
 **Files:**
-- Create: `supabase/migrations/20261008000002_instagram_automation_contacts_rpcs.sql`
+- Create: `supabase/migrations/20261009000002_instagram_automation_contacts_rpcs.sql`
 - Modify: `supabase/tests/entitlements/99_instagram_automation_contacts.sql` (append sections 8–9)
 
 **Interfaces:**
@@ -961,7 +961,7 @@ GRANT EXECUTE ON FUNCTION instagram_automation_contact_counts() TO authenticated
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261008000002_instagram_automation_contacts_rpcs.sql supabase/tests/entitlements/99_instagram_automation_contacts.sql
+git add supabase/migrations/20261009000002_instagram_automation_contacts_rpcs.sql supabase/tests/entitlements/99_instagram_automation_contacts.sql
 git commit -m "feat(automations): list + counts RPCs for automation contacts"
 ```
 

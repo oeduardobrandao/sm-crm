@@ -45,8 +45,9 @@ mislabel a hypothetical future "public reply without DM" path as "Recebeu DM".
 
 ## Data model
 
-Migration version must be above main's tail at PR-open time (currently
-`20261007000001`; plan uses `20261008000001`, renumber if needed).
+Migrations are `20261009000001` (tables, triggers, backfill) and `20261009000002`
+(read RPCs), renumbered above main's tail (main took `20261008000001/2`). Re-check
+the tail at PR-open time.
 
 ### `instagram_automation_contacts` — one row per person per client
 
@@ -176,7 +177,17 @@ public`** (the rename runs as `authenticated` under `ica_update`, and the new ta
 have no UPDATE policy for it; a plain trigger would silently update 0 rows).
 Updates `last_automation_name` on contacts whose `last_automation_id` matches
 first, then `automation_name` on matching link rows (same contact-then-link lock
-order as the hot path, so a rename concurrent with a send cannot deadlock). After deletion the snapshot freezes.
+order as the hot path). Both statements are scoped by `conta_id = NEW.conta_id`, so
+an automation in another workspace that reuses a deleted automation's uuid cannot
+rewrite this workspace's link names. After deletion the snapshot freezes.
+
+Known race (accepted): `mark_automation_dm_sent` locks contact then automation
+(the `ias_z2` trigger fires before it updates the automation), while a rename or
+delete locks automation then contact. A first DM to a new commenter concurrent with
+renaming or deleting that same automation can deadlock. Both trigger sides swallow
+the error, so the worst case is `reached` staying false or a stale name until
+`rebuild_instagram_automation_contacts(conta_id)` runs; a delete that loses fails
+with the existing toast and can be retried.
 
 "(removida)" is computed at read time: the automation id no longer exists in
 `instagram_comment_automations`. The contacts RLS predicate is identical to
@@ -384,18 +395,21 @@ the "none reached yet" empty copy and "Ver todos" (which the user can switch to
   (sim/não), `interacoes`, `primeira_interacao`, `ultima_interacao`
   (`yyyy-MM-dd HH:mm`, local time), `automacao`, `ultimo_comentario`.
 - UTF-8 with BOM, `;` separator, CRLF, RFC 4180 quoting. A field is quoted when it
-  contains the **active separator**, `"`, CR or LF (the current analytics writer only
-  checks `,`; with `;` output an unquoted `;` in a comment would split columns).
-- Formula-injection guard on every cell (comment text is attacker-controlled).
+  contains **any** of `,` `;` tab `"` CR LF, whatever the active separator: a `;`
+  file opened by a comma-splitting parser (en-US Excel, Sheets auto-detect) must not
+  split a cell.
+- Formula-injection guard on every cell (comment text is attacker-controlled): the
+  whole field gets the `'` prefix when it, or any segment after a `,` `;` or tab,
+  starts with a formula lead.
 - `commenter_id` is **not** exported (app-scoped Meta id, meaningless outside).
 - Filename `contatos-<slugify(cliente.nome)|todos>-<yyyy-MM-dd>.csv` (`clientes`
   has no slug column).
 - **Reuse, don't copy:** extract `CSV_BOM`, field quoting, the formula guard
   (`FORMULA_LEAD` + `'` prefix) and `downloadCsv` from
   `apps/crm/src/pages/analytics-fluxos/csv.ts` into `apps/crm/src/lib/csvExport.ts`
-  with a `separator` parameter (analytics keeps `,`); the quoting rule keys off the
-  separator passed in, so analytics output is byte-identical (its tests stay
-  green) and `;` output quotes semicolons. The new `buildContactsCsv(rows, clientesById)` in
+  with a `separator` parameter (analytics keeps `,`). Analytics output is unchanged
+  except for cells containing `;`/tab or a formula lead after a separator, which
+  are now quoted or prefixed (safer; its tests stay green). The new `buildContactsCsv(rows, clientesById)` in
   `apps/crm/src/pages/automacoes/contacts/contactsCsv.ts` composes it.
   `StepCommit.tsx`'s second copy is left alone (out of scope). `lib/csv.ts` is a
   parser and stays untouched.
@@ -496,14 +510,20 @@ the "none reached yet" empty copy and "Ver todos" (which the user can switch to
 
 ## Rollout
 
-1. `db push` the migration (staging, then prod) **before** merging: merge deploys
-   the frontend immediately.
+1. `db push` both migrations (staging, then prod) **before** merging: merge deploys
+   the frontend immediately. Push at low DM traffic: the backfill's DO block holds
+   SHARE ROW EXCLUSIVE on sends then automations (`lock_timeout` 30s; sends first
+   so the DM worker cannot be the deadlock victim). Each file applies atomically with
+   its `schema_migrations` row; if a push fails, check for a stray version row
+   before re-pushing. A frontend that lands first fails open (nav and page gates
+   open, section hidden, tab shows the load error with retry).
 2. No edge-function changes and no new env vars.
 3. Rollback: the frontend can be reverted independently; tables, functions and
    triggers are additive. Dropping the two `ias_z*` triggers stops maintenance
    without affecting sends; the `BEFORE DELETE` snapshot keeps deletions safe in
    the meantime, and `rebuild_instagram_automation_contacts()` resyncs after
-   re-adding them.
+   re-adding them. Ops repair for any swallowed `sync_instagram_automation_contact:`
+   warning or the race above: `select rebuild_instagram_automation_contacts('<conta_id>');`.
 
 ## Open questions
 
