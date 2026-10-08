@@ -37,7 +37,7 @@ describe('referenceErrorMessage', () => {
       'Este post não está mais aguardando sua aprovação.',
     );
     expect(referenceErrorMessage('invalid_url', t)).toBe(
-      'Informe um endereço válido, começando com http ou https.',
+      'Informe um endereço completo, como exemplo.com.br.',
     );
     for (const code of ['internal', 'upload_mismatch', 'thumbnail_invalid'] as const) {
       expect(referenceErrorMessage(code, t)).toBe('Algo deu errado. Tente novamente.');

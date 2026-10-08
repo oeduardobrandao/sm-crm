@@ -295,6 +295,21 @@ describe('postReferences service', () => {
     expect(normalizeReferenceUrl(`https://exemplo.com/${'a'.repeat(2048)}`)).toBeNull();
   });
 
+  it('requires a host with a real top-level domain', () => {
+    for (const raw of [
+      'google',
+      'https://google',
+      'http://localhost:3000',
+      'exemplo.',
+      'exemplo.c',
+      '192.168.0.1',
+    ]) {
+      expect(normalizeReferenceUrl(raw), raw).toBeNull();
+    }
+    expect(normalizeReferenceUrl('google.com')).toBe('https://google.com/');
+    expect(normalizeReferenceUrl('loja.com.br/x')).toBe('https://loja.com.br/x');
+  });
+
   it('adds a link with the normalized URL and trimmed title and note', async () => {
     fetchHarness.queueResponse({ status: 201, json: { item: { ...ITEM, kind: 'link' } } });
     await addPostReferenceLink('tok', 42, {

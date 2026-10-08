@@ -107,6 +107,9 @@ export function parsePositiveId(v: unknown): number | null {
 }
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+/** Último rótulo do host: letras (2-63) ou punycode. Barra "google" (vira https://google/,
+ * link morto), localhost e IPs, que não fazem sentido como referência de cliente. */
+const TLD_RE = /\.(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
 
 /**
  * Política autoritativa de URL de referência (o CHECK do banco é só backstop).
@@ -130,7 +133,7 @@ export function normalizeReferenceUrl(raw: string): string | null {
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return null;
   if (u.username !== "" || u.password !== "") return null;
-  if (!u.hostname) return null;
+  if (!TLD_RE.test(u.hostname)) return null;
   const href = u.href;
   if (href.length > MAX_REFERENCE_URL || CONTROL_OR_SPACE.test(href)) return null;
   return href;
