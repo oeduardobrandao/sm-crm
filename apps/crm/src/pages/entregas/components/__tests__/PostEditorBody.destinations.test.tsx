@@ -53,6 +53,15 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
     <div data-testid="tiktok-settings-stub" data-hide-caption={String(!!hideCaption)} />
   ),
 }));
+// Referências do cliente (#649): fora do escopo destes testes.
+vi.mock('@/store/postReferences', () => ({
+  getPostReferences: vi.fn(async () => []),
+  getPostReferenceCounts: vi.fn(async () => ({})),
+  deletePostReference: vi.fn(),
+}));
+vi.mock('@/pages/entregas/components/references/PostClientReferences', () => ({
+  PostClientReferences: () => null,
+}));
 vi.mock('@/pages/entregas/components/TrialReelPanel', () => ({ TrialReelPanel: () => null }));
 vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
   ScheduleButton: ({
