@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, Film, ImageIcon, Loader2, Pencil, Trash2, X } from 'lucide-react';
 import type { UploadEntry } from '../../../hooks/usePostReferences';
@@ -12,6 +12,7 @@ import {
   referenceTitle,
 } from './referenceFormat';
 import { ReferenceOpen, ReferenceThumb } from './ReferenceTiles';
+import { HubConfirmDialog } from '../../ui/HubConfirmDialog';
 
 const ICON_BUTTON =
   'w-11 h-11 -mr-2 -mt-2 shrink-0 rounded-full flex items-center justify-center hub-tx3 hover:bg-[var(--hub-soft)] disabled:opacity-50';
@@ -26,6 +27,8 @@ interface ReferenceRowProps {
   onRemove: (id: number) => Promise<void>;
   /** An open note editor whose text differs from the saved note. */
   onDirtyChange?: (id: number, dirty: boolean) => void;
+  /** The remove confirm is a nested dialog: the card's arrow keys and close path stand down. */
+  onOverlayChange?: (open: boolean) => void;
 }
 
 export function ReferenceRow({
@@ -35,6 +38,7 @@ export function ReferenceRow({
   onSaveNote,
   onRemove,
   onDirtyChange,
+  onOverlayChange,
 }: ReferenceRowProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -49,6 +53,15 @@ export function ReferenceRow({
     onDirtyChange(item.id, true);
     return () => onDirtyChange(item.id, false);
   }, [dirty, item.id, onDirtyChange]);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const onOverlayChangeRef = useRef(onOverlayChange);
+  onOverlayChangeRef.current = onOverlayChange;
+  // Balanced open/close reports, also when the row unmounts with the dialog up.
+  useEffect(() => {
+    if (!confirmingRemove) return;
+    onOverlayChangeRef.current?.(true);
+    return () => onOverlayChangeRef.current?.(false);
+  }, [confirmingRemove]);
   const title = referenceTitle(item);
   const openLabel = t('references.open', 'Abrir {{name}}', { name: title });
   const meta = [
@@ -76,8 +89,8 @@ export function ReferenceRow({
   }
 
   async function remove() {
+    setConfirmingRemove(false);
     if (busy) return;
-    if (!window.confirm(t('references.removeConfirm', 'Remover referência?'))) return;
     setBusy('remove');
     setError(null);
     try {
@@ -136,7 +149,7 @@ export function ReferenceRow({
         {item.can_remove && (
           <button
             type="button"
-            onClick={remove}
+            onClick={() => setConfirmingRemove(true)}
             disabled={busy !== null}
             aria-label={t('references.remove', 'Remover referência')}
             className={ICON_BUTTON}
@@ -192,6 +205,20 @@ export function ReferenceRow({
           {error}
         </p>
       )}
+      <HubConfirmDialog
+        open={confirmingRemove}
+        title={t('references.removeConfirm', 'Remover referência?')}
+        description={
+          item.kind === 'link'
+            ? t('references.removeConfirmLink', 'A equipe deixa de ver este link.')
+            : t('references.removeConfirmFile', 'A equipe deixa de ver este arquivo.')
+        }
+        confirmLabel={t('references.removeAction', 'Remover')}
+        cancelLabel={t('references.cancel', 'Cancelar')}
+        destructive
+        onConfirm={() => void remove()}
+        onCancel={() => setConfirmingRemove(false)}
+      />
     </li>
   );
 }

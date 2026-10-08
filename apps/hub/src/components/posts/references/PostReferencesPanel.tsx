@@ -117,6 +117,7 @@ export function PostReferencesPanel({
               onSaveNote={refs.updateNote}
               onRemove={refs.remove}
               onDirtyChange={handleRowDirty}
+              onOverlayChange={onOverlayChange}
             />
           ))}
         </ul>
