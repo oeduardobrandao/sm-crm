@@ -118,12 +118,23 @@ export function usePostReferences(token: string, postId: number) {
         return;
       }
       if (old.items.some((i) => i.id === item.id)) return;
+      // A refetch already in flight (focus after the file picker, remove()'s invalidate) may
+      // have read the list before this insert committed; resolving after us, it would drop the
+      // item, and the composer's staged chip with it (CorrectionPanel filters staged ids by the
+      // list). setQueryData makes this list the cancel's revert target, so cancelling that
+      // fetch keeps the item; the follow-up refetch starts after the commit and includes it.
+      const inFlight = qc.isFetching({ queryKey: key }) > 0;
       const items = [...old.items, item];
       qc.setQueryData<ReferencesData>(key, {
         ...old,
         items,
         can_add: old.can_add && items.length < MAX_REFERENCES_PER_POST,
       });
+      if (inFlight) {
+        void qc
+          .cancelQueries({ queryKey: key })
+          .then(() => qc.invalidateQueries({ queryKey: key }));
+      }
     },
     [qc, key],
   );

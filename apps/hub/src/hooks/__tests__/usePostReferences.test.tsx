@@ -328,6 +328,56 @@ describe('usePostReferences', () => {
     expect(svc.uploadPostReference).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a just-uploaded item when an older refetch resolves after it', async () => {
+    const { result } = setup({ can_add: true, items: [item(1)] });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    // A refetch is in flight (focus after the file picker, or remove()'s invalidate) and
+    // read the list before the finalize committed: its answer lacks the new item.
+    const stale = deferred<{ can_add: boolean; items: ReferenceItem[] }>();
+    svc.fetchPostReferences.mockImplementationOnce(() => stale.promise);
+    act(() => result.current.refresh());
+    await waitFor(() => expect(svc.fetchPostReferences).toHaveBeenCalledTimes(2));
+
+    const up = deferred<ReferenceItem>();
+    svc.uploadPostReference.mockReturnValue(up.promise);
+    const onUploaded = vi.fn();
+    act(() => {
+      void result.current.startUploads([file('a.jpg')], { onUploaded, source: 'composer' });
+    });
+    // Committed: any refetch that starts from now on reads the item.
+    svc.fetchPostReferences.mockResolvedValue({ can_add: true, items: [item(1), item(50)] });
+    await act(async () => up.resolve(item(50)));
+    await waitFor(() => expect(result.current.items.map((i) => i.id)).toEqual([1, 50]));
+    expect(onUploaded).toHaveBeenCalledWith(item(50));
+
+    await act(async () => stale.resolve({ can_add: true, items: [item(1)] }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(result.current.items.map((i) => i.id)).toEqual([1, 50]);
+  });
+
+  it('keeps a just-added link when an older refetch resolves after it', async () => {
+    const { result } = setup({ can_add: true, items: [item(1)] });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    const stale = deferred<{ can_add: boolean; items: ReferenceItem[] }>();
+    svc.fetchPostReferences.mockImplementationOnce(() => stale.promise);
+    act(() => result.current.refresh());
+    await waitFor(() => expect(svc.fetchPostReferences).toHaveBeenCalledTimes(2));
+
+    const link = item(60, { kind: 'link', file_kind: null });
+    svc.addPostReferenceLink.mockResolvedValue(link);
+    svc.fetchPostReferences.mockResolvedValue({ can_add: true, items: [item(1), link] });
+    await act(async () => {
+      await result.current.addLink({ url: 'exemplo.com' });
+    });
+    await act(async () => stale.resolve({ can_add: true, items: [item(1)] }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(result.current.items.map((i) => i.id)).toEqual([1, 60]);
+  });
+
   it('calls onUploaded per finished file', async () => {
     const { result } = setup({ can_add: true, items: [] });
     await waitFor(() => expect(result.current.data).toBeDefined());
