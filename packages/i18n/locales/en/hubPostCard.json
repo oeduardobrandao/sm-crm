@@ -22,7 +22,8 @@
   "platform": {
     "instagram": "Instagram",
     "tiktok": "TikTok",
-    "both": "Instagram + TikTok"
+    "both": "Instagram + TikTok",
+    "other": "General"
   },
   "emptyState": {
     "noImage": "No image added"

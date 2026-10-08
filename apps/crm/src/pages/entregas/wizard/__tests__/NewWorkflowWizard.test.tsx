@@ -9,6 +9,10 @@ import type { Cliente, Membro, WorkflowTemplate } from '../../../../store';
 
 // sonner 2.x really does expose `toast.warning`, so the template-failure path asserts against it
 // rather than falling back to `toast.error`.
+const limitsFeatures = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: limitsFeatures.current, isLoading: false }),
+}));
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
@@ -302,6 +306,27 @@ describe('NewWorkflowWizard — step 2 (o básico)', () => {
       (screen.getByLabelText(/cliente/i) as HTMLSelectElement).options,
     ).map((o) => o.textContent);
     expect(options).toEqual(['', 'Aurora', 'Borealis']);
+  });
+
+  it('hides the platforms field without feature_multiplatform, even from a {geral} template', () => {
+    limitsFeatures.current = {};
+    renderWizard({ templates: [{ ...templates[0], plataformas: ['geral'] }] });
+    fireEvent.click(screen.getByText('Fluxo Padrão de Post'));
+    expect(screen.queryByText('Plataformas deste fluxo')).toBeNull();
+  });
+
+  it('shows the platforms field and the template platforms with feature_multiplatform', () => {
+    limitsFeatures.current = { feature_multiplatform: true };
+    try {
+      renderWizard({ templates: [{ ...templates[0], plataformas: ['geral'] }] });
+      fireEvent.click(screen.getByText('Fluxo Padrão de Post'));
+      expect(screen.getByText('Plataformas deste fluxo')).toBeTruthy();
+      expect(screen.getByRole('button', { name: /Geral/ }).getAttribute('aria-pressed')).toBe(
+        'true',
+      );
+    } finally {
+      limitsFeatures.current = {};
+    }
   });
 
   it('toggling recorrente flips aria-checked', () => {
@@ -785,6 +810,7 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
         modoPrazo: 'data_entrega',
         saveAsTemplate: true,
         source: { kind: 'preset', presetId: 'posts-mensais', presetNome: 'Posts mensais' },
+        plataformas: ['instagram'],
       }),
     );
     expect(captureEvent).toHaveBeenCalledWith('workflow_wizard_source', {

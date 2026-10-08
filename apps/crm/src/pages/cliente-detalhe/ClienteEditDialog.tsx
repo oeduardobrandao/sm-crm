@@ -5,6 +5,9 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
+import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-errors';
+import type { PlatformId } from '@mesaas/platforms';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Select,
@@ -45,6 +48,8 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
   const [fNotion, setFNotion] = useState('');
   const [fDiaPag, setFDiaPag] = useState('');
   const [fDiaEntrega, setFDiaEntrega] = useState('');
+  const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(['instagram']);
+  const showPlataformas = usePlatformChipsVisible(fPlataformas);
   const [fStatus, setFStatus] = useState<Cliente['status']>('ativo');
   const [fEspecialidade, setFEspecialidade] = useState('');
   const [fAniMes, setFAniMes] = useState(''); // '01'–'12'
@@ -62,6 +67,7 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
     setFNotion(cliente.notion_page_url || '');
     setFDiaPag(cliente.data_pagamento ? String(cliente.data_pagamento) : '');
     setFDiaEntrega(cliente.dia_entrega ? String(cliente.dia_entrega) : '');
+    setFPlataformas(cliente.plataformas_padrao ?? ['instagram']);
     setFStatus(cliente.status);
     setFEspecialidade(cliente.especialidade || '');
     const [aniMes = '', aniDia = ''] = (cliente.data_aniversario || '').split('-');
@@ -120,6 +126,7 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
         notion_page_url: fNotion,
         data_pagamento: diaPag,
         dia_entrega: diaEntrega,
+        plataformas_padrao: fPlataformas,
         status: fStatus,
         especialidade: fEspecialidade,
         data_aniversario: fAniMes && fAniDia ? `${fAniMes}-${fAniDia}` : null,
@@ -133,7 +140,12 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
       onOpenChange(false);
       toast.success(t('detail.clientUpdated'));
     } catch (err: unknown) {
-      toast.error(t('detail.saveError', { error: (err as Error).message }));
+      const entitlement = mapEntitlementError(err);
+      toast.error(
+        entitlement
+          ? entitlementMessage(entitlement)
+          : t('detail.saveError', { error: (err as Error).message }),
+      );
     } finally {
       setSaving(false);
     }
@@ -195,6 +207,12 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
               placeholder="1-31"
             />
           </div>
+          {showPlataformas && (
+            <div className="space-y-1">
+              <Label>Plataformas dos posts avulsos</Label>
+              <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
+            </div>
+          )}
           <div className="space-y-1">
             <Label>{t('detail.formStatus')}</Label>
             <Select value={fStatus} onValueChange={(v) => setFStatus(v as Cliente['status'])}>

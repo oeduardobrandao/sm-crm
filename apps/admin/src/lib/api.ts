@@ -100,6 +100,7 @@ export interface Plan {
   feature_briefing_audio: boolean;
   feature_post_processes: boolean;
   feature_agenda: boolean;
+  feature_multiplatform: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -247,6 +248,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_briefing_audio',
   'feature_post_processes',
   'feature_agenda',
+  'feature_multiplatform',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -275,6 +277,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_briefing_audio: 'Gravação de áudio',
   feature_post_processes: 'Processos individuais (Entregas)',
   feature_agenda: 'Agenda',
+  feature_multiplatform: 'Plataformas por fluxo',
 };
 
 export const RATE_LIMIT_KEYS = [

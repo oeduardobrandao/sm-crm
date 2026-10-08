@@ -3,6 +3,9 @@ import { MemoryRouter, Navigate, Route, Routes, useLocation } from 'react-router
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: {}, isLoading: false }),
+}));
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));

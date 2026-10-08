@@ -30,11 +30,15 @@ export function getPostStatusLabel(t: TFunction, status: string): string {
   return labels[status] ?? status;
 }
 
-export function getPlatformLabel(t: TFunction, platform: 'instagram' | 'tiktok' | 'both'): string {
-  const labels: Record<'instagram' | 'tiktok' | 'both', string> = {
+export function getPlatformLabel(
+  t: TFunction,
+  platform: 'instagram' | 'tiktok' | 'both' | 'other',
+): string {
+  const labels: Record<'instagram' | 'tiktok' | 'both' | 'other', string> = {
     instagram: t('hubPostCard:platform.instagram', 'Instagram'),
     tiktok: t('hubPostCard:platform.tiktok', 'TikTok'),
     both: t('hubPostCard:platform.both', 'Instagram + TikTok'),
+    other: t('hubPostCard:platform.other', 'Geral'),
   };
   return labels[platform];
 }

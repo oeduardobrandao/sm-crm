@@ -40,6 +40,7 @@ import {
   uploadAutomationMedia,
   validateAutomationMediaFile,
 } from '../../services/automationMedia';
+import { targetsInstagram } from '../entregas/platformTargets';
 import { TIPO_LABELS } from '../entregas/postLabels';
 import {
   createInstagramAutomation,
@@ -123,11 +124,7 @@ export type SelectedTarget =
  * expire, and TikTok-only posts never get an IG media id. `falha_publicacao`
  * stays eligible because it is still going to publish. */
 function isEligibleProductionPost(post: ClientePost): boolean {
-  return (
-    post.status !== 'postado' &&
-    post.tipo !== 'stories' &&
-    (post.platform ?? 'instagram') !== 'tiktok'
-  );
+  return post.status !== 'postado' && post.tipo !== 'stories' && targetsInstagram(post.platform);
 }
 
 function truncate(text: string, max: number): string {

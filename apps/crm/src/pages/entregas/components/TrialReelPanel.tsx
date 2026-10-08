@@ -1,6 +1,7 @@
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { PostMedia, WorkflowPost } from '../../../store';
+import { targetsInstagram } from '../platformTargets';
 
 interface TrialReelPanelProps {
   post: WorkflowPost;
@@ -17,7 +18,7 @@ interface TrialReelPanelProps {
  * workflow_posts_z5_clear_ig_trial garante a invariante no banco.
  */
 export function TrialReelPanel({ post, media, disabled, onFieldChange }: TrialReelPanelProps) {
-  if (post.tipo !== 'reels' || (post.platform ?? 'instagram') === 'tiktok') return null;
+  if (post.tipo !== 'reels' || !targetsInstagram(post.platform)) return null;
 
   const strategy = post.ig_trial_strategy ?? null;
   const enabled = strategy !== null;
