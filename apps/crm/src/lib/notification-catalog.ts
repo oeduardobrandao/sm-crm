@@ -68,6 +68,13 @@ export const NOTIFICATION_CATALOG = {
     recipients: RESP_ADMINS,
     emailEligible: false,
   },
+  post_client_reference: {
+    category: 'aprovacoes_hub',
+    label: 'Referências do cliente',
+    when: 'o cliente anexa fotos, vídeos, PDFs ou links a um post no Hub',
+    recipients: RESP_ADMINS,
+    emailEligible: false,
+  },
   idea_submitted: {
     category: 'aprovacoes_hub',
     label: 'Ideia enviada',
