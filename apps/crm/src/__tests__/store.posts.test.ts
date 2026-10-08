@@ -1134,6 +1134,42 @@ describe('posts avulsos', () => {
     expect(result.map((p) => p.id)).toEqual([1, 2, 30]);
   });
 
+  it('getActivePosts embeds post_targets on both arms and maps them sorted', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'P',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: null,
+            ordem: 0,
+            workflows: { titulo: 'F', cliente_id: 7, status: 'ativo', clientes: { nome: 'Y' } },
+            post_targets: [
+              { platform: 'geral', status: 'pendente' },
+              { platform: 'instagram', status: 'pendente' },
+            ],
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    );
+    const [post] = await store.getActivePosts();
+    expect(post.targets?.map((t) => t.platform)).toEqual(['instagram', 'geral']);
+    // getCalls tipa as entradas sem selectArgs, que o mock grava (test/shared/supabaseMock.ts).
+    const selects = getCalls('workflow_posts', 'select') as unknown as Array<{
+      selectArgs?: unknown[][];
+    }>;
+    for (const call of selects) {
+      expect(String(call.selectArgs?.[0]?.[0])).toContain('post_targets(platform, status)');
+    }
+  });
+
   it('getClientePosts filters the avulso arm by cliente_id and workflow_id null', async () => {
     mockedSupabase.__queueSupabaseResult(
       'workflow_posts',

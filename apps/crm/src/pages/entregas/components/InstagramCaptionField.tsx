@@ -33,6 +33,8 @@ export interface CaptionCommentHandlers {
 
 export interface InstagramCaptionFieldHandle {
   focusThread(threadId: number): void;
+  /** Texto atual, rascunho não salvo incluso (semente da legenda de outro destino). */
+  getText(): string;
 }
 
 interface InstagramCaptionFieldProps {
@@ -43,6 +45,8 @@ interface InstagramCaptionFieldProps {
   lockedMessage?: string;
   onSave: (text: string, anchors: CaptionAnchorPatch[]) => Promise<void>;
   comments?: CaptionCommentHandlers;
+  /** Dentro das abas de legenda por destino (feature_multiplatform): a moldura é das abas. */
+  frameless?: boolean;
 }
 
 const POPOVER_W = 320;
@@ -56,7 +60,7 @@ export const InstagramCaptionField = forwardRef<
   InstagramCaptionFieldHandle,
   InstagramCaptionFieldProps
 >(function InstagramCaptionField(
-  { value, threads, disabled, lockedMessage, onSave, comments },
+  { value, threads, disabled, lockedMessage, onSave, comments, frameless = false },
   ref,
 ) {
   const { text, anchors, change, flush, getText } = useCaptionDraft({ value, threads, onSave });
@@ -196,6 +200,7 @@ export const InstagramCaptionField = forwardRef<
         }
         if (comments) openThread(threadId);
       },
+      getText,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [anchors, comments],
@@ -243,8 +248,12 @@ export const InstagramCaptionField = forwardRef<
 
   return (
     <div
-      className="mt-3 rounded-lg border-2 p-3"
-      style={{ borderColor: 'var(--border-color)', background: 'var(--surface-hover)' }}
+      className={frameless ? undefined : 'mt-3 rounded-lg border-2 p-3'}
+      style={
+        frameless
+          ? undefined
+          : { borderColor: 'var(--border-color)', background: 'var(--surface-hover)' }
+      }
     >
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <Instagram className="h-4 w-4" style={{ color: '#E1306C' }} />

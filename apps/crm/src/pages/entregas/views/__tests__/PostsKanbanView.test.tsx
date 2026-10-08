@@ -849,3 +849,29 @@ describe('PostsKanbanView', () => {
     });
   });
 });
+
+describe('destination chips (P2, feature_multiplatform)', () => {
+  const withTargets = () =>
+    makePost({
+      status: 'aprovado_cliente',
+      instagram_media_id: 'm1',
+      targets: [
+        { platform: 'instagram', status: 'pendente' },
+        { platform: 'geral', status: 'pendente' },
+      ],
+    });
+
+  it('flag off: no chips (unchanged card)', () => {
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={[withTargets()]} />);
+    expect(screen.queryByTestId('destination-chips')).toBeNull();
+  });
+
+  it('flag on: one chip per destination', () => {
+    renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[withTargets()]} multiplatformEnabled />,
+    );
+    const chips = screen.getByTestId('destination-chips');
+    expect(within(chips).getByLabelText('Instagram: Publicado')).toBeInTheDocument();
+    expect(within(chips).getByLabelText('Geral: Disponível')).toBeInTheDocument();
+  });
+});

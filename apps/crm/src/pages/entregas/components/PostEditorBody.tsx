@@ -62,6 +62,16 @@ import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { groupOptionsByOwner } from '../statusRegistry';
 import { targetsInstagram as isInstagramPost } from '../platformTargets';
 import { PostVersionHistorySheet } from './PostVersionHistorySheet';
+import { PLATFORM_DEFS, type PlatformId } from '@mesaas/platforms';
+import { usePostDestinations } from '../hooks/usePostDestinations';
+import { DestinationToggles } from './DestinationToggles';
+import { DestinationCaptionTabs } from './DestinationCaptionTabs';
+import type { DestinationCaptionFieldHandle } from './DestinationCaptionField';
+import {
+  destinationToggleOptions,
+  resolveDestinationState,
+  seedCaptionFor,
+} from '../postDestinations';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 //
@@ -202,6 +212,15 @@ export function PostEditorBody({
   const { features } = useWorkspaceLimits();
   const statusRegistry = useStatusRegistry();
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+
+  // Plataformas por fluxo (P2), dark atrás de feature_multiplatform. Desligada ou
+  // carregando = a árvore de hoje: PlatformSelector, uma legenda do Instagram só com
+  // conta conectada, painel do TikTok com a própria legenda.
+  const multiplatform = features?.feature_multiplatform === true;
+  const destinations = usePostDestinations(post, multiplatform && isExpanded, onRefresh);
+  const [captionTab, setCaptionTab] = useState<PlatformId | null>(null);
+  const tiktokCaptionRef = useRef<DestinationCaptionFieldHandle>(null);
+  const geralCaptionRef = useRef<DestinationCaptionFieldHandle>(null);
 
   // Shares the ['post-media', post.id] cache key with PostMediaGallery below, so this is a
   // cache hit whenever the gallery already loaded it. Feeds ScheduleButton's client-side
@@ -354,6 +373,122 @@ export function PostEditorBody({
   // null for the statuses that just sit there waiting on a person.
   const statusAutomationHint = getStatusAutomationHint(post);
 
+  const targets = destinations.targets ?? [];
+  const currentPlatforms = targets.map((t) => t.platform);
+  const publishedPlatforms = targets
+    .filter((t) => resolveDestinationState(post, t) === 'publicado')
+    .map((t) => t.platform);
+  const destinationLockReason =
+    post.status === 'agendado'
+      ? 'Cancelar agendamento para editar'
+      : post.status === 'postado'
+        ? 'Post já publicado'
+        : null;
+
+  const handleDestinationToggle = (platform: PlatformId, on: boolean) => {
+    const ownCaption =
+      platform === 'instagram'
+        ? post.ig_caption
+        : platform === 'tiktok'
+          ? post.tiktok_caption
+          : null;
+    // Destino que já tem legenda própria (ex.: Instagram tirado e religado) não recebe cópia.
+    const seed =
+      on && !ownCaption?.trim()
+        ? seedCaptionFor(
+            platform,
+            currentPlatforms,
+            {
+              instagram: captionRef.current?.getText() ?? post.ig_caption ?? null,
+              tiktok: tiktokCaptionRef.current?.getText() ?? post.tiktok_caption ?? null,
+              geral:
+                geralCaptionRef.current?.getText() ??
+                targets.find((t) => t.platform === 'geral')?.caption ??
+                null,
+            },
+            post.tipo,
+          )
+        : null;
+    if (seed && seed.cut > 0) {
+      toast.info(
+        `A legenda copiada foi cortada em ${seed.cut} caracteres para caber no limite do ${PLATFORM_DEFS[platform].label}.`,
+      );
+    }
+    if (!on && platform === 'geral') {
+      // A legenda do Geral mora só na linha de post_targets: tirar o destino a apaga.
+      // Pega o texto agora (inclui rascunho ainda não salvo) para oferecer Desfazer.
+      const lost =
+        geralCaptionRef.current?.getText() ??
+        targets.find((t) => t.platform === 'geral')?.caption ??
+        '';
+      destinations.toggle.mutate(
+        { platform, on, seedCaption: null },
+        {
+          onSuccess: () => {
+            if (!lost.trim()) return;
+            toast('Geral removido.', {
+              duration: 8000,
+              action: {
+                label: 'Desfazer',
+                onClick: () => {
+                  destinations.toggle.mutate({ platform: 'geral', on: true, seedCaption: lost });
+                  setCaptionTab('geral');
+                },
+              },
+            });
+          },
+        },
+      );
+      return;
+    }
+    destinations.toggle.mutate({ platform, on, seedCaption: seed?.caption ?? null });
+    if (on) setCaptionTab(platform);
+  };
+
+  const storiesNote = (
+    <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
+      Stories: uma ou mais mídias (cada uma vira um segmento), sem legenda, formato vertical 9:16.
+    </p>
+  );
+  const instagramCaptionField = (frameless: boolean) => (
+    <InstagramCaptionField
+      key={post.id}
+      frameless={frameless}
+      ref={captionRef}
+      value={post.ig_caption ?? ''}
+      threads={commentThreads}
+      disabled={isScheduleLocked}
+      lockedMessage="Cancelar agendamento para editar"
+      onSave={(text, anchors) => onSaveCaption(post.id!, text, anchors)}
+      comments={
+        currentUserId
+          ? {
+              membros,
+              workspaceUsers,
+              currentUserId,
+              onCreateThread: (quotedText, comment, anchor) =>
+                onCreateComment(post.id!, quotedText, comment, anchor),
+              onReply: onReplyToComment,
+              onResolve: onResolveThread,
+              onReopen: onReopenThread,
+              onEditComment,
+              onDeleteComment,
+            }
+          : undefined
+      }
+    />
+  );
+  const tiktokSettingsPanel = (hideCaption: boolean) => (
+    <TikTokSettingsPanel
+      clientId={clienteId}
+      post={post}
+      onFieldChange={onFieldChange}
+      onCompletenessChange={setTiktokSettingsComplete}
+      showTestModeBanner={tiktokTestModeBanner}
+      hideCaption={hideCaption}
+    />
+  );
+
   return (
     <div className="drawer-post-content">
       <div className="drawer-post-meta-row">
@@ -400,20 +535,37 @@ export function PostEditorBody({
             ))}
           </select>
         </div>
-        <PlatformSelector
-          value={post.platform ?? 'instagram'}
-          tipo={post.tipo}
-          tiktokFeatureEnabled={features?.feature_tiktok === true}
-          hasActiveTikTokAccount={hasActiveTikTokAccount}
-          disabled={isScheduleLocked}
-          isExpress={post.is_express === true}
-          onChange={(platform) => {
-            onFieldChange('platform', platform);
-            if (platform === 'tiktok' && post.ig_trial_strategy) {
-              onFieldChange('ig_trial_strategy', null);
-            }
-          }}
-        />
+        {multiplatform ? (
+          <DestinationToggles
+            options={destinationToggleOptions({
+              boardPlatforms: destinations.boardPlatforms ?? [],
+              current: currentPlatforms,
+              published: publishedPlatforms,
+              tipo: post.tipo,
+              tiktokFeatureEnabled: features?.feature_tiktok === true,
+              hasActiveTikTokAccount,
+              isExpress: post.is_express === true,
+            })}
+            lockedReason={destinationLockReason}
+            pending={destinations.toggle.isPending || destinations.isLoading}
+            onToggle={handleDestinationToggle}
+          />
+        ) : (
+          <PlatformSelector
+            value={post.platform ?? 'instagram'}
+            tipo={post.tipo}
+            tiktokFeatureEnabled={features?.feature_tiktok === true}
+            hasActiveTikTokAccount={hasActiveTikTokAccount}
+            disabled={isScheduleLocked}
+            isExpress={post.is_express === true}
+            onChange={(platform) => {
+              onFieldChange('platform', platform);
+              if (platform === 'tiktok' && post.ig_trial_strategy) {
+                onFieldChange('ig_trial_strategy', null);
+              }
+            }}
+          />
+        )}
         <div className="drawer-post-field">
           <label>Status</label>
           <select
@@ -645,37 +797,26 @@ export function PostEditorBody({
         />
       )}
 
-      {isStoryPost ? (
-        <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
-          Stories: uma ou mais mídias (cada uma vira um segmento), sem legenda, formato vertical
-          9:16.
-        </p>
-      ) : hasInstagramAccount ? (
-        <InstagramCaptionField
-          key={post.id}
-          ref={captionRef}
-          value={post.ig_caption ?? ''}
-          threads={commentThreads}
-          disabled={isScheduleLocked}
-          lockedMessage="Cancelar agendamento para editar"
-          onSave={(text, anchors) => onSaveCaption(post.id!, text, anchors)}
-          comments={
-            currentUserId
-              ? {
-                  membros,
-                  workspaceUsers,
-                  currentUserId,
-                  onCreateThread: (quotedText, comment, anchor) =>
-                    onCreateComment(post.id!, quotedText, comment, anchor),
-                  onReply: onReplyToComment,
-                  onResolve: onResolveThread,
-                  onReopen: onReopenThread,
-                  onEditComment,
-                  onDeleteComment,
-                }
-              : undefined
-          }
+      {multiplatform ? (
+        <DestinationCaptionTabs
+          post={post}
+          targets={targets}
+          loading={destinations.isLoading}
+          error={destinations.isError}
+          onRetry={destinations.refetch}
+          activeTab={captionTab}
+          onActiveTabChange={setCaptionTab}
+          locked={isScheduleLocked}
+          instagramCaption={isStoryPost ? storiesNote : instagramCaptionField(true)}
+          tiktokSettings={tiktokSettingsPanel(true)}
+          tiktokFieldRef={tiktokCaptionRef}
+          geralFieldRef={geralCaptionRef}
+          onSaveCaption={destinations.saveCaption}
         />
+      ) : isStoryPost ? (
+        storiesNote
+      ) : hasInstagramAccount ? (
+        instagramCaptionField(false)
       ) : null}
 
       {hasInstagramAccount && (
@@ -688,20 +829,15 @@ export function PostEditorBody({
       )}
 
       {/* TikTok settings panel (Task C2) — audit-mandated creator_info compliance UI.
-          Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
+          Flag-OFF only (with feature_multiplatform it lives inside the TikTok caption tab,
+          caption hidden). Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
           tipo==='stories' guard (TikTok has no Stories API, so platform can never be
           'tiktok'/'both' on a stories post — PlatformSelector self-heals that case).
           `onCompletenessChange`/`showTestModeBanner` wire into the sibling ScheduleButton
           below via the local state declared above (Task C3). */}
-      {(post.platform === 'tiktok' || post.platform === 'both') && (
-        <TikTokSettingsPanel
-          clientId={clienteId}
-          post={post}
-          onFieldChange={onFieldChange}
-          onCompletenessChange={setTiktokSettingsComplete}
-          showTestModeBanner={tiktokTestModeBanner}
-        />
-      )}
+      {!multiplatform &&
+        (post.platform === 'tiktok' || post.platform === 'both') &&
+        tiktokSettingsPanel(false)}
 
       <ScheduleButton
         post={post}
@@ -712,6 +848,7 @@ export function PostEditorBody({
         tiktokSettingsComplete={tiktokSettingsComplete}
         onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
         onStatusChange={onRefresh}
+        explainMissingInstagramAccount={multiplatform}
       />
 
       {/* Self-gating: renders nothing without the plan feature, an Instagram
@@ -729,7 +866,19 @@ export function PostEditorBody({
         workspaceUsers={workspaceUsers}
         onThreadClick={(threadId) => {
           const thread = commentThreads.find((t) => t.id === threadId);
-          if (thread?.field === 'ig_caption') captionRef.current?.focusThread(threadId);
+          if (thread?.field !== 'ig_caption') return;
+          if (multiplatform) {
+            if (!currentPlatforms.includes('instagram')) {
+              toast.info('Ative o Instagram em Destinos para ver este comentário.');
+              return;
+            }
+            setCaptionTab('instagram');
+            // A aba do Instagram pode estar escondida (forceMount + hidden) e o popover
+            // se posiciona pelos retângulos do texto: foca depois de revelar a aba.
+            requestAnimationFrame(() => captionRef.current?.focusThread(threadId));
+            return;
+          }
+          captionRef.current?.focusThread(threadId);
         }}
       />
 

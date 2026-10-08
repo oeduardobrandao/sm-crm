@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Check, FileDown, Instagram, Music2, Youtube } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Check, Youtube } from 'lucide-react';
 import {
   COMING_SOON_PLATFORMS,
   PLATFORM_DEFS,
@@ -8,12 +7,7 @@ import {
   type PlatformId,
 } from '@mesaas/platforms';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
-
-const ICONS: Record<PlatformId, LucideIcon> = {
-  instagram: Instagram,
-  tiktok: Music2,
-  geral: FileDown,
-};
+import { PLATFORM_ICONS } from './platformIcons';
 
 /**
  * Mostra o campo de plataformas? Só com `feature_multiplatform` (rollout por
@@ -63,7 +57,7 @@ export function PlatformChips({
     <div id={id}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
         {visible.map((p) => {
-          const Icon = ICONS[p];
+          const Icon = PLATFORM_ICONS[p];
           const on = value.includes(p);
           return (
             <button

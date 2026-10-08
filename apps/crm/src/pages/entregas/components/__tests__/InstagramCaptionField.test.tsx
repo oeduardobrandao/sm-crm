@@ -411,4 +411,28 @@ describe('InstagramCaptionField', () => {
     expect(textarea().selectionEnd).toBe(11);
     expect(screen.getByText('trocar')).toBeInTheDocument();
   });
+
+  it('getText returns the current draft', () => {
+    const ref = createRef<InstagramCaptionFieldHandle>();
+    render(<InstagramCaptionField ref={ref} value={caption} threads={[]} onSave={vi.fn()} />);
+    fireEvent.change(textarea(), { target: { value: 'outra legenda' } });
+    expect(ref.current!.getText()).toBe('outra legenda');
+  });
+});
+
+describe('frameless (P2: dentro das abas de legenda)', () => {
+  it('draws its own frame by default (flag off unchanged)', () => {
+    const { container } = render(
+      <InstagramCaptionField value={caption} threads={[]} onSave={vi.fn()} />,
+    );
+    expect(container.querySelector('.rounded-lg.border-2')).not.toBeNull();
+  });
+
+  it('drops the frame inside the tabs', () => {
+    const { container } = render(
+      <InstagramCaptionField value={caption} threads={[]} onSave={vi.fn()} frameless />,
+    );
+    expect(container.querySelector('.rounded-lg.border-2')).toBeNull();
+    expect(screen.getByText('Legenda do Instagram')).toBeInTheDocument();
+  });
 });

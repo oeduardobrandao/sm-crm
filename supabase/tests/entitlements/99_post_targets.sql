@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Plataformas por quadro + post_targets (migrations 20261010100001..7).
--- Seções 1-13 ligam feature_multiplatform em todos os planos dentro da própria
+-- Seções 1-13, 15 ligam feature_multiplatform em todos os planos dentro da própria
 -- transação; a seção 14 cobre a flag desligada (20261010100007).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 
@@ -847,5 +847,63 @@ begin
   assert not has_function_privilege('anon', 'public.guard_feature_multiplatform()', 'execute'),
     'anon executa guard_feature_multiplatform';
   raise notice 'PASS 99pt.14';
+end $$;
+rollback;
+
+-- 15. Editor de destinos (P2): as escritas diretas do CRM como authenticated.
+-- Sem migration em P2; isto prende o contrato de que o CRM depende.
+begin;
+update plans set feature_multiplatform = true;
+select et_grant_hosted_parity(array['post_targets']);
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf bigint; v_p bigint;
+  v_plat text; v_cap text; v_arr text[];
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into workspace_members (user_id, workspace_id, role) values (v_uid, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_uid;
+  insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+    values (v_uid, v_ws, 'C', 'C', '#000', array['geral']) returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'W', 'ativo', array['instagram','geral']) returning id into v_wf;
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf, v_ws, 'p', 'feed') returning id into v_p;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+
+  -- getBoardPlatforms: authenticated lê as duas listas
+  select plataformas into v_arr from workflows where id = v_wf;
+  assert v_arr = array['instagram','geral'], format('workflows.plataformas: %s', v_arr);
+  select plataformas_padrao into v_arr from clientes where id = v_cli;
+  assert v_arr = array['geral'], format('clientes.plataformas_padrao: %s', v_arr);
+
+  -- removePostDestination('instagram'): platform vira 'other'
+  delete from post_targets where post_id = v_p and platform = 'instagram';
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_plat = 'other', format('depois de tirar Instagram: %s', v_plat);
+
+  -- addPostDestination('instagram', semente): INSERT + save_ig_caption
+  insert into post_targets (conta_id, post_id, platform) values (v_ws, v_p, 'instagram');
+  perform save_ig_caption(v_p, 'semente', '[]'::jsonb);
+  select platform, ig_caption into v_plat, v_cap from workflow_posts where id = v_p;
+  assert v_plat = 'instagram' and v_cap = 'semente', format('IG religado: %s / %s', v_plat, v_cap);
+
+  -- savePostCaption('geral'): só a legenda muda, platform não
+  update post_targets set caption = 'texto geral'
+   where post_id = v_p and platform = 'geral';
+  select caption into v_cap from post_targets where post_id = v_p and platform = 'geral';
+  assert v_cap = 'texto geral', format('legenda Geral: %s', v_cap);
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_plat = 'instagram', format('legenda Geral mexeu em platform: %s', v_plat);
+
+  -- savePostCaption('tiktok'): coluna legada, editável pelo membro
+  update workflow_posts set tiktok_caption = 'tt' where id = v_p;
+  select tiktok_caption into v_cap from workflow_posts where id = v_p;
+  assert v_cap = 'tt', format('tiktok_caption: %s', v_cap);
+  raise notice 'PASS 99pt.15';
 end $$;
 rollback;

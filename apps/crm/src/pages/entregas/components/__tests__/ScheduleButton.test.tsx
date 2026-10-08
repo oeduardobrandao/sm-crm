@@ -1343,3 +1343,45 @@ describe('ScheduleButton', () => {
     });
   });
 });
+
+describe('explainMissingInstagramAccount (P2)', () => {
+  it('flag off: an approved Instagram post without account renders nothing (unchanged)', () => {
+    const { container } = render(
+      <ScheduleButton
+        post={makePost({ status: 'aprovado_cliente' })}
+        hasInstagramAccount={false}
+        onStatusChange={vi.fn()}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('flag on: explains why there is no Agendar', () => {
+    render(
+      <ScheduleButton
+        post={makePost({ status: 'aprovado_cliente' })}
+        hasInstagramAccount={false}
+        explainMissingInstagramAccount
+        onStatusChange={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Conecte a conta do Instagram do cliente para agendar ou publicar este post.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  it('flag on: nothing for a post that is not approved yet', () => {
+    const { container } = render(
+      <ScheduleButton
+        post={makePost({ status: 'rascunho' })}
+        hasInstagramAccount={false}
+        explainMissingInstagramAccount
+        onStatusChange={vi.fn()}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+});

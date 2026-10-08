@@ -346,4 +346,31 @@ describe('useCaptionDraft', () => {
     act(() => result.current.change('x'.repeat(2201)));
     expect(result.current.text).toHaveLength(2200);
   });
+
+  it('max: null accepts any length (Geral)', () => {
+    const { result } = renderHook(() =>
+      useCaptionDraft({ value: '', threads: [], onSave: vi.fn(), max: null }),
+    );
+    act(() => result.current.change('x'.repeat(5000)));
+    expect(result.current.text).toHaveLength(5000);
+  });
+
+  it('a custom max rejects growth past it', () => {
+    const { result } = renderHook(() =>
+      useCaptionDraft({ value: '', threads: [], onSave: vi.fn(), max: 10 }),
+    );
+    act(() => result.current.change('x'.repeat(10)));
+    act(() => result.current.change('x'.repeat(11)));
+    expect(result.current.text).toHaveLength(10);
+  });
+
+  it('above the limit (format changed) the user can still delete text', () => {
+    const { result } = renderHook(() =>
+      useCaptionDraft({ value: 'x'.repeat(15), threads: [], onSave: vi.fn(), max: 10 }),
+    );
+    act(() => result.current.change('x'.repeat(14)));
+    expect(result.current.text).toHaveLength(14);
+    act(() => result.current.change('x'.repeat(16)));
+    expect(result.current.text).toHaveLength(14);
+  });
 });

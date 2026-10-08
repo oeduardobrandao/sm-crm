@@ -159,6 +159,30 @@ export function PostMediaGallery({
     Map<string, { name: string; pct: number; status: 'uploading' | 'done' | 'error' }>
   >(new Map());
   const [dragOver, setDragOver] = useState(false);
+
+  // Limpa da fila os uploads concluídos 2s depois. Os timers morrem com o componente:
+  // um setState depois do unmount (drawer fechado no meio) não tem para onde ir.
+  const queueSweepTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = queueSweepTimers.current;
+    return () => {
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
+    };
+  }, []);
+  function scheduleQueueSweep() {
+    const id = setTimeout(() => {
+      queueSweepTimers.current.delete(id);
+      setUploadQueue((prev) => {
+        const next = new Map(prev);
+        for (const [k, v] of next) {
+          if (v.status === 'done' || v.status === 'error') next.delete(k);
+        }
+        return next;
+      });
+    }, 2000);
+    queueSweepTimers.current.add(id);
+  }
   const [movingCover, setMovingCover] = useState(false);
 
   // Preload images into browser cache so lightbox opens instantly.
@@ -299,15 +323,7 @@ export function PostMediaGallery({
     refreshWithCovers();
     if (!hasError && deferredCount < items.length) toast.success(t('mediaGallery.uploadDone'));
     setUploading(false);
-    setTimeout(() => {
-      setUploadQueue((prev) => {
-        const next = new Map(prev);
-        for (const [k, v] of next) {
-          if (v.status === 'done' || v.status === 'error') next.delete(k);
-        }
-        return next;
-      });
-    }, 2000);
+    scheduleQueueSweep();
   }
 
   async function handleVideoThumbnail(rawThumbnail: File) {
@@ -362,15 +378,7 @@ export function PostMediaGallery({
       });
     } finally {
       setUploading(false);
-      setTimeout(() => {
-        setUploadQueue((prev) => {
-          const next = new Map(prev);
-          for (const [k, v] of next) {
-            if (v.status === 'done' || v.status === 'error') next.delete(k);
-          }
-          return next;
-        });
-      }, 2000);
+      scheduleQueueSweep();
     }
   }
 

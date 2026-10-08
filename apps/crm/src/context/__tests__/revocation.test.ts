@@ -1610,4 +1610,10 @@ describe('MODULE_QUERY_KEYS', () => {
       expect.arrayContaining(['workflow-posts-with-props', 'workflow-posts-counts']),
     );
   });
+
+  it('entregas also drops the per-post destination caches (feature_multiplatform)', () => {
+    expect(MODULE_QUERY_KEYS.entregas).toEqual(
+      expect.arrayContaining(['post-targets', 'board-platforms']),
+    );
+  });
 });

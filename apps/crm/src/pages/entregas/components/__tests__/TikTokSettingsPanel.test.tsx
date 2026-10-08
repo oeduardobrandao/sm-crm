@@ -433,3 +433,17 @@ describe('TikTokSettingsPanel', () => {
     await waitFor(() => expect(getTikTokCreatorInfoMock).toHaveBeenCalled());
   });
 });
+
+describe('hideCaption (P2: a aba do TikTok é dona da legenda)', () => {
+  it('shows the caption field by default (flag off path)', async () => {
+    renderPanel();
+    expect(await screen.findByText(/Legenda do TikTok/)).toBeInTheDocument();
+  });
+
+  it('hides only the caption field when hideCaption is set', async () => {
+    renderPanel({ tipo: 'feed' }, { hideCaption: true });
+    await screen.findByLabelText('Permitir comentários');
+    expect(screen.queryByText(/Legenda do TikTok/)).toBeNull();
+    expect(screen.getByText('Título do TikTok (opcional)')).toBeInTheDocument();
+  });
+});

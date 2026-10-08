@@ -22,6 +22,8 @@ interface Args {
   value: string;
   threads: CommentThread[];
   onSave: (text: string, anchors: CaptionAnchorPatch[]) => Promise<void>;
+  /** Limite em unidades UTF-16 (String.length). Default = Instagram (2200); null = sem limite. */
+  max?: number | null;
 }
 
 /**
@@ -38,7 +40,7 @@ interface Args {
  * `onSave` owns error reporting (the caller toasts); the hook swallows the rejection,
  * keeps the draft and does not retry: the next keystroke or `flush()` retries.
  */
-export function useCaptionDraft({ value, threads, onSave }: Args) {
+export function useCaptionDraft({ value, threads, onSave, max = MAX_CAPTION_CHARS }: Args) {
   const serverAnchors = useMemo(
     () => validateAnchors(value, anchorsFromThreads(threads)),
     [value, threads],
@@ -60,10 +62,10 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
   // does not re-send an identical payload while props have not caught up yet. Cleared
   // whenever the draft is dropped, so a later real edit back to an old value still saves.
   const lastSavedSigRef = useRef<string | null>(null);
-  const latest = useRef({ value, serverAnchors, onSave });
+  const latest = useRef({ value, serverAnchors, onSave, max });
 
   useEffect(() => {
-    latest.current = { value, serverAnchors, onSave };
+    latest.current = { value, serverAnchors, onSave, max };
   });
 
   const setDraftBoth = useCallback((next: Draft | null) => {
@@ -114,7 +116,13 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
 
   const change = useCallback(
     (next: string) => {
-      if (next.length > MAX_CAPTION_CHARS) return;
+      const limit = latest.current.max;
+      if (limit != null && next.length > limit) {
+        // Acima do limite (ex.: o formato mudou e o limite caiu) só aceita encurtar,
+        // senão o usuário ficaria preso sem conseguir apagar.
+        const current = draftRef.current?.text ?? latest.current.value;
+        if (next.length >= current.length) return;
+      }
       const persisted = latest.current.value;
 
       if (timerRef.current !== undefined) {
