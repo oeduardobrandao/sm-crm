@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
-import { captureFrameFromElement } from '../../../utils/videoFrame';
+import { captureFrameFromElement } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { updateVideoThumbnail } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';

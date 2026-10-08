@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { captureFrameFromElement, extractVideoFrame } from '../videoFrame';
+import { captureFrameFromElement, extractVideoFrame } from '../frame';
 
 class MockVideo {
   static instances: MockVideo[] = [];

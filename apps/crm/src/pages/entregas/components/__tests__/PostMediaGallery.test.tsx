@@ -18,7 +18,7 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../../utils/videoFrame', () => ({
+vi.mock('@mesaas/ui/video/frame', () => ({
   extractVideoFrame: vi.fn(),
   captureFrameFromElement: vi.fn(),
 }));
@@ -67,7 +67,7 @@ import {
   uploadPostMedia,
 } from '../../../../services/postMedia';
 import type { PostMedia } from '../../../../store';
-import { extractVideoFrame } from '../../../../utils/videoFrame';
+import { extractVideoFrame } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../../utils/imageJpeg';
 import { PostMediaGallery } from '../PostMediaGallery';
 

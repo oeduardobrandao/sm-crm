@@ -1,4 +1,4 @@
-// apps/crm/src/utils/videoFrame.ts
+// packages/ui/video/frame.ts (shared by the CRM post editor and the Hub's reference posters)
 // Captures video frames as JPEG thumbnails for CRM/Hub previews and as the
 // default Instagram Reel cover (cover_url) when publishing. Resolution is
 // capped at 1920px.
