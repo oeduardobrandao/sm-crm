@@ -22,7 +22,7 @@ function makeHandler(db: Db, opts: Opts = {}) {
     buildCorsHeaders: () => ({ "Access-Control-Allow-Origin": "https://hub.mesaas.com" }),
     createDb: () => db as never,
     now: () => "2026-10-08T12:00:00.000Z",
-    signPutUrl: async (key: string) => `https://put.example.com/${key}`,
+    signPutUrl: async (key: string, _mime: string, size: number) => `https://put.example.com/${key}?len=${size}`,
     signGetUrl: async (key: string, _exp?: number, name?: string) =>
       `https://get.example.com/${key}${name ? `?dl=${name}` : ""}`,
     headObject: opts.head ??
@@ -208,8 +208,9 @@ Deno.test("hub-post-references: presign image returns both PUT URLs and debits o
   assertEquals(rateKeys, [WRITE_KEY]);
   assertEquals(body.r2_key, KEY);
   assertEquals(body.thumbnail_r2_key, THUMB);
-  assertEquals(body.upload_url, `https://put.example.com/${KEY}`);
-  assertEquals(body.thumbnail_upload_url, `https://put.example.com/${THUMB}`);
+  // Each URL is bound to its declared size (signed Content-Length).
+  assertEquals(body.upload_url, `https://put.example.com/${KEY}?len=5000`);
+  assertEquals(body.thumbnail_upload_url, `https://put.example.com/${THUMB}?len=2000`);
 });
 
 Deno.test("hub-post-references: presign PDF has no thumbnail; a PDF thumbnail is rejected", async () => {

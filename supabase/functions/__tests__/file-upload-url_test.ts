@@ -8,7 +8,7 @@ function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>, opts?: { ra
   return createFileUploadUrlHandler({
     buildCorsHeaders,
     createDb: () => db as never,
-    signPutUrl: async (key, _mime) => `https://r2.example.com/put/${key}`,
+    signPutUrl: async (key, _mime, size) => `https://r2.example.com/put/${key}?len=${size}`,
     randomUUID: opts?.randomUUID ?? (() => "test-uuid-1234"),
   });
 }
@@ -201,7 +201,7 @@ Deno.test("file-upload-url: image upload returns presigned URL and r2_key", asyn
   const body = await readJson(res);
   assertEquals(body.file_id, "test-uuid-1234");
   assertEquals(body.r2_key, "contas/conta-1/files/test-uuid-1234.png");
-  assertEquals(body.upload_url, "https://r2.example.com/put/contas/conta-1/files/test-uuid-1234.png");
+  assertEquals(body.upload_url, "https://r2.example.com/put/contas/conta-1/files/test-uuid-1234.png?len=5000");
   assertEquals(body.kind, "image");
   assertEquals(body.thumbnail_upload_url, undefined);
   assertEquals(body.thumbnail_r2_key, undefined);
@@ -225,7 +225,25 @@ Deno.test("file-upload-url: video upload returns both file and thumbnail presign
   assertEquals(body.kind, "video");
   assertEquals(body.r2_key, "contas/conta-1/files/test-uuid-1234.mp4");
   assertEquals(body.thumbnail_r2_key, "contas/conta-1/files/test-uuid-1234.thumb.jpg");
-  assertEquals(body.thumbnail_upload_url, "https://r2.example.com/put/contas/conta-1/files/test-uuid-1234.thumb.jpg");
+  assertEquals(body.upload_url, "https://r2.example.com/put/contas/conta-1/files/test-uuid-1234.mp4?len=10000");
+  assertEquals(body.thumbnail_upload_url, "https://r2.example.com/put/contas/conta-1/files/test-uuid-1234.thumb.jpg?len=500");
+});
+
+Deno.test("file-upload-url: non-integer sizes are rejected before signing", async () => {
+  for (const [body, error] of [
+    [{ filename: "a.png", mime_type: "image/png", size_bytes: 10.5 }, "size_bytes out of range"],
+    [{ filename: "a.png", mime_type: "image/png", size_bytes: "5000" }, "size_bytes out of range"],
+    [
+      { filename: "a.mp4", mime_type: "video/mp4", size_bytes: 10000, thumbnail: { mime_type: "image/jpeg", size_bytes: 1.5 } },
+      "thumbnail size out of range",
+    ],
+  ] as const) {
+    const db = createSupabaseQueryMock();
+    setupAuthAndProfile(db);
+    const res = await makeHandler(db)(authedRequest(body));
+    assertEquals(res.status, 400);
+    assertEquals((await readJson(res)).error, error);
+  }
 });
 
 Deno.test("file-upload-url: document upload classifies kind as document", async () => {

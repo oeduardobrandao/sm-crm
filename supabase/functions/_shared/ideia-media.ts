@@ -31,21 +31,26 @@ export interface PresignArgs {
   mime_type: string;
   size_bytes: number;
   thumbnail: { mime_type: string; size_bytes: number };
-  signPutUrl: (key: string, mime: string) => Promise<string>;
+  signPutUrl: (key: string, mime: string, sizeBytes: number) => Promise<string>;
   randomUUID?: () => string;
+}
+
+/** Inteiro positivo até max: o tamanho vira Content-Length assinado na URL de upload. */
+function sizeInRange(n: unknown, max: number): n is number {
+  return typeof n === "number" && Number.isSafeInteger(n) && n > 0 && n <= max;
 }
 
 export async function presignIdeiaImage(a: PresignArgs): Promise<IdeiaMediaResult> {
   if (!IDEIA_IMAGE_MIME.includes(a.mime_type)) {
     return { status: 415, body: { error: "unsupported file type" } };
   }
-  if (!a.size_bytes || a.size_bytes <= 0 || a.size_bytes > MAX_IMAGE_BYTES) {
+  if (!sizeInRange(a.size_bytes, MAX_IMAGE_BYTES)) {
     return { status: 400, body: { error: "size_bytes out of range" } };
   }
   if (a.thumbnail?.mime_type !== "image/webp") {
     return { status: 400, body: { error: "thumbnail must be image/webp" } };
   }
-  if (!a.thumbnail.size_bytes || a.thumbnail.size_bytes <= 0 || a.thumbnail.size_bytes > MAX_THUMB_BYTES) {
+  if (!sizeInRange(a.thumbnail.size_bytes, MAX_THUMB_BYTES)) {
     return { status: 400, body: { error: "thumbnail size out of range" } };
   }
 
@@ -71,8 +76,8 @@ export async function presignIdeiaImage(a: PresignArgs): Promise<IdeiaMediaResul
   const upload_id = (a.randomUUID ?? crypto.randomUUID.bind(crypto))();
   const r2_key = `contas/${a.conta_id}/files/${upload_id}.${extFromMime(a.mime_type)}`;
   const thumbnail_r2_key = `contas/${a.conta_id}/files/${upload_id}.thumb.webp`;
-  const upload_url = await a.signPutUrl(r2_key, a.mime_type);
-  const thumbnail_upload_url = await a.signPutUrl(thumbnail_r2_key, "image/webp");
+  const upload_url = await a.signPutUrl(r2_key, a.mime_type, a.size_bytes);
+  const thumbnail_upload_url = await a.signPutUrl(thumbnail_r2_key, "image/webp", a.thumbnail.size_bytes);
 
   return {
     status: 200,

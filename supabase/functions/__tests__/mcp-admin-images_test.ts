@@ -88,7 +88,7 @@ Deno.test("uploadPopupImage modo B: exige size_bytes; devolve upload_url pré-as
   await expectInputError(() => uploadPopupImage(makeDeps(db), { filename: "x", mime_type: "image/png" }), "size_bytes");
   const { db: db2 } = makeFakeDb({ profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_used_bytes: 0 }, error: null }] });
   const r = await uploadPopupImage(makeDeps(db2), { filename: "x", mime_type: "image/png", size_bytes: 1234 });
-  assertEquals(r, { image_key: "contas/11111111-1111-1111-1111-111111111111/files/00000001-0000-4000-8000-000000000000.png", upload_url: "https://r2/put/contas/11111111-1111-1111-1111-111111111111/files/00000001-0000-4000-8000-000000000000.png", expires_in: 900 });
+  assertEquals(r, { image_key: "contas/11111111-1111-1111-1111-111111111111/files/00000001-0000-4000-8000-000000000000.png", upload_url: "https://r2/put/contas/11111111-1111-1111-1111-111111111111/files/00000001-0000-4000-8000-000000000000.png", expires_in: 900, size_bytes: 1234 });
 });
 
 Deno.test("finalizePopupImages: linha existente pula; ausente → headObject + RPC; sem objeto ou tipo errado → McpInputError", async () => {

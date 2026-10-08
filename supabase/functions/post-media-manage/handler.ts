@@ -10,7 +10,7 @@ interface PostMediaManageDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   signUrl: (key: string) => Promise<string>;
-  signPutUrl: (key: string, mimeType: string) => Promise<string>;
+  signPutUrl: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   randomUUID?: () => string;
   signPlayback?: (uid: string) => Promise<{ hls: string; expires_at: string }>;
 }
@@ -297,8 +297,13 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
       const body = await req.json().catch(() => ({}));
       const mime = String(body.mime_type ?? "");
       if (!THUMB_MIME.has(mime)) return json({ error: "Unsupported thumbnail mime type" }, 400);
+      // O tamanho vira Content-Length assinado: a URL só aceita exatamente esses bytes.
+      const size = body.size_bytes;
+      if (typeof size !== "number" || !Number.isSafeInteger(size) || size <= 0 || size > 10 * 1024 * 1024) {
+        return json({ error: "thumbnail size out of range" }, 400);
+      }
       const key = `contas/${profile.conta_id}/files/${(deps.randomUUID ?? crypto.randomUUID.bind(crypto))()}.thumb.${extFromMime(mime)}`;
-      const upload_url = await deps.signPutUrl(key, mime);
+      const upload_url = await deps.signPutUrl(key, mime, size);
       return json({ thumbnail_r2_key: key, thumbnail_upload_url: upload_url });
     }
 

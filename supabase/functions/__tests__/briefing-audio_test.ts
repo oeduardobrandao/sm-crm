@@ -64,6 +64,7 @@ Deno.test("presign: mime inválido 415, tamanho fora 400, pergunta alheia 404", 
   const base = { db, conta_id: "conta-1", cliente_id: 14, question_id: Q, signPutUrl, randomUUID: () => "fixed-uuid" };
   assertEquals((await presignBriefingAudio({ ...base, mime_type: "video/mp4", size_bytes: 10 })).status, 415);
   assertEquals((await presignBriefingAudio({ ...base, mime_type: "audio/webm", size_bytes: 16 * 1024 * 1024 })).status, 400);
+  assertEquals((await presignBriefingAudio({ ...base, mime_type: "audio/webm", size_bytes: 10.5 })).status, 400);
   db.queue("hub_briefing_questions", "select", { data: null, error: null });
   assertEquals((await presignBriefingAudio({ ...base, mime_type: "audio/webm", size_bytes: 10 })).status, 404);
 });
