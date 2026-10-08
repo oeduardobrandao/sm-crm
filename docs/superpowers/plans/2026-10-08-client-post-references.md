@@ -32,8 +32,10 @@
 | Wave | Tasks | Notes |
 |---|---|---|
 | 1 | Task 1 (DB) | Everything else depends on its names; Tasks 2–11 can be written against the contracts in parallel, but their integration checks need the migration. |
-| 2 | Tasks 2 → 3, 4, 5, 6 (edge) · Task 7 → 8 → 9 (Hub) · Tasks 10, 11 (CRM) | Three independent streams. Task 7 moves `apps/crm/src/utils/videoFrame.ts` to `packages/ui/video/frame.ts`; Task 10 must not touch that file. |
+| 2 | Tasks 2 → 3 → 4 → 5 → 6 (edge, sequential in ONE worktree: Tasks 3 and 4 both edit `CLAUDE.md`, `supabase/config.toml` and `config-audit_test.ts`) · Task 7 → 8 → 9 (Hub) · Tasks 10, 11 (CRM) | Three independent streams. Task 7 moves `apps/crm/src/utils/videoFrame.ts` to `packages/ui/video/frame.ts`; Task 10 must not touch that file. |
 | 3 | Final verification | All CI gates, browser check of Hub (:5175) and CRM, light and dark. |
+
+Executors: end commit messages with the attribution trailer from YOUR session's reminder, not the literal trailer pasted in this plan. `services/postReferences.ts` deliberately does not retry 429 (unlike `api.ts`); do not add retries.
 
 Each stream works in its own nested worktree branch off this branch (memory: parallel SDD in nested worktrees: node_modules symlinks, `cd` discipline, literal paths).
 
@@ -3867,8 +3869,9 @@ ends with `return json({ error: "Erro ao registrar aprovação." }, 500);` and `
 inside the `else` branch, add:
 
 ```ts
-      // record_client_approval devolve o id da aprovação e segura o lock do post; um
-      // finalize concorrente commitou antes ou dá 409 depois.
+      // record_client_approval já commitou (este UPDATE é outra requisição, sem lock).
+      // É seguro porque o post saiu de enviado_cliente: um finalize atrasado dá 409
+      // (post_not_pending) e nunca cria referência nova depois deste ponto.
       if (referenceIds.length > 0) {
         await linkReferencesToApproval(db, approvalData, referenceIds, post_id, hubToken.conta_id);
       }
@@ -5105,7 +5108,8 @@ describe('postReferences service', () => {
 
   it('normalizes link URLs like the server', () => {
     expect(normalizeReferenceUrl('  exemplo.com/post ')).toBe('https://exemplo.com/post');
-    expect(normalizeReferenceUrl('http://exemplo.com')).toBe('http://exemplo.com');
+    expect(normalizeReferenceUrl('http://exemplo.com')).toBe('http://exemplo.com/');
+    expect(normalizeReferenceUrl('exemplo.com:8080/x')).toBe('https://exemplo.com:8080/x');
     expect(normalizeReferenceUrl('javascript:alert(1)')).toBeNull();
     expect(normalizeReferenceUrl('https://user:pw@exemplo.com')).toBeNull();
     expect(normalizeReferenceUrl('https://exem plo.com')).toBeNull();
@@ -5293,7 +5297,7 @@ function hasControlOrSpace(value: string): boolean {
 export function normalizeReferenceUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed || hasControlOrSpace(trimmed)) return null;
-  const candidate = /^[a-z][a-z\d+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   if (candidate.length > MAX_REFERENCE_URL) return null;
   let url: URL;
   try {
@@ -5303,7 +5307,8 @@ export function normalizeReferenceUrl(raw: string): string | null {
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
   if (url.username || url.password || !url.hostname) return null;
-  return candidate;
+  // Same value the server stores (url.href), so the preview matches the saved link.
+  return url.href;
 }
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -12463,7 +12468,7 @@ Expected: all suites pass, including `99_post_references.sql`.
 
 - [ ] **Step 5: Em-dash sweep**
 
-Run: `git diff origin/main -- apps packages | grep '^+' | grep '—'`
+Run: `git diff origin/main -- apps packages ':(exclude)**/__tests__/**' ':(exclude)**/*.test.ts' ':(exclude)**/*.test.tsx' | grep '^+' | grep '—'`
 Expected: no output (code comments excepted; inspect any hit).
 
 - [ ] **Step 6: Browser verification**
@@ -12478,5 +12483,7 @@ git commit -m "chore(references): integration fixes and docs
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
+
+Rollback (spec): migration is forward-only; keep `'skipped'` in `files_stream_status_check` while reference videos exist; revert `file-manage` last so reference files never reappear at the Arquivos root.
 
 Deploy order (needs user OK, prod is shared): `db push` staging → deploy `hub-post-references`, `post-references` (`--no-verify-jwt`), `hub-approve`, `file-manage` to staging → staging check → same for prod → only then merge (merge deploys the frontend).
