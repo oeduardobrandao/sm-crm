@@ -368,6 +368,7 @@ describe('WorkflowModals', () => {
           },
         ],
         modo_prazo: 'padrao',
+        plataformas: ['instagram'],
       });
     });
 
@@ -426,6 +427,7 @@ describe('WorkflowModals', () => {
           },
         ],
         modo_prazo: 'padrao',
+        plataformas: ['instagram'],
       });
     });
   });

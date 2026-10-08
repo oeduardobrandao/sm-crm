@@ -14,14 +14,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { updateWorkflowPost } from '@/store';
-import type { WorkflowPost } from '@/store/posts';
+import type { PostPlatform, WorkflowPost } from '@/store/posts';
 import { isEligibleToScheduleNow } from '../autoScheduleNudge';
 import { scheduleApprovedPost, scheduleSuccessMessage } from '../scheduleApprovedPost';
 
 export interface AutoSchedulePromptPost {
   id: number;
   titulo: string;
-  platform?: 'instagram' | 'tiktok' | 'both';
+  platform?: PostPlatform;
   scheduled_at: string | null;
 }
 

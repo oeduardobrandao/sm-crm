@@ -50,6 +50,9 @@ export interface FeatureFlags {
   feature_post_processes: boolean;
   /** Agenda de eventos da equipe (spec 2026-10-05). Sem ela o /calendario é a página de antes da Agenda. */
   feature_agenda: boolean;
+  /** Plataformas por fluxo/cliente (spec 2026-09-29-platform-agnostic-posts). Off =
+   *  seletores de plataforma escondidos e todo quadro {instagram}. */
+  feature_multiplatform: boolean;
 }
 
 interface WorkspaceLimitsResponse {

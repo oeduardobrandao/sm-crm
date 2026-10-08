@@ -60,6 +60,7 @@ import {
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { groupOptionsByOwner } from '../statusRegistry';
+import { targetsInstagram as isInstagramPost } from '../platformTargets';
 import { PostVersionHistorySheet } from './PostVersionHistorySheet';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -405,6 +406,7 @@ export function PostEditorBody({
           tiktokFeatureEnabled={features?.feature_tiktok === true}
           hasActiveTikTokAccount={hasActiveTikTokAccount}
           disabled={isScheduleLocked}
+          isExpress={post.is_express === true}
           onChange={(platform) => {
             onFieldChange('platform', platform);
             if (platform === 'tiktok' && post.ig_trial_strategy) {
@@ -516,7 +518,7 @@ export function PostEditorBody({
       <PostMediaGallery
         postId={post.id!}
         forStories={isStoryPost}
-        targetsInstagram={post.platform !== 'tiktok'}
+        targetsInstagram={isInstagramPost(post.platform)}
         adjustmentDisabled={
           post.status === 'agendado' ||
           post.status === 'postado' ||

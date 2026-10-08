@@ -22,7 +22,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { captureEvent } from '@/lib/analytics';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { toast } from 'sonner';
+import type { PlatformId } from '@mesaas/platforms';
 import type { Cliente, Membro, WorkflowTemplate } from '../../../store';
 import type { EtapaFormData } from '../components/SortableEtapaList';
 import { type WorkflowPreset } from './presets';
@@ -57,6 +59,7 @@ export interface WizardState {
   mesEntrega: string;
   saveAsTemplate: boolean;
   templateName: string;
+  plataformas: PlatformId[];
 }
 
 const INITIAL: WizardState = {
@@ -72,6 +75,7 @@ const INITIAL: WizardState = {
   mesEntrega: '',
   saveAsTemplate: false,
   templateName: '',
+  plataformas: ['instagram'],
 };
 
 const STEP_COUNT = 5;
@@ -88,6 +92,7 @@ export function NewWorkflowWizard(props: {
 }) {
   const { open, onClose, clientes, membros, templates, onCreated, initialTemplateId } = props;
   const [s, setS] = useState<WizardState>(INITIAL);
+  const multiplatform = useWorkspaceLimits().features?.feature_multiplatform === true;
   const [cancelConfirm, setCancelConfirm] = useState(false);
   // Step 3's errors surface only after a blocked Continuar, then track edits live so a row
   // stops shouting the moment the user fixes it.
@@ -137,6 +142,9 @@ export function NewWorkflowWizard(props: {
       // Recorrência is a property of the preset; templates and "do zero" leave the user's choice.
       recorrente: preset ? preset.recorrente : s.recorrente,
       nome: s.nomeEdited ? s.nome : sourceNome ? suggestName(sourceNome) : '',
+      // Sem feature_multiplatform o quadro nasce {instagram} mesmo de um template
+      // salvo com outras plataformas (o banco recusaria o INSERT).
+      plataformas: multiplatform ? (tpl?.plataformas ?? s.plataformas) : ['instagram'],
       step: 2,
     });
   };
@@ -194,6 +202,7 @@ export function NewWorkflowWizard(props: {
         templateName: s.templateName,
         cliente,
         membros,
+        plataformas: multiplatform ? s.plataformas : ['instagram'],
       });
       toast.success('Fluxo criado com sucesso!');
       if (result.warning) toast.warning(result.warning);

@@ -1,11 +1,14 @@
 import { useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import type { PlatformId } from '@mesaas/platforms';
 import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
+import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-errors';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Select,
@@ -58,6 +61,13 @@ import {
 } from './SortableEtapaList';
 
 // ---- Edit Workflow Modal ----
+// feature_disabled:feature_multiplatform (quadro {geral} num workspace sem a flag)
+// e demais erros de plano viram texto legível em vez do código do banco.
+function saveErrorMessage(err: unknown): string {
+  const entitlement = mapEntitlementError(err);
+  return entitlement ? entitlementMessage(entitlement) : (err as Error).message || 'Erro';
+}
+
 export function EditWorkflowModal({
   card,
   membros,
@@ -87,6 +97,8 @@ export function EditWorkflowModal({
   const [fTitulo, setFTitulo] = useState(w.titulo);
   const [fClienteId, setFClienteId] = useState(String(w.cliente_id));
   const [fRecorrente, setFRecorrente] = useState(w.recorrente || false);
+  const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(w.plataformas ?? ['instagram']);
+  const showPlataformas = usePlatformChipsVisible(fPlataformas);
   const [fResponsavelId, setFResponsavelId] = useState(String(e.responsavel_id || ''));
   const [fPrazoDias, setFPrazoDias] = useState(String(e.prazo_dias));
   const [fTipoPrazo, setFTipoPrazo] = useState(e.tipo_prazo);
@@ -108,6 +120,7 @@ export function EditWorkflowModal({
         titulo: fTitulo,
         cliente_id: Number(fClienteId),
         recorrente: fRecorrente,
+        plataformas: fPlataformas,
       });
       const etapaUpdate: Parameters<typeof updateWorkflowEtapa>[1] = {
         responsavel_id: fResponsavelId ? Number(fResponsavelId) : null,
@@ -123,7 +136,7 @@ export function EditWorkflowModal({
       onSaved();
       onClose();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro');
+      toast.error(saveErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -215,6 +228,21 @@ export function EditWorkflowModal({
               />
               <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
             </div>
+            {showPlataformas && (
+              <div className="space-y-1">
+                <Label>Plataformas</Label>
+                <PlatformChips
+                  value={fPlataformas}
+                  onChange={(v) => {
+                    setFPlataformas(v);
+                    markDirty();
+                  }}
+                />
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+                  Vale para os próximos posts. Posts já criados mantêm os destinos.
+                </p>
+              </div>
+            )}
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
               <div
                 style={{
@@ -406,6 +434,8 @@ export function TemplatesModal({
   const [deleteTemplateId, setDeleteTemplateId] = useState<number | null>(null);
   const [fNome, setFNome] = useState('');
   const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
+  const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(['instagram']);
+  const showPlataformas = usePlatformChipsVisible(fPlataformas);
   const formTopRef = useRef<HTMLDivElement>(null);
 
   const qc = useQueryClient();
@@ -465,19 +495,26 @@ export function TemplatesModal({
           nome,
           etapas: etapaData,
           modo_prazo: fModoPrazo,
+          plataformas: fPlataformas,
         });
         toast.success('Template atualizado!');
       } else {
-        await addWorkflowTemplate({ nome, etapas: etapaData, modo_prazo: fModoPrazo });
+        await addWorkflowTemplate({
+          nome,
+          etapas: etapaData,
+          modo_prazo: fModoPrazo,
+          plataformas: fPlataformas,
+        });
         toast.success('Template criado!');
       }
       setFNome('');
       setEtapas([defaultEtapa()]);
       setEditingTemplate(null);
       setFModoPrazo('padrao');
+      setFPlataformas(['instagram']);
       onRefresh();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro');
+      toast.error(saveErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -487,6 +524,7 @@ export function TemplatesModal({
     setEditingTemplate(tpl);
     setFNome(tpl.nome);
     setFModoPrazo((tpl.modo_prazo as ModoPrazo) || 'padrao');
+    setFPlataformas(tpl.plataformas ?? ['instagram']);
     setEtapas(
       tpl.etapas.map((e) =>
         defaultEtapa({
@@ -523,6 +561,7 @@ export function TemplatesModal({
             setEtapas([defaultEtapa()]);
             setEditingTemplate(null);
             setFModoPrazo('padrao');
+            setFPlataformas(['instagram']);
             onClose();
           }
         }}
@@ -534,6 +573,7 @@ export function TemplatesModal({
             setEtapas([defaultEtapa()]);
             setEditingTemplate(null);
             setFModoPrazo('padrao');
+            setFPlataformas(['instagram']);
             onClose();
           }}
         >
@@ -616,6 +656,12 @@ export function TemplatesModal({
                     </SelectContent>
                   </Select>
                 </div>
+                {showPlataformas && (
+                  <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                    <Label>Plataformas</Label>
+                    <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
+                  </div>
+                )}
                 <SortableEtapaList
                   etapas={etapas}
                   setEtapas={setEtapas}
@@ -831,6 +877,7 @@ export function TemplatesModal({
                 setEtapas([defaultEtapa()]);
                 setEditingTemplate(null);
                 setFModoPrazo('padrao');
+                setFPlataformas(['instagram']);
                 onClose();
               }}
             >

@@ -43,7 +43,10 @@ describe('CLIENTE_SAFE_COLUMNS — Pendências do Hub (Fase 2)', () => {
     await updateCliente(1, { send_event_email: false });
     expect(mockSelect).toHaveBeenCalledTimes(1);
     const columns = mockSelect.mock.calls[0][0] as string;
-    expect(columns.trim().endsWith('send_event_email, event_email_unsub_at')).toBe(true);
+    // plataformas_padrao (platform-agnostic P1) was appended after these two.
+    expect(
+      columns.trim().endsWith('send_event_email, event_email_unsub_at, plataformas_padrao'),
+    ).toBe(true);
   });
 
   it('never exposes the cron cursor/lease columns (service-role-only)', async () => {

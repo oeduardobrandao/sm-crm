@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import type { SelectedTarget } from '@/pages/automacoes/AutomationFormDialog';
 import { AutomationTargetCell } from '@/pages/automacoes/AutomationTargetCell';
+import { targetsInstagram } from '../platformTargets';
 import {
   getAutomationsForPost,
   type InstagramCommentAutomation,
@@ -69,7 +70,7 @@ export function PostAutomationSection({
   const enabled =
     features?.feature_instagram_automation === true &&
     post.tipo !== 'stories' &&
-    (post.platform ?? 'instagram') !== 'tiktok' &&
+    targetsInstagram(post.platform) &&
     hasInstagramAccount &&
     post.id != null;
 

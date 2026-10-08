@@ -33,6 +33,32 @@ describe('PlatformSelector', () => {
     expect(container.innerHTML).toBe('');
   });
 
+  it('renders nothing and never self-heals for an other (Geral-only) post', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <PlatformSelector value="other" tipo="stories" {...defaultProps} onChange={onChange} />,
+    );
+    expect(container.innerHTML).toBe('');
+    expect(onChange).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('renders nothing and never self-heals for an Express post (always Instagram)', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <PlatformSelector
+        value="tiktok"
+        tipo="stories"
+        isExpress
+        {...defaultProps}
+        onChange={onChange}
+      />,
+    );
+    expect(container.innerHTML).toBe('');
+    expect(onChange).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
   it('renders all three options when the feature is on', () => {
     render(<PlatformSelector value="instagram" tipo="feed" {...defaultProps} />);
     expect(screen.getByText('Instagram')).toBeTruthy();

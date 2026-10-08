@@ -15,6 +15,7 @@ import { sanitizeUrl } from '@/utils/security';
 import type { WorkflowPost } from '../../../store';
 import type { PostMedia } from '../../../store/posts';
 import { getPostPublishState, PLATFORM_LABELS } from '../postLabels';
+import { hasAutoPublishTarget } from '../platformTargets';
 import { validatePostMedia } from '../instagramLimits';
 import { getPublishErrorDisplay } from '../publishErrorCopy';
 import type { Platform } from './PlatformSelector';
@@ -203,6 +204,9 @@ export function ScheduleButton({
   // platform === 'instagram' (the default) reduces this to the original unconditional
   // `if (!hasInstagramAccount) return null;` guard. A TikTok-only post never required an
   // Instagram account and must render regardless.
+  // Post só Geral: nada o publica (validateForScheduling também recusa no servidor).
+  if (!hasAutoPublishTarget(post.platform)) return null;
+
   if (targetsInstagram && !hasInstagramAccount) return null;
 
   const igTokenBlocked =

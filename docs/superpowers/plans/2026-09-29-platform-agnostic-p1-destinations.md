@@ -33,12 +33,28 @@
 4. **Every existing client gets `clientes.plataformas_padrao = '{instagram}'`**, not a value derived from connected accounts. Clients without connected accounts produce Instagram content today, and flipping them to Geral would change their posts avulsos silently.
 5. **TikTok captions are not copied into `post_targets.caption` in P1.** `tiktok_caption` stays the source until P4 moves the TikTok publisher. Destination status stays `pendente` for Instagram/TikTok rows until P4/P5; the per-platform publish state is still read from the legacy columns.
 6. **The `validateForScheduling` guard for `other` is pulled forward from P3.** P1 already creates `other` posts, and without the guard an approved one could be moved to `agendado` with nothing ever claiming it.
+7. **No board backfill.** Every existing board starts at the column default `{instagram}`, including boards that already hold TikTok or `both` posts (user decision in the final P1 review). Those legacy posts keep their TikTok destination through the `post_targets` backfill in migration B, which does not read the board; TikTok is not checked against the board (deviation 2), so the `PlatformSelector` keeps working on them.
+8. **Post Express is always Instagram.** An Express post is an avulso, but it never reads `clientes.plataformas_padrao`: the seed (`post_seed_targets(..., p_is_express)` in `z4b` and the same rule in `z6`) is exactly `{instagram}`, because "Publicar agora" publishes to Instagram. Without this a `{geral}` client made Express posts `other` and a `{tiktok}` client made them TikTok.
+9. **P1 has no dead end into `other`** (the Destinos editor arrives in P2 and `PlatformSelector` hides for `other`):
+   - `a2`: a legacy write of `instagram`, `tiktok` or `both` that would leave the post with neither Instagram nor TikTok (Instagram on a TikTok-only board, TikTok on a stories post) is a no-op: targets stay and `platform` is re-derived from them. An explicit `other` write still removes both (no UI writes it).
+   - `z8` (`AFTER UPDATE OF workflow_id`): a post with no Instagram/TikTok target that changes board (moved, attached, detached) gets the new board's Instagram/TikTok entries (TikTok never on stories) and `platform` is re-derived. A move never removes destinations.
+   - `post_targets_sync_platform` also fires on `UPDATE OF post_id` and re-derives both the old and the new post.
+10. **Review fixes outside the original task list.** Migration `20261010100004_move_new_flow_platforms.sql` copies `move_posts_to_new_flow` forward so the new board inherits the source's `plataformas` (it defaulted to `{instagram}`, and `z8` then gave Geral posts an Instagram destination). `a2` also ignores legacy `platform` writes on Express posts, and `PlatformSelector` hides for them (sections 10 and 11 of `99_post_targets.sql`).
+11. **Feature flag `feature_multiplatform` (added 2026-10-08 on request).** P1 ships dark, the same way `feature_agenda` did.
+   - Migration `20261010100007_feature_multiplatform.sql` adds `plans.feature_multiplatform boolean NOT NULL DEFAULT false` and an `a0` BEFORE INSERT/UPDATE trigger on `workflows.plataformas`, `workflow_templates.plataformas` and `clientes.plataformas_padrao`. Without the flag (`effective_plan_feature`) any value other than `{instagram}` raises `feature_disabled:feature_multiplatform`. An UPDATE is checked only when the column's value changes. A copy (`duplicate_workflow`, `move_posts_to_new_flow`) of a non-`{instagram}` board in a workspace that lost the flag raises too; accepted for the pilot.
+   - Flag off: every board is `{instagram}`, so the `post_targets` triggers behave as before P1 and the per-post `PlatformSelector` (TikTok) keeps working through `a2`.
+   - CRM: `usePlatformChipsVisible(value)` gates the field in the wizard, Editar fluxo, Templates and Editar cliente. Hidden without the flag unless the value is already not `{instagram}` (so a workspace that lost the flag can go back). The wizard ignores a template's `plataformas` and creates `{instagram}` without the flag.
+   - Registered in `FEATURE_COLUMNS`, the Admin `api.ts` mirror (type, keys, label "Plataformas por fluxo"), `useWorkspaceLimits` and `entitlement-errors.ts`. Section 14 of `99_post_targets.sql` covers the flag off; sections 1-13 turn it on inside their own transaction.
+   - Enable per workspace: Admin override `{"feature_multiplatform": true}`. Launch = turn the plan columns on.
+   - Not flagged: the Express pin (deviation 8) and P0's neutral format labels (#605).
 
 ## Global Constraints
 
 - **Branch:** a new branch off fresh `origin/main` after P0 is merged: `claude/platform-agnostic-p1`. Run `git fetch origin main && git checkout -b claude/platform-agnostic-p1 origin/main`.
 - **Migration versions:**
-  - Use `20260929100001`, `20260929100002` and `20260929100003`.
+  - Use `20261010100001`, `20261010100002`, `20261010100003` and `20261010100004` (the last one added in review, deviation 10).
+  - Renumbered on 2026-10-05 from `20260929100001..4` to sit above main's tail (`20261004000001`). `20261010100005` (`duplicate_workflow` keeps `plataformas`) and `20261010100006` (`_clone_post_row` keeps the source post's destinations) were added in the same rebase sync.
+  - Renumbered again on 2026-10-08 from `20261005100001..6` to `20261010100001..6` (`20261010100007`, the flag, was added the same day), above main's tail at the time (`20261009000002`). None of main's migrations from `20261003000001` to `20261009000002` touch the objects P1 copies forward.
   - Before `gh pr create`, run `ls supabase/migrations | tail -5`. If main has anything at or above these numbers, renumber above main's tail. Every version prefix must be unique.
 - **Allowed values:**
   - Platform ids stored in SQL: exactly `'instagram'`, `'tiktok'`, `'geral'` (the registry's `PLATFORM_IDS`).
@@ -52,6 +68,7 @@
   - the column-level `GRANT SELECT (…)` (re-declared in full);
   - `clientes_v`, appended **last**;
   - `CLIENTE_SAFE_COLUMNS` in `apps/crm/src/store/clients.ts`.
+- **Migrations A and B start with `SET LOCAL lock_timeout = '5s';`** (they take ACCESS EXCLUSIVE on `workflows`, `clientes` and `workflow_posts`). The Supabase CLI runs each migration file in its own transaction, so it lasts until the end of the file (checked empirically on `db reset`).
 - No em dashes in new user-facing copy.
 - **Gates before pushing:**
   - `npm run lint`, `npm run format:check`
@@ -70,7 +87,7 @@
 ### Task 1: Migration A: `plataformas` on workflows, templates and clientes
 
 **Files:**
-- Create: `supabase/migrations/20260929100001_board_platforms.sql`
+- Create: `supabase/migrations/20261010100001_board_platforms.sql`
 - Test: `supabase/tests/entitlements/99_post_targets.sql` (created here, extended in Tasks 2-3)
 
 **Interfaces:**
@@ -88,7 +105,7 @@ Create `supabase/tests/entitlements/99_post_targets.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Plataformas por quadro + post_targets (migrations 20260929100001..3).
+-- Plataformas por quadro + post_targets (migrations 20261010100001..3).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 
 -- 1. Colunas plataformas: default, CHECK e allowlist de clientes
@@ -150,7 +167,7 @@ Expected: FAIL with `column "plataformas" does not exist`.
 
 - [ ] **Step 3: Write the migration**
 
-`supabase/migrations/20260929100001_board_platforms.sql`:
+`supabase/migrations/20261010100001_board_platforms.sql`:
 
 ```sql
 -- ============================================================
@@ -159,6 +176,11 @@ Expected: FAIL with `column "plataformas" does not exist`.
 -- Ids válidos = PLATFORM_IDS de supabase/functions/_shared/platform-registry.ts.
 -- Plataforma nova = ampliar os três CHECKs abaixo e o de post_targets.platform.
 -- ============================================================
+
+-- ACCESS EXCLUSIVE em tabelas quentes (workflows, clientes): desiste em 5s em
+-- vez de enfileirar todo o tráfego atrás do ALTER. Cada arquivo roda numa
+-- transação no supabase CLI, então SET LOCAL vale até o fim deste arquivo.
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.workflows
   ADD COLUMN IF NOT EXISTS plataformas text[] NOT NULL DEFAULT '{instagram}';
@@ -183,14 +205,9 @@ ALTER TABLE public.clientes
   CHECK (cardinality(plataformas_padrao) >= 1
          AND plataformas_padrao <@ ARRAY['instagram','tiktok','geral']::text[]);
 
--- Quadros que já têm post TikTok passam a declarar TikTok. Sem evento de
--- workflow: é backfill, não edição de usuário.
-SELECT set_config('app.suppress_workflow_events', '1', true);
-UPDATE public.workflows w
-   SET plataformas = ARRAY['instagram','tiktok']
- WHERE EXISTS (SELECT 1 FROM public.workflow_posts wp
-                WHERE wp.workflow_id = w.id AND wp.platform IN ('tiktok','both'));
-SELECT set_config('app.suppress_workflow_events', '', true);
+-- Sem backfill de quadros: todo quadro começa no default {instagram} (desvio 7
+-- do plano). Post legado de TikTok mantém o destino TikTok pelo backfill de
+-- post_targets (20261010100002), que não depende do quadro.
 
 -- ---------- allowlist de SELECT de clientes (trio da armadilha 20260728000002)
 -- Lista INTEIRA copiada de 20260904000001:23-28 (a mais recente) + plataformas_padrao.
@@ -234,7 +251,7 @@ Expected: `ROLLBACK`, with no assertion errors.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260929100001_board_platforms.sql supabase/tests/entitlements/99_post_targets.sql
+git add supabase/migrations/20261010100001_board_platforms.sql supabase/tests/entitlements/99_post_targets.sql
 git commit -m "feat(db): plataformas em fluxos, templates e clientes"
 ```
 
@@ -242,16 +259,18 @@ git commit -m "feat(db): plataformas em fluxos, templates e clientes"
 
 ### Task 2: Migration B: `post_targets`, backfill, triggers, `other`
 
+> The SQL blocks below predate deviations 8 and 9 (Express, `a2` no-op, `z8`, sync on `post_id`, `lock_timeout`). `supabase/migrations/20261010100002_post_targets.sql` and sections 6-9 of `99_post_targets.sql` are the source of truth.
+
 **Files:**
-- Create: `supabase/migrations/20260929100002_post_targets.sql`
+- Create: `supabase/migrations/20261010100002_post_targets.sql`
 - Modify: `supabase/tests/entitlements/99_post_targets.sql` (append sections 2-4)
 
 **Interfaces:**
 - Consumes: the `plataformas` columns from Task 1.
 - Produces:
   - Table `public.post_targets`, unique on `(post_id, platform)` and FK `(post_id, conta_id) → workflow_posts(id, conta_id) ON DELETE CASCADE`.
-  - Helpers `post_board_platforms(workflow_id, cliente_id)`, `platform_from_targets(text[])`, `derive_post_platform(post_id)` and `post_seed_targets(workflow_id, cliente_id, platform, tipo)`.
-  - Triggers `workflow_posts_z4b_platform_on_insert` (BEFORE INSERT), `workflow_posts_z6_seed_targets` (AFTER INSERT), `workflow_posts_a2_platform_to_targets` (BEFORE UPDATE OF platform), `workflow_posts_z7_stories_drop_tiktok` (AFTER UPDATE OF tipo) and `post_targets_sync_platform` (on `post_targets`).
+  - Helpers `post_board_platforms(workflow_id, cliente_id)`, `platform_from_targets(text[])`, `derive_post_platform(post_id)` and `post_seed_targets(workflow_id, cliente_id, platform, tipo, is_express)`.
+  - Triggers `workflow_posts_z4b_platform_on_insert` (BEFORE INSERT), `workflow_posts_z6_seed_targets` (AFTER INSERT), `workflow_posts_a2_platform_to_targets` (BEFORE UPDATE OF platform), `workflow_posts_z7_stories_drop_tiktok` (AFTER UPDATE OF tipo), `workflow_posts_z8_board_move_seed_targets` (AFTER UPDATE OF workflow_id, deviation 9) and `post_targets_sync_platform` (on `post_targets`, INSERT/DELETE/UPDATE OF platform, post_id).
   - `workflow_posts.platform` CHECK widened to include `'other'`.
 - Behaviour contract that later tasks and phases rely on:
   - **Insert.** A post gets one target per board platform. The board is `workflows.plataformas`, or `clientes.plataformas_padrao` when `workflow_id IS NULL`.
@@ -264,7 +283,10 @@ git commit -m "feat(db): plataformas em fluxos, templates e clientes"
     - Instagram is only added when the board lists Instagram (or the post already has it).
     - TikTok is never added to a `stories` post.
     - The stored `platform` is whatever the resulting targets derive to.
+    - A requested `instagram`/`tiktok`/`both` that would leave neither Instagram nor TikTok is a no-op (deviation 9).
     - An out-of-domain value is left for the CHECK to reject.
+  - **Express.** `is_express` posts are seeded with exactly `{instagram}` (deviation 8).
+  - **Board change.** A post with no Instagram/TikTok target that changes `workflow_id` gains the new board's Instagram/TikTok entries (deviation 9).
 
 - [ ] **Step 1: Append failing tests (sections 2-4)**
 
@@ -512,7 +534,7 @@ Run the file. Expected: FAIL in section 2 with `relation "post_targets" does not
 
 - [ ] **Step 2: Write the migration**
 
-`supabase/migrations/20260929100002_post_targets.sql`:
+`supabase/migrations/20261010100002_post_targets.sql`:
 
 ```sql
 -- ============================================================
@@ -854,7 +876,7 @@ If `30_ig_trial_strategy.sql` or `tiktok_publishing_rpcs.sql` now fail, read the
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260929100002_post_targets.sql supabase/tests/entitlements/99_post_targets.sql
+git add supabase/migrations/20261010100002_post_targets.sql supabase/tests/entitlements/99_post_targets.sql
 git commit -m "feat(db): post_targets com seed pelo quadro e platform derivado (other)"
 ```
 
@@ -863,7 +885,7 @@ git commit -m "feat(db): post_targets com seed pelo quadro e platform derivado (
 ### Task 3: Migration C: Instagram automations only accept Instagram posts
 
 **Files:**
-- Create: `supabase/migrations/20260929100003_ica_platform_predicates.sql`
+- Create: `supabase/migrations/20261010100003_ica_platform_predicates.sql`
 - Modify: `supabase/tests/entitlements/99_post_targets.sql` (append section 5)
 
 **Interfaces:**
@@ -884,7 +906,7 @@ Run the file. Expected: FAIL on section 5, because the resolver accepts the `oth
 
 - [ ] **Step 2: Write the copy-forward migration**
 
-`supabase/migrations/20260929100003_ica_platform_predicates.sql`. It has a header comment and four `CREATE OR REPLACE FUNCTION` blocks, each copied **verbatim** from its latest definition with only the predicate lines changed:
+`supabase/migrations/20261010100003_ica_platform_predicates.sql`. It has a header comment and four `CREATE OR REPLACE FUNCTION` blocks, each copied **verbatim** from its latest definition with only the predicate lines changed:
 
 | Function | Copy from | Change |
 |---|---|---|
@@ -931,7 +953,7 @@ Expected: all PASS, including suites 65, 66 and 99. Suite 66 section 3 (the TikT
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260929100003_ica_platform_predicates.sql supabase/tests/entitlements/
+git add supabase/migrations/20261010100003_ica_platform_predicates.sql supabase/tests/entitlements/
 git commit -m "fix(db): automações de comentário só aceitam post de Instagram (platform other)"
 ```
 
@@ -1093,7 +1115,7 @@ export function hasAutoPublishTarget(p: PostPlatform | null | undefined): boolea
 `apps/crm/src/store/posts.ts`, around lines 86-89:
 
 ```ts
-/** Derivado de post_targets pelo banco (migration 20260929100002):
+/** Derivado de post_targets pelo banco (migration 20261010100002):
  *  instagram+tiktok -> both; 'other' = nenhum destino Instagram/TikTok (ex.: só Geral).
  *  'stories' nunca tem destino TikTok. */
 export type PostPlatform = 'instagram' | 'tiktok' | 'both' | 'other';
