@@ -55,6 +55,9 @@ function codeOf(err: unknown): ReferenceErrorCode {
  * The post's references and every write the Hub makes to them. Called once per post card
  * (PostDetailContent) and passed down to the Referências tab, the correction composer, the
  * history tiles and the footer. Uploads run two at a time; unmounting aborts them.
+ *
+ * Per-post state (queue, uploads, refs) lives in this instance, so the host must remount it when
+ * the post changes: PostDetailDialog does, through `<CardSlot key={post.id}>`.
  */
 export function usePostReferences(token: string, postId: number) {
   const qc = useQueryClient();
@@ -70,6 +73,8 @@ export function usePostReferences(token: string, postId: number) {
   const [freshIds, setFreshIds] = useState<number[]>([]);
   const files = useRef(new Map<string, File>());
   const controllers = useRef(new Map<string, AbortController>());
+  /** Cancelled while running: the entry stays (and counts as in flight) until the call settles. */
+  const cancelled = useRef(new Set<string>());
   const queue = useRef<Job[]>([]);
   const active = useRef(0);
   const mounted = useRef(true);
@@ -94,6 +99,7 @@ export function usePostReferences(token: string, postId: number) {
   const dropUpload = useCallback((localId: string) => {
     files.current.delete(localId);
     controllers.current.delete(localId);
+    cancelled.current.delete(localId);
     if (mounted.current) setUploads((list) => list.filter((u) => u.localId !== localId));
   }, []);
 
@@ -142,12 +148,17 @@ export function usePostReferences(token: string, postId: number) {
             if (mounted.current) setFreshIds((ids) => [...ids, item.id]);
             appendItem(item);
             dropUpload(job.localId);
-            job.onUploaded?.(item);
-            job.settle(item);
+            try {
+              job.onUploaded?.(item);
+            } catch {
+              // A throwing consumer callback must not strand the startUploads promise.
+            } finally {
+              job.settle(item);
+            }
           },
           (err: unknown) => {
             controllers.current.delete(job.localId);
-            if (isAbortError(err)) {
+            if (isAbortError(err) || cancelled.current.has(job.localId)) {
               dropUpload(job.localId);
             } else {
               const code = codeOf(err);
@@ -206,10 +217,21 @@ export function usePostReferences(token: string, postId: number) {
 
   const cancelUpload = useCallback(
     (localId: string) => {
-      controllers.current.get(localId)?.abort();
       const queued = queue.current.findIndex((j) => j.localId === localId);
-      if (queued >= 0) queue.current.splice(queued, 1)[0].settle(null);
-      dropUpload(localId);
+      if (queued >= 0) {
+        queue.current.splice(queued, 1)[0].settle(null);
+        dropUpload(localId);
+        return;
+      }
+      const controller = controllers.current.get(localId);
+      if (controller) {
+        // Running: the finalize step is not abortable (an item may still land), so the entry
+        // stays, counted in flight, until the call settles. Approve/send stay disabled meanwhile.
+        cancelled.current.add(localId);
+        controller.abort();
+        return;
+      }
+      dropUpload(localId); // dismissing an error entry
     },
     [dropUpload],
   );
@@ -217,7 +239,9 @@ export function usePostReferences(token: string, postId: number) {
   const retryUpload = useCallback(
     (localId: string) => {
       const file = files.current.get(localId);
-      if (!file) return;
+      // Only an error entry retries: a running or queued one would upload twice.
+      if (!file || controllers.current.has(localId)) return;
+      if (queue.current.some((j) => j.localId === localId)) return;
       patchUpload(localId, { status: 'uploading', error: undefined, loaded: 0 });
       queue.current.push({ localId, file, settle: () => undefined });
       pump.current();

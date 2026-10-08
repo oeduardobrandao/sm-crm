@@ -172,6 +172,97 @@ describe('usePostReferences', () => {
     await expect(all).resolves.toEqual([]);
   });
 
+  it('keeps a cancelled upload in flight until its finalize settles, then keeps the item', async () => {
+    const { result } = setup({ can_add: true, items: [] });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    const d = deferred<ReferenceItem>();
+    let signal!: AbortSignal;
+    // Finalize is not abortable: the service ignores the signal and resolves with the item.
+    svc.uploadPostReference.mockImplementation(
+      (_t: string, _p: number, _f: File, opts: { signal: AbortSignal }) => {
+        signal = opts.signal;
+        return d.promise;
+      },
+    );
+    let all!: Promise<ReferenceItem[]>;
+    act(() => {
+      all = result.current.startUploads([file('a.jpg')]);
+    });
+    await act(async () => result.current.cancelUpload(result.current.uploads[0].localId));
+    expect(signal.aborted).toBe(true);
+    expect(result.current.uploads).toHaveLength(1);
+    expect(result.current.uploadsInFlight).toBe(true);
+
+    await act(async () => d.resolve(item(21)));
+    await expect(all).resolves.toEqual([item(21)]);
+    await waitFor(() => expect(result.current.items.map((i) => i.id)).toEqual([21]));
+    expect(result.current.uploads).toEqual([]);
+    expect(result.current.uploadsInFlight).toBe(false);
+  });
+
+  it('drops a cancelled upload whose call fails after the cancel', async () => {
+    const { result } = setup({ can_add: true, items: [] });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    const d = deferred<ReferenceItem>();
+    svc.uploadPostReference.mockImplementation(() => d.promise);
+    let all!: Promise<ReferenceItem[]>;
+    act(() => {
+      all = result.current.startUploads([file('a.jpg')]);
+    });
+    await act(async () => result.current.cancelUpload(result.current.uploads[0].localId));
+    await act(async () => d.reject(new PostReferenceError('internal')));
+    await expect(all).resolves.toEqual([]);
+    expect(result.current.uploads).toEqual([]);
+  });
+
+  it('cancels a queued upload without ever starting it', async () => {
+    const { result } = setup({ can_add: true, items: [] });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    svc.uploadPostReference.mockReturnValue(new Promise(() => {}));
+    let all!: Promise<ReferenceItem[]>;
+    act(() => {
+      all = result.current.startUploads([file('a.jpg'), file('b.jpg'), file('c.jpg')]);
+    });
+    expect(svc.uploadPostReference).toHaveBeenCalledTimes(2);
+    await act(async () => result.current.cancelUpload(result.current.uploads[2].localId));
+    expect(result.current.uploads.map((u) => u.name)).toEqual(['a.jpg', 'b.jpg']);
+    expect(svc.uploadPostReference).toHaveBeenCalledTimes(2);
+    void all;
+  });
+
+  it('still settles startUploads when onUploaded throws', async () => {
+    const { result } = setup({ can_add: true, items: [] });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    svc.uploadPostReference.mockResolvedValue(item(31));
+    const onUploaded = vi.fn(() => {
+      throw new Error('consumer bug');
+    });
+    let out: ReferenceItem[] = [];
+    await act(async () => {
+      out = await result.current.startUploads([file('a.jpg')], { onUploaded });
+    });
+    expect(onUploaded).toHaveBeenCalledTimes(1);
+    expect(out).toEqual([item(31)]);
+    expect(result.current.uploads).toEqual([]);
+  });
+
+  it('ignores retryUpload while the entry is uploading or queued', async () => {
+    const { result } = setup({ can_add: true, items: [] });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    svc.uploadPostReference.mockReturnValue(new Promise(() => {}));
+    act(() => {
+      void result.current.startUploads([file('a.jpg'), file('b.jpg'), file('c.jpg')]);
+    });
+    expect(svc.uploadPostReference).toHaveBeenCalledTimes(2);
+    const [running, , queued] = result.current.uploads;
+    act(() => {
+      result.current.retryUpload(running.localId);
+      result.current.retryUpload(queued.localId);
+    });
+    expect(svc.uploadPostReference).toHaveBeenCalledTimes(2);
+    expect(result.current.uploads).toHaveLength(3);
+  });
+
   it('keeps a failed upload as an error entry and retries it with a fresh call', async () => {
     const { result } = setup({ can_add: true, items: [] });
     await waitFor(() => expect(result.current.data).toBeDefined());
