@@ -58,7 +58,11 @@ vi.mock('../../../../lib/supabase', () => ({
 
 // Fail-open by default, overridden per test — mirrors
 // pages/cliente-detalhe/__tests__/HubTab.test.tsx's convention.
-let mockEntitlements: { hasFeature: (flag: string) => boolean; isLoading: boolean } = {
+let mockEntitlements: {
+  hasFeature: (f: string) => boolean;
+  isLoading: boolean;
+  features?: Record<string, boolean>;
+} = {
   hasFeature: () => true,
   isLoading: false,
 };
@@ -69,8 +73,10 @@ vi.mock('../../../../hooks/useEntitlements', () => ({
 // The preview is a pure function of the draft state and is pinned by its own
 // HubPreview.test.tsx — stubbed here so HubTab's own tests stay about the form.
 vi.mock('../../HubPreview', () => ({
-  HubPreview: ({ draft }: { draft: { brandColor: string } }) => (
-    <div data-testid="hub-preview-stub">{draft.brandColor}</div>
+  HubPreview: ({ draft, look }: { draft: { brandColor: string }; look?: string }) => (
+    <div data-testid="hub-preview-stub" data-look={look}>
+      {draft.brandColor}
+    </div>
   ),
   HUB_DISPLAY_FONTS: {
     fraunces: { label: 'Fraunces', css: 'serif', gf: 'Fraunces' },
@@ -384,6 +390,30 @@ describe('HubTab — Personalizar Hub', () => {
     expect(screen.getByText('Cantos')).toBeInTheDocument();
     expect(screen.getByText('Estilo de cards')).toBeInTheDocument();
     expect(screen.getByText(/ocultar "powered by mesaas"/i)).toBeInTheDocument();
+  });
+
+  it('shows Assinatura first and previews Pauta with the flag', async () => {
+    mockEntitlements = {
+      hasFeature: () => true,
+      isLoading: false,
+      features: { feature_brand_customization: true, feature_hub_pauta: true },
+    };
+    renderTab();
+    const group = await screen.findByRole('group', { name: 'Combinações de fontes sugeridas' });
+    expect(within(group).getAllByRole('button')[0]).toHaveTextContent('Assinatura');
+    expect(screen.getByTestId('hub-preview-stub')).toHaveAttribute('data-look', 'pauta');
+  });
+
+  it('treats a missing feature_hub_pauta key as off', async () => {
+    mockEntitlements = {
+      hasFeature: () => true,
+      isLoading: false,
+      features: { feature_brand_customization: true },
+    };
+    renderTab();
+    await screen.findByRole('group', { name: 'Combinações de fontes sugeridas' });
+    expect(screen.queryByRole('button', { name: /assinatura/i })).toBeNull();
+    expect(screen.getByTestId('hub-preview-stub')).toHaveAttribute('data-look', 'classic');
   });
 
   it('the surface theme picker is an accessible group', async () => {
