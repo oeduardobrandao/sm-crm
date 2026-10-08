@@ -36,7 +36,7 @@ Each item cites the guideline it satisfies. Copy is pt-BR with no em dashes.
 
 Today `onCompletenessChange(complete: boolean)` is a bare boolean (`TikTokSettingsPanel.tsx:144`, `PostEditorBody.tsx:247`, `ScheduleButton.tsx:158-163`). The disabled button carries a fixed `title`.
 
-The new contract is `onCompletenessChange({ complete: boolean; reason?: string })`:
+The new contract is `onReadinessChange({ complete: boolean; reason?: string })`, computed by a pure module (`apps/crm/src/pages/entregas/tiktokComposerRules.ts`, `computeTikTokReadiness`):
 
 ```
 complete = !loading && !loadError && canPost && privacyChosen
@@ -49,8 +49,19 @@ complete = !loading && !loadError && canPost && privacyChosen
   - If the query fails, `reason` is "Não foi possível carregar as mídias. Reabra o post." A failed query is never treated as "no media".
   - The panel receives `media: PostMedia[] | undefined` plus `mediaError: boolean`.
 
-- `reason` is the first failing rule's pt-BR sentence, taken from the items below.
-- `ScheduleButton` shows `reason` in its "Falta:" line.
+- `PostEditorBody` destructures `{ data: postMedia, isError: postMediaError }` and passes `media={postMedia}` (never `?? []`) and `mediaError={postMediaError}`.
+- `canPost = creatorInfo.can_post !== false && !(creatorInfo.app_audited === false && privacy_level_options includes 'PUBLIC_TO_EVERYONE')`. When both fail, the A6 sentence wins (the account cannot post at all).
+- Rules are evaluated in this order; `reason` is the first failing rule's sentence:
+  1. `loading`: "Carregando informações do criador no TikTok…"
+  2. `loadError`: the panel's existing error message
+  3. `can_post === false`: the A6 sentence
+  4. unaudited + public account: the A7 sentence
+  5. media query failed: "Não foi possível carregar as mídias. Reabra o post."
+  6. media loading: "Carregando mídias do post…"
+  7. no media / lost media: the A4 sentences
+  8. no privacy: "Escolha a privacidade do post no TikTok."
+  9. disclosure incomplete (A1), branded + private (A2), duration (A5)
+- `ScheduleButton` gains `tiktokIncompleteReason?: string` (kept alongside `tiktokSettingsComplete` and `tiktokIncompleteTooltip`, so `PublicacoesPanel` is unchanged). The reason replaces the `'configurações do TikTok'` fragment in the "Falta:" list, with its first letter lowercased and its final period dropped.
 - `loading`/`loadError` now block. The guideline requires the latest creator info, and today a failed creator_info call does not block (`TikTokSettingsPanel.tsx:225-231`).
 - `musicConfirmed` leaves the formula (A3).
 - The `PostEditorBody.tsx:242-246` comment that mentions the ephemeral music confirmation is rewritten.
@@ -105,6 +116,7 @@ complete = !loading && !loadError && canPost && privacyChosen
 - "Conteúdo de marca" is disabled, suffixed "(disponível após a aprovação do app)".
 - This avoids a dead end. Otherwise ticking it first would disable `SELF_ONLY`, while A7 already disables everything else.
 - A legacy conflict row shows the same A2 inline error.
+- In both modes, an already-checked "Conteúdo de marca" checkbox stays uncheckable even when its disabled rule applies, so a legacy conflict row can always be cleared.
 
 **Server, defense in depth:** `validatePrivacyLevel` (`_shared/tiktok-publish-utils.ts`) rejects `brand_content_toggle && privacy_level === 'SELF_ONLY'` with "A visibilidade de conteúdo de marca não pode ser privada."
 
@@ -132,7 +144,8 @@ complete = !loading && !loadError && canPost && privacyChosen
 - `ScheduleButton` passes `post.tiktok_settings?.brand_content_toggle`.
 - `AutoSchedulePromptPost` gains an optional `tiktok_settings`, filled where the caller's post object has it.
 - The batch dialog uses the branded variant if any selected TikTok post has `brand_content_toggle` or has no settings.
-- `PublicacoesPanel` is left as is: it mounts `ScheduleButton` with `tiktokSettingsComplete={false}` (`PublicacoesPanel.tsx:114-115`), so TikTok posts never publish from there. Its declaration gets `undefined`.
+- In `ScheduleButton` the declaration renders only while the TikTok gate is open (the post targets TikTok and `tiktokSettingsComplete` is true), i.e. only when a click actually sends. Blocked states show the "Falta:" line instead, as in the mockups.
+- `PublicacoesPanel` is left as is: it mounts `ScheduleButton` with `tiktokSettingsComplete={false}` (`PublicacoesPanel.tsx:114-115`), so TikTok posts never publish from there and no declaration renders.
 
 **Hub approval:** it schedules without any of these surfaces.
 - `hub-approve` validates only Instagram (`hub-approve/handler.ts:277`).
@@ -159,7 +172,7 @@ Blocking states (`mediaLost`):
 **Guideline:** check the video against `max_video_post_duration_sec`.
 
 - For video posts, the check fails if any video's `duration_seconds` exceeds the limit (`durationExceeded`):
-  - inline error: "Este vídeo tem {X}s. O máximo permitido para esta conta é {Y}s."
+  - inline error: "Este vídeo tem {X}s. O máximo permitido para esta conta é {Y}s." (the same sentence A10 rule 4 stores)
   - the panel is incomplete
 - A null `duration_seconds` (legacy upload) doesn't block the UI.
 - The authoritative check is A10, because Hub approval and the auto-schedule dialogs never mount the panel.
@@ -188,6 +201,7 @@ Blocking states (`mediaLost`):
 **pt-BR map.** It lives in one runtime-neutral module, `supabase/functions/_shared/tiktok-messages.ts`: pure data and functions, no Deno or npm imports.
 - The CRM imports it through a `@mesaas/tiktok-messages` alias wired exactly like `@mesaas/platforms` (`apps/crm/vite.config.ts:21`, `apps/crm/tsconfig.json:13`, `vitest.config.ts:17`).
 - The edge functions import it relatively.
+- Besides the code map it exports every sentence shared by client and server, so each has exactly one source: `TIKTOK_MSG.privacyMissing`, `privacyMismatch`, `brandedPrivate` (A2 panel and `validatePrivacyLevel`), `mediaLost` and `mediaMissing` (A4 and A10), `publicAccountInTestMode` (A7) and `durationExceeded(x, y)` (A5 and A10).
 
 The map:
 
@@ -201,7 +215,7 @@ The map:
 | `url_ownership_unverified` | O TikTok não reconheceu o endereço da mídia. Fale com o suporte. |
 
 **Publish failures:**
-- When these codes come from publish init, the stored `tiktok_publish_error` is the pt-BR sentence, not TikTok's raw English. This covers the cron init catch (`tiktok-publish-cron/core.ts:242`) and the publish-now init.
+- When these codes come from publish init, the stored `tiktok_publish_error` is the pt-BR sentence, not TikTok's raw English. This covers the cron init catch (`tiktok-publish-cron/core.ts:242`) and the publish-now catch (see A10, Publish-now).
 - **All of them fail non-retryably** (`retry_count = 3`). The init catch passes `{ failReason: err.code }` when `err instanceof TikTokApiError`, which today it doesn't, so `spam_risk_*` is retried 3 times. The code joins the non-retryable path of `markTikTokPublishFailed`.
 - The retry claim has no backoff. The cron runs every minute, so retrying a daily cap would burn 3 retries in about 3 minutes.
 - Manual "Tentar novamente" still works later. The retry route resets `tiktok_publish_status` to NULL (`tiktok-publish/handler.ts:325-329`), and the init claim does not filter on `retry_count`.
@@ -216,14 +230,14 @@ The map:
   - Every option other than `SELF_ONLY` stays listed but disabled, suffixed "(disponível após a aprovação do app)". The dropdown still mirrors `privacy_level_options`, still with no default.
   - "Conteúdo de marca" is disabled (A2).
   - If `privacy_level_options` includes `PUBLIC_TO_EVERYONE`, the account is public and unaudited posting will fail. TikTok only offers that option to public accounts. Show a blocking warning that is also the A0 `reason` (`canPost` false): "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e reabra o post."
-- The reactive 422 path in `ScheduleButton` stays as a fallback for stale clients.
+- The reactive 422 path in `ScheduleButton` stays as a fallback for stale clients. The banner renders when `creatorInfo?.app_audited === false || showTestModeBanner`; the prop and `onTikTokUnaudited` stay.
 
 ### A8. "May take a few minutes" notice
 
 **Guideline:** tell users the content may take a few minutes to appear on the profile.
 
 - After a successful TikTok publish-now, whether the result is `published` or `processing`, the toast reads: "Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil."
-- While the TikTok state is `initiated` or `processing`, `PlatformStatusRow` shows: "Processando no TikTok. Pode levar alguns minutos."
+- While the TikTok state is `initiated` or `processing`, `PlatformStatusRow` (the chip row inside `ScheduleButton.tsx:95-128`) shows a `text-xs` line under the chips: "Processando no TikTok. Pode levar alguns minutos."
 
 ### A9. Already compliant (no change, re-verified 2026-10-08)
 
@@ -240,13 +254,13 @@ The map:
 
 ### A10. Pre-init creator check (server, authoritative)
 
-One shared helper, `checkCreatorBeforeInit` (`_shared/tiktok-publish-utils.ts`), calls creator_info with the token already held, right before `/post/publish/.../init/`.
+A new `_shared/tiktok-precheck.ts` holds `fetchCreatorCheck(tiktokFetch, token)` (creator_info with the token already held, right before `/post/publish/.../init/`), `fetchPrecheckMedia(svc, postId)` and the pure `evaluateTikTokPrecheck({ tipo, settings, media, creator })`.
 
 Where it runs:
 - **Cron `init` phase:** once per account per run. The cron already groups by account (`tiktok-publish-cron/core.ts:172-192`, `MAX_INIT_PER_ACCOUNT = 5`). The one response is applied to each of that account's posts.
-- **Publish-now:** once, in `tiktok-publish/handler.ts`.
+- **Publish-now:** once, inside the claimed `try` in `tiktok-publish/handler.ts`, after the token is fetched and before media URLs are built. It reuses `validation.media` (the validator now selects `media_lost_at`) instead of `fetchPrecheckMedia`. A failure throws a `TikTokUserFacingError(message)`. The existing catch (`:497-535`) gains one branch: for that error, or a `TikTokApiError` whose code is in the A6 map, it stores the pt-BR sentence, sets `tiktok_publish_retry_count = 3`, keeps its own `record_post_status_change` (`workspace_user` + actor), and returns **422 `{ error: <sentence> }`**, which `ScheduleButton` toasts. All other errors keep today's `+1` and generic 500.
 
-**Media contract.** `checkCreatorBeforeInit` runs its own query:
+**Media contract.** In the cron, `fetchPrecheckMedia` runs its own query:
 
 ```
 post_file_links → files!inner(kind, duration_seconds, media_lost_at)
@@ -255,17 +269,19 @@ post_file_links → files!inner(kind, duration_seconds, media_lost_at)
 
 The cron's existing `fetchPostMedia()` (`_shared/instagram-publish-utils.ts:345`) selects neither `duration_seconds` nor `media_lost_at`, and stays as it is. The scheduling validator (`validateForTikTokScheduling`) also adds `media_lost_at` to its select and rejects lost media.
 
-Rules, in order. Every failure goes through `markTikTokPublishFailed`, **non-retryably**, with the pt-BR message:
+Rules, in order. In the cron every failure goes through `markTikTokPublishFailed(..., { nonRetryable: true })` with the pt-BR message; publish-now uses its own catch (above):
 
 1. **`privacy_level` missing** in `tiktok_settings`, as with a Hub-approved post whose agency never opened the panel: "Configurações do TikTok incompletas. Abra o post e defina a privacidade."
 2. **A cannot-post code:** the A6 sentence.
 3. **`privacy_level` not in `privacy_level_options`:** the `privacy_level_option_mismatch` sentence.
-4. **A video post whose longest `duration_seconds` exceeds `max_video_post_duration_sec`:** "O vídeo tem {X}s. O máximo permitido para esta conta no TikTok é {Y}s."
-5. **Any media with `media_lost_at` set, or no media at all:** "Uma das mídias deste post foi perdida. Substitua-a antes de publicar." This rule doesn't need creator_info, so it runs even when the creator check fails open.
+4. **A video post whose longest `duration_seconds` exceeds `max_video_post_duration_sec`:** the A5 sentence, "Este vídeo tem {X}s. O máximo permitido para esta conta é {Y}s."
+5. **No media:** "Adicione mídia ao post para publicar no TikTok." **Any media with `media_lost_at` set:** "Uma das mídias deste post foi perdida. Substitua-a antes de publicar."
+
+Rules 1 and 5 need no creator_info and always run, before rules 2-4 (the evaluator checks 1, then 5, then 2-4). Rules 2-4 run only when creator_info answered.
 
 On any other creator_info error:
 - **Network, 5xx or rate limit:** fail open. Skip the check and proceed to init, which surfaces real problems itself. The check is a guard and must not become an outage dependency.
-- **`TOKEN_INVALID` or `REVOKED`:** fail as init would today.
+- **`TOKEN_INVALID` or `REVOKED`:** `fetchCreatorCheck` rethrows. In the cron, every post of that account is marked failed with `tokenErrorMessage(err)`, retryable (`+1`), exactly like the `getFreshTikTokToken` catch (`core.ts:184-192`). In publish-now it falls through to the generic catch.
 
 ## B. Flow fixes a reviewer would hit
 
@@ -273,7 +289,7 @@ On any other creator_info error:
   - `tiktok-integration` `handleCallback` redirects to `/clientes/{id}?tt_connected=1`; today it redirects with no param and lands silently on Visão geral.
   - `ClienteDetalheIndexRedirect` adds `tt_connected` to its OAuth param list.
   - Inside the existing consolidated OAuth-param effect in `RedesSociaisTab` (`:33-97`), `RedesSociaisTab`:
-    - toasts "Conta do TikTok conectada."
+    - toasts "Conta do TikTok conectada." via a new i18n key `detail.ttConnected` (pt and en `clients.json`, next to `detail.ttError`)
     - fires a `tiktok_connected` PostHog capture
     - removes `tt_connected` in the same `setSearchParams` call as the other params
   - There is no separate hook: separate `useSearchParams` effects race (documented there).
@@ -282,13 +298,16 @@ On any other creator_info error:
   - Otherwise it uses `typeof data.error === 'string' ? data.error : data.message`. Non-gate errors are `{ error: true, message }` (`tiktok-integration/handlers.ts:101,113`).
 - **B3. ScheduleButton copy and color.**
   - Copy: the missing-caption reason names the platform or platforms whose caption is empty. Today it says "legenda do Instagram" even on TikTok-only posts (`:548`).
-  - Color: Instagram pink stays only on Instagram-only posts. Any post targeting TikTok uses the neutral primary on all three spots:
+  - Color: Instagram pink `#E1306C` stays only on Instagram-only posts. Any post targeting TikTok uses an inverted ink style, `background: var(--text-main); color: var(--bg-color)` (dark on light, light on dark; the default `Button` variant is the yellow primary and would match "Agendar"), on four spots:
     - the row button (`:581`)
     - the dialog confirm (`:638`)
-    - the progress bar (`:627`)
+    - the progress bar below 100% (`:627`)
+    - the `agendado` "Publicando…" pill (`:450-455`), as `var(--surface-hover)` background with `var(--text-main)` text
+  - "Agendar" keeps `#eab308`.
 - **B4. The "TikTok · Em breve" analytics nav item.**
   - `nav-data.ts:174-181` renders a disabled "TikTok" entry tagged "Em breve" in the sidebar.
-  - In a demo of a working TikTok integration it contradicts what the video shows, so it is removed with its i18n keys and its `nav-data.test.ts` expectation.
+  - In a demo of a working TikTok integration it contradicts what the video shows, so it is removed with its `nav.tiktok` i18n key (`common.json:22`, used only there) and its `nav-data.test.ts` expectation.
+  - `sidebar.comingSoon` and the generic disabled branch in `Sidebar.tsx` / `MobileNav.tsx` stay.
   - The `sidebar-sub-link--disabled` CSS is generic and stays.
 - **B5. Photo post URL.**
   - Today `tiktok_post_url` is always built as `/@user/video/{id}`.
@@ -306,7 +325,7 @@ On any other creator_info error:
   - `TIKTOK_SCOPES` (`_shared/tiktok.ts:13`) requests it, but only `DIRECT_POST` (`video.publish`) is used.
   - Requesting a scope the demo doesn't show is a common rejection reason.
   - The callback only stores `scope.split(",")` (`handlers.ts:214`), and nothing compares granted scopes, so existing tokens keep working.
-  - Update `TIKTOK_SCOPES` and any test or fixture that asserts the `scope` param (`tiktok-integration_test.ts`, `tiktok-shared_test.ts`).
+  - Update `TIKTOK_SCOPES`. No existing test asserts it; the B6 test in Testing is new.
   - This must ship before recording.
 
 ## C. Demo and submission kit (owner tasks)
@@ -408,7 +427,7 @@ New response fields are additive (`can_post`, `app_audited`, `cannot_post_reason
   - the declaration above the row and inside the publish-now dialog, only when TikTok is targeted
   - `reason` in "Falta:"
   - per-platform missing-caption copy
-  - the neutral variant on the button, the dialog confirm and the progress bar
+  - the ink style on the button, the dialog confirm, the progress bar and the Publicando pill
   - the processing notice and the publish-now toast
 - **Auto-schedule dialogs:** the declaration when TikTok is present, and the branded variant for a mixed batch.
 - **Connect flow:** `ClienteDetalheIndexRedirect` and `RedesSociaisTab` (`tt_connected` toast, capture and strip in one `setSearchParams`).
@@ -420,8 +439,8 @@ New response fields are additive (`can_post`, `app_audited`, `cannot_post_reason
 - **The validator's branded + `SELF_ONLY` rule.**
 - **`buildTikTokPostUrl`** per `tipo`, across publish-now, cron status confirmation and the webhook.
 - **The init catch:** passes `failReason` and stores the pt-BR message, non-retryable, for each mapped code.
-- **`checkCreatorBeforeInit`:**
-  - each of the four rules
+- **`evaluateTikTokPrecheck` / `fetchCreatorCheck`:**
+  - each of the five rules
   - fail-open on network, 5xx and 429
   - fail on `TOKEN_INVALID`
   - one creator_info call per account per cron run

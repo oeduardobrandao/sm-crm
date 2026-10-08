@@ -91,8 +91,7 @@ export const TIKTOK_MSG: {
   mediaLost: string;
   mediaMissing: string;
   publicAccountInTestMode: string;
-  durationExceeded(seconds: number, max: number): string;        // panel copy (A5)
-  durationExceededServer(seconds: number, max: number): string;  // server copy (A10)
+  durationExceeded(seconds: number, max: number): string;        // A5 panel and A10 rule 4 (one sentence)
 };
 ```
 
@@ -153,10 +152,6 @@ Deno.test("tiktok-messages: fixed sentences, no em dashes", () => {
     "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e reabra o post.",
   );
   assertEquals(TIKTOK_MSG.durationExceeded(750, 600), "Este vídeo tem 750s. O máximo permitido para esta conta é 600s.");
-  assertEquals(
-    TIKTOK_MSG.durationExceededServer(750, 600),
-    "O vídeo tem 750s. O máximo permitido para esta conta no TikTok é 600s.",
-  );
   for (const v of Object.values(TIKTOK_MSG)) {
     const s = typeof v === "function" ? v(1, 2) : v;
     assertEquals(s.includes("—"), false, s);
@@ -217,8 +212,6 @@ export const TIKTOK_MSG = {
     "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e reabra o post.",
   durationExceeded: (seconds: number, max: number) =>
     `Este vídeo tem ${seconds}s. O máximo permitido para esta conta é ${max}s.`,
-  durationExceededServer: (seconds: number, max: number) =>
-    `O vídeo tem ${seconds}s. O máximo permitido para esta conta no TikTok é ${max}s.`,
 };
 ```
 
@@ -556,7 +549,7 @@ export function evaluateTikTokPrecheck(input: {
 3. `creator.kind === "cannot_post"` → `tiktokErrorMessage(creator.code)`
 4. `creator.kind === "ok"`:
    - If `privacyLevelOptions` is a non-empty array that doesn't include `privacy_level` → `TIKTOK_MSG.privacyMismatch`.
-   - If `tipo === "reels"`, `maxVideoPostDurationSec != null`, and a video's `duration_seconds > max` → `TIKTOK_MSG.durationExceededServer(longest, max)`.
+   - If `tipo === "reels"`, `maxVideoPostDurationSec != null`, and a video's `duration_seconds > max` → `TIKTOK_MSG.durationExceeded(longest, max)`.
 5. Otherwise `null`.
 
 Rule 2 sits before rule 3 on purpose: lost media must block even when creator_info fails open (spec A10 rule 5).
@@ -614,7 +607,7 @@ Deno.test("precheck: privacy no longer offered", () => {
 Deno.test("precheck: duration over the creator limit (video only)", () => {
   assertEquals(
     evaluateTikTokPrecheck({ tipo: "reels", settings: { privacy_level: "SELF_ONLY" }, media: [video(750)], creator: ok() }),
-    "O vídeo tem 750s. O máximo permitido para esta conta no TikTok é 600s.",
+    "Este vídeo tem 750s. O máximo permitido para esta conta é 600s.",
   );
   assertEquals(
     evaluateTikTokPrecheck({ tipo: "reels", settings: { privacy_level: "SELF_ONLY" }, media: [video(null)], creator: ok() }),
@@ -745,7 +738,7 @@ export function evaluateTikTokPrecheck(input: {
     const max = input.creator.maxVideoPostDurationSec;
     if (input.tipo === "reels" && max != null) {
       const longest = Math.max(0, ...input.media.filter((m) => m.kind === "video").map((m) => m.duration_seconds ?? 0));
-      if (longest > max) return TIKTOK_MSG.durationExceededServer(longest, max);
+      if (longest > max) return TIKTOK_MSG.durationExceeded(longest, max);
     }
   }
   return null;
@@ -944,7 +937,7 @@ Deno.test("tiktok-publish publish-now: precheck failure -> 422 with pt-BR messag
 
   const res = await handler(tiktokRequest("publish-now", 1));
   assertEquals(res.status, 422);
-  assertEquals(await res.json(), { error: "O vídeo tem 750s. O máximo permitido para esta conta no TikTok é 600s." });
+  assertEquals(await res.json(), { error: "Este vídeo tem 750s. O máximo permitido para esta conta é 600s." });
   assertEquals(calls.filter((c) => c.path.endsWith("/init/")).length, 0);
   const failWrite = callsFor(db, "workflow_posts", "update").at(-1)!.payload as Record<string, unknown>;
   assertEquals(failWrite.tiktok_publish_status, "failed");
@@ -2052,6 +2045,11 @@ it('TikTok post: declaration renders above the actions', () => {
   expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent('Ao publicar, você concorda com a Confirmação de Uso de Música do TikTok.');
 });
 
+it('TikTok post with incomplete settings: no declaration (nothing can send)', () => {
+  renderButton({ post: approvedPost({ platform: 'tiktok', scheduled_at: future, tiktok_caption: 'x' }), tiktokSettingsComplete: false });
+  expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+});
+
 it('Instagram-only post: no TikTok declaration', () => {
   renderButton({ post: approvedPost({ platform: 'instagram', scheduled_at: future }), hasInstagramAccount: true });
   expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
@@ -2122,22 +2120,33 @@ Expected: the new tests FAIL.
        }
    ```
 
-4. Colour: `const publishColor = platform === 'instagram' ? { background: '#E1306C', color: 'white' } : undefined;`
+4. Colour (spec B3). The default `Button` variant is the yellow primary (`components/ui/button.tsx:11`), same family as "Agendar", so TikTok posts get an explicit inverted ink style:
+
+   ```ts
+   const publishColor = platform === 'instagram'
+     ? { background: '#E1306C', color: 'white' }
+     : { background: 'var(--text-main)', color: 'var(--bg-color)' };
+   ```
+
    - Row button: `style={canPublishNow ? publishColor : undefined}`.
    - Dialog confirm button: `style={publishColor}`.
-   - Progress bar: `background: publishPct < 100 ? (platform === 'instagram' ? '#E1306C' : 'var(--primary)') : '#3ecf8e'`.
-
-   `Button` without a style uses the ink default variant.
+   - Progress bar: `background: publishPct < 100 ? (platform === 'instagram' ? '#E1306C' : 'var(--text-main)') : '#3ecf8e'`.
+   - The `agendado` "Publicando…" pill (`:450-455`): `style={platform === 'instagram' ? { background: 'rgba(225, 48, 108, 0.12)', color: '#E1306C' } : { background: 'var(--surface-hover)', color: 'var(--text-main)' }}`.
+   - "Agendar" keeps `#eab308`.
 5. Declaration above the row: inside the `aprovado_cliente` branch, right before `<div className="flex flex-wrap items-center gap-2">`:
 
    ```tsx
-           {targetsTikTok && <TikTokPostingDeclaration brandedContent={tiktokBranded} className="mb-2" />}
+           {targetsTikTok && tiktokReady && (
+             <TikTokPostingDeclaration brandedContent={tiktokBranded} className="mb-2" />
+           )}
    ```
 
 6. Declaration in the dialog: inside `AlertDialogContent`, right before `{!publishing && (<AlertDialogFooter>`:
 
    ```tsx
-             {!publishing && targetsTikTok && <TikTokPostingDeclaration brandedContent={tiktokBranded} />}
+             {!publishing && targetsTikTok && tiktokReady && (
+               <TikTokPostingDeclaration brandedContent={tiktokBranded} />
+             )}
    ```
 
 7. Toasts, in the TikTok-only branch of `handlePublishNow`:
@@ -2382,7 +2391,7 @@ git commit -m "fix(tiktok): connect lands on Redes sociais with a toast; clear a
 **Files:**
 - Modify: `apps/crm/src/components/layout/nav-data.ts:174-181` and the comment at line ~250
 - Modify: `apps/crm/src/components/layout/__tests__/nav-data.test.ts` (lines ~125 and ~142)
-- Modify: `packages/i18n/locales/pt/common.json`, `packages/i18n/locales/en/common.json`. Remove `nav.tiktok` **only** if `grep -rn "nav.tiktok" apps packages` finds no other user.
+- Modify: `packages/i18n/locales/pt/common.json`, `packages/i18n/locales/en/common.json`: remove `nav.tiktok` (line ~22; its only user is `nav-data.ts:178`). Keep `sidebar.comingSoon` and the generic disabled branch in `Sidebar.tsx` / `MobileNav.tsx`.
 
 - [ ] **Step 1: Update the test first**
 
@@ -2404,7 +2413,7 @@ Expected: the new test FAILS.
 
 - [ ] **Step 3: Implement**
 
-Delete the `analytics-tiktok` item, and remove `analytics-tiktok` from the comment at line ~250. Remove the `nav.tiktok` i18n keys if they are unused.
+Delete the `analytics-tiktok` item, remove `analytics-tiktok` from the comment at line ~250, and remove `nav.tiktok` from both `common.json` files.
 
 - [ ] **Step 4: Run and confirm it passes**
 
