@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -26,6 +27,8 @@ import { submitApproval } from '../../api';
 import { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import { computePostNavigation, usePostNavigation } from '../../hooks/usePostNavigation';
 import { usePostAdvance, type ConfirmFlash, type SlideDir } from '../../hooks/usePostAdvance';
+import { usePostReferences } from '../../hooks/usePostReferences';
+import type { ReferenceItem } from '../../types/postReferences';
 import {
   deriveCaption,
   getPostPublishState,
@@ -46,12 +49,16 @@ import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
 import { InProductionNotice } from './InProductionNotice';
 import { SuggestionDiff } from './SuggestionDiff';
+import { PostReferencesPanel } from './references/PostReferencesPanel';
+import { ReferenceViewer } from './references/ReferenceViewer';
 import {
   CorrectionPanel,
   RejectedSuggestionNotice,
   SuggestionPendingNotice,
   type SuggestionView,
 } from './CorrectionPanel';
+
+type PostTab = 'content' | 'postText' | 'references' | 'history';
 
 interface PostDetailDialogProps {
   posts: HubPost[];
@@ -260,7 +267,7 @@ function PostDetailContent({
   const kind = pickPostCardKind(post);
   const isPending = post.status === 'enviado_cliente';
   const inProduction = isInProduction(post);
-  const [tab, setTab] = useState<'content' | 'postText' | 'history'>('content');
+  const [tab, setTab] = useState<PostTab>('content');
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelDirty, setPanelDirty] = useState(false);
   const [contentDirty, setContentDirty] = useState(false);
@@ -284,9 +291,22 @@ function PostDetailContent({
     draftConteudo,
     draftIgCaption,
   } = edit;
-  // Unsent-edit lock for navigation controls: while a save is queued/in flight, and
-  // through the confirmation hold after an action.
-  const navLocked = submitting || locked || (dirty && !saveFailed);
+  // One references query per post card. The outgoing ghost card reads the same cache entry.
+  const refs = usePostReferences(token, post.id);
+  const [viewerItem, setViewerItem] = useState<ReferenceItem | null>(null);
+  // The add sheet and the link form are nested dialogs: while one is up, this card's arrow
+  // keys and close path stand down (Radix already gives Escape to the top layer only).
+  const [overlayDepth, setOverlayDepth] = useState(0);
+  const handleOverlayChange = useCallback(
+    (open: boolean) => setOverlayDepth((d) => Math.max(0, d + (open ? 1 : -1))),
+    [],
+  );
+  const overlayOpen = viewerItem !== null || overlayDepth > 0;
+  const waitHintId = useId();
+  // Unsent-edit lock for navigation controls: while a save is queued/in flight, through the
+  // confirmation hold after an action, and while a reference upload runs (moving would
+  // unmount the card, which aborts it).
+  const navLocked = submitting || locked || (dirty && !saveFailed) || refs.uploadsInFlight;
   // A pending suggestion is never written to the post itself (it lives in
   // post_edit_suggestions until the team accepts it), so `post.*` stays the original and
   // the reading view can switch between the two. The hook's effective suggestion (not
@@ -315,13 +335,21 @@ function PostDetailContent({
       conteudo_plain: bodyPlain ?? '',
       ig_caption: textCaption ?? null,
     });
-  const tabKeys = showPostTextTab
-    ? (['content', 'postText', 'history'] as const)
-    : (['content', 'history'] as const);
-  // A refetch (or a suggestion-view toggle) can flip showPostTextTab to false while the
-  // postText tab is selected: fall back to content so the dialog never renders with no tab
-  // selected and no panel shown.
-  const activeTab = tab === 'postText' && !showPostTextTab ? 'content' : tab;
+  // Referências shows while the client can still add (enviado_cliente, under the cap) or once
+  // anything was added. A published post with none shows no tab.
+  const showReferencesTab = refs.canAdd || refs.items.length > 0;
+  const tabKeys: PostTab[] = [
+    'content',
+    ...(showPostTextTab ? (['postText'] as const) : []),
+    ...(showReferencesTab ? (['references'] as const) : []),
+    'history',
+  ];
+  // A refetch (or a suggestion-view toggle) can hide the selected postText or references tab:
+  // fall back to content so the dialog never renders with no tab selected and no panel shown.
+  const activeTab: PostTab =
+    (tab === 'postText' && !showPostTextTab) || (tab === 'references' && !showReferencesTab)
+      ? 'content'
+      : tab;
   const showPanel = panelOpen && isPending;
   // Once the client edits the text/caption (or a save is queued, in flight or failed), the
   // footer's primary action becomes Salvar edição: Aprovar is blocked until the edit is
@@ -343,14 +371,28 @@ function PostDetailContent({
   const guard = useCallback((): boolean => {
     if (submitting) return false;
     if (dirty && !saveFailed) return false;
-    if (!saveFailed && !panelDirty && !historyDirty) return true;
-    if (
-      !window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'))
-    )
-      return false;
+    const uploading = refs.uploadsInFlight;
+    if (!saveFailed && !panelDirty && !historyDirty && !uploading) return true;
+    // Still one confirm total. Leaving unmounts the card; usePostReferences aborts on unmount.
+    const message = uploading
+      ? t(
+          'references.leaveWhileUploading',
+          'Um envio ainda está em andamento. Sair e cancelar o envio?',
+        )
+      : t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?');
+    if (!window.confirm(message)) return false;
     if (saveFailed) discardFailedSave();
     return true;
-  }, [dirty, saveFailed, discardFailedSave, submitting, panelDirty, historyDirty, t]);
+  }, [
+    dirty,
+    saveFailed,
+    discardFailedSave,
+    submitting,
+    panelDirty,
+    historyDirty,
+    refs.uploadsInFlight,
+    t,
+  ]);
 
   const go = useCallback(
     (target: HubPost | null) => {
@@ -365,11 +407,11 @@ function PostDetailContent({
   const close = useCallback(() => {
     // Radix reports Esc / scrim clicks even when the lightbox (portalled to body,
     // above us) is what the user is dismissing: let the lightbox handle those.
-    if (lightboxIdx !== null) return;
+    if (lightboxIdx !== null || overlayOpen) return;
     if (!guard()) return;
     onCancelHold();
     onNavigate(null);
-  }, [guard, onCancelHold, onNavigate, lightboxIdx]);
+  }, [guard, onCancelHold, onNavigate, lightboxIdx, overlayOpen]);
 
   useEffect(() => {
     if (ghost) return;
@@ -382,13 +424,13 @@ function PostDetailContent({
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable))
         return;
-      if (lightboxIdx !== null) return;
+      if (lightboxIdx !== null || overlayOpen) return;
       if (e.key === 'ArrowLeft') go(nav.prev);
       if (e.key === 'ArrowRight') go(nav.next);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [go, nav.prev, nav.next, lightboxIdx, ghost]);
+  }, [go, nav.prev, nav.next, lightboxIdx, overlayOpen, ghost]);
 
   // The slide-in direction is captured when the card enters and its class kept for the
   // card's lifetime: removing it exactly when the phase ends could cut the last frames of
@@ -407,6 +449,7 @@ function PostDetailContent({
     action: 'aprovado' | 'correcao',
     comentario = '',
     motivo: CorrectionReason | null = null,
+    referenceIds: number[] = [],
   ) {
     if (submitting || locked) return;
     // The card is about to leave: an unsent comment typed in the Histórico tab would go with it.
@@ -419,10 +462,23 @@ function PostDetailContent({
     setError(null);
     try {
       let res: { scheduled?: boolean } | undefined;
+      // reference_ids only when something is staged, so the call keeps its old shape otherwise.
       if (action === 'correcao')
-        res = await submitApproval(token, post.id, 'correcao', comentario, motivo ?? undefined);
+        res =
+          referenceIds.length > 0
+            ? await submitApproval(
+                token,
+                post.id,
+                'correcao',
+                comentario,
+                motivo ?? undefined,
+                referenceIds,
+              )
+            : await submitApproval(token, post.id, 'correcao', comentario, motivo ?? undefined);
       else res = await submitApproval(token, post.id, 'aprovado', undefined);
       setPanelDirty(false);
+      // The post just left enviado_cliente: can_add, can_remove and approval links changed.
+      refs.refresh();
       // From here the hold, the move and the list refresh belong to usePostAdvance. The
       // target is chosen now, before any refetch shifts the list, and re-checked at hold end.
       onConfirmed(
@@ -441,8 +497,17 @@ function PostDetailContent({
     }
   }
 
+  // Closing the composer keeps the card (and any running upload, which lands in the
+  // Referências tab), so it never uses guard()'s cancel-upload copy: only unsent composer
+  // input (text, motivo, staged references) or a failed save asks to discard.
   function closePanel() {
-    if (!guard()) return;
+    if (submitting || (dirty && !saveFailed)) return;
+    if (
+      (saveFailed || panelDirty) &&
+      !window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'))
+    )
+      return;
+    if (saveFailed) discardFailedSave();
     setPanelOpen(false);
     setPanelDirty(false);
   }
@@ -721,13 +786,24 @@ function PostDetailContent({
                   }}
                   className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${activeTab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
                 >
-                  {key === 'history'
-                    ? t('posts.tabHistory', 'Histórico e comentários')
-                    : key === 'postText'
-                      ? t('posts.tabPostText', 'Texto do post')
-                      : kind === 'text'
-                        ? t('posts.tabText', 'Texto')
-                        : t('posts.tabCaption', 'Legenda')}
+                  {key === 'history' ? (
+                    t('posts.tabHistory', 'Histórico e comentários')
+                  ) : key === 'postText' ? (
+                    t('posts.tabPostText', 'Texto do post')
+                  ) : key === 'references' ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      {t('references.tab', 'Referências')}{' '}
+                      {refs.data && (
+                        <span className="min-w-[18px] h-[18px] px-1 rounded-full hub-bg-soft hub-tx2 text-[11px] leading-[18px] text-center tabular-nums">
+                          {refs.items.length}
+                        </span>
+                      )}
+                    </span>
+                  ) : kind === 'text' ? (
+                    t('posts.tabText', 'Texto')
+                  ) : (
+                    t('posts.tabCaption', 'Legenda')
+                  )}
                 </button>
               ))}
             </div>
@@ -741,6 +817,8 @@ function PostDetailContent({
                     approvals={approvals}
                     onCommentSent={onApprovalSubmitted}
                     onDirtyChange={handleHistoryDirtyChange}
+                    references={refs.items}
+                    onOpenReference={setViewerItem}
                     embedded
                   />
                 </div>
@@ -772,6 +850,14 @@ function PostDetailContent({
                   )}
                 </div>
               )}
+              {showReferencesTab && activeTab === 'references' && (
+                <PostReferencesPanel
+                  post={post}
+                  refs={refs}
+                  onOpen={setViewerItem}
+                  onOverlayChange={handleOverlayChange}
+                />
+              )}
               <div hidden={activeTab !== 'content'}>
                 {showPanel ? (
                   <CorrectionPanel
@@ -779,7 +865,10 @@ function PostDetailContent({
                     post={post}
                     edit={edit}
                     submitting={submitting || locked}
-                    onSubmitCorrection={(c, m) => submit('correcao', c, m)}
+                    onSubmitCorrection={(c, m, ids) => submit('correcao', c, m, ids)}
+                    references={refs}
+                    onOpenReference={setViewerItem}
+                    onOverlayChange={handleOverlayChange}
                     onDirtyChange={handleDirtyChange}
                     onContentDirtyChange={handleContentDirtyChange}
                     onSavedClean={handleSavedClean}
@@ -820,58 +909,73 @@ function PostDetailContent({
                 </p>
               )}
               {isPending ? (
-                <div className="flex gap-2">
-                  {showPanel ? (
-                    <button
-                      type="button"
-                      onClick={closePanel}
-                      disabled={dirty && !saveFailed}
-                      className="flex-1 rounded-[4px] border hub-border py-2.5 min-h-[44px] text-[13px] font-semibold hub-tx2 disabled:opacity-50"
-                    >
-                      {t('shared.fechar', 'Fechar')}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTab('content');
-                        setPanelOpen(true);
-                      }}
-                      disabled={submitting || locked}
-                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
-                    >
-                      {edit.hasPendingSuggestion ? (
-                        <>
-                          <PencilLine size={15} aria-hidden="true" />{' '}
-                          {t('shared.editSuggestion', 'Editar sugestão')}
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle size={15} /> {t('posts.correct', 'Corrigir')}
-                        </>
-                      )}
-                    </button>
+                <>
+                  <div className="flex gap-2">
+                    {showPanel ? (
+                      <button
+                        type="button"
+                        onClick={closePanel}
+                        disabled={dirty && !saveFailed}
+                        className="flex-1 rounded-[4px] border hub-border py-2.5 min-h-[44px] text-[13px] font-semibold hub-tx2 disabled:opacity-50"
+                      >
+                        {t('shared.fechar', 'Fechar')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTab('content');
+                          setPanelOpen(true);
+                        }}
+                        disabled={submitting || locked}
+                        className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
+                      >
+                        {edit.hasPendingSuggestion ? (
+                          <>
+                            <PencilLine size={15} aria-hidden="true" />{' '}
+                            {t('shared.editSuggestion', 'Editar sugestão')}
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle size={15} /> {t('posts.correct', 'Corrigir')}
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {showSaveInFooter ? (
+                      <div
+                        ref={setSaveSlot}
+                        data-testid="hub-post-save-slot"
+                        className="flex-1 flex"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => submit('aprovado')}
+                        disabled={
+                          submitting ||
+                          locked ||
+                          approvalBlocked ||
+                          dirty ||
+                          panelDirty ||
+                          refs.uploadsInFlight
+                        }
+                        aria-describedby={refs.uploadsInFlight ? waitHintId : undefined}
+                        className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
+                      >
+                        <CheckCircle size={15} />{' '}
+                        {saveState === 'saving'
+                          ? t('shared.saving', 'Salvando...')
+                          : t('shared.aprovar', 'Aprovar')}
+                      </button>
+                    )}
+                  </div>
+                  {refs.uploadsInFlight && (
+                    <p id={waitHintId} className="text-[12px] hub-tx3 text-center">
+                      {t('references.waitUpload', 'Aguarde o envio terminar')}
+                    </p>
                   )}
-                  {showSaveInFooter ? (
-                    <div
-                      ref={setSaveSlot}
-                      data-testid="hub-post-save-slot"
-                      className="flex-1 flex"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => submit('aprovado')}
-                      disabled={submitting || locked || approvalBlocked || dirty || panelDirty}
-                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
-                    >
-                      <CheckCircle size={15} />{' '}
-                      {saveState === 'saving'
-                        ? t('shared.saving', 'Salvando...')
-                        : t('shared.aprovar', 'Aprovar')}
-                    </button>
-                  )}
-                </div>
+                </>
               ) : post.status === 'postado' && post.instagram_permalink ? (
                 // The status already sits in the header chips; only the permalink lives here.
                 <div className="flex items-center justify-end">
@@ -903,6 +1007,9 @@ function PostDetailContent({
           onClose={() => setLightboxIdx(null)}
           onStaleUrl={onApprovalSubmitted}
         />
+      )}
+      {!ghost && viewerItem && (
+        <ReferenceViewer item={viewerItem} onClose={() => setViewerItem(null)} />
       )}
     </>
   );

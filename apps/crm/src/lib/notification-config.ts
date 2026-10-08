@@ -17,6 +17,7 @@ import {
   Instagram,
   Lightbulb,
   MessageSquare,
+  Paperclip,
   Play,
   Shield,
   Trophy,
@@ -143,6 +144,16 @@ export function getNotificationDisplay(
         title:
           m.updated === true ? 'Sugestão de edição atualizada' : 'Sugestão de edição do cliente',
         body: `${client} — ${post}`,
+      };
+    case 'post_client_reference':
+      // One sentence says it all; the RPC coalesces a burst of uploads into one row, so no
+      // count. Empty body on purpose: the neighbours' "{client} — {post}" body would repeat
+      // the title (and new copy carries no em dash).
+      return {
+        icon: Paperclip,
+        tone: 'teal',
+        title: `${client} enviou referências em ${post}`,
+        body: '',
       };
     case 'idea_submitted':
       return {

@@ -138,6 +138,12 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+// PostEditorBody and WorkflowDrawer read client references from this module by path.
+vi.mock('@/store/postReferences', () => ({
+  getPostReferences: vi.fn(async () => []),
+  getPostReferenceCounts: vi.fn(async () => ({})),
+  deletePostReference: vi.fn(),
+}));
 
 // extractR2Keys/injectSignedUrls are pure doc-walking helpers -- use the real
 // implementations so the R2-image-mount-gating test below exercises actual TipTap

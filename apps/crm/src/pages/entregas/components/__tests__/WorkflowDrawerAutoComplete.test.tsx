@@ -62,6 +62,12 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ limits: null, isLoading: false }),
 }));
 vi.mock('../../../../services/postMedia', () => ({ listPostMedia: vi.fn().mockResolvedValue([]) }));
+// PostEditorBody and WorkflowDrawer read client references from this module by path.
+vi.mock('@/store/postReferences', () => ({
+  getPostReferences: vi.fn(async () => []),
+  getPostReferenceCounts: vi.fn(async () => ({})),
+  deletePostReference: vi.fn(),
+}));
 vi.mock('@/services/inlineImage', () => ({
   uploadInlineImage: vi.fn(),
   extractR2Keys: () => [],

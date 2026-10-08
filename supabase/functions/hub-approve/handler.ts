@@ -2,6 +2,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { validateForScheduling } from "../_shared/instagram-publish-utils.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
+import { MAX_REFERENCES_PER_POST } from "../_shared/post-references.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -21,6 +22,48 @@ const CORRECTION_REASONS = ["legenda", "midia", "texto", "outro"];
 const HUB_VISIBLE_STATUSES = [
   "enviado_cliente", "aprovado_cliente", "correcao_cliente", "agendado", "postado", "falha_publicacao",
 ];
+
+/** reference_ids de uma correção (spec 2026-10-08): array de inteiros positivos
+ * seguros, sem duplicatas, no máximo o teto de referências do post. null = inválido. */
+function parseReferenceIds(raw: unknown): number[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_REFERENCES_PER_POST * 10) return null;
+  const ids = new Set<number>();
+  for (const v of raw) {
+    if (typeof v !== "number" || !Number.isSafeInteger(v) || v <= 0) return null;
+    ids.add(v);
+  }
+  return ids.size <= MAX_REFERENCES_PER_POST ? [...ids] : null;
+}
+
+/** Liga as referências já enviadas à correção recém-gravada. Não fatal: a correção
+ * vale e as referências ficam no nível do post. Só liga referências deste post, desta
+ * conta e ainda soltas (a posse do post já foi conferida contra o token). */
+async function linkReferencesToApproval(
+  db: DbClient,
+  approvalData: unknown,
+  ids: number[],
+  postId: unknown,
+  contaId: string,
+): Promise<void> {
+  const approvalId = typeof approvalData === "number" || typeof approvalData === "string"
+    ? Number(approvalData)
+    : NaN;
+  if (!Number.isSafeInteger(approvalId) || approvalId <= 0) {
+    console.error("[hub-approve] record_client_approval returned no approval id; references stay post-level");
+    return;
+  }
+  try {
+    const { error } = await db.from("post_references")
+      .update({ post_approval_id: approvalId })
+      .in("id", ids)
+      .eq("post_id", postId)
+      .eq("conta_id", contaId)
+      .is("post_approval_id", null);
+    if (error) console.error("[hub-approve] reference link failed (correction stands):", error);
+  } catch (e) {
+    console.error("[hub-approve] reference link threw (correction stands):", e);
+  }
+}
 
 // Dual-approval fluxos (e.g. copy approval → design → design approval) must not
 // auto-schedule on the first approval: the post still has production stages and
@@ -97,7 +140,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { token, post_id, action, comentario, motivo } = await req.json();
+    const { token, post_id, action, comentario, motivo, reference_ids } = await req.json();
     if (!token || !post_id || !action) return json({ error: "token, post_id and action required" }, 400);
     if (!["aprovado", "correcao", "mensagem"].includes(action)) return json({ error: "Invalid action" }, 400);
 
@@ -110,6 +153,14 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     // motivo is optional for correcao; only its value is validated when present.
     if (action === "correcao" && motivo != null && !CORRECTION_REASONS.includes(motivo)) {
       return json({ error: "Motivo inválido." }, 400);
+    }
+    // reference_ids só valem na correção; validados antes de qualquer ida ao banco
+    // e ignorados em aprovado/mensagem.
+    let referenceIds: number[] = [];
+    if (action === "correcao" && reference_ids != null) {
+      const parsed = parseReferenceIds(reference_ids);
+      if (!parsed) return json({ error: "Referências inválidas." }, 400);
+      referenceIds = parsed;
     }
     // Same coercion mensagemText already applies (non-string silently becomes ""),
     // except an empty trimmed comentario becomes null here: unlike mensagem, an
@@ -184,7 +235,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         return json({ error: "Post não está aguardando revisão do cliente." }, 400);
       }
       const newStatus = action === "aprovado" ? "aprovado_cliente" : "correcao_cliente";
-      const { error: approvalErr } = await db.rpc("record_client_approval", {
+      const { data: approvalData, error: approvalErr } = await db.rpc("record_client_approval", {
         p_post_id: post_id,
         p_token: token,
         p_action: action,
@@ -202,6 +253,12 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
           return json({ error: "Há uma sugestão de edição pendente." }, 409);
         }
         return json({ error: "Erro ao registrar aprovação." }, 500);
+      }
+      // record_client_approval já commitou (este UPDATE é outra requisição, sem lock).
+      // É seguro porque o post saiu de enviado_cliente: um finalize atrasado dá 409
+      // (post_not_pending) e nunca cria referência nova depois deste ponto.
+      if (referenceIds.length > 0) {
+        await linkReferencesToApproval(db, approvalData, referenceIds, post_id, hubToken.conta_id);
       }
     }
 

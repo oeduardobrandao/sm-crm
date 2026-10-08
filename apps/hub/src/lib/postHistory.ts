@@ -28,6 +28,8 @@ export type HistoryEntry =
   | {
       kind: 'approval';
       key: string;
+      /** post_approvals.id: references link to a correction through it. */
+      approvalId: number;
       at: string;
       action: 'aprovado' | 'correcao';
       comentario: string | null;
@@ -130,6 +132,7 @@ export function buildHistoryEntries(
     entries.push({
       kind: 'approval',
       key: `approval-${approval.id}`,
+      approvalId: approval.id,
       at: approval.created_at,
       action: approval.action,
       comentario: approval.comentario,

@@ -18,6 +18,8 @@ import {
 } from '../lib/postView';
 import { formatDate } from './PostCard';
 import { TextDiff } from './TextDiff';
+import { ReferenceTiles } from './posts/references/ReferenceTiles';
+import type { ReferenceItem } from '../types/postReferences';
 import type { HubPost, PostApproval, PostHistoryResponse } from '../types';
 
 interface PostHistoryPanelProps {
@@ -29,6 +31,9 @@ interface PostHistoryPanelProps {
   embedded?: boolean;
   /** Reports whether an unsent comment (typed or in flight) exists, so the host can guard navigation. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** The post's references (the dialog's usePostReferences); joined to client corrections by post_approval_id. */
+  references?: ReferenceItem[];
+  onOpenReference?: (item: ReferenceItem) => void;
 }
 
 type LoadState =
@@ -44,6 +49,8 @@ export function PostHistoryPanel({
   onCommentSent,
   embedded,
   onDirtyChange,
+  references,
+  onOpenReference,
 }: PostHistoryPanelProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -137,6 +144,21 @@ export function PostHistoryPanel({
     return t('history.actor.team', 'Equipe');
   }
 
+  function renderAttached(approvalId: number) {
+    const attached = (references ?? []).filter((r) => r.post_approval_id === approvalId);
+    if (attached.length === 0) return null;
+    return (
+      <div className="pt-1 space-y-1.5">
+        <ReferenceTiles items={attached} onOpen={onOpenReference} />
+        <p className="text-[12px] hub-tx3">
+          {t('references.history.attached', '{{count}} referências anexadas', {
+            count: attached.length,
+          })}
+        </p>
+      </div>
+    );
+  }
+
   function renderEntry(entry: HistoryEntry) {
     const when = formatDate(entry.at, dateLang);
     if (entry.kind === 'send') {
@@ -219,6 +241,7 @@ export function PostHistoryPanel({
           {entry.comentario && (
             <p className="text-[12px] hub-tx2 whitespace-pre-wrap">{entry.comentario}</p>
           )}
+          {entry.action === 'correcao' && !entry.byTeam && renderAttached(entry.approvalId)}
         </li>
       );
     }

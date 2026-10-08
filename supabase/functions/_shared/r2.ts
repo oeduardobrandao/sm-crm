@@ -43,8 +43,22 @@ export async function signPutUrl(key: string, mimeType: string, expiresSeconds =
   return getSignedUrl(getR2(), cmd, { expiresIn: expiresSeconds });
 }
 
-export async function signGetUrl(key: string, expiresSeconds = 3600) {
-  const cmd = new GetObjectCommand({ Bucket: getBucket(), Key: key });
+/** Content-Disposition de download (RFC 6266 + RFC 5987). encodeURIComponent deixa
+ * ' ( ) * ! sem escapar; ' encerraria o ext-value, então os cinco viram %XX. */
+export function attachmentDisposition(filename: string): string {
+  const encoded = encodeURIComponent(filename)
+    .replace(/['()*!]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename*=UTF-8''${encoded}`;
+}
+
+/** downloadName (opcional) faz o R2 servir o objeto como anexo com esse nome
+ * (post-references download_url). Sem ele a URL é idêntica à de antes. */
+export async function signGetUrl(key: string, expiresSeconds = 3600, downloadName?: string) {
+  const cmd = new GetObjectCommand({
+    Bucket: getBucket(),
+    Key: key,
+    ...(downloadName ? { ResponseContentDisposition: attachmentDisposition(downloadName) } : {}),
+  });
   return getSignedUrl(getR2(), cmd, { expiresIn: expiresSeconds });
 }
 

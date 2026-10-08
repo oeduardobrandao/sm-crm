@@ -22,7 +22,7 @@ export function validateIdeiaImage(file: File) {
 const THUMB_SIZE = 256;
 const BLUR_SIZE = 16;
 
-function probeImage(file: File): Promise<{ width: number; height: number }> {
+export function probeImage(file: File): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -38,13 +38,14 @@ function probeImage(file: File): Promise<{ width: number; height: number }> {
   });
 }
 
-function generateThumbnail(file: File): Promise<File> {
+/** WebP thumbnail whose longest edge is at most `maxEdge` px (never upscaled). */
+export function generateThumbnail(file: File, maxEdge: number = THUMB_SIZE): Promise<File> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const scale = Math.min(THUMB_SIZE / img.naturalWidth, THUMB_SIZE / img.naturalHeight, 1);
+      const scale = Math.min(maxEdge / img.naturalWidth, maxEdge / img.naturalHeight, 1);
       const w = Math.max(1, Math.round(img.naturalWidth * scale));
       const h = Math.max(1, Math.round(img.naturalHeight * scale));
       const canvas = document.createElement('canvas');
@@ -68,7 +69,7 @@ function generateThumbnail(file: File): Promise<File> {
   });
 }
 
-function generateBlur(file: File): Promise<string> {
+export function generateBlur(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();

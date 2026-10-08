@@ -14,6 +14,11 @@ vi.mock('../../api', () => ({
   submitEditSuggestion: vi.fn(),
   fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
 }));
+vi.mock('../../hooks/usePostReferences', async () => {
+  const { makePostReferencesStub } = await import('../../hooks/__tests__/postReferencesStub');
+  const stub = makePostReferencesStub();
+  return { usePostReferences: () => stub };
+});
 vi.mock('../../components/InstagramGridPreview', () => ({
   InstagramGridPreview: ({
     selectedPosts,

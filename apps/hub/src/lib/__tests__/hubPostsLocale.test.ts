@@ -91,7 +91,22 @@ describe('hubPosts locale files', () => {
 
   it('has no em-dash in any user-facing string', () => {
     expect(
-      JSON.stringify(pt.history) + JSON.stringify(pt.correctionReason) + JSON.stringify(pt.posts),
+      JSON.stringify(pt.history) +
+        JSON.stringify(pt.correctionReason) +
+        JSON.stringify(pt.posts) +
+        JSON.stringify(pt.references),
     ).not.toMatch(/—/);
+  });
+
+  it('carries the references group with the spec copy', () => {
+    expect(pt.references.tab).toBe('Referências');
+    expect(pt.references.emptyTitle).toBe('Nenhuma referência ainda');
+    expect(pt.references.composer.helper).toBe(
+      'As referências anexadas também ficam na aba Referências deste post.',
+    );
+    expect(pt.references.errors.unsupportedType).toBe(
+      'Esse tipo de arquivo não é aceito. Envie foto, vídeo ou PDF.',
+    );
+    expect(pt.references.history.attached_other).toBe('{{count}} referências anexadas');
   });
 });

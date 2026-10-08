@@ -11,6 +11,11 @@ vi.mock('../../api', () => ({
   fetchInstagramFeed: vi.fn(),
   submitApproval: vi.fn(),
 }));
+vi.mock('../../hooks/usePostReferences', async () => {
+  const { makePostReferencesStub } = await import('../../hooks/__tests__/postReferencesStub');
+  const stub = makePostReferencesStub();
+  return { usePostReferences: () => stub };
+});
 
 vi.mock('../../components/PostCard', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../components/PostCard')>();

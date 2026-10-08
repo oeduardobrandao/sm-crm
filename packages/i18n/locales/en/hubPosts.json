@@ -183,5 +183,83 @@
     "ajusteTitle": "The team is adjusting this post.",
     "ajusteBody": "It returns to Approvals when it's ready.",
     "footer": "In production: nothing to approve right now"
+  },
+  "references": {
+    "tab": "References",
+    "loading": "Loading references...",
+    "loadError": "Couldn't load the references.",
+    "emptyTitle": "No references yet",
+    "emptyBody": "Send photos, videos, PDFs or links that help the team adjust this post.",
+    "readOnlyPublished": "Post published. The references stay here for reference.",
+    "readOnly": "The references stay here for reference.",
+    "listLabel": "Post references",
+    "uploadsLabel": "Uploads in progress",
+    "addFile": "Add file",
+    "addLink": "Add link",
+    "addReference": "Add reference",
+    "attach": "Attach reference",
+    "hint": "{{n}} of 10 per post. Photos and PDFs up to 25 MB, videos up to 200 MB.",
+    "sheetTitle": "Add reference",
+    "sheetFile": "Photo, video or PDF",
+    "sheetLink": "Link",
+    "you": "You",
+    "today": "today, {{time}}",
+    "yesterday": "yesterday, {{time}}",
+    "dateTime": "{{date}}, {{time}}",
+    "open": "Open {{name}}",
+    "remove": "Remove reference",
+    "removeConfirm": "Remove reference?",
+    "noteLabel": "What should change because of this? (optional)",
+    "saveNote": "Save note",
+    "savingNote": "Saving...",
+    "editNote": "Edit note",
+    "addNote": "Add note",
+    "cancel": "Cancel",
+    "progressLabel": "Upload of {{name}}",
+    "uploading": "Uploading {{loaded}} of {{total}}. Don't close this screen.",
+    "cancelUpload": "Cancel upload of {{name}}",
+    "retryUpload": "Try again",
+    "discardUpload": "Discard",
+    "waitUpload": "Wait for the upload to finish",
+    "leaveWhileUploading": "An upload is still in progress. Leave and cancel it?",
+    "link": {
+      "title": "Add link",
+      "url": "Address",
+      "urlHint": "We'll add https:// if it's missing.",
+      "linkTitle": "Title (optional)",
+      "note": "What should the team look at here? (optional)",
+      "submit": "Add link",
+      "submitting": "Adding..."
+    },
+    "viewer": {
+      "close": "Close preview",
+      "playError": "Can't play this here. Download the file.",
+      "openOriginal": "Open the file"
+    },
+    "composer": {
+      "staged": "References in this correction",
+      "unstage": "Remove {{name}} from the correction",
+      "helper": "Attached references also stay in this post's References tab."
+    },
+    "history": {
+      "attached_one": "{{count}} reference attached",
+      "attached_other": "{{count}} references attached"
+    },
+    "errors": {
+      "tooLarge": "The file is over the limit: photos and PDFs up to 25 MB, videos up to 200 MB.",
+      "tooLargeVideo": "The video is {{size}} MB and the limit is 200 MB. Send a smaller version or a link.",
+      "tooLargeImage": "The photo is {{size}} MB and the limit is 25 MB. Send a smaller version or a link.",
+      "tooLargeDocument": "The PDF is {{size}} MB and the limit is 25 MB. Send a smaller version or a link.",
+      "unsupportedType": "This file type isn't accepted. Send a photo, video or PDF.",
+      "referenceLimit": "This post already has 10 references. Remove one to add another.",
+      "quotaExceeded": "Couldn't upload right now: the agency's file storage is full. Let the team know.",
+      "postNotPending": "This post is no longer waiting for your approval.",
+      "invalidUrl": "Enter a valid address, starting with http or https.",
+      "invalidNote": "The note can have up to 500 characters.",
+      "locked": "The team has already received this reference. It can no longer be changed.",
+      "notFound": "This reference is no longer available.",
+      "rateLimited": "Too many attempts in a row. Wait a minute and try again.",
+      "generic": "Something went wrong. Try again."
+    }
   }
 }

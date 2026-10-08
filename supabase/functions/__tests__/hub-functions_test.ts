@@ -3580,3 +3580,92 @@ Deno.test("hub-approve falha fechado quando a consulta das etapas do processo in
   assertEquals(body.scheduled, false);
   assertEquals(db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change"), undefined);
 });
+
+// ── hub-approve reference_ids (client post references, 2026-10-08) ──
+
+function correcaoRequest(extra: Record<string, unknown>) {
+  return new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar", ...extra }),
+  });
+}
+
+Deno.test("hub-approve links deduped reference_ids to the new correction", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval", { data: 501, error: null });
+  const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5, 6, 5] }));
+  assertEquals(response.status, 200);
+  const update = db.calls.find((c: { table: string; operation: string }) =>
+    c.table === "post_references" && c.operation === "update");
+  assert(update, "post_references should be updated");
+  assertEquals(update.payload, { post_approval_id: 501 });
+  assertEquals(update.modifiers, [
+    { method: "in", args: ["id", [5, 6]] },
+    { method: "eq", args: ["post_id", 99] },
+    { method: "eq", args: ["conta_id", "conta-1"] },
+    { method: "is", args: ["post_approval_id", null] },
+  ]);
+});
+
+Deno.test("hub-approve rejects malformed reference_ids before any DB call", async () => {
+  const bad: unknown[] = [
+    "5", [0], [-1], [1.5], ["5"], [null], [Number.MAX_SAFE_INTEGER + 1], {},
+    Array.from({ length: 11 }, (_, i) => i + 1),
+  ];
+  for (const reference_ids of bad) {
+    const db = createSupabaseQueryMock();
+    const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids }));
+    assertEquals(response.status, 400, JSON.stringify(reference_ids));
+    assertEquals((await readJson(response)).error, "Referências inválidas.");
+    assertEquals(db.calls.length, 0);
+  }
+});
+
+Deno.test("hub-approve ignores reference_ids on aprovado and mensagem", async () => {
+  for (const action of ["aprovado", "mensagem"]) {
+    const db = hubApproveDbForPost();
+    db.queueRpc("record_client_approval", { data: 501, error: null });
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action, comentario: "ok", reference_ids: "junk" }),
+    }));
+    assertEquals(response.status, 200, action);
+    assertEquals(
+      db.calls.find((c: { table: string }) => c.table === "post_references"),
+      undefined,
+      action,
+    );
+  }
+});
+
+Deno.test("hub-approve keeps the correction when linking references fails", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval", { data: 501, error: null });
+  db.queue("post_references", "update", { data: null, error: { message: "boom" } });
+  const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5] }));
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).ok, true);
+  assert(db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification"));
+});
+
+Deno.test("hub-approve skips linking references when record_client_approval returns no id", async () => {
+  for (const data of [true, null, "abc", 0]) {
+    const db = hubApproveDbForPost();
+    db.queueRpc("record_client_approval", { data, error: null });
+    const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5] }));
+    assertEquals(response.status, 200, JSON.stringify(data));
+    assertEquals(
+      db.calls.find((c: { table: string }) => c.table === "post_references"),
+      undefined,
+      JSON.stringify(data),
+    );
+  }
+});
+
+Deno.test("hub-approve with an empty reference_ids list does not touch post_references", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval", { data: 501, error: null });
+  const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [] }));
+  assertEquals(response.status, 200);
+  assertEquals(db.calls.find((c: { table: string }) => c.table === "post_references"), undefined);
+});

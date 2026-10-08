@@ -37,7 +37,7 @@ import {
   updateVideoThumbnail,
 } from '../../../services/postMedia';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
-import { extractVideoFrame } from '../../../utils/videoFrame';
+import { extractVideoFrame } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { MediaAdjustmentDialog } from './MediaAdjustmentDialog';
 import { IMAGE_AR_MIN, validateMedia } from '../instagramLimits';
