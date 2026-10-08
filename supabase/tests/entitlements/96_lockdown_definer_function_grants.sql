@@ -74,7 +74,9 @@ declare
     'public.agenda_definir_participantes(bigint, uuid, uuid, uuid[])',
     'public.agenda_tick_lembretes(timestamptz, boolean)',
     'public.agenda_claim_emails_lembrete(int)',
-    'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)'
+    'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)',
+    'public.rebuild_instagram_automation_contacts(uuid, uuid)',
+    'public.instagram_automation_contact_source(uuid, uuid)'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
@@ -106,6 +108,9 @@ end $$;
 --   - agenda_pode_ver_evento: called directly inside the RLS SELECT policy on
 --     agenda_eventos (20261005000001_agenda_eventos.sql), so it evaluates as the
 --     querying role.
+--   - list_instagram_automation_contacts / instagram_automation_contact_counts:
+--     SECURITY INVOKER read RPCs called straight from the CRM as the logged-in
+--     user (20261009000002); RLS on the contacts tables does the tenant filter.
 -- Only anon is revoked (same pattern already used by popup_trigger_matches).
 do $$
 declare
@@ -113,7 +118,9 @@ declare
   v_fns text[] := array[
     'public.resolve_workspace_plan(uuid)',
     'public.effective_plan_feature(uuid, text)',
-    'public.agenda_pode_ver_evento(bigint, boolean, uuid)'
+    'public.agenda_pode_ver_evento(bigint, boolean, uuid)',
+    'public.list_instagram_automation_contacts(bigint, uuid, timestamptz, timestamptz, boolean, text, int, int, boolean, timestamptz, uuid)',
+    'public.instagram_automation_contact_counts()'
   ];
 begin
   foreach v_fn in array v_fns loop

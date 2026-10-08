@@ -134,6 +134,9 @@ export const MODULE_QUERY_KEYS: Record<PermissionModule, string[]> = {
     'instagram-automation-sends',
     'ig-automation-ready-account',
     'automation-production-covers',
+    'instagram-contacts',
+    'instagram-contact-counts',
+    'instagram-contacts-count',
   ],
   configuracoes: [],
 };

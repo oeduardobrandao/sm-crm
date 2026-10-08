@@ -12,6 +12,7 @@ export * from './posts';
 export * from './postProcesses';
 export * from './postStatuses';
 export * from './instagramAutomations';
+export * from './instagramContacts';
 export * from './comments';
 export * from './hub';
 export * from './ideias';

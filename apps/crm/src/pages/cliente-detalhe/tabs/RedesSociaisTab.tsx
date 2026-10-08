@@ -16,6 +16,7 @@ import { getInstagramSummary, syncInstagramData } from '@/services/instagram';
 import { useInstagramActivationEvent } from '@/hooks/useInstagramActivationEvent';
 import { resolveIgError } from '@/lib/instagram-oauth-errors';
 import { InstagramSection } from '../components/InstagramSection';
+import { AutomationContactsSection } from '../components/AutomationContactsSection';
 import { TikTokSection } from '../TikTokSection';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
@@ -128,6 +129,8 @@ export default function RedesSociaisTab() {
         refetchIg={refetchIg}
         onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
       />
+
+      <AutomationContactsSection clienteId={clienteId} clienteNome={cliente?.nome ?? ''} />
 
       <TikTokSection key={`tt-${clienteId}`} clienteId={clienteId} />
 

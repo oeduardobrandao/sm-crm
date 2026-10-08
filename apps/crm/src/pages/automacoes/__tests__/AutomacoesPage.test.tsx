@@ -17,6 +17,8 @@ const {
   mockUseAuth,
   mockHasReadyAccount,
   entitlementsMock,
+  mockGetContactCounts,
+  mockCountContacts,
 } = vi.hoisted(() => ({
   mockGetAutomations: vi.fn(),
   mockGetClientes: vi.fn(),
@@ -28,6 +30,8 @@ const {
   mockUseAuth: vi.fn(),
   mockHasReadyAccount: vi.fn(),
   entitlementsMock: vi.fn(),
+  mockGetContactCounts: vi.fn(),
+  mockCountContacts: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -52,8 +56,14 @@ vi.mock('../../../store', async () => {
     updateInstagramAutomation: mockUpdate,
     deleteInstagramAutomation: mockDelete,
     hasAutomationReadyAccount: mockHasReadyAccount,
+    getContactCounts: mockGetContactCounts,
+    countInstagramContacts: mockCountContacts,
   };
 });
+
+vi.mock('../contacts/ContactsTab', () => ({
+  ContactsTab: () => <div data-testid="contacts-tab" />,
+}));
 
 vi.mock('../../../context/AuthContext', () => ({ useAuth: mockUseAuth }));
 
@@ -247,11 +257,11 @@ const SENDS = [
   },
 ];
 
-function renderPage() {
+function renderPage(url = '/automacoes') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/automacoes']}>
+      <MemoryRouter initialEntries={[url]}>
         <AutomacoesPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -285,6 +295,8 @@ describe('AutomacoesPage', () => {
     mockDeleteMedia.mockResolvedValue(undefined);
     entitlementsMock.mockReturnValue({ isLoading: false, hasFeature: () => true });
     mockHasReadyAccount.mockResolvedValue(false);
+    mockGetContactCounts.mockResolvedValue([]);
+    mockCountContacts.mockResolvedValue(0);
     setAuth();
   });
 
@@ -591,6 +603,64 @@ describe('AutomacoesPage', () => {
         expect(container.querySelector('.animate-spin')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+
+    it('0 automações mas com contatos → página abre em Contatos, sem paywall', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockCountContacts.mockResolvedValue(5);
+      renderPage();
+      expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+
+    it('contagem de contatos pendente → spinner, NUNCA paywall', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockCountContacts.mockReturnValue(new Promise(() => {}));
+      const { container } = renderPage();
+      await waitFor(() => expect(container.querySelector('.animate-spin')).toBeInTheDocument());
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+
+    it('contagem de contatos em erro → fail open (página, sem paywall)', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockCountContacts.mockRejectedValue(new Error('boom'));
+      renderPage();
+      expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('contatos', () => {
+    it('switches to the Contatos tab from the tab bar', async () => {
+      renderPage();
+      // Radix Tabs activate on mouseDown/keyDown/focus, not click.
+      fireEvent.mouseDown(await screen.findByRole('tab', { name: 'contacts.tabContacts' }));
+      expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
+    });
+
+    it('opens on Contatos from ?aba=contatos', async () => {
+      renderPage('/automacoes?aba=contatos');
+      expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
+    });
+
+    it('shows "Ver contatos (N)" in the expanded card with a deep link, hidden when N = 0', async () => {
+      mockGetContactCounts.mockResolvedValue([
+        {
+          automation_id: 'auto-1',
+          automation_name: 'Promo de agosto',
+          client_id: 14,
+          automation_deleted: false,
+          reached_count: 3,
+          total_count: 4,
+        },
+      ]);
+      renderPage();
+      // The expandable row is a TableRow/div with aria-expanded, not a button.
+      // jsdom's matchMedia stub is false, so the page renders the MOBILE branch.
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
+      fireEvent.click(row);
+      const link = await screen.findByRole('link', { name: 'contacts.viewContacts:{"count":3}' });
+      expect(link).toHaveAttribute('href', '/automacoes?aba=contatos&cliente=14&automacao=auto-1');
     });
   });
 
