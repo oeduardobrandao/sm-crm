@@ -540,6 +540,16 @@ Deno.test("hub-post-references: PATCH maps locked to 409 and not_found to 404", 
   }
 });
 
+Deno.test("hub-post-references: PATCH re-read DB error after the save is 500 internal, not 404", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("post_reference_client_update", { data: "ok", error: null });
+  db.queue("post_references", "select", { data: null, error: { message: "connection reset" } });
+  const res = await makeHandler(db)(jsonReq("PATCH", "/8", { note: "x" }));
+  assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "internal" });
+});
+
 Deno.test("hub-post-references: PATCH rejects a note over 500 chars before the RPC", async () => {
   const db = createSupabaseQueryMock();
   setupToken(db);

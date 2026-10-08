@@ -122,8 +122,13 @@ export function createHubPostReferencesHandler(deps: HubPostReferencesHandlerDep
       });
       const outcome = clientMutationOutcome(data, error, "update");
       if (outcome) return send(outcome);
-      const { data: ref } = await db.from("post_references")
+      const { data: ref, error: refErr } = await db.from("post_references")
         .select("post_id").eq("id", refId).eq("conta_id", contaId).maybeSingle();
+      if (refErr) {
+        // A nota já foi salva: um erro transitório aqui não pode virar 404.
+        console.error("[hub-post-references:update] post lookup failed:", refErr);
+        return send(referenceError("internal"));
+      }
       const postId = parsePositiveId((ref as { post_id?: unknown } | null)?.post_id);
       if (postId === null) return send(referenceError("not_found"));
       const listed = await listPostReferences({
