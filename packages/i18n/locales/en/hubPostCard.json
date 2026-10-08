@@ -1,7 +1,7 @@
 {
   "tipo": {
-    "feed": "Feed",
-    "reels": "Reels",
+    "feed": "Image",
+    "reels": "Vertical video",
     "stories": "Stories",
     "carrossel": "Carousel"
   },

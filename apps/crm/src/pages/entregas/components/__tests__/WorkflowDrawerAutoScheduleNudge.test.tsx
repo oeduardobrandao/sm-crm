@@ -382,7 +382,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     // Waits for mockGetPosts to resolve and Post A's row to expand -- its
     // "Tipo" select (index 0) shows the fixture's tipo, same wait-gate
     // WorkflowDrawer.test.tsx uses before touching any field on this post.
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('1');
@@ -410,7 +410,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByText('Post aprovado')).toBeInTheDocument();
@@ -443,7 +443,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -488,7 +488,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
       } as never,
     });
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -519,7 +519,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc, { card: { allEtapas: TWO_OPEN_APPROVALS } });
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -549,7 +549,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'revisao_interna' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -581,7 +581,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -611,7 +611,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('1');
@@ -641,7 +641,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('1');

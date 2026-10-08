@@ -1,3 +1,4 @@
+import type { ContentFormat } from '@mesaas/platforms';
 import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
@@ -58,7 +59,7 @@ export interface WorkflowPost {
   titulo: string;
   conteudo: Record<string, unknown> | null;
   conteudo_plain: string;
-  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  tipo: ContentFormat;
   ordem: number;
   status:
     | 'rascunho'
