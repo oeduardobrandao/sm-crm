@@ -4,7 +4,7 @@
 // antes de interpretar, então "/\t\\evil.com" viraria "/\\evil.com" → https://evil.com.
 // Também rejeita // e /\ logo após a barra inicial (authority = host externo).
 
-const CONTROL_OR_SPACE = /[\x00-\x20\x7F]/;
+export const CONTROL_OR_SPACE = /[\x00-\x20\x7F]/;
 const RELATIVE_RE = /^\/(?![\/\\])/;
 
 /** True se `value` é um href seguro. `allowHttp` libera http:// além de https://. */
