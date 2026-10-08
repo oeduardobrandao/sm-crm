@@ -144,6 +144,9 @@ export interface TikTokSettingsPanelProps {
   onCompletenessChange?: (complete: boolean) => void;
   /** See the module-level "Test-mode banner" comment above. Defaults to false. */
   showTestModeBanner?: boolean;
+  /** Com feature_multiplatform a legenda do TikTok mora na aba do TikTok
+   *  (DestinationCaptionTabs); o painel fica só com as configurações. */
+  hideCaption?: boolean;
 }
 
 export function TikTokSettingsPanel({
@@ -152,6 +155,7 @@ export function TikTokSettingsPanel({
   onFieldChange,
   onCompletenessChange,
   showTestModeBanner = false,
+  hideCaption = false,
 }: TikTokSettingsPanelProps) {
   const [creatorInfo, setCreatorInfo] = useState<TikTokCreatorInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -450,27 +454,29 @@ export function TikTokSettingsPanel({
       </div>
 
       {/* Caption override */}
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between">
-          <Label htmlFor={`tt-caption-${post.id}`}>
-            Legenda do TikTok (opcional — usa a legenda do Instagram se vazia)
-          </Label>
-          <span
-            className="text-xs"
-            style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}
-          >
-            {captionLocal.length} / {captionMax}
-          </span>
+      {!hideCaption && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <Label htmlFor={`tt-caption-${post.id}`}>
+              Legenda do TikTok (opcional — usa a legenda do Instagram se vazia)
+            </Label>
+            <span
+              className="text-xs"
+              style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}
+            >
+              {captionLocal.length} / {captionMax}
+            </span>
+          </div>
+          <Textarea
+            id={`tt-caption-${post.id}`}
+            value={captionLocal}
+            onChange={(e) => handleCaptionChange(e.target.value)}
+            placeholder="Texto exato a publicar no TikTok. Deixe vazio para usar a legenda do Instagram."
+            className="min-h-[70px] resize-y"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
+          />
         </div>
-        <Textarea
-          id={`tt-caption-${post.id}`}
-          value={captionLocal}
-          onChange={(e) => handleCaptionChange(e.target.value)}
-          placeholder="Texto exato a publicar no TikTok. Deixe vazio para usar a legenda do Instagram."
-          className="min-h-[70px] resize-y"
-          style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
-        />
-      </div>
+      )}
 
       {/* Title — photo tipos only */}
       {isPhotoTipo && (
