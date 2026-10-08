@@ -33,6 +33,8 @@ export interface CaptionCommentHandlers {
 
 export interface InstagramCaptionFieldHandle {
   focusThread(threadId: number): void;
+  /** Texto atual, rascunho não salvo incluso (semente da legenda de outro destino). */
+  getText(): string;
 }
 
 interface InstagramCaptionFieldProps {
@@ -196,6 +198,7 @@ export const InstagramCaptionField = forwardRef<
         }
         if (comments) openThread(threadId);
       },
+      getText,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [anchors, comments],

@@ -411,4 +411,11 @@ describe('InstagramCaptionField', () => {
     expect(textarea().selectionEnd).toBe(11);
     expect(screen.getByText('trocar')).toBeInTheDocument();
   });
+
+  it('getText returns the current draft', () => {
+    const ref = createRef<InstagramCaptionFieldHandle>();
+    render(<InstagramCaptionField ref={ref} value={caption} threads={[]} onSave={vi.fn()} />);
+    fireEvent.change(textarea(), { target: { value: 'outra legenda' } });
+    expect(ref.current!.getText()).toBe('outra legenda');
+  });
 });
