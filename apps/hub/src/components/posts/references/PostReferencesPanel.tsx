@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Lock, Paperclip } from 'lucide-react';
 import type { PostReferencesState } from '../../../hooks/usePostReferences';
@@ -12,6 +13,8 @@ interface PostReferencesPanelProps {
   refs: PostReferencesState;
   onOpen: (item: ReferenceItem) => void;
   onOverlayChange?: (open: boolean) => void;
+  /** True while any row has an unsaved note. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /** The Referências tab: rows, uploads in flight, and (while enviado_cliente) the add controls. */
@@ -20,9 +23,21 @@ export function PostReferencesPanel({
   refs,
   onOpen,
   onOverlayChange,
+  onDirtyChange,
 }: PostReferencesPanelProps) {
   const { t } = useTranslation('hubPosts');
   const { data, isLoading, canAdd, items, uploads } = refs;
+  const dirtyIds = useRef(new Set<number>());
+  const handleRowDirty = useCallback(
+    (id: number, dirty: boolean) => {
+      if (dirty) dirtyIds.current.add(id);
+      else dirtyIds.current.delete(id);
+      onDirtyChange?.(dirtyIds.current.size > 0);
+    },
+    [onDirtyChange],
+  );
+  // Rows report clean on unmount, but report once more in case the panel itself goes away.
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   if (!data) {
     return (
@@ -101,6 +116,7 @@ export function PostReferencesPanel({
               onOpen={onOpen}
               onSaveNote={refs.updateNote}
               onRemove={refs.remove}
+              onDirtyChange={handleRowDirty}
             />
           ))}
         </ul>
