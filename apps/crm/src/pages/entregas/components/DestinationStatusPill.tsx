@@ -36,6 +36,7 @@ export function DestinationStatusPill({
   const showLabel = !(hideLabelWhenPending && state === 'pendente');
   return (
     <span
+      role="img"
       aria-label={name}
       title={name}
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"

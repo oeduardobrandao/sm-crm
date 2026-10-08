@@ -8553,6 +8553,7 @@ body.role-agent input[name='valor_total'] {
 .platform-chip--on { border-color: var(--primary-color); background: rgba(255, 191, 48, 0.12); }
 .platform-chip--soon { cursor: not-allowed; color: var(--text-muted); }
 .platform-chip__soon { font-size: 0.68rem; }
+.platform-chip:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .post-status--rascunho {
   --badge-bg: #f1f5f9;

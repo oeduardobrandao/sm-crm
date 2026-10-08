@@ -799,7 +799,8 @@ export function PostEditorBody({
       )}
 
       {/* TikTok settings panel (Task C2) — audit-mandated creator_info compliance UI.
-          Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
+          Flag-OFF only (with feature_multiplatform it lives inside the TikTok caption tab,
+          caption hidden). Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
           tipo==='stories' guard (TikTok has no Stories API, so platform can never be
           'tiktok'/'both' on a stories post — PlatformSelector self-heals that case).
           `onCompletenessChange`/`showTestModeBanner` wire into the sibling ScheduleButton
