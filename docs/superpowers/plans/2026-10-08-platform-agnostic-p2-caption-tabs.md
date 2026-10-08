@@ -19,12 +19,18 @@
 
 ## Deliberate deviations from the spec (for reviewers)
 
-1. **No `post_targets_resolved` view in P2.** P1 deviation 1 deferred it to "the phase that first reads it". P2's only readers are two CRM surfaces that already load the legacy columns, so the derivation is a pure TS function (`resolveDestinationState` in `apps/crm/src/pages/entregas/postDestinations.ts`), unit-tested, with the exact rules the spec gives for the view (Instagram: `instagram_media_id` = publicado, `publish_error` without media id = falha, never the shared `falha_publicacao`; TikTok: from `tiktok_publish_status`). It prefers `post_targets.status` whenever that is not `pendente`, so it keeps working when P4/P5 start writing target status. The view moves to P3, whose Hub/edge readers (`hub-posts`) need one SQL shape.
-2. **No server-side validation of the Destinos row** (consistent with P1 deviation 2). The UI only offers the board's platforms (plus destinations the post already has), TikTok only with `feature_tiktok` and an active TikTok account, never on stories, and hides the row on Post Express. The DB keeps enforcing what P1 enforces (platform CHECK, composite tenant FK, RLS, `z7` drops TikTok on stories). A direct API write could add a destination outside the board, exactly as since P1.
+1. **No `post_targets_resolved` view in P2.** P1 deviation 1 deferred it to "the phase that first reads it". P2's only readers are two CRM surfaces that already load the legacy columns, so the derivation is a pure TS function (`resolveDestinationState` in `apps/crm/src/pages/entregas/postDestinations.ts`), unit-tested, with the spec's rules for the view plus two changes. Instagram: `instagram_media_id` = publicado; TikTok: from `tiktok_publish_status`. **Change 1:** falha needs the platform's own column (`publish_error` without media id, or `tiktok_publish_status = 'failed'`) **and** `post.status = 'falha_publicacao'`. Neither column is cleared when someone moves the post back to rascunho by hand (only the publish handlers clear them), so the column alone would pin "Falhou" on a reworked post. The platform column still decides which destination failed, so a TikTok failure on a post going to both never marks Instagram. **Change 2:** the spec's `publish_processing_at → processando` is replaced by "`status = 'agendado'` and `scheduled_at` already passed" (the same rule as `getPostPublishState`), because `publish_processing_at` is not in `POST_CONTEXT_COLUMNS` and the board would need another column for it. It prefers `post_targets.status` whenever that is not `pendente`, so it keeps working when P4/P5 start writing target status. The view moves to P3, whose Hub/edge readers (`hub-posts`) need one SQL shape.
+2. **Only the UI enforces the Destinos rules** (consistent with P1 deviation 2). The database enforces only the platform CHECK, the unique `(post_id, platform)`, the composite tenant FK and RLS. `z7` fires only `AFTER UPDATE OF tipo` and the seed triggers only on post INSERT, so a direct `post_targets` write is accepted when it:
+   - inserts TikTok on a stories post;
+   - inserts any platform on a Post Express post;
+   - inserts a platform the board does not list;
+   - deletes the last Instagram/TikTok destination of an `agendado` post. `platform` then becomes `other`, the Instagram claim never matches, and the post sits in `agendado`.
+
+   The UI blocks all four. The Destinos row only offers the board's platforms (plus destinations the post already has), never TikTok on stories, and is hidden on Express. It is fully locked while the post is `agendado` or `postado` (`destinationLockReason` in Task 11), which covers removing the last auto-publishing destination of a scheduled post. A destination already `publicado` cannot be turned off (Decision 8). Any other writer (MCP, scripts, direct PostgREST) could still do all four, exactly as since P1.
 3. **No new DB flag guard on `post_targets` writes.** `feature_multiplatform` gates the UI only. Writes to `post_targets` have been possible for any workspace member since P1; P2 adds no new reachable state for a workspace without the flag.
-4. **The "first destination's caption" rule is pinned as:** the first destination the post already has, in registry order (`PLATFORM_IDS`: Instagram, TikTok, Geral), whose caption is non-empty. The copy is cut to the new destination's `captionMaxFor(platform, tipo)` (never splitting a surrogate pair). A destination whose own caption is already non-empty (for example Instagram removed and re-added) keeps it and gets no copy. Listed again under Open questions.
+4. **The "first destination's caption" rule is pinned as:** the first destination the post already has, in registry order (`PLATFORM_IDS`: Instagram, TikTok, Geral), whose caption is non-empty. The copy is cut to the new destination's `captionMaxFor(platform, tipo)` (never splitting a surrogate pair), and a single `toast.info` says how many characters were cut. A destination whose own caption is already non-empty (for example Instagram removed and re-added) keeps it and gets no copy. See Decisions 1 and 2.
 5. **The copy for Instagram/TikTok is two requests, not one transaction:** insert the target, then write the caption (`save_ig_caption` for Instagram, a plain update for TikTok). If the second request fails the destination exists with an empty caption and a toast says so; the user can type it. Geral is a single INSERT carrying the caption.
-6. **Geral pill shim.** `post_targets.status` stays `pendente` for Geral until P3 flips it to `disponivel` on approval. P2's resolver shows Geral as "Disponível" when `post.status` is `aprovado_cliente`, `agendado` or `postado`. P3 replaces the shim with the real write; the resolver already prefers the row's own status.
+6. **Geral pill shim.** `post_targets.status` stays `pendente` for Geral until P3 flips it to `disponivel` on approval. P2's resolver shows Geral as "Disponível" when `post.status` is `aprovado_cliente`, `agendado`, `postado` or `falha_publicacao` (an approved post whose social publish failed is still downloadable). P3 replaces the shim with the real write; the resolver already prefers the row's own status.
 7. **`post_targets.format` stays NULL.** The tabs compute the native format from the registry (`PLATFORM_DEFS[p].nativeFormats[tipo]`). Storing it matters only when publishers read it (P4/P5).
 8. **Editor layout is not restructured.** The spec mockup puts media and a "Formato" select on the left. P2 keeps the current single-column drawer layout and the "Tipo" label; the Destinos row takes the `PlatformSelector` slot in the meta row and the tabs take the caption slot under the content editor.
 9. **"Baixar conteúdo" is P3.** The Geral tab ships "Copiar legenda" (clipboard only) in P2; the zip/link download needs `file-zip`/`file-manage` work that the spec schedules in P3.
@@ -32,7 +38,8 @@
 11. **The UI never reaches zero destinations.** Turning off the last one shows "O post precisa de pelo menos um destino." (same rule as `PlatformChips`). The DB still allows zero (P1).
 12. **`ScheduleButton` gets one flag-ON-only addition:** a short hint when an approved post targets Instagram but the client has no connected Instagram account (today it renders nothing). Its publish/schedule logic is untouched; the "connected account" check already controls only publish/schedule there (`ScheduleButton.tsx:210`).
 13. **One query shape changes for every workspace, flag or not:** `getActivePosts` (the Publicações board request) embeds `post_targets(platform, status)` on both arms. It is an indexed lookup through the unique `(post_id, platform)` and nothing renders it without the flag; gating the select on the flag would refetch the board when the limits load. Only the UI is "exactly as today" with the flag off.
-14. **Hub is untouched.** The Hub still shows only the Instagram caption; per-destination caption blocks are P3. With the flag dark this is invisible to clients.
+14. **Hub is untouched, and that is a pilot risk.** `hub-posts` selects `ig_caption` only (`supabase/functions/hub-posts/handler.ts:167`). In a pilot workspace with the flag on, the client approves a post without seeing its TikTok or Geral caption, and a Geral-only post shows no caption at all in the Hub. The spec's approval assumption ("the client approves … every destination's caption") only holds once P3 adds the per-destination caption blocks. Out of scope here; the PR text says it and the pilot should either avoid client approval on multi-destination posts or ship P3 before inviting clients to approve them.
+15. **TikTok caption shows the publisher's fallback.** The TikTok publisher posts `tiktok_caption ?? ig_caption` (`_shared/tiktok-publish-utils.ts:233`, `tiktok-publish/handler.ts:397`). So the TikTok tab shows `tiktok_caption ?? ig_caption ?? ''`, with the hint "Usando a legenda do Instagram até você editar aqui." while `tiktok_caption` is NULL. Typing in it saves `tiktok_caption`, and from then on the two are separate.
 
 ## Global Constraints
 
@@ -40,7 +47,7 @@
 - **No SQL migrations in this phase.** If a task seems to need one, stop and escalate. (If one is ever added, its version must sort above `ls supabase/migrations | tail -1`, today `20261010100007`.)
 - **Flag:** `const multiplatform = features?.feature_multiplatform === true;` `features === null/undefined` (loading) is OFF. Every UI task ships a flag-OFF regression test proving the old tree renders and no `post_targets` request is made.
 - **Allowed values:** platform ids exactly `'instagram' | 'tiktok' | 'geral'` (`PLATFORM_IDS` from `@mesaas/platforms`); `post_targets.status` exactly `'pendente','agendado','processando','publicado','falha','disponivel'`.
-- **Unsaved work:** every new caption editor goes through `useCaptionDraft` (which already calls `useUnsavedWork(draft !== null)` from `@mesaas/app-lifecycle`). Never `useBlocker`. Tab panels use `forceMount` so an inactive tab never unmounts a draft.
+- **Unsaved work:** every new caption editor goes through `useCaptionDraft` (which already calls `useUnsavedWork(draft !== null)` from `@mesaas/app-lifecycle`). The destination toggle (INSERT + caption copy) wraps its promise in `trackUnsavedWork` (same convention as `PostMediaGallery.tsx:440`; the hold survives the drawer closing mid-write and is capped). Never `useBlocker`. Tab panels use `forceMount` so an inactive tab never unmounts a draft.
 - **Mocked `@/store` in existing tests:** `WorkflowDrawer*.test.tsx`, `StandalonePostDrawer.test.tsx` and `PostsKanbanView.test.tsx` mock `@/store` with a fixed export list. New store functions must only be referenced inside closures that run with the flag ON (`queryFn`, `mutationFn`, handlers), and pure helpers used by the card (`postDestinations.ts`, `DestinationStatusPill.tsx`) must import from the store with `import type` only.
 - **Copy:** Portuguese, no em dashes in any new user-facing string (the existing TikTok label at `TikTokSettingsPanel.tsx:456` has one: do not copy it). The `→` arrow in the native-format hint is fine.
 - **Gates before pushing:**
@@ -255,7 +262,7 @@ describe('postTargets store', () => {
     mocked.__queueSupabaseResult('post_targets', 'update', { data: null, error: null });
     await savePostCaption(9, 'geral', 'b');
     const upd = calls('post_targets', 'update')[0];
-    expect(upd.payload).toMatchObject({ caption: 'b' });
+    expect(upd.payload).toEqual({ caption: 'b' });
     expect(upd.modifiers).toContainEqual({ method: 'eq', args: ['platform', 'geral'] });
   });
 
@@ -299,7 +306,10 @@ Add to `apps/crm/src/__tests__/store.posts.test.ts`, inside `describe('store wor
     );
     const [post] = await store.getActivePosts();
     expect(post.targets?.map((t) => t.platform)).toEqual(['instagram', 'geral']);
-    const selects = getCalls('workflow_posts', 'select') as Array<{ selectArgs?: unknown[][] }>;
+    // getCalls tipa as entradas sem selectArgs, que o mock grava (test/shared/supabaseMock.ts).
+    const selects = getCalls('workflow_posts', 'select') as unknown as Array<{
+      selectArgs?: unknown[][];
+    }>;
     for (const call of selects) {
       expect(String(call.selectArgs?.[0]?.[0])).toContain('post_targets(platform, status)');
     }
@@ -452,7 +462,9 @@ export async function savePostCaption(
   }
   const { error } = await supabase
     .from('post_targets')
-    .update({ caption: text, updated_at: new Date().toISOString() })
+    // Sem updated_at: post_targets não tem trigger de updated_at e o relógio do
+    // cliente não deve ir para o banco. A coluna fica com a hora da criação.
+    .update({ caption: text })
     .eq('post_id', postId)
     .eq('platform', 'geral');
   if (error) throw error;
@@ -538,9 +550,10 @@ git commit -m "feat(platforms): store de destinos do post e embed no quadro de P
   - `resolveDestinationState(post: DestinationPostFields, target: PostTargetSummary, now?: Date): DestinationState`
   - `nativeFormatHint(platform: PlatformId, tipo: ContentFormat): string | null`
   - `truncateCaption(text: string, max: number | null): string`
-  - `seedCaptionFor(platform: PlatformId, current: PlatformId[], captions: Partial<Record<PlatformId, string | null>>, tipo: ContentFormat): string | null`
-  - `interface DestinationToggleOption { platform: PlatformId; on: boolean; disabledReason: string | null }`
-  - `destinationToggleOptions(args: { boardPlatforms: PlatformId[]; current: PlatformId[]; tipo: ContentFormat; tiktokFeatureEnabled: boolean; hasActiveTikTokAccount: boolean; isExpress: boolean }): DestinationToggleOption[]`
+  - `interface CaptionSeed { caption: string; cut: number }` (`cut` = characters removed to fit the limit)
+  - `seedCaptionFor(platform: PlatformId, current: PlatformId[], captions: Partial<Record<PlatformId, string | null>>, tipo: ContentFormat): CaptionSeed | null`
+  - `interface DestinationToggleOption { platform: PlatformId; on: boolean; disabledReason: string | null }` (`disabledReason` = why this toggle cannot be clicked now: turning on, or turning off a published destination)
+  - `destinationToggleOptions(args: { boardPlatforms: PlatformId[]; current: PlatformId[]; published: PlatformId[]; tipo: ContentFormat; tiktokFeatureEnabled: boolean; hasActiveTikTokAccount: boolean; isExpress: boolean }): DestinationToggleOption[]`
   - `PLATFORM_ICONS: Record<PlatformId, LucideIcon>` from `@/components/platformIcons`
 
 - [ ] **Step 1: Write the failing test**
@@ -573,11 +586,20 @@ const geral = { platform: 'geral', status: 'pendente' } as const;
 const NOW = new Date('2026-10-08T12:00:00Z');
 
 describe('resolveDestinationState', () => {
-  it('Instagram: media id wins, then publish_error, never the shared falha_publicacao', () => {
+  it('Instagram: media id wins; falha needs publish_error AND falha_publicacao', () => {
     expect(resolveDestinationState(post({ instagram_media_id: 'm' }), ig, NOW)).toBe('publicado');
-    expect(resolveDestinationState(post({ publish_error: 'x' }), ig, NOW)).toBe('falha');
+    expect(
+      resolveDestinationState(post({ status: 'falha_publicacao', publish_error: 'x' }), ig, NOW),
+    ).toBe('falha');
     // TikTok falhou num post "both": status compartilhado não contamina o Instagram
     expect(resolveDestinationState(post({ status: 'falha_publicacao' }), ig, NOW)).toBe(
+      'pendente',
+    );
+  });
+
+  it('a stale publish error does not pin Falhou after the post went back to rascunho', () => {
+    expect(resolveDestinationState(post({ publish_error: 'x' }), ig, NOW)).toBe('pendente');
+    expect(resolveDestinationState(post({ tiktok_publish_status: 'failed' }), tt, NOW)).toBe(
       'pendente',
     );
   });
@@ -586,9 +608,13 @@ describe('resolveDestinationState', () => {
     expect(resolveDestinationState(post({ tiktok_publish_status: 'published' }), tt, NOW)).toBe(
       'publicado',
     );
-    expect(resolveDestinationState(post({ tiktok_publish_status: 'failed' }), tt, NOW)).toBe(
-      'falha',
-    );
+    expect(
+      resolveDestinationState(
+        post({ status: 'falha_publicacao', tiktok_publish_status: 'failed' }),
+        tt,
+        NOW,
+      ),
+    ).toBe('falha');
     expect(resolveDestinationState(post({ tiktok_publish_status: 'processing' }), tt, NOW)).toBe(
       'processando',
     );
@@ -608,6 +634,9 @@ describe('resolveDestinationState', () => {
 
   it('Geral is disponivel once the client approved (P2 shim), pending before', () => {
     expect(resolveDestinationState(post({ status: 'aprovado_cliente' }), geral, NOW)).toBe(
+      'disponivel',
+    );
+    expect(resolveDestinationState(post({ status: 'falha_publicacao' }), geral, NOW)).toBe(
       'disponivel',
     );
     expect(resolveDestinationState(post({ status: 'rascunho' }), geral, NOW)).toBe('pendente');
@@ -663,10 +692,10 @@ describe('seedCaptionFor', () => {
   it('copies the first non-empty caption in registry order', () => {
     expect(
       seedCaptionFor('geral', ['instagram', 'tiktok'], { instagram: '', tiktok: 'do tiktok' }, 'feed'),
-    ).toBe('do tiktok');
+    ).toEqual({ caption: 'do tiktok', cut: 0 });
     expect(
       seedCaptionFor('tiktok', ['geral', 'instagram'], { instagram: 'ig', geral: 'g' }, 'feed'),
-    ).toBe('ig');
+    ).toEqual({ caption: 'ig', cut: 0 });
   });
 
   it('ignores the destination being added and platforms the post does not have', () => {
@@ -677,7 +706,9 @@ describe('seedCaptionFor', () => {
 
   it('cuts to the new destination limit (TikTok photo 4000 into Instagram 2200)', () => {
     const long = 'x'.repeat(3000);
-    expect(seedCaptionFor('instagram', ['tiktok'], { tiktok: long }, 'feed')).toHaveLength(2200);
+    const seed = seedCaptionFor('instagram', ['tiktok'], { tiktok: long }, 'feed');
+    expect(seed?.caption).toHaveLength(2200);
+    expect(seed?.cut).toBe(800);
   });
 });
 
@@ -686,6 +717,7 @@ describe('destinationToggleOptions', () => {
   const base: Args = {
     boardPlatforms: ['instagram', 'geral'],
     current: ['instagram'],
+    published: [],
     tipo: 'feed',
     tiktokFeatureEnabled: true,
     hasActiveTikTokAccount: true,
@@ -726,6 +758,12 @@ describe('destinationToggleOptions', () => {
 
   it('Post Express has no Destinos row', () => {
     expect(opts({ isExpress: true })).toEqual([]);
+  });
+
+  it('a published destination cannot be turned off', () => {
+    const o = opts({ current: ['instagram', 'geral'], published: ['instagram'] });
+    expect(o.find((x) => x.platform === 'instagram')?.disabledReason).toBe('Já publicado');
+    expect(o.find((x) => x.platform === 'geral')?.disabledReason).toBeNull();
   });
 });
 ```
@@ -800,7 +838,13 @@ export type DestinationPostFields = Pick<
 
 // Geral fica "Disponível" depois da aprovação do cliente. Shim de P2: P3 grava
 // post_targets.status = 'disponivel' na aprovação e a linha passa a mandar.
-const GERAL_AVAILABLE = new Set<WorkflowPost['status']>(['aprovado_cliente', 'agendado', 'postado']);
+// falha_publicacao: aprovado, a publicação social falhou, o conteúdo segue para baixar.
+const GERAL_AVAILABLE = new Set<WorkflowPost['status']>([
+  'aprovado_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+]);
 
 export function resolveDestinationState(
   post: DestinationPostFields,
@@ -810,14 +854,18 @@ export function resolveDestinationState(
   // P4/P5 movem o estado de publicação para post_targets: fora de 'pendente', a linha manda.
   if (target.status !== 'pendente') return target.status;
 
+  // falha = coluna da própria plataforma E post em falha_publicacao. Só a coluna não
+  // basta: nada limpa publish_error/tiktok_publish_status quando alguém volta o post
+  // para rascunho na mão. Só o status não basta: uma falha do TikTok num post "both"
+  // também grava falha_publicacao, e o Instagram não falhou.
+  const failed = post.status === 'falha_publicacao';
   if (target.platform === 'instagram') {
     if (post.instagram_media_id) return 'publicado';
-    // Nunca status = 'falha_publicacao': uma falha do TikTok num post "both" também o grava.
-    if (post.publish_error) return 'falha';
+    if (failed && post.publish_error) return 'falha';
   } else if (target.platform === 'tiktok') {
     const s = post.tiktok_publish_status;
     if (s === 'published') return 'publicado';
-    if (s === 'failed') return 'falha';
+    if (failed && s === 'failed') return 'falha';
     if (s === 'initiated' || s === 'processing') return 'processando';
   } else if (GERAL_AVAILABLE.has(post.status)) {
     return 'disponivel';
@@ -857,16 +905,25 @@ export function truncateCaption(text: string, max: number | null): string {
  * na ordem do registro, com legenda não vazia; cortada no limite do destino novo.
  * Quem chama só usa o resultado se a legenda própria do destino estiver vazia.
  */
+export interface CaptionSeed {
+  caption: string;
+  /** Caracteres cortados para caber no limite do destino novo (0 = cópia inteira). */
+  cut: number;
+}
+
 export function seedCaptionFor(
   platform: PlatformId,
   current: PlatformId[],
   captions: Partial<Record<PlatformId, string | null>>,
   tipo: ContentFormat,
-): string | null {
+): CaptionSeed | null {
   for (const p of PLATFORM_IDS) {
     if (p === platform || !current.includes(p)) continue;
     const text = captions[p];
-    if (text && text.trim()) return truncateCaption(text, captionMaxFor(platform, tipo));
+    if (text && text.trim()) {
+      const caption = truncateCaption(text, captionMaxFor(platform, tipo));
+      return { caption, cut: text.length - caption.length };
+    }
   }
   return null;
 }
@@ -874,20 +931,24 @@ export function seedCaptionFor(
 export interface DestinationToggleOption {
   platform: PlatformId;
   on: boolean;
-  /** Por que não dá para LIGAR este destino; null = pode. Desligar é sempre possível
-   *  (o componente só recusa o último destino). */
+  /** Por que este toggle não pode ser clicado agora: ligar (stories, formato, conta)
+   *  ou desligar um destino já publicado. null = pode. O componente ainda recusa
+   *  desligar o último destino e trava tudo com o post agendado/postado. */
   disabledReason: string | null;
 }
 
 export function destinationToggleOptions(args: {
   boardPlatforms: PlatformId[];
   current: PlatformId[];
+  /** Destinos cujo estado resolvido é 'publicado' (resolveDestinationState). */
+  published: PlatformId[];
   tipo: ContentFormat;
   tiktokFeatureEnabled: boolean;
   hasActiveTikTokAccount: boolean;
   isExpress: boolean;
 }): DestinationToggleOption[] {
-  const { boardPlatforms, current, tipo, tiktokFeatureEnabled, hasActiveTikTokAccount } = args;
+  const { boardPlatforms, current, published, tipo, tiktokFeatureEnabled, hasActiveTikTokAccount } =
+    args;
   // Post Express é só Instagram (P1 desvio 8): sem linha de Destinos.
   if (args.isExpress) return [];
   return PLATFORM_IDS.filter((p) => {
@@ -897,7 +958,10 @@ export function destinationToggleOptions(args: {
   }).map((p) => {
     const on = current.includes(p);
     let disabledReason: string | null = null;
-    if (!on) {
+    if (on && published.includes(p)) {
+      // Tirar um destino publicado apagaria o registro de onde o post saiu.
+      disabledReason = 'Já publicado';
+    } else if (!on) {
       if (p === 'tiktok' && tipo === 'stories') {
         disabledReason = 'Stories não são suportados no TikTok';
       } else if (!supportsFormat(p, tipo)) {
@@ -931,7 +995,7 @@ git commit -m "feat(platforms): regras puras dos destinos (estado, semente da le
 No SQL changes in P2, but the editor now depends on four direct writes. Pin them.
 
 **Files:**
-- Modify: `supabase/tests/entitlements/99_post_targets.sql` (append section 15; update the header comment to say "Seções 1-13 e 15")
+- Modify: `supabase/tests/entitlements/99_post_targets.sql` (append section 15; change the header comment to "Seções 1-13, 15 ligam feature_multiplatform em todos os planos dentro da própria transação; a seção 14 cobre a flag desligada (20261010100007).")
 
 **Interfaces:**
 - Consumes: P1 helpers `et_make_workspace`, `et_grant_hosted_parity`; RPC `save_ig_caption(bigint, text, jsonb)`.
@@ -983,7 +1047,7 @@ begin
   assert v_plat = 'instagram' and v_cap = 'semente', format('IG religado: %s / %s', v_plat, v_cap);
 
   -- savePostCaption('geral'): só a legenda muda, platform não
-  update post_targets set caption = 'texto geral', updated_at = now()
+  update post_targets set caption = 'texto geral'
    where post_id = v_p and platform = 'geral';
   select caption into v_cap from post_targets where post_id = v_p and platform = 'geral';
   assert v_cap = 'texto geral', format('legenda Geral: %s', v_cap);
@@ -1015,7 +1079,7 @@ git commit -m "test(platforms): suíte prende as escritas diretas do editor de d
 ### Task 4: `useCaptionDraft` takes a per-platform limit
 
 **Files:**
-- Modify: `apps/crm/src/pages/entregas/components/useCaptionDraft.ts:21-25` (`Args`), `:41` (signature), `:65-69` (`latest`), `:110-112` (`change`)
+- Modify: `apps/crm/src/pages/entregas/components/useCaptionDraft.ts:21-25` (`Args`), `:41` (signature), `:63-67` (`latest` and its sync effect), `:117` (the length guard in `change`)
 - Test: `apps/crm/src/pages/entregas/components/__tests__/useCaptionDraft.test.tsx` (append cases)
 
 **Interfaces:**
@@ -1521,7 +1585,7 @@ git commit -m "feat(platforms): agendar explica a falta de conta do Instagram co
 
 **Files:**
 - Create: `apps/crm/src/pages/entregas/components/DestinationStatusPill.tsx`
-- Modify: `apps/crm/src/pages/entregas/views/PostsKanbanView.tsx` (every `tiktokEnabled` site: lines ~176, 194, 207, 383, 394, 429, 459, 490, 611, 650, 1029, 1037-1048; and the card body after `<div className="item-title">` at ~306)
+- Modify: `apps/crm/src/pages/entregas/views/PostsKanbanView.tsx` (every `tiktokEnabled` site: lines ~176, 194, 207, 383, 394, 429, 459, 490, 611, 650, 1029, 1037-1048; and the card body after `<div className="item-title">` at :293)
 - Modify: `apps/crm/src/pages/entregas/EntregasPage.tsx:170` (flag const) and `:1575` (prop)
 - Test: `apps/crm/src/pages/entregas/components/__tests__/DestinationStatusPill.test.tsx` (create), `apps/crm/src/pages/entregas/views/__tests__/PostsKanbanView.test.tsx` (append)
 
@@ -1819,6 +1883,23 @@ describe('DestinationToggles', () => {
     for (const b of screen.getAllByRole('button')) expect(b).toBeDisabled();
   });
 
+  it('a published destination is disabled with its reason (turning off)', () => {
+    render(
+      <DestinationToggles
+        options={[
+          { platform: 'instagram', on: true, disabledReason: 'Já publicado' },
+          { platform: 'geral', on: true, disabledReason: null },
+        ]}
+        lockedReason={null}
+        pending={false}
+        onToggle={vi.fn()}
+      />,
+    );
+    const ig = screen.getByRole('button', { name: /Instagram/ });
+    expect(ig).toBeDisabled();
+    expect(ig.parentElement).toHaveAttribute('title', 'Já publicado');
+  });
+
   it('renders nothing for an Express post (no options)', () => {
     const { container } = render(
       <DestinationToggles options={[]} lockedReason={null} pending={false} onToggle={vi.fn()} />,
@@ -1877,7 +1958,7 @@ export function DestinationToggles({
       >
         {options.map((o) => {
           const Icon = PLATFORM_ICONS[o.platform];
-          const reason = lockedReason ?? (o.on ? null : o.disabledReason);
+          const reason = lockedReason ?? o.disabledReason;
           return (
             // span: title não aparece em botão desabilitado (sem pointer events)
             <span key={o.platform} title={reason ?? undefined}>
@@ -1967,6 +2048,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('@mesaas/app-lifecycle', () => ({ trackUnsavedWork: vi.fn((p: Promise<unknown>) => p) }));
 vi.mock('@/store', () => ({
   getPostTargets: vi.fn(async () => [
     { id: 1, post_id: 42, platform: 'instagram', status: 'pendente', caption: null },
@@ -1978,6 +2060,7 @@ vi.mock('@/store', () => ({
 }));
 
 import { toast } from 'sonner';
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import * as store from '@/store';
 import { usePostDestinations } from '../usePostDestinations';
 import type { WorkflowPost } from '@/store/posts';
@@ -2039,6 +2122,16 @@ describe('usePostDestinations', () => {
       seedCaption: 'oi',
     });
     expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it('registers the toggle write as unsaved work while it is in flight', async () => {
+    const { result } = renderHook(() => usePostDestinations(post, true, vi.fn()), {
+      wrapper: wrapper(),
+    });
+    await act(async () => {
+      await result.current.toggle.mutateAsync({ platform: 'geral', on: true, seedCaption: null });
+    });
+    expect(trackUnsavedWork).toHaveBeenCalledTimes(1);
   });
 
   it('toggle off removes', async () => {
@@ -2154,6 +2247,21 @@ describe('DestinationCaptionTabs', () => {
     expect(screen.getByRole('tab', { name: /Geral/ })).toHaveAttribute('data-state', 'active');
   });
 
+  it('TikTok without its own caption shows what the publisher will post (the IG caption)', () => {
+    renderTabs({
+      post: { ...post, tiktok_caption: null, ig_caption: 'da IG' } as WorkflowPost,
+    });
+    expect(screen.getByLabelText('Legenda do TikTok')).toHaveValue('da IG');
+    expect(
+      screen.getByText('Usando a legenda do Instagram até você editar aqui.'),
+    ).toBeInTheDocument();
+  });
+
+  it('no fallback hint once TikTok has its own caption', () => {
+    renderTabs();
+    expect(screen.queryByText('Usando a legenda do Instagram até você editar aqui.')).toBeNull();
+  });
+
   it('locks the TikTok caption while scheduled; Geral stays editable', () => {
     renderTabs({ locked: true });
     expect(screen.getByLabelText('Legenda do TikTok')).toHaveAttribute('readonly');
@@ -2186,6 +2294,7 @@ Expected: FAIL (modules missing).
 ```ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import type { PlatformId } from '@mesaas/platforms';
 import {
   addPostDestination,
@@ -2228,14 +2337,18 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
   const toggle = useMutation({
     mutationFn: (v: { platform: PlatformId; on: boolean; seedCaption: string | null }) => {
       if (postId == null) throw new Error('post sem id');
-      if (!v.on) return removePostDestination(postId, v.platform);
+      if (!v.on) return trackUnsavedWork(removePostDestination(postId, v.platform));
       if (!post.conta_id) throw new Error('post sem conta_id');
-      return addPostDestination({
-        postId,
-        contaId: post.conta_id,
-        platform: v.platform,
-        seedCaption: v.seedCaption,
-      });
+      // INSERT + cópia da legenda em voo: uma troca silenciosa de versão no meio
+      // deixaria o destino sem legenda. Mesmo padrão de PostMediaGallery.tsx:440.
+      return trackUnsavedWork(
+        addPostDestination({
+          postId,
+          contaId: post.conta_id,
+          platform: v.platform,
+          seedCaption: v.seedCaption,
+        }),
+      );
     },
     onError: () => toast.error('Não foi possível atualizar os destinos.'),
     // Também em erro: o INSERT pode ter passado e só a cópia da legenda falhado.
@@ -2387,9 +2500,16 @@ export function DestinationCaptionTabs({
                   ref={tiktokFieldRef}
                   id={`tt-dest-caption-${post.id}`}
                   label="Legenda do TikTok"
-                  value={post.tiktok_caption ?? ''}
+                  // O publicador do TikTok posta tiktok_caption ?? ig_caption: a aba mostra
+                  // exatamente isso. Editar aqui grava tiktok_caption e separa as duas.
+                  value={post.tiktok_caption ?? post.ig_caption ?? ''}
                   max={captionMaxFor('tiktok', post.tipo)}
                   placeholder="Texto exato que será publicado no TikTok."
+                  hint={
+                    post.tiktok_caption == null && post.ig_caption
+                      ? 'Usando a legenda do Instagram até você editar aqui.'
+                      : undefined
+                  }
                   disabled={locked}
                   lockedMessage="Cancelar agendamento para editar"
                   onSave={(text) => onSaveCaption('tiktok', text)}
@@ -2454,7 +2574,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
-vi.mock('@mesaas/app-lifecycle', () => ({ useUnsavedWork: vi.fn() }));
+vi.mock('@mesaas/app-lifecycle', () => ({
+  useUnsavedWork: vi.fn(),
+  trackUnsavedWork: vi.fn((p: Promise<unknown>) => p),
+}));
 vi.mock('@/lib/supabase');
 
 const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
@@ -2515,6 +2638,7 @@ vi.mock('@/pages/entregas/components/PostVersionHistorySheet', () => ({
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({ DateTimePicker: () => null }));
 
+import { toast } from 'sonner';
 import * as store from '@/store';
 import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
 import type { WorkflowPost } from '@/store';
@@ -2697,6 +2821,34 @@ describe('PostEditorBody, feature_multiplatform ON', () => {
     expect(panels[0]).toHaveAttribute('data-hide-caption', 'true');
   });
 
+  it('a copy longer than the new destination limit is cut, with one toast', async () => {
+    vi.mocked(store.getBoardPlatforms).mockResolvedValue(['instagram', 'tiktok']);
+    vi.mocked(store.getPostTargets).mockResolvedValue([target('tiktok')]);
+    renderBody({
+      post: { ...basePost, platform: 'tiktok', ig_caption: null, tiktok_caption: 'x'.repeat(3000) },
+      hasActiveTikTokAccount: true,
+    });
+    const ig = await screen.findByRole('button', { name: /Instagram/ });
+    await waitFor(() => expect(ig).not.toBeDisabled());
+    fireEvent.click(ig);
+    expect(toast.info).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.info).mock.calls[0][0]).toContain('cortada em 800 caracteres');
+    await waitFor(() =>
+      expect(store.addPostDestination).toHaveBeenCalledWith(
+        expect.objectContaining({ platform: 'instagram', seedCaption: 'x'.repeat(2200) }),
+      ),
+    );
+  });
+
+  it('a published destination cannot be turned off', async () => {
+    vi.mocked(store.getPostTargets).mockResolvedValue([target('instagram'), target('geral')]);
+    renderBody({ post: { ...basePost, status: 'falha_publicacao', instagram_media_id: 'm1' } });
+    const ig = await screen.findByRole('button', { name: /Instagram/ });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Geral/ })).not.toBeDisabled());
+    expect(ig).toBeDisabled();
+    expect(ig.parentElement).toHaveAttribute('title', 'Já publicado');
+  });
+
   it('Post Express: no Destinos row', async () => {
     vi.mocked(store.getPostTargets).mockResolvedValue([target('instagram')]);
     renderBody({ post: { ...basePost, is_express: true } });
@@ -2716,12 +2868,16 @@ Expected: the OFF block passes already (regression baseline); the ON block FAILS
 Imports (add):
 
 ```ts
-import type { PlatformId } from '@mesaas/platforms';
+import { PLATFORM_DEFS, type PlatformId } from '@mesaas/platforms';
 import { usePostDestinations } from '../hooks/usePostDestinations';
 import { DestinationToggles } from './DestinationToggles';
 import { DestinationCaptionTabs } from './DestinationCaptionTabs';
 import type { DestinationCaptionFieldHandle } from './DestinationCaptionField';
-import { destinationToggleOptions, seedCaptionFor } from '../postDestinations';
+import {
+  destinationToggleOptions,
+  resolveDestinationState,
+  seedCaptionFor,
+} from '../postDestinations';
 ```
 
 After `const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);` (line 194), still above the `if (!isExpanded) return null;` early return:
@@ -2742,6 +2898,9 @@ After `const statusAutomationHint = getStatusAutomationHint(post);` (line 339):
 ```ts
   const targets = destinations.targets ?? [];
   const currentPlatforms = targets.map((t) => t.platform);
+  const publishedPlatforms = targets
+    .filter((t) => resolveDestinationState(post, t) === 'publicado')
+    .map((t) => t.platform);
   const destinationLockReason =
     post.status === 'agendado'
       ? 'Cancelar agendamento para editar'
@@ -2757,7 +2916,7 @@ After `const statusAutomationHint = getStatusAutomationHint(post);` (line 339):
           ? post.tiktok_caption
           : null;
     // Destino que já tem legenda própria (ex.: Instagram tirado e religado) não recebe cópia.
-    const seedCaption =
+    const seed =
       on && !ownCaption?.trim()
         ? seedCaptionFor(
             platform,
@@ -2773,7 +2932,12 @@ After `const statusAutomationHint = getStatusAutomationHint(post);` (line 339):
             post.tipo,
           )
         : null;
-    destinations.toggle.mutate({ platform, on, seedCaption });
+    if (seed && seed.cut > 0) {
+      toast.info(
+        `A legenda copiada foi cortada em ${seed.cut} caracteres para caber no limite do ${PLATFORM_DEFS[platform].label}.`,
+      );
+    }
+    destinations.toggle.mutate({ platform, on, seedCaption: seed?.caption ?? null });
     if (on) setCaptionTab(platform);
   };
 
@@ -2832,6 +2996,7 @@ Meta row, replace the `<PlatformSelector … />` element (lines 387-400) with:
             options={destinationToggleOptions({
               boardPlatforms: destinations.boardPlatforms ?? [],
               current: currentPlatforms,
+              published: publishedPlatforms,
               tipo: post.tipo,
               tiktokFeatureEnabled: features?.feature_tiktok === true,
               hasActiveTikTokAccount,
@@ -2967,6 +3132,8 @@ Tudo atrás de `feature_multiplatform` (dark). Com a flag desligada o editor e o
 
 Sem migration e sem edge function: o merge só publica o frontend.
 
+Risco do piloto: o Hub ainda mostra só a legenda do Instagram (`hub-posts` lê só `ig_caption`). O cliente aprova sem ver as legendas de TikTok e Geral, e um post só Geral aparece sem legenda no Hub. As legendas por destino no Hub chegam na P3.
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
@@ -2974,14 +3141,16 @@ EOF
 
 ---
 
-## Open questions (not resolved by the spec; the plan's working choice is in brackets)
+## Decisions on the spec's open points (decidido, sujeito a revisão do usuário)
 
-1. **"First destination's caption" when the first destination's caption is empty.** [Skip to the next destination in registry order that has a caption; copy nothing if none.] The spec says "the first destination's caption" without saying what "first" means (registry order vs. creation order) or what to do when it is empty.
-2. **Copy longer than the new destination's limit** (TikTok photo 4000 or Geral unlimited into Instagram 2200). [Cut at the limit, no toast.] Alternative: copy nothing and warn.
-3. **TikTok destination without an active TikTok account.** [Disabled, mirroring `PlatformSelector` today.] The spec's principle ("the connected-account check now controls only publish/schedule") would allow writing a TikTok caption without an account, but `ScheduleButton` has no "no TikTok account" guard (only revoked/expired), so allowing it would expose a schedule path that fails server-side.
-4. **What the board chip says for `pendente`.** [Icon only; "Aguardando aprovação" when the post is `enviado_cliente`.] The spec lists five pill labels (Publicado / Agendado / Falhou / Disponível / Aguardando aprovação) and none for a draft or an approved-but-unscheduled post.
-5. **Geral "Disponível" before P3.** [TS shim: approved, scheduled or posted = Disponível.] Confirm this is wanted in P2, or keep Geral "Pendente" until P3 writes the real status.
-6. **Workspace that loses `feature_multiplatform`** with Geral-only posts: the editor falls back to today's tree, so their Geral caption is invisible and, without an Instagram account, no caption shows at all. `PlatformChips` has an escape hatch for the board lists; the editor does not. [Accepted for the pilot, like P1's deviation 11.]
-7. **Locked Destinos on `postado`.** [Locked: "Post já publicado".] Adding a Geral destination to an already published post could be useful (download after the fact); P3's export may want it unlocked.
-8. **Removing a destination that already published** (Instagram with `instagram_media_id`) is blocked only through the `postado` lock; a `both` post with Instagram published and TikTok failed (`falha_publicacao`) can still drop Instagram. [Allowed: the legacy columns keep the publish record.]
-9. **Layout and label.** The spec mockup has media + "Formato" on the left; P2 keeps the current layout and the "Tipo" label (deviation 8). Confirm that is acceptable for the pilot.
+Each was an open question in the first draft of this plan; the choices below were made at plan review on 2026-10-08 and are implemented by the tasks above. The user can still overturn any of them.
+
+1. **"First destination's caption"** (decidido, sujeito a revisão do usuário): the next non-empty caption among the post's current destinations, in registry order (Instagram, TikTok, Geral); copy nothing if none. `seedCaptionFor`, Task 2.
+2. **Copy longer than the new destination's limit** (decidido, sujeito a revisão do usuário): cut at the limit (never mid surrogate pair) and show one `toast.info` saying how many characters were cut. `CaptionSeed.cut`, Tasks 2 and 11.
+3. **TikTok destination without an active TikTok account** (decidido, sujeito a revisão do usuário): the toggle stays disabled ("Cliente sem conta TikTok ativa"), mirroring `PlatformSelector`. `ScheduleButton` has no "no TikTok account" guard, so allowing it would open a schedule path that fails on the server.
+4. **Board chip for `pendente`** (decidido, sujeito a revisão do usuário): icon only. "Aguardando aprovação" while the post is `enviado_cliente`. Tasks 2 and 8.
+5. **Geral "Disponível" before P3** (decidido, sujeito a revisão do usuário): keep the TS shim for `aprovado_cliente`, `agendado`, `postado` and `falha_publicacao`. P3 replaces it with the real write (deviation 6).
+6. **Workspace that loses `feature_multiplatform`** with Geral-only posts (decidido, sujeito a revisão do usuário): accepted for the pilot, like P1 deviation 11. Its Geral captions are invisible while the flag is off.
+7. **Destinos on a `postado` post** (decidido, sujeito a revisão do usuário): locked ("Post já publicado"). P3 can revisit adding Geral after publishing.
+8. **Turning off a destination that already published** (decidido, sujeito a revisão do usuário): blocked. `destinationToggleOptions` gives a destination whose resolved state is `publicado` the reason "Já publicado". This also covers the case the `postado` lock misses: a post going to both platforms, Instagram published, TikTok failed (`falha_publicacao`). Tests in Tasks 2, 9 and 11.
+9. **Layout** (decidido, sujeito a revisão do usuário): keep the current drawer layout and the "Tipo" label (deviation 8).
