@@ -65,10 +65,9 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
     onSettled: () => {
       // platform (derivado no banco), ig_caption e tiktok_caption vêm da query do drawer.
       onRefresh();
-      return Promise.all([
-        qc.invalidateQueries({ queryKey: ['post-targets', postId] }),
-        qc.invalidateQueries({ queryKey: ['active-posts'] }),
-      ]);
+      // Só os destinos seguram o isPending; o quadro recarrega em segundo plano.
+      void qc.invalidateQueries({ queryKey: ['active-posts'] });
+      return qc.invalidateQueries({ queryKey: ['post-targets', postId] });
     },
   });
 
@@ -77,6 +76,13 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
     try {
       await savePostCaption(postId, platform, text);
     } catch (err) {
+      // Geral tirado com rascunho no debounce: o timer sobrevive ao unmount e salva numa
+      // linha que já não existe. O texto foi para o "Desfazer"; nada de toast de erro.
+      // Pelo nome, não instanceof: os testes dos drawers mockam '@/store' com lista fixa.
+      if (err instanceof Error && err.name === 'DestinationGoneError') {
+        await qc.invalidateQueries({ queryKey: ['post-targets', postId] });
+        return;
+      }
       toast.error('Não foi possível salvar a legenda.');
       throw err;
     }

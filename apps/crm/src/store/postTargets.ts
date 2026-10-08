@@ -118,6 +118,14 @@ export async function removePostDestination(postId: number, platform: PlatformId
   if (error) throw error;
 }
 
+/** O destino Geral não existe mais (tirado em Destinos enquanto um rascunho esperava o debounce). */
+export class DestinationGoneError extends Error {
+  constructor() {
+    super('Nenhuma linha atualizada (post_targets).');
+    this.name = 'DestinationGoneError';
+  }
+}
+
 /** Legenda de TikTok ou Geral. A do Instagram segue em save_ig_caption (comments.ts). */
 export async function savePostCaption(
   postId: number,
@@ -146,5 +154,5 @@ export async function savePostCaption(
     .eq('platform', 'geral')
     .select('id');
   if (error) throw error;
-  if (!data || data.length === 0) throw new Error('Nenhuma linha atualizada (post_targets).');
+  if (!data || data.length === 0) throw new DestinationGoneError();
 }

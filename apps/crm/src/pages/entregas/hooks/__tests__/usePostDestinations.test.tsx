@@ -180,4 +180,14 @@ describe('usePostDestinations', () => {
     await expect(result.current.saveCaption('geral', 't')).rejects.toThrow();
     expect(toast.error).toHaveBeenCalledWith('Não foi possível salvar a legenda.');
   });
+
+  it('saveCaption is silent when the Geral row is gone (turned off mid-debounce)', async () => {
+    const gone = Object.assign(new Error('gone'), { name: 'DestinationGoneError' });
+    vi.mocked(store.savePostCaption).mockRejectedValueOnce(gone);
+    const { result } = renderHook(() => usePostDestinations(post, true, vi.fn()), {
+      wrapper: wrapper(),
+    });
+    await expect(result.current.saveCaption('geral', 't')).resolves.toBeUndefined();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
 });
