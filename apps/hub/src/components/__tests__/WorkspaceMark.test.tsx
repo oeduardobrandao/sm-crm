@@ -230,4 +230,23 @@ describe('WorkspaceMark', () => {
     expect(img.style.height).toBe('36px');
     expect(img.style.maxWidth).toBe('126px');
   });
+
+  it('Pauta monogram uses the tile radius and no hub-btn-primary', () => {
+    renderMark({
+      ...BASE_BOOTSTRAP,
+      feature_hub_pauta: true,
+      workspace: { ...BASE_BOOTSTRAP.workspace, logo_url: null },
+    });
+    const mark = document.querySelector('[aria-hidden="true"]') as HTMLElement;
+    expect(mark).not.toHaveClass('hub-btn-primary');
+    expect(mark.style.borderRadius).toBe('var(--hub-r-tile)');
+    expect(mark.style.background).toBe('var(--hub-primary)');
+    expect(mark).toHaveTextContent('C');
+  });
+
+  it('classic monogram keeps hub-btn-primary and rounded-full', () => {
+    renderMark({ ...BASE_BOOTSTRAP, workspace: { ...BASE_BOOTSTRAP.workspace, logo_url: null } });
+    const mark = document.querySelector('[aria-hidden="true"]') as HTMLElement;
+    expect(mark).toHaveClass('hub-btn-primary', 'rounded-full');
+  });
 });

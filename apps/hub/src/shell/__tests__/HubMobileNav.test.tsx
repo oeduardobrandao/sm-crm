@@ -1,10 +1,11 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { HubMobileNav } from '../HubMobileNav';
 import { HubContext } from '../../HubContext';
 import type { HubBootstrap } from '../../types';
+import { fetchPosts } from '../../api';
 
 vi.mock('../../api', () => ({
   fetchPosts: vi.fn().mockResolvedValue({ posts: [], postApprovals: [], instagramProfile: null }),
@@ -96,5 +97,25 @@ describe('HubMobileNav', () => {
     expect(activeLink?.className).toContain('hub-nav-active');
     const inactiveLink = screen.getByText('Postagens').closest('a');
     expect(inactiveLink?.className).not.toContain('hub-nav-active');
+  });
+
+  it('Pauta: menu button shows the pending count', async () => {
+    // usePendingApprovalsCount = fetchPosts posts filtered by enviado_cliente
+    vi.mocked(fetchPosts).mockResolvedValueOnce({
+      posts: [
+        { id: 1, status: 'enviado_cliente' },
+        { id: 2, status: 'enviado_cliente' },
+      ],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    renderMobileNav({ ...BOOTSTRAP, feature_hub_pauta: true });
+    const btn = await screen.findByRole('button', { name: 'Abrir menu, 2 pendências' });
+    expect(within(btn).getByText('2')).toBeInTheDocument();
+  });
+
+  it('classic: no count on the menu button', async () => {
+    renderMobileNav(BOOTSTRAP);
+    expect(await screen.findByRole('button', { name: 'Abrir menu' })).toBeInTheDocument();
   });
 });

@@ -36,7 +36,9 @@
     "mais": "Mais",
     "ajuda": "Ajuda",
     "suporte": "Suporte",
-    "novidades": "Novidades"
+    "novidades": "Novidades",
+    "openMenuPending_one": "Abrir menu, 1 pendência",
+    "openMenuPending_other": "Abrir menu, {{count}} pendências"
   },
   "sidebar": {
     "accountOptions": "Opções da Conta",

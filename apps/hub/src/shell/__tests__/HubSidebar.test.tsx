@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { HubSidebar } from '../HubSidebar';
 import { HubContext } from '../../HubContext';
 import type { HubBootstrap } from '../../types';
+import { fetchPosts } from '../../api';
 
 vi.mock('../../api', () => ({
   fetchPosts: vi.fn().mockResolvedValue({ posts: [], postApprovals: [], instagramProfile: null }),
@@ -100,5 +101,34 @@ describe('HubSidebar', () => {
     expect(activeLink?.className).toContain('hub-nav-active');
     const inactiveLink = screen.getByText('Postagens').closest('a');
     expect(inactiveLink?.className).not.toContain('hub-nav-active');
+  });
+
+  it('Pauta: active item uses hub-nav-pill and the aside has no right border', async () => {
+    renderSidebar('/ws/hub/tok', { ...BOOTSTRAP, feature_hub_pauta: true });
+    const active = await screen.findByRole('link', { name: /início/i });
+    expect(active).toHaveClass('hub-nav-pill');
+    expect(document.querySelector('aside')).not.toHaveClass('border-r');
+  });
+
+  it('classic: active item keeps hub-nav-active hub-bg-soft', async () => {
+    renderSidebar('/ws/hub/tok');
+    const active = await screen.findByRole('link', { name: /início/i });
+    expect(active).toHaveClass('hub-nav-active', 'hub-bg-soft');
+    expect(active).not.toHaveClass('hub-nav-pill');
+  });
+
+  it('Pauta: the nav counter is brand-tinted inline, never hub-btn-primary', async () => {
+    vi.mocked(fetchPosts).mockResolvedValueOnce({
+      posts: [{ id: 1, status: 'enviado_cliente' }],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    renderSidebar('/ws/hub/tok/aprovacoes', { ...BOOTSTRAP, feature_hub_pauta: true });
+    const link = await screen.findByRole('link', { name: /aprovações/i });
+    const badge = await within(link).findByText('1');
+    expect(badge).not.toHaveClass('hub-btn-primary');
+    expect(badge.style.borderRadius).toBe('var(--hub-r-chip)');
+    // Active item: inverted pair.
+    expect(badge.style.background).toBe('var(--hub-primary-fg)');
   });
 });
