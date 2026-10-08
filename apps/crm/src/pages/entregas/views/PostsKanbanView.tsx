@@ -36,6 +36,7 @@ import {
 import { TIPO_ICONS } from '../tipoIcons';
 import { cardAutoScheduleGates, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { DestinationChips } from '../components/DestinationStatusPill';
 import {
   shouldOfferAutoSchedule,
   shouldShowAwaitingApproval,
@@ -174,6 +175,8 @@ interface PostsKanbanViewProps {
    *  feature_disabled (feature: "feature_tiktok") ao confirmar. Ausente =
    *  desligado. */
   tiktokEnabled?: boolean;
+  /** feature_multiplatform: um chip por destino no card (P2). */
+  multiplatformEnabled?: boolean;
 }
 
 /** A post avulso (no workflow) is always openable -- only a wired post depends
@@ -192,6 +195,7 @@ function PostBoardCardContent({
   onAutoScheduleClick,
   schedulingEnabled,
   tiktokEnabled,
+  multiplatformEnabled,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
@@ -205,6 +209,7 @@ function PostBoardCardContent({
   onAutoScheduleClick?: () => void;
   schedulingEnabled?: boolean;
   tiktokEnabled?: boolean;
+  multiplatformEnabled?: boolean;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
@@ -291,6 +296,7 @@ function PostBoardCardContent({
         </span>
       </div>
       <div className="item-title">{post.titulo || 'Post sem título'}</div>
+      {multiplatformEnabled && <DestinationChips post={post} />}
       {card ? (
         <span className="post-fluxo-tag post-fluxo-tag--static">
           <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
@@ -381,6 +387,7 @@ const PostBoardCard = memo(function PostBoardCard({
   onAutoScheduleClick,
   schedulingEnabled,
   tiktokEnabled,
+  multiplatformEnabled,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
@@ -392,6 +399,7 @@ const PostBoardCard = memo(function PostBoardCard({
   onAutoScheduleClick?: (post: ActivePost) => void;
   schedulingEnabled?: boolean;
   tiktokEnabled?: boolean;
+  multiplatformEnabled?: boolean;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
@@ -427,6 +435,7 @@ const PostBoardCard = memo(function PostBoardCard({
         onAutoScheduleClick={onAutoScheduleClick ? () => onAutoScheduleClick(post) : undefined}
         schedulingEnabled={schedulingEnabled}
         tiktokEnabled={tiktokEnabled}
+        multiplatformEnabled={multiplatformEnabled}
       />
     </div>
   );
@@ -457,6 +466,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
   onAutoScheduleClick,
   schedulingEnabled,
   tiktokEnabled,
+  multiplatformEnabled,
 }: {
   option: StatusOption;
   posts: ActivePost[];
@@ -488,6 +498,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
   onAutoScheduleClick?: (post: ActivePost) => void;
   schedulingEnabled?: boolean;
   tiktokEnabled?: boolean;
+  multiplatformEnabled?: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
@@ -609,6 +620,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
                     onAutoScheduleClick={onAutoScheduleClick}
                     schedulingEnabled={schedulingEnabled}
                     tiktokEnabled={tiktokEnabled}
+                    multiplatformEnabled={multiplatformEnabled}
                   />
                 </Fragment>
               ))}
@@ -647,6 +659,7 @@ export function PostsKanbanView({
   awaitedApprovalByPostId,
   schedulingEnabled,
   tiktokEnabled,
+  multiplatformEnabled,
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
@@ -1027,6 +1040,7 @@ export function PostsKanbanView({
                 onAutoScheduleClick={handleAutoScheduleClick}
                 schedulingEnabled={schedulingEnabled}
                 tiktokEnabled={tiktokEnabled}
+                multiplatformEnabled={multiplatformEnabled}
               />
             ))}
           </div>
@@ -1046,6 +1060,7 @@ export function PostsKanbanView({
                 awaitedApproval={awaitedApprovalByPostId?.get(activePost.id)}
                 schedulingEnabled={schedulingEnabled}
                 tiktokEnabled={tiktokEnabled}
+                multiplatformEnabled={multiplatformEnabled}
               />
             </div>
           )}

@@ -168,6 +168,8 @@ export default function EntregasPage() {
   // ADICIONAL só para post tiktok/both (decisão 5 da spec).
   const schedulingEnabled = features?.feature_post_scheduling === true;
   const tiktokEnabled = features?.feature_tiktok === true;
+  // Plataformas por fluxo (P2): chips por destino no card. Dark por plano.
+  const multiplatformEnabled = features?.feature_multiplatform === true;
 
   const { isAtLimit } = useEntitlements();
 
@@ -1573,6 +1575,7 @@ export default function EntregasPage() {
             awaitedApprovalByPostId={awaitedApprovalByPostId}
             schedulingEnabled={schedulingEnabled}
             tiktokEnabled={tiktokEnabled}
+            multiplatformEnabled={multiplatformEnabled}
           />
         ))}
       {activeView === 'chart' && (
