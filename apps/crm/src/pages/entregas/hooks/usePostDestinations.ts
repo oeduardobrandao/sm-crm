@@ -30,7 +30,8 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
     queryFn: () => getPostTargets(postId!),
     enabled: enabled && postId != null,
     // Chave nova não pisca "Carregando destinos…": mostra os destinos anteriores até chegar.
-    placeholderData: (prev) => prev,
+    // Só do MESMO post: de outro post, a legenda Geral dele apareceria (e seria editável) aqui.
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === postId ? prev : undefined),
   });
   const boardQuery = useQuery({
     queryKey: ['board-platforms', post.workflow_id ?? null, post.cliente_id],
