@@ -37,6 +37,9 @@ export function PostReferencesPanel({
   const inFlight = uploads.filter((u) => u.status === 'uploading').length;
   const atCap = items.length + inFlight >= MAX_REFERENCES_PER_POST;
   const empty = items.length === 0 && uploads.length === 0;
+  // Still awaiting approval but full: the server says can_add false only because of the cap.
+  const atLimitWhilePending =
+    post.status === 'enviado_cliente' && items.length >= MAX_REFERENCES_PER_POST;
 
   return (
     <div className="space-y-4">
@@ -48,7 +51,12 @@ export function PostReferencesPanel({
                 'references.readOnlyPublished',
                 'Post publicado. As referências ficam aqui para consulta.',
               )
-            : t('references.readOnly', 'As referências ficam aqui para consulta.')}
+            : atLimitWhilePending
+              ? t(
+                  'references.errors.referenceLimit',
+                  'Este post já tem 10 referências. Remova uma para adicionar outra.',
+                )
+              : t('references.readOnly', 'As referências ficam aqui para consulta.')}
         </p>
       )}
       {canAdd && empty && (

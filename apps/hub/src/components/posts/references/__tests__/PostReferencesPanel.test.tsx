@@ -83,6 +83,31 @@ describe('PostReferencesPanel', () => {
     expect(screen.getByText('As referências ficam aqui para consulta.')).toBeInTheDocument();
   });
 
+  it('explains the 10-reference cap on a pending post the server closed', () => {
+    renderPanel(
+      makePostReferencesStub({
+        canAdd: false,
+        items: Array.from({ length: 10 }, (_, i) => makeReferenceItem(i + 1)),
+      }),
+      post({ status: 'enviado_cliente' }),
+    );
+    expect(
+      screen.getByText('Este post já tem 10 referências. Remova uma para adicionar outra.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('As referências ficam aqui para consulta.')).not.toBeInTheDocument();
+  });
+
+  it('keeps the neutral read-only notice on a pending post under the cap', () => {
+    renderPanel(
+      makePostReferencesStub({ canAdd: false, items: [makeReferenceItem(1)] }),
+      post({ status: 'enviado_cliente' }),
+    );
+    expect(screen.getByText('As referências ficam aqui para consulta.')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Este post já tem 10 referências. Remova uma para adicionar outra.'),
+    ).not.toBeInTheDocument();
+  });
+
   it('renders file and link rows with note, author, size and domain', () => {
     renderPanel(
       makePostReferencesStub({
