@@ -3,6 +3,7 @@ import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
 import { fetchAllPagedByIds } from './paging';
+import { sortByPlatformOrder, type PostTargetSummary } from './postTargets';
 import type { Workflow, WorkflowEtapa } from './workflows';
 
 /**
@@ -274,6 +275,9 @@ export interface ScheduledPost {
    * NULL = never manually positioned; sorts after every ranked post in that
    * column, in automatic order. */
   board_ordem: number | null;
+  /** Destinos do post (embed post_targets). Só getActivePosts preenche: o card do
+   *  quadro de Publicações mostra um chip por destino com feature_multiplatform. */
+  targets?: PostTargetSummary[];
 }
 
 /**
@@ -328,6 +332,7 @@ export function mapPostContextRow(row: any): ActivePost {
     instagram_media_id: row.instagram_media_id ?? null,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
     board_ordem: row.board_ordem ?? null,
+    targets: Array.isArray(row.post_targets) ? sortByPlatformOrder(row.post_targets) : undefined,
   };
 }
 
@@ -395,13 +400,13 @@ export async function getActivePosts(): Promise<ActivePost[]> {
     supabase
       .from('workflow_posts')
       .select(
-        `${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes(nome))`,
+        `${POST_CONTEXT_COLUMNS}, post_targets(platform, status), workflows!inner(titulo, cliente_id, status, clientes(nome))`,
       )
       .eq('workflows.status', 'ativo')
       .order('scheduled_at', { ascending: true, nullsFirst: false }),
     supabase
       .from('workflow_posts')
-      .select(`${POST_CONTEXT_COLUMNS}, clientes(nome)`)
+      .select(`${POST_CONTEXT_COLUMNS}, post_targets(platform, status), clientes(nome)`)
       .is('workflow_id', null)
       .order('scheduled_at', { ascending: true, nullsFirst: false }),
   ]);
