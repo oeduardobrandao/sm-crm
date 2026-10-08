@@ -277,6 +277,9 @@ function PostDetailContent({
   // Lazy first visit, then kept mounted (hidden) so a typed comment, the loaded data and
   // open diffs survive a tab flip, and flipping does not refetch hub-post-history.
   const [historyVisited, setHistoryVisited] = useState(false);
+  // Same for Referências: an unsaved note survives a tab flip.
+  const [referencesVisited, setReferencesVisited] = useState(false);
+  const [referencesDirty, setReferencesDirty] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -358,11 +361,12 @@ function PostDetailContent({
   // Salvar edição has nowhere to render there.
   const showSaveInFooter = showPanel && (contentDirty || dirty);
 
-  useUnsavedWork(panelDirty || historyDirty || submitting);
+  useUnsavedWork(panelDirty || historyDirty || referencesDirty || submitting);
 
   const handleDirtyChange = useCallback((d: boolean) => setPanelDirty(d), []);
   const handleContentDirtyChange = useCallback((d: boolean) => setContentDirty(d), []);
   const handleHistoryDirtyChange = useCallback((d: boolean) => setHistoryDirty(d), []);
+  const handleReferencesDirtyChange = useCallback((d: boolean) => setReferencesDirty(d), []);
 
   // Navigation/close guard. Blocked while a save is queued or in flight (`dirty` without
   // `saveFailed`): leaving would drop it. A SETTLED failure must not lock the client in,
@@ -372,7 +376,7 @@ function PostDetailContent({
     if (submitting) return false;
     if (dirty && !saveFailed) return false;
     const uploading = refs.uploadsInFlight;
-    if (!saveFailed && !panelDirty && !historyDirty && !uploading) return true;
+    if (!saveFailed && !panelDirty && !historyDirty && !referencesDirty && !uploading) return true;
     // Still one confirm total. Leaving unmounts the card; usePostReferences aborts on unmount.
     const message = uploading
       ? t(
@@ -390,6 +394,7 @@ function PostDetailContent({
     submitting,
     panelDirty,
     historyDirty,
+    referencesDirty,
     refs.uploadsInFlight,
     t,
   ]);
@@ -452,9 +457,10 @@ function PostDetailContent({
     referenceIds: number[] = [],
   ) {
     if (submitting || locked) return;
-    // The card is about to leave: an unsent comment typed in the Histórico tab would go with it.
+    // The card is about to leave: an unsent comment typed in the Histórico tab, or an unsaved
+    // reference note, would go with it.
     if (
-      historyDirty &&
+      (historyDirty || referencesDirty) &&
       !window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'))
     )
       return;
@@ -782,6 +788,7 @@ function PostDetailContent({
                   aria-selected={activeTab === key}
                   onClick={() => {
                     if (key === 'history') setHistoryVisited(true);
+                    if (key === 'references') setReferencesVisited(true);
                     setTab(key);
                   }}
                   className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${activeTab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
@@ -850,13 +857,16 @@ function PostDetailContent({
                   )}
                 </div>
               )}
-              {showReferencesTab && activeTab === 'references' && (
-                <PostReferencesPanel
-                  post={post}
-                  refs={refs}
-                  onOpen={setViewerItem}
-                  onOverlayChange={handleOverlayChange}
-                />
+              {showReferencesTab && referencesVisited && (
+                <div hidden={activeTab !== 'references'}>
+                  <PostReferencesPanel
+                    post={post}
+                    refs={refs}
+                    onOpen={setViewerItem}
+                    onOverlayChange={handleOverlayChange}
+                    onDirtyChange={handleReferencesDirtyChange}
+                  />
+                </div>
               )}
               <div hidden={activeTab !== 'content'}>
                 {showPanel ? (

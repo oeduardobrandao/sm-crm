@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, Film, ImageIcon, Loader2, Pencil, Trash2, X } from 'lucide-react';
 import type { UploadEntry } from '../../../hooks/usePostReferences';
@@ -24,9 +24,18 @@ interface ReferenceRowProps {
   onOpen: (item: ReferenceItem) => void;
   onSaveNote: (id: number, note: string) => Promise<void>;
   onRemove: (id: number) => Promise<void>;
+  /** An open note editor whose text differs from the saved note. */
+  onDirtyChange?: (id: number, dirty: boolean) => void;
 }
 
-export function ReferenceRow({ item, fresh, onOpen, onSaveNote, onRemove }: ReferenceRowProps) {
+export function ReferenceRow({
+  item,
+  fresh,
+  onOpen,
+  onSaveNote,
+  onRemove,
+  onDirtyChange,
+}: ReferenceRowProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const [editing, setEditing] = useState(fresh && item.can_remove && !item.note);
@@ -34,6 +43,12 @@ export function ReferenceRow({ item, fresh, onOpen, onSaveNote, onRemove }: Refe
   const [busy, setBusy] = useState<'note' | 'remove' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const noteId = useId();
+  const dirty = editing && draft.trim() !== (item.note ?? '').trim();
+  useEffect(() => {
+    if (!dirty || !onDirtyChange) return;
+    onDirtyChange(item.id, true);
+    return () => onDirtyChange(item.id, false);
+  }, [dirty, item.id, onDirtyChange]);
   const title = referenceTitle(item);
   const openLabel = t('references.open', 'Abrir {{name}}', { name: title });
   const meta = [

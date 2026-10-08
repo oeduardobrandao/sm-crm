@@ -198,6 +198,46 @@ describe('PostDetailDialog references', () => {
     confirm.mockRestore();
   });
 
+  it('keeps an unsaved reference note across a tab switch', () => {
+    refsState.current = makePostReferencesStub({ canAdd: true, items: [makeReferenceItem(1)] });
+    renderDialog();
+    fireEvent.click(screen.getByRole('tab', { name: /Referências/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar nota' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Use esta cor' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Legenda' }));
+    fireEvent.click(screen.getByRole('tab', { name: /Referências/ }));
+    expect(screen.getByRole('textbox')).toHaveValue('Use esta cor');
+  });
+
+  it('asks before closing with an unsaved reference note, even from another tab', () => {
+    refsState.current = makePostReferencesStub({ canAdd: true, items: [makeReferenceItem(1)] });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { onNavigate } = renderDialog();
+    fireEvent.click(screen.getByRole('tab', { name: /Referências/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar nota' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Use esta cor' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Legenda' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
+    expect(confirm).toHaveBeenCalledWith('Descartar as alterações não enviadas?');
+    expect(onNavigate).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('closes without asking when the note editor is open but unchanged', () => {
+    refsState.current = makePostReferencesStub({
+      canAdd: true,
+      items: [makeReferenceItem(1, { note: 'Já salva' })],
+    });
+    const confirm = vi.spyOn(window, 'confirm');
+    const { onNavigate } = renderDialog();
+    fireEvent.click(screen.getByRole('tab', { name: /Referências/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Editar nota' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onNavigate).toHaveBeenCalledWith(null);
+    confirm.mockRestore();
+  });
+
   it('opens an image in the viewer; Escape and arrows stay inside it', () => {
     refsState.current = makePostReferencesStub({
       canAdd: true,
