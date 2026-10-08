@@ -293,7 +293,7 @@ describe('PostCalendar', () => {
         />,
       );
       const textos = Array.from(pills(14).children).map((c) => c.textContent);
-      expect(textos).toEqual(['2 eventos', '1 Feed', '1 Reels', '1 Stories']);
+      expect(textos).toEqual(['2 eventos', '1 Imagem', '1 Vídeo vertical', '1 Stories']);
 
       const pontos = Array.from(dots(14).children);
       expect(pontos).toHaveLength(3);
