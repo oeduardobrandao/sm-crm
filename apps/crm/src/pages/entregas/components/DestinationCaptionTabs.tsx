@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from 'react';
 import { PLATFORM_DEFS, captionMaxFor, type PlatformId } from '@mesaas/platforms';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PLATFORM_ICONS } from '@/components/platformIcons';
 import type { WorkflowPost } from '@/store/posts';
@@ -15,6 +16,9 @@ interface DestinationCaptionTabsProps {
   post: WorkflowPost;
   targets: PostTargetRow[];
   loading: boolean;
+  /** Falha ao carregar os destinos (só vale sem destinos em cache). */
+  error?: boolean;
+  onRetry?: () => void;
   activeTab: PlatformId | null;
   onActiveTabChange: (p: PlatformId) => void;
   locked: boolean;
@@ -39,6 +43,8 @@ export function DestinationCaptionTabs({
   post,
   targets,
   loading,
+  error,
+  onRetry,
   activeTab,
   onActiveTabChange,
   locked,
@@ -53,6 +59,20 @@ export function DestinationCaptionTabs({
       <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
         Carregando destinos…
       </p>
+    );
+  }
+  if (targets.length === 0 && error) {
+    return (
+      <div className="mt-3 flex items-center gap-2">
+        <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
+          Não foi possível carregar os destinos.
+        </p>
+        {onRetry && (
+          <Button type="button" variant="link" size="sm" className="mb-0" onClick={onRetry}>
+            Tentar de novo
+          </Button>
+        )}
+      </div>
     );
   }
   if (targets.length === 0) {

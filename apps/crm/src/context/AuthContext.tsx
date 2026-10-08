@@ -111,6 +111,8 @@ export const MODULE_QUERY_KEYS: Record<PermissionModule, string[]> = {
     'post-approvals',
     'post-media',
     'post-preview',
+    'post-targets',
+    'board-platforms',
   ],
   calendario: ['calendar-deadlines', 'allClienteDatas', 'agenda-ocorrencias'],
   aprovacoes: [],

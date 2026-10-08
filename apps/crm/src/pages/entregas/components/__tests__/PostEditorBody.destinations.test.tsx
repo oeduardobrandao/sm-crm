@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}));
 vi.mock('@mesaas/app-lifecycle', () => ({
   useUnsavedWork: vi.fn(),
   trackUnsavedWork: vi.fn((p: Promise<unknown>) => p),
@@ -243,6 +245,45 @@ describe('PostEditorBody, feature_multiplatform ON', () => {
     await waitFor(() => expect(geral).not.toBeDisabled());
     fireEvent.click(geral);
     await waitFor(() => expect(store.removePostDestination).toHaveBeenCalledWith(42, 'geral'));
+  });
+
+  it('turning Geral off with a caption offers Desfazer, which re-adds it with that text', async () => {
+    vi.mocked(store.getPostTargets).mockResolvedValue([
+      target('instagram'),
+      target('geral', 'Texto geral'),
+    ]);
+    renderBody();
+    const geral = await screen.findByRole('button', { name: /Geral/ });
+    await waitFor(() => expect(geral).not.toBeDisabled());
+    fireEvent.click(geral);
+    await waitFor(() => expect(store.removePostDestination).toHaveBeenCalledWith(42, 'geral'));
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+    const [message, opts] = vi.mocked(toast).mock.calls[0] as unknown as [
+      string,
+      { action: { label: string; onClick: () => void } },
+    ];
+    expect(message).toBe('Geral removido.');
+    expect(opts.action.label).toBe('Desfazer');
+    opts.action.onClick();
+    await waitFor(() =>
+      expect(store.addPostDestination).toHaveBeenCalledWith({
+        postId: 42,
+        contaId: 'ws-1',
+        platform: 'geral',
+        seedCaption: 'Texto geral',
+      }),
+    );
+  });
+
+  it('turning Geral off with an empty caption shows no Desfazer', async () => {
+    vi.mocked(store.getPostTargets).mockResolvedValue([target('instagram'), target('geral')]);
+    renderBody();
+    const geral = await screen.findByRole('button', { name: /Geral/ });
+    await waitFor(() => expect(geral).not.toBeDisabled());
+    fireEvent.click(geral);
+    await waitFor(() => expect(store.removePostDestination).toHaveBeenCalledWith(42, 'geral'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('TikTok settings move into the TikTok tab without their caption field', async () => {

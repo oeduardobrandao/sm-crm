@@ -48,6 +48,21 @@ function renderTabs(over: Partial<Parameters<typeof DestinationCaptionTabs>[0]> 
 }
 
 describe('DestinationCaptionTabs', () => {
+  it('load failure without destinations shows the error and retries on click', () => {
+    const onRetry = vi.fn();
+    renderTabs({ targets: [], error: true, onRetry });
+    expect(screen.getByText('Não foi possível carregar os destinos.')).toBeInTheDocument();
+    expect(screen.queryByText(/não tem destinos/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('error with cached destinations keeps the tabs', () => {
+    renderTabs({ error: true });
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
+    expect(screen.queryByText('Não foi possível carregar os destinos.')).toBeNull();
+  });
+
   it('one tab per destination with its status pill; first tab active by default', () => {
     renderTabs();
     const tabs = screen.getAllByRole('tab');

@@ -124,20 +124,27 @@ export async function savePostCaption(
   platform: 'tiktok' | 'geral',
   text: string,
 ): Promise<void> {
+  // .select('id'): um UPDATE que casa 0 linhas (destino Geral já removido, RLS negando)
+  // não dá erro no PostgREST. Sem a linha de volta o rascunho ficaria "salvo" só na
+  // aparência e preso como trabalho não salvo para sempre.
   if (platform === 'tiktok') {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('workflow_posts')
       .update({ tiktok_caption: text })
-      .eq('id', postId);
+      .eq('id', postId)
+      .select('id');
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error('Nenhuma linha atualizada (workflow_posts).');
     return;
   }
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('post_targets')
     // Sem updated_at: post_targets não tem trigger de updated_at e o relógio do
     // cliente não deve ir para o banco. A coluna fica com a hora da criação.
     .update({ caption: text })
     .eq('post_id', postId)
-    .eq('platform', 'geral');
+    .eq('platform', 'geral')
+    .select('id');
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Nenhuma linha atualizada (post_targets).');
 }

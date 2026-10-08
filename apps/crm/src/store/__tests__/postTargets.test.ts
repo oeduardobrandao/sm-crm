@@ -133,14 +133,15 @@ describe('postTargets store', () => {
   });
 
   it('savePostCaption routes TikTok to workflow_posts and Geral to post_targets', async () => {
-    mocked.__queueSupabaseResult('workflow_posts', 'update', { data: null, error: null });
+    mocked.__queueSupabaseResult('workflow_posts', 'update', { data: [{ id: 9 }], error: null });
     await savePostCaption(9, 'tiktok', 'a');
     expect(calls('workflow_posts', 'update')[0].payload).toEqual({ tiktok_caption: 'a' });
 
-    mocked.__queueSupabaseResult('post_targets', 'update', { data: null, error: null });
+    mocked.__queueSupabaseResult('post_targets', 'update', { data: [{ id: 1 }], error: null });
     await savePostCaption(9, 'geral', 'b');
     const upd = calls('post_targets', 'update')[0];
     expect(upd.payload).toEqual({ caption: 'b' });
+    expect(upd.selectArgs).toEqual([['id']]);
     expect(upd.modifiers).toContainEqual({ method: 'eq', args: ['platform', 'geral'] });
   });
 
@@ -150,5 +151,12 @@ describe('postTargets store', () => {
       error: { message: 'boom' },
     });
     await expect(savePostCaption(9, 'geral', 'b')).rejects.toBeTruthy();
+  });
+
+  it('throws when the update matches no row (Geral gone, RLS deny)', async () => {
+    mocked.__queueSupabaseResult('post_targets', 'update', { data: [], error: null });
+    await expect(savePostCaption(9, 'geral', 'b')).rejects.toThrow();
+    mocked.__queueSupabaseResult('workflow_posts', 'update', { data: [], error: null });
+    await expect(savePostCaption(9, 'tiktok', 'b')).rejects.toThrow();
   });
 });

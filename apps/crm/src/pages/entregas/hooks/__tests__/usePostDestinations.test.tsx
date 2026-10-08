@@ -28,8 +28,7 @@ const post = {
   cliente_id: 7,
 } as WorkflowPost;
 
-function wrapper() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function wrapper(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
@@ -98,6 +97,79 @@ describe('usePostDestinations', () => {
       await result.current.toggle.mutateAsync({ platform: 'geral', on: false, seedCaption: null });
     });
     expect(store.removePostDestination).toHaveBeenCalledWith(42, 'geral');
+  });
+
+  it('onSettled invalidates post-targets and refreshes the post, also on error', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const onRefresh = vi.fn();
+    const { result } = renderHook(() => usePostDestinations(post, true, onRefresh), {
+      wrapper: wrapper(qc),
+    });
+    await act(async () => {
+      await result.current.toggle.mutateAsync({ platform: 'geral', on: false, seedCaption: null });
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['post-targets', 42] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['active-posts'] });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+
+    spy.mockClear();
+    vi.mocked(store.removePostDestination).mockRejectedValueOnce(new Error('x'));
+    await act(async () => {
+      await result.current.toggle
+        .mutateAsync({ platform: 'geral', on: false, seedCaption: null })
+        .catch(() => {});
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['post-targets', 42] });
+    expect(onRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('onError toasts the destinations failure', async () => {
+    vi.mocked(store.addPostDestination).mockRejectedValueOnce(new Error('x'));
+    const { result } = renderHook(() => usePostDestinations(post, true, vi.fn()), {
+      wrapper: wrapper(),
+    });
+    await act(async () => {
+      await result.current.toggle
+        .mutateAsync({ platform: 'geral', on: true, seedCaption: null })
+        .catch(() => {});
+    });
+    expect(toast.error).toHaveBeenCalledWith('Não foi possível atualizar os destinos.');
+  });
+
+  it('toggle.isPending stays true until the post-targets refetch resolves', async () => {
+    const { result } = renderHook(() => usePostDestinations(post, true, vi.fn()), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    let release!: (rows: Awaited<ReturnType<typeof store.getPostTargets>>) => void;
+    vi.mocked(store.getPostTargets).mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    act(() => {
+      result.current.toggle.mutate({ platform: 'geral', on: true, seedCaption: null });
+    });
+    await waitFor(() => expect(store.addPostDestination).toHaveBeenCalled());
+    // A escrita terminou e o refetch está em voo (promessa pendente): ainda pendente.
+    await waitFor(() => expect(store.getPostTargets).toHaveBeenCalledTimes(2));
+    expect(result.current.toggle.isPending).toBe(true);
+    await act(async () => {
+      release([]);
+    });
+    await waitFor(() => expect(result.current.toggle.isPending).toBe(false));
+  });
+
+  it('exposes isError and a refetch for both queries', async () => {
+    vi.mocked(store.getPostTargets).mockRejectedValue(new Error('x'));
+    const { result } = renderHook(() => usePostDestinations(post, true, vi.fn()), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    vi.mocked(store.getPostTargets).mockResolvedValue([]);
+    const calls = vi.mocked(store.getBoardPlatforms).mock.calls.length;
+    act(() => result.current.refetch());
+    await waitFor(() => expect(result.current.isError).toBe(false));
+    expect(vi.mocked(store.getBoardPlatforms).mock.calls.length).toBe(calls + 1);
   });
 
   it('saveCaption toasts and rethrows on failure (draft stays)', async () => {

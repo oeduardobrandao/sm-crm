@@ -59,11 +59,16 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
     },
     onError: () => toast.error('Não foi possível atualizar os destinos.'),
     // Também em erro: o INSERT pode ter passado e só a cópia da legenda falhado.
+    // Retorna a promise: o TanStack espera por ela, então toggle.isPending só cai
+    // quando `targets` já está fresco (um segundo clique rápido não age sobre dados velhos
+    // e não consegue tirar o último destino).
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['post-targets', postId] });
-      void qc.invalidateQueries({ queryKey: ['active-posts'] });
       // platform (derivado no banco), ig_caption e tiktok_caption vêm da query do drawer.
       onRefresh();
+      return Promise.all([
+        qc.invalidateQueries({ queryKey: ['post-targets', postId] }),
+        qc.invalidateQueries({ queryKey: ['active-posts'] }),
+      ]);
     },
   });
 
@@ -84,6 +89,11 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
     targets: targetsQuery.data,
     boardPlatforms: boardQuery.data,
     isLoading: enabled && (targetsQuery.isLoading || boardQuery.isLoading),
+    isError: targetsQuery.isError || boardQuery.isError,
+    refetch: () => {
+      void targetsQuery.refetch();
+      void boardQuery.refetch();
+    },
     toggle,
     saveCaption,
   };

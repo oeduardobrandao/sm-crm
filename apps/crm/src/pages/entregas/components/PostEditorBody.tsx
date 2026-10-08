@@ -414,6 +414,33 @@ export function PostEditorBody({
         `A legenda copiada foi cortada em ${seed.cut} caracteres para caber no limite do ${PLATFORM_DEFS[platform].label}.`,
       );
     }
+    if (!on && platform === 'geral') {
+      // A legenda do Geral mora só na linha de post_targets: tirar o destino a apaga.
+      // Pega o texto agora (inclui rascunho ainda não salvo) para oferecer Desfazer.
+      const lost =
+        geralCaptionRef.current?.getText() ??
+        targets.find((t) => t.platform === 'geral')?.caption ??
+        '';
+      destinations.toggle.mutate(
+        { platform, on, seedCaption: null },
+        {
+          onSuccess: () => {
+            if (!lost.trim()) return;
+            toast('Geral removido.', {
+              duration: 8000,
+              action: {
+                label: 'Desfazer',
+                onClick: () => {
+                  destinations.toggle.mutate({ platform: 'geral', on: true, seedCaption: lost });
+                  setCaptionTab('geral');
+                },
+              },
+            });
+          },
+        },
+      );
+      return;
+    }
     destinations.toggle.mutate({ platform, on, seedCaption: seed?.caption ?? null });
     if (on) setCaptionTab(platform);
   };
@@ -775,6 +802,8 @@ export function PostEditorBody({
           post={post}
           targets={targets}
           loading={destinations.isLoading}
+          error={destinations.isError}
+          onRetry={destinations.refetch}
           activeTab={captionTab}
           onActiveTabChange={setCaptionTab}
           locked={isScheduleLocked}
@@ -839,7 +868,10 @@ export function PostEditorBody({
           const thread = commentThreads.find((t) => t.id === threadId);
           if (thread?.field !== 'ig_caption') return;
           if (multiplatform) {
-            if (!currentPlatforms.includes('instagram')) return;
+            if (!currentPlatforms.includes('instagram')) {
+              toast.info('Ative o Instagram em Destinos para ver este comentário.');
+              return;
+            }
             setCaptionTab('instagram');
             // A aba do Instagram pode estar escondida (forceMount + hidden) e o popover
             // se posiciona pelos retângulos do texto: foca depois de revelar a aba.
