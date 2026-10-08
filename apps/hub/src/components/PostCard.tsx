@@ -11,6 +11,7 @@ import { MediaUnavailable } from './MediaUnavailable';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 import { sanitizeExternalUrl } from '../lib/security';
 import { StatusPill } from './StatusPill';
+import { useHubLook } from '../hooks/useHubLook';
 import { getPostCover, getTipoLabel } from '../lib/postView';
 import type { TFunction } from 'i18next';
 
@@ -227,6 +228,7 @@ export function PostCard({
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   useUnsavedWork(comentario.trim() !== '' || submitting);
+  const pauta = useHubLook() === 'pauta';
   const isPending = post.status === 'enviado_cliente';
 
   const {
@@ -358,13 +360,31 @@ export function PostCard({
               {getTipoLabel(t, post.tipo)}
             </span>
             {post.status === 'agendado' ? (
-              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60">
-                {getPostStatusLabel(t, post.status)}
-              </span>
+              pauta ? (
+                <span
+                  className="hub-pill"
+                  style={{ color: 'var(--hub-st-sched-fg)', background: 'var(--hub-st-sched-bg)' }}
+                >
+                  {getPostStatusLabel(t, post.status)}
+                </span>
+              ) : (
+                <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60">
+                  {getPostStatusLabel(t, post.status)}
+                </span>
+              )
             ) : (
               <StatusPill
                 tone={
                   post.status === 'correcao_cliente' ? 'danger' : isPending ? 'accent' : 'neutral'
+                }
+                semantic={
+                  post.status === 'correcao_cliente'
+                    ? 'fix'
+                    : isPending
+                      ? 'wait'
+                      : post.status === 'aprovado_cliente'
+                        ? 'ok'
+                        : 'neutral'
                 }
               >
                 {getPostStatusLabel(t, post.status)}

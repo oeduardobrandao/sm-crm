@@ -8,6 +8,7 @@ import { OptimizedImage } from '../OptimizedImage';
 import { MediaUnavailable } from '../MediaUnavailable';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { StatusTag } from './StatusTag';
+import { useHubLook } from '../../hooks/useHubLook';
 
 export type TileMode = 'browse' | 'select';
 
@@ -36,6 +37,7 @@ function typeGlyph(post: HubPost): ReactNode {
 
 export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: PostTileProps) {
   const { t, i18n } = useTranslation('hubPosts');
+  const pauta = useHubLook() === 'pauta';
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const cover = getPostCover(post);
   const selectable = isFeedSelectable(post);
@@ -60,7 +62,9 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         <StatusTag status={status} />
       </span>
       {glyph && (
-        <span className="absolute top-2 right-2 z-10 w-6 h-6 rounded-md bg-black/45 text-white flex items-center justify-center">
+        <span
+          className={`absolute top-2 right-2 z-10 w-6 h-6 ${pauta ? 'rounded-[var(--hub-r-chip)]' : 'rounded-md'} bg-black/45 text-white flex items-center justify-center`}
+        >
           {glyph}
         </span>
       )}
@@ -150,17 +154,22 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         aria-checked={selected}
         aria-label={t('instagramCard.selectAriaLabel', 'Selecionar publicação')}
         onClick={() => onToggle(post.id)}
-        className={`${base} block overflow-hidden text-left transition-[filter,box-shadow,opacity] hub-focus-accent focus:outline-none ring-inset ${selected ? 'ring-[3px] ring-[#0095f6]' : 'ring-1 ring-black/5'}`}
+        className={`${base} block overflow-hidden text-left transition-[filter,box-shadow,opacity] hub-focus-accent focus:outline-none ring-inset ${selected ? `ring-[3px] ${pauta ? 'ring-[var(--hub-primary)]' : 'ring-[#0095f6]'}` : 'ring-1 ring-black/5'}`}
       >
         {body}
         <span
-          className={`absolute bottom-2 right-2 z-20 w-7 h-7 rounded-full flex items-center justify-center shadow-md ${selected ? 'bg-[#0095f6]' : 'bg-black/35 border-2 border-white'}`}
+          className={`absolute bottom-2 right-2 z-20 w-7 h-7 rounded-full flex items-center justify-center shadow-md ${selected ? (pauta ? '' : 'bg-[#0095f6]') : 'bg-black/35 border-2 border-white'}`}
+          style={
+            pauta && selected
+              ? { background: 'var(--hub-primary)', color: 'var(--hub-primary-fg)' }
+              : undefined
+          }
         >
           <svg
             width="14"
             height="14"
             fill="none"
-            stroke="#fff"
+            stroke={pauta && selected ? 'currentColor' : '#fff'}
             strokeWidth="2.5"
             viewBox="0 0 24 24"
           >

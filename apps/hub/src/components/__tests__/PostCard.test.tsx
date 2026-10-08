@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostCard, PlatformBadge } from '../PostCard';
+import { HubContext } from '../../HubContext';
 import { submitApproval } from '../../api';
 import type {
   HubPost,
@@ -395,5 +396,49 @@ describe('PlatformBadge', () => {
   it('renders "Instagram" for undefined platform (pre-migration/cached payload)', () => {
     render(<PlatformBadge platform={undefined} />);
     expect(screen.getByText('Instagram')).toBeInTheDocument();
+  });
+});
+
+describe('PostCard Pauta status pills', () => {
+  function renderPauta(status: HubPost['status']) {
+    return render(
+      <HubContext.Provider value={{ bootstrap: { feature_hub_pauta: true } } as never}>
+        <PostCard
+          post={makePost({ status })}
+          token="token-publico"
+          approvals={[]}
+          propertyValues={[]}
+          workflowSelectOptions={[]}
+          onApprovalSubmitted={vi.fn()}
+        />
+      </HubContext.Provider>,
+    );
+  }
+
+  it('pending pill is wait', () => {
+    renderPauta('enviado_cliente');
+    expect(screen.getByText('Aguardando aprovação')).toHaveClass('hub-pill-st-wait');
+  });
+
+  it('agendado uses the sched tone tokens instead of the emerald utilities', () => {
+    renderPauta('agendado');
+    const pill = screen.getByText('Agendado');
+    expect(pill.style.color).toBe('var(--hub-st-sched-fg)');
+    expect(pill.style.background).toBe('var(--hub-st-sched-bg)');
+    expect(pill.className).not.toContain('emerald');
+  });
+
+  it('classic agendado keeps the emerald pill', () => {
+    render(
+      <PostCard
+        post={makePost({ status: 'agendado' })}
+        token="token-publico"
+        approvals={[]}
+        propertyValues={[]}
+        workflowSelectOptions={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Agendado').className).toContain('bg-emerald-50');
   });
 });
