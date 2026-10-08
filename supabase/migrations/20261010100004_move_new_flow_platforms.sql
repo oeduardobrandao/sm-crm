@@ -3,7 +3,7 @@
 --
 -- O INSERT explícito em workflows (20260901120000) não listava plataformas,
 -- então o fluxo novo nascia no default {instagram} e o trigger z8
--- (20261005100002) semeava um destino Instagram nos posts só Geral movidos.
+-- (20261010100002) semeava um destino Instagram nos posts só Geral movidos.
 -- Copiado VERBATIM de 20260901120000 (a definição mais recente); só mudam o
 -- SELECT da origem (+ w.plataformas) e a lista de colunas/valores do INSERT
 -- (+ plataformas). SECURITY DEFINER, search_path e REVOKE/GRANT idênticos.

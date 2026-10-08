@@ -39,14 +39,15 @@
    - `a2`: a legacy write of `instagram`, `tiktok` or `both` that would leave the post with neither Instagram nor TikTok (Instagram on a TikTok-only board, TikTok on a stories post) is a no-op: targets stay and `platform` is re-derived from them. An explicit `other` write still removes both (no UI writes it).
    - `z8` (`AFTER UPDATE OF workflow_id`): a post with no Instagram/TikTok target that changes board (moved, attached, detached) gets the new board's Instagram/TikTok entries (TikTok never on stories) and `platform` is re-derived. A move never removes destinations.
    - `post_targets_sync_platform` also fires on `UPDATE OF post_id` and re-derives both the old and the new post.
-10. **Review fixes outside the original task list.** Migration `20261005100004_move_new_flow_platforms.sql` copies `move_posts_to_new_flow` forward so the new board inherits the source's `plataformas` (it defaulted to `{instagram}`, and `z8` then gave Geral posts an Instagram destination). `a2` also ignores legacy `platform` writes on Express posts, and `PlatformSelector` hides for them (sections 10 and 11 of `99_post_targets.sql`).
+10. **Review fixes outside the original task list.** Migration `20261010100004_move_new_flow_platforms.sql` copies `move_posts_to_new_flow` forward so the new board inherits the source's `plataformas` (it defaulted to `{instagram}`, and `z8` then gave Geral posts an Instagram destination). `a2` also ignores legacy `platform` writes on Express posts, and `PlatformSelector` hides for them (sections 10 and 11 of `99_post_targets.sql`).
 
 ## Global Constraints
 
 - **Branch:** a new branch off fresh `origin/main` after P0 is merged: `claude/platform-agnostic-p1`. Run `git fetch origin main && git checkout -b claude/platform-agnostic-p1 origin/main`.
 - **Migration versions:**
-  - Use `20261005100001`, `20261005100002`, `20261005100003` and `20261005100004` (the last one added in review, deviation 10).
-  - Renumbered on 2026-10-05 from `20260929100001..4` to sit above main's tail (`20261004000001`). `20261005100005` (`duplicate_workflow` keeps `plataformas`) and `20261005100006` (`_clone_post_row` keeps the source post's destinations) were added in the same rebase sync.
+  - Use `20261010100001`, `20261010100002`, `20261010100003` and `20261010100004` (the last one added in review, deviation 10).
+  - Renumbered on 2026-10-05 from `20260929100001..4` to sit above main's tail (`20261004000001`). `20261010100005` (`duplicate_workflow` keeps `plataformas`) and `20261010100006` (`_clone_post_row` keeps the source post's destinations) were added in the same rebase sync.
+  - Renumbered again on 2026-10-08 from `20261005100001..6` to `20261010100001..6`, above main's tail at the time (`20261009000002`). None of main's migrations from `20261003000001` to `20261009000002` touch the objects P1 copies forward.
   - Before `gh pr create`, run `ls supabase/migrations | tail -5`. If main has anything at or above these numbers, renumber above main's tail. Every version prefix must be unique.
 - **Allowed values:**
   - Platform ids stored in SQL: exactly `'instagram'`, `'tiktok'`, `'geral'` (the registry's `PLATFORM_IDS`).
@@ -79,7 +80,7 @@
 ### Task 1: Migration A: `plataformas` on workflows, templates and clientes
 
 **Files:**
-- Create: `supabase/migrations/20261005100001_board_platforms.sql`
+- Create: `supabase/migrations/20261010100001_board_platforms.sql`
 - Test: `supabase/tests/entitlements/99_post_targets.sql` (created here, extended in Tasks 2-3)
 
 **Interfaces:**
@@ -97,7 +98,7 @@ Create `supabase/tests/entitlements/99_post_targets.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Plataformas por quadro + post_targets (migrations 20261005100001..3).
+-- Plataformas por quadro + post_targets (migrations 20261010100001..3).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 
 -- 1. Colunas plataformas: default, CHECK e allowlist de clientes
@@ -159,7 +160,7 @@ Expected: FAIL with `column "plataformas" does not exist`.
 
 - [ ] **Step 3: Write the migration**
 
-`supabase/migrations/20261005100001_board_platforms.sql`:
+`supabase/migrations/20261010100001_board_platforms.sql`:
 
 ```sql
 -- ============================================================
@@ -199,7 +200,7 @@ ALTER TABLE public.clientes
 
 -- Sem backfill de quadros: todo quadro começa no default {instagram} (desvio 7
 -- do plano). Post legado de TikTok mantém o destino TikTok pelo backfill de
--- post_targets (20261005100002), que não depende do quadro.
+-- post_targets (20261010100002), que não depende do quadro.
 
 -- ---------- allowlist de SELECT de clientes (trio da armadilha 20260728000002)
 -- Lista INTEIRA copiada de 20260904000001:23-28 (a mais recente) + plataformas_padrao.
@@ -243,7 +244,7 @@ Expected: `ROLLBACK`, with no assertion errors.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261005100001_board_platforms.sql supabase/tests/entitlements/99_post_targets.sql
+git add supabase/migrations/20261010100001_board_platforms.sql supabase/tests/entitlements/99_post_targets.sql
 git commit -m "feat(db): plataformas em fluxos, templates e clientes"
 ```
 
@@ -251,10 +252,10 @@ git commit -m "feat(db): plataformas em fluxos, templates e clientes"
 
 ### Task 2: Migration B: `post_targets`, backfill, triggers, `other`
 
-> The SQL blocks below predate deviations 8 and 9 (Express, `a2` no-op, `z8`, sync on `post_id`, `lock_timeout`). `supabase/migrations/20261005100002_post_targets.sql` and sections 6-9 of `99_post_targets.sql` are the source of truth.
+> The SQL blocks below predate deviations 8 and 9 (Express, `a2` no-op, `z8`, sync on `post_id`, `lock_timeout`). `supabase/migrations/20261010100002_post_targets.sql` and sections 6-9 of `99_post_targets.sql` are the source of truth.
 
 **Files:**
-- Create: `supabase/migrations/20261005100002_post_targets.sql`
+- Create: `supabase/migrations/20261010100002_post_targets.sql`
 - Modify: `supabase/tests/entitlements/99_post_targets.sql` (append sections 2-4)
 
 **Interfaces:**
@@ -526,7 +527,7 @@ Run the file. Expected: FAIL in section 2 with `relation "post_targets" does not
 
 - [ ] **Step 2: Write the migration**
 
-`supabase/migrations/20261005100002_post_targets.sql`:
+`supabase/migrations/20261010100002_post_targets.sql`:
 
 ```sql
 -- ============================================================
@@ -868,7 +869,7 @@ If `30_ig_trial_strategy.sql` or `tiktok_publishing_rpcs.sql` now fail, read the
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20261005100002_post_targets.sql supabase/tests/entitlements/99_post_targets.sql
+git add supabase/migrations/20261010100002_post_targets.sql supabase/tests/entitlements/99_post_targets.sql
 git commit -m "feat(db): post_targets com seed pelo quadro e platform derivado (other)"
 ```
 
@@ -877,7 +878,7 @@ git commit -m "feat(db): post_targets com seed pelo quadro e platform derivado (
 ### Task 3: Migration C: Instagram automations only accept Instagram posts
 
 **Files:**
-- Create: `supabase/migrations/20261005100003_ica_platform_predicates.sql`
+- Create: `supabase/migrations/20261010100003_ica_platform_predicates.sql`
 - Modify: `supabase/tests/entitlements/99_post_targets.sql` (append section 5)
 
 **Interfaces:**
@@ -898,7 +899,7 @@ Run the file. Expected: FAIL on section 5, because the resolver accepts the `oth
 
 - [ ] **Step 2: Write the copy-forward migration**
 
-`supabase/migrations/20261005100003_ica_platform_predicates.sql`. It has a header comment and four `CREATE OR REPLACE FUNCTION` blocks, each copied **verbatim** from its latest definition with only the predicate lines changed:
+`supabase/migrations/20261010100003_ica_platform_predicates.sql`. It has a header comment and four `CREATE OR REPLACE FUNCTION` blocks, each copied **verbatim** from its latest definition with only the predicate lines changed:
 
 | Function | Copy from | Change |
 |---|---|---|
@@ -945,7 +946,7 @@ Expected: all PASS, including suites 65, 66 and 99. Suite 66 section 3 (the TikT
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20261005100003_ica_platform_predicates.sql supabase/tests/entitlements/
+git add supabase/migrations/20261010100003_ica_platform_predicates.sql supabase/tests/entitlements/
 git commit -m "fix(db): automações de comentário só aceitam post de Instagram (platform other)"
 ```
 
@@ -1107,7 +1108,7 @@ export function hasAutoPublishTarget(p: PostPlatform | null | undefined): boolea
 `apps/crm/src/store/posts.ts`, around lines 86-89:
 
 ```ts
-/** Derivado de post_targets pelo banco (migration 20261005100002):
+/** Derivado de post_targets pelo banco (migration 20261010100002):
  *  instagram+tiktok -> both; 'other' = nenhum destino Instagram/TikTok (ex.: só Geral).
  *  'stories' nunca tem destino TikTok. */
 export type PostPlatform = 'instagram' | 'tiktok' | 'both' | 'other';

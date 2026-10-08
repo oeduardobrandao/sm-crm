@@ -1,15 +1,15 @@
--- 20261005100005_duplicate_workflow_platforms.sql
+-- 20261010100005_duplicate_workflow_platforms.sql
 -- duplicate_workflow: a cópia herda as plataformas do quadro (P1).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 --
 -- O INSERT explícito em workflows (20261002000021) não listava plataformas,
 -- então a cópia nascia no default {instagram}: quadro só Geral virava quadro de
 -- Instagram e os posts copiados eram semeados por ele. Mesmo bug que
--- 20261005100004 corrigiu em move_posts_to_new_flow.
+-- 20261010100004 corrigiu em move_posts_to_new_flow.
 -- Copiado VERBATIM de 20261002000021 (a definição mais recente); só muda o
 -- INSERT em workflows (+ plataformas / w.plataformas). SECURITY DEFINER,
 -- search_path e REVOKE/GRANT idênticos. Os destinos de cada post copiado vêm
--- da origem via _clone_post_row (20261005100006).
+-- da origem via _clone_post_row (20261010100006).
 
 CREATE OR REPLACE FUNCTION public.duplicate_workflow(p_workflow_id bigint, p_to_rascunho boolean)
 RETURNS bigint

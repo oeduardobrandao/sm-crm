@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Plataformas por quadro + post_targets (migrations 20261005100001..6).
+-- Plataformas por quadro + post_targets (migrations 20261010100001..6).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 
 -- 1. Colunas plataformas: default, CHECK e allowlist de clientes
@@ -292,7 +292,7 @@ end $$;
 rollback;
 
 -- 5. Automacoes de comentario do Instagram: post so Geral (platform 'other')
---    nao e alvo (migration 20261005100003)
+--    nao e alvo (migration 20261010100003)
 begin;
 select et_grant_hosted_parity();
 do $$
@@ -575,7 +575,7 @@ begin
 end $$;
 rollback;
 
--- 12. duplicate_workflow (20261002000021 -> 20261005100005): a cópia herda as
+-- 12. duplicate_workflow (20261002000021 -> 20261010100005): a cópia herda as
 -- plataformas do quadro. Antes nascia {instagram} e o post só Geral copiado
 -- ficava sem destino nenhum (platform 'other' não semeia social, e o quadro
 -- {instagram} não tem Geral).
@@ -612,7 +612,7 @@ begin
 end $$;
 rollback;
 
--- 13. _clone_post_row (20261002000020 -> 20261005100006): a cópia de um post
+-- 13. _clone_post_row (20261002000020 -> 20261010100006): a cópia de um post
 -- (duplicate_post e cada post de duplicate_workflow) tem os MESMOS destinos da
 -- origem, com o formato, e não os padrões do quadro. Estado de publicação,
 -- ids externos e legenda do destino não são copiados.

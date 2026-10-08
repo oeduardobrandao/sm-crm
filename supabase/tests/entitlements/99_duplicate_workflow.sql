@@ -50,7 +50,7 @@ begin
        -- copiadas
        'conta_id','cliente_id','titulo','template_id','status','etapa_atual',
        'recorrente','position','modo_prazo','link_notion','link_drive','concluido_em',
-       'plataformas',  -- 20261005100005
+       'plataformas',  -- 20261010100005
        -- definidas pela copia
        'user_id','created_via',
        -- geradas pelo banco

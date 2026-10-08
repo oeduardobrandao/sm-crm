@@ -1,10 +1,10 @@
--- 20261005100006_duplicate_post_targets.sql
+-- 20261010100006_duplicate_post_targets.sql
 -- _clone_post_row: a cópia de um post mantém os destinos da origem (P1).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 --
 -- duplicate_post e duplicate_workflow (20261002000020/21) copiam cada post por
 -- _clone_post_row. O INSERT passa s.platform, mas os triggers z4b/z6
--- (20261005100002) semeiam os destinos pelo QUADRO: destino que a origem tem e
+-- (20261010100002) semeiam os destinos pelo QUADRO: destino que a origem tem e
 -- o quadro não lista (Geral a mais, TikTok legado) some, e destino que o quadro
 -- lista e a origem não tem aparece. Aqui os destinos semeados são trocados
 -- pelos da origem (só platform e format: estado de publicação, ids externos e
@@ -12,7 +12,7 @@
 -- app.post_targets_sync ligado para o sync e o a2 não reescreverem a linha.
 -- Copiado VERBATIM de 20261002000020 (a definição mais recente); só entra o
 -- bloco depois do INSERT em workflow_posts. duplicate_post e duplicate_workflow
--- não mudam (duplicate_workflow ganha plataformas em 20261005100005).
+-- não mudam (duplicate_workflow ganha plataformas em 20261010100005).
 -- SECURITY DEFINER, search_path e REVOKE/GRANT idênticos.
 
 CREATE OR REPLACE FUNCTION public._clone_post_row(

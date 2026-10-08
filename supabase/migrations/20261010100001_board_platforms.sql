@@ -35,7 +35,7 @@ ALTER TABLE public.clientes
 
 -- Sem backfill de quadros: todo quadro começa no default {instagram} (desvio 7
 -- do plano). Post legado de TikTok mantém o destino TikTok pelo backfill de
--- post_targets (20261005100002), que não depende do quadro.
+-- post_targets (20261010100002), que não depende do quadro.
 
 -- ---------- allowlist de SELECT de clientes (trio da armadilha 20260728000002)
 -- Lista INTEIRA copiada de 20260904000001:23-28 (a mais recente) + plataformas_padrao.
