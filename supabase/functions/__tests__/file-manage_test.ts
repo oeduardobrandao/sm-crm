@@ -1033,7 +1033,10 @@ Deno.test("file-manage: POST /links refuses to link a reference file to a post",
     data: { conta_id: "conta-1", kind: "image", attached_to: "post_reference" },
     error: null,
   });
+  // Valid post + insert queued: without the attached_to guard this would be a 201.
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: { id: 1, post_id: 50, file_id: 10 }, error: null });
   const res = await makeHandler(db)(req("POST", "/links", { post_id: 50, file_id: 10 }));
   assertEquals(res.status, 404);
-  assertEquals(db.calls.find((c) => c.table === "post_file_links"), undefined);
+  assertEquals(db.calls.find((c) => c.table === "post_file_links" && c.operation === "insert"), undefined);
 });
