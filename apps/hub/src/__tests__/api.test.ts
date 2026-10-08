@@ -373,4 +373,28 @@ describe('hub api client', () => {
       action: 'aprovado',
     });
   });
+
+  it('sends reference_ids with a correcao only when there are some', async () => {
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'correcao', 'Trocar', undefined, [3, 4]);
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      token: 'token-hub',
+      post_id: 12,
+      action: 'correcao',
+      comentario: 'Trocar',
+      reference_ids: [3, 4],
+    });
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'correcao', 'Trocar', undefined, []);
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).not.toHaveProperty(
+      'reference_ids',
+    );
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'aprovado', undefined, undefined, [3]);
+    expect(JSON.parse(String(fetchHarness.calls[2].init?.body))).not.toHaveProperty(
+      'reference_ids',
+    );
+  });
 });

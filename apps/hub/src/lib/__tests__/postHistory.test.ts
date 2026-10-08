@@ -290,6 +290,7 @@ describe('buildHistoryEntries', () => {
     });
     expect(entries[1]).toMatchObject({
       kind: 'approval',
+      approvalId: 10,
       action: 'correcao',
       motivo: 'legenda',
       comentario: 'ajustar',

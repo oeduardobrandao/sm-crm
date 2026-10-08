@@ -1,10 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertCircle, Save } from 'lucide-react';
+import { AlertCircle, Loader2, Save, X } from 'lucide-react';
 import type { CorrectionReason, HubPost } from '../../types';
 import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
+import type { PostReferencesState } from '../../hooks/usePostReferences';
+import type { ReferenceItem } from '../../types/postReferences';
+import { ReferencePicker } from './references/ReferencePicker';
+import { ReferenceOpen, ReferenceThumb } from './references/ReferenceTiles';
+import { referenceErrorMessage } from './references/referenceErrors';
+import { referenceTitle } from './references/referenceFormat';
 import { pickPostCardKind, suggestionAwareCaption } from '../../lib/postView';
 import { canonicalDoc } from '../../lib/richDoc';
 import { RichTextContent } from '../RichTextContent';
@@ -125,7 +131,12 @@ interface CorrectionPanelProps {
   post: HubPost;
   edit: EditSuggestion;
   submitting: boolean;
-  onSubmitCorrection: (comentario: string, motivo: CorrectionReason | null) => void;
+  /** `referenceIds` is passed only when references are staged (so old call shapes still hold). */
+  onSubmitCorrection: (
+    comentario: string,
+    motivo: CorrectionReason | null,
+    referenceIds?: number[],
+  ) => void;
   /** True whenever something unsent exists: staged content differs, comentário typed or motivo chosen. */
   onDirtyChange: (dirty: boolean) => void;
   /** True while the staged text/caption differs from the baseline (comentário and motivo excluded). */
@@ -138,6 +149,11 @@ interface CorrectionPanelProps {
    * and renders nothing while the host has not mounted the slot yet (`null`).
    */
   saveSlot?: HTMLElement | null;
+  /** The post's references (usePostReferences, called once by the dialog). Absent: no attach. */
+  references?: PostReferencesState;
+  onOpenReference?: (item: ReferenceItem) => void;
+  /** Sheet or link form open, so the dialog pauses its arrow keys and close path. */
+  onOverlayChange?: (open: boolean) => void;
 }
 
 /**
@@ -155,6 +171,9 @@ export function CorrectionPanel({
   onContentDirtyChange,
   onSavedClean,
   saveSlot,
+  references,
+  onOpenReference,
+  onOverlayChange,
 }: CorrectionPanelProps) {
   const { t } = useTranslation('hubPosts');
   const isText = pickPostCardKind(post) === 'text';
@@ -183,6 +202,9 @@ export function CorrectionPanel({
   const [stagedCaption, setStagedCaption] = useState(captionBaseline);
   const [comentario, setComentario] = useState('');
   const [motivo, setMotivo] = useState<CorrectionReason | null>(null);
+  // Ids of references added from this composer and still meant for this correction.
+  const [stagedIds, setStagedIds] = useState<number[]>([]);
+  const waitHintId = useId();
   // Suppresses the "failed, retry" UI for the ~1.5s debounce window between
   // clicking Save and `saveState` actually leaving 'idle' for 'saving' -- during that
   // window `edit.dirty` is already true (set synchronously by saveSuggestion) while
@@ -315,7 +337,20 @@ export function CorrectionPanel({
   const contentDirty =
     (isText && (stagedConteudoPlain !== draftConteudoPlain || stagedDocKey !== draftDocKey)) ||
     stagedCaption !== captionBaseline;
-  const panelDirty = contentDirty || comentario.trim() !== '' || motivo !== null;
+  // Staged references that still exist: one removed in the Referências tab drops out here too
+  // (a failed upload never gets staged).
+  const stagedItems: ReferenceItem[] = references
+    ? stagedIds.flatMap((id) => references.items.filter((item) => item.id === id))
+    : [];
+  const uploadsInFlight = references?.uploadsInFlight ?? false;
+  const panelDirty =
+    contentDirty || comentario.trim() !== '' || motivo !== null || stagedItems.length > 0;
+
+  function sendCorrection() {
+    const ids = stagedItems.map((item) => item.id);
+    if (ids.length > 0) onSubmitCorrection(comentario.trim(), motivo, ids);
+    else onSubmitCorrection(comentario.trim(), motivo);
+  }
 
   useEffect(() => {
     onDirtyChange(panelDirty);
@@ -531,15 +566,101 @@ export function CorrectionPanel({
           placeholder={t('shared.commentPlaceholder', 'Descreva o que precisa mudar')}
           className="hub-focus-accent w-full rounded-lg border hub-border px-3 py-2.5 text-[13px] resize-none min-h-[70px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] transition-all"
         />
-        <div className="flex justify-end">
+        {references && (references.canAdd || stagedItems.length > 0) && (
+          <div className="space-y-2">
+            {(stagedItems.length > 0 || references.uploads.length > 0) && (
+              <ul
+                aria-label={t('references.composer.staged', 'Referências desta correção')}
+                className="flex flex-wrap gap-1.5"
+              >
+                {stagedItems.map((item) => {
+                  const name = referenceTitle(item);
+                  return (
+                    <li
+                      key={item.id}
+                      className="inline-flex items-center gap-1.5 max-w-full rounded-full border hub-border hub-bg-card py-1 pl-1 pr-1.5"
+                    >
+                      <ReferenceOpen
+                        item={item}
+                        onOpen={onOpenReference}
+                        label={t('references.open', 'Abrir {{name}}', { name })}
+                        className="inline-flex items-center gap-1.5 min-w-0 rounded-full"
+                      >
+                        <ReferenceThumb item={item} size={24} />
+                        <span className="truncate max-w-[160px] text-[12px] hub-txt">{name}</span>
+                      </ReferenceOpen>
+                      <button
+                        type="button"
+                        onClick={() => setStagedIds((ids) => ids.filter((id) => id !== item.id))}
+                        aria-label={t('references.composer.unstage', 'Tirar {{name}} da correção', {
+                          name,
+                        })}
+                        className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center hub-tx3 hover:bg-[var(--hub-soft)]"
+                      >
+                        <X size={12} aria-hidden="true" />
+                      </button>
+                    </li>
+                  );
+                })}
+                {references.uploads.map((entry) =>
+                  entry.status === 'uploading' ? (
+                    <li
+                      key={entry.localId}
+                      className="inline-flex items-center gap-1.5 rounded-full border hub-border px-2.5 py-1 text-[12px] hub-tx3"
+                    >
+                      <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                      <span className="truncate max-w-[160px]">{entry.name}</span>
+                    </li>
+                  ) : (
+                    <li
+                      key={entry.localId}
+                      role="alert"
+                      className="w-full text-[12px] text-rose-700 dark:text-rose-300"
+                    >
+                      {entry.name}:{' '}
+                      {referenceErrorMessage(entry.error ?? 'internal', t, {
+                        fileKind: entry.fileKind,
+                        sizeBytes: entry.total,
+                      })}
+                    </li>
+                  ),
+                )}
+              </ul>
+            )}
+            {references.canAdd && (
+              <ReferencePicker
+                refs={references}
+                variant="composer"
+                disabled={submitting || approvalBlocked}
+                onAdded={(item) =>
+                  setStagedIds((ids) => (ids.includes(item.id) ? ids : [...ids, item.id]))
+                }
+                onOverlayChange={onOverlayChange}
+              />
+            )}
+            <p className="text-[12px] hub-tx3">
+              {t(
+                'references.composer.helper',
+                'As referências anexadas também ficam na aba Referências deste post.',
+              )}
+            </p>
+          </div>
+        )}
+        <div className="flex flex-col items-end gap-1">
           <button
             type="button"
-            onClick={() => onSubmitCorrection(comentario.trim(), motivo)}
-            disabled={submitting || approvalBlocked || dirty || contentDirty}
+            onClick={sendCorrection}
+            disabled={submitting || approvalBlocked || dirty || contentDirty || uploadsInFlight}
+            aria-describedby={uploadsInFlight ? waitHintId : undefined}
             className="flex items-center gap-1.5 hub-btn-secondary rounded-[4px] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
           >
             <AlertCircle size={14} /> {t('shared.enviarCorrecao', 'Enviar correção')}
           </button>
+          {uploadsInFlight && (
+            <p id={waitHintId} className="text-[12px] hub-tx3">
+              {t('references.waitUpload', 'Aguarde o envio terminar')}
+            </p>
+          )}
         </div>
       </section>
     </div>

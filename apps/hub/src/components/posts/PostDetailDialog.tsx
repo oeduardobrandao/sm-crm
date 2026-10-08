@@ -449,6 +449,7 @@ function PostDetailContent({
     action: 'aprovado' | 'correcao',
     comentario = '',
     motivo: CorrectionReason | null = null,
+    referenceIds: number[] = [],
   ) {
     if (submitting || locked) return;
     // The card is about to leave: an unsent comment typed in the Histórico tab would go with it.
@@ -461,8 +462,19 @@ function PostDetailContent({
     setError(null);
     try {
       let res: { scheduled?: boolean } | undefined;
+      // reference_ids only when something is staged, so the call keeps its old shape otherwise.
       if (action === 'correcao')
-        res = await submitApproval(token, post.id, 'correcao', comentario, motivo ?? undefined);
+        res =
+          referenceIds.length > 0
+            ? await submitApproval(
+                token,
+                post.id,
+                'correcao',
+                comentario,
+                motivo ?? undefined,
+                referenceIds,
+              )
+            : await submitApproval(token, post.id, 'correcao', comentario, motivo ?? undefined);
       else res = await submitApproval(token, post.id, 'aprovado', undefined);
       setPanelDirty(false);
       // The post just left enviado_cliente: can_add, can_remove and approval links changed.
@@ -796,6 +808,8 @@ function PostDetailContent({
                     approvals={approvals}
                     onCommentSent={onApprovalSubmitted}
                     onDirtyChange={handleHistoryDirtyChange}
+                    references={refs.items}
+                    onOpenReference={setViewerItem}
                     embedded
                   />
                 </div>
@@ -842,7 +856,10 @@ function PostDetailContent({
                     post={post}
                     edit={edit}
                     submitting={submitting || locked}
-                    onSubmitCorrection={(c, m) => submit('correcao', c, m)}
+                    onSubmitCorrection={(c, m, ids) => submit('correcao', c, m, ids)}
+                    references={refs}
+                    onOpenReference={setViewerItem}
+                    onOverlayChange={handleOverlayChange}
                     onDirtyChange={handleDirtyChange}
                     onContentDirtyChange={handleContentDirtyChange}
                     onSavedClean={handleSavedClean}

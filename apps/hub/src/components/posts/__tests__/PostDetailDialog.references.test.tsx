@@ -226,4 +226,70 @@ describe('PostDetailDialog references', () => {
     await screen.findByText('Post aprovado!');
     expect(refs.refresh).toHaveBeenCalled();
   });
+
+  it('sends the staged reference ids with the correction and refreshes', async () => {
+    const item = makeReferenceItem(7, { name: 'f7.jpg' });
+    const refs = makePostReferencesStub({
+      canAdd: true,
+      items: [item],
+      startUploads: vi.fn(
+        async (_files: File[], opts?: { onUploaded?: (i: typeof item) => void }) => {
+          opts?.onUploaded?.(item);
+          return [item];
+        },
+      ),
+    });
+    refsState.current = refs;
+    submitApprovalMock.mockResolvedValue({ ok: true });
+    renderDialog();
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+    fireEvent.change(screen.getByTestId('reference-file-input-composer'), {
+      target: { files: [new File(['x'], 'f7.jpg', { type: 'image/jpeg' })] },
+    });
+    expect(screen.getByRole('button', { name: 'Tirar f7.jpg da correção' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Enviar correção/ }));
+    await screen.findByText('Correção enviada!');
+    expect(submitApprovalMock).toHaveBeenCalledWith(
+      'token-publico',
+      1,
+      'correcao',
+      '',
+      undefined,
+      [7],
+    );
+    expect(refs.refresh).toHaveBeenCalled();
+  });
+
+  it('disables Enviar correção while an upload is in flight', () => {
+    refsState.current = makePostReferencesStub({ canAdd: true, uploadsInFlight: true });
+    renderDialog();
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+    expect(screen.getByRole('button', { name: /Enviar correção/ })).toBeDisabled();
+  });
+
+  it('shows the attached references under the correction in the history tab', async () => {
+    refsState.current = makePostReferencesStub({
+      canAdd: false,
+      items: [makeReferenceItem(1, { name: 'foto.jpg', post_approval_id: 10 })],
+    });
+    const { fetchPostHistory } = await import('../../../api');
+    vi.mocked(fetchPostHistory).mockResolvedValueOnce({
+      events: [],
+      approvals: [
+        {
+          id: 10,
+          action: 'correcao',
+          comentario: 'ajustar',
+          motivo: null,
+          is_workspace_user: false,
+          created_at: '2026-09-01T12:00:00.000Z',
+        },
+      ],
+    });
+    renderDialog([post({ status: 'correcao_cliente' })]);
+    fireEvent.click(screen.getByRole('tab', { name: 'Histórico e comentários' }));
+    expect(await screen.findByText('1 referência anexada')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir foto.jpg' }));
+    expect(screen.getByRole('dialog', { name: 'foto.jpg' })).toBeInTheDocument();
+  });
 });

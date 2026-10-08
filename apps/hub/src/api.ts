@@ -126,6 +126,8 @@ export function submitApproval(
   action: 'aprovado' | 'correcao' | 'mensagem',
   comentario?: string,
   motivo?: CorrectionReason,
+  /** Post references staged in the correction composer; hub-approve links them to the approval. */
+  referenceIds?: number[],
 ) {
   return post<{ ok: boolean; scheduled?: boolean }>('hub-approve', {
     token,
@@ -133,6 +135,9 @@ export function submitApproval(
     action,
     comentario,
     ...(motivo ? { motivo } : {}),
+    ...(action === 'correcao' && referenceIds && referenceIds.length > 0
+      ? { reference_ids: referenceIds }
+      : {}),
   });
 }
 
