@@ -80,6 +80,7 @@
     "subtitulo": "Compartilhados pela equipe",
     "verAgenda": "Ver agenda",
     "aguardando_one": "Você tem 1 evento aguardando sua resposta",
-    "aguardando_other": "Você tem {{count}} eventos aguardando sua resposta"
+    "aguardando_other": "Você tem {{count}} eventos aguardando sua resposta",
+    "vazio": "Nenhum evento nos próximos dias"
   }
 }

@@ -35,6 +35,47 @@
       "paginas": "Páginas",
       "briefing": "Briefing",
       "ideias": "Ideias"
+    },
+    "pauta": {
+      "greeting": {
+        "morning": "Bom dia, {{name}}.",
+        "afternoon": "Boa tarde, {{name}}.",
+        "evening": "Boa noite, {{name}}."
+      },
+      "summary": {
+        "both": "Você tem <chip>{{posts}}</chip> para aprovar e <chip>{{publications}}</chip> saindo esta semana.",
+        "pendingOnly": "Você tem <chip>{{posts}}</chip> para aprovar.",
+        "weekOnly": "<chip>{{publications}}</chip> saindo esta semana.",
+        "none": "Tudo em dia por aqui."
+      },
+      "chip": {
+        "posts_one": "1 post",
+        "posts_other": "{{count}} posts",
+        "publications_one": "1 publicação",
+        "publications_other": "{{count}} publicações"
+      },
+      "cta": {
+        "review": "Revisar aprovações"
+      },
+      "kpi": {
+        "pending": "Para aprovar",
+        "reviewNow": "Revisar agora"
+      },
+      "section": {
+        "approvals": "Aprovações",
+        "calendar": "Calendário",
+        "agenda": "Agenda",
+        "resources": "Recursos",
+        "results": "Resultados"
+      },
+      "waiting": {
+        "title": "Esperando você",
+        "seeAll": "Ver todas",
+        "review": "Revisar"
+      },
+      "resources": {
+        "title": "Acesso rápido"
+      }
     }
   },
   "calendar": {

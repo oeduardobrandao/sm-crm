@@ -1,15 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Palette,
-  FileText,
-  BookOpen,
-  Lightbulb,
-  ChevronRight,
-  CheckSquare,
-  ArrowRight,
-  X,
-} from 'lucide-react';
+import { ChevronRight, CheckSquare, ArrowRight, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
@@ -23,13 +14,9 @@ import { PostCalendar } from '../components/PostCalendar';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
 import { ClientAvatar } from '../components/ClientAvatar';
 import { HomeAgenda } from './agenda/HomeAgenda';
-
-const RESOURCE_LINKS = [
-  { labelKey: 'home.resources.marca', label: 'Marca', icon: Palette, path: '/marca' },
-  { labelKey: 'home.resources.paginas', label: 'Páginas', icon: FileText, path: '/paginas' },
-  { labelKey: 'home.resources.briefing', label: 'Briefing', icon: BookOpen, path: '/briefing' },
-  { labelKey: 'home.resources.ideias', label: 'Ideias', icon: Lightbulb, path: '/ideias' },
-];
+import { useHubLook } from '../hooks/useHubLook';
+import { HomePagePauta } from './HomePagePauta';
+import { RESOURCE_LINKS } from './home/resourceLinks';
 
 const CALENDAR_STATUSES = new Set([
   'enviado_cliente',
@@ -51,6 +38,7 @@ export function HomePage() {
   const { bootstrap, token } = useHub();
   const { workspace } = useParams<{ workspace: string }>();
   const navigate = useNavigate();
+  const look = useHubLook();
   const base = `/${workspace}/hub/${token}`;
 
   const { data, isLoading } = useQuery(hubPostsQuery(token));
@@ -146,6 +134,77 @@ export function HomePage() {
     },
   ];
 
+  const calendarBody = isLoading ? (
+    <div className="flex justify-center py-8">
+      <div className="animate-spin h-5 w-5 rounded-full border-2 border-stone-300 border-t-stone-900" />
+    </div>
+  ) : (
+    <PostCalendar
+      posts={calendarPosts}
+      eventos={agendaAtiva ? (periodoQuery.data ?? []) : undefined}
+      eventosErro={agendaAtiva && periodoQuery.isError && !periodoQuery.isFetching}
+      onRetryEventos={() => void periodoQuery.refetch()}
+      onEventoClick={setEventoAberto}
+      onMonthChange={handleMonthChange}
+      loading={needsRange && rangeQuery.isFetching}
+      notice={
+        needsRange && rangeQuery.isError && !rangeQuery.isFetching ? (
+          <p className="mb-3 flex items-center gap-2 text-[12.5px] hub-tx2">
+            {t('calendar.rangeError', 'Não foi possível carregar este mês.')}
+            <button
+              type="button"
+              onClick={() => void rangeQuery.refetch()}
+              className="font-semibold underline"
+            >
+              {t('calendar.rangeRetry', 'Tentar novamente')}
+            </button>
+          </p>
+        ) : null
+      }
+    />
+  );
+
+  const eventDialog = eventoAtual && (
+    <HubDialog open onRequestClose={() => setEventoAberto(null)} title={eventoAtual.titulo}>
+      {/* Bottom sheet on mobile, centered card on desktop. */}
+      <div className="w-full md:max-w-[520px] self-end md:self-center max-h-full overflow-y-auto px-3 pb-3 md:p-0">
+        <div className="flex justify-end mb-2">
+          <button
+            type="button"
+            onClick={() => setEventoAberto(null)}
+            aria-label={t('calendar.fecharEvento', 'Fechar')}
+            className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--hub-card)] hub-txt shadow-sm"
+          >
+            <X size={17} aria-hidden="true" />
+          </button>
+        </div>
+        <AgendaCard item={eventoAtual} token={token} agora={Date.now()} />
+      </div>
+    </HubDialog>
+  );
+
+  if (look === 'pauta') {
+    return (
+      <HomePagePauta
+        base={base}
+        token={token}
+        firstName={firstName}
+        posts={allPosts}
+        loading={isLoading}
+        pendingCount={pendingCount}
+        agendaEnabled={agendaAtiva}
+        kpis={{
+          thisMonth: String(thisMonthCount),
+          pending: String(pendingCount),
+          approvalRate,
+          nextPost: nextPost ? formatNextPost(nextPost.scheduled_at!, dateLocale) : '—',
+        }}
+        calendar={calendarBody}
+        eventDialog={eventDialog}
+      />
+    );
+  }
+
   return (
     <div className="hub-fade-up flex flex-col gap-6">
       <section>
@@ -235,55 +294,10 @@ export function HomePage() {
         <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">
           {t('home.calendarSection.subtitle', 'Próximas publicações')}
         </div>
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin h-5 w-5 rounded-full border-2 border-stone-300 border-t-stone-900" />
-          </div>
-        ) : (
-          <PostCalendar
-            posts={calendarPosts}
-            eventos={agendaAtiva ? (periodoQuery.data ?? []) : undefined}
-            eventosErro={agendaAtiva && periodoQuery.isError && !periodoQuery.isFetching}
-            onRetryEventos={() => void periodoQuery.refetch()}
-            onEventoClick={setEventoAberto}
-            onMonthChange={handleMonthChange}
-            loading={needsRange && rangeQuery.isFetching}
-            notice={
-              needsRange && rangeQuery.isError && !rangeQuery.isFetching ? (
-                <p className="mb-3 flex items-center gap-2 text-[12.5px] hub-tx2">
-                  {t('calendar.rangeError', 'Não foi possível carregar este mês.')}
-                  <button
-                    type="button"
-                    onClick={() => void rangeQuery.refetch()}
-                    className="font-semibold underline"
-                  >
-                    {t('calendar.rangeRetry', 'Tentar novamente')}
-                  </button>
-                </p>
-              ) : null
-            }
-          />
-        )}
+        {calendarBody}
       </section>
 
-      {eventoAtual && (
-        <HubDialog open onRequestClose={() => setEventoAberto(null)} title={eventoAtual.titulo}>
-          {/* Bottom sheet on mobile, centered card on desktop. */}
-          <div className="w-full md:max-w-[520px] self-end md:self-center max-h-full overflow-y-auto px-3 pb-3 md:p-0">
-            <div className="flex justify-end mb-2">
-              <button
-                type="button"
-                onClick={() => setEventoAberto(null)}
-                aria-label={t('calendar.fecharEvento', 'Fechar')}
-                className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--hub-card)] hub-txt shadow-sm"
-              >
-                <X size={17} aria-hidden="true" />
-              </button>
-            </div>
-            <AgendaCard item={eventoAtual} token={token} agora={Date.now()} />
-          </div>
-        </HubDialog>
-      )}
+      {eventDialog}
 
       <section className="hub-card p-5">
         <h3 className="font-semibold text-[16px] tracking-tight hub-txt">
