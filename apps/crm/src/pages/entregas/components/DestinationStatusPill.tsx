@@ -25,10 +25,13 @@ export function DestinationStatusPill({
   platform,
   state,
   hideLabelWhenPending = false,
+  showIcon = true,
 }: {
   platform: PlatformId;
   state: DestinationState;
   hideLabelWhenPending?: boolean;
+  /** false dentro da aba de legenda, que já mostra o ícone e o nome da plataforma. */
+  showIcon?: boolean;
 }) {
   const Icon = PLATFORM_ICONS[platform];
   const label = DESTINATION_STATE_LABELS[state];
@@ -42,7 +45,7 @@ export function DestinationStatusPill({
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
       style={{ background: 'var(--surface-hover)', color: 'var(--text-muted)' }}
     >
-      <Icon size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+      {showIcon && <Icon size={11} aria-hidden="true" style={{ flexShrink: 0 }} />}
       {showLabel && <span aria-hidden="true">{label}</span>}
       <span
         aria-hidden="true"

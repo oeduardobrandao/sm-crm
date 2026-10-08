@@ -419,3 +419,20 @@ describe('InstagramCaptionField', () => {
     expect(ref.current!.getText()).toBe('outra legenda');
   });
 });
+
+describe('frameless (P2: dentro das abas de legenda)', () => {
+  it('draws its own frame by default (flag off unchanged)', () => {
+    const { container } = render(
+      <InstagramCaptionField value={caption} threads={[]} onSave={vi.fn()} />,
+    );
+    expect(container.querySelector('.rounded-lg.border-2')).not.toBeNull();
+  });
+
+  it('drops the frame inside the tabs', () => {
+    const { container } = render(
+      <InstagramCaptionField value={caption} threads={[]} onSave={vi.fn()} frameless />,
+    );
+    expect(container.querySelector('.rounded-lg.border-2')).toBeNull();
+    expect(screen.getByText('Legenda do Instagram')).toBeInTheDocument();
+  });
+});

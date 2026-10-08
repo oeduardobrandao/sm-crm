@@ -83,6 +83,7 @@ export function DestinationCaptionTabs({
               <DestinationStatusPill
                 platform={t.platform}
                 state={resolveDestinationState(post, t)}
+                showIcon={false}
               />
             </TabsTrigger>
           );

@@ -423,9 +423,10 @@ export function PostEditorBody({
       Stories: uma ou mais mídias (cada uma vira um segmento), sem legenda, formato vertical 9:16.
     </p>
   );
-  const instagramCaptionField = (
+  const instagramCaptionField = (frameless: boolean) => (
     <InstagramCaptionField
       key={post.id}
+      frameless={frameless}
       ref={captionRef}
       value={post.ig_caption ?? ''}
       threads={commentThreads}
@@ -777,7 +778,7 @@ export function PostEditorBody({
           activeTab={captionTab}
           onActiveTabChange={setCaptionTab}
           locked={isScheduleLocked}
-          instagramCaption={isStoryPost ? storiesNote : instagramCaptionField}
+          instagramCaption={isStoryPost ? storiesNote : instagramCaptionField(true)}
           tiktokSettings={tiktokSettingsPanel(true)}
           tiktokFieldRef={tiktokCaptionRef}
           geralFieldRef={geralCaptionRef}
@@ -786,7 +787,7 @@ export function PostEditorBody({
       ) : isStoryPost ? (
         storiesNote
       ) : hasInstagramAccount ? (
-        instagramCaptionField
+        instagramCaptionField(false)
       ) : null}
 
       {hasInstagramAccount && (

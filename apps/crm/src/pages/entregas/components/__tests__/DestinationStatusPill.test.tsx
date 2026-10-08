@@ -22,6 +22,16 @@ describe('DestinationStatusPill', () => {
   });
 });
 
+it('can drop the platform icon (inside a caption tab)', () => {
+  const { container, rerender } = render(
+    <DestinationStatusPill platform="instagram" state="agendado" />,
+  );
+  expect(container.querySelectorAll('svg')).toHaveLength(1);
+  rerender(<DestinationStatusPill platform="instagram" state="agendado" showIcon={false} />);
+  expect(container.querySelectorAll('svg')).toHaveLength(0);
+  expect(screen.getByLabelText('Instagram: Agendado')).toHaveTextContent('Agendado');
+});
+
 describe('DestinationChips', () => {
   it('one chip per destination, in registry order', () => {
     render(
