@@ -6,6 +6,7 @@ import { CONTENT_FORMAT_LABELS, type ContentFormat } from '@mesaas/platforms';
 import { clientStatusOf } from '../lib/postView';
 import type { HubAgendaItem, HubPost } from '../types';
 import { StatusPill } from './StatusPill';
+import { useHubLook } from '../hooks/useHubLook';
 import { localeDe, selo } from '../pages/agenda/AgendaCardView';
 import { compararInicio, diaLocal, formatarHora, somarDias } from '../pages/agenda/formatar';
 
@@ -121,6 +122,7 @@ export function PostCalendar({
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
+  const pauta = useHubLook() === 'pauta';
 
   useEffect(() => {
     onMonthChange?.(year, month);
@@ -310,14 +312,23 @@ export function PostCalendar({
                       isSelected || isToday ? '' : 'text-[var(--hub-txt)] md:text-[var(--hub-tx2)]'
                     }`}
                     style={
-                      isSelected
-                        ? { background: 'var(--hub-acc)', color: 'var(--hub-acc-fg)' }
-                        : isToday
-                          ? {
-                              boxShadow: 'inset 0 0 0 1.5px var(--hub-acc)',
-                              color: 'var(--hub-acc)',
-                            }
-                          : undefined
+                      pauta
+                        ? isSelected
+                          ? { background: 'var(--hub-primary)', color: 'var(--hub-primary-fg)' }
+                          : isToday
+                            ? {
+                                boxShadow: 'inset 0 0 0 1.5px var(--hub-primary)',
+                                color: 'var(--hub-txt)',
+                              }
+                            : undefined
+                        : isSelected
+                          ? { background: 'var(--hub-acc)', color: 'var(--hub-acc-fg)' }
+                          : isToday
+                            ? {
+                                boxShadow: 'inset 0 0 0 1.5px var(--hub-acc)',
+                                color: 'var(--hub-acc)',
+                              }
+                            : undefined
                     }
                   >
                     {day}
@@ -468,7 +479,9 @@ export function PostCalendar({
                             ? t('calendar.diaInteiro', 'Dia inteiro')
                             : formatarHora(ev.inicio, ev.tz, locale)}
                         </span>
-                        <StatusPill tone={s.tone}>{s.texto}</StatusPill>
+                        <StatusPill tone={s.tone} semantic={s.semantic}>
+                          {s.texto}
+                        </StatusPill>
                       </span>
                       <span className="text-[13.5px] font-semibold leading-snug hub-txt break-words">
                         {ev.titulo}

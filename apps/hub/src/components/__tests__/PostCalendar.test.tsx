@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostCalendar } from '../PostCalendar';
+import { HubContext } from '../../HubContext';
 import type { HubAgendaItem, HubPost } from '../../types';
 
 const navigateMock = vi.fn();
@@ -40,6 +42,14 @@ function getDayButton(day: number) {
   }
 
   return button;
+}
+
+function PautaWrapper({ children }: { children: ReactNode }) {
+  return (
+    <HubContext.Provider value={{ bootstrap: { feature_hub_pauta: true } } as never}>
+      {children}
+    </HubContext.Provider>
+  );
 }
 
 describe('PostCalendar', () => {
@@ -360,5 +370,36 @@ describe('PostCalendar', () => {
       expect(screen.queryByRole('heading', { name: 'Posts' })).not.toBeInTheDocument();
       expect(screen.getByText('Post de hoje')).toBeInTheDocument();
     });
+
+    it('Pauta: the event pill carries its semantic class', () => {
+      render(<PostCalendar posts={[]} eventos={[evento({ resposta: 'sim' })]} />, {
+        wrapper: PautaWrapper,
+      });
+      fireEvent.click(getDayButton(14));
+      expect(screen.getByText('Confirmado')).toHaveClass('hub-pill-st-ok');
+    });
+  });
+
+  it('Pauta: selected day uses the primary fill; today alone gets a primary ring', () => {
+    vi.setSystemTime(new Date('2026-04-18T12:00:00.000Z'));
+    render(<PostCalendar posts={[]} />, { wrapper: PautaWrapper });
+
+    const chip = getDayButton(18).firstElementChild as HTMLElement;
+    expect(chip.style.background).toBe('var(--hub-primary)');
+    expect(chip.style.color).toBe('var(--hub-primary-fg)');
+
+    fireEvent.click(getDayButton(17));
+    const after = getDayButton(18).firstElementChild as HTMLElement;
+    expect(after.style.boxShadow).toBe('inset 0 0 0 1.5px var(--hub-primary)');
+    expect(after.style.color).toBe('var(--hub-txt)');
+  });
+
+  it('classic: selected day keeps the accent fill', () => {
+    vi.setSystemTime(new Date('2026-04-18T12:00:00.000Z'));
+    render(<PostCalendar posts={[]} />);
+
+    const chip = getDayButton(18).firstElementChild as HTMLElement;
+    expect(chip.style.background).toBe('var(--hub-acc)');
+    expect(chip.style.color).toBe('var(--hub-acc-fg)');
   });
 });
