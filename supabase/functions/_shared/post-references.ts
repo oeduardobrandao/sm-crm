@@ -156,13 +156,32 @@ export function normalizeReferenceLinkTitle(raw: unknown): OptionalText {
   return normalizeOptionalText(raw, MAX_REFERENCE_LINK_TITLE);
 }
 
-/** Nome exibido e usado no Content-Disposition: sem controle, sem barra, ≤ 200. */
+/** Controles C0/DEL, marcas bidi (U+061C, U+200E/F, U+202A-E, U+2066-9) e formatos
+ * invisíveis (U+200B-D, U+2060-5, U+FEFF): um RLO faria "foto‮gpj.exe" aparecer
+ * como "fotoexe.jpg" na tela da equipe. */
+const NAME_STRIP_RE = /[\x00-\x1F\x7F؜​-‏‪-‮⁠-⁩﻿]/g;
+/** Com a flag u, um par válido é um code point só: isto casa apenas surrogate solto,
+ * que faria encodeURIComponent (attachmentDisposition) lançar URIError. */
+const LONE_SURROGATE_RE = /[\uD800-\uDFFF]/gu;
+/** Só o que parece extensão de arquivo é trocado ("Dr. Silva" não perde o " Silva"). */
+const TRAILING_EXT_RE = /\.[A-Za-z0-9]{1,10}$/;
+
+/**
+ * Nome exibido no CRM e usado no Content-Disposition do download da equipe: sem
+ * controle, bidi ou invisível, sem barra, ≤ 200 code points, e SEMPRE com a extensão do
+ * MIME aceito. O MIME é o que o cliente declarou no PUT (o HEAD só confirma a
+ * declaração), então a extensão do nome enviado nunca é confiável: "fatura.exe" como
+ * image/jpeg vira "fatura.jpg".
+ */
 export function sanitizeReferenceName(raw: unknown, ext: string): string {
   const cleaned = typeof raw === "string"
-    ? raw.replace(/[\x00-\x1F\x7F]/g, "").replace(/[\\/]/g, "_").trim()
+    ? raw.replace(LONE_SURROGATE_RE, "").replace(NAME_STRIP_RE, "").replace(/[\\/]/g, "_")
+      .replace(/[.\s]+$/, "").trim()
     : "";
-  const capped = Array.from(cleaned).slice(0, MAX_REFERENCE_NAME).join("");
-  return capped || `referencia.${ext}`;
+  const stem = cleaned.replace(TRAILING_EXT_RE, "").replace(/[.\s]+$/, "").trim();
+  const room = MAX_REFERENCE_NAME - ext.length - 1;
+  const capped = Array.from(stem).slice(0, room).join("").replace(/[.\s]+$/, "").trim();
+  return `${capped || "referencia"}.${ext}`;
 }
 
 export function linkDomain(url: string): string | null {

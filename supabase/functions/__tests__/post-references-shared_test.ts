@@ -1,4 +1,11 @@
 import { assert, assertEquals } from "./assert.ts";
+
+// _shared/r2.ts lê as credenciais ao carregar (mesmo preparo de r2-sign_test.ts).
+Deno.env.set("R2_ACCOUNT_ID", "testaccount");
+Deno.env.set("R2_ACCESS_KEY_ID", "testkey");
+Deno.env.set("R2_SECRET_ACCESS_KEY", "testsecret");
+Deno.env.set("R2_BUCKET", "test-bucket");
+const { attachmentDisposition } = await import("../_shared/r2.ts");
 import {
   linkDomain,
   mapReferenceRpcError,
@@ -75,7 +82,53 @@ Deno.test("sanitizeReferenceName: strips control chars and slashes, falls back b
   assertEquals(sanitizeReferenceName("  ../foto\u0000final.png ", "png"), ".._fotofinal.png");
   assertEquals(sanitizeReferenceName("", "pdf"), "referencia.pdf");
   assertEquals(sanitizeReferenceName(undefined, "mp4"), "referencia.mp4");
-  assertEquals(sanitizeReferenceName("x".repeat(300), "png").length, 200);
+  const long = sanitizeReferenceName("x".repeat(300), "png");
+  assertEquals(long.length, 200);
+  assert(long.endsWith(".png"));
+});
+
+Deno.test("sanitizeReferenceName: forces the declared MIME's extension", () => {
+  // O MIME é o que o cliente declarou; a extensão do nome nunca vale.
+  assertEquals(sanitizeReferenceName("fatura.exe", "jpg"), "fatura.jpg");
+  assertEquals(sanitizeReferenceName("fatura.exe.", "jpg"), "fatura.jpg");
+  assertEquals(sanitizeReferenceName("foto.JPG", "jpg"), "foto.jpg");
+  assertEquals(sanitizeReferenceName("contrato", "pdf"), "contrato.pdf");
+  assertEquals(sanitizeReferenceName("Dr. Silva", "pdf"), "Dr. Silva.pdf");
+  assertEquals(sanitizeReferenceName(".exe", "png"), "referencia.png");
+  // Mesmo no teto de 200, a extensão forçada sobrevive.
+  const long = sanitizeReferenceName(`${"y".repeat(250)}.exe`, "mp4");
+  assertEquals(Array.from(long).length, 200);
+  assert(long.endsWith(".mp4"));
+});
+
+Deno.test("sanitizeReferenceName: strips bidi overrides (RLO extension spoof)", () => {
+  // "foto\u202Egpj.exe" aparece como "fotoexe.jpg" na tela.
+  assertEquals(sanitizeReferenceName("foto\u202Egpj.exe", "jpg"), "fotogpj.jpg");
+  assertEquals(
+    sanitizeReferenceName("a\u202Ab\u202Bc\u202Cd\u202De\u2066f\u2067g\u2068h\u2069i\u061Cj.pdf", "pdf"),
+    "abcdefghij.pdf",
+  );
+});
+
+Deno.test("sanitizeReferenceName: strips zero-width and invisible format chars", () => {
+  assertEquals(
+    sanitizeReferenceName("\uFEFFfo\u200Bto\u200C\u200D\u200E\u200F\u2060.png", "png"),
+    "foto.png",
+  );
+  // Só invisíveis: cai no nome padrão.
+  assertEquals(sanitizeReferenceName("\u200B\u200B", "png"), "referencia.png");
+});
+
+Deno.test("sanitizeReferenceName: drops lone surrogates, keeps valid pairs, never breaks the disposition", () => {
+  assertEquals(sanitizeReferenceName("foto\uD800.jpg", "jpg"), "foto.jpg");
+  assertEquals(sanitizeReferenceName("foto\uDC00x.jpg", "jpg"), "fotox.jpg");
+  assertEquals(sanitizeReferenceName("foto \u{1F600}.jpg", "jpg"), "foto \u{1F600}.jpg");
+  for (const raw of ["foto\uD800.jpg", "\uDFFF", "a\uD83D", `${"z".repeat(195)}\u{1F600}x.jpg`]) {
+    const name = sanitizeReferenceName(raw, "jpg");
+    assert(!/[\uD800-\uDFFF]/u.test(name), `lone surrogate left in ${JSON.stringify(name)}`);
+    // attachmentDisposition (r2.ts) lança URIError num surrogate solto.
+    assertEquals(attachmentDisposition(name).startsWith("attachment; filename*=UTF-8''"), true);
+  }
 });
 
 Deno.test("parsePositiveId and linkDomain", () => {
