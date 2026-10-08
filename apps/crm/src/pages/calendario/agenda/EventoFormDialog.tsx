@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -91,6 +91,7 @@ import {
   type RepetirOpcaoId,
 } from './agendaLogic';
 import {
+  MAX_CONVIDADOS,
   MAX_LEMBRETES,
   MAX_PARTICIPANTES,
   camposDeSerieAlterados,
@@ -98,6 +99,7 @@ import {
   combinarDataHora,
   eventoFormSchema,
   mesmasPessoas,
+  mesmosConvidados,
   montarPayload,
   montarPayloadEdicao,
   motivoSerie,
@@ -108,6 +110,7 @@ import {
   type CampoSerie,
   type EventoFormValues,
 } from './eventoFormSchema';
+import { ConvidadosInput, type ConvidadosInputControle } from './ConvidadosInput';
 import { EscopoEventoDialog } from './EscopoEventoDialog';
 import { PessoasCombobox, type PessoaEquipe } from './PessoasCombobox';
 import { LocalAutocomplete } from './LocalAutocomplete';
@@ -278,6 +281,13 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
   );
   // Unknown (client list still loading) counts as having an e-mail: no false warning.
   const clienteSemEmail = clienteSelecionado ? !clienteSelecionado.email?.trim() : false;
+  // Private + guests is refused by the database: keep the field visible with a warning
+  // and block saving until the chips go (or Privado is turned off).
+  const privadoComConvidados = !!v.privado && (v.convidados?.length ?? 0) > 0;
+  // Text left in the guest field is committed on submit; an invalid address there
+  // blocks saving (with the field's inline message) instead of being dropped.
+  const convidadosRef = useRef<ConvidadosInputControle>(null);
+  const [convidadoInvalido, setConvidadoInvalido] = useState(false);
   const mostrarCompartilhar = !!v.cliente_id && v.cliente_id !== 'none' && !v.privado;
   const ajudaCompartilhar = clienteSemEmail
     ? temHub
@@ -341,6 +351,8 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
   };
 
   const onSubmit = (valores: EventoFormValues) => {
+    // Enter in a text field submits without the button: same block.
+    if (valores.privado && valores.convidados.length > 0) return;
     if (!ocorrencia) {
       criar.criar(valores);
       return;
@@ -349,17 +361,20 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     const depois = montarPayload(valores);
     const acompanhou = regraAcompanhouData(b.opcao, b.regra, valores.data_inicio, depois.regra);
     const pessoasMudaram = !mesmasPessoas(b.participantes, valores.participantes);
+    // Compared on the payloads: a private event sends no guests (montarPayload).
+    const convidadosMudaram = !mesmosConvidados(b.antes.convidados, depois.convidados);
     const pendente: EscopoPendente = {
       depois,
       participantes: pessoasMudaram ? valores.participantes : null,
       campos: camposDeSerieAlterados(b.antes, depois, {
         participantesMudaram: pessoasMudaram,
         regraAcompanhouData: acompanhou,
+        convidadosMudaram,
       }),
     };
     // The payload is not a pure diff (todas always carries the rule and series
     // fields), so "nothing changed" comes from the diff helper.
-    if (chavesAlteradas(b.antes, depois).length === 0 && !pessoasMudaram) {
+    if (chavesAlteradas(b.antes, depois).length === 0 && !pessoasMudaram && !convidadosMudaram) {
       fechar();
       return;
     }
@@ -368,6 +383,16 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
       return;
     }
     setEscopo(pendente);
+  };
+
+  const enviar = (e: FormEvent<HTMLFormElement>) => {
+    // Before handleSubmit reads the values: field.onChange writes them synchronously,
+    // so a valid pending address goes out as a chip. No ref = field hidden (Privado).
+    if (convidadosRef.current && !convidadosRef.current.comitarPendente()) {
+      e.preventDefault();
+      return;
+    }
+    void form.handleSubmit(onSubmit)(e);
   };
 
   // ---- Changes with side effects (not effects: a reset must not trigger them) ----
@@ -414,7 +439,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
         <Form {...form}>
           {/* Mobile: the whole form scrolls and the top bar sticks. md+: only the body scrolls. */}
           <form
-            onSubmit={form.handleSubmit(onSubmit)}
+            onSubmit={enviar}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden"
             noValidate
           >
@@ -457,7 +482,11 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                   </FormItem>
                 )}
               />
-              <Button type="submit" disabled={salvando} className="mb-0 mt-1 shrink-0">
+              <Button
+                type="submit"
+                disabled={salvando || privadoComConvidados || convidadoInvalido}
+                className="mb-0 mt-1 shrink-0"
+              >
                 Salvar
               </Button>
             </div>
@@ -794,6 +823,43 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                       </FormItem>
                     )}
                   />
+
+                  {(!v.privado || privadoComConvidados) && (
+                    <FormField
+                      control={form.control}
+                      name="convidados"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-[15px] font-semibold">
+                            Convidados externos
+                          </FormLabel>
+                          <FormControl>
+                            <ConvidadosInput
+                              value={field.value}
+                              onChange={field.onChange}
+                              max={MAX_CONVIDADOS}
+                              controleRef={convidadosRef}
+                              onInvalidoChange={setConvidadoInvalido}
+                            />
+                          </FormControl>
+                          {privadoComConvidados && (
+                            <p
+                              role="alert"
+                              className="m-0 text-xs"
+                              style={{ color: 'var(--danger-text)' }}
+                            >
+                              Remova os convidados externos antes de tornar o evento privado.
+                            </p>
+                          )}
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            Recebem o convite por e-mail, com título, horário, local, link e
+                            descrição, e respondem por um link, sem precisar de conta.
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </section>
               </div>
             </div>

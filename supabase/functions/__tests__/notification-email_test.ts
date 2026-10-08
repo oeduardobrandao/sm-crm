@@ -231,3 +231,47 @@ Deno.test("resolveDigestItem: event_reschedule_requested is actionable and has n
   assertEquals(vazio.heading, "Cliente pediu para remarcar");
   assertEquals(vazio.context, undefined);
 });
+
+Deno.test("resolveDigestItem: event_guest_rsvp names the guest by convidado_nome ?? convidado_email", () => {
+  const meta = {
+    evento_id: 1,
+    ocorrencia_id: 9,
+    titulo: "Gravação <b>",
+    inicio: "2026-10-09T17:00:00Z",
+    data_inicio_local: "2026-10-09",
+    convidado_nome: "Bia Convidada",
+    convidado_email: "bia@fora.test",
+    ator_nome: "NUNCA",
+  };
+  const sim = resolveDigestItem({ type: "event_guest_rsvp", metadata: { ...meta, resposta: "sim" }, link: "/calendario?evento=9" });
+  assertEquals(sim.heading, "Bia Convidada confirmou presença: Gravação <b>");
+  assertEquals(sim.context, "Convidado externo");
+  assertEquals(sim.link, "/calendario?evento=9");
+  assertEquals(sim.priority, 4);
+  const nao = resolveDigestItem({ type: "event_guest_rsvp", metadata: { ...meta, resposta: "nao" }, link: "/calendario?evento=9" });
+  assertEquals(nao.heading, "Bia Convidada recusou o evento: Gravação <b>");
+
+  const semNome = resolveDigestItem({
+    type: "event_guest_rsvp",
+    metadata: { ...meta, convidado_nome: null, resposta: "sim" },
+    link: "/calendario?evento=9",
+  });
+  assertEquals(semNome.heading, "bia@fora.test confirmou presença: Gravação <b>");
+  const nomeVazio = resolveDigestItem({
+    type: "event_guest_rsvp",
+    metadata: { ...meta, convidado_nome: "", resposta: "nao" },
+    link: null,
+  });
+  assertEquals(nomeVazio.heading, "bia@fora.test recusou o evento: Gravação <b>");
+
+  for (const it of [sim, nao, semNome]) {
+    assert(!it.heading.includes("NUNCA") && !(it.context ?? "").includes("NUNCA"), "must not read ator_nome");
+    assert(!it.heading.includes("—"));
+  }
+  assert(buildDigestHtml([sim], "https://app.example.test").includes("Gravação &lt;b&gt;"));
+
+  const vazio = resolveDigestItem({ type: "event_guest_rsvp", metadata: null, link: null });
+  assertEquals(vazio.heading, "Convidado respondeu ao evento");
+  assertEquals(vazio.link, "/");
+  assertEquals(vazio.priority, 4);
+});

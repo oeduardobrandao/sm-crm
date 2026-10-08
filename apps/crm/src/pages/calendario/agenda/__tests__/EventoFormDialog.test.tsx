@@ -192,6 +192,7 @@ function ocorrencia(p: Partial<AgendaOcorrencia> = {}): AgendaOcorrencia {
     cliente_resposta: null,
     remarcacao_pendente: null,
     sequencia: 0,
+    convidados: [],
     ...p,
   };
 }
@@ -934,6 +935,256 @@ describe('EventoFormDialog: Compartilhar com o cliente', () => {
         'seguintes',
         { ...SERIE, regra: SEMANAL_SEG, compartilhado_cliente: false },
         null,
+      ),
+    );
+  });
+});
+
+describe('EventoFormDialog: convidados externos', () => {
+  const campo = () => screen.getByRole('textbox', { name: 'E-mail do convidado' });
+  const digitar = (valor: string) => {
+    fireEvent.change(campo(), { target: { value: valor } });
+    fireEvent.keyDown(campo(), { key: 'Enter' });
+  };
+  const AJUDA =
+    'Recebem o convite por e-mail, com título, horário, local, link e descrição, e respondem por um link, sem precisar de conta.';
+  const GUEST = { id: 5, email: 'ana@exemplo.com', nome: 'Ana Souza', resposta: 'sim' as const };
+
+  it('shows the field below Participantes with the help copy and the counter', () => {
+    criar();
+    expect(screen.getByText('Convidados externos')).toBeInTheDocument();
+    expect(screen.getByText(AJUDA)).toBeInTheDocument();
+    expect(screen.getByText('0 de 20')).toBeInTheDocument();
+    const participantes = screen.getByText('Participantes');
+    const convidados = screen.getByText('Convidados externos');
+    expect(
+      participantes.compareDocumentPosition(convidados) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The label points at the text field.
+    expect(screen.getByLabelText('Convidados externos')).toBe(campo());
+  });
+
+  const AVISO = 'Remova os convidados externos antes de tornar o evento privado.';
+  const botaoSalvar = () => screen.getByRole('button', { name: 'Salvar' });
+
+  it('Privado with no guests hides the field', () => {
+    criar();
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(screen.queryByText('Convidados externos')).toBeNull();
+    expect(screen.queryByText(AJUDA)).toBeNull();
+    expect(screen.queryByText(AVISO)).toBeNull();
+  });
+
+  it('Privado with guests keeps the field, warns and disables Salvar; Privado off clears the block', () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('ana@exemplo.com');
+    expect(botaoSalvar()).toBeEnabled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(screen.getByText('Convidados externos')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remover ana@exemplo.com' })).toBeInTheDocument();
+    expect(screen.getByText(AVISO)).toBeInTheDocument();
+    expect(botaoSalvar()).toBeDisabled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(screen.queryByText(AVISO)).toBeNull();
+    expect(botaoSalvar()).toBeEnabled();
+  });
+
+  it('removing the last chip re-enables Salvar and hides the field', () => {
+    criar();
+    digitar('ana@exemplo.com');
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(botaoSalvar()).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover ana@exemplo.com' }));
+    expect(screen.queryByText('Convidados externos')).toBeNull();
+    expect(screen.queryByText(AVISO)).toBeNull();
+    expect(botaoSalvar()).toBeEnabled();
+  });
+
+  it('Enter in the title cannot submit a private event that still has guests', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('ana@exemplo.com');
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    fireEvent.submit(titulo().closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(criarEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('create: sends the guests in the payload', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('Ana@Exemplo.com');
+    digitar('bia@exemplo.com');
+    salvar();
+    await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    expect(criarEventoMock.mock.calls[0][0].convidados).toEqual([
+      { email: 'ana@exemplo.com', nome: null },
+      { email: 'bia@exemplo.com', nome: null },
+    ]);
+  });
+
+  it('create: removing the chips of a private event sends a private event without guests', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('ana@exemplo.com');
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover ana@exemplo.com' }));
+    salvar();
+    await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    expect(criarEventoMock.mock.calls[0][0].privado).toBe(true);
+    expect('convidados' in criarEventoMock.mock.calls[0][0]).toBe(false);
+  });
+
+  it('create: an invalid address left in the field disables Salvar until it is fixed', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('ana@exemplo');
+    expect(screen.getByRole('alert')).toHaveTextContent('Informe um e-mail válido.');
+    expect(botaoSalvar()).toBeDisabled();
+    salvar();
+    fireEvent.submit(titulo().closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(criarEventoMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // Fixing the address re-enables Salvar and the guest goes out.
+    digitar('ana@exemplo.com');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(botaoSalvar()).toBeEnabled();
+    salvar();
+    await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    expect(criarEventoMock.mock.calls[0][0].convidados).toEqual([
+      { email: 'ana@exemplo.com', nome: null },
+    ]);
+  });
+
+  it('create: a valid address still typed in the field (no Enter, no blur) is saved as a guest', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('ana@exemplo.com');
+    fireEvent.change(campo(), { target: { value: 'Bia@Exemplo.com' } });
+    salvar();
+    await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    expect(criarEventoMock.mock.calls[0][0].convidados).toEqual([
+      { email: 'ana@exemplo.com', nome: null },
+      { email: 'bia@exemplo.com', nome: null },
+    ]);
+  });
+
+  it('create: an invalid address still typed in the field blocks Salvar, keeps the dialog open and shows the error', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    fireEvent.change(campo(), { target: { value: 'joao@empresa' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    salvar();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(criarEventoMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Informe um e-mail válido.');
+    expect(campo()).toHaveValue('joao@empresa');
+    expect(campo()).toHaveFocus();
+    expect(botaoSalvar()).toBeDisabled();
+  });
+
+  it('Enter in the title with an invalid address still typed in the field does not submit', async () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    fireEvent.change(campo(), { target: { value: 'joao@empresa' } });
+    fireEvent.submit(titulo().closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(criarEventoMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Informe um e-mail válido.');
+  });
+
+  it('edit: a valid address still typed in the field is saved with the existing guests', async () => {
+    editar(ocorrencia({ convidados: [GUEST] }));
+    fireEvent.change(campo(), { target: { value: 'bia@exemplo.com' } });
+    salvar();
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalledTimes(1));
+    expect(editarEventoMock.mock.calls[0][2].convidados).toEqual([
+      { email: 'ana@exemplo.com', nome: 'Ana Souza' },
+      { email: 'bia@exemplo.com', nome: null },
+    ]);
+  });
+
+  it('Privado hiding the field never leaves Salvar blocked by an invalid address', () => {
+    criar();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    digitar('joao@empresa');
+    expect(botaoSalvar()).toBeDisabled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(screen.queryByText('Convidados externos')).toBeNull();
+    expect(botaoSalvar()).toBeEnabled();
+  });
+
+  it('edit: pre-fills the existing guests and leaves them out of the payload when untouched', async () => {
+    editar(ocorrencia({ convidados: [GUEST] }));
+    expect(screen.getByRole('button', { name: 'Remover ana@exemplo.com' })).toBeInTheDocument();
+    expect(screen.getByText('Ana Souza')).toBeInTheDocument();
+    fireEvent.change(titulo(), { target: { value: 'Gravação: novembro' } });
+    salvar();
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalledTimes(1));
+    expect('convidados' in editarEventoMock.mock.calls[0][2]).toBe(false);
+  });
+
+  it('edit: adding a guest sends the full list', async () => {
+    editar(ocorrencia({ convidados: [GUEST] }));
+    digitar('bia@exemplo.com');
+    salvar();
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalledTimes(1));
+    expect(editarEventoMock.mock.calls[0][2].convidados).toEqual([
+      { email: 'ana@exemplo.com', nome: 'Ana Souza' },
+      { email: 'bia@exemplo.com', nome: null },
+    ]);
+  });
+
+  it('edit: removing the only guest alone is a change and sends []', async () => {
+    editar(ocorrencia({ convidados: [GUEST] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover ana@exemplo.com' }));
+    salvar();
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalledTimes(1));
+    expect(editarEventoMock.mock.calls[0][2].convidados).toEqual([]);
+  });
+
+  it('edit: turning Privado on with guests blocks Salvar; removing them first sends privado with []', async () => {
+    editar(ocorrencia({ convidados: [GUEST] }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Evento privado' }));
+    expect(botaoSalvar()).toBeDisabled();
+    salvar();
+    expect(editarEventoMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover ana@exemplo.com' }));
+    expect(botaoSalvar()).toBeEnabled();
+    salvar();
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalledTimes(1));
+    expect(editarEventoMock.mock.calls[0][2].privado).toBe(true);
+    expect(editarEventoMock.mock.calls[0][2].convidados).toEqual([]);
+  });
+
+  it('edit of a series: changing guests locks "Este evento" and names them', async () => {
+    editar(ocorrencia({ recorrente: true, regra: SEMANAL_SEG, convidados: [GUEST] }));
+    digitar('bia@exemplo.com');
+    salvar();
+    const dlg = await screen.findByRole('alertdialog', { name: 'Editar evento recorrente' });
+    expect(within(dlg).getByRole('radio', { name: 'Este evento' })).toBeDisabled();
+    expect(
+      within(dlg).getByText('Vale para toda a série: você mudou os convidados externos.'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalledTimes(1));
+    expect(editarEventoMock.mock.calls[0][1]).toBe('seguintes');
+    expect(editarEventoMock.mock.calls[0][2].convidados).toHaveLength(2);
+  });
+
+  it('surfaces a server guest error through the agenda formatter', async () => {
+    editarEventoMock.mockRejectedValueOnce({
+      message: 'agenda: ana@exemplo.com já é da equipe. Adicione como participante.',
+    });
+    editar(ocorrencia());
+    digitar('ana@exemplo.com');
+    salvar();
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'Ana@exemplo.com já é da equipe. Adicione como participante.',
       ),
     );
   });

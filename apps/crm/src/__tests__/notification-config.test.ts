@@ -213,6 +213,28 @@ describe('getNotificationDisplay', () => {
       ).toBe('X respondeu a Gravação: Clínica Sorriso');
     });
 
+    it('event_guest_rsvp uses the guest name, then the e-mail, and maps resposta', () => {
+      const meta = { ...base, ator_nome: undefined, convidado_email: 'bia@ex.com' };
+      const sim = getNotificationDisplay('event_guest_rsvp', {
+        ...meta,
+        convidado_nome: 'Bia',
+        resposta: 'sim',
+      });
+      expect(sim.icon).toBe(CalendarCheck);
+      expect(sim.tone).toBe('success');
+      expect(sim.title).toBe('Bia confirmou Gravação: Clínica Sorriso');
+      expect(sim.body).toBe('seg., 5 de out., 14:00');
+      const nao = getNotificationDisplay('event_guest_rsvp', { ...meta, resposta: 'nao' });
+      expect(nao.tone).toBe('warning');
+      expect(nao.title).toBe('bia@ex.com recusou Gravação: Clínica Sorriso');
+    });
+
+    it('event_guest_rsvp falls back without name or e-mail', () => {
+      const d = getNotificationDisplay('event_guest_rsvp', { ...base, resposta: 'sim' });
+      expect(d.title).toBe('Um convidado confirmou Gravação: Clínica Sorriso');
+      expect(d.title).not.toMatch(/—/);
+    });
+
     it('event_reschedule_requested uses cliente_nome and shows the suggestion', () => {
       const d = getNotificationDisplay('event_reschedule_requested', {
         ...base,

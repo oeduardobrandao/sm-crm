@@ -45,25 +45,28 @@ vi.mock('../nicheCalendars/registry', async (importOriginal) => {
   return { ...actual, NICHE_CALENDARS: [NICHE_A, NICHE_B], DEFAULT_NICHE_KEY: 'niche-a' };
 });
 
-// The Agenda tab (FullCalendar + its own queries) has its own suite; here it only
-// has to prove it is the default tab and that the old tabs still work.
+// The Agenda (FullCalendar + its own queries) has its own suite; here it only has
+// to prove the flag folds the page into it and that the old tabs still work.
 vi.mock('../agenda/AgendaTab', () => ({
   default: () => <div data-testid="agenda-tab">AgendaTab</div>,
 }));
 
 // Agenda is behind the plan flag feature_agenda: each test sets the answer (null = limits
 // still unknown), and rerender() lets a test flip it after mount.
-const { mockFeatures } = vi.hoisted(() => ({
+const { mockFeatures, mockLoading } = vi.hoisted(() => ({
   mockFeatures: { current: null as { feature_agenda: boolean } | null },
+  mockLoading: { current: false },
 }));
 vi.mock('../../../hooks/useWorkspaceLimits', () => ({
-  useWorkspaceLimits: () => ({ features: mockFeatures.current }),
+  useWorkspaceLimits: () => ({ features: mockFeatures.current, isLoading: mockLoading.current }),
 }));
 
+const { mockFinanceiro } = vi.hoisted(() => ({ mockFinanceiro: { current: false } }));
 vi.mock('@/context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/context/AuthContext')>();
-  return { ...actual, useAuth: () => ({ canSeeFinancials: false }) };
+  return { ...actual, useAuth: () => ({ canSeeFinancials: mockFinanceiro.current }) };
 });
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 
 vi.mock('../../../store', async () => {
   const actual = await vi.importActual<typeof import('../../../store')>('../../../store');
@@ -75,6 +78,7 @@ vi.mock('../../../store', async () => {
     getWorkflows: vi.fn(),
     getWorkflowEtapas: vi.fn(),
     getAllClienteDatas: vi.fn(),
+    addTransacao: vi.fn(),
   };
 });
 
@@ -152,6 +156,7 @@ function renderPage() {
 }
 
 function armStore() {
+  mockFinanceiro.current = false;
   // vitest.setup.ts calls vi.restoreAllMocks() in afterEach, which wipes the resolved
   // values these mock fns got inside the vi.mock factory — re-arm them every test.
   vi.mocked(store.getClientes).mockResolvedValue([]);
@@ -166,75 +171,64 @@ describe('CalendarioPage — Agenda (flag on)', () => {
   beforeEach(() => {
     localStorage.clear();
     armStore();
+    mockLoading.current = false;
     mockFeatures.current = { feature_agenda: true };
   });
 
-  it('opens on the Agenda tab by default', async () => {
-    renderPage();
+  it('is the Agenda alone: no tab bar, the old tabs are layers now', async () => {
+    const { container } = renderPage();
 
     expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument();
     expect(screen.getByText('Eventos, reuniões e gravações da equipe.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Agenda' })).toHaveClass('active');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Calendário' }));
-    expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: 'Calendário' })).toBeInTheDocument();
+    expect(container.querySelector('.calendar-tabs')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Calendário' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Datas Comemorativas' })).not.toBeInTheDocument();
+    // The old page's own queries never run.
+    expect(store.getClientes).not.toHaveBeenCalled();
+    expect(store.getTransacoes).not.toHaveBeenCalled();
   });
 
   it.each(['/calendario?evento=5', '/calendario?data=2026-12-24'])(
-    'switches back to Agenda when %s arrives while another tab is open',
+    'keeps rendering the Agenda (which reads the param) for %s',
     async (url) => {
       renderPage();
-      fireEvent.click(screen.getByRole('button', { name: 'Datas Comemorativas' }));
-      expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
+      await screen.findByTestId('agenda-tab');
 
       act(() => {
         void nav.current!(url);
       });
 
-      expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
+      expect(screen.getByTestId('agenda-tab')).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument();
     },
   );
 
-  it('switches back again for a new ?evento= even when an older one is still in the URL', async () => {
+  it('shows a skeleton only while the limits load, then the Agenda', async () => {
+    mockFeatures.current = null;
+    mockLoading.current = true;
+    const { rerenderPage } = renderPage();
+
+    expect(screen.getByRole('status', { name: 'Carregando calendário' })).toBeInTheDocument();
+    expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Calendário' })).not.toBeInTheDocument();
+
+    mockFeatures.current = { feature_agenda: true };
+    mockLoading.current = false;
+    rerenderPage();
+
+    expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Carregando calendário' })).not.toBeInTheDocument();
+  });
+
+  it('a failed limits call (features null, not loading) is the flag-off page, never a skeleton', () => {
+    mockFeatures.current = null;
+    mockLoading.current = false;
     renderPage();
-    act(() => {
-      void nav.current!('/calendario?evento=5');
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Calendário' }));
-    expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
 
-    act(() => {
-      void nav.current!('/calendario?evento=6');
-    });
-    expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
-  });
-
-  it('resolves null -> on to the Agenda tab when the user has not picked one', async () => {
-    mockFeatures.current = null;
-    const { rerenderPage } = renderPage();
-    expect(screen.queryByRole('button', { name: 'Agenda' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Carregando calendário' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Calendário' })).toHaveClass('active');
-
-    mockFeatures.current = { feature_agenda: true };
-    rerenderPage();
-
-    expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Agenda' })).toHaveClass('active');
-  });
-
-  it('does not override a tab the user clicked when the flag resolves to on', () => {
-    mockFeatures.current = null;
-    const { rerenderPage } = renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Datas Comemorativas' }));
-
-    mockFeatures.current = { feature_agenda: true };
-    rerenderPage();
-
     expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Datas Comemorativas' })).toHaveClass('active');
   });
 
   it('sets the tab title while mounted and restores the previous one on unmount', async () => {
@@ -247,13 +241,17 @@ describe('CalendarioPage — Agenda (flag on)', () => {
     expect(document.title).toBe('Anterior | Mesaas');
   });
 
-  it('names the tab title after the active tab', () => {
+  it('restores the title from before the skeleton, not an intermediate one', async () => {
     document.title = 'Anterior | Mesaas';
-    const { unmount } = renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Calendário' }));
-    expect(document.title).toBe('Calendário | Mesaas');
-    fireEvent.click(screen.getByRole('button', { name: 'Datas Comemorativas' }));
-    expect(document.title).toBe('Datas Comemorativas | Mesaas');
+    mockFeatures.current = null;
+    mockLoading.current = true;
+    const { rerenderPage, unmount } = renderPage();
+
+    mockFeatures.current = { feature_agenda: true };
+    mockLoading.current = false;
+    rerenderPage();
+    await screen.findByTestId('agenda-tab');
+    expect(document.title).toBe('Agenda | Mesaas');
     unmount();
     expect(document.title).toBe('Anterior | Mesaas');
   });
@@ -266,6 +264,7 @@ describe.each([
   beforeEach(() => {
     localStorage.clear();
     armStore();
+    mockLoading.current = false;
     mockFeatures.current = features;
   });
 
@@ -304,11 +303,12 @@ describe.each([
   });
 });
 
-describe('CalendarioPage — Datas Comemorativas', () => {
+describe('CalendarioPage — Datas Comemorativas (flag off)', () => {
   beforeEach(() => {
     localStorage.clear();
     armStore();
-    mockFeatures.current = { feature_agenda: true };
+    mockLoading.current = false;
+    mockFeatures.current = { feature_agenda: false };
   });
 
   it('switches to the niche tab, defaults to the first niche, and lets the user switch niches', async () => {
@@ -355,5 +355,52 @@ describe('CalendarioPage — Datas Comemorativas', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nicho B' }));
     await waitFor(() => expect(screen.getByText('Evento Exclusivo B')).toBeInTheDocument());
     expect(screen.getByPlaceholderText('Buscar data...')).toHaveValue('');
+  });
+});
+
+describe('CalendarioPage — payment confirm (flag off)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    armStore();
+    mockLoading.current = false;
+    mockFeatures.current = { feature_agenda: false };
+  });
+
+  it('confirms a receivable through the same AlertDialog and payload as before', async () => {
+    mockFinanceiro.current = true;
+    const hoje = new Date();
+    vi.mocked(store.getClientes).mockResolvedValue([
+      {
+        id: 12,
+        nome: 'Clínica Sorriso',
+        sigla: 'CS',
+        cor: '#123',
+        plano: 'pro',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 1500,
+        data_pagamento: hoje.getDate(),
+      },
+    ]);
+    vi.mocked(store.addTransacao).mockResolvedValue({} as never);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /CONFIRMAR/ }));
+    expect(await screen.findByText('Confirmar Agendamento')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => expect(store.addTransacao).toHaveBeenCalledTimes(1));
+    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+    expect(store.addTransacao).toHaveBeenCalledWith({
+      descricao: 'Clínica Sorriso',
+      detalhe: 'Baixa efetuada pelo Calendário',
+      categoria: 'Mensalidade Cliente',
+      valor: 1500,
+      data: new Date().toISOString().split('T')[0],
+      tipo: 'entrada',
+      status: 'pago',
+      referencia_agendamento: `cliente_12_${hoje.getFullYear()}_${mm}`,
+    });
   });
 });

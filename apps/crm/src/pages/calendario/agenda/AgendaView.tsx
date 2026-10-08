@@ -21,6 +21,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { AgendaOcorrencia } from '../../../store/agenda';
+import { IconeDaCamada } from '../camadas/icones';
+import type { CamadaItem } from '../camadas/tipos';
 
 export type AgendaViewType = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'listWeek';
 
@@ -70,17 +72,42 @@ function alturaDaVisao(view: AgendaViewType, isMobile: boolean): number | 'auto'
 
 const hora = (d: Date) => format(d, 'HH:mm');
 
+/** Layer items (posts, deadlines, payments, dates) are read-only on the grid. */
+const ehCamada = (ev: { extendedProps?: Record<string, unknown> } | null | undefined) =>
+  ev?.extendedProps?.camada !== undefined;
+
 /** Drags may not cross between the all-day row and the time grid: FullCalendar
  *  then drops the end (allDayMaintainDuration is off) and dia_inteiro is a
- *  series-level field the drag payload never carries. */
+ *  series-level field the drag payload never carries. Layer items never move. */
 export function permitirArraste(
   span: { allDay: boolean },
-  ev: { allDay: boolean } | null,
+  ev: { allDay: boolean; extendedProps?: Record<string, unknown> } | null,
 ): boolean {
-  return !ev || span.allDay === ev.allDay;
+  return !ev || (!ehCamada(ev) && span.allDay === ev.allDay);
+}
+
+/** Chip of a layer item: its icon in the layer ink, the time for posts, the title. */
+function ConteudoDaCamada({ arg, item }: { arg: EventContentArg; item: CamadaItem }) {
+  const { start, title } = arg.event;
+  return (
+    <div className="agenda-ev__linha agenda-camada__linha">
+      <IconeDaCamada
+        item={item}
+        className="agenda-camada__icone"
+        size={12}
+        strokeWidth={2}
+        style={{ color: arg.borderColor }}
+        aria-hidden="true"
+      />
+      {item.camada === 'posts' && start && <span className="agenda-ev__hora">{hora(start)}</span>}
+      <span className="agenda-ev__titulo">{title}</span>
+    </div>
+  );
 }
 
 export function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
+  const camada = arg.event.extendedProps.camada as CamadaItem | undefined;
+  if (camada) return <ConteudoDaCamada arg={arg} item={camada} />;
   // Undefined for the selectMirror placeholder and the quick-create draft chip.
   const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia | undefined;
   const { start, end, allDay, title } = arg.event;
@@ -147,7 +174,12 @@ export interface AgendaViewProps {
   /** Absent for roles without calendario:editar: select-to-create is off. */
   onSelect?: (inicio: Date, fim: Date, diaInteiro: boolean) => void;
   onEventClick: (o: AgendaOcorrencia, el: HTMLElement) => void;
+  /** Click on a layer item chip (extendedProps.camada). */
+  onCamadaClick?: (item: CamadaItem, el: HTMLElement) => void;
   onMover: (o: AgendaOcorrencia, novoInicio: Date, novoFim: Date, revert: () => void) => void;
+  /** The parent gives the card a fixed height: every view fills it and scrolls
+   *  inside (the time grid scrolls its hours, the list its rows). */
+  preencher?: boolean;
 }
 
 export default function AgendaView({
@@ -159,7 +191,9 @@ export default function AgendaView({
   onDatesSet,
   onSelect,
   onEventClick,
+  onCamadaClick,
   onMover,
+  preencher = false,
 }: AgendaViewProps) {
   const api = () => calRef.current?.getApi();
   // Read once: FullCalendar re-applies scrollTime whenever the option changes.
@@ -228,7 +262,7 @@ export default function AgendaView({
           dayMaxEvents
           slotMinTime="06:00:00"
           scrollTime={scrollTime}
-          height={alturaDaVisao(view, isMobile)}
+          height={preencher ? '100%' : alturaDaVisao(view, isMobile)}
           allDayText="Dia inteiro"
           noEventsText="Nenhum evento neste período."
           moreLinkText={(n) => `+${n} mais`}
@@ -238,36 +272,37 @@ export default function AgendaView({
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           // Month chips as tinted blocks like the week grid (default is a dot row).
           eventDisplay="block"
-          // The default order with the draft chip first, so dayMaxEvents never
-          // folds it into "+N mais". No leading "-": FullCalendar sorts a defined
-          // field before an undefined one, and "-" would flip that to last.
-          eventOrder="rascunho,start,-duration,allDay,title"
+          // `ordem` first: Agenda events (and the draft, both 0), then posts,
+          // deadlines, payments, client dates, commemorative dates. Then the
+          // default order with the draft chip first, so dayMaxEvents never folds
+          // it into "+N mais". No leading "-": FullCalendar sorts a defined field
+          // before an undefined one, and "-" would flip that to last.
+          eventOrder="ordem,rascunho,start,-duration,allDay,title"
           events={eventos}
           datesSet={onDatesSet}
           select={(arg) => onSelect?.(arg.start, arg.end, arg.allDay)}
           eventClick={(arg: EventClickArg) => {
             arg.jsEvent.preventDefault();
+            const camada = arg.event.extendedProps.camada as CamadaItem | undefined;
+            if (camada) {
+              onCamadaClick?.(camada, arg.el);
+              return;
+            }
             // The quick-create draft chip carries no occurrence.
             const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia | undefined;
             if (!o) return;
             onEventClick(o, arg.el);
           }}
-          eventDrop={(arg: EventDropArg) =>
-            onMover(
-              arg.event.extendedProps.ocorrencia as AgendaOcorrencia,
-              arg.event.start!,
-              arg.event.end ?? arg.event.start!,
-              arg.revert,
-            )
-          }
-          eventResize={(arg: EventResizeDoneArg) =>
-            onMover(
-              arg.event.extendedProps.ocorrencia as AgendaOcorrencia,
-              arg.event.start!,
-              arg.event.end!,
-              arg.revert,
-            )
-          }
+          eventDrop={(arg: EventDropArg) => {
+            const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia | undefined;
+            if (!o || ehCamada(arg.event)) return arg.revert();
+            onMover(o, arg.event.start!, arg.event.end ?? arg.event.start!, arg.revert);
+          }}
+          eventResize={(arg: EventResizeDoneArg) => {
+            const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia | undefined;
+            if (!o || ehCamada(arg.event)) return arg.revert();
+            onMover(o, arg.event.start!, arg.event.end!, arg.revert);
+          }}
           eventAllow={permitirArraste}
           eventDidMount={(arg: EventMountArg) => {
             arg.el.dataset.ocorrenciaId = arg.event.id;

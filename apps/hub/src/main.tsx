@@ -27,6 +27,8 @@ import ptHubMessages from '../../../packages/i18n/locales/pt/hubMessages.json';
 import enHubMessages from '../../../packages/i18n/locales/en/hubMessages.json';
 import ptHubAgenda from '../../../packages/i18n/locales/pt/hubAgenda.json';
 import enHubAgenda from '../../../packages/i18n/locales/en/hubAgenda.json';
+import ptHubConvite from '../../../packages/i18n/locales/pt/hubConvite.json';
+import enHubConvite from '../../../packages/i18n/locales/en/hubConvite.json';
 import { router } from './router';
 import { createHubQueryClient, prefetchHubShell } from './queries';
 import '../../crm/style.css';
@@ -47,6 +49,7 @@ initI18n({
     hubReports: ptHubReports,
     hubMessages: ptHubMessages,
     hubAgenda: ptHubAgenda,
+    hubConvite: ptHubConvite,
   },
   en: {
     common: enCommon,
@@ -60,6 +63,7 @@ initI18n({
     hubReports: enHubReports,
     hubMessages: enHubMessages,
     hubAgenda: enHubAgenda,
+    hubConvite: enHubConvite,
   },
 });
 

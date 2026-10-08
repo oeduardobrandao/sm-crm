@@ -20,6 +20,21 @@ export type AgendaEscopo = 'esta' | 'seguintes' | 'todas';
 /** The client's answer to a shared occurrence ('aguardando' = not answered or the answer expired). */
 export type AgendaClienteResposta = 'sim' | 'nao' | 'aguardando';
 
+/** An external guest (invited by e-mail, answers on a public page without an account). */
+export interface AgendaConvidado {
+  id: number;
+  email: string;
+  nome: string | null;
+  /** Effective answer for this occurrence; null = waiting (or never answered). */
+  resposta: 'sim' | 'nao' | null;
+}
+
+/** External guest as sent in p_evento.convidados (e-mail stored lower-case). */
+export interface AgendaConvidadoInput {
+  email: string;
+  nome: string | null;
+}
+
 /** A reschedule request from the client (Hub), waiting for the team. */
 export interface AgendaRemarcacaoPendente {
   id: number;
@@ -87,6 +102,8 @@ export interface AgendaOcorrencia {
   remarcacao_pendente: AgendaRemarcacaoPendente | null;
   /** iCal SEQUENCE of the occurrence. */
   sequencia: number;
+  /** Active external guests with their answer to this occurrence; null when masked. */
+  convidados: AgendaConvidado[] | null;
 }
 
 /** p_evento for agenda_evento_criar / agenda_evento_editar. `tz` only on create
@@ -109,6 +126,9 @@ export interface AgendaEventoPayload {
   fim_local: string;
   lembretes: number[];
   regra: AgendaRegra | null;
+  /** Series-level external guests. Absent on edit = unchanged; `[]` removes all;
+   *  ignored by the database for scope 'esta'. */
+  convidados?: AgendaConvidadoInput[];
 }
 
 export const AGENDA_QUERY_KEY = 'agenda-ocorrencias';

@@ -4692,6 +4692,39 @@ select.form-input option {
   overflow-y: auto;
 }
 
+/* Desktop: the Agenda fills the rest of the screen (useAlturaAteOFim sets the
+   height inline) so the page never scrolls. The sidebar scrolls on its own and
+   the calendar card stretches, scrolling its hours/rows inside FullCalendar. */
+.agenda--tela {
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.agenda--tela .agenda-aside {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.agenda--tela .agenda-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.agenda--tela .agenda-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.agenda--tela .agenda-fc {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .agenda-sheet .agenda-sidebar {
   margin-top: 16px;
 }
@@ -5162,6 +5195,76 @@ select.form-input option {
 .agenda-fc .agenda-ev--mascarado .agenda-ev__detalhe,
 .agenda-fc .agenda-ev--mascarado .agenda-ev__hora,
 .agenda-fc .agenda-ev--mascarado .fc-list-event-title {
+  color: var(--text-muted);
+}
+
+/* ---- Layer items (read-only overlays: posts, deadlines, payments, dates) ----
+   Card fill and a 1px dashed border in the layer ink (both inline from
+   toCamadaEventInput), so they never read as an editable Agenda event. */
+.agenda-fc .fc-event.agenda-camada {
+  border-width: 1px;
+  border-style: dashed;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.agenda-fc .fc-event.agenda-camada .fc-event-main {
+  padding: 2px 6px;
+}
+
+.agenda-fc .fc-list-event.agenda-camada {
+  border-width: 0;
+  border-radius: 0;
+}
+
+.agenda-fc .fc-list-event.agenda-camada .fc-list-event-dot {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+  border-style: dashed;
+}
+
+.agenda-camada__linha {
+  gap: 5px;
+}
+
+.agenda-camada__icone {
+  flex-shrink: 0;
+}
+
+.agenda-fc .agenda-camada--atrasado .agenda-ev__titulo {
+  color: var(--danger-text);
+}
+
+/* Layer swatch (sidebar toggle, popover header): same dashed language. */
+.agenda-camada-swatch {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px dashed;
+  border-radius: 6px;
+  background: var(--card-bg);
+}
+
+.agenda-camada-swatch--lg {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.agenda-camadas__nicho {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.agenda-camadas__nicho-rotulo {
+  font-size: 12px;
   color: var(--text-muted);
 }
 

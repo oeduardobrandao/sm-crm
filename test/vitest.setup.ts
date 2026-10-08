@@ -46,6 +46,8 @@ import ptHubMessages from '../packages/i18n/locales/pt/hubMessages.json';
 import enHubMessages from '../packages/i18n/locales/en/hubMessages.json';
 import ptHubAgenda from '../packages/i18n/locales/pt/hubAgenda.json';
 import enHubAgenda from '../packages/i18n/locales/en/hubAgenda.json';
+import ptHubConvite from '../packages/i18n/locales/pt/hubConvite.json';
+import enHubConvite from '../packages/i18n/locales/en/hubConvite.json';
 
 initI18n({
   pt: {
@@ -66,6 +68,7 @@ initI18n({
     hubReports: ptHubReports,
     hubMessages: ptHubMessages,
     hubAgenda: ptHubAgenda,
+    hubConvite: ptHubConvite,
   },
   en: {
     common: enCommon,
@@ -85,6 +88,7 @@ initI18n({
     hubReports: enHubReports,
     hubMessages: enHubMessages,
     hubAgenda: enHubAgenda,
+    hubConvite: enHubConvite,
   },
 });
 

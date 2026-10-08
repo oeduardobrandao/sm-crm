@@ -8,6 +8,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { getInitials } from '@/lib/initials';
 import type { AgendaTipo } from '../../../store/agenda';
+import { CamadasGrupo, type CamadasGrupoProps } from '../camadas/CamadasGrupo';
 import { TIPO_COR, TIPO_LABEL } from './agendaLogic';
 
 export interface AgendaPessoa {
@@ -55,6 +56,8 @@ export interface AgendaSidebarProps {
   /** Opens the personal calendar feed dialog. Read-only for the user, so it is
    *  not gated by calendario:editar; absent, the entry is not rendered. */
   onSincronizar?: () => void;
+  /** The read-only layers group (posts, deadlines, payments, dates). */
+  camadas?: CamadasGrupoProps;
 }
 
 export default function AgendaSidebar({
@@ -66,6 +69,7 @@ export default function AgendaSidebar({
   onDataChange,
   onCriar,
   onSincronizar,
+  camadas,
 }: AgendaSidebarProps) {
   const [mes, setMes] = useState(dataSelecionada);
   useEffect(() => setMes(dataSelecionada), [dataSelecionada]);
@@ -151,6 +155,8 @@ export default function AgendaSidebar({
         </ul>
       </div>
 
+      {camadas && <CamadasGrupo {...camadas} />}
+
       <div className="agenda-legenda">
         <div className="agenda-sidebar__rotulo">Legenda</div>
         {TIPOS.map((t) => (
@@ -163,7 +169,9 @@ export default function AgendaSidebar({
             {TIPO_LABEL[t]}
           </div>
         ))}
-        <div className="agenda-legenda__nota">Borda tracejada: aguardando sua resposta</div>
+        <div className="agenda-legenda__nota">
+          Evento com fundo colorido e borda tracejada: aguardando sua resposta
+        </div>
       </div>
 
       {onSincronizar && (
