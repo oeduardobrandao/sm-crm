@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useHubLook } from '../hooks/useHubLook';
 
 const DESKTOP_QUERY = '(min-width: 768px)';
 /** Below `md` the fixed HubMobileNav owns the top 70px (its in-flow spacer is h-[70px]). */
@@ -110,6 +111,7 @@ export function FloatingFilterBar({ children }: { children: ReactNode }) {
       : undefined;
 
   const floating = stuck && box !== null;
+  const pauta = useHubLook() === 'pauta';
 
   return (
     <>
@@ -122,7 +124,7 @@ export function FloatingFilterBar({ children }: { children: ReactNode }) {
         <div
           ref={barRef}
           data-floating={floating || undefined}
-          className={`hub-fade-up rounded-2xl border px-2 py-2 transition-[background-color,border-color,box-shadow] duration-200 ${
+          className={`hub-fade-up ${pauta ? 'rounded-[var(--hub-r-card)]' : 'rounded-2xl'} border px-2 py-2 transition-[background-color,border-color,box-shadow] duration-200 ${
             floating
               ? 'hub-border shadow-[0_10px_30px_-12px_rgba(0,0,0,.35)]'
               : 'border-transparent'

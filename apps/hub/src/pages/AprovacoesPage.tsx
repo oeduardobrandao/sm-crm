@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useHub } from '../HubContext';
+import { useHubLook } from '../hooks/useHubLook';
 import { fetchInstagramFeed } from '../api';
 import { hubPostsQuery, invalidateHubPosts } from '../queries';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
@@ -29,6 +30,7 @@ function SortToggle({
   onChange: (value: PostSortDirection) => void;
 }) {
   const { t } = useTranslation('hubPosts');
+  const look = useHubLook();
   const options: { key: PostSortDirection; label: string }[] = [
     { key: 'asc', label: t('aprovacoes.sort.oldest', 'Mais antigos') },
     { key: 'desc', label: t('aprovacoes.sort.newest', 'Mais recentes') },
@@ -45,7 +47,7 @@ function SortToggle({
             aria-pressed={selected}
             onClick={() => onChange(opt.key)}
             className={FILTER_PILL_CLASS}
-            style={filterPillStyle(selected)}
+            style={filterPillStyle(selected, look)}
           >
             {opt.label}
           </button>
@@ -57,6 +59,7 @@ function SortToggle({
 
 export function AprovacoesPage() {
   const { t } = useTranslation('hubPosts');
+  const pauta = useHubLook() === 'pauta';
   const { token, workspace, bootstrap } = useHub();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -194,7 +197,11 @@ export function AprovacoesPage() {
                 <button
                   type="button"
                   onClick={() => setMode((m) => (m === 'select' ? 'browse' : 'select'))}
-                  className="rounded-[4px] border hub-border px-3 py-2 text-[13px] font-semibold hub-tx2"
+                  className={
+                    pauta
+                      ? 'hub-btn-secondary px-3 py-2 text-[13px] font-semibold'
+                      : 'rounded-[4px] border hub-border px-3 py-2 text-[13px] font-semibold hub-tx2'
+                  }
                 >
                   {mode === 'select'
                     ? t('posts.done', 'Concluir')
