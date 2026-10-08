@@ -1,4 +1,4 @@
--- supabase/migrations/20261010000001_post_references.sql
+-- supabase/migrations/20261011000001_post_references.sql
 -- Referências do cliente no post (spec
 -- docs/superpowers/specs/2026-10-08-client-post-references-design.md).
 --

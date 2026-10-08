@@ -2,7 +2,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Referências do cliente no post (migration 20261010000001, spec 2026-10-08).
+-- Referências do cliente no post (migration 20261011000001, spec 2026-10-08).
 -- (a) grants da tabela e das RPCs; (b) RLS: isolamento entre workspaces,
 -- anon sem acesso, authenticated sem escrita; (c) insert de arquivo: cota,
 -- attached_to, stream_status 'skipped' em vídeo (fora da ingest do Stream);
