@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
+import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-errors';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Select,
@@ -60,6 +61,13 @@ import {
 } from './SortableEtapaList';
 
 // ---- Edit Workflow Modal ----
+// feature_disabled:feature_multiplatform (quadro {geral} num workspace sem a flag)
+// e demais erros de plano viram texto legível em vez do código do banco.
+function saveErrorMessage(err: unknown): string {
+  const entitlement = mapEntitlementError(err);
+  return entitlement ? entitlementMessage(entitlement) : (err as Error).message || 'Erro';
+}
+
 export function EditWorkflowModal({
   card,
   membros,
@@ -128,7 +136,7 @@ export function EditWorkflowModal({
       onSaved();
       onClose();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro');
+      toast.error(saveErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -506,7 +514,7 @@ export function TemplatesModal({
       setFPlataformas(['instagram']);
       onRefresh();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro');
+      toast.error(saveErrorMessage(err));
     } finally {
       setSaving(false);
     }

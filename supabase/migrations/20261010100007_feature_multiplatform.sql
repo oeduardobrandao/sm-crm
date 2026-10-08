@@ -2,7 +2,7 @@
 -- Flag de rollout das plataformas por quadro (spec 2026-09-29-platform-agnostic-posts).
 -- Nasce desligada em todos os planos e é ligada por workspace via
 -- workspace_plan_overrides.feature_overrides ({"feature_multiplatform": true}),
--- no mesmo desenho de feature_agenda (20261005000001). Lançamento = ligar a coluna
+-- no mesmo desenho de feature_agenda (20261005000001 na main). Lançamento = ligar a coluna
 -- nos planos.
 --
 -- Com a flag desligada o CRM esconde os seletores de plataforma e o banco recusa
@@ -13,10 +13,11 @@
 --
 -- UPDATE só é checado quando a coluna muda de valor: um workspace que teve a flag
 -- e a perdeu continua editando os outros campos de um quadro {geral}. Cópias
--- (duplicate_workflow, move_posts_to_new_flow) de um quadro fora de {instagram}
--- num workspace sem a flag levantam o mesmo erro.
+-- (duplicate_workflow, move_posts_to_new_flow, próximo ciclo de um fluxo
+-- recorrente no CRM) de um quadro fora de {instagram} num workspace sem a flag
+-- levantam o mesmo erro.
 
-SET lock_timeout = '5s';
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.plans ADD COLUMN IF NOT EXISTS feature_multiplatform boolean NOT NULL DEFAULT false;
 
@@ -48,7 +49,8 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.guard_feature_multiplatform() FROM public, anon, authenticated;
 
--- Prefixo a0: roda antes dos demais BEFORE triggers (ordem alfabética).
+-- Prefixo a0: antes dos triggers de post_targets/plataformas (ordem alfabética).
+-- O guard só lê NEW/OLD e conta_id, então a posição exata não importa.
 DROP TRIGGER IF EXISTS workflows_a0_guard_feature_multiplatform ON public.workflows;
 CREATE TRIGGER workflows_a0_guard_feature_multiplatform
   BEFORE INSERT OR UPDATE OF plataformas ON public.workflows

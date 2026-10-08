@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
+import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-errors';
 import type { PlatformId } from '@mesaas/platforms';
 import { Spinner } from '@/components/ui/spinner';
 import {
@@ -139,7 +140,12 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
       onOpenChange(false);
       toast.success(t('detail.clientUpdated'));
     } catch (err: unknown) {
-      toast.error(t('detail.saveError', { error: (err as Error).message }));
+      const entitlement = mapEntitlementError(err);
+      toast.error(
+        entitlement
+          ? entitlementMessage(entitlement)
+          : t('detail.saveError', { error: (err as Error).message }),
+      );
     } finally {
       setSaving(false);
     }

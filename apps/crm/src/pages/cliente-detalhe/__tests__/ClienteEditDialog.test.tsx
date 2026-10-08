@@ -6,6 +6,7 @@ import { useState, type ReactElement } from 'react';
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ features: {}, isLoading: false }),
 }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../../../store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../store')>()),
   updateCliente: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+import { toast } from 'sonner';
 import { updateCliente, type Cliente } from '../../../store';
 import { useAuth } from '../../../context/AuthContext';
 import { ClienteEditDialog } from '../ClienteEditDialog';
@@ -136,6 +138,19 @@ describe('ClienteEditDialog', () => {
 
     await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('turns a plan-feature rejection into readable copy instead of the DB code', async () => {
+    mockedUpdateCliente.mockRejectedValue(new Error('feature_disabled:feature_multiplatform'));
+    renderDialog(<ClienteEditDialog cliente={CLIENTE} open onOpenChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O recurso "Plataformas por fluxo" não está disponível no seu plano.',
+      ),
+    );
   });
 
   it('strips valor_mensal from the write payload when access is not true', async () => {
