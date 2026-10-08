@@ -1,11 +1,11 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HubMobileNav } from '../HubMobileNav';
 import { HubContext } from '../../HubContext';
 import type { HubBootstrap } from '../../types';
-import { fetchPosts } from '../../api';
+import { fetchMensagensUnread, fetchPosts } from '../../api';
 
 vi.mock('../../api', () => ({
   fetchPosts: vi.fn().mockResolvedValue({ posts: [], postApprovals: [], instagramProfile: null }),
@@ -49,6 +49,17 @@ function renderMobileNav(bootstrap: HubBootstrap = BOOTSTRAP) {
 }
 
 describe('HubMobileNav', () => {
+  // The global afterEach(vi.restoreAllMocks) wipes the factory defaults, so
+  // re-arm them: a bare vi.fn() resolves undefined and react-query complains.
+  beforeEach(() => {
+    vi.mocked(fetchPosts).mockResolvedValue({
+      posts: [],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    vi.mocked(fetchMensagensUnread).mockResolvedValue({ unread: 0 } as never);
+  });
+
   it('opens a right-side drawer with all nine destinations and closes on Escape', () => {
     renderMobileNav();
     fireEvent.click(screen.getByRole('button', { name: /abrir menu|open menu/i }));
@@ -114,8 +125,47 @@ describe('HubMobileNav', () => {
     expect(within(btn).getByText('2')).toBeInTheDocument();
   });
 
-  it('classic: no count on the menu button', async () => {
+  it('Pauta: a single pending item uses the singular label', async () => {
+    vi.mocked(fetchPosts).mockResolvedValue({
+      posts: [{ id: 1, status: 'enviado_cliente' }],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    renderMobileNav({ ...BOOTSTRAP, feature_hub_pauta: true });
+    const btn = await screen.findByRole('button', { name: 'Abrir menu, 1 pendência' });
+    expect(within(btn).getByText('1')).toBeInTheDocument();
+  });
+
+  it('Pauta: unread messages add to the badge total', async () => {
+    vi.mocked(fetchPosts).mockResolvedValue({
+      posts: [{ id: 1, status: 'enviado_cliente' }],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    vi.mocked(fetchMensagensUnread).mockResolvedValue({ unread: 3 } as never);
+    renderMobileNav({ ...BOOTSTRAP, feature_hub_pauta: true });
+    const btn = await screen.findByRole('button', { name: 'Abrir menu, 4 pendências' });
+    expect(within(btn).getByText('4')).toBeInTheDocument();
+  });
+
+  it('classic: no count on the menu button even with pending items', async () => {
+    vi.mocked(fetchPosts).mockResolvedValue({
+      posts: [
+        { id: 1, status: 'enviado_cliente' },
+        { id: 2, status: 'enviado_cliente' },
+      ],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    vi.mocked(fetchMensagensUnread).mockResolvedValue({ unread: 3 } as never);
     renderMobileNav(BOOTSTRAP);
-    expect(await screen.findByRole('button', { name: 'Abrir menu' })).toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(fetchPosts)).toHaveBeenCalled());
+    // Let the resolved query data land in the hooks before asserting absence.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const btn = screen.getByRole('button', { name: 'Abrir menu' });
+    expect(btn).toHaveAccessibleName('Abrir menu');
+    expect(within(btn).queryByText(/^\d+$/)).not.toBeInTheDocument();
   });
 });

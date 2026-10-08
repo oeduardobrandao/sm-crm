@@ -1,11 +1,11 @@
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HubSidebar } from '../HubSidebar';
 import { HubContext } from '../../HubContext';
 import type { HubBootstrap } from '../../types';
-import { fetchPosts } from '../../api';
+import { fetchMensagensUnread, fetchPosts } from '../../api';
 
 vi.mock('../../api', () => ({
   fetchPosts: vi.fn().mockResolvedValue({ posts: [], postApprovals: [], instagramProfile: null }),
@@ -45,6 +45,17 @@ function renderSidebar(pathname: string, bootstrap: HubBootstrap = BOOTSTRAP) {
 }
 
 describe('HubSidebar', () => {
+  // The global afterEach(vi.restoreAllMocks) wipes the factory defaults, so
+  // re-arm them: a bare vi.fn() resolves undefined and react-query complains.
+  beforeEach(() => {
+    vi.mocked(fetchPosts).mockResolvedValue({
+      posts: [],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    vi.mocked(fetchMensagensUnread).mockResolvedValue({ unread: 0 } as never);
+  });
+
   it('renders all nine destinations including the new Mensagens item', () => {
     renderSidebar('/ws/hub/tok');
     for (const label of [
@@ -118,7 +129,7 @@ describe('HubSidebar', () => {
   });
 
   it('Pauta: the nav counter is brand-tinted inline, never hub-btn-primary', async () => {
-    vi.mocked(fetchPosts).mockResolvedValueOnce({
+    vi.mocked(fetchPosts).mockResolvedValue({
       posts: [{ id: 1, status: 'enviado_cliente' }],
       postApprovals: [],
       instagramProfile: null,
