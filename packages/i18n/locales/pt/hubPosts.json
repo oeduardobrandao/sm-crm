@@ -183,5 +183,83 @@
     "ajusteTitle": "A equipe está ajustando este post.",
     "ajusteBody": "Ele volta para Aprovações quando estiver pronto.",
     "footer": "Em produção: nada para aprovar agora"
+  },
+  "references": {
+    "tab": "Referências",
+    "loading": "Carregando referências...",
+    "loadError": "Não foi possível carregar as referências.",
+    "emptyTitle": "Nenhuma referência ainda",
+    "emptyBody": "Envie fotos, vídeos, PDFs ou links que ajudem a equipe a ajustar este post.",
+    "readOnlyPublished": "Post publicado. As referências ficam aqui para consulta.",
+    "readOnly": "As referências ficam aqui para consulta.",
+    "listLabel": "Referências do post",
+    "uploadsLabel": "Envios em andamento",
+    "addFile": "Adicionar arquivo",
+    "addLink": "Adicionar link",
+    "addReference": "Adicionar referência",
+    "attach": "Anexar referência",
+    "hint": "{{n}} de 10 por post. Fotos e PDFs até 25 MB, vídeos até 200 MB.",
+    "sheetTitle": "Adicionar referência",
+    "sheetFile": "Foto, vídeo ou PDF",
+    "sheetLink": "Link",
+    "you": "Você",
+    "today": "hoje, {{time}}",
+    "yesterday": "ontem, {{time}}",
+    "dateTime": "{{date}}, {{time}}",
+    "open": "Abrir {{name}}",
+    "remove": "Remover referência",
+    "removeConfirm": "Remover referência?",
+    "noteLabel": "O que mudar com isso? (opcional)",
+    "saveNote": "Salvar nota",
+    "savingNote": "Salvando...",
+    "editNote": "Editar nota",
+    "addNote": "Adicionar nota",
+    "cancel": "Cancelar",
+    "progressLabel": "Envio de {{name}}",
+    "uploading": "Enviando {{loaded}} de {{total}}. Não feche esta tela.",
+    "cancelUpload": "Cancelar envio de {{name}}",
+    "retryUpload": "Tentar novamente",
+    "discardUpload": "Descartar",
+    "waitUpload": "Aguarde o envio terminar",
+    "leaveWhileUploading": "Um envio ainda está em andamento. Sair e cancelar o envio?",
+    "link": {
+      "title": "Adicionar link",
+      "url": "Endereço",
+      "urlHint": "Vamos completar com https:// se faltar.",
+      "linkTitle": "Título (opcional)",
+      "note": "O que a equipe deve ver aqui? (opcional)",
+      "submit": "Adicionar link",
+      "submitting": "Adicionando..."
+    },
+    "viewer": {
+      "close": "Fechar visualização",
+      "playError": "Não foi possível reproduzir aqui. Baixe o arquivo.",
+      "openOriginal": "Abrir o arquivo"
+    },
+    "composer": {
+      "staged": "Referências desta correção",
+      "unstage": "Tirar {{name}} da correção",
+      "helper": "As referências anexadas também ficam na aba Referências deste post."
+    },
+    "history": {
+      "attached_one": "{{count}} referência anexada",
+      "attached_other": "{{count}} referências anexadas"
+    },
+    "errors": {
+      "tooLarge": "O arquivo passa do limite: fotos e PDFs até 25 MB, vídeos até 200 MB.",
+      "tooLargeVideo": "O vídeo tem {{size}} MB e o limite é 200 MB. Envie uma versão menor ou um link.",
+      "tooLargeImage": "A foto tem {{size}} MB e o limite é 25 MB. Envie uma versão menor ou um link.",
+      "tooLargeDocument": "O PDF tem {{size}} MB e o limite é 25 MB. Envie uma versão menor ou um link.",
+      "unsupportedType": "Esse tipo de arquivo não é aceito. Envie foto, vídeo ou PDF.",
+      "referenceLimit": "Este post já tem 10 referências. Remova uma para adicionar outra.",
+      "quotaExceeded": "Não foi possível enviar agora: o espaço de arquivos da agência acabou. Avise a equipe.",
+      "postNotPending": "Este post não está mais aguardando sua aprovação.",
+      "invalidUrl": "Informe um endereço válido, começando com http ou https.",
+      "invalidNote": "A nota pode ter até 500 caracteres.",
+      "locked": "A equipe já recebeu esta referência. Ela não pode mais ser alterada.",
+      "notFound": "Esta referência não está mais disponível.",
+      "rateLimited": "Muitas tentativas seguidas. Aguarde um minuto e tente novamente.",
+      "generic": "Algo deu errado. Tente novamente."
+    }
   }
 }
