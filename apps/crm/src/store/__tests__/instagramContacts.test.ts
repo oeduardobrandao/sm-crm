@@ -47,6 +47,11 @@ describe('instagramContacts store', () => {
     expect(args.p_reached_only).toBe(true);
   });
 
+  it('drops a leading @ from the search', () => {
+    expect(contactFiltersToRpcArgs({ ...F, search: ' @ana ' }).p_search).toBe('ana');
+    expect(contactFiltersToRpcArgs({ ...F, search: '@' }).p_search).toBeNull();
+  });
+
   it('sends nulls for empty filters', () => {
     expect(contactFiltersToRpcArgs(F)).toEqual({
       p_client_id: null,

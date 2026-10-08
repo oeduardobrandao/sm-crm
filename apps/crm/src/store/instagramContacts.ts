@@ -62,7 +62,8 @@ function localDayStart(ymd: string, addDays = 0): string {
 /** The RPC filters on `[p_from, p_to)`: the picked days map to the start of the
  * first day and the start of the day AFTER the last one, in local time. */
 export function contactFiltersToRpcArgs(f: ContactFilters): Record<string, unknown> {
-  const search = f.search.trim();
+  // The placeholder reads "@usuário", so a typed leading @ is not part of the handle.
+  const search = f.search.trim().replace(/^@+/, '');
   return {
     p_client_id: f.clientId,
     p_automation_id: f.automationId,

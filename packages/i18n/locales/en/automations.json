@@ -214,7 +214,8 @@
     "searchPlaceholder": "Search @user",
     "export": "Export CSV",
     "exporting": "Exporting…",
-    "exportDone": "{{count}} contacts exported.",
+    "exportDone_one": "{{count}} contact exported.",
+    "exportDone_other": "{{count}} contacts exported.",
     "exportError": "Could not export the contacts.",
     "col": {
       "user": "User",

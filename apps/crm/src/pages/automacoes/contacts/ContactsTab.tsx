@@ -184,6 +184,7 @@ export function ContactsTab() {
         />
         <label className="flex items-center gap-2" style={{ fontSize: '0.85rem' }}>
           <Switch
+            aria-label={t('contacts.reachedOnly')}
             checked={filters.reachedOnly}
             onCheckedChange={(v) => setFilters({ reachedOnly: v })}
           />
