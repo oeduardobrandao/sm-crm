@@ -1,33 +1,23 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import type { BoardCard } from '../../hooks/useEntregasData';
+import type { ReferenceItem } from '@/store/postReferences';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
-// "Duplicar post" no kebab de cada post do WorkflowDrawer. Mesmo harness enxuto de
-// WorkflowDrawer.test.tsx: folhas pesadas viram stubs e o DropdownMenu renderiza o
-// conteúdo direto (Radix precisa de pointer events que o jsdom não entrega bem).
+// Client references in the WorkflowDrawer: the collapsed-row badge (counts query) and, on an
+// expanded post, the section under the media plus chips on the client's correction bubble.
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 
-let mockMembershipRole: 'owner' | 'agent' = 'owner';
-let mockEntregasPerm: 'editar' | 'ver' | 'nenhum' = 'editar';
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'user-1' },
-    role: mockMembershipRole,
+    role: 'owner',
     loading: false,
     profile: null,
-    can: makeCan(
-      fakeMembership({
-        role: mockMembershipRole,
-        ...(mockMembershipRole === 'agent'
-          ? { role_id: 1, permissions: { entregas: mockEntregasPerm } as never }
-          : {}),
-      }),
-    ),
+    can: makeCan(fakeMembership({ role: 'owner' })),
   }),
 }));
 
@@ -108,6 +98,12 @@ vi.mock('@/store', () => ({
   cloneWorkflow: vi.fn(),
 }));
 
+vi.mock('@/store/postReferences', () => ({
+  getPostReferences: vi.fn(async () => []),
+  getPostReferenceCounts: vi.fn(async () => ({})),
+  deletePostReference: vi.fn(),
+}));
+
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -128,12 +124,6 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
-// PostEditorBody and WorkflowDrawer read client references from this module by path.
-vi.mock('@/store/postReferences', () => ({
-  getPostReferences: vi.fn(async () => []),
-  getPostReferenceCounts: vi.fn(async () => ({})),
-  deletePostReference: vi.fn(),
-}));
 vi.mock('@/services/inlineImage', () => ({
   uploadInlineImage: vi.fn(),
   extractR2Keys: () => [],
@@ -141,20 +131,8 @@ vi.mock('@/services/inlineImage', () => ({
   stripSignedUrls: (doc: unknown) => doc,
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
-
-// O stub expõe um botão que dispara onUpdate, para armar o autosave do conteúdo.
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
-  PostEditor: ({
-    onUpdate,
-  }: {
-    onUpdate?: (json: Record<string, unknown>, plain: string) => void;
-  }) => (
-    <div data-testid="post-editor-stub">
-      <button type="button" onClick={() => onUpdate?.({ type: 'doc' }, 'novo texto')}>
-        Editar conteúdo
-      </button>
-    </div>
-  ),
+  PostEditor: () => <div data-testid="post-editor-stub" />,
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
   PropertyPanel: () => <div data-testid="property-panel-stub" />,
@@ -202,10 +180,13 @@ vi.mock('@/pages/entregas/components/ReadOnlyTipTap', () => ({
 }));
 
 import { WorkflowDrawer } from '../WorkflowDrawer';
-import { getWorkflowPostsWithProperties, clonePost } from '@/store';
+import { getPostApprovals, getWorkflowPostsWithProperties } from '@/store';
+import { getPostReferenceCounts, getPostReferences } from '@/store/postReferences';
 
 const mockGetPosts = vi.mocked(getWorkflowPostsWithProperties);
-const mockClonePost = vi.mocked(clonePost);
+const mockGetApprovals = vi.mocked(getPostApprovals);
+const mockCounts = vi.mocked(getPostReferenceCounts);
+const mockGetReferences = vi.mocked(getPostReferences);
 
 function post(id: number, titulo: string, status = 'rascunho') {
   return {
@@ -224,7 +205,43 @@ function post(id: number, titulo: string, status = 'rascunho') {
   } as never;
 }
 
-function renderDrawer(qc: QueryClient) {
+function reference(overrides: Partial<ReferenceItem> & Pick<ReferenceItem, 'id'>): ReferenceItem {
+  return {
+    kind: 'file',
+    file_kind: 'image',
+    name: 'foto.jpg',
+    mime_type: 'image/jpeg',
+    size_bytes: 1024 * 1024,
+    duration_seconds: null,
+    width: null,
+    height: null,
+    url: 'https://r2.example.com/full.jpg',
+    thumbnail_url: 'https://r2.example.com/thumb.webp',
+    blur_data_url: null,
+    download_url: 'https://r2.example.com/full.jpg?download=1',
+    link_url: null,
+    link_title: null,
+    link_domain: null,
+    note: null,
+    post_approval_id: null,
+    created_at: new Date().toISOString(),
+    can_remove: false,
+    ...overrides,
+  };
+}
+
+const CORRECTION = {
+  id: 501,
+  post_id: 1,
+  token: 't',
+  action: 'correcao' as const,
+  comentario: 'Trocar a foto da capa',
+  is_workspace_user: false,
+  created_at: new Date().toISOString(),
+};
+
+function renderDrawer(initialPostId?: number) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const card = {
     workflow: {
       id: 10,
@@ -239,7 +256,7 @@ function renderDrawer(qc: QueryClient) {
       id: 1,
       workflow_id: 10,
       ordem: 0,
-      nome: 'Produção',
+      nome: 'Aprovação',
       prazo_dias: 3,
       tipo_prazo: 'uteis',
       status: 'ativo',
@@ -269,7 +286,7 @@ function renderDrawer(qc: QueryClient) {
         membros={[]}
         onClose={vi.fn()}
         onRefresh={vi.fn()}
-        initialPostId={undefined}
+        initialPostId={initialPostId}
       />
     </QueryClientProvider>,
   );
@@ -281,70 +298,68 @@ function rowOf(titulo: string) {
     .closest('.drawer-post-item') as HTMLElement;
 }
 
-describe('WorkflowDrawer: Duplicar post', () => {
+describe('WorkflowDrawer: referências do cliente', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockMembershipRole = 'owner';
-    mockEntregasPerm = 'editar';
-    mockGetPosts.mockResolvedValue([post(1, 'Post A'), post(2, 'Post B', 'agendado')]);
+    mockGetPosts.mockResolvedValue([post(1, 'Post A'), post(2, 'Post B')]);
+    mockGetApprovals.mockResolvedValue([]);
+    mockCounts.mockResolvedValue({});
+    mockGetReferences.mockResolvedValue([]);
   });
 
-  it('o item do kebab abre o diálogo "Duplicar post" para aquele post', async () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderDrawer(qc);
+  it('shows "N referências" on the collapsed row of posts that have them', async () => {
+    mockCounts.mockResolvedValue({ 1: 2 });
+    renderDrawer();
+    await screen.findByRole('checkbox', { name: 'Selecionar Post A' });
+
+    expect(await within(rowOf('Post A')).findByText('2 referências')).toBeInTheDocument();
+    expect(within(rowOf('Post B')).queryByText(/referência/)).toBeNull();
+    expect(mockCounts).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it('uses the singular for one reference', async () => {
+    mockCounts.mockResolvedValue({ 2: 1 });
+    renderDrawer();
     await screen.findByRole('checkbox', { name: 'Selecionar Post B' });
+    expect(await within(rowOf('Post B')).findByText('1 referência')).toBeInTheDocument();
+  });
 
-    fireEvent.click(within(rowOf('Post B')).getByText('Duplicar post'));
+  it('expanded post: section after the media, chips on the correction, viewer on click', async () => {
+    mockGetApprovals.mockResolvedValue([CORRECTION]);
+    mockGetReferences.mockResolvedValue([
+      reference({ id: 1, name: 'foto-praia.jpg', post_approval_id: 501 }),
+      reference({
+        id: 2,
+        file_kind: 'document',
+        name: 'tabela.pdf',
+        mime_type: 'application/pdf',
+        thumbnail_url: null,
+      }),
+    ]);
+    renderDrawer(1);
 
-    expect(await screen.findByRole('dialog', { name: 'Duplicar post' })).toBeInTheDocument();
-    // Post agendado: o aviso de reagendar aparece no diálogo.
+    const section = await screen.findByRole('region', { name: 'Referências do cliente' });
+    expect(mockGetReferences).toHaveBeenCalledWith(1);
+    // Rendered right after the media gallery.
+    const gallery = screen.getByTestId('post-media-gallery-stub');
     expect(
-      screen.getByText(/precisa agendar de novo|é preciso agendar de novo/),
-    ).toBeInTheDocument();
+      gallery.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    const chips = await screen.findByRole('list', { name: 'Referências anexadas' });
+    expect(within(chips).getByText('foto-praia.jpg')).toBeInTheDocument();
+    expect(within(chips).queryByText('tabela.pdf')).toBeNull();
+
+    fireEvent.click(within(chips).getByRole('button', { name: /foto-praia\.jpg/ }));
+    expect(await screen.findByRole('dialog', { name: 'foto-praia.jpg' })).toBeInTheDocument();
   });
 
-  it('sem permissão de editar entregas o item não existe', async () => {
-    mockMembershipRole = 'agent';
-    mockEntregasPerm = 'ver';
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderDrawer(qc);
-    await screen.findByRole('checkbox', { name: 'Selecionar Post A' });
-
-    expect(screen.queryByText('Duplicar post')).not.toBeInTheDocument();
-  });
-
-  it('com o conteúdo do post salvando, o item fica desabilitado só nesse post', async () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderDrawer(qc);
-    await screen.findByRole('checkbox', { name: 'Selecionar Post A' });
-
-    fireEvent.click(within(rowOf('Post A')).getByText('Post A'));
-    fireEvent.click(
-      await within(rowOf('Post A')).findByRole('button', { name: 'Editar conteúdo' }),
-    );
-
-    const itemA = within(rowOf('Post A')).getByRole('button', { name: /Duplicar post/ });
-    expect(itemA).toBeDisabled();
-    expect(within(rowOf('Post B')).getByRole('button', { name: /Duplicar post/ })).toBeEnabled();
-
-    // Depois do debounce o save termina e o item volta.
-    await waitFor(() => expect(itemA).toBeEnabled(), { timeout: 3000 });
-  });
-
-  it('ao confirmar: clona o post, recarrega a lista e toasta', async () => {
-    mockClonePost.mockResolvedValue(99);
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderDrawer(qc);
-    await screen.findByRole('checkbox', { name: 'Selecionar Post A' });
-    const callsBefore = mockGetPosts.mock.calls.length;
-
-    fireEvent.click(within(rowOf('Post A')).getByText('Duplicar post'));
-    await screen.findByRole('dialog', { name: 'Duplicar post' });
-    fireEvent.click(screen.getByRole('button', { name: 'Duplicar' }));
-
-    await waitFor(() => expect(mockClonePost).toHaveBeenCalledWith(1, false));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Post duplicado'));
-    await waitFor(() => expect(mockGetPosts.mock.calls.length).toBeGreaterThan(callsBefore));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  it('no references: no section and no chips', async () => {
+    mockGetApprovals.mockResolvedValue([CORRECTION]);
+    renderDrawer(1);
+    await screen.findByText('Trocar a foto da capa');
+    await waitFor(() => expect(mockGetReferences).toHaveBeenCalledWith(1));
+    expect(screen.queryByRole('region', { name: 'Referências do cliente' })).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Referências anexadas' })).toBeNull();
   });
 });

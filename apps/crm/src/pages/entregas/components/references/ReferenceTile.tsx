@@ -80,9 +80,7 @@ function ReferencePreview({ item }: { item: ReferenceItem }) {
 export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: ReferenceTileProps) {
   const label = referenceLabel(item);
   const size = item.kind === 'file' ? formatReferenceSize(item.size_bytes) : null;
-  const meta = ['Cliente', formatReferenceDate(item.created_at), size]
-    .filter(Boolean)
-    .join(' · ');
+  const meta = ['Cliente', formatReferenceDate(item.created_at), size].filter(Boolean).join(' · ');
   const externalHref = sanitizeUrl(item.kind === 'link' ? item.link_url : item.url);
   const downloadHref =
     item.kind === 'file' && item.download_url ? sanitizeUrl(item.download_url) : null;

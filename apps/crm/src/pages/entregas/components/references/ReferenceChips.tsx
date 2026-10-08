@@ -5,7 +5,8 @@ import { isViewableReference, referenceLabel } from './referenceFormat';
 
 const CHIP =
   'inline-flex max-w-full items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--card-bg)] py-1 pl-1 pr-2.5 text-[12px] font-medium text-[var(--text-main)] transition-colors hover:bg-[var(--surface-hover)]';
-const THUMB = 'relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md';
+const THUMB =
+  'relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md';
 
 function ChipThumb({ item }: { item: ReferenceItem }) {
   if (item.kind === 'link') {

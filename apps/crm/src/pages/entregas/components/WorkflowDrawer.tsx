@@ -23,6 +23,7 @@ import {
   Copy,
   CopyPlus,
   CalendarClock,
+  Paperclip,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -135,10 +136,15 @@ import { MovePostsToFluxoDialog } from './MovePostsToFluxoDialog';
 import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { DetachPostsDialog } from './DetachPostsDialog';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { Badge } from '@/components/ui/badge';
+// By path, not through the '../../../store' barrel: the drawer test harnesses mock '@/store'
+// with explicit factories, so a new barrel export would be missing from every one of them.
+import { getPostReferenceCounts } from '@/store/postReferences';
 
 // Stable empty array so the fallback in `useQuery({ data: processEvents = ... })` never
 // changes identity across renders when the flag is off or the query hasn't resolved yet.
 const EMPTY_PROCESS_EVENTS: PostProcessEvent[] = [];
+const EMPTY_REFERENCE_COUNTS: Record<number, number> = {};
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -365,6 +371,16 @@ export function WorkflowDrawer({
     enabled: postIds.length > 0,
   });
 
+  // Client references per post for the collapsed row's badge: one RLS-scoped select of post_id
+  // for the whole workflow, counted client-side. Keyed by workflow (not by postIds), so a post
+  // added later is picked up through refresh() below, which invalidates this key; the
+  // references section's delete invalidates the ['post-reference-counts'] prefix.
+  const { data: referenceCounts = EMPTY_REFERENCE_COUNTS } = useQuery({
+    queryKey: ['post-reference-counts', workflowId],
+    queryFn: () => getPostReferenceCounts(postIds),
+    enabled: postIds.length > 0,
+  });
+
   const { user, role, can } = useAuth();
   const canDuplicate = can('entregas', 'editar') === true;
   // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
@@ -416,6 +432,7 @@ export function WorkflowDrawer({
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
     qc.invalidateQueries({ queryKey: ['post-content-versions'] });
     qc.invalidateQueries({ queryKey: ['post-process-events'] });
+    qc.invalidateQueries({ queryKey: ['post-reference-counts', workflowId] });
     qc.invalidateQueries({ queryKey: ['workflow-events', workflowId] });
     // Field changes (incl. scheduled_at, tipo) must also refresh the day-dot markers other
     // rows' date pickers derive from this same client-wide query — see the ['clientePosts',
@@ -1091,6 +1108,7 @@ export function WorkflowDrawer({
                           editSuggestion={
                             editSuggestions.find((s) => s.post_id === post.id) ?? null
                           }
+                          referenceCount={referenceCounts[post.id!] ?? 0}
                           membros={membros}
                           replyText={replyText[post.id!] || ''}
                           sendingReply={sendingReply === post.id}
@@ -1321,6 +1339,8 @@ interface SortablePostItemProps {
   statusEvents: PostStatusEvent[];
   processEvents: PostProcessEvent[];
   editSuggestion: PostEditSuggestion | null;
+  /** Client references on this post (Hub uploads and links), for the collapsed-row badge. */
+  referenceCount: number;
   membros: Membro[];
   replyText: string;
   sendingReply: boolean;
@@ -1382,6 +1402,7 @@ function SortablePostItem({
   statusEvents,
   processEvents,
   editSuggestion,
+  referenceCount,
   membros,
   replyText,
   sendingReply,
@@ -1495,6 +1516,17 @@ function SortablePostItem({
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800">
               Sugestão pendente
             </span>
+          )}
+          {referenceCount > 0 && (
+            <Badge
+              variant="info"
+              size="sm"
+              className="inline-flex items-center gap-1"
+              title="Referências enviadas pelo cliente no Hub"
+            >
+              <Paperclip className="h-3 w-3" aria-hidden="true" />
+              {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
+            </Badge>
           )}
           {commentThreads.length > 0 && (
             <span

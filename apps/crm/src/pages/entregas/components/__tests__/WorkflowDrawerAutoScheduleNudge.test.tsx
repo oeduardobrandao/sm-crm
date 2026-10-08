@@ -150,6 +150,12 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+// PostEditorBody and WorkflowDrawer read client references from this module by path.
+vi.mock('@/store/postReferences', () => ({
+  getPostReferences: vi.fn(async () => []),
+  getPostReferenceCounts: vi.fn(async () => ({})),
+  deletePostReference: vi.fn(),
+}));
 
 vi.mock('@/services/inlineImage', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/inlineImage')>();

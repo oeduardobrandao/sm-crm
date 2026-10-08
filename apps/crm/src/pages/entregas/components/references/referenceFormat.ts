@@ -44,9 +44,7 @@ export function formatReferenceDuration(seconds: number | null | undefined): str
 /** Images and videos open in the in-app viewer; PDFs and links open in a new tab. */
 export function isViewableReference(item: ReferenceItem): boolean {
   return (
-    item.kind === 'file' &&
-    (item.file_kind === 'image' || item.file_kind === 'video') &&
-    !!item.url
+    item.kind === 'file' && (item.file_kind === 'image' || item.file_kind === 'video') && !!item.url
   );
 }
 

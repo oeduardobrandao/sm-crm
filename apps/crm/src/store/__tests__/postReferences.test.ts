@@ -5,7 +5,9 @@ type SessionResult = { data: { session: { access_token: string } | null } };
 const { fromMock, getSessionMock } = vi.hoisted(() => ({
   fromMock: vi.fn(),
   getSessionMock: vi.fn(
-    async (): Promise<SessionResult> => ({ data: { session: { access_token: 'jwt' } } }),
+    async (): Promise<SessionResult> => ({
+      data: { session: { access_token: 'jwt' } },
+    }),
   ),
 }));
 vi.mock('../core', () => ({

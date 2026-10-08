@@ -49,12 +49,8 @@ describe('referenceFormat', () => {
     expect(formatReferenceDate(new Date(2026, 9, 8, 14, 32).toISOString(), now)).toBe(
       'hoje, 14:32',
     );
-    expect(formatReferenceDate(new Date(2026, 9, 7, 9, 5).toISOString(), now)).toBe(
-      'ontem, 09:05',
-    );
-    expect(formatReferenceDate(new Date(2026, 9, 3, 8, 0).toISOString(), now)).toBe(
-      '3 out, 08:00',
-    );
+    expect(formatReferenceDate(new Date(2026, 9, 7, 9, 5).toISOString(), now)).toBe('ontem, 09:05');
+    expect(formatReferenceDate(new Date(2026, 9, 3, 8, 0).toISOString(), now)).toBe('3 out, 08:00');
     expect(formatReferenceDate(new Date(2025, 11, 30, 8, 0).toISOString(), now)).toBe(
       '30 dez 2025, 08:00',
     );

@@ -20,6 +20,12 @@ import { PropertyPanel } from './PropertyPanel';
 import { PostProductionSection } from './PostProductionSection';
 import PostCommentSummary from './PostCommentSummary';
 import { PostMediaGallery } from './PostMediaGallery';
+import { PostClientReferences } from './references/PostClientReferences';
+import { ReferenceViewerDialog } from './references/ReferenceViewerDialog';
+import { ReferenceChips } from './references/ReferenceChips';
+import { usePostReferences } from './references/usePostReferences';
+// By path, not through the '../../../store' barrel: the drawer test harnesses mock '@/store'.
+import type { ReferenceItem } from '@/store/postReferences';
 import {
   uploadInlineImage,
   extractR2Keys,
@@ -86,6 +92,10 @@ import { PostVersionHistorySheet } from './PostVersionHistorySheet';
 // so per-post local state -- e.g. an in-flight debounced título save --
 // survives a collapse/expand cycle exactly as it did before this component
 // existed).
+// Stable fallback so the per-bubble filter below never sees a new array identity while the
+// references query is disabled (collapsed row) or still loading.
+const EMPTY_REFERENCES: ReferenceItem[] = [];
+
 export interface PostEditorBodyProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
   templateId: number | null | undefined;
@@ -201,6 +211,12 @@ export function PostEditorBody({
     staleTime: 5 * 60 * 1000,
     enabled: isExpanded && !!post.id,
   });
+
+  // Client references (Hub). One fetch per post feeds the section under the media gallery and
+  // the chips on the client's correction bubbles; same expand gate as the media query above.
+  const { data: references = EMPTY_REFERENCES } = usePostReferences(post.id, isExpanded);
+  // One viewer for both entry points (tile "Abrir" and bubble chips).
+  const [viewingReference, setViewingReference] = useState<ReferenceItem | null>(null);
 
   // TikTok settings completeness/test-mode-banner seam (Task C3), held here rather than
   // inside ScheduleButton because TikTokSettingsPanel and ScheduleButton are siblings —
@@ -515,6 +531,14 @@ export function PostEditorBody({
       />
 
       {post.id != null && (
+        <PostClientReferences
+          postId={post.id}
+          references={references}
+          onOpen={setViewingReference}
+        />
+      )}
+
+      {post.id != null && (
         <div className="flex justify-end">
           <button
             onClick={() => setVersionHistoryOpen(true)}
@@ -713,7 +737,12 @@ export function PostEditorBody({
             <MessageSquare className="h-3.5 w-3.5" /> Comentários
           </div>
           {approvals.map((a) => (
-            <PostApprovalBubble key={a.id} approval={a} />
+            <PostApprovalBubble
+              key={a.id}
+              approval={a}
+              references={references.filter((r) => r.post_approval_id === a.id)}
+              onOpenReference={setViewingReference}
+            />
           ))}
         </div>
       )}
@@ -749,13 +778,24 @@ export function PostEditorBody({
           approvals={approvals}
         />
       )}
+
+      <ReferenceViewerDialog item={viewingReference} onClose={() => setViewingReference(null)} />
     </div>
   );
 }
 
 // ── Sub-component ────────────────────────────────────────────────────────────
 
-function PostApprovalBubble({ approval }: { approval: PostApproval }) {
+function PostApprovalBubble({
+  approval,
+  references,
+  onOpenReference,
+}: {
+  approval: PostApproval;
+  /** References the client attached to this correction (post_references.post_approval_id). */
+  references: ReferenceItem[];
+  onOpenReference: (item: ReferenceItem) => void;
+}) {
   const isTeam = approval.is_workspace_user;
   const actionLabel = isTeam
     ? 'Equipe'
@@ -781,6 +821,7 @@ function PostApprovalBubble({ approval }: { approval: PostApproval }) {
         </span>
       </div>
       {approval.comentario && <p className="approval-bubble-text">{approval.comentario}</p>}
+      <ReferenceChips references={references} onOpen={onOpenReference} />
     </div>
   );
 }
