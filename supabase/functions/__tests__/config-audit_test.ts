@@ -50,6 +50,7 @@ const REQUIRED_FUNCTIONS = [
   "hub-pages",
   "hub-briefing",
   "hub-ideias",
+  "hub-post-references",
   "hub-instagram-feed",
   "hub-dashboard",
   "post-media-upload-url",

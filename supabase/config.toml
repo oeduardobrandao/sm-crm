@@ -64,6 +64,9 @@ verify_jwt = false
 [functions.hub-ideias]
 verify_jwt = false
 
+[functions.hub-post-references]
+verify_jwt = false
+
 [functions.hub-mensagens]
 verify_jwt = false
 
