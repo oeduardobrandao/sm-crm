@@ -1,5 +1,6 @@
 import { isSameDay } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
 import { MonthGrid } from '@/components/ui/month-grid';
 import type { WorkflowPost } from '@/store';
 
@@ -127,10 +128,10 @@ export function ClientePostCalendar({
     carrossel: '#10b981',
   };
   const tipoLabels: Record<string, string> = {
-    feed: t('detail.postType.feed'),
-    reels: t('detail.postType.reels'),
-    stories: t('detail.postType.stories'),
-    carrossel: t('detail.postType.carrossel'),
+    feed: t('detail.contentFormat.feed', CONTENT_FORMAT_LABELS.feed),
+    reels: t('detail.contentFormat.reels', CONTENT_FORMAT_LABELS.reels),
+    stories: t('detail.contentFormat.stories', CONTENT_FORMAT_LABELS.stories),
+    carrossel: t('detail.contentFormat.carrossel', CONTENT_FORMAT_LABELS.carrossel),
   };
 
   const selectedEvents = selectedPostDay

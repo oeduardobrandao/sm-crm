@@ -1,3 +1,4 @@
+import type { ContentFormat } from '@mesaas/platforms';
 export interface WorkspaceInfo {
   name: string;
   logo_url: string | null;
@@ -66,7 +67,7 @@ export type EmProducaoReason = 'proxima_aprovacao' | 'correcao' | 'ajuste';
 export interface HubPost {
   id: number;
   titulo: string;
-  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  tipo: ContentFormat;
   /** Target platform(s) for publishing. Absent on stale/pre-migration cached payloads —
    * treat as 'instagram' (mirrors the DB default). */
   platform?: 'instagram' | 'tiktok' | 'both';
