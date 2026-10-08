@@ -1,6 +1,6 @@
 # Hub "Pauta": identidade visual própria do portal do cliente - design
 
-Mockups: https://claude.ai/artifact/ArhzoNmFpw1wg1oWXvuhFm (linha "Direção A · Pauta" e quadro "Fundamentos"). Revisado por Fable e Codex em 2026-10-08.
+Mockups: https://claude.ai/artifact/ArhzoNmFpw1wg1oWXvuhFm (linha "Direção A · Pauta" e quadro "Fundamentos"). Revisado por Fable e Codex (duas rodadas) em 2026-10-08.
 
 ## Contexto
 
@@ -21,7 +21,7 @@ Cor, fonte, raio e estilo de cartão são do dono do workspace (`packages/hub-th
 ## Fora de escopo
 
 - Paleta do tema "hub" dos relatórios de blocos (`packages/report-blocks/theme.ts` lê `PALETTES`). Fica clássica até a limpeza pós-lançamento. Efeito colateral aceito: o relatório lê `HUB_DISPLAY_FONTS`/`HUB_BODY_FONTS` (`theme.ts:224`), então um workspace que gravar Bricolage/Figtree já os vê nos relatórios.
-- Visual do CRM. No CRM muda só a prévia do Hub em Configuração e os tipos de feature.
+- Visual do CRM. No CRM mudam só a prévia do Hub e o seletor de par em Configuração (com a flag) e os tipos de feature.
 - Novos eixos de personalização, a direção B (Mosaico) e navegação superior.
 - Mudanças de comportamento: filtros, ordenação, deep links, diálogo do post, fluxo de aprovação e gaveta do menu funcionam como hoje. O significado das cores também não muda: os pontos do calendário continuam indicando o **formato** do post (`TIPO_COLOR`), não o status.
 
@@ -35,7 +35,7 @@ Mesmo padrão de `feature_agenda` / `feature_multiplatform`.
 
 **Admin** (sem isto o override do piloto e o lançamento não existem): `apps/admin/src/lib/api.ts` ganha a chave no tipo `Plan`, em `FEATURE_FLAG_KEYS` e em `FEATURE_FLAG_LABELS` ("Hub: visual Pauta"). `WorkspaceDetailPage` e `PlansPage` já iteram a lista. Atualizar os fixtures `plan-form.test.ts` e `featureFlags.test.ts`.
 
-**CRM**: `FeatureFlags` em `apps/crm/src/hooks/useWorkspaceLimits.ts` ganha `feature_hub_pauta?: boolean` (opcional, para não exigir mudança nos fixtures que listam todas as flags) e `entitlement-errors.ts` ganha o rótulo.
+**CRM**: `FeatureFlags` em `apps/crm/src/hooks/useWorkspaceLimits.ts` ganha `feature_hub_pauta?: boolean` (opcional, para não exigir mudança nos fixtures que listam todas as flags). `entitlement-errors.ts` não muda: nenhuma rota levanta `feature_disabled:feature_hub_pauta`.
 
 **Hub**
 - `apps/hub/src/types.ts`: `feature_hub_pauta?: boolean` no bootstrap.
@@ -74,7 +74,8 @@ No clássico as variáveis novas também são emitidas, com valores que não mud
 - `HUB_DISPLAY_FONTS['bricolage-grotesque']` (`opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700`) e `HUB_BODY_FONTS['figtree']` (400 a 700). Par `{ display: 'bricolage-grotesque', body: 'figtree', label: 'Assinatura' }` entra primeiro em `HUB_FONT_PAIRINGS`.
 - Migração recria os CHECKs `hub_font_display_allowed` e `hub_font_body_allowed` com os ids novos. Os dois testes `font allowlist sync` de `theme.test.ts` (espelho dos CHECKs) mudam junto. Os defaults das colunas **não** mudam no piloto.
 - Hub sem personalização com Pauta usa `assinatura`; o clássico continua com `fraunces` + `instrument-sans`. Personalizado usa o que está gravado nos dois visuais.
-- `buildGoogleFontsHref` já emite qualquer id diferente dos pré-carregados no `index.html`, então o Pauta carrega Bricolage + Figtree pelo `<link id="hub-custom-fonts">` sem mudar a função. Aceito no piloto: troca de fonte visível no primeiro carregamento (FOUT), porque o `index.html` só pré-carrega Fraunces + Instrument Sans. A limpeza troca o pré-carregamento.
+- Os ids efetivos saem de uma função só, `effectiveHubFonts(look, customized, stored)` em `packages/hub-theme`, usada pelo resolvedor **e** pelos dois carregadores de fonte: o efeito do `<link id="hub-custom-fonts">` no `HubShell` (que hoje decide só por `isCustomized`; `look` entra nas dependências) e o `HubPreview` do CRM. `buildGoogleFontsHref` não muda: ele já emite qualquer id diferente dos pré-carregados no `index.html`.
+- No CRM o par "Assinatura" só aparece no seletor do `HubTab` com a flag ligada. Fora do piloto nenhum workspace consegue gravá-lo pela interface (o CHECK aceita os ids, mas só a interface do piloto os oferece). Aceito no piloto: troca de fonte visível no primeiro carregamento (FOUT), porque o `index.html` só pré-carrega Fraunces + Instrument Sans. A limpeza troca o pré-carregamento.
 
 ### Status
 
@@ -113,21 +114,21 @@ Regra geral: classes que só existem para o Pauta ou regras `.hub-root[data-hub-
 **`HomePage`** (ramo Pauta; testes novos usam bootstrap com `feature_hub_pauta: true`, os atuais seguem no clássico).
 1. **Saudação.** Eyebrow com a data: dia da semana longo sem "-feira" e com inicial maiúscula + dia + mês ("Quinta, 8 de outubro"; em inglês "Thursday, October 8"). Título `.hub-display-title`: "Bom dia" (5h a 11h59), "Boa tarde" (12h a 17h59), "Boa noite" (18h a 4h59), vírgula, primeiro nome e ponto. Sem itálico, sem emoji, sem o avatar de 128px. Frase-resumo com contagens em chips `--hub-acc-soft`, só as cláusulas não nulas:
    - pendentes = posts `enviado_cliente` (o `pendingCount` de hoje);
-   - semana = posts `agendado` ou `aprovado_cliente` com `scheduled_at` entre agora e o fim do domingo local;
+   - semana = posts `agendado` ou `aprovado_cliente` com `scheduled_at` no intervalo `[agora, início da próxima segunda-feira)`, na zona do navegador (a mesma que o calendário do Hub já usa para agrupar dias);
    - "Você tem **2 posts** para aprovar e **3 publicações** saindo esta semana." / só uma das cláusulas / nenhuma → "Tudo em dia por aqui."
    Botão primário "Revisar aprovações" à direita quando há pendentes; substitui o banner de pendências.
 2. **Faixa de KPIs.** Um `.hub-card` com quatro células separadas por fios (`--hub-bd`), 2×2 abaixo de `sm`. Mesmas métricas de hoje. Rótulo `.hub-eyebrow-plain`, número em `.font-display` com `tabular-nums`; a célula "Para aprovar" usa `.hub-eyebrow` (com marcador) e o link "Revisar agora" quando o número é maior que zero.
-3. **Seções numeradas.** `.hub-card` com cabeçalho (`.hub-eyebrow` "01 · Aprovações" + título `.hub-display-title` + link à direita). A numeração é contínua: seção ausente faz as seguintes renumerarem.
-   - `Aprovações` "Esperando você": até 3 posts `enviado_cliente` do `hubPostsQuery` já carregado (sem fetch novo), em linhas: capa 48×60 (`getPostCover`), título, formato (`getTipoLabel`) · `post.platform` quando houver · data, selo `wait` e "Revisar" para `/aprovacoes/:postId`. Some sem pendentes. Link do cabeçalho "Ver todas".
+3. **Seções numeradas.** `.hub-card` com cabeçalho (`.hub-eyebrow` "01 · Aprovações" + título `.hub-display-title` + link à direita). A `HomePage` calcula os números a partir só do que ela sabe de forma síncrona: "Esperando você" existe quando `pendingCount > 0` depois que `hubPostsQuery` carregou (durante o carregamento a home inteira mostra o estado de carregamento atual) e "Agenda" existe quando `feature_agenda` está ligado. Nenhum filho decide se aparece ou não depois de numerado, exceto Resultados, que é a última.
+   - `Aprovações` "Esperando você": até 3 posts `enviado_cliente` do `hubPostsQuery` já carregado (sem fetch novo), em linhas: capa 48×60 (`getPostCover`), título, formato (`getTipoLabel`) · plataforma (`getPlatformLabel`, o mesmo rótulo de `PostCard` e `PostDetailDialog`) · data, selo `wait` e "Revisar" para `/aprovacoes/:postId`. Some sem pendentes. Link do cabeçalho "Ver todas".
    - `Calendário`: o `PostCalendar` atual (mês) dentro do cartão.
-   - `Agenda` (só com `feature_agenda`) e `Recursos` lado a lado a partir de `lg` (2fr / 1fr); sem Agenda, Recursos ocupa a linha. Recursos vira lista de linhas (ícone em `--hub-soft` com raio `--hub-r-tile`, rótulo, chevron).
+   - `Agenda` (só com `feature_agenda`) e `Recursos` lado a lado a partir de `lg` (2fr / 1fr); sem Agenda, Recursos ocupa a linha. No Pauta, `HomeAgenda` ganha `sectionNumber` e passa a ser **um único cartão** sempre presente com a flag de agenda: o aviso "N eventos aguardando sua resposta" vira uma linha no topo do cartão (não mais um irmão solto), e sem eventos próximos o cartão mostra o estado vazio "Nenhum evento nos próximos dias" com o link para a Agenda. O ramo clássico continua devolvendo `null` sem eventos e os dois irmãos com eventos. Recursos vira lista de linhas (ícone em `--hub-soft` com raio `--hub-r-tile`, rótulo, chevron).
    - `Resultados`: o `DashboardSection` ganha a prop `sectionNumber?: number`; com ela (Pauta) o próprio componente troca o seu `h2` pelo cabeçalho numerado com o título "Desempenho" e mantém o `PeriodSelector` à direita. Carregamento, erro (`null`) e "conecte o Instagram" ficam como hoje. Por ser a última seção, o `null` no erro não deixa buraco na numeração.
 
 **`StatusPill`.** Ganha `semantic?: 'wait' | 'ok' | 'fix' | 'neutral'`. No clássico renderiza só por `tone` (como hoje). No Pauta usa `semantic` (fallback: `tone`). Motivo: `accent` significa "pendente" em `PostCard` e "confirmado" na Agenda, então não dá para remapear o tom por CSS. Chamadas: `PostCard` pendente → `wait`, aprovado → `ok`, correção → `fix`; `AgendaCardView`/`HomeAgenda`/`PostCalendar` (`selo()`) RSVP confirmado → `ok`, recusado → `fix`, pendente → `wait`.
 
 **`StatusTag`** (selo do tile, inline hoje). Ramo Pauta em TSX: fundo `--hub-card` (legível sobre qualquer capa), texto `--hub-st-{tom}-fg`, ponto, raio `--hub-r-chip`. O clássico mantém `rounded-[4px]` e as cores de `STATUS_COLORS` (o teste atual continua valendo).
 
-**`PostGrid` / `PostTile`.** A grade imita o perfil do Instagram (3 colunas, 4:5, `gap-1`, tiles sem raio) e continua assim em qualquer preset. No Pauta muda só: glifo de formato com raio `--hub-r-chip`, anel de seleção em `--hub-primary`.
+**`PostGrid` / `PostTile`.** A grade imita o perfil do Instagram (`grid-cols-2 sm:grid-cols-3`, 4:5, `gap-1`, tiles sem raio) e continua exatamente assim, inclusive as duas colunas no celular, em qualquer preset. No Pauta muda só: glifo de formato com raio `--hub-r-chip`, anel de seleção em `--hub-primary`.
 
 **`StoriesRail`** (cores inline). Ramo Pauta: anéis/selos com os tokens de status e raios do preset.
 
@@ -147,7 +148,7 @@ Chaves novas em `home.pauta.*`: `greeting.morning|afternoon|evening` (com `{{nam
 
 ## CRM
 
-- `HubTab`: o seletor de par mostra "Assinatura" primeiro, sempre (os ids estão na lista permitida). O rótulo "Padrão" vai no par que um hub sem personalização usa: "Assinatura" com a flag ligada, "Editorial" com ela desligada.
+- `HubTab`: com a flag ligada, o seletor de par mostra "Assinatura" primeiro, rotulado "Padrão"; com ela desligada, o seletor fica como hoje (sem "Assinatura", "Editorial" como padrão). Um workspace que já gravou Assinatura e perde a flag continua vendo o par selecionado no seletor.
 - `HubPreview`: recebe `look` do `HubTab` (como já recebe `customized`, `HubTab.tsx:680`), lido de `useWorkspaceLimits().features.feature_hub_pauta`. Com `pauta`, reproduz menu, saudação, faixa de KPIs e um tile com selo, usando os mesmos tokens de `packages/hub-theme`.
 
 ## Acessibilidade
@@ -160,11 +161,11 @@ Chaves novas em `home.pauta.*`: `greeting.morning|afternoon|evening` (com `{{nam
 ## Testes
 
 - `theme.test.ts`: testes atuais intactos, exceto os dois `font allowlist sync`, que ganham os ids novos. Novos: Pauta com primário = acento e `customized: false`; Quente usa `PAUTA_WARM` (e o teste de contraste de `tx3` cobre `PAUTA_WARM`); tokens de raio por preset; `--hub-display-weight` por fonte; contraste dos tokens de status sobre cartão e fundo de cada superfície; clássico com os mesmos valores nas variáveis existentes.
-- Hub (Vitest): `useHubLook` sem provider = clássico; `HubShell` só põe `data-hub-look` com a flag; `HomePage` Pauta (faixas de hora, frase com zero/uma/duas cláusulas, contagem da semana sem pendentes, "Esperando você" ausente sem pendentes, renumeração sem Agenda); `HubSidebar`/`HubMobileNav` com `.hub-nav-pill` e contador no botão do menu; `PageHeader` com eyebrow; `StatusPill` usa `semantic` só no Pauta; `StatusTag` Pauta; `statusTone` cobre os 8 status. Os testes atuais de `contentPages.test.tsx` (saudação "Olá,", cartão "Aprovações pendentes", avatar) continuam no clássico.
+- Hub (Vitest): `useHubLook` sem provider = clássico; `HubShell` só põe `data-hub-look` com a flag; `HomePage` Pauta (faixas de hora, frase com zero/uma/duas cláusulas, contagem da semana sem pendentes, "Esperando você" ausente sem pendentes, renumeração sem Agenda); `HubSidebar`/`HubMobileNav` com `.hub-nav-pill` e contador no botão do menu; `HubShell` carrega Bricolage + Figtree num hub Pauta sem personalização (e nada a mais no clássico); `HomeAgenda` Pauta com e sem eventos; contagem da semana na fronteira de domingo para segunda; `PageHeader` com eyebrow; `StatusPill` usa `semantic` só no Pauta; `StatusTag` Pauta; `statusTone` cobre os 8 status. Os testes atuais de `contentPages.test.tsx` (saudação "Olá,", cartão "Aprovações pendentes", avatar) continuam no clássico.
 - `hub-bootstrap`: devolve `feature_hub_pauta` e cai para `false` quando a resolução falha.
 - Entitlements (psql): `99_hub_pauta_flag.sql` com default `false`, override por workspace e os CHECKs aceitando os ids novos e recusando um desconhecido.
 - Admin: fixtures com a chave nova; a flag aparece em `PlansPage` e no override do workspace.
-- CRM: `HubPreview` com `look` clássico e Pauta; `HubTab` lista "Assinatura".
+- CRM: `HubPreview` com `look` clássico e Pauta (e as fontes efetivas de cada um); `HubTab` mostra "Assinatura" só com a flag.
 - Navegador (Hub em `:5175`, workspace com override): as seis combinações da matriz do canvas, claro e escuro, em Início, Aprovações (grade + diálogo), Postagens, Agenda e a gaveta a 390px. Flag desligada: comparar com produção.
 
 ## Lançamento
