@@ -254,7 +254,7 @@
       "referenceLimit": "Este post já tem 10 referências. Remova uma para adicionar outra.",
       "quotaExceeded": "Não foi possível enviar agora: o espaço de arquivos da agência acabou. Avise a equipe.",
       "postNotPending": "Este post não está mais aguardando sua aprovação.",
-      "invalidUrl": "Informe um endereço válido, começando com http ou https.",
+      "invalidUrl": "Informe um endereço completo, como exemplo.com.br.",
       "invalidNote": "A nota pode ter até 500 caracteres.",
       "locked": "A equipe já recebeu esta referência. Ela não pode mais ser alterada.",
       "notFound": "Esta referência não está mais disponível.",

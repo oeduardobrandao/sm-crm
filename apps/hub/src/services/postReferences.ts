@@ -111,7 +111,7 @@ function hasControlOrSpace(value: string): boolean {
 /**
  * Same policy as hub-post-references POST /links (the server is authoritative): trim, add
  * https:// when there is no scheme, no whitespace or control characters, absolute http(s) URL,
- * no credentials, non-empty host, at most 2048 characters.
+ * no credentials, host ending in a real TLD, at most 2048 characters.
  */
 export function normalizeReferenceUrl(raw: string): string | null {
   const trimmed = raw.trim();
@@ -125,7 +125,9 @@ export function normalizeReferenceUrl(raw: string): string | null {
     return null;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-  if (url.username || url.password || !url.hostname) return null;
+  if (url.username || url.password) return null;
+  // Host must end in a real TLD: "google" alone would save https://google/, a dead link.
+  if (!/\.(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/.test(url.hostname)) return null;
   // Same value the server stores (url.href), so the preview matches the saved link.
   return url.href;
 }

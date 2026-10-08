@@ -55,6 +55,18 @@ Deno.test("normalizeReferenceUrl: rejects schemes, credentials, whitespace, cont
   assertEquals(normalizeReferenceUrl(42 as unknown as string), null);
 });
 
+Deno.test("normalizeReferenceUrl: the host needs a real top-level domain", () => {
+  // "google" alone became https://google/, a dead link the title then hid.
+  const bad = [
+    "google", "https://google", "http://localhost:3000", "exemplo.", "exemplo.c", "exemplo.123",
+    "192.168.0.1", "https://1", "https://[::1]/",
+  ];
+  for (const raw of bad) assertEquals(normalizeReferenceUrl(raw), null, `should reject ${JSON.stringify(raw)}`);
+  assertEquals(normalizeReferenceUrl("google.com"), "https://google.com/");
+  assertEquals(normalizeReferenceUrl("loja.com.br/x"), "https://loja.com.br/x");
+  assertEquals(normalizeReferenceUrl("https://pão.com.br"), "https://xn--po-sia.com.br/");
+});
+
 Deno.test("normalizeReferenceNote / LinkTitle: trim, empty to null, code-point cap, type check", () => {
   assertEquals(normalizeReferenceNote(undefined), { ok: true, value: null });
   assertEquals(normalizeReferenceNote(null), { ok: true, value: null });

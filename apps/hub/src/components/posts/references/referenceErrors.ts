@@ -64,7 +64,7 @@ export function referenceErrorMessage(
     case 'invalid_url':
       return t(
         'references.errors.invalidUrl',
-        'Informe um endereço válido, começando com http ou https.',
+        'Informe um endereço completo, como exemplo.com.br.',
       );
     case 'invalid_note':
       return t('references.errors.invalidNote', 'A nota pode ter até 500 caracteres.');

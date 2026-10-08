@@ -254,7 +254,7 @@
       "referenceLimit": "This post already has 10 references. Remove one to add another.",
       "quotaExceeded": "Couldn't upload right now: the agency's file storage is full. Let the team know.",
       "postNotPending": "This post is no longer waiting for your approval.",
-      "invalidUrl": "Enter a valid address, starting with http or https.",
+      "invalidUrl": "Enter a full address, like example.com.",
       "invalidNote": "The note can have up to 500 characters.",
       "locked": "The team has already received this reference. It can no longer be changed.",
       "notFound": "This reference is no longer available.",

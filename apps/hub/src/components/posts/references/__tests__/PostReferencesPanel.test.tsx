@@ -320,7 +320,7 @@ describe('PostReferencesPanel', () => {
     fireEvent.change(address, { target: { value: 'não é endereço' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Adicionar link' }));
     expect(within(dialog).getByRole('alert')).toHaveTextContent(
-      'Informe um endereço válido, começando com http ou https.',
+      'Informe um endereço completo, como exemplo.com.br.',
     );
     expect(refs.addLink).not.toHaveBeenCalled();
 
