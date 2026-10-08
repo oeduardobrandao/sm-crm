@@ -40,9 +40,14 @@ The new contract is `onCompletenessChange({ complete: boolean; reason?: string }
 
 ```
 complete = !loading && !loadError && canPost && privacyChosen
-           && !disclosureIncomplete && !durationExceeded
+           && mediaReady && !disclosureIncomplete && !durationExceeded
            && !brandedPrivateConflict && !mediaLost
 ```
+
+- `mediaReady` means the `['post-media']` query has resolved. Media readiness fails closed:
+  - While media is loading, the panel is incomplete with `reason` "Carregando mídias do post…".
+  - If the query fails, `reason` is "Não foi possível carregar as mídias. Reabra o post." A failed query is never treated as "no media".
+  - The panel receives `media: PostMedia[] | undefined` plus `mediaError: boolean`.
 
 - `reason` is the first failing rule's pt-BR sentence, taken from the items below.
 - `ScheduleButton` shows `reason` in its "Falta:" line.
@@ -180,7 +185,11 @@ Blocking states (`mediaLost`):
 - with `can_post: false`, shows the notice below in place of the nickname header, and is incomplete
 - treats a missing `can_post` as `true` (older deploy)
 
-**pt-BR map**, in one shared module `tiktokErrorMessages` used by the panel and the publish paths:
+**pt-BR map.** It lives in one runtime-neutral module, `supabase/functions/_shared/tiktok-messages.ts`: pure data and functions, no Deno or npm imports.
+- The CRM imports it through a `@mesaas/tiktok-messages` alias wired exactly like `@mesaas/platforms` (`apps/crm/vite.config.ts:21`, `apps/crm/tsconfig.json:13`, `vitest.config.ts:17`).
+- The edge functions import it relatively.
+
+The map:
 
 | Code | Message |
 |---|---|
@@ -237,12 +246,22 @@ Where it runs:
 - **Cron `init` phase:** once per account per run. The cron already groups by account (`tiktok-publish-cron/core.ts:172-192`, `MAX_INIT_PER_ACCOUNT = 5`). The one response is applied to each of that account's posts.
 - **Publish-now:** once, in `tiktok-publish/handler.ts`.
 
+**Media contract.** `checkCreatorBeforeInit` runs its own query:
+
+```
+post_file_links → files!inner(kind, duration_seconds, media_lost_at)
+  where post_id = …
+```
+
+The cron's existing `fetchPostMedia()` (`_shared/instagram-publish-utils.ts:345`) selects neither `duration_seconds` nor `media_lost_at`, and stays as it is. The scheduling validator (`validateForTikTokScheduling`) also adds `media_lost_at` to its select and rejects lost media.
+
 Rules, in order. Every failure goes through `markTikTokPublishFailed`, **non-retryably**, with the pt-BR message:
 
 1. **`privacy_level` missing** in `tiktok_settings`, as with a Hub-approved post whose agency never opened the panel: "Configurações do TikTok incompletas. Abra o post e defina a privacidade."
 2. **A cannot-post code:** the A6 sentence.
 3. **`privacy_level` not in `privacy_level_options`:** the `privacy_level_option_mismatch` sentence.
 4. **A video post whose longest `duration_seconds` exceeds `max_video_post_duration_sec`:** "O vídeo tem {X}s. O máximo permitido para esta conta no TikTok é {Y}s."
+5. **Any media with `media_lost_at` set, or no media at all:** "Uma das mídias deste post foi perdida. Substitua-a antes de publicar." This rule doesn't need creator_info, so it runs even when the creator check fails open.
 
 On any other creator_info error:
 - **Network, 5xx or rate limit:** fail open. Skip the check and proceed to init, which surfaces real problems itself. The check is a guard and must not become an outage dependency.
