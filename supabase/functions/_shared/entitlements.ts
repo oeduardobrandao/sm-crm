@@ -19,7 +19,7 @@ export const FEATURE_COLUMNS = [
   "feature_post_tagging", "feature_brand_customization", "feature_mcp",
   "feature_tiktok", "feature_mensagens", "feature_instagram_automation",
   "feature_briefing_audio", "feature_post_processes", "feature_agenda",
-  "feature_multiplatform",
+  "feature_multiplatform", "feature_hub_pauta",
 ] as const;
 
 type PlanRow = Record<string, unknown>;
