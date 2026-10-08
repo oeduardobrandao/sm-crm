@@ -78,6 +78,13 @@ New:
 - Surfaces:
   - `ScheduleButton`, above its actions when the post targets TikTok. This covers the editor and `PublicacoesPanel`.
   - `AutoSchedulePromptDialog` and `AutoScheduleBatchDialog`, above the confirm button, when any post in them targets TikTok.
+- Data contract:
+  - The component takes `brandedContent: boolean | undefined`.
+  - `undefined` (the caller has no settings) renders the **branded variant**, which carries both links. Over-disclosing is compliant; under-disclosing is not.
+  - `ScheduleButton` passes `post.tiktok_settings?.brand_content_toggle`.
+  - `PublicacoesPanel`'s query (`ScheduledPost`) adds `tiktok_settings`, and `toWorkflowPost` passes it through. Today it strips it.
+  - `AutoSchedulePromptPost` gains an optional `tiktok_settings` field, filled where the caller's post object has it.
+  - `AutoScheduleBatchDialog` uses the branded variant if any selected TikTok post has `brand_content_toggle` or lacks settings.
 - Known limit, documented and not changed: a client approval in the Hub can auto-schedule a post whose TikTok settings the agency already completed. The agency consented when it configured the post. The Hub never sends media without the agency having set the privacy level.
 
 ### A4. Content preview
@@ -99,8 +106,8 @@ Guideline: check the video against `max_video_post_duration_sec` from creator in
 - For video posts, if any video's `duration_seconds` exceeds `max_video_post_duration_sec`:
   - Inline error: "Este vídeo tem {X}s. O máximo permitido para esta conta é {Y}s."
   - The panel reports incomplete.
-- A null `duration_seconds` (legacy upload) doesn't block. TikTok's init rejects an over-length video and the failure surfaces through the existing error path.
-- No server check: it would cost a creator_info call per validation, and the UI gate is what the guideline asks for.
+- A null `duration_seconds` (legacy upload) doesn't block in the UI.
+- Server check (A10): the panel is not the only path to publishing. Hub approval and the auto-schedule dialogs schedule without mounting it, so the authoritative check runs right before TikTok init.
 
 ### A6. Creator cannot post right now
 
@@ -120,7 +127,20 @@ The panel shows a blocking notice by reason and reports incomplete:
 - `spam_risk_user_banned_from_posting`: "O TikTok bloqueou novas publicações desta conta. Verifique a conta no app do TikTok."
 - `reached_active_user_cap`: "O limite diário de contas publicando pelo Mesaas foi atingido. Tente novamente mais tarde."
 
-The same three codes, when they come from publish init (cron or publish-now), map to those PT-BR sentences in `tiktok_publish_error`, instead of the raw code.
+The same three codes, when they come from publish init (cron or publish-now) or from the A10 pre-init check, map to those PT-BR sentences in `tiktok_publish_error`, instead of the raw code.
+
+### A10. Pre-init creator check (server, authoritative)
+
+Both init paths call creator_info with the token they already hold, immediately before `/post/publish/.../init/`: the cron `init` phase (`tiktok-publish-cron/core.ts`) and publish-now (`tiktok-publish/handler.ts`). One shared helper, `checkCreatorBeforeInit` in `_shared/tiktok-publish-utils.ts`, implements it.
+
+- **A cannot-post code** (A6): fail through `markTikTokPublishFailed` with A6's PT-BR sentence.
+  - `spam_risk_too_many_posts` and `reached_active_user_cap` are daily caps, so they stay retryable. The cron's existing 3-retry budget picks them up on a later run.
+  - `spam_risk_user_banned_from_posting` is non-retryable.
+- **A video post whose longest `duration_seconds` exceeds `max_video_post_duration_sec`:** fail non-retryably with "O vídeo tem {X}s. O máximo permitido para esta conta no TikTok é {Y}s."
+- **The privacy level is no longer in `privacy_level_options`**, for example because the account went private after scheduling: fail non-retryably with "A privacidade escolhida não está mais disponível para esta conta. Escolha outra e agende de novo."
+- **Any other creator_info error** (network, 5xx, rate limit): do not fail the post. Skip the check and proceed to init, which surfaces real problems itself.
+  - This is a deliberate fail-open: the check adds a guard and must not add an outage dependency.
+- **Cost:** one extra call per publish. TikTok allows 20 requests per minute per user token, and the cron publishes at most a handful per account per run.
 
 ### A7. Test mode, shown up front
 
@@ -156,8 +176,8 @@ Guideline: tell users the content may take a few minutes to process and appear o
   - Fix:
     - Redirect with `?tt_connected=1`.
     - `ClienteDetalheIndexRedirect` adds `tt_connected` to its OAuth param list.
-    - `RedesSociaisTab` toasts "Conta do TikTok conectada." and strips the param, the same way it handles `ig_connected`.
-    - It also fires a `tiktok_connected` PostHog capture, mirroring `useInstagramActivationEvent`.
+    - `RedesSociaisTab` toasts "Conta do TikTok conectada.", fires a `tiktok_connected` PostHog capture and strips the param.
+    - All three happen **inside the tab's existing consolidated OAuth-param effect** (`RedesSociaisTab.tsx:33-97`), which exists because separate `useSearchParams` effects raced and left params stuck in the URL. There is no separate TikTok hook. The strip removes `tt_connected` in the same `setSearchParams` call as the other params.
 - **B2. Auth URL errors.**
   - Problem: `getTikTokAuthUrl` reads `data.message`, but the gate answers `{ error: 'feature_disabled' }`.
   - Fix: map `feature_disabled` to "O TikTok não está disponível no seu plano." and otherwise use `data.error ?? data.message`.
@@ -173,24 +193,31 @@ Guideline: tell users the content may take a few minutes to process and appear o
     - `tiktok-publish/handler.ts:453`
     - `_shared/tiktok-publish-utils.ts:626`
     - `tiktok-webhook/handler.ts:269`
-  - The webhook path needs the post's `tipo` in its select.
+  - The `tipo` has to reach all three completion paths:
+    - **Publish-now** already loads the post. It passes `tipo`.
+    - **Cron status confirmation:** `ConfirmAndApplyPublishStatusPost` (`_shared/tiktok-publish-utils.ts:565`) gains `tipo`. The claim `claim_posts_for_tiktok_publishing` already returns it (`20260830000002:146,192`), so `tiktok-publish-cron/core.ts:283` only passes it on. No migration.
+    - **The `publicly_available` webhook** adds `tipo` to its post select (`tiktok-webhook/handler.ts:117-124`).
 - **B6. Drop the unused `video.upload` scope.**
   - `TIKTOK_SCOPES` (`_shared/tiktok.ts:13`) requests it, but only `DIRECT_POST` (`video.publish`) is used; the inbox/draft mode is never called.
   - Requesting a scope the demo doesn't show is a common rejection reason.
   - Tokens already issued keep working; they just carry an extra grant.
+  - This is an implementation step before recording. Update `TIKTOK_SCOPES`, plus any test or fixture that asserts the auth URL's `scope` parameter (`tiktok-integration_test.ts`, `tiktok-shared_test.ts`).
 
 ## C. Demo and submission kit (owner tasks)
 
 ### C1. Demo environment (prod, sandbox credentials)
 
-1. Workspace DK TESTE override:
+1. Workspace DK TESTE override. The table is keyed by `workspace_id`, and `feature_overrides` may be NULL:
    ```sql
-   update workspace_plan_overrides
-   set feature_overrides = feature_overrides
-     || '{"feature_tiktok": true, "feature_post_scheduling": true, "feature_multiplatform": true}'
-   where conta_id = '<DK TESTE conta_id>';
+   insert into workspace_plan_overrides (workspace_id, plan_id, feature_overrides)
+   values ('<DK TESTE workspace_id>', '<its current plan_id>',
+           '{"feature_tiktok": true, "feature_post_scheduling": true, "feature_multiplatform": true}')
+   on conflict (workspace_id) do update
+   set feature_overrides = coalesce(workspace_plan_overrides.feature_overrides, '{}'::jsonb)
+     || excluded.feature_overrides,
+       updated_at = now();
    ```
-   If the row doesn't exist, insert one.
+   Or set the same three keys in the Admin workspace page's overrides editor. Afterwards, check `workspace-limits` for the workspace returns all three as `true`.
 2. A board in DK TESTE with `plataformas = {tiktok}` or `{instagram,tiktok}`. Existing boards are `{instagram}` and new posts only seed TikTok from the board.
 3. Set the TikTok test account to **private** in the TikTok app, which unaudited posting requires.
 4. Reconnect the account during the recording. The expired token from July is irrelevant, and the video must show the OAuth consent screen anyway.
@@ -232,8 +259,8 @@ No migration. Edge functions go out before merge, because merge deploys the fron
 
 | Function | Why | Flag |
 |---|---|---|
-| `tiktok-publish` | A6, A7, B5, A2 server check | keeps `verify_jwt=true` |
-| `tiktok-publish-cron` | B5, A6 messages, A2 via utils | `--no-verify-jwt` |
+| `tiktok-publish` | A2 server check, A6, A7, A10, B5 | keeps `verify_jwt=true` |
+| `tiktok-publish-cron` | A2 via utils, A6 messages, A10, B5 | `--no-verify-jwt` |
 | `tiktok-webhook` | B5 | `--no-verify-jwt` |
 | `tiktok-integration` | B1, B6 | `--no-verify-jwt` |
 
@@ -264,4 +291,6 @@ The new response fields are additive (`can_post`, `app_audited`). The frontend t
   - the validator's branded + `SELF_ONLY` rule
   - `buildTikTokPostUrl` per tipo across all three call sites
   - init failure messages for the three codes
+  - `checkCreatorBeforeInit` in both init paths: can't-post codes (retryable vs. not), duration over the limit, privacy no longer offered, fail-open on other errors
+  - the status-confirmation path receives `tipo`
 - **Browser (local, creator-info stubbed):** walk C2 steps 3-5 in light and dark, and check that the panel works at drawer widths.
