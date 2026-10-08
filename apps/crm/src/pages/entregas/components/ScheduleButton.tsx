@@ -169,6 +169,9 @@ interface ScheduleButtonProps {
   /** Use short action labels ("Agendar"/"Publicar") so the buttons fit side-by-side
    *  in narrow containers like the calendar Publicações panel. */
   compact?: boolean;
+  /** feature_multiplatform: a legenda aparece sem conta do Instagram, então o botão
+   *  explica por que não há "Agendar" em vez de sumir calado. */
+  explainMissingInstagramAccount?: boolean;
 }
 
 export function ScheduleButton({
@@ -182,6 +185,7 @@ export function ScheduleButton({
   onTikTokUnaudited,
   onStatusChange,
   compact = false,
+  explainMissingInstagramAccount = false,
 }: ScheduleButtonProps) {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -207,7 +211,16 @@ export function ScheduleButton({
   // Post só Geral: nada o publica (validateForScheduling também recusa no servidor).
   if (!hasAutoPublishTarget(post.platform)) return null;
 
-  if (targetsInstagram && !hasInstagramAccount) return null;
+  if (targetsInstagram && !hasInstagramAccount) {
+    if (explainMissingInstagramAccount && post.status === 'aprovado_cliente') {
+      return (
+        <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
+          Conecte a conta do Instagram do cliente para agendar ou publicar este post.
+        </p>
+      );
+    }
+    return null;
+  }
 
   const igTokenBlocked =
     targetsInstagram && !!(igAccountStatus?.revoked || igAccountStatus?.expired);
