@@ -159,7 +159,7 @@ export function normalizeReferenceLinkTitle(raw: unknown): OptionalText {
 /** Controles C0/DEL, marcas bidi (U+061C, U+200E/F, U+202A-E, U+2066-9) e formatos
  * invisíveis (U+200B-D, U+2060-5, U+FEFF): um RLO faria "foto‮gpj.exe" aparecer
  * como "fotoexe.jpg" na tela da equipe. */
-const NAME_STRIP_RE = /[\x00-\x1F\x7F؜​-‏‪-‮⁠-⁩﻿]/g;
+const NAME_STRIP_RE = /[\x00-\x1F\x7F\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
 /** Com a flag u, um par válido é um code point só: isto casa apenas surrogate solto,
  * que faria encodeURIComponent (attachmentDisposition) lançar URIError. */
 const LONE_SURROGATE_RE = /[\uD800-\uDFFF]/gu;
