@@ -14,7 +14,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import { StatusPill, type PillTone } from '../../components/StatusPill';
+import { StatusPill, type PillSemantic, type PillTone } from '../../components/StatusPill';
 import { sanitizeExternalUrl } from '../../lib/security';
 import type { AgendaItemBase, ConviteItem, HubAgendaItem } from '../../types';
 import { formatarSugestao, linkGoogleAgenda, quando, type Quando } from './formatar';
@@ -68,18 +68,28 @@ export function selo(
   encerrado: boolean,
   t: T,
   rotulos: AgendaCardRotulos = {},
-): { tone: PillTone; texto: string } {
+): { tone: PillTone; semantic: PillSemantic; texto: string } {
   if (item.resposta === 'sim')
-    return { tone: 'accent', texto: rotulos.seloSim ?? t('selo.sim', 'Confirmado') };
+    return {
+      tone: 'accent',
+      semantic: 'ok',
+      texto: rotulos.seloSim ?? t('selo.sim', 'Confirmado'),
+    };
   if (item.resposta === 'nao')
-    return { tone: 'danger', texto: rotulos.seloNao ?? t('selo.nao', 'Você recusou') };
+    return {
+      tone: 'danger',
+      semantic: 'fix',
+      texto: rotulos.seloNao ?? t('selo.nao', 'Você recusou'),
+    };
   return encerrado
     ? {
         tone: 'neutral',
+        semantic: 'neutral',
         texto: rotulos.seloSemResposta ?? t('selo.semResposta', 'Sem resposta'),
       }
     : {
         tone: 'neutral',
+        semantic: 'wait',
         texto: rotulos.seloAguardando ?? t('selo.aguardando', 'Aguardando sua resposta'),
       };
 }
@@ -185,7 +195,9 @@ export function AgendaCardView({
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <StatusPill tone={s.tone}>{s.texto}</StatusPill>
+          <StatusPill tone={s.tone} semantic={s.semantic}>
+            {s.texto}
+          </StatusPill>
           <Popover.Root open={menuAberto} onOpenChange={setMenuAberto}>
             <Popover.Trigger asChild>
               <button

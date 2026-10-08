@@ -33,6 +33,12 @@
         --hub-r-ctl: 12px;
         --hub-card-bg: var(--hub-card);
         --hub-card-bd: var(--hub-bd);
+        --hub-acc-soft: color-mix(in srgb, var(--hub-acc) 16%, transparent);
+        --hub-display-weight: 500;
+        --hub-shadow-card: none;
+        --hub-r-chip: 8px;
+        --hub-r-tile: 8px;
+        --hub-r-dot: 2px;
       }
       .hub-root,
       .hub-root button,
@@ -388,6 +394,81 @@
          `mb-4` (1rem) the legacy `paragraph`/`markdown` blocks use between page blocks. */
       .hub-root .hub-richtext {
         margin-bottom: 1rem;
+      }
+      /* ── Pauta (feature_hub_pauta) ─────────────────────────────────────────
+         Rules scoped to [data-hub-look='pauta'] restyle class-based elements; the
+         new classes below are only ever rendered by Pauta branches. Inline-styled
+         components branch in TSX instead (CSS can't reach inline styles). */
+      .hub-root[data-hub-look='pauta'] .hub-card {
+        box-shadow: var(--hub-shadow-card);
+      }
+      /* :not(.rounded-full) keeps the circular counters, monogram and icon buttons
+         that also carry hub-btn-primary round in every radius preset. */
+      .hub-root[data-hub-look='pauta']
+        :is(.hub-btn-primary, .hub-btn-secondary):not(.rounded-full) {
+        border-radius: var(--hub-r-ctl);
+      }
+      .hub-root[data-hub-look='pauta'] .hub-pill {
+        border-radius: var(--hub-r-chip);
+        gap: 6px;
+      }
+      .hub-root[data-hub-look='pauta'] .hub-pill::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        flex-shrink: 0;
+        border-radius: var(--hub-r-dot);
+        background: currentColor;
+      }
+      .hub-root .hub-pill-st-wait {
+        color: var(--hub-st-wait-fg);
+        background: var(--hub-st-wait-bg);
+      }
+      .hub-root .hub-pill-st-ok {
+        color: var(--hub-st-ok-fg);
+        background: var(--hub-st-ok-bg);
+      }
+      .hub-root .hub-pill-st-fix {
+        color: var(--hub-st-fix-fg);
+        background: var(--hub-st-fix-bg);
+      }
+      .hub-root .hub-pill-st-neutral {
+        color: var(--hub-tx2);
+        background: var(--hub-soft);
+      }
+      .hub-root .hub-eyebrow,
+      .hub-root .hub-eyebrow-plain {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11.5px;
+        font-weight: 600;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--hub-tx3);
+      }
+      .hub-root .hub-eyebrow::before {
+        content: '';
+        width: 7px;
+        height: 7px;
+        flex-shrink: 0;
+        border-radius: var(--hub-r-dot);
+        background: var(--hub-acc);
+      }
+      .hub-root .hub-nav-pill {
+        background: var(--hub-primary);
+        color: var(--hub-primary-fg);
+        border-radius: var(--hub-r-ctl);
+      }
+      .hub-root .hub-display-title {
+        font-weight: var(--hub-display-weight);
+      }
+      /* Loading spinners, both looks (the one declared exception to "classic
+         unchanged": the stone colours ignored dark mode). Unscoped because
+         ConvitePage renders its own .hub-root outside HubShell. */
+      .hub-spinner {
+        border-color: var(--hub-bd2);
+        border-top-color: var(--hub-txt);
       }
     </style>
   </head>

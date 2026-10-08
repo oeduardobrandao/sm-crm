@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import { CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
 import type { EmProducaoReason, HubPost, HubPostMedia, PendingEditSuggestion } from '../types';
+import type { StatusToneKey } from '../theme';
 
 export type { EmProducaoReason };
 
@@ -111,6 +112,22 @@ export const STATUS_COLORS: Record<string, string> = {
   falha_publicacao: '#f55a42',
   em_producao: '#8b5cf6',
 };
+
+const STATUS_TONES: Record<string, StatusToneKey> = {
+  enviado_cliente: 'wait',
+  correcao_cliente: 'fix',
+  falha_publicacao: 'fix',
+  aprovado_cliente: 'ok',
+  agendado: 'sched',
+  publicando: 'sched',
+  em_producao: 'prod',
+  postado: 'done',
+};
+
+/** Pauta status tone (spec table "Status"). STATUS_COLORS keeps serving classic. */
+export function statusTone(status: string): StatusToneKey {
+  return STATUS_TONES[status] ?? 'done';
+}
 
 /**
  * Presentational-only state (not a DB status): an `agendado` post whose scheduled
