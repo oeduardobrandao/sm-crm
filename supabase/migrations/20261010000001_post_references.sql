@@ -4,7 +4,7 @@
 --
 -- 1. files.attached_to + stream_status 'skipped' (+ 1b. bulk_move_items ignora arquivo com dono)
 -- 2. post_references (tabela, índices, RLS, grants)
--- 3. triggers: updated_at, reference_count, limpeza de órfão
+-- 3. triggers: updated_at, reference_count, limpeza de órfão, guarda de vínculo
 -- 4. post_reference_can_remove / post_reference_list
 -- 5. RPCs de escrita do Hub (insert de arquivo e link, nota, remoção)
 -- 6. notificação post_client_reference (CHECKs + RPC com coalescência de 15 min)
@@ -216,8 +216,13 @@ CREATE TRIGGER trg_post_reference_ref_count_del
 -- (R2) e file_update_used_bytes (devolve a cota). Mesmo modelo de
 -- ideia_file_cleanup_orphan (corpo mais recente em 20261003000001), checando
 -- os quatro vínculos direto (independente da ordem dos triggers). Invariante:
--- arquivo de referência nunca é vinculado em outra tabela, por isso
--- ideia_file_cleanup_orphan e storage_autoclean_candidates não mudam.
+-- arquivo de referência (files.attached_to) nunca é vinculado em outra tabela,
+-- por isso ideia_file_cleanup_orphan e storage_autoclean_candidates não mudam.
+-- A invariante é imposta no banco pelo trigger reference_file_not_linkable
+-- (logo abaixo) nas quatro tabelas de vínculo: sem ele, post_file_link_replace
+-- (que aceita qualquer arquivo do workspace) poderia pôr uma referência num
+-- post, o autoclean a apagaria após a publicação e o ON DELETE CASCADE de
+-- post_references_file_fk removeria em silêncio a referência do cliente.
 CREATE OR REPLACE FUNCTION post_reference_cleanup_orphan()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -240,6 +245,42 @@ CREATE TRIGGER trg_post_reference_cleanup_orphan
   AFTER DELETE ON post_references
   FOR EACH ROW WHEN (OLD.file_id IS NOT NULL)
   EXECUTE FUNCTION post_reference_cleanup_orphan();
+
+-- Guarda da invariante acima. SECURITY DEFINER para ler files independente de
+-- RLS/grants de quem escreve o vínculo. O nome da coluna do arquivo vem em
+-- TG_ARGV[0] (file_id, ou logo_file_id em hub_brand); NULL passa.
+CREATE OR REPLACE FUNCTION reference_file_not_linkable()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_file_id bigint := NULLIF(to_jsonb(NEW) ->> TG_ARGV[0], '')::bigint;
+BEGIN
+  IF v_file_id IS NOT NULL AND EXISTS (
+       SELECT 1 FROM files f WHERE f.id = v_file_id AND f.attached_to IS NOT NULL) THEN
+    RAISE EXCEPTION 'reference_file_not_linkable' USING errcode = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION reference_file_not_linkable() FROM PUBLIC, anon, authenticated;
+
+-- Mesmas tabelas que storage_autoclean_candidates consulta (+ post_references
+-- fica de fora de propósito: é a dona do arquivo).
+CREATE TRIGGER trg_post_file_links_reference_file_guard
+  BEFORE INSERT OR UPDATE OF file_id ON post_file_links
+  FOR EACH ROW EXECUTE FUNCTION reference_file_not_linkable('file_id');
+CREATE TRIGGER trg_ideia_files_reference_file_guard
+  BEFORE INSERT OR UPDATE OF file_id ON ideia_files
+  FOR EACH ROW EXECUTE FUNCTION reference_file_not_linkable('file_id');
+CREATE TRIGGER trg_report_document_files_reference_file_guard
+  BEFORE INSERT OR UPDATE OF file_id ON report_document_files
+  FOR EACH ROW EXECUTE FUNCTION reference_file_not_linkable('file_id');
+CREATE TRIGGER trg_hub_brand_reference_file_guard
+  BEFORE INSERT OR UPDATE OF logo_file_id ON hub_brand
+  FOR EACH ROW EXECUTE FUNCTION reference_file_not_linkable('logo_file_id');
 
 -- =====================================================================
 -- 4. leitura

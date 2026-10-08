@@ -14,7 +14,8 @@
 -- can_remove por referência; (k) notificação coalescida em 15 min;
 -- (l) exclusão de workspace em cascata; (m) JSON null nos opcionais;
 -- (n) upload_mismatch (chave já usada em files); (o) bulk_move_items não
--- move arquivo de referência.
+-- move arquivo de referência; (p) arquivo de referência não vira vínculo
+-- de post, ideia, relatório nem logo do Hub (reference_file_not_linkable).
 --
 -- now() é fixo dentro da transação: toda linha com DEFAULT now() tem o mesmo
 -- created_at, e "created_at > referência.created_at" nunca é verdade. As
@@ -578,5 +579,72 @@ begin
     'arquivo comum continua movendo';
 
   raise notice 'PASS 99_post_references (o) bulk_move_items';
+end $$;
+rollback;
+
+-- ---- (p) arquivo de referência nunca é vinculado em outra tabela ----
+begin;
+do $$
+declare
+  a record; v_post bigint; v_post2 bigint; v_ref post_references;
+  v_plain bigint; v_plain2 bigint; v_ideia uuid; v_link bigint; v_ok boolean;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  a := pg_temp.pr_env('max', null);
+  v_post := pg_temp.pr_post(a.ws, a.wf);
+  v_post2 := pg_temp.pr_post(a.ws, a.wf, 'rascunho');
+  v_ref := pg_temp.pr_file(a.ws, a.cli, v_post, 'image', 10);
+  insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes)
+    values (a.ws, 'contas/' || a.ws || '/files/p1.png', 'p1.png', 'image', 'image/png', 10)
+    returning id into v_plain;
+  insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes)
+    values (a.ws, 'contas/' || a.ws || '/files/p2.png', 'p2.png', 'image', 'image/png', 10)
+    returning id into v_plain2;
+  insert into ideias (workspace_id, cliente_id, titulo, descricao)
+    values (a.ws, a.cli, 'Ideia', 'x') returning id into v_ideia;
+
+  -- arquivo comum continua vinculando nas quatro tabelas
+  insert into post_file_links (conta_id, post_id, file_id) values (a.ws, v_post2, v_plain)
+    returning id into v_link;
+  insert into ideia_files (ideia_id, file_id, conta_id) values (v_ideia, v_plain, a.ws);
+  insert into hub_brand (cliente_id, logo_file_id) values (a.cli, v_plain);
+  insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+    values (a.ws, a.cli, '2026-09-01', '2026-09-30', jsonb_build_object('version', 1, 'blocks',
+      jsonb_build_array(jsonb_build_object('id','i','type','image','size','full','config',
+        jsonb_build_object('file_id', v_plain, 'width', 10, 'height', 10)))));
+  assert exists (select 1 from report_document_files where file_id = v_plain), 'arquivo comum vincula ao relatorio';
+
+  -- referência: cada tabela recusa
+  perform pg_temp.pr_expect(format(
+    'insert into post_file_links (conta_id, post_id, file_id) values (%L::uuid, %s, %s)',
+    a.ws, v_post2, v_ref.file_id), 'reference_file_not_linkable');
+  perform pg_temp.pr_expect(format(
+    'update post_file_links set file_id = %s where id = %s', v_ref.file_id, v_link),
+    'reference_file_not_linkable');
+  perform pg_temp.pr_expect(format(
+    'insert into ideia_files (ideia_id, file_id, conta_id) values (%L::uuid, %s, %L::uuid)',
+    v_ideia, v_ref.file_id, a.ws), 'reference_file_not_linkable');
+  perform pg_temp.pr_expect(format(
+    'update hub_brand set logo_file_id = %s where cliente_id = %s', v_ref.file_id, a.cli),
+    'reference_file_not_linkable');
+  perform pg_temp.pr_expect(format(
+    'insert into report_documents (conta_id, client_id, period_start, period_end, layout) values (%L::uuid, %s, %L, %L, %L::jsonb)',
+    a.ws, a.cli, '2026-09-01', '2026-09-30', jsonb_build_object('version', 1, 'blocks',
+      jsonb_build_array(jsonb_build_object('id','i','type','image','size','full','config',
+        jsonb_build_object('file_id', v_ref.file_id, 'width', 10, 'height', 10))))::text),
+    'reference_file_not_linkable');
+
+  -- post_file_link_replace com arquivo de referência: recusa, vínculo intacto
+  perform pg_temp.pr_expect(format(
+    'select post_file_link_replace(%L::uuid, %L::uuid, %s, %s, %L)',
+    a.ws, a.usr, v_link, v_ref.file_id, 'contas/' || a.ws || '/files/p1.png'),
+    'reference_file_not_linkable');
+  assert (select file_id from post_file_links where id = v_link) = v_plain, 'vinculo intacto';
+  -- e com arquivo comum continua trocando
+  v_ok := post_file_link_replace(a.ws, a.usr, v_link, v_plain2, 'contas/' || a.ws || '/files/p1.png');
+  assert v_ok and (select file_id from post_file_links where id = v_link) = v_plain2,
+    'replace com arquivo comum continua funcionando';
+
+  raise notice 'PASS 99_post_references (p) reference_file_not_linkable';
 end $$;
 rollback;
