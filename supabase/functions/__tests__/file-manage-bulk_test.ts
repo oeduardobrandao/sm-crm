@@ -340,3 +340,15 @@ Deno.test("zip-token: returns token and download_url for file_ids", async () => 
   assertEquals(typeof body.token, "string");
   assertEquals(typeof body.download_url, "string");
 });
+
+Deno.test("bulk-move: refuses reference files (attached_to) before the RPC", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: [{ id: 2 }], error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("POST", "/bulk-move", { file_ids: [1, 2], folder_ids: [], destination_id: 10 }));
+  assertEquals(res.status, 404);
+  assertEquals(db.calls.find((c) => c.table === "rpc:bulk_move_items"), undefined);
+  const check = db.calls.find((c) => c.table === "files" && c.operation === "select");
+  assert(check?.modifiers.some((m) => m.method === "not" && m.args[0] === "attached_to"));
+});

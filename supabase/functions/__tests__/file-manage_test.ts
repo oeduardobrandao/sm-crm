@@ -980,3 +980,60 @@ Deno.test("file-manage: POST /zip-token returns 429 when rate limited", async ()
   const body = await readJson(res);
   assertEquals(body.error, "Rate limit exceeded");
 });
+
+// ─── Client post references (files.attached_to) ─────────────────
+
+function hasAttachedToFilter(db: ReturnType<typeof createSupabaseQueryMock>) {
+  const filesSelect = db.calls.find((c) => c.table === "files" && c.operation === "select");
+  return !!filesSelect?.modifiers.some((m) =>
+    m.method === "is" && m.args[0] === "attached_to" && m.args[1] === null
+  );
+}
+
+Deno.test("file-manage: GET /folders root listing excludes reference files (attached_to)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: [], error: null });
+  db.queue("files", "select", { data: [], error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
+  const res = await makeHandler(db)(req("GET", "/folders"));
+  assertEquals(res.status, 200);
+  assert(hasAttachedToFilter(db), "root files query must filter attached_to IS NULL");
+});
+
+Deno.test("file-manage: GET /folders?parent_id also excludes reference files", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: [], error: null });
+  db.queue("files", "select", { data: [], error: null });
+  db.queue("folders", "select", { data: { id: 5, conta_id: "conta-1" }, error: null });
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 5, name: "Sub" }], error: null });
+  db.queue("folders", "select", { data: { id: 5, name: "Sub" }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
+  const res = await makeHandler(db)(req("GET", "/folders?parent_id=5"));
+  assertEquals(res.status, 200);
+  assert(hasAttachedToFilter(db), "folder files query must filter attached_to IS NULL");
+});
+
+Deno.test("file-manage: PATCH /files/:id on a reference file is 404 and never updates", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "conta-1", attached_to: "post_reference" }, error: null });
+  const res = await makeHandler(db)(req("PATCH", "/files/10", { folder_id: null, name: "x" }));
+  assertEquals(res.status, 404);
+  assertEquals(db.calls.find((c) => c.table === "files" && c.operation === "update"), undefined);
+});
+
+Deno.test("file-manage: POST /links refuses to link a reference file to a post", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", {
+    data: { conta_id: "conta-1", kind: "image", attached_to: "post_reference" },
+    error: null,
+  });
+  const res = await makeHandler(db)(req("POST", "/links", { post_id: 50, file_id: 10 }));
+  assertEquals(res.status, 404);
+  assertEquals(db.calls.find((c) => c.table === "post_file_links"), undefined);
+});

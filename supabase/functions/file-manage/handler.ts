@@ -126,6 +126,9 @@ export function createFileManageHandler(deps: FileManageDeps) {
         const filesQ = svc.from("files").select("*").eq("conta_id", contaId);
         if (parentFilter) filesQ.eq("folder_id", parentFilter);
         else filesQ.is("folder_id", null);
+        // Arquivos de referência do cliente (post_references) pertencem ao post, não à
+        // biblioteca: nunca aparecem aqui, na raiz nem numa pasta (spec 2026-10-08).
+        filesQ.is("attached_to", null);
         filesQ.order("created_at", { ascending: false });
 
         const [{ data: subfolders }, { data: files }] = await Promise.all([foldersQ, filesQ]);
@@ -463,8 +466,11 @@ export function createFileManageHandler(deps: FileManageDeps) {
       // PATCH /files/:id → rename, move, or update blur_data_url
       if (req.method === "PATCH" && idStr) {
         const fileId = Number(idStr);
-        const { data: file } = await svc.from("files").select("conta_id").eq("id", fileId).single();
-        if (!file || file.conta_id !== contaId) return json({ error: "File not found" }, 404);
+        const { data: file } = await svc.from("files").select("conta_id, attached_to").eq("id", fileId).single();
+        // Mover uma referência para uma pasta a faria aparecer em Arquivos.
+        if (!file || file.conta_id !== contaId || file.attached_to != null) {
+          return json({ error: "File not found" }, 404);
+        }
 
         const body = await req.json().catch(() => ({}));
         const patch: Record<string, unknown> = {};
@@ -534,8 +540,12 @@ export function createFileManageHandler(deps: FileManageDeps) {
         const { post_id, file_id, sort_order } = body as { post_id?: number; file_id?: number; sort_order?: number };
         if (!post_id || !file_id) return json({ error: "post_id and file_id required" }, 400);
 
-        const { data: file } = await svc.from("files").select("conta_id, kind").eq("id", file_id).single();
-        if (!file || file.conta_id !== contaId) return json({ error: "File not found" }, 404);
+        const { data: file } = await svc.from("files").select("conta_id, kind, attached_to").eq("id", file_id).single();
+        // Invariante de post_references: o files de uma referência nunca é ligado a
+        // outra tabela ("Usar no post" futuro COPIA o objeto para um files novo).
+        if (!file || file.conta_id !== contaId || file.attached_to != null) {
+          return json({ error: "File not found" }, 404);
+        }
         if (file.kind === "document") return json({ error: "Documents cannot be linked to posts" }, 400);
 
         const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", post_id).single();
@@ -633,6 +643,17 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
       if ((!file_ids || file_ids.length === 0) && (!folder_ids || folder_ids.length === 0)) {
         return json({ error: "No items to move" }, 400);
+      }
+
+      if (file_ids && file_ids.length > 0) {
+        const { data: attached, error: attachedErr } = await svc.from("files")
+          .select("id")
+          .eq("conta_id", contaId)
+          .in("id", file_ids)
+          .not("attached_to", "is", null)
+          .limit(1);
+        if (attachedErr) return internalServerError(json, "file-manage:move-attached-check", attachedErr);
+        if ((attached ?? []).length > 0) return json({ error: "File not found" }, 404);
       }
 
       const { data: result, error: rpcError } = await svc.rpc("bulk_move_items", {
