@@ -169,6 +169,7 @@ describe('PostDetailDialog references', () => {
       uploads: [
         {
           localId: 'u',
+          source: 'tab',
           name: 'v.mp4',
           fileKind: 'video',
           loaded: 1,
@@ -291,5 +292,63 @@ describe('PostDetailDialog references', () => {
     expect(await screen.findByText('1 referência anexada')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Abrir foto.jpg' }));
     expect(screen.getByRole('dialog', { name: 'foto.jpg' })).toBeInTheDocument();
+  });
+
+  it('Fechar on the composer during an upload closes without the cancel copy and cancels nothing', () => {
+    const refs = makePostReferencesStub({
+      canAdd: true,
+      uploadsInFlight: true,
+      uploads: [
+        {
+          localId: 'u',
+          source: 'composer',
+          name: 'v.mp4',
+          fileKind: 'video',
+          loaded: 1,
+          total: 2,
+          status: 'uploading',
+        },
+      ],
+    });
+    refsState.current = refs;
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderDialog();
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(refs.cancelUpload).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Corrigir/ })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('Fechar with a staged reference asks to discard, never to cancel an upload', () => {
+    const item = makeReferenceItem(7, { name: 'f7.jpg' });
+    refsState.current = makePostReferencesStub({
+      canAdd: true,
+      items: [item],
+      startUploads: vi.fn(
+        async (_files: File[], opts?: { onUploaded?: (i: typeof item) => void }) => {
+          opts?.onUploaded?.(item);
+          return [item];
+        },
+      ),
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderDialog();
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+    fireEvent.change(screen.getByTestId('reference-file-input-composer'), {
+      target: { files: [new File(['x'], 'f7.jpg', { type: 'image/jpeg' })] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith('Descartar as alterações não enviadas?');
+    expect(screen.getByRole('button', { name: 'Tirar f7.jpg da correção' })).toBeInTheDocument();
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(
+      screen.queryByRole('button', { name: 'Tirar f7.jpg da correção' }),
+    ).not.toBeInTheDocument();
+    confirm.mockRestore();
   });
 });

@@ -497,8 +497,17 @@ function PostDetailContent({
     }
   }
 
+  // Closing the composer keeps the card (and any running upload, which lands in the
+  // Referências tab), so it never uses guard()'s cancel-upload copy: only unsent composer
+  // input (text, motivo, staged references) or a failed save asks to discard.
   function closePanel() {
-    if (!guard()) return;
+    if (submitting || (dirty && !saveFailed)) return;
+    if (
+      (saveFailed || panelDirty) &&
+      !window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'))
+    )
+      return;
+    if (saveFailed) discardFailedSave();
     setPanelOpen(false);
     setPanelDirty(false);
   }

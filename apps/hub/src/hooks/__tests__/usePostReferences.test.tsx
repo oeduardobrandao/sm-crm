@@ -279,6 +279,35 @@ describe('usePostReferences', () => {
     expect(result.current.uploads).toEqual([]);
   });
 
+  it('tags each upload with its source (tab by default) and keeps it, and onUploaded, across a retry', async () => {
+    const { result } = setup({ can_add: true, items: [] });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    svc.uploadPostReference.mockReturnValueOnce(new Promise(() => {}));
+    act(() => {
+      void result.current.startUploads([file('tab.jpg')]);
+    });
+    expect(result.current.uploads[0]).toMatchObject({ name: 'tab.jpg', source: 'tab' });
+
+    svc.uploadPostReference.mockRejectedValueOnce(new PostReferenceError('internal'));
+    const onUploaded = vi.fn();
+    await act(async () => {
+      await result.current.startUploads([file('c.jpg')], { onUploaded, source: 'composer' });
+    });
+    const failed = result.current.uploads.find((u) => u.name === 'c.jpg');
+    expect(failed).toMatchObject({ status: 'error', source: 'composer' });
+    expect(onUploaded).not.toHaveBeenCalled();
+
+    const retry = deferred<ReferenceItem>();
+    svc.uploadPostReference.mockReturnValueOnce(retry.promise);
+    await act(async () => result.current.retryUpload(failed!.localId));
+    expect(result.current.uploads.find((u) => u.name === 'c.jpg')).toMatchObject({
+      status: 'uploading',
+      source: 'composer',
+    });
+    await act(async () => retry.resolve(item(6)));
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(item(6)));
+  });
+
   it('rejects invalid files and files past the 10-per-post limit without calling the server', async () => {
     const existing = Array.from({ length: 9 }, (_, i) => item(i + 1));
     const { result } = setup({ can_add: true, items: existing });

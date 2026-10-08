@@ -53,7 +53,11 @@ export function ReferencePicker({
     const files = list ? Array.from(list) : [];
     // Reset so choosing the same file again still fires change.
     if (inputRef.current) inputRef.current.value = '';
-    if (files.length > 0) void refs.startUploads(files, { onUploaded: onAdded });
+    if (files.length > 0)
+      void refs.startUploads(files, {
+        onUploaded: onAdded,
+        source: variant === 'composer' ? 'composer' : 'tab',
+      });
   }
 
   async function submitLink(input: AddReferenceLinkInput) {

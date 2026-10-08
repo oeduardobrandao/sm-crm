@@ -19,8 +19,12 @@ export const postReferencesKey = (postId: number) => ['hub-post-references', pos
 
 const MAX_CONCURRENT_UPLOADS = 2;
 
+/** Where an upload started: the correction composer lists only its own. */
+export type UploadSource = 'composer' | 'tab';
+
 export interface UploadEntry {
   localId: string;
+  source: UploadSource;
   name: string;
   fileKind: ReferenceFileKind;
   loaded: number;
@@ -72,6 +76,8 @@ export function usePostReferences(token: string, postId: number) {
   const [uploads, setUploads] = useState<UploadEntry[]>([]);
   const [freshIds, setFreshIds] = useState<number[]>([]);
   const files = useRef(new Map<string, File>());
+  /** onUploaded per entry, so a retried composer upload still reaches the composer. */
+  const uploadedCallbacks = useRef(new Map<string, (item: ReferenceItem) => void>());
   const controllers = useRef(new Map<string, AbortController>());
   /** Cancelled while running: the entry stays (and counts as in flight) until the call settles. */
   const cancelled = useRef(new Set<string>());
@@ -98,6 +104,7 @@ export function usePostReferences(token: string, postId: number) {
 
   const dropUpload = useCallback((localId: string) => {
     files.current.delete(localId);
+    uploadedCallbacks.current.delete(localId);
     controllers.current.delete(localId);
     cancelled.current.delete(localId);
     if (mounted.current) setUploads((list) => list.filter((u) => u.localId !== localId));
@@ -178,7 +185,11 @@ export function usePostReferences(token: string, postId: number) {
   };
 
   const startUploads = useCallback(
-    (list: File[], opts?: { onUploaded?: (item: ReferenceItem) => void }) => {
+    (
+      list: File[],
+      opts?: { onUploaded?: (item: ReferenceItem) => void; source?: UploadSource },
+    ) => {
+      const source = opts?.source ?? 'tab';
       const current = qc.getQueryData<ReferencesData>(key);
       let room =
         MAX_REFERENCES_PER_POST -
@@ -191,7 +202,7 @@ export function usePostReferences(token: string, postId: number) {
         const localId = nextLocalId();
         const fileKind = referenceFileKind(file) ?? 'document';
         const invalid = validateReferenceFile(file) ?? (room <= 0 ? 'reference_limit' : null);
-        const base = { localId, name: file.name, fileKind, loaded: 0, total: file.size };
+        const base = { localId, source, name: file.name, fileKind, loaded: 0, total: file.size };
         if (invalid) {
           entries.push({ ...base, status: 'error', error: invalid });
           results.push(Promise.resolve(null));
@@ -199,6 +210,7 @@ export function usePostReferences(token: string, postId: number) {
         }
         room -= 1;
         files.current.set(localId, file);
+        if (opts?.onUploaded) uploadedCallbacks.current.set(localId, opts.onUploaded);
         entries.push({ ...base, status: 'uploading' });
         results.push(
           new Promise<ReferenceItem | null>((settle) =>
@@ -243,7 +255,12 @@ export function usePostReferences(token: string, postId: number) {
       if (!file || controllers.current.has(localId)) return;
       if (queue.current.some((j) => j.localId === localId)) return;
       patchUpload(localId, { status: 'uploading', error: undefined, loaded: 0 });
-      queue.current.push({ localId, file, settle: () => undefined });
+      queue.current.push({
+        localId,
+        file,
+        settle: () => undefined,
+        onUploaded: uploadedCallbacks.current.get(localId),
+      });
       pump.current();
     },
     [patchUpload],

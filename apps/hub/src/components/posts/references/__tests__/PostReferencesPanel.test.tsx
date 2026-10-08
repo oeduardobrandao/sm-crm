@@ -220,6 +220,7 @@ describe('PostReferencesPanel', () => {
       uploads: [
         {
           localId: 'u1',
+          source: 'tab',
           name: 'video.mp4',
           fileKind: 'video',
           loaded: 24 * MB,
@@ -245,6 +246,7 @@ describe('PostReferencesPanel', () => {
       uploads: [
         {
           localId: 'big',
+          source: 'tab',
           name: 'big.mov',
           fileKind: 'video',
           loaded: 0,
@@ -254,6 +256,7 @@ describe('PostReferencesPanel', () => {
         },
         {
           localId: 'net',
+          source: 'tab',
           name: 'foto.jpg',
           fileKind: 'image',
           loaded: 0,
@@ -284,7 +287,10 @@ describe('PostReferencesPanel', () => {
     fireEvent.change(screen.getByTestId('reference-file-input-panel'), {
       target: { files: [a, b] },
     });
-    expect(refs.startUploads).toHaveBeenCalledWith([a, b], { onUploaded: undefined });
+    expect(refs.startUploads).toHaveBeenCalledWith([a, b], {
+      onUploaded: undefined,
+      source: 'tab',
+    });
   });
 
   it('disables adding at 10 references', () => {

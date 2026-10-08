@@ -154,6 +154,7 @@ describe('CorrectionPanel references', () => {
         uploads: [
           {
             localId: 'u',
+            source: 'composer',
             name: 'f9.mp4',
             fileKind: 'video',
             loaded: 1,
@@ -178,6 +179,7 @@ describe('CorrectionPanel references', () => {
         uploads: [
           {
             localId: 'u',
+            source: 'composer',
             name: 'x.svg',
             fileKind: 'document',
             loaded: 0,
@@ -191,5 +193,53 @@ describe('CorrectionPanel references', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'x.svg: Esse tipo de arquivo não é aceito. Envie foto, vídeo ou PDF.',
     );
+  });
+
+  it('starts composer uploads with the composer source', () => {
+    const refs = attachingRefs();
+    renderPanel(refs);
+    attachFile();
+    expect(refs.startUploads).toHaveBeenCalledWith(
+      [expect.any(File)],
+      expect.objectContaining({ source: 'composer' }),
+    );
+  });
+
+  it('leaves uploads started in the Referências tab out of the composer, but still waits for them', () => {
+    renderPanel(
+      makePostReferencesStub({
+        canAdd: true,
+        uploadsInFlight: true,
+        uploads: [
+          {
+            localId: 't',
+            source: 'tab',
+            name: 'aba.mp4',
+            fileKind: 'video',
+            loaded: 1,
+            total: 2,
+            status: 'uploading',
+          },
+          {
+            localId: 'te',
+            source: 'tab',
+            name: 'aba.svg',
+            fileKind: 'document',
+            loaded: 0,
+            total: 10,
+            status: 'error',
+            error: 'unsupported_type',
+          },
+        ],
+      }),
+    );
+    expect(
+      screen.queryByRole('list', { name: 'Referências desta correção' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('aba.mp4')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const send = screen.getByRole('button', { name: /Enviar correção/ });
+    expect(send).toBeDisabled();
+    expect(send).toHaveAccessibleDescription('Aguarde o envio terminar');
   });
 });

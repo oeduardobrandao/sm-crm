@@ -342,6 +342,10 @@ export function CorrectionPanel({
   const stagedItems: ReferenceItem[] = references
     ? stagedIds.flatMap((id) => references.items.filter((item) => item.id === id))
     : [];
+  // Only uploads started here belong to this correction; tab uploads still block sending.
+  const composerUploads = references
+    ? references.uploads.filter((entry) => entry.source === 'composer')
+    : [];
   const uploadsInFlight = references?.uploadsInFlight ?? false;
   const panelDirty =
     contentDirty || comentario.trim() !== '' || motivo !== null || stagedItems.length > 0;
@@ -568,7 +572,7 @@ export function CorrectionPanel({
         />
         {references && (references.canAdd || stagedItems.length > 0) && (
           <div className="space-y-2">
-            {(stagedItems.length > 0 || references.uploads.length > 0) && (
+            {(stagedItems.length > 0 || composerUploads.length > 0) && (
               <ul
                 aria-label={t('references.composer.staged', 'Referências desta correção')}
                 className="flex flex-wrap gap-1.5"
@@ -602,7 +606,7 @@ export function CorrectionPanel({
                     </li>
                   );
                 })}
-                {references.uploads.map((entry) =>
+                {composerUploads.map((entry) =>
                   entry.status === 'uploading' ? (
                     <li
                       key={entry.localId}
