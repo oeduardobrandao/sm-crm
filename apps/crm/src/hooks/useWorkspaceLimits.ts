@@ -53,6 +53,10 @@ export interface FeatureFlags {
   /** Plataformas por fluxo/cliente (spec 2026-09-29-platform-agnostic-posts). Off =
    *  seletores de plataforma escondidos e todo quadro {instagram}. */
   feature_multiplatform: boolean;
+  /** Identidade visual "Pauta" do Hub (spec 2026-10-08-hub-identidade-pauta). Optional:
+   *  read it as `features?.feature_hub_pauta === true`, never through hasFeature
+   *  (which treats a missing key as on). */
+  feature_hub_pauta?: boolean;
 }
 
 interface WorkspaceLimitsResponse {
