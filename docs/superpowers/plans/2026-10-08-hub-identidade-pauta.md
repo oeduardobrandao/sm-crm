@@ -34,7 +34,7 @@
 | 3 (parallel, after 4; Task 11 only needs 2+3) | 5 Shell chrome · 6 PageHeader + filters + Aprovações · 7 PostCalendar · 8 Post surfaces · 9 Home Pauta · 11 CRM | disjoint files (see each task's **Files**) |
 | 4 (serial) | 10 Spinners (after 5-9) · 12 Verification | 12 last |
 
-File ownership in wave 3 (no two tasks edit the same file): Task 5 owns `HubSidebar.tsx`, `HubMobileNav.tsx`, `WorkspaceMark.tsx`, `shell/pautaNav.ts`, `common.json`. Task 6 owns `PageHeader.tsx`, `filterPill.ts`, `StatusFilterChips.tsx`, `FilterDropdown.tsx`, `FloatingFilterBar.tsx`, `AprovacoesPage.tsx` (non-spinner lines). Task 7 owns `PostCalendar.tsx`. Task 8 owns `PostCard.tsx`, `PostTile.tsx`, `StoriesRail.tsx`. Task 9 owns `HomePage.tsx`, `HomePagePauta.tsx`, `pages/home/*`, `HomeAgendaPauta.tsx`, `DashboardSection.tsx`, `hubHome.json`, `hubAgenda.json`. Task 10 owns only the spinner line in 14 files; it runs **after** 5-9 finish (it touches `HomePage.tsx`, `AprovacoesPage.tsx`, `HubShell.tsx`) or is rebased onto them. Task 11 owns CRM files only.
+File ownership in wave 3 (no two tasks edit the same file): Task 5 owns `HubSidebar.tsx`, `HubMobileNav.tsx`, `WorkspaceMark.tsx`, `shell/pautaNav.ts`, `common.json`. Task 6 owns `PageHeader.tsx`, `filterPill.ts`, `StatusFilterChips.tsx`, `FilterDropdown.tsx`, `FloatingFilterBar.tsx`, `AprovacoesPage.tsx` (non-spinner lines). Task 7 owns `PostCalendar.tsx`. Task 8 owns `PostCard.tsx`, `PostTile.tsx`, `StoriesRail.tsx`. Task 9 owns `HomePage.tsx`, `HomePagePauta.tsx`, `pages/home/*`, `components/SectionHeader.tsx`, `HomeAgendaPauta.tsx`, `DashboardSection.tsx`, `hubHome.json`, `hubAgenda.json`. Task 10 owns only the spinner line in 14 files; it runs **after** 5-9 finish (it touches `HomePage.tsx`, `AprovacoesPage.tsx`, `HubShell.tsx`) or is rebased onto them. Task 11 owns CRM files only.
 
 ---
 
@@ -80,9 +80,7 @@ begin
   assert not effective_plan_feature(v_ws, 'feature_hub_pauta'), 'new workspace resolves feature_hub_pauta on';
 
   insert into workspace_plan_overrides (workspace_id, feature_overrides)
-    values (v_ws, '{"feature_hub_pauta": true}'::jsonb)
-    on conflict (workspace_id) do update
-      set feature_overrides = coalesce(workspace_plan_overrides.feature_overrides, '{}'::jsonb) || excluded.feature_overrides;
+    values (v_ws, '{"feature_hub_pauta": true}'::jsonb);
   assert effective_plan_feature(v_ws, 'feature_hub_pauta'), 'override true did not enable feature_hub_pauta';
 
   -- the new ids are accepted
@@ -202,9 +200,11 @@ Deno.test("feature_hub_pauta is false and does NOT break the response when its R
 });
 ```
 
+Also create `supabase/functions/__tests__/entitlements_feature_hub_pauta_test.ts`, the twin of `entitlements_feature_multiplatform_test.ts` (copy it and swap the key to `feature_hub_pauta`).
+
 - [ ] **Step 6: Run to verify they fail**
 
-Run: `deno test --no-check supabase/functions/__tests__/hub-bootstrap_test.ts`
+Run: `deno test --no-check supabase/functions/__tests__/hub-bootstrap_test.ts supabase/functions/__tests__/entitlements_feature_hub_pauta_test.ts`
 Expected: FAIL (`rpcCalls` 5 vs 6; `feature_hub_pauta` undefined).
 
 - [ ] **Step 7: Implement in the handler**
@@ -252,7 +252,7 @@ Run: `npx tsc -p apps/hub/tsconfig.json --noEmit` → no errors.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add supabase/migrations/20261012000001_feature_hub_pauta.sql supabase/tests/entitlements/99_hub_pauta_flag.sql supabase/functions/_shared/entitlements.ts supabase/functions/hub-bootstrap/handler.ts supabase/functions/__tests__/hub-bootstrap_test.ts apps/hub/src/types.ts
+git add supabase/migrations/20261012000001_feature_hub_pauta.sql supabase/tests/entitlements/99_hub_pauta_flag.sql supabase/functions/_shared/entitlements.ts supabase/functions/__tests__/entitlements_feature_hub_pauta_test.ts supabase/functions/hub-bootstrap/handler.ts supabase/functions/__tests__/hub-bootstrap_test.ts apps/hub/src/types.ts
 git commit -m "feat(hub): flag feature_hub_pauta no plano, no hub-bootstrap e nos CHECKs de fonte"
 ```
 
@@ -345,6 +345,14 @@ describe('readable primary (Pauta)', () => {
   it('keeps the brand color when a foreground already reaches 4.5', () => {
     expect(readablePrimary('#f97316').primary).toBe('#f97316'); // ink passes
     expect(readablePrimary('#0f766e').primary).toBe('#0f766e'); // white passes
+  });
+  it('resolveHubTheme Pauta: primary-fg on primary >= 4.5 in both modes', () => {
+    for (const hex of ['#f97316', '#0ea5e9', '#ec4899', '#f43f5e', '#8b5cf6']) {
+      for (const dark of [false, true]) {
+        const v = resolveHubTheme({ ...DEFAULT_HUB_THEME, accent: hex }, dark, 'pauta').vars;
+        expect(contrastRatio(v['--hub-primary-fg'], v['--hub-primary'])).toBeGreaterThanOrEqual(4.5);
+      }
+    }
   });
   it('darkens a mid-tone toward ink when neither foreground reaches 4.5', () => {
     const r = readablePrimary('#8b5cf6');
@@ -483,7 +491,7 @@ Also update the two allowlist tests (exact arrays, new ids appended last):
     ]);
 ```
 
-And extend the tx3 test loop to cover `PAUTA_WARM`: after the `for (const [surface, modes] of Object.entries(PALETTES))` loop add
+And extend the tx3 test to cover `PAUTA_WARM`: **inside** the `describe('surface presets: tx3 contrast (WCAG AA)')` block (where `ratio` is defined), after its `for (const [surface, modes] of Object.entries(PALETTES))` loop, add
 
 ```ts
   for (const [mode, p] of Object.entries(PAUTA_WARM)) {
@@ -1257,34 +1265,42 @@ Depends on Task 4.
 
 - [ ] **Step 1: Failing tests**
 
-In `HubSidebar.test.tsx` and `HubMobileNav.test.tsx`, add a Pauta case using each file's existing render helper with `bootstrap` extended by `feature_hub_pauta: true` (look at the helper's signature first; add an optional bootstrap-override parameter if it has none). Assertions:
+In `HubSidebar.test.tsx` (helper `renderSidebar(pathname, bootstrap = BOOTSTRAP)`) and `HubMobileNav.test.tsx` (helper `renderMobileNav(bootstrap: HubBootstrap)`), add Pauta cases. Add `within` to the mobile file's `@testing-library/react` import. Assertions:
 
 Sidebar:
 ```tsx
   it('Pauta: active item uses hub-nav-pill and the aside has no right border', async () => {
-    renderSidebar({ feature_hub_pauta: true });
+    renderSidebar('/ws/hub/tok', { ...BOOTSTRAP, feature_hub_pauta: true });
     const active = await screen.findByRole('link', { name: /início/i });
     expect(active).toHaveClass('hub-nav-pill');
     expect(document.querySelector('aside')).not.toHaveClass('border-r');
   });
   it('classic: active item keeps hub-nav-active hub-bg-soft', async () => {
-    renderSidebar();
+    renderSidebar('/ws/hub/tok');
     const active = await screen.findByRole('link', { name: /início/i });
     expect(active).toHaveClass('hub-nav-active', 'hub-bg-soft');
     expect(active).not.toHaveClass('hub-nav-pill');
   });
 ```
 
-Mobile nav:
+Mobile nav (add `import { fetchPosts } from '../../api';` next to the file's existing api mock; use the file's bootstrap constant, named `BOOTSTRAP` here):
 ```tsx
   it('Pauta: menu button shows the pending count', async () => {
-    // mock pending approvals = 2 the way the file's other tests do (usePendingApprovalsCount)
-    renderMobileNav({ feature_hub_pauta: true });
+    // usePendingApprovalsCount = fetchPosts posts filtered by enviado_cliente
+    vi.mocked(fetchPosts).mockResolvedValueOnce({
+      posts: [
+        { id: 1, status: 'enviado_cliente' },
+        { id: 2, status: 'enviado_cliente' },
+      ],
+      postApprovals: [],
+      instagramProfile: null,
+    } as never);
+    renderMobileNav({ ...BOOTSTRAP, feature_hub_pauta: true });
     const btn = await screen.findByRole('button', { name: 'Abrir menu, 2 pendências' });
     expect(within(btn).getByText('2')).toBeInTheDocument();
   });
   it('classic: no count on the menu button', async () => {
-    renderMobileNav();
+    renderMobileNav(BOOTSTRAP);
     expect(await screen.findByRole('button', { name: 'Abrir menu' })).toBeInTheDocument();
   });
 ```
@@ -1350,7 +1366,7 @@ Add `const look = useHubLook(); const pauta = look === 'pauta';`. Changes, each 
 ```
 
 - Workspace name div: `font-semibold text-[14.5px]` → in Pauta `font-display hub-display-title text-[15px]` (rest unchanged).
-- Theme button: in Pauta `w-8 h-8 flex items-center justify-center rounded-[var(--hub-r-ctl)] border hub-border hub-tx3 hover:bg-[var(--hub-soft)] transition-colors`.
+- Language and theme buttons: in Pauta both use `w-8 h-8 flex items-center justify-center rounded-[var(--hub-r-ctl)] border hub-border hover:bg-[var(--hub-soft)] transition-colors` (theme button also `hub-tx3`).
 
 - [ ] **Step 4: `HubMobileNav`**
 
@@ -1392,7 +1408,7 @@ Add `const pauta = useHubLook() === 'pauta';` and `const pendingTotal = pendingC
 ```
 
 - Drawer links: Pauta `flex items-center gap-3 px-3 py-3 rounded-[var(--hub-r-ctl)] min-h-[48px] transition-colors ${active ? 'font-semibold hub-nav-pill' : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'}`; badges as in the sidebar.
-- Drawer close and theme buttons: Pauta `rounded-[var(--hub-r-ctl)]` instead of `rounded-full`; theme button also `border hub-border`.
+- Drawer close, language and theme buttons: Pauta `rounded-[var(--hub-r-ctl)]` instead of `rounded-full`; language and theme buttons also `border hub-border`.
 
 Behaviour (focus trap, Escape, scroll lock, sentinel) untouched.
 
@@ -1600,7 +1616,7 @@ Callers: in `StatusFilterChips.tsx`, `FilterDropdown.tsx` and `AprovacoesPage.ts
 - [ ] **Step 4: Radii in filter containers**
 
 - `FloatingFilterBar.tsx:125`: replace `rounded-2xl` in the template with `${pauta ? 'rounded-[var(--hub-r-card)]' : 'rounded-2xl'}` (add `const pauta = useHubLook() === 'pauta';`).
-- `FilterDropdown.tsx:87` (popover) and `:114` (items): `rounded-[4px]` → `${pauta ? 'rounded-[var(--hub-r-ctl)]' : 'rounded-[4px]'}` on the popover and `${pauta ? 'rounded-[var(--hub-r-chip)]' : 'rounded-[4px]'}` on items.
+- `FilterDropdown.tsx:87` (popover) and `:114` (items): `rounded-[4px]` → `${pauta ? 'rounded-[var(--hub-r-chip)]' : 'rounded-[4px]'}` on items; the popover uses `${pauta ? 'rounded-[var(--hub-r-card)]' : 'rounded-[4px]'}` (not `--hub-r-ctl`, which is 999px on Pílula and would clip a 260px list).
 
 - [ ] **Step 5: Aprovações "Selecionar"**
 
@@ -1646,28 +1662,30 @@ Add to `PostCalendar.test.tsx` (use its render helper; wrap in `HubContext.Provi
 
 ```tsx
   it('Pauta: selected day uses the primary fill; today-only gets a primary ring', () => {
-    // render the current month with no posts in Pauta
-    const today = String(new Date().getDate());
-    const todayBtn = screen.getByRole('button', { name: new RegExp(`^${today}`) });
-    const chip = todayBtn.firstElementChild as HTMLElement;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00.000Z'));
+    // render the calendar with no posts inside
+    // <HubContext.Provider value={{ bootstrap: { feature_hub_pauta: true } } as never}>
+    const chip = getDayButton(18).firstElementChild as HTMLElement;
     expect(chip.style.background).toBe('var(--hub-primary)');
     expect(chip.style.color).toBe('var(--hub-primary-fg)');
-    // select another day
-    const other = new Date().getDate() === 1 ? '2' : '1';
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${other}`) }));
-    const after = todayBtn.firstElementChild as HTMLElement;
+    fireEvent.click(getDayButton(17));
+    const after = getDayButton(18).firstElementChild as HTMLElement;
     expect(after.style.boxShadow).toBe('inset 0 0 0 1.5px var(--hub-primary)');
     expect(after.style.color).toBe('var(--hub-txt)');
+    vi.useRealTimers();
   });
   it('classic: selected day keeps the accent fill', () => {
-    // same render without the flag
-    const today = String(new Date().getDate());
-    const chip = screen.getByRole('button', { name: new RegExp(`^${today}`) }).firstElementChild as HTMLElement;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00.000Z'));
+    // same render without the provider
+    const chip = getDayButton(18).firstElementChild as HTMLElement;
     expect(chip.style.background).toBe('var(--hub-acc)');
+    vi.useRealTimers();
   });
 ```
 
-(If day buttons have a different accessible name, use `getAllByRole('button').find((b) => b.getAttribute('aria-current') === 'date')` for today.)
+`getDayButton(day)` is the file's existing helper (`PostCalendar.test.tsx:33`); follow the neighbouring tests for how they render and restore timers.
 
 Run: `npx vitest run apps/hub/src/components/__tests__/PostCalendar.test.tsx` → FAIL.
 
@@ -1788,7 +1806,17 @@ Add `const pauta = useHubLook() === 'pauta';`.
 
 - [ ] **Step 4: StoriesRail**
 
-Add `const pauta = useHubLook() === 'pauta';`. The status dot (line ~48): in Pauta `style={{ background: \`var(--hub-st-${statusTone(getPostPublishState(post))}-fg)\` }}` and className `absolute bottom-0 right-0 w-3.5 h-3.5 ring-2 ring-[var(--hub-card)]` plus `style.borderRadius: 'var(--hub-r-dot)'`... keep it round: use `rounded-full` (the dot is a status marker on a circular avatar; spec says "raios do preset" for selos, and this dot sits on a ring). Final: Pauta keeps `rounded-full`, changes only the colour to the status token. The Instagram gradient ring stays (it is the platform's own affordance).
+Add `const pauta = useHubLook() === 'pauta';` and import `statusTone` from `../../lib/postView`. Only the status dot (line ~48) changes, keeping `rounded-full` and the Instagram gradient ring (the platform's own affordance):
+
+```tsx
+                style={{
+                  background: pauta
+                    ? `var(--hub-st-${statusTone(getPostPublishState(post))}-fg)`
+                    : color,
+                }}
+```
+
+This deliberately narrows the spec line "anéis/selos com os tokens de status e raios do preset" to the colour; Task 12 Step 3 records it in the spec.
 
 - [ ] **Step 5: Run + commit**
 
@@ -1808,7 +1836,8 @@ Depends on Task 4.
 **Files:**
 - Create: `apps/hub/src/pages/home/pautaHome.ts`
 - Create: `apps/hub/src/pages/home/__tests__/pautaHome.test.ts`
-- Create: `apps/hub/src/pages/home/SectionHeader.tsx`
+- Create: `apps/hub/src/components/SectionHeader.tsx`
+- Create: `apps/hub/src/pages/home/resourceLinks.ts`
 - Create: `apps/hub/src/pages/home/PautaGreeting.tsx`
 - Create: `apps/hub/src/pages/home/PautaKpiStrip.tsx`
 - Create: `apps/hub/src/pages/home/WaitingSection.tsx`
@@ -1829,7 +1858,7 @@ Depends on Task 4.
   - `weekCount(posts: { status: string; scheduled_at: string | null }[], now: Date): number`
   - `numberSections(hasPending: boolean, hasAgenda: boolean): { approvals: number | null; calendar: number; agenda: number | null; resources: number; results: number }`
   - `pad2(n: number): string`
-  - `SectionHeader({ number, label, title, action? })`
+  - `SectionHeader({ number, label, title, action? })` from `apps/hub/src/components/SectionHeader.tsx`
   - `DashboardSection({ sectionNumber?: number })`
   - `HomeAgendaPauta({ token, base, number })`
 
@@ -1981,7 +2010,7 @@ Run the helper tests → PASS.
         "publications_other": "{{count}} publicações"
       },
       "cta": { "review": "Revisar aprovações" },
-      "kpi": { "reviewNow": "Revisar agora" },
+      "kpi": { "pending": "Para aprovar", "reviewNow": "Revisar agora" },
       "section": {
         "approvals": "Aprovações",
         "calendar": "Calendário",
@@ -2016,7 +2045,7 @@ Run the helper tests → PASS.
         "publications_other": "{{count}} publications"
       },
       "cta": { "review": "Review approvals" },
-      "kpi": { "reviewNow": "Review now" },
+      "kpi": { "pending": "To approve", "reviewNow": "Review now" },
       "section": {
         "approvals": "Approvals",
         "calendar": "Calendar",
@@ -2035,11 +2064,11 @@ The Calendar section title reuses `home.calendarSection.subtitle` ("Próximas pu
 
 - [ ] **Step 4: Presentational pieces**
 
-`SectionHeader.tsx`:
+`apps/hub/src/components/SectionHeader.tsx`:
 
 ```tsx
 import type { ReactNode } from 'react';
-import { pad2 } from './pautaHome';
+import { pad2 } from '../pages/home/pautaHome';
 
 export function SectionHeader({
   number,
@@ -2196,7 +2225,7 @@ import type { HubPost } from '../../types';
 import { getClientStatusLabel, getPostCover, getTipoLabel } from '../../lib/postView';
 import { formatDate, getPlatformLabel } from '../../components/PostCard';
 import { StatusPill } from '../../components/StatusPill';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '../../components/SectionHeader';
 
 export function WaitingSection({ number, posts, base }: { number: number; posts: HubPost[]; base: string }) {
   const { t } = useTranslation('hubHome');
@@ -2259,7 +2288,7 @@ export function WaitingSection({ number, posts, base }: { number: number; posts:
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, type LucideIcon } from 'lucide-react';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '../../components/SectionHeader';
 
 export function ResourcesSection({
   number,
@@ -2311,7 +2340,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowRight, CalendarDays, ChevronRight } from 'lucide-react';
 import { hubAgendaQuery } from '../../queries';
 import { StatusPill } from '../../components/StatusPill';
-import { SectionHeader } from '../home/SectionHeader';
+import { SectionHeader } from '../../components/SectionHeader';
 import { compararInicio, quando } from './formatar';
 import { localeDe, selo, textoQuando } from './AgendaCard';
 
@@ -2420,12 +2449,12 @@ Replace the header block in the final return (the `<div className="flex justify-
       )}
 ```
 
-Import `SectionHeader` from `../../pages/home/SectionHeader`. Loading, error (`null`) and the "conecte o Instagram" state stay as they are.
+Import `SectionHeader` from `../SectionHeader`. Loading, error (`null`) and the "conecte o Instagram" state stay as they are.
 
 - [ ] **Step 7: `HomePagePauta` and the branch in `HomePage`**
 
 In `HomePage.tsx`:
-1. Export `RESOURCE_LINKS` (add `export`).
+1. Move `RESOURCE_LINKS` verbatim into `apps/hub/src/pages/home/resourceLinks.ts` (`export const RESOURCE_LINKS = [...]` with its lucide imports) and import it in `HomePage.tsx` from `./home/resourceLinks`.
 2. Add `const look = useHubLook();` with the other hooks at the top.
 3. Hoist the calendar body and the event dialog into constants **without changing their JSX**: `const calendarBody = isLoading ? (<div className="flex justify-center py-8">…spinner…</div>) : (<PostCalendar …/>);` and `const eventDialog = eventoAtual && (<HubDialog …>…</HubDialog>);` and use `{calendarBody}` / `{eventDialog}` in the classic tree where they were.
 4. Right before the classic `return (`:
@@ -2468,10 +2497,10 @@ import { HomeAgendaPauta } from './agenda/HomeAgendaPauta';
 import { PautaGreeting } from './home/PautaGreeting';
 import { PautaKpiStrip } from './home/PautaKpiStrip';
 import { ResourcesSection } from './home/ResourcesSection';
-import { SectionHeader } from './home/SectionHeader';
+import { SectionHeader } from '../components/SectionHeader';
 import { WaitingSection } from './home/WaitingSection';
 import { numberSections, weekCount } from './home/pautaHome';
-import { RESOURCE_LINKS } from './HomePage';
+import { RESOURCE_LINKS } from './home/resourceLinks';
 
 export function HomePagePauta({
   base,
@@ -2516,7 +2545,7 @@ export function HomePagePauta({
         kpis={[
           { label: t('home.kpi.postsThisMonth.label', 'Posts este mês'), value: kpis.thisMonth },
           {
-            label: t('home.kpi.pendingApprovals.label', 'Aprovações pendentes'),
+            label: t('home.pauta.kpi.pending', 'Para aprovar'),
             value: kpis.pending,
             emphasized: true,
             action:
@@ -2560,13 +2589,18 @@ export function HomePagePauta({
 }
 ```
 
-Note the circular import (`HomePagePauta` ← `HomePage` for `RESOURCE_LINKS`, `HomePage` ← `HomePagePauta` for the component). It is safe because `RESOURCE_LINKS` is only read at render time, but to be clean move `RESOURCE_LINKS` into `apps/hub/src/pages/home/resourceLinks.ts` and import it from both files instead of exporting it from `HomePage`.
+`HomePagePauta` never imports from `HomePage`, so there is no import cycle.
 
 - [ ] **Step 8: Integration test**
 
 `apps/hub/src/pages/__tests__/homePauta.test.tsx`: copy the mocks and `renderHome` from `homeCalendarRange.test.tsx` (api mock, `DashboardSection` mock returning `null`, `PostCalendar` mock). Use `vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 8, 9, 0));` in `beforeEach` and `vi.useRealTimers()` in `afterEach`. Bootstrap: `{ ...hubValue.bootstrap, feature_hub_pauta: true }`. Cases:
 
 ```tsx
+const pautaValue = {
+  ...(hubValue as object),
+  bootstrap: { ...(hubValue as { bootstrap: object }).bootstrap, feature_hub_pauta: true },
+} as never;
+
 it('greets by the hour, without italics or emoji', async () => {
   posts.mockResolvedValue({ posts: [], historyCutoff: null } as never);
   renderHome(pautaValue);
@@ -2604,10 +2638,22 @@ it('no pending: "Tudo em dia por aqui.", no Esperando você, calendar is 01', as
 
 it('with the agenda on: agenda card always present, empty state', async () => {
   posts.mockResolvedValue({ posts: [], historyCutoff: null } as never);
-  agenda.mockResolvedValue({ itens: [], next: null } as never); // match fetchAgenda's real return shape
+  agenda.mockResolvedValue({ itens: [], proximo: null } as never);
   renderHome({ ...pautaValue, bootstrap: { ...pautaValue.bootstrap, feature_agenda: true } });
   expect(await screen.findByText('02 · Agenda')).toBeInTheDocument();
   expect(await screen.findByText('Nenhum evento nos próximos dias')).toBeInTheDocument();
+});
+
+it('agenda card shows a spinner while the agenda loads', async () => {
+  posts.mockResolvedValue({ posts: [], historyCutoff: null } as never);
+  agenda.mockReturnValue(new Promise(() => {}) as never);
+  renderHome({
+    ...(pautaValue as object),
+    bootstrap: { ...(pautaValue as { bootstrap: object }).bootstrap, feature_agenda: true },
+  });
+  const card = (await screen.findByText('02 · Agenda')).closest('section') as HTMLElement;
+  expect(card.querySelector('.animate-spin')).not.toBeNull();
+  expect(within(card).queryByText('Nenhum evento nos próximos dias')).toBeNull();
 });
 
 it('while posts load: skeleton, no numbered sections', async () => {
@@ -2634,7 +2680,7 @@ Run: `npx vitest run apps/hub/src/pages` → PASS, including the untouched `cont
 Run: `npx tsc -p apps/hub/tsconfig.json --noEmit` → no errors.
 
 ```bash
-git add apps/hub/src/pages/HomePage.tsx apps/hub/src/pages/HomePagePauta.tsx apps/hub/src/pages/home apps/hub/src/pages/agenda/HomeAgendaPauta.tsx apps/hub/src/pages/__tests__/homePauta.test.tsx apps/hub/src/components/dashboard/DashboardSection.tsx packages/i18n/locales/pt/hubHome.json packages/i18n/locales/en/hubHome.json packages/i18n/locales/pt/hubAgenda.json packages/i18n/locales/en/hubAgenda.json
+git add apps/hub/src/pages/HomePage.tsx apps/hub/src/pages/HomePagePauta.tsx apps/hub/src/pages/home apps/hub/src/components/SectionHeader.tsx apps/hub/src/pages/agenda/HomeAgendaPauta.tsx apps/hub/src/pages/__tests__/homePauta.test.tsx apps/hub/src/components/dashboard/DashboardSection.tsx packages/i18n/locales/pt/hubHome.json packages/i18n/locales/en/hubHome.json packages/i18n/locales/pt/hubAgenda.json packages/i18n/locales/en/hubAgenda.json
 git commit -m "feat(hub): Início do Pauta com saudação, faixa de KPIs e seções numeradas"
 ```
 
@@ -2678,42 +2724,52 @@ Depends on Tasks 2 and 3 only.
 
 - [ ] **Step 1: Failing tests**
 
-`HubPreview.test.tsx` (use the file's `renderPreview` helper; add a `look` parameter to it):
+`HubPreview.test.tsx`: change the helper to `renderPreview(overrides: Partial<HubPreviewDraft> = {}, customized = true, look: HubLook = 'classic')` and pass `look` to `<HubPreview>`. Add:
 
 ```tsx
   it('Pauta mobile shows the floating bar with a menu button and no bottom nav', () => {
-    renderPreview({ look: 'pauta' });
+    renderPreview({}, true, 'pauta');
     fireEvent.click(screen.getByRole('button', { name: 'Celular' }));
     expect(screen.getByTestId('hub-preview-floating-bar')).toBeInTheDocument();
     expect(screen.queryByTestId('hub-preview-bottom-nav')).not.toBeInTheDocument();
   });
-  it('Pauta greets with the hour-less sample and loads Assinatura for a non-customized workspace', () => {
-    renderPreview({ look: 'pauta', customized: false });
+  it('Pauta greets and loads Assinatura for a non-customized workspace', () => {
+    renderPreview({}, false, 'pauta');
     expect(screen.getByText('Bom dia, Ana.')).toBeInTheDocument();
-    const link = document.getElementById(/* the file's GOOGLE_FONTS_LINK_ID value */ 'hub-preview-fonts') as HTMLLinkElement;
+    const link = document.getElementById('crm-hub-preview-fonts') as HTMLLinkElement;
     expect(link.href).toContain('Bricolage+Grotesque');
+    expect(link.href).toContain('Figtree');
   });
-  it('classic keeps its greeting and bottom nav', () => {
+  it('classic keeps its greeting', () => {
     renderPreview();
     expect(screen.getByText('Bem-vindo(a) de volta')).toBeInTheDocument();
   });
 ```
 
-(Read `GOOGLE_FONTS_LINK_ID` in `HubPreview.tsx` and use its value.)
-
-`HubTab.test.tsx`:
+`HubTab.test.tsx`: widen the entitlements mock type to `{ hasFeature: (f: string) => boolean; isLoading: boolean; features?: Record<string, boolean> }`, and make the `../../HubPreview` stub render `<div data-testid="hub-preview-stub" data-look={look} />` from its `look` prop (keep whatever it renders today alongside). The stubbed `HUB_DISPLAY_FONTS`/`HUB_BODY_FONTS` (2 entries each) no longer drive the option lists, which now come from the real `hubFontOptions`; don't assert on the stub's list. Add:
 
 ```tsx
-  it('hides Assinatura without the flag and shows it first with it', async () => {
-    // mock useWorkspaceLimits/useEntitlements the way the file does, features: { feature_brand_customization: true }
-    // render, open Tipografia
-    expect(screen.queryByRole('button', { name: /Assinatura/ })).toBeNull();
-    // re-render with features: { feature_brand_customization: true, feature_hub_pauta: true }
-    const cards = screen.getAllByRole('button', { pressed: false }).filter((b) => /Ag/.test(b.textContent ?? ''));
-    expect(cards[0]).toHaveTextContent('Assinatura');
+  it('shows Assinatura first and previews Pauta with the flag', async () => {
+    mockEntitlements = {
+      hasFeature: () => true,
+      isLoading: false,
+      features: { feature_brand_customization: true, feature_hub_pauta: true },
+    };
+    renderTab(); // the file's render helper
+    const group = await screen.findByRole('group', { name: 'Combinações de fontes sugeridas' });
+    expect(within(group).getAllByRole('button')[0]).toHaveTextContent('Assinatura');
+    expect(screen.getByTestId('hub-preview-stub')).toHaveAttribute('data-look', 'pauta');
   });
   it('treats a missing feature_hub_pauta key as off', async () => {
-    // features: { feature_brand_customization: true } (no key) → no Assinatura, preview look classic
+    mockEntitlements = {
+      hasFeature: () => true,
+      isLoading: false,
+      features: { feature_brand_customization: true },
+    };
+    renderTab();
+    await screen.findByRole('group', { name: 'Combinações de fontes sugeridas' });
+    expect(screen.queryByRole('button', { name: /assinatura/i })).toBeNull();
+    expect(screen.getByTestId('hub-preview-stub')).toHaveAttribute('data-look', 'classic');
   });
 ```
 
@@ -2752,46 +2808,154 @@ Import `hubFontOptions` and `type HubFontOption` from the same module `HUB_FONT_
 
 This intentionally changes the classic non-customized preview to load only the defaults the real Hub uses (spec, Fontes).
 3. `const resolved = resolveHubTheme(config, dark, look);`
-4. `const pauta = look === 'pauta';` and these Pauta-only render changes (classic JSX untouched):
-   - Sidebar: `background: pauta ? 'var(--hub-bg)' : 'var(--hub-soft)'`, `borderRight: pauta ? 'none' : '1px solid var(--hub-bd)'`; nav item `borderRadius: pauta ? 'var(--hub-r-ctl)' : 8`.
-   - Greeting: in Pauta render
+4. Create `apps/crm/src/pages/configuracao/HubPreviewPauta.tsx` (export `PreviewDims` from `HubPreview.tsx` so it can type `dims`):
 
 ```tsx
+import type { ReactNode } from 'react';
+import { Menu } from 'lucide-react';
+import type { PreviewDims } from './HubPreview';
+
+export function PautaPreviewGreeting({ dims }: { dims: PreviewDims }) {
+  return (
     <div>
-      <div style={{ fontSize: dims.kpiLabelFont, fontWeight: 600, letterSpacing: '.09em', textTransform: 'uppercase', color: 'var(--hub-tx3)' }}>
+      <div
+        style={{
+          fontSize: dims.kpiLabelFont,
+          fontWeight: 600,
+          letterSpacing: '.09em',
+          textTransform: 'uppercase',
+          color: 'var(--hub-tx3)',
+        }}
+      >
         Quinta, 8 de outubro
       </div>
-      <div style={{ fontFamily: 'var(--hub-font-display)', fontWeight: 'var(--hub-display-weight)' as never, fontSize: dims.greetingFont, lineHeight: 1.2, color: 'var(--hub-txt)', marginTop: 4 }}>
+      <div
+        style={{
+          fontFamily: 'var(--hub-font-display)',
+          fontWeight: 'var(--hub-display-weight)' as unknown as number,
+          fontSize: dims.greetingFont,
+          lineHeight: 1.2,
+          color: 'var(--hub-txt)',
+          marginTop: 4,
+        }}
+      >
         Bom dia, Ana.
       </div>
     </div>
+  );
+}
+
+export function PautaPreviewKpiRow({
+  dims,
+  kpis,
+}: {
+  dims: PreviewDims;
+  kpis: { label: string; value: string }[];
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        background: 'var(--hub-card-bg)',
+        border: '1px solid var(--hub-card-bd)',
+        borderRadius: 'var(--hub-r-card)',
+        boxShadow: 'var(--hub-shadow-card)',
+        overflow: 'hidden',
+      }}
+    >
+      {kpis.map((kpi, i) => (
+        <div
+          key={kpi.label}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: dims.kpiPad,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            borderLeft: i > 0 ? '1px solid var(--hub-bd)' : undefined,
+          }}
+        >
+          <div style={{ fontSize: dims.kpiLabelFont, color: 'var(--hub-tx3)', whiteSpace: 'nowrap' }}>
+            {kpi.label}
+          </div>
+          <div style={{ fontSize: dims.kpiValueFont, fontWeight: 700, color: 'var(--hub-txt)' }}>
+            {kpi.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const PAUTA_PILLS: { label: string; tone: 'wait' | 'ok' | 'sched' }[] = [
+  { label: 'Aguardando', tone: 'wait' },
+  { label: 'Aprovado', tone: 'ok' },
+  { label: 'Agendado', tone: 'sched' },
+];
+
+export function PautaPreviewStatusRow({ dims }: { dims: PreviewDims }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} data-testid="preview-status-pills">
+      {PAUTA_PILLS.map((pill) => (
+        <span
+          key={pill.label}
+          style={{
+            fontSize: dims.pillFont,
+            fontWeight: 600,
+            padding: dims.pillPad,
+            borderRadius: 'var(--hub-r-chip)',
+            background: `var(--hub-st-${pill.tone}-bg)`,
+            color: `var(--hub-st-${pill.tone}-fg)`,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {pill.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function PautaPreviewFloatingBar({ dims, logoMark }: { dims: PreviewDims; logoMark: ReactNode }) {
+  return (
+    <div style={{ flexShrink: 0, padding: 8 }}>
+      <div
+        data-testid="hub-preview-floating-bar"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: dims.topbarPad,
+          borderRadius: 'var(--hub-r-card)',
+          border: '1px solid var(--hub-bd)',
+          background: 'var(--hub-card)',
+        }}
+      >
+        {logoMark}
+        <span
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 'var(--hub-r-ctl)',
+            border: '1px solid var(--hub-bd)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Menu size={12} color="var(--hub-txt)" aria-hidden="true" />
+        </span>
+      </div>
+    </div>
+  );
+}
 ```
 
-   - KPI row: in Pauta a single card (`background: var(--hub-card-bg)`, `border: 1px solid var(--hub-card-bd)`, `borderRadius: var(--hub-r-card)`, `display: flex`) whose cells are the same KPI label/value divs separated by `borderLeft: 1px solid var(--hub-bd)` (no Sparkline).
-   - Status pills row: in Pauta render three chips using `var(--hub-st-wait-fg)/-bg`, `var(--hub-st-ok-fg)/-bg`, `var(--hub-st-sched-fg)/-bg` with `borderRadius: 'var(--hub-r-chip)'`.
-   - Mobile: in Pauta replace the top bar + bottom nav with
-
-```tsx
-                <div style={{ flexShrink: 0, padding: 8 }}>
-                  <div
-                    data-testid="hub-preview-floating-bar"
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: dims.topbarPad, borderRadius: 'var(--hub-r-card)',
-                      border: '1px solid var(--hub-bd)', background: 'var(--hub-card)',
-                    }}
-                  >
-                    {logoMark}
-                    <span style={{ width: 22, height: 22, borderRadius: 'var(--hub-r-ctl)', border: '1px solid var(--hub-bd)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Menu size={12} color="var(--hub-txt)" aria-hidden="true" />
-                    </span>
-                  </div>
-                </div>
-```
-
-     and do not render `hub-preview-bottom-nav` in Pauta. Classic mobile (top bar + bottom nav) is unchanged, so `HubPreview.test.tsx:159` keeps passing.
-
-If this pushes `HubPreview.tsx` well past ~950 lines, move the Pauta pieces into `apps/crm/src/pages/configuracao/HubPreviewPauta.tsx` (exported small components taking `dims`).
+5. In `HubPreview.tsx`, `const pauta = look === 'pauta';` and, with the classic JSX untouched in the `false` branches:
+   - `mainContent`: `{pauta ? <PautaPreviewGreeting dims={dims} /> : greeting}`, `{pauta ? <PautaPreviewStatusRow dims={dims} /> : statusPillsRow}`, and for KPIs `{pauta ? <PautaPreviewKpiRow dims={dims} kpis={device === 'mobile' ? KPI_STATS.slice(0, 2) : KPI_STATS} /> : <div style={{ display: 'flex', gap: dims.kpiGap }}>{kpiCards}</div>}` (KPI_STATS items have `label`/`value`; check and map if the value field is named differently).
+   - Sidebar: `background: pauta ? 'var(--hub-bg)' : 'var(--hub-soft)'`, `borderRight: pauta ? 'none' : '1px solid var(--hub-bd)'`; nav item `borderRadius: pauta ? 'var(--hub-r-ctl)' : 8`.
+   - Mobile: `{device === 'mobile' && (pauta ? <PautaPreviewFloatingBar dims={dims} logoMark={logoMark} /> : <div data-testid="hub-preview-topbar" …>…</div>)}` and render `hub-preview-bottom-nav` only when `!pauta`. Classic mobile (top bar + bottom nav) is unchanged, so `HubPreview.test.tsx:159` keeps passing.
 
 - [ ] **Step 4: Run + typecheck + commit**
 
@@ -2823,7 +2987,7 @@ Take one screenshot per look for the report.
 
 - [ ] **Step 3: Spec sync**
 
-In `docs/superpowers/specs/2026-10-08-hub-identidade-pauta-design.md`, Testes → Hub: move "`.hub-btn-primary.rounded-full` continua redondo no Pauta com raio Reto" from the Vitest list to the Navegador bullet; in i18n note that the Calendar title reuses `home.calendarSection.subtitle`, Results reuses `dashboard.title`, and `hubAgenda` gains `home.vazio`. Commit: `git commit -am "docs(hub): spec Pauta alinhada ao plano"`.
+In `docs/superpowers/specs/2026-10-08-hub-identidade-pauta-design.md`, Testes → Hub: move "`.hub-btn-primary.rounded-full` continua redondo no Pauta com raio Reto" from the Vitest list to the Navegador bullet; in i18n note that the Calendar title reuses `home.calendarSection.subtitle`, Results reuses `dashboard.title`, and `hubAgenda` gains `home.vazio` and `home.pauta.kpi.pending` ("Para aprovar"); in Componentes → `StoriesRail`, say the Pauta branch changes only the status dot colour (the gradient ring and round dot stay); in Componentes → Filtros, the dropdown popover uses `--hub-r-card`. Commit: `git commit -am "docs(hub): spec Pauta alinhada ao plano"`.
 
 - [ ] **Step 4: Before the PR**
 
