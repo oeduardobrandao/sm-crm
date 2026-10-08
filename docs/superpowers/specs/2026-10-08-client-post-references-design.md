@@ -1,7 +1,7 @@
 # Referências do cliente no post (Hub → editor do post)
 
 Date: 2026-10-08
-Status: design approved by the user (mockups + four decisions), pending Fable review
+Status: design approved by the user (mockups + four decisions); revised after Fable and Codex reviews (2026-10-08)
 Mockups: https://claude.ai/artifact/6VVsAAMQz99mTAV3jw94KC
 
 ## Problem
@@ -28,8 +28,13 @@ sees them in the CRM post editor, next to the post's own media, and is notified.
 - Team-added references. The team already has post media and Arquivos.
 - Attachments on plain comments (`mensagem`). Only the correction composer and the
   Referências tab attach.
-- References showing up in Arquivos. They are owned by the post, like ideia images.
+- References showing up in Arquivos. They are owned by the post (see `files.attached_to`).
 - Cloudflare Stream for reference videos (decision 3).
+- Copying references on "Duplicar post" / "Duplicar fluxo"
+  (`20261002000020_duplicate_post.sql` copies `post_file_links` only). References belong
+  to the client's round of review, not to the content.
+- Reference chips in `HistoryDrawer.tsx` (the workflow history drawer). Only the post
+  editor's comment thread shows them.
 
 ## Decisions (approved 2026-10-08)
 
@@ -37,8 +42,14 @@ sees them in the CRM post editor, next to the post's own media, and is notified.
    `workflow_posts.status = 'enviado_cliente'` (the same gate as Corrigir /
    `hub-edit-suggestion`). In any other client-visible status the list is read-only.
 2. **Client removal.** A client may remove (or edit the note of) a reference while the
-   write gate holds AND no team reply exists after it: no `post_approvals` row with
-   `is_workspace_user = true` for the post with `created_at > reference.created_at`.
+   write gate holds AND the team has not acted on the post since the reference was added:
+   - no `post_approvals` row for the post with `is_workspace_user = true` and
+     `created_at > reference.created_at` (an explicit team reply), and
+   - no `post_status_events` row for the post with `source <> 'client'` and
+     `created_at > reference.created_at` (a team re-send, which writes no approval row).
+   The second clause keeps round-1 references locked when the team sends a new version back
+   to `enviado_cliente`. `post_approvals.created_at` is nullable; NULL rows never lock
+   (comment this in the SQL). Call this predicate **`can_remove`**.
 3. **Video.** Stored as a plain R2 file, never copied to Cloudflare Stream. Thumbnail
    (poster) generated in the browser. 200 MB cap. Images and PDFs 25 MB.
 4. **Links.** v1 stores URL, optional title, optional note, and shows the domain. No fetch.
@@ -66,7 +77,6 @@ CREATE TABLE post_references (
   id               bigserial PRIMARY KEY,
   post_id          bigint NOT NULL,
   conta_id         uuid   NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  cliente_id       bigint NOT NULL,           -- the post's client at insert time (Hub filter)
   kind             text   NOT NULL CHECK (kind IN ('file', 'link')),
   file_id          bigint,
   url              text,
@@ -83,7 +93,10 @@ CREATE TABLE post_references (
     (kind = 'file' AND file_id IS NOT NULL AND url IS NULL AND link_title IS NULL) OR
     (kind = 'link' AND file_id IS NULL AND url IS NOT NULL)),
   CONSTRAINT post_references_url_shape CHECK (
-    url IS NULL OR (char_length(url) <= 2048 AND url ~* '^https?://'))
+    url IS NULL OR (
+      char_length(url) <= 2048
+      AND url ~* '^https?://[^/?#@[:space:]]+([/?#]|$)'   -- scheme + non-empty host, no userinfo
+      AND url !~ '[[:space:][:cntrl:]]'))
 );
 CREATE INDEX post_references_post_idx ON post_references (post_id, created_at);
 CREATE UNIQUE INDEX post_references_file_uq ON post_references (file_id) WHERE file_id IS NOT NULL;
@@ -96,15 +109,34 @@ The composite FKs reuse `workflow_posts_id_conta_uq` (20260820000002) and
 There is no composite FK for `post_approval_id`; the linking step (below) enforces
 `post_approvals.post_id = post_references.post_id`.
 
-**RLS.** Enabled. `SELECT` for `conta_id IN (SELECT get_my_conta_id())` (the CRM drawer
-badge reads counts directly). No INSERT/UPDATE/DELETE policy for `authenticated`: every
-write goes through an edge function using the service role. Service-role bypass policy as
-in `ideia_files`. Before relying on table grants, confirm in the migration that
-`authenticated` holds SELECT (default privileges) and `anon` holds nothing (revoke
-explicitly; see memory on REVOKE FROM PUBLIC).
+There is no `cliente_id` column: the client is always read through the post's own
+`workflow_posts.cliente_id` (the same ownership check `hub-approve` does). A denormalised
+copy would silently drift when the reserved "move post to another client" RPC
+(`20260830000001_workflow_posts_cliente_id.sql`) lands.
+
+The URL CHECK is a coarse backstop (scheme, a host with no `user:pass@`, no whitespace or
+control characters, length). The handler is authoritative for URL policy (below).
+
+**RLS and grants.** RLS enabled. `SELECT` policy for `conta_id IN (SELECT
+get_my_conta_id())` (the CRM drawer badge reads counts directly). No INSERT/UPDATE/DELETE
+policy for `authenticated`: every write goes through an edge function using the service
+role. Service-role bypass policy as in `ideia_files`. Explicit grants, following
+`20261009000001_instagram_automation_contacts.sql`: `REVOKE ALL ON post_references FROM
+PUBLIC, anon, authenticated; GRANT SELECT ON post_references TO authenticated; GRANT ALL
+ON post_references TO service_role;` plus the sequence grant for `service_role`.
+
+**`files.attached_to` (new column).** `text NULL CHECK (attached_to IN
+('post_reference'))`. Set to `'post_reference'` on every file a reference creates. Today
+`file-manage` GET lists every `folder_id IS NULL` file at the Arquivos root
+(`file-manage/handler.ts:126-128`), so without this the reference files would appear
+there, undeletable (`reference_count > 0`) and labelled as used by "posts e relatórios".
+The root listing adds `.is('attached_to', null)`. The plan must grep every other place
+that lists `files` rows to the CRM (file-manage search/size endpoints, storage usage UI,
+report image picker) and apply the same filter. Ideia images have the same wart today;
+fixing them is out of scope.
 
 **`files` rows.** File references reuse `files` for quota, thumbnails and R2 cleanup:
-`folder_id NULL` (not a file-manager asset), `uploaded_by NULL` (Hub upload),
+`folder_id NULL`, `attached_to = 'post_reference'`, `uploaded_by NULL` (Hub upload),
 `kind` from MIME (`image | video | document`), `duration_seconds` for video,
 `thumbnail_r2_key` required for image and video (the existing
 `files_video_requires_thumbnail` CHECK already enforces video), none for PDF.
@@ -115,10 +147,13 @@ Keys follow the ideia pattern: `contas/{conta}/files/{uuid}.{ext}` and
 `files` row with `kind = 'video' AND stream_uid IS NULL AND stream_status IS NULL OR
 'pending'` older than 10 minutes. Reference videos must not match: extend the
 `files.stream_status` CHECK (20260814000002) to allow `'skipped'` and insert reference
-videos with `stream_status = 'skipped'`. The plan must grep every reader of
-`files.stream_status` (CRM playback, `file-manage`, Stream webhook, settle/reap sweeps)
-and confirm `'skipped'` falls through to plain R2 playback or is ignored, never treated as
-an error or retried.
+videos with `stream_status = 'skipped'`. Verified in review: ingest
+(`stream-steps.ts:137-140`) matches only NULL/`pending`, settle (`:206`) and the webhook
+(`stream-webhook/handler.ts:87-89`) only `pending`, and every playback reader
+(`post-media-manage`, `hub-posts`, `file-manage`) tests `=== 'ready'` and falls back to
+R2. No cron redeploy needed. The partial index `files_stream_ingest_idx`
+(`kind='video' AND stream_uid IS NULL`) will carry reference videos; harmless, left as is.
+The CHECK change is forward-only: a rollback keeps the expanded CHECK (see Rollout).
 
 **Triggers.**
 - `file_update_reference_count()` AFTER INSERT/DELETE on `post_references`, only when
@@ -140,27 +175,39 @@ copies the object to a new key and a new `files` row.
 
 - `post_reference_file_insert(p jsonb) RETURNS post_references`: locks the post row
   (`SELECT … FROM workflow_posts WHERE id = p.post_id AND conta_id = p.conta_id AND
-  cliente_id = p.cliente_id FOR UPDATE`), raises `post_not_found`, `post_not_pending`
+  cliente_id = p.cliente_id FOR UPDATE`; `cliente_id` comes from the Hub token), raises
+  `post_not_found`, `post_not_pending`
   (status ≠ `enviado_cliente`), `reference_limit` (≥ 10 rows), `quota_exceeded`
   (same plan-quota logic as `ideia_file_insert_with_quota`, charges `size_bytes` only),
-  inserts `files` (with `stream_status = 'skipped'` for video) and the reference, charges
-  `storage_used_bytes`.
+  inserts `files` (with `attached_to = 'post_reference'`, and `stream_status = 'skipped'`
+  for video) and the reference, charges `storage_used_bytes`.
 - `post_reference_link_insert(p jsonb) RETURNS post_references`: same lock and gate,
   limit check, inserts a `link` row. URL already validated by the handler; the CHECK is
   the backstop.
+- `post_reference_client_update(p_id bigint, p_conta uuid, p_cliente bigint, p_note text)`
+  and `post_reference_client_delete(p_id bigint, p_conta uuid, p_cliente bigint)`, both
+  `RETURNS text` (`'ok' | 'not_found' | 'locked'`): lock the post row `FOR UPDATE` (the
+  same lock `record_client_approval` and the team's status changes take), return
+  `not_found` when the reference does not exist or its post is not the token's
+  client/workspace, `locked` when `can_remove` (decision 2) is false, else apply. Doing
+  the check and the write under the post lock makes note edits and deletes race-safe
+  against a team reply or re-send.
 - `create_post_reference_notification(p_post_id bigint) RETURNS integer`: targets from
   `resolve_notification_targets(conta, responsavel_id, ARRAY['owner','admin'])` (same as
   edit suggestions), link `/entregas?post=` or `/entregas?drawer=` (same CASE), metadata
   `{client_name, post_title, workflow_id, post_id}`. **Coalesces:** skips a target who
   already has an unread `post_client_reference` notification with the same `post_id`
-  created in the last 15 minutes, so ten uploads in a row make one notification.
+  created in the last 15 minutes, so ten uploads in a row make one notification. The
+  dedupe runs per target inside this RPC before calling `insert_notification_batch`
+  (the batch helper has no dedupe).
 
 ### Notification type
 
 New type `post_client_reference`. Copy the latest `notifications_type_check` and
 `notification_inapp_prefs_type_check` definitions (currently
-`20261008000002_agenda_convidados.sql`; re-check for a newer one at implementation time)
-and append it. Not added to e-mail prefs (no e-mail in v1). CRM:
+`20261008000002_agenda_convidados.sql:122-147`; re-check for a newer one at implementation
+time) and append it. Not added to e-mail prefs; `claim_notification_emails` has its own
+type allowlist, so no e-mail goes out. CRM:
 `store/notifications.ts` union, `lib/notification-config.ts` case
 (icon `Paperclip`, text "{cliente} enviou referências em {post}"), and the in-app
 preferences list label "Referências do cliente".
@@ -169,22 +216,26 @@ preferences list label "Referências do cliente".
 
 ### `hub-post-references` (new, Hub token, deploy `--no-verify-jwt`)
 
-Auth exactly like `hub-ideias`: `resolveHubToken`, bad-token limiter
-(`hub-badtoken:{ip}` 30/600s), CORS via `buildCorsHeaders`. Ownership is the post's own
-`cliente_id`/`conta_id` against the token (works for avulso posts), as in `hub-approve`.
+Token auth like `hub-ideias`: `resolveHubToken` (which also enforces
+`feature_hub_portal`), bad-token limiter (`hub-badtoken:{ip}` 30/600s), CORS via
+`buildCorsHeaders`. Ownership is the post's own `cliente_id`/`conta_id` against the token
+(works for avulso posts), as in `hub-approve`. R2 HEAD uses `headObjectSigned`, never
+`headObject` (`getR2().send()` hangs in edge functions), wired as in `hub-ideias/index.ts`.
 
-Rate limits: GET debits `hub-read:{conta}:{cliente}` (300/300s). Every write debits ONLY
-`hub-write:hub-post-references:{conta}:{cliente}`, 60 per 3600s (one file = presign +
-finalize = 2). Writes do not debit `hub-read` (memory: writes must not debit hub-read).
+Rate limits follow `hub-edit-suggestion/handler.ts:77-85`, not `hub-ideias` (which debits
+`hub-read` on writes too): GET debits `hub-read:{conta}:{cliente}` (300/300s); every write
+debits ONLY `hub-write:hub-post-references:{conta}:{cliente}`, **120 per 3600s**. A file
+costs 2 (presign + finalize), "Salvar nota" is an explicit button (not autosave) costing 1,
+so ten files with notes on one post spend 30.
 
 | Route | Body | Behaviour |
 |---|---|---|
-| `GET ?token&post_id` | | 404 unless the post is owned and in `HUB_VISIBLE_STATUSES` (share the constant with `hub-approve`). Returns `{ can_add, items: [...] }`; each item `{id, kind, name, mime_type, size_bytes, duration_seconds, width, height, url, thumbnail_url, link_url, link_title, link_domain, note, post_approval_id, created_at, can_remove}`; signed GET URLs 3600s. `can_add` = status gate and count < 10. `can_remove` per decision 2. |
-| `POST /upload-url` | `post_id, filename, mime_type, size_bytes, thumbnail?{mime_type,size_bytes}` | Ownership + `enviado_cliente` + best-effort count and quota (authoritative in RPC). MIME allowlist and per-kind size caps. Thumbnail required (webp ≤ 512 KB) for image/video, forbidden for PDF. Returns presigned PUT URLs. |
+| `GET ?token&post_id` | | **Ownership only**, like `hub-post-history` (no status gate): a post can stay client-visible "em produção" in an internal status after a send, and references only exist on posts the client was sent, so there is nothing to hide. Returns `{ can_add, items: [...] }`; each item `{id, kind, name, mime_type, size_bytes, duration_seconds, width, height, url, thumbnail_url, link_url, link_title, link_domain, note, post_approval_id, created_at, can_remove}`; signed GET URLs 3600s. `can_add` = status `enviado_cliente` and count < 10. `can_remove` per decision 2. |
+| `POST /upload-url` | `post_id, filename, mime_type, size_bytes, thumbnail?{mime_type,size_bytes}` | Ownership + `enviado_cliente` + best-effort count and quota (authoritative in RPC). MIME allowlist and per-kind size caps. Thumbnail required (webp ≤ 512 KB) for image/video, forbidden for PDF. Returns presigned PUT URLs (900s). |
 | `POST /files` | `post_id, r2_key, thumbnail_r2_key?, mime_type, size_bytes, thumbnail_bytes?, name, width?, height?, duration_seconds?, blur_data_url?, note?` | Prefix check `contas/{conta}/files/`, HEAD both objects (size and content-type match, as `finalizeIdeiaImage`), RPC insert, then notification RPC (failure logged, not fatal). Returns the item shape. |
-| `POST /links` | `post_id, url, title?, note?` | Normalise: trim, prepend `https://` when no scheme, `new URL()` must parse, `http`/`https` only, no credentials, ≤ 2048 (reuse `_shared/safe-href.ts`). RPC insert, notification. |
-| `PATCH /:id` | `note` | Allowed when `can_remove` holds; trims, ≤ 500, empty → NULL. |
-| `DELETE /:id` | | Allowed when `can_remove` holds. Single statement with the gate inside the WHERE (status and no-later-team-reply via EXISTS) so a race with the team's reply cannot delete. Returns 409 when the gate fails. |
+| `POST /links` | `post_id, url, title?, note?` | Authoritative URL policy: trim; prepend `https://` when there is no scheme; reject control characters and whitespace (`CONTROL_OR_SPACE` from `_shared/safe-href.ts`); `new URL()` must parse as an absolute URL; protocol `http:` or `https:`; `username` and `password` empty; non-empty hostname; ≤ 2048. (`isSafeHref` alone is not enough: it accepts relative paths and credentials.) RPC insert, notification. |
+| `PATCH /:id` | `note` | Trims, ≤ 500, empty → NULL, then `post_reference_client_update`. `not_found` → 404, `locked` → 409. |
+| `DELETE /:id` | | `post_reference_client_delete`. `not_found` → 404, `locked` → 409. |
 
 Known RPC errors map to 404/409/413 with generic client copy; anything else logs and
 returns 500 "internal error" (security rule: no raw DB errors to clients).
@@ -192,23 +243,29 @@ returns 500 "internal error" (security rule: no raw DB errors to clients).
 ### `post-references` (new, CRM, JWT)
 
 Same auth shape as `ideia-media-manage` (service-role client + `getUser`, conta from
-`profiles`). Every query filters `conta_id`.
+`profiles.conta_id`, 403 when NULL as it does). Every query filters `conta_id`.
 
-- `GET ?post_id` → same item shape (signed URLs), plus `download_url` per file signed with
-  `ResponseContentDisposition: attachment; filename="<name>"` (add an optional
-  `downloadName` argument to `_shared/r2.ts` `signGetUrl`; RFC 5987 encode the name).
-- `DELETE /:id` → team removal. Requires the same permission as editing the post
-  (`hasPermissionFor`, the one `post-media-manage` uses for media removal). Frees quota
-  through the orphan trigger.
+- `GET ?post_id` → same item shape (signed URLs), plus `download_url` for `kind = 'file'`
+  only (links have none), signed with `ResponseContentDisposition: attachment;
+  filename*=UTF-8''<name>` (add an optional `downloadName` argument to `_shared/r2.ts`
+  `signGetUrl`, which has no disposition today).
+- `DELETE /:id` → team removal. Requires `hasPermissionFor(db, user.id, conta_id,
+  'entregas', 'editar')`, the pattern in `ideia-media-manage/handler.ts` (the CRM mirror is
+  `can('entregas','editar')` in `WorkflowDrawer.tsx`). This is stricter than post media
+  deletion, which is membership-only through RLS; deliberate, since references are the
+  client's material. Frees quota through the orphan trigger.
 
 ### `hub-approve` (changed)
 
-Accepts optional `reference_ids: number[]` (≤ 10, integers) on `action = 'correcao'`.
-After `record_client_approval` returns the approval id, one UPDATE:
+Accepts optional `reference_ids` on `action = 'correcao'`: validated as an array of
+positive safe integers, deduped, at most 10, before any DB call (400 otherwise). The
+handler must start reading `data` from `record_client_approval` (it discards it today);
+the RPC returns the approval id and holds the post lock, so a concurrent finalize either
+committed before it or 409s after. Then one UPDATE:
 `post_references SET post_approval_id = :approval WHERE id = ANY(:ids) AND post_id = :post
-AND conta_id = :conta AND cliente_id = :cliente AND post_approval_id IS NULL`.
-Failure is logged, not fatal: the correction stands and the references stay post-level.
-Ignored for `aprovado`/`mensagem`.
+AND conta_id = :conta AND post_approval_id IS NULL` (the post's ownership was already
+checked against the token). Failure is logged, not fatal: the correction stands and the
+references stay post-level. Ignored for `aprovado`/`mensagem`.
 
 ### Unchanged on purpose
 
@@ -245,7 +302,9 @@ reusing the ideia helpers; video: first-frame webp via the CRM's `utils/videoFra
 moved to a shared package or duplicated if it has CRM-only deps; when frame capture fails,
 e.g. HEVC in Chrome, draw a neutral poster with a play glyph so the
 `files_video_requires_thumbnail` CHECK still holds), presign, XHR PUT with progress and
-abort, finalize. The whole upload promise is wrapped in `trackUnsavedWork`. Rows show
+abort, finalize. The whole upload promise is wrapped in `trackUnsavedWork` with a
+`maxMs` above its 30-minute default for videos (200 MB at 1 Mbps is ~27 min). A retry
+after a failed PUT always asks for a fresh presign (PUT URLs live 900s). Rows show
 "Enviando X MB de Y MB. Não feche esta tela." with a progress bar and a cancel button
 (abort; the orphan scan reaps half-uploaded keys). After finalize the row expands the note
 field "O que mudar com isso? (opcional)" with "Salvar nota". Inputs are 16px on phones.
@@ -256,8 +315,11 @@ two at a time.
 `inputmode="url"`, hint "Vamos completar com https:// se faltar."), "Título (opcional)",
 "O que a equipe deve ver aqui? (opcional)", submit "Adicionar link".
 
-**Approve while uploading.** "Aprovar" is disabled while any reference upload for the post
-is in flight: approval moves the post out of `enviado_cliente` and the finalize would 409.
+**Submitting while uploading.** "Aprovar" and "Enviar correção" are both disabled while
+any reference upload for the post is in flight: either action moves the post out of
+`enviado_cliente` (`hub-approve` → `aprovado_cliente` / `correcao_cliente`), and the
+pending finalize would 409 and lose the file and its staged chip. The disabled buttons
+carry the hint "Aguarde o envio terminar".
 
 **Correction composer.** `CorrectionPanel`'s "Solicitar correção" section gains
 "Anexar referência" (paperclip) under the comment, opening the same picker. Each file or
@@ -267,8 +329,9 @@ delete). "Enviar correção" sends `reference_ids` with the correction. Helper l
 referências anexadas também ficam na aba Referências deste post." Staged ids are dropped
 if their upload fails or the item is removed.
 
-**History.** `PostHistoryPanel` renders, under a client correction bubble, 72px tiles for
-the references whose `post_approval_id` matches, plus "N referências anexadas".
+**History.** `apps/hub/src/components/PostHistoryPanel.tsx` renders, under a client
+correction bubble, 72px tiles for the references whose `post_approval_id` matches, plus
+"N referências anexadas".
 
 **Errors (inline, `role="alert"`).**
 - "O vídeo tem {n} MB e o limite é 200 MB. Envie uma versão menor ou um link." (and the
@@ -281,7 +344,8 @@ the references whose `post_approval_id` matches, plus "N referências anexadas".
 - Generic: "Algo deu errado. Tente novamente."
 
 All copy pt-BR, sentence case, no em dashes (add a test asserting no "—" in the new
-strings). New keys go through the Hub's i18n `t()` like the rest of the dialog.
+strings). New keys go through the Hub's i18n `t()` like the rest of the dialog, in
+`packages/i18n/locales/{pt,en}/hubPosts.json` under a `references` group.
 
 ## CRM UI (`apps/crm`)
 
@@ -293,9 +357,10 @@ state). Loads via `post-references` GET when the editor mounts (TanStack Query k
 image thumbnail, video poster with play and duration, PDF tile, link tile with domain.
 Under each: name (link title linked, `sanitizeUrl`, new tab), note, "Cliente · {data}"
 plus size, and a warning Badge "Na correção" when `post_approval_id` is set. Hover/focus
-overlay: "Abrir" (viewer dialog for image/video, new tab for PDF/link), "Baixar"
+overlay for files: "Abrir" (viewer dialog for image/video, new tab for PDF), "Baixar"
 (`download_url`), and a trash "Excluir referência" behind an AlertDialog "Excluir
-referência?" (confirm "Excluir"). Works in both hosts (`WorkflowDrawer`,
+referência?" (confirm "Excluir"); the trash only renders with `entregas`/`editar`. Links
+get "Abrir" (new tab) and the trash, never "Baixar". Works in both hosts (`WorkflowDrawer`,
 `StandalonePostDrawer`) since both render `PostEditorBody`. Dark mode via the existing
 tokens.
 
@@ -327,26 +392,38 @@ above; clicking navigates by the existing `link`.
 - **Deno** (`supabase/functions/__tests__/` or alongside, following the repo's layout):
   `hub-post-references` routes (token, ownership, avulso post, status gate, cap, quota,
   MIME/size rejection, thumbnail rules, HEAD mismatch, link normalisation and rejection,
-  `can_remove` after a team reply, write limiter key, no `hub-read` debit on writes);
+  `can_remove` after a team reply and after a team re-send, PATCH/DELETE 404 vs 409,
+  write limiter key, no `hub-read` debit on writes, GET on an "em produção" post);
   `post-references` (auth, conta filter, permission on delete, download disposition);
   `hub-approve` with `reference_ids` (links only own, unlinked, same-post ids; ignored for
   other actions; link failure non-fatal). Run `npm run check:functions` too.
 - **SQL** (`supabase/tests/entitlements/`, CI-gated): RLS isolation of `post_references`
-  across workspaces; anon has no access; RPC gate/cap/quota errors; orphan trigger deletes
+  across workspaces; anon has no access; RPC gate/cap/quota errors; client update/delete
+  RPCs return `locked` once a team reply or non-client status event exists; URL CHECK
+  rejects `user:pass@`, whitespace and empty hosts; orphan trigger deletes
   the `files` row and refunds quota; post delete cascades; `stream_status = 'skipped'`
   accepted and excluded from the ingest predicate.
 - **Vitest**: Hub tab visibility rules, list states, upload progress/cancel, approve
   disabled during upload, correction staging sends `reference_ids`, error copy; CRM
-  section render, "Na correção" badge, bubble chips, drawer badge; no em dash in new copy.
+  section render, "Na correção" badge, bubble chips, drawer badge, no "Baixar" on links,
+  trash hidden without `entregas`/`editar`; "Enviar correção" disabled during upload;
+  no em dash in new copy. Deno: `file-manage` root listing excludes `attached_to` files.
 - **Browser**: Hub at :5175 against a seeded post (phone and desktop), CRM editor
   section, light and dark.
 
 ## Rollout
 
+**Rollback.** The migration is forward-only. Reverting the frontend and functions leaves
+the table, the `attached_to` column and the expanded `stream_status` CHECK in place; a
+down-migration must keep the `'skipped'` value in the CHECK while any reference video
+exists (or delete the references first, which cascades through the orphan trigger and
+frees the R2 objects). If the reverted `file-manage` no longer filters `attached_to`,
+reference files would reappear at the Arquivos root, so revert `file-manage` last.
+
 Migration and both new functions deploy before merging (merge deploys the frontend):
 `db push` (staging, then prod), deploy `hub-post-references` (`--no-verify-jwt`),
-`post-references`, `hub-approve`, and redeploy `post-media-cleanup-cron` only if the plan
-finds it needs a change for `'skipped'` (the CHECK change alone does not require it).
+`post-references`, `hub-approve`, `file-manage` (the `attached_to` filter). No
+`post-media-cleanup-cron` redeploy: `'skipped'` needs only the CHECK change.
 Add `hub-post-references` to the CLAUDE.md `--no-verify-jwt` list.
 
 ## Open risks
