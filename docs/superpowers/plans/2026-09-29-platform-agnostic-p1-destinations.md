@@ -40,6 +40,13 @@
    - `z8` (`AFTER UPDATE OF workflow_id`): a post with no Instagram/TikTok target that changes board (moved, attached, detached) gets the new board's Instagram/TikTok entries (TikTok never on stories) and `platform` is re-derived. A move never removes destinations.
    - `post_targets_sync_platform` also fires on `UPDATE OF post_id` and re-derives both the old and the new post.
 10. **Review fixes outside the original task list.** Migration `20261010100004_move_new_flow_platforms.sql` copies `move_posts_to_new_flow` forward so the new board inherits the source's `plataformas` (it defaulted to `{instagram}`, and `z8` then gave Geral posts an Instagram destination). `a2` also ignores legacy `platform` writes on Express posts, and `PlatformSelector` hides for them (sections 10 and 11 of `99_post_targets.sql`).
+11. **Feature flag `feature_multiplatform` (added 2026-10-08 on request).** P1 ships dark, the same way `feature_agenda` did.
+   - Migration `20261010100007_feature_multiplatform.sql` adds `plans.feature_multiplatform boolean NOT NULL DEFAULT false` and an `a0` BEFORE INSERT/UPDATE trigger on `workflows.plataformas`, `workflow_templates.plataformas` and `clientes.plataformas_padrao`. Without the flag (`effective_plan_feature`) any value other than `{instagram}` raises `feature_disabled:feature_multiplatform`. An UPDATE is checked only when the column's value changes. A copy (`duplicate_workflow`, `move_posts_to_new_flow`) of a non-`{instagram}` board in a workspace that lost the flag raises too; accepted for the pilot.
+   - Flag off: every board is `{instagram}`, so the `post_targets` triggers behave as before P1 and the per-post `PlatformSelector` (TikTok) keeps working through `a2`.
+   - CRM: `usePlatformChipsVisible(value)` gates the field in the wizard, Editar fluxo, Templates and Editar cliente. Hidden without the flag unless the value is already not `{instagram}` (so a workspace that lost the flag can go back). The wizard ignores a template's `plataformas` and creates `{instagram}` without the flag.
+   - Registered in `FEATURE_COLUMNS`, the Admin `api.ts` mirror (type, keys, label "Plataformas por fluxo"), `useWorkspaceLimits` and `entitlement-errors.ts`. Section 14 of `99_post_targets.sql` covers the flag off; sections 1-13 turn it on inside their own transaction.
+   - Enable per workspace: Admin override `{"feature_multiplatform": true}`. Launch = turn the plan columns on.
+   - Not flagged: the Express pin (deviation 8) and P0's neutral format labels (#605).
 
 ## Global Constraints
 
@@ -47,7 +54,7 @@
 - **Migration versions:**
   - Use `20261010100001`, `20261010100002`, `20261010100003` and `20261010100004` (the last one added in review, deviation 10).
   - Renumbered on 2026-10-05 from `20260929100001..4` to sit above main's tail (`20261004000001`). `20261010100005` (`duplicate_workflow` keeps `plataformas`) and `20261010100006` (`_clone_post_row` keeps the source post's destinations) were added in the same rebase sync.
-  - Renumbered again on 2026-10-08 from `20261005100001..6` to `20261010100001..6`, above main's tail at the time (`20261009000002`). None of main's migrations from `20261003000001` to `20261009000002` touch the objects P1 copies forward.
+  - Renumbered again on 2026-10-08 from `20261005100001..6` to `20261010100001..6` (`20261010100007`, the flag, was added the same day), above main's tail at the time (`20261009000002`). None of main's migrations from `20261003000001` to `20261009000002` touch the objects P1 copies forward.
   - Before `gh pr create`, run `ls supabase/migrations | tail -5`. If main has anything at or above these numbers, renumber above main's tail. Every version prefix must be unique.
 - **Allowed values:**
   - Platform ids stored in SQL: exactly `'instagram'`, `'tiktok'`, `'geral'` (the registry's `PLATFORM_IDS`).

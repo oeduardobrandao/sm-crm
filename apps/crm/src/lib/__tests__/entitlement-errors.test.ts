@@ -49,3 +49,13 @@ describe('mapEntitlementError feature_agenda', () => {
     });
   });
 });
+
+describe('mapEntitlementError feature_multiplatform', () => {
+  it('rotula feature_multiplatform em português', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_multiplatform' })).toEqual({
+      kind: 'feature',
+      key: 'feature_multiplatform',
+      label: 'Plataformas por fluxo',
+    });
+  });
+});

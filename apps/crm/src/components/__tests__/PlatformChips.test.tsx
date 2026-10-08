@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { PlatformChips } from '../PlatformChips';
+import { render, renderHook, screen, fireEvent } from '@testing-library/react';
+import { PlatformChips, usePlatformChipsVisible } from '../PlatformChips';
 
+const limitsFeatures = vi.hoisted(() => ({
+  current: { feature_tiktok: false } as Record<string, boolean> | undefined,
+}));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
-  useWorkspaceLimits: () => ({ features: { feature_tiktok: false } }),
+  useWorkspaceLimits: () => ({ features: limitsFeatures.current }),
 }));
 
 describe('PlatformChips', () => {
@@ -33,5 +36,36 @@ describe('PlatformChips', () => {
   it('keeps TikTok visible when the value already has it', () => {
     render(<PlatformChips value={['tiktok']} onChange={() => {}} />);
     expect(screen.getByRole('button', { name: /TikTok/ })).toBeInTheDocument();
+  });
+});
+
+describe('usePlatformChipsVisible', () => {
+  const visible = (features: Record<string, boolean> | undefined, value?: string[]) => {
+    limitsFeatures.current = features;
+    try {
+      return renderHook(() =>
+        usePlatformChipsVisible(value as Parameters<typeof usePlatformChipsVisible>[0]),
+      ).result.current;
+    } finally {
+      limitsFeatures.current = { feature_tiktok: false };
+    }
+  };
+
+  it('is hidden without feature_multiplatform for the {instagram} default', () => {
+    expect(visible({}, ['instagram'])).toBe(false);
+    expect(visible({ feature_multiplatform: false }, ['instagram'])).toBe(false);
+  });
+
+  it('is hidden while the limits are loading', () => {
+    expect(visible(undefined, ['instagram'])).toBe(false);
+  });
+
+  it('is visible with feature_multiplatform', () => {
+    expect(visible({ feature_multiplatform: true }, ['instagram'])).toBe(true);
+  });
+
+  it('stays visible without the flag when the value is no longer {instagram}', () => {
+    expect(visible({}, ['instagram', 'geral'])).toBe(true);
+    expect(visible({}, ['geral'])).toBe(true);
   });
 });

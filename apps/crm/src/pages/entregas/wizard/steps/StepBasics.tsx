@@ -1,6 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PlatformChips } from '@/components/PlatformChips';
+import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
 import {
   Select,
   SelectContent,
@@ -23,6 +23,7 @@ export function StepBasics({
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const showPlataformas = usePlatformChipsVisible(state.plataformas);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -57,14 +58,16 @@ export function StepBasics({
         </p>
       </div>
 
-      <div className="space-y-1">
-        <Label htmlFor="wizard-plataformas">Plataformas deste fluxo</Label>
-        <PlatformChips
-          id="wizard-plataformas"
-          value={state.plataformas}
-          onChange={(plataformas) => patch({ plataformas })}
-        />
-      </div>
+      {showPlataformas && (
+        <div className="space-y-1">
+          <Label htmlFor="wizard-plataformas">Plataformas deste fluxo</Label>
+          <PlatformChips
+            id="wizard-plataformas"
+            value={state.plataformas}
+            onChange={(plataformas) => patch({ plataformas })}
+          />
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
         <button

@@ -1,11 +1,14 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Plataformas por quadro + post_targets (migrations 20261010100001..6).
+-- Plataformas por quadro + post_targets (migrations 20261010100001..7).
+-- Seções 1-13 ligam feature_multiplatform em todos os planos dentro da própria
+-- transação; a seção 14 cobre a flag desligada (20261010100007).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 
 -- 1. Colunas plataformas: default, CHECK e allowlist de clientes
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -57,6 +60,7 @@ rollback;
 
 -- 2. Seed a partir do quadro, filtro de formato e platform derivado
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -144,6 +148,7 @@ rollback;
 
 -- 3. Escrita legada em workflow_posts.platform e escrita direta em post_targets
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -234,6 +239,7 @@ rollback;
 
 -- 4. RLS e ACL de post_targets
 begin;
+update plans set feature_multiplatform = true;
 -- post_targets fora da parity: o helper daria ALL (TRUNCATE incluso) e desfaria o REVOKE sob teste.
 select et_grant_hosted_parity(array['post_targets']);
 do $$
@@ -294,6 +300,7 @@ rollback;
 -- 5. Automacoes de comentario do Instagram: post so Geral (platform 'other')
 --    nao e alvo (migration 20261010100003)
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -341,6 +348,7 @@ rollback;
 
 -- 6. Post Express é sempre Instagram, qualquer que seja o padrão do cliente
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -379,6 +387,7 @@ rollback;
 
 -- 7. Escrita legada que deixaria o post sem Instagram/TikTok não faz nada
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -416,6 +425,7 @@ rollback;
 
 -- 8. Mudar de quadro sem Instagram/TikTok ganha os destinos sociais do quadro novo
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -482,6 +492,7 @@ rollback;
 
 -- 9. Destino que troca de post recalcula platform dos dois posts
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -512,6 +523,7 @@ rollback;
 -- 10. move_posts_to_new_flow: o fluxo novo herda plataformas da origem, então
 -- um post só Geral não ganha Instagram pelo z8 (quadro novo nascia {instagram})
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -548,6 +560,7 @@ rollback;
 
 -- 11. Post Express ignora a escrita legada de platform (é sempre Instagram)
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -580,6 +593,7 @@ rollback;
 -- ficava sem destino nenhum (platform 'other' não semeia social, e o quadro
 -- {instagram} não tem Geral).
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare
@@ -617,6 +631,7 @@ rollback;
 -- origem, com o formato, e não os padrões do quadro. Estado de publicação,
 -- ids externos e legenda do destino não são copiados.
 begin;
+update plans set feature_multiplatform = true;
 select et_grant_hosted_parity();
 do $$
 declare v_missing text;
@@ -745,5 +760,92 @@ begin
    where wp.workflow_id = v_new_wf and wp.titulo = 'a';
   assert v_arr = array['geral','instagram'], format('duplicate_workflow, post A: %s', v_arr);
   raise notice 'PASS 99pt.13';
+end $$;
+rollback;
+
+-- 14. feature_multiplatform desligada: só {instagram} entra (20261010100007)
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_ws_on uuid; v_uid uuid := gen_random_uuid();
+  v_cli bigint; v_wf bigint; v_tpl bigint; v_msg text;
+begin
+  v_ws := et_make_workspace('start');
+  v_ws_on := et_make_workspace('start');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws_on, '{"feature_multiplatform": true}');
+  insert into auth.users (id) values (v_uid);
+
+  -- INSERT com valor fora de {instagram}: recusado nas três tabelas
+  begin
+    insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+      values (v_uid, v_ws, 'C', 'C', '#000', array['geral']);
+    v_msg := null;
+  exception when sqlstate 'P0001' then v_msg := sqlerrm; end;
+  assert v_msg = 'feature_disabled:feature_multiplatform', format('clientes insert: %s', v_msg);
+
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+
+  begin
+    insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+      values (v_uid, v_ws, v_cli, 'W', 'ativo', array['instagram','geral']);
+    v_msg := null;
+  exception when sqlstate 'P0001' then v_msg := sqlerrm; end;
+  assert v_msg = 'feature_disabled:feature_multiplatform', format('workflows insert: %s', v_msg);
+
+  begin
+    insert into workflow_templates (user_id, conta_id, nome, etapas, plataformas)
+      values (v_uid, v_ws, 'T', '[]', array['tiktok']);
+    v_msg := null;
+  exception when sqlstate 'P0001' then v_msg := sqlerrm; end;
+  assert v_msg = 'feature_disabled:feature_multiplatform', format('templates insert: %s', v_msg);
+
+  -- {instagram} explícito e o default entram
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'W', 'ativo', array['instagram']) returning id into v_wf;
+  insert into workflow_templates (user_id, conta_id, nome, etapas)
+    values (v_uid, v_ws, 'T', '[]') returning id into v_tpl;
+
+  -- UPDATE que troca o valor: recusado
+  begin
+    update workflows set plataformas = array['geral'] where id = v_wf;
+    v_msg := null;
+  exception when sqlstate 'P0001' then v_msg := sqlerrm; end;
+  assert v_msg = 'feature_disabled:feature_multiplatform', format('workflows update: %s', v_msg);
+  begin
+    update workflow_templates set plataformas = array['geral'] where id = v_tpl;
+    v_msg := null;
+  exception when sqlstate 'P0001' then v_msg := sqlerrm; end;
+  assert v_msg = 'feature_disabled:feature_multiplatform', format('templates update: %s', v_msg);
+  begin
+    update clientes set plataformas_padrao = array['geral'] where id = v_cli;
+    v_msg := null;
+  exception when sqlstate 'P0001' then v_msg := sqlerrm; end;
+  assert v_msg = 'feature_disabled:feature_multiplatform', format('clientes update: %s', v_msg);
+
+  -- Quadro {geral} de quando a flag estava ligada: editar outros campos e regravar
+  -- o mesmo valor segue valendo; voltar para {instagram} também
+  alter table workflows disable trigger workflows_a0_guard_feature_multiplatform;
+  update workflows set plataformas = array['geral'] where id = v_wf;
+  alter table workflows enable trigger workflows_a0_guard_feature_multiplatform;
+  update workflows set titulo = 'W2', plataformas = array['geral'] where id = v_wf;
+  update workflows set plataformas = array['instagram'] where id = v_wf;
+
+  -- Override ligado: aceita
+  insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+    values (v_uid, v_ws_on, 'C', 'C', '#000', array['geral']) returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws_on, v_cli, 'W', 'ativo', array['instagram','geral']);
+  insert into workflow_templates (user_id, conta_id, nome, etapas, plataformas)
+    values (v_uid, v_ws_on, 'T', '[]', array['tiktok','geral']);
+
+  -- Função do trigger fora do alcance de anon/authenticated
+  assert not has_function_privilege('authenticated', 'public.guard_feature_multiplatform()', 'execute'),
+    'authenticated executa guard_feature_multiplatform';
+  assert not has_function_privilege('anon', 'public.guard_feature_multiplatform()', 'execute'),
+    'anon executa guard_feature_multiplatform';
+  raise notice 'PASS 99pt.14';
 end $$;
 rollback;

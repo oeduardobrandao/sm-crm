@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PlatformChips } from '@/components/PlatformChips';
+import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
 import type { PlatformId } from '@mesaas/platforms';
 import { Spinner } from '@/components/ui/spinner';
 import {
@@ -48,6 +48,7 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
   const [fDiaPag, setFDiaPag] = useState('');
   const [fDiaEntrega, setFDiaEntrega] = useState('');
   const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(['instagram']);
+  const showPlataformas = usePlatformChipsVisible(fPlataformas);
   const [fStatus, setFStatus] = useState<Cliente['status']>('ativo');
   const [fEspecialidade, setFEspecialidade] = useState('');
   const [fAniMes, setFAniMes] = useState(''); // '01'–'12'
@@ -200,10 +201,12 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
               placeholder="1-31"
             />
           </div>
-          <div className="space-y-1">
-            <Label>Plataformas dos posts avulsos</Label>
-            <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
-          </div>
+          {showPlataformas && (
+            <div className="space-y-1">
+              <Label>Plataformas dos posts avulsos</Label>
+              <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
+            </div>
+          )}
           <div className="space-y-1">
             <Label>{t('detail.formStatus')}</Label>
             <Select value={fStatus} onValueChange={(v) => setFStatus(v as Cliente['status'])}>

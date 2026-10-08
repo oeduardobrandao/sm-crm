@@ -16,6 +16,18 @@ const ICONS: Record<PlatformId, LucideIcon> = {
 };
 
 /**
+ * Mostra o campo de plataformas? Só com `feature_multiplatform` (rollout por
+ * workspace). Sem a flag, um valor que já não é `{instagram}` (workspace que
+ * perdeu a flag) continua visível para poder voltar a Instagram; o banco recusa
+ * qualquer outra troca. Carregando (`features` indefinido) = escondido.
+ */
+export function usePlatformChipsVisible(value: PlatformId[] | undefined): boolean {
+  const { features } = useWorkspaceLimits();
+  if (features?.feature_multiplatform === true) return true;
+  return !!value && !(value.length === 1 && value[0] === 'instagram');
+}
+
+/**
  * Plataformas de um quadro, template ou cliente (spec 2026-09-29). A ordem de
  * saída segue PLATFORM_IDS. Nunca emite lista vazia: o banco exige >= 1.
  */

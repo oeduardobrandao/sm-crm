@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { PlatformChips } from '@/components/PlatformChips';
+import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Select,
@@ -90,6 +90,7 @@ export function EditWorkflowModal({
   const [fClienteId, setFClienteId] = useState(String(w.cliente_id));
   const [fRecorrente, setFRecorrente] = useState(w.recorrente || false);
   const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(w.plataformas ?? ['instagram']);
+  const showPlataformas = usePlatformChipsVisible(fPlataformas);
   const [fResponsavelId, setFResponsavelId] = useState(String(e.responsavel_id || ''));
   const [fPrazoDias, setFPrazoDias] = useState(String(e.prazo_dias));
   const [fTipoPrazo, setFTipoPrazo] = useState(e.tipo_prazo);
@@ -219,19 +220,21 @@ export function EditWorkflowModal({
               />
               <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
             </div>
-            <div className="space-y-1">
-              <Label>Plataformas</Label>
-              <PlatformChips
-                value={fPlataformas}
-                onChange={(v) => {
-                  setFPlataformas(v);
-                  markDirty();
-                }}
-              />
-              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-                Vale para os próximos posts. Posts já criados mantêm os destinos.
-              </p>
-            </div>
+            {showPlataformas && (
+              <div className="space-y-1">
+                <Label>Plataformas</Label>
+                <PlatformChips
+                  value={fPlataformas}
+                  onChange={(v) => {
+                    setFPlataformas(v);
+                    markDirty();
+                  }}
+                />
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+                  Vale para os próximos posts. Posts já criados mantêm os destinos.
+                </p>
+              </div>
+            )}
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
               <div
                 style={{
@@ -424,6 +427,7 @@ export function TemplatesModal({
   const [fNome, setFNome] = useState('');
   const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
   const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(['instagram']);
+  const showPlataformas = usePlatformChipsVisible(fPlataformas);
   const formTopRef = useRef<HTMLDivElement>(null);
 
   const qc = useQueryClient();
@@ -644,10 +648,12 @@ export function TemplatesModal({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-                  <Label>Plataformas</Label>
-                  <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
-                </div>
+                {showPlataformas && (
+                  <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                    <Label>Plataformas</Label>
+                    <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
+                  </div>
+                )}
                 <SortableEtapaList
                   etapas={etapas}
                   setEtapas={setEtapas}
