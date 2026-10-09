@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import WorkspaceInvitesCard from '../WorkspaceInvitesCard';
+import WorkspaceInvitesCard, { INVITES_PREVIEW_COUNT } from '../WorkspaceInvitesCard';
 import type { InviteInfo } from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({
@@ -103,6 +103,29 @@ describe('WorkspaceInvitesCard', () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [inv({})], total: 73 });
     renderCard();
     expect(await screen.findByText(/mostrando 1 de 73/i)).toBeTruthy();
+  });
+
+  it('folds the list after the preview rows and unfolds on "Ver mais"', async () => {
+    const invites = Array.from({ length: INVITES_PREVIEW_COUNT + 3 }, (_, i) =>
+      inv({ id: `i${i}`, email: `p${i}@x.com` }),
+    );
+    (getWorkspaceInvites as any).mockResolvedValue({ invites, total: invites.length });
+    renderCard();
+    expect(await screen.findByText('p0@x.com')).toBeTruthy();
+    expect(screen.queryByText(`p${INVITES_PREVIEW_COUNT}@x.com`)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais (3)' }));
+    expect(screen.getByText(`p${INVITES_PREVIEW_COUNT + 2}@x.com`)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver menos' }));
+    expect(screen.queryByText(`p${INVITES_PREVIEW_COUNT}@x.com`)).toBeNull();
+  });
+
+  it('shows no fold control when every invite fits the preview', async () => {
+    (getWorkspaceInvites as any).mockResolvedValue({ invites: [inv({})], total: 1 });
+    renderCard();
+    expect(await screen.findByText('a@x.com')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /ver mais/i })).toBeNull();
   });
 
   it('resend calls the API and refetches on success', async () => {

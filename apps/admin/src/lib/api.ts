@@ -39,7 +39,15 @@ export interface WorkspaceDetail {
   resolved_limits: Record<string, number | null> | null;
   resolved_features: Record<string, boolean> | null;
   subscription: SubscriptionInfo | null;
-  usage: { client_count: number; member_count: number; integration_count: number };
+  usage: {
+    client_count: number;
+    member_count: number;
+    integration_count: number;
+    /** Absent until platform-admin is redeployed with the brand metrics; render as '—'. */
+    instagram_account_count?: number;
+    instagram_account_count_active?: number;
+    storage_used_bytes?: number;
+  };
 }
 
 export interface MemberInfo {
@@ -143,12 +151,7 @@ export interface GlobalBanner {
 
 export type WorkspaceActivityBucket = '7d' | '30d' | 'dormente' | 'nunca';
 export type WorkspaceSortKey =
-  | 'name'
-  | 'plan'
-  | 'client_count'
-  | 'member_count'
-  | 'created_at'
-  | 'last_activity_at';
+  'name' | 'plan' | 'client_count' | 'member_count' | 'created_at' | 'last_activity_at';
 export type SortDir = 'asc' | 'desc';
 
 // A `type` literal (not `interface`) so it keeps the implicit string index signature
