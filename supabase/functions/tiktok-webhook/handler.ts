@@ -307,10 +307,15 @@ async function handleNoLongerPubliclyAvailable(
  * event is NOT marked processed and stays a candidate for reconciliation) then best-effort
  * audit-logs it (insertAuditLog never throws — see its own module comment). */
 async function handleAuthRemoved(ctx: ProcessCtx, args: ProcessArgs): Promise<void> {
+  // Our own disconnect calls TikTok's /oauth/revoke/, and TikTok echoes this event a few seconds
+  // later. That echo must not turn 'disconnected' into 'revoked': the CRM then sees a revoked,
+  // never-synced row instead of no account. The .neq covers a disconnect landing mid-event.
+  if (args.account.authorization_status === "disconnected") return;
   const { error } = await ctx.svc
     .from("tiktok_accounts")
     .update({ authorization_status: "revoked" })
-    .eq("id", args.account.id);
+    .eq("id", args.account.id)
+    .neq("authorization_status", "disconnected");
   if (error) {
     throw new Error(`tiktok-webhook: failed to revoke tiktok_accounts ${args.account.id}: ${error.message}`);
   }

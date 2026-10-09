@@ -297,6 +297,39 @@ Deno.test("tiktok-webhook: authorization.removed revokes the account and writes 
   assertEquals(auditPayload.resource_type, "tiktok_account");
   assertEquals(auditPayload.resource_id, "acct-555", "resource_id must be the tiktok_accounts PK, not the CRM client_id");
   assertEquals(auditPayload.conta_id, "conta-abc");
+
+  // The revoke write never downgrades a user-initiated disconnect that lands between the
+  // account read and this update.
+  assert(
+    acctUpdates[0].modifiers.some(
+      (m) => m.method === "neq" && m.args[0] === "authorization_status" && m.args[1] === "disconnected",
+    ),
+    "revoke update must be guarded with .neq('authorization_status', 'disconnected')",
+  );
+});
+
+Deno.test("tiktok-webhook: authorization.removed after an in-app disconnect leaves the account disconnected", async () => {
+  // Our own disconnect calls TikTok's /oauth/revoke/, and TikTok then echoes
+  // authorization.removed a few seconds later. Flipping 'disconnected' to 'revoked' left the CRM
+  // showing a "syncing" spinner forever (revoked row, last_synced_at null).
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", {
+    data: baseAccount({ id: "acct-555", client_id: 101, authorization_status: "disconnected" }),
+    error: null,
+  });
+  db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
+  db.queue("tiktok_webhook_events", "update", { data: null, error: null });
+
+  const waited: Promise<void>[] = [];
+  const handler = createTikTokWebhookHandler(baseDeps(db, { waitUntil: (p) => waited.push(p) }));
+
+  const payload = webhookPayload({ event: EVENT_AUTH_REMOVED, content: "{}" });
+  await handler(webhookRequest(payload));
+  await Promise.all(waited);
+
+  assertEquals(callsFor(db, "tiktok_accounts", "update").length, 0);
+  assertEquals(callsFor(db, "audit_log", "insert").length, 0);
+  assertEquals(callsFor(db, "tiktok_webhook_events", "update").length, 1, "the event is still stamped processed");
 });
 
 // ── (9) publish.failed / publish.complete: re-confirm via the shared status ────

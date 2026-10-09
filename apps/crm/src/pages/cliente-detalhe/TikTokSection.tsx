@@ -32,6 +32,14 @@ export function TikTokSection({ clienteId }: { clienteId: number }) {
     enabled: enabled && !isNaN(clienteId),
   });
 
+  // A never-synced account that lost its authorization (revoked, expired, or disconnected)
+  // has nothing for the overview card to show and no import running, so it gets the
+  // connect card. Only an active one is mid-import and worth the "syncing" spinner.
+  const needsConnect =
+    !!ttSummary &&
+    !ttSummary.account?.last_synced_at &&
+    ttSummary.account?.authorization_status !== 'active';
+
   const overviewRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const postsRef = useRef<HTMLDivElement>(null);
@@ -40,7 +48,7 @@ export function TikTokSection({ clienteId }: { clienteId: number }) {
   useEffect(() => {
     if (!enabled) return;
     if (loadingTt) return;
-    if (!ttSummary) {
+    if (!ttSummary || needsConnect) {
       if (connectRef.current && !isNaN(clienteId)) {
         renderTikTokConnectButton(connectRef.current, clienteId);
       }
@@ -57,7 +65,7 @@ export function TikTokSection({ clienteId }: { clienteId: number }) {
         renderTikTokPostsTable(postsRef.current, clienteId);
       }
     }
-  }, [enabled, loadingTt, ttSummary, clienteId, refetchTt, i18n.language]);
+  }, [enabled, loadingTt, ttSummary, needsConnect, clienteId, refetchTt, i18n.language]);
 
   if (!enabled) return null;
 
@@ -68,8 +76,12 @@ export function TikTokSection({ clienteId }: { clienteId: number }) {
           <Spinner size="lg" />
         </div>
       )}
-      {!loadingTt && ttSummary && !ttSummary.account?.last_synced_at && (
-        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+      {!loadingTt && ttSummary && !ttSummary.account?.last_synced_at && !needsConnect && (
+        <div
+          className="card"
+          data-testid="tt-syncing"
+          style={{ padding: '2rem', textAlign: 'center' }}
+        >
           <Spinner size="lg" />
           <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>{t('detail.ttSyncing')}</p>
         </div>
