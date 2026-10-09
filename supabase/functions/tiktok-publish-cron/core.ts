@@ -340,6 +340,7 @@ async function processStatusPhase(
           tiktok_publish_id: post.tiktok_publish_id,
           tiktok_publish_retry_count: post.tiktok_publish_retry_count,
           tiktok_username: post.tiktok_username,
+          tipo: post.tipo,
         },
       );
       if (outcome === "failed") {

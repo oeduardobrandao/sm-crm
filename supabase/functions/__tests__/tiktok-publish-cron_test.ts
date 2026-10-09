@@ -400,8 +400,22 @@ Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE with a public id c
   assertEquals(payload.p_platform, "tiktok");
   const fields = payload.p_fields as Record<string, unknown>;
   assertEquals(fields.tiktok_post_id, "7301234");
-  assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dktest/video/7301234");
+  assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dktest/photo/7301234");
   assertEquals(fields.published_at, "2026-07-18T12:00:00.000Z");
+});
+
+Deno.test("tiktok-publish-cron status phase: a reels post keeps the /video/ URL", async () => {
+  const db = createSupabaseQueryMock();
+  const post = claimedPost({ post_id: 31, tipo: "reels", tiktok_publish_id: "pub-31", tiktok_username: "dktest" });
+  queueClaims(db, [], [post], []);
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async () => ({ status: "PUBLISH_COMPLETE", [FIELD_PUBLIC_POST_ID]: "7301235" }),
+    buildTikTokMediaUrl: async () => "",
+  }));
+  assertEquals(response.status, 200);
+  const fields = (rpcCalls(db, "mark_platform_published")[0].payload as Record<string, unknown>).p_fields as Record<string, unknown>;
+  assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dktest/video/7301235");
 });
 
 Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE without a public id omits tiktok_post_id/tiktok_post_url", async () => {

@@ -690,7 +690,7 @@ Deno.test("tiktok-publish publish-now: success calls mark_platform_published and
   assertEquals(payload.p_source, "workspace_user");
   const fields = payload.p_fields as Record<string, unknown>;
   assertEquals(fields.tiktok_post_id, "7123456");
-  assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dramarina/video/7123456");
+  assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dramarina/photo/7123456");
   assert(typeof fields.published_at === "string" && !isNaN(Date.parse(fields.published_at as string)));
 });
 

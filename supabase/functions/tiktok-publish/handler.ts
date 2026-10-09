@@ -28,6 +28,7 @@ import {
   validateForTikTokScheduling as realValidateForTikTokScheduling,
   buildVideoInitPayload,
   buildPhotoInitPayload,
+  buildTikTokPostUrl,
   mapStatusFetch,
   type TikTokValidationResult,
   type ClaimedTikTokPost,
@@ -481,7 +482,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
             .maybeSingle();
           const username = (accountRow as { username?: string } | null)?.username;
           const tiktokPostUrl = statusResult.publicPostId && username
-            ? `https://www.tiktok.com/@${username}/video/${statusResult.publicPostId}`
+            ? buildTikTokPostUrl(username, statusResult.publicPostId, post.tipo)
             : undefined;
 
           const { error: markErr } = await svcDb.rpc("mark_platform_published", {

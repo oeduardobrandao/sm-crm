@@ -9,6 +9,7 @@ import {
   buildVideoInitPayload,
   buildPhotoInitPayload,
   mapStatusFetch,
+  buildTikTokPostUrl,
   type ClaimedTikTokPost,
 } from "../_shared/tiktok-publish-utils.ts";
 import { FIELD_PUBLIC_POST_ID } from "../_shared/tiktok.ts";
@@ -968,4 +969,11 @@ Deno.test("mapStatusFetch: FAILED with no fail_reason → failed, failReason key
 
 Deno.test("mapStatusFetch: unrecognized/future status defaults conservatively to processing", () => {
   assertEquals(mapStatusFetch({ status: "SOME_FUTURE_STATUS" }), { state: "processing" });
+});
+
+Deno.test("buildTikTokPostUrl: photo tipos use /photo/, others /video/", () => {
+  assertEquals(buildTikTokPostUrl("u", "1", "feed"), "https://www.tiktok.com/@u/photo/1");
+  assertEquals(buildTikTokPostUrl("u", "1", "carrossel"), "https://www.tiktok.com/@u/photo/1");
+  assertEquals(buildTikTokPostUrl("u", "1", "reels"), "https://www.tiktok.com/@u/video/1");
+  assertEquals(buildTikTokPostUrl("u", "1", null), "https://www.tiktok.com/@u/video/1");
 });

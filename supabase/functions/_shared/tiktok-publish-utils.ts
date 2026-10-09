@@ -571,11 +571,21 @@ export async function markTikTokPublishFailed(
   }
 }
 
+const TIKTOK_PHOTO_TIPOS = new Set(["feed", "carrossel"]);
+
+/** Public TikTok URL for a published post. Photo posts live under /photo/ (spec B5; verify on
+ * a real photo post at rollout, revert this one line if TikTok serves them under /video/). */
+export function buildTikTokPostUrl(username: string, postId: string, tipo: string | null | undefined): string {
+  const segment = tipo && TIKTOK_PHOTO_TIPOS.has(tipo) ? "photo" : "video";
+  return `https://www.tiktok.com/@${username}/${segment}/${postId}`;
+}
+
 export interface ConfirmAndApplyPublishStatusPost {
   post_id: number;
   tiktok_publish_id: string | null;
   tiktok_publish_retry_count: number;
   tiktok_username: string | null;
+  tipo: string | null;
 }
 
 export interface ConfirmAndApplyPublishStatusDeps {
@@ -632,7 +642,7 @@ export async function confirmAndApplyPublishStatus(
 
     if (result.state === "published") {
       const tiktokPostUrl = result.publicPostId && post.tiktok_username
-        ? `https://www.tiktok.com/@${post.tiktok_username}/video/${result.publicPostId}`
+        ? buildTikTokPostUrl(post.tiktok_username, result.publicPostId, post.tipo)
         : undefined;
 
       const { error: markErr } = await svc.rpc("mark_platform_published", {

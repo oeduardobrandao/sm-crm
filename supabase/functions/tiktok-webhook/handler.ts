@@ -31,6 +31,7 @@
 
 import {
   confirmAndApplyPublishStatus as realConfirmAndApplyPublishStatus,
+  buildTikTokPostUrl,
   errorMessage,
   type ConfirmAndApplyPublishStatusOutcome,
 } from "../_shared/tiktok-publish-utils.ts";
@@ -80,6 +81,7 @@ interface TikTokAccountRow {
 
 interface FoundPost {
   post_id: number;
+  tipo: string | null;
   tiktok_publish_id: string | null;
   tiktok_publish_retry_count: number;
 }
@@ -118,7 +120,7 @@ async function findPostByPublishId(svc: DbClient, publishId: string | undefined)
   if (!publishId) return null;
   const { data, error } = await svc
     .from("workflow_posts")
-    .select("id, tiktok_publish_id, tiktok_publish_retry_count")
+    .select("id, tipo, tiktok_publish_id, tiktok_publish_retry_count")
     .eq("tiktok_publish_id", publishId)
     .maybeSingle();
   if (error) {
@@ -127,6 +129,7 @@ async function findPostByPublishId(svc: DbClient, publishId: string | undefined)
   if (!data) return null;
   return {
     post_id: data.id,
+    tipo: data.tipo ?? null,
     tiktok_publish_id: data.tiktok_publish_id,
     tiktok_publish_retry_count: data.tiktok_publish_retry_count,
   };
@@ -234,6 +237,7 @@ async function handlePublishCompleteOrFailed(
       tiktok_publish_id: post.tiktok_publish_id,
       tiktok_publish_retry_count: post.tiktok_publish_retry_count,
       tiktok_username: args.account.username,
+      tipo: post.tipo,
     },
   );
   console.log(`[tiktok-webhook] ${args.eventName}: post ${post.post_id} re-confirmed as ${outcome}`);
@@ -266,7 +270,7 @@ async function handlePubliclyAvailable(
 
   const fields: Record<string, unknown> = { tiktok_post_id: content.post_id };
   if (args.account.username) {
-    fields.tiktok_post_url = `https://www.tiktok.com/@${args.account.username}/video/${content.post_id}`;
+    fields.tiktok_post_url = buildTikTokPostUrl(args.account.username, content.post_id, post.tipo);
   }
 
   const { error } = await ctx.svc.from("workflow_posts").update(fields).eq("id", post.post_id);
