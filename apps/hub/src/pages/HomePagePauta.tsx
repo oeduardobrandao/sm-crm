@@ -12,6 +12,7 @@ import { WaitingSection } from './home/WaitingSection';
 import { numberSections, weekCount } from './home/pautaHome';
 import { RESOURCE_LINKS } from './home/resourceLinks';
 import { sortPostsChronologically } from '../lib/postView';
+import { ListSkeleton } from '../components/Skeleton';
 
 export function HomePagePauta({
   base,
@@ -74,8 +75,8 @@ export function HomePagePauta({
         ]}
       />
       {loading ? (
-        <section className="hub-card flex justify-center py-12" data-testid="pauta-home-loading">
-          <div className="animate-spin h-5 w-5 rounded-full border-2 hub-spinner" />
+        <section className="hub-card p-5 sm:p-6">
+          <ListSkeleton rows={3} testId="pauta-home-loading" />
         </section>
       ) : (
         <>

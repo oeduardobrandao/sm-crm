@@ -7,6 +7,7 @@ import { StatusPill } from '../../components/StatusPill';
 import { SectionHeader } from '../../components/SectionHeader';
 import { proximosEventos, quando } from './formatar';
 import { localeDe, selo, textoQuando } from './AgendaCard';
+import { ListSkeleton } from '../../components/Skeleton';
 
 const MAX_ITENS = 3;
 
@@ -49,9 +50,7 @@ export function HomeAgendaPauta({
         }
       />
       {isPending ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin h-5 w-5 rounded-full border-2 hub-spinner" />
-        </div>
+        <ListSkeleton rows={2} />
       ) : isError ? (
         <p className="py-6 text-center text-[13px] hub-tx3">
           {t('loadError.title', 'Erro ao carregar a agenda')}

@@ -137,7 +137,8 @@
     "contactAgency": "Entre em contato com a agência.",
     "somethingWentWrong": "Algo deu errado",
     "reloadToRetry": "Recarregue a página para tentar novamente.",
-    "reloadPage": "Recarregar página"
+    "reloadPage": "Recarregar página",
+    "loading": "Carregando…"
   },
   "cookies": {
     "banner": {

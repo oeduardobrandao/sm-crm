@@ -5,6 +5,7 @@ import { FileText, Download, ExternalLink } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchReportList, fetchReportPdfUrl, type HubReportListItem } from '../api';
+import { CardGridSkeleton } from '../components/Skeleton';
 
 function formatMonth(month: string, lang: string = 'pt-BR'): string {
   // month is in format "YYYY-MM"
@@ -155,9 +156,7 @@ export function RelatoriosPage() {
       />
 
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-        </div>
+        <CardGridSkeleton />
       ) : isError ? (
         <div className="py-20 text-center text-sm hub-tx2">
           {t('errors.loadList', 'Erro ao carregar relatórios.')}

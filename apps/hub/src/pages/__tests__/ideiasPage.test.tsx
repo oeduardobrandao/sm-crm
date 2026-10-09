@@ -165,7 +165,7 @@ describe('IdeiasPage', () => {
       <IdeiasPage />,
     );
 
-    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(container.querySelector('[data-testid="hub-skeleton"]')).not.toBeNull();
   });
 
   it('does not retry 4xx failures and lets the user retry manually', async () => {

@@ -103,6 +103,12 @@
       .hub-root .hub-bg-soft {
         background-color: var(--hub-soft);
       }
+      /* Loading skeleton bars (components/Skeleton.tsx). A tint of the text colour rather than
+         --hub-soft, which sits too close to --hub-card in dark mode for bars inside a card. */
+      .hub-root .hub-skeleton {
+        background-color: var(--hub-soft);
+        background-color: color-mix(in srgb, var(--hub-txt) 9%, transparent);
+      }
       .hub-root .hub-border {
         border-color: var(--hub-bd);
       }
@@ -470,13 +476,6 @@
       }
       .hub-root .hub-display-title {
         font-weight: var(--hub-display-weight);
-      }
-      /* Loading spinners, both looks (the one declared exception to "classic
-         unchanged": the stone colours ignored dark mode). Unscoped because
-         ConvitePage renders its own .hub-root outside HubShell. */
-      .hub-spinner {
-        border-color: var(--hub-bd2);
-        border-top-color: var(--hub-txt);
       }
     </style>
   </head>

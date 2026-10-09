@@ -168,7 +168,7 @@ describe('hub approval, posts, and brand pages', () => {
   });
 
   describe('AprovacoesPage', () => {
-    it('shows the loading spinner while pending approvals are loading', () => {
+    it('shows the loading skeleton while pending approvals are loading', () => {
       mockedFetchPosts.mockImplementation(() => new Promise(() => {}));
 
       const { container } = renderHubPage(
@@ -177,7 +177,7 @@ describe('hub approval, posts, and brand pages', () => {
         <AprovacoesPage />,
       );
 
-      expect(container.querySelector('.animate-spin')).not.toBeNull();
+      expect(container.querySelector('[data-testid="hub-skeleton"]')).not.toBeNull();
       expect(screen.getByRole('heading', { name: 'Aprovações' })).toBeInTheDocument();
     });
 
@@ -203,7 +203,7 @@ describe('hub approval, posts, and brand pages', () => {
   });
 
   describe('PostagensPage', () => {
-    it('shows the loading spinner while post groups are loading', () => {
+    it('shows the loading skeleton while post groups are loading', () => {
       mockedFetchPosts.mockImplementation(() => new Promise(() => {}));
 
       const { container } = renderHubPage(
@@ -212,7 +212,7 @@ describe('hub approval, posts, and brand pages', () => {
         <PostagensPage />,
       );
 
-      expect(container.querySelector('.animate-spin')).not.toBeNull();
+      expect(container.querySelector('[data-testid="hub-skeleton"]')).not.toBeNull();
       expect(screen.getByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
     });
 
@@ -332,7 +332,7 @@ describe('hub approval, posts, and brand pages', () => {
   });
 
   describe('MarcaPage', () => {
-    it('shows the loading spinner while brand materials are loading', () => {
+    it('shows the loading skeleton while brand materials are loading', () => {
       mockedFetchBrand.mockImplementation(() => new Promise(() => {}));
 
       const { container } = renderHubPage(
@@ -341,7 +341,7 @@ describe('hub approval, posts, and brand pages', () => {
         <MarcaPage />,
       );
 
-      expect(container.querySelector('.animate-spin')).not.toBeNull();
+      expect(container.querySelector('[data-testid="hub-skeleton"]')).not.toBeNull();
       expect(screen.getByRole('heading', { name: 'Marca' })).toBeInTheDocument();
     });
 

@@ -17,6 +17,7 @@ import { HomeAgenda } from './agenda/HomeAgenda';
 import { useHubLook } from '../hooks/useHubLook';
 import { HomePagePauta } from './HomePagePauta';
 import { RESOURCE_LINKS } from './home/resourceLinks';
+import { CalendarSkeleton } from '../components/Skeleton';
 
 const CALENDAR_STATUSES = new Set([
   'enviado_cliente',
@@ -136,9 +137,7 @@ export function HomePage() {
   ];
 
   const calendarBody = isLoading ? (
-    <div className="flex justify-center py-8">
-      <div className="animate-spin h-5 w-5 rounded-full border-2 hub-spinner" />
-    </div>
+    <CalendarSkeleton />
   ) : (
     <PostCalendar
       posts={calendarPosts}

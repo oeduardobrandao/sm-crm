@@ -70,12 +70,12 @@ const layout: ReportLayout = {
 afterEach(() => vi.clearAllMocks());
 
 describe('RelatorioDocPage', () => {
-  it('shows a loading spinner while the doc is pending', () => {
+  it('shows a loading skeleton while the doc is pending', () => {
     mockedFetchReportDoc.mockImplementation(() => new Promise(() => {}));
 
     const { container } = renderDocPage();
 
-    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(container.querySelector('[data-testid="hub-skeleton"]')).not.toBeNull();
   });
 
   it('renders the title and the block renderer grid in view mode on success', async () => {

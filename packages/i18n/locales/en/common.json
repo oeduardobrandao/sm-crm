@@ -137,7 +137,8 @@
     "contactAgency": "Please contact the agency.",
     "somethingWentWrong": "Something went wrong",
     "reloadToRetry": "Reload the page to try again.",
-    "reloadPage": "Reload page"
+    "reloadPage": "Reload page",
+    "loading": "Loading…"
   },
   "cookies": {
     "banner": {

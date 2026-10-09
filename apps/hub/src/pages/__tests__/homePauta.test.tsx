@@ -235,12 +235,12 @@ describe('Home, Pauta look', () => {
     ]);
   });
 
-  it('agenda card shows a spinner while the agenda loads', async () => {
+  it('agenda card shows a skeleton while the agenda loads', async () => {
     posts.mockResolvedValue({ posts: [], historyCutoff: null } as never);
     agenda.mockReturnValue(new Promise(() => {}) as never);
     renderHome(hubValue({ feature_agenda: true }));
     const card = (await screen.findByText('02 · Agenda')).closest('section') as HTMLElement;
-    expect(card.querySelector('.animate-spin')).not.toBeNull();
+    expect(card.querySelector('[data-testid="hub-skeleton"]')).not.toBeNull();
     expect(within(card).queryByText('Nenhum evento nos próximos dias')).toBeNull();
   });
 

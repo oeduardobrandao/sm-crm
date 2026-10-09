@@ -5,6 +5,7 @@ import { ChevronRight, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchPages } from '../api';
+import { ListSkeleton } from '../components/Skeleton';
 
 export function PaginasPage() {
   const { token } = useHub();
@@ -29,9 +30,7 @@ export function PaginasPage() {
         )}
       />
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-        </div>
+        <ListSkeleton />
       ) : pages.length === 0 ? (
         <p className="hub-tx2 text-sm">
           {t('paginasPage.empty', 'Nenhuma página foi criada ainda.')}

@@ -4,6 +4,7 @@ import { ArrowLeft, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchReportHtml, fetchReportPdfUrl } from '../api';
+import { ReportSkeleton } from '../components/Skeleton';
 
 function formatMonth(month: string, lang: string = 'pt-BR'): string {
   const [year, mm] = month.split('-');
@@ -77,11 +78,7 @@ export function RelatorioViewPage() {
       </div>
 
       {/* Content */}
-      {isLoading && (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-        </div>
-      )}
+      {isLoading && <ReportSkeleton />}
 
       {isError && (
         <div className="max-w-5xl mx-auto py-20 text-center text-sm hub-tx2">

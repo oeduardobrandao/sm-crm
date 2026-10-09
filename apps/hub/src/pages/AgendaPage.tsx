@@ -9,6 +9,7 @@ import { hubAgendaItemQuery, hubAgendaQuery, HUB_AGENDA_KEY } from '../queries';
 import type { HubAgendaItem } from '../types';
 import { AgendaCard, localeDe } from './agenda/AgendaCard';
 import { agruparPorDia, compararInicio, formatarDiaTitulo, type GrupoDia } from './agenda/formatar';
+import { ListSkeleton } from '../components/Skeleton';
 
 function parseOcorrencia(raw: string | null): number | null {
   if (!raw) return null;
@@ -95,9 +96,7 @@ export function AgendaPage() {
       {header}
 
       {lista.isLoading ? (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-        </div>
+        <ListSkeleton rows={3} />
       ) : lista.isError ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <p className="font-display text-lg font-semibold hub-txt mb-1">

@@ -11,6 +11,7 @@ import type { ConviteItem, ConviteResponse } from '../types';
 import { AgendaCardView, localeDe } from './agenda/AgendaCardView';
 import { agruparPorDia, compararInicio, formatarDiaTitulo } from './agenda/formatar';
 import { ConviteMarca } from './convite/ConviteMarca';
+import { DocSkeleton } from '../components/Skeleton';
 
 const TOKEN_RE = /^[0-9a-f]{64}$/;
 
@@ -89,11 +90,7 @@ export function ConvitePage() {
       </div>
     );
   } else {
-    corpo = (
-      <div className="flex justify-center py-24">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-      </div>
-    );
+    corpo = <DocSkeleton />;
   }
 
   // .hub-root in every state: useTheme sets data-theme on it, and the hub-* rules are scoped to it.
