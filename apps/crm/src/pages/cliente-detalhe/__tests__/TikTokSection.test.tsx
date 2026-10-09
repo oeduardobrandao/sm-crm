@@ -62,4 +62,34 @@ describe('TikTokSection — feature_tiktok gate', () => {
     await waitFor(() => expect(getTikTokSummaryMock).toHaveBeenCalledWith(7));
     await waitFor(() => expect(container.querySelector('#btn-tt-connect')).not.toBeNull());
   });
+
+  it.each(['revoked', 'expired', 'disconnected'])(
+    'shows the connect button, not the syncing spinner, for a never-synced %s account',
+    async (status) => {
+      mockFeatures = { feature_tiktok: true };
+      getTikTokSummaryMock.mockResolvedValue({
+        account: { id: 'acct-1', authorization_status: status, last_synced_at: null },
+        follower_history: [],
+      });
+      const { container } = renderSection(7);
+
+      await waitFor(() => expect(container.querySelector('#btn-tt-connect')).not.toBeNull());
+      expect(container.querySelector('[data-testid="tt-syncing"]')).toBeNull();
+    },
+  );
+
+  it('keeps the syncing spinner for an active account whose first import is still running', async () => {
+    mockFeatures = { feature_tiktok: true };
+    getTikTokSummaryMock.mockResolvedValue({
+      account: { id: 'acct-1', authorization_status: 'active', last_synced_at: null },
+      follower_history: [],
+    });
+    const { container } = renderSection(7);
+
+    await waitFor(() => expect(getTikTokSummaryMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="tt-syncing"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('#btn-tt-connect')).toBeNull();
+  });
 });
