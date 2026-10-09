@@ -22,6 +22,7 @@ import { HUB_AUDIO_VARS } from '../lib/audioVars';
 import { PageHeader } from '../components/PageHeader';
 import { ScrollableTabs } from '../components/ScrollableTabs';
 import type { BriefingAudio, BriefingAudioResponse, BriefingQuestion } from '../types';
+import { DocSkeleton } from '../components/Skeleton';
 
 export function BriefingPage() {
   const { token, bootstrap } = useHub();
@@ -79,9 +80,7 @@ export function BriefingPage() {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-        </div>
+        <DocSkeleton title={false} />
       ) : briefings.length === 0 ? (
         <div className="py-8 hub-tx3 text-sm">
           {t('page.noBriefings', 'Nenhum briefing disponível ainda.')}

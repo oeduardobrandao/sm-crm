@@ -9,6 +9,7 @@ import { fetchPage } from '../api';
 import type { HubContentBlock } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
 import { RichTextContent } from '../components/RichTextTiptap';
+import { DocSkeleton } from '../components/Skeleton';
 
 const markdownComponents = {
   h1: (props: React.ComponentProps<'h1'>) => (
@@ -186,12 +187,7 @@ export function PaginaPage() {
     enabled: !!pageId,
   });
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-      </div>
-    );
+  if (isLoading) return <DocSkeleton className="max-w-3xl mx-auto" />;
 
   const page = data?.page;
   if (!page)

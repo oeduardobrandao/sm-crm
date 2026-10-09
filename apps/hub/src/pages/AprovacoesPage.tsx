@@ -21,6 +21,7 @@ import {
   sortPostsChronologically,
   type PostSortDirection,
 } from '../lib/postView';
+import { PostGridSkeleton } from '../components/Skeleton';
 
 function SortToggle({
   value,
@@ -214,8 +215,8 @@ export function AprovacoesPage() {
       </div>
 
       {isLoading ? (
-        <div className="hub-fade-up flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
+        <div className="hub-fade-up">
+          <PostGridSkeleton />
         </div>
       ) : fatalError ? (
         <div className="hub-fade-up py-20 text-center text-sm hub-tx2">

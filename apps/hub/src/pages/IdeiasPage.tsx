@@ -37,6 +37,7 @@ import { describeAudioError, MAX_AUDIO_SECONDS } from '@mesaas/ui/audio/validati
 import { HUB_AUDIO_VARS } from '../lib/audioVars';
 import type { HubIdeia, IdeiaImage } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
+import { ListSkeleton } from '../components/Skeleton';
 
 const STATUS_LABEL: Record<HubIdeia['status'], string> = {
   nova: 'Nova',
@@ -277,9 +278,7 @@ export function IdeiasPage() {
 
       {/* List */}
       {isLoading ? (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-        </div>
+        <ListSkeleton rows={3} />
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">⚠️</span>

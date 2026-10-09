@@ -9,6 +9,7 @@ import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/type
 import '@mesaas/report-blocks/styles.css';
 import { useHub } from '../HubContext';
 import { fetchReportDoc } from '../api';
+import { ReportSkeleton } from '../components/Skeleton';
 
 export function RelatorioDocPage() {
   const { token } = useHub();
@@ -37,11 +38,7 @@ export function RelatorioDocPage() {
         </button>
         {doc && <span className="text-[13px] font-medium hub-txt">{doc.title}</span>}
       </div>
-      {isLoading && (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-        </div>
-      )}
+      {isLoading && <ReportSkeleton />}
       {isError && (
         <div className="max-w-5xl mx-auto py-20 text-center text-sm hub-tx2">
           {t('errors.loadDoc', 'Erro ao carregar o relatório.')}

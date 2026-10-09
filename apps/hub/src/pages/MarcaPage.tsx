@@ -6,6 +6,7 @@ import { Download } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchBrand } from '../api';
 import { sanitizeExternalUrl } from '../lib/security';
+import { CardGridSkeleton } from '../components/Skeleton';
 
 function ColorSwatch({ color, label }: { color: string; label: string }) {
   return (
@@ -45,9 +46,7 @@ export function MarcaPage() {
       />
 
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
-        </div>
+        <CardGridSkeleton />
       ) : isEmpty ? (
         <p className="hub-tx2 text-sm">
           {t('empty', 'Nenhum material de marca foi adicionado ainda.')}
