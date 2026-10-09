@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { getWorkflowPosts } from '@/store';
 import { partitionByScheduleEligibility, targetsTikTokService } from '../autoScheduleNudge';
 import { scheduleApprovedPost } from '../scheduleApprovedPost';
+import { TikTokPostingDeclaration } from './TikTokPostingDeclaration';
 
 function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
@@ -184,6 +185,18 @@ export function AutoScheduleBatchDialog({
             </ul>
           </div>
         )}
+
+        {(() => {
+          const tiktokPosts = eligible.filter((p) => targetsTikTokService(p.platform));
+          if (tiktokPosts.length === 0) return null;
+          const branded = tiktokPosts.some(
+            (p) =>
+              p.tiktok_settings == null ||
+              (p.tiktok_settings as { brand_content_toggle?: boolean }).brand_content_toggle ===
+                true,
+          );
+          return <TikTokPostingDeclaration brandedContent={branded} className="mb-2" />;
+        })()}
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={running}>Agora não</AlertDialogCancel>

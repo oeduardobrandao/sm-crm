@@ -224,4 +224,71 @@ describe('AutoSchedulePromptDialog', () => {
     expect(onClose).toHaveBeenCalled();
     expect(scheduleApprovedPost).not.toHaveBeenCalled();
   });
+
+  it('TikTok post with settings: music-only declaration above Agendar', () => {
+    render(
+      <AutoSchedulePromptDialog
+        post={{
+          id: 11,
+          titulo: 'Post A',
+          platform: 'tiktok',
+          scheduled_at: FUTURE,
+          tiktok_settings: { brand_content_toggle: false },
+        }}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    const decl = screen.getByTestId('tiktok-posting-declaration');
+    expect(decl).toHaveTextContent(
+      'Ao publicar, você concorda com a Confirmação de Uso de Música do TikTok.',
+    );
+    expect(decl).not.toHaveTextContent('Política de Conteúdo de Marca');
+    // Declaration precedes the confirm button in DOM order (spec A3: above the control).
+    const agendar = screen.getByRole('button', { name: /^Agendar$/ });
+    expect(decl.compareDocumentPosition(agendar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('TikTok post with branded settings: branded declaration', () => {
+    render(
+      <AutoSchedulePromptDialog
+        post={{
+          id: 11,
+          titulo: 'Post A',
+          platform: 'both',
+          scheduled_at: FUTURE,
+          tiktok_settings: { brand_content_toggle: true },
+        }}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent(
+      'Política de Conteúdo de Marca',
+    );
+  });
+
+  it('TikTok post without settings: branded variant (caller has no settings)', () => {
+    render(
+      <AutoSchedulePromptDialog
+        post={{ id: 11, titulo: 'Post A', platform: 'tiktok', scheduled_at: FUTURE }}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent(
+      'Política de Conteúdo de Marca',
+    );
+  });
+
+  it('Instagram post: no declaration', () => {
+    render(
+      <AutoSchedulePromptDialog
+        post={{ id: 11, titulo: 'Post A', platform: 'instagram', scheduled_at: FUTURE }}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+  });
 });
