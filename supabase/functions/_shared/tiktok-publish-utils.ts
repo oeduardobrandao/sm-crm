@@ -19,6 +19,7 @@ import {
   STATUS_PUBLISH_COMPLETE,
   STATUS_SEND_TO_USER_INBOX,
 } from "./tiktok.ts";
+import { TIKTOK_MSG } from "./tiktok-messages.ts";
 
 // --- Shared types ---
 
@@ -46,6 +47,7 @@ interface TikTokMediaFile {
   height: number | null;
   duration_seconds: number | null;
   r2_key: string;
+  media_lost_at: string | null;
   sort_order: number;
 }
 
@@ -190,6 +192,10 @@ function validatePrivacyLevel(errors: string[], settings: TikTokSettings) {
       "App TikTok em modo de teste: apenas publicação privada (SELF_ONLY) é permitida até a auditoria do TikTok",
     );
   }
+
+  if (settings.brand_content_toggle === true && privacyLevel === "SELF_ONLY") {
+    errors.push(TIKTOK_MSG.brandedPrivate);
+  }
 }
 
 /** Validate a post for TikTok scheduling. Throws on infrastructure errors (DB read failures);
@@ -235,7 +241,7 @@ export async function validateForTikTokScheduling(
 
   const { data: links, error: linksError } = await db
     .from("post_file_links")
-    .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, r2_key)")
+    .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, r2_key, media_lost_at)")
     .eq("post_id", postId)
     .order("sort_order", { ascending: true });
   if (linksError) {
@@ -248,6 +254,7 @@ export async function validateForTikTokScheduling(
   }));
 
   validateMediaForTipo(errors, post.tipo, post.platform, mediaFiles);
+  if (mediaFiles.some((f) => f.media_lost_at != null)) errors.push(TIKTOK_MSG.mediaLost);
 
   const settings: TikTokSettings = post.tiktok_settings ?? {};
   validatePrivacyLevel(errors, settings);
