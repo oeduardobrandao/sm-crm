@@ -5,6 +5,7 @@ import { useHub } from '../../HubContext';
 import { fetchDashboard } from '../../api';
 import { PeriodSelector } from './PeriodSelector';
 import { TopPostsRow } from './TopPostsRow';
+import { SectionHeader } from '../SectionHeader';
 
 const loadCharts = () => import('./DashboardCharts');
 const DashboardCharts = lazy(loadCharts);
@@ -16,7 +17,7 @@ const chartSkeleton = (
   </>
 );
 
-export function DashboardSection() {
+export function DashboardSection({ sectionNumber }: { sectionNumber?: number } = {}) {
   const { t } = useTranslation('hubHome');
   const { token } = useHub();
   const [period, setPeriod] = useState(30);
@@ -68,12 +69,21 @@ export function DashboardSection() {
 
   return (
     <div className="mb-12">
-      <div className="flex justify-between items-center mb-5">
-        <h2 className="font-display text-xl font-semibold tracking-tight hub-txt">
-          {t('dashboard.title', 'Desempenho')}
-        </h2>
-        <PeriodSelector value={period} onChange={setPeriod} />
-      </div>
+      {sectionNumber !== undefined ? (
+        <SectionHeader
+          number={sectionNumber}
+          label={t('home.pauta.section.results', 'Resultados')}
+          title={t('dashboard.title', 'Desempenho')}
+          action={<PeriodSelector value={period} onChange={setPeriod} />}
+        />
+      ) : (
+        <div className="flex justify-between items-center mb-5">
+          <h2 className="font-display text-xl font-semibold tracking-tight hub-txt">
+            {t('dashboard.title', 'Desempenho')}
+          </h2>
+          <PeriodSelector value={period} onChange={setPeriod} />
+        </div>
+      )}
 
       <div className="mb-6">
         <h3 className="text-[13px] font-semibold hub-tx2 mb-3">

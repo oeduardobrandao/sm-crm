@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowRight, CalendarDays, ChevronRight } from 'lucide-react';
 import { hubAgendaQuery } from '../../queries';
 import { StatusPill } from '../../components/StatusPill';
-import { compararInicio, quando } from './formatar';
+import { proximosEventos, quando } from './formatar';
 import { localeDe, selo, textoQuando } from './AgendaCard';
 
 const MAX_ITENS = 3;
@@ -20,10 +20,7 @@ export function HomeAgenda({ token, base }: { token: string; base: string }) {
   const locale = localeDe(i18n.language);
   const { data } = useInfiniteQuery(hubAgendaQuery(token));
 
-  const agora = Date.now();
-  const proximos = (data?.pages[0]?.itens ?? [])
-    .filter((i) => Date.parse(i.fim) > agora)
-    .sort(compararInicio);
+  const proximos = proximosEventos(data?.pages[0]?.itens ?? [], Date.now());
   if (proximos.length === 0) return null;
 
   const aguardando = proximos.filter((i) => i.resposta === null).length;

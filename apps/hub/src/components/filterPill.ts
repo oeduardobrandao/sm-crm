@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import type { HubLook } from '../theme';
 
 /**
  * One pill shape for every Postagens filter control (status chips and the month/media
@@ -7,7 +8,22 @@ import type { CSSProperties } from 'react';
 export const FILTER_PILL_CLASS =
   'inline-flex h-8 max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[12px] font-semibold transition-colors hub-focus-accent focus:outline-none';
 
-export function filterPillStyle(selected: boolean): CSSProperties {
+export function filterPillStyle(selected: boolean, look: HubLook = 'classic'): CSSProperties {
+  if (look === 'pauta') {
+    return selected
+      ? {
+          background: 'var(--hub-primary)',
+          color: 'var(--hub-primary-fg)',
+          borderColor: 'var(--hub-primary)',
+          borderRadius: 'var(--hub-r-chip)',
+        }
+      : {
+          background: 'var(--hub-card)',
+          color: 'var(--hub-tx2)',
+          borderColor: 'var(--hub-bd)',
+          borderRadius: 'var(--hub-r-chip)',
+        };
+  }
   return selected
     ? { background: 'var(--hub-acc)', color: 'var(--hub-acc-fg)', borderColor: 'var(--hub-acc)' }
     : { background: 'var(--hub-card)', color: 'var(--hub-tx2)', borderColor: 'var(--hub-bd)' };

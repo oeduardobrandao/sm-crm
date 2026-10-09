@@ -7,6 +7,13 @@ import {
   HUB_DISPLAY_FONTS,
   HUB_BODY_FONTS,
   PALETTES,
+  HUB_FONT_PAIRINGS,
+  PAUTA_WARM,
+  PAUTA_STATUS,
+  contrastRatio,
+  readablePrimary,
+  effectiveHubFonts,
+  hubFontOptions,
   type HubThemeConfig,
 } from './theme';
 
@@ -347,6 +354,7 @@ describe('font allowlist sync (mirrors supabase/migrations/20260731000001_hub_br
       'space-grotesk',
       'sora',
       'lora',
+      'bricolage-grotesque',
     ]);
   });
 
@@ -357,6 +365,7 @@ describe('font allowlist sync (mirrors supabase/migrations/20260731000001_hub_br
       'dm-sans',
       'manrope',
       'public-sans',
+      'figtree',
     ]);
   });
 });
@@ -382,4 +391,209 @@ describe('surface presets: tx3 contrast (WCAG AA)', () => {
       });
     }
   }
+
+  for (const [mode, p] of Object.entries(PAUTA_WARM)) {
+    it(`pauta warm ${mode}: tx3 is >= 4.5:1 on bg, card and soft`, () => {
+      for (const bg of [p.bg, p.card, p.soft]) expect(ratio(p.tx3, bg)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+});
+
+describe('readable primary (Pauta)', () => {
+  const brands = [
+    '#f97316',
+    '#0ea5e9',
+    '#ec4899',
+    '#f43f5e',
+    '#d946ef',
+    '#8b5cf6',
+    '#ffbf30',
+    '#1a1a2e',
+  ];
+  for (const hex of brands) {
+    it(`${hex}: primary-fg on primary >= 4.5`, () => {
+      const { primary, fg } = readablePrimary(hex);
+      expect(contrastRatio(fg, primary)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+  it('keeps the brand color when a foreground already reaches 4.5', () => {
+    expect(readablePrimary('#f97316').primary).toBe('#f97316'); // ink passes
+    expect(readablePrimary('#0f766e').primary).toBe('#0f766e'); // white passes
+  });
+  it('resolveHubTheme Pauta: primary-fg on primary >= 4.5 in both modes', () => {
+    for (const hex of ['#f97316', '#0ea5e9', '#ec4899', '#f43f5e', '#8b5cf6']) {
+      for (const dark of [false, true]) {
+        const v = resolveHubTheme({ ...DEFAULT_HUB_THEME, accent: hex }, dark, 'pauta').vars;
+        expect(contrastRatio(v['--hub-primary-fg'], v['--hub-primary'])).toBeGreaterThanOrEqual(
+          4.5,
+        );
+      }
+    }
+  });
+  it('darkens a mid-tone toward ink when neither foreground reaches 4.5', () => {
+    const r = readablePrimary('#8b5cf6');
+    expect(r.primary).not.toBe('#8b5cf6');
+    expect(r.fg).toBe('#ffffff');
+  });
+});
+
+describe("resolveHubTheme look='pauta'", () => {
+  const base = { ...DEFAULT_HUB_THEME, accent: '#f97316' };
+  it('primary is the readable brand color even with customized: false', () => {
+    const v = resolveHubTheme(base, false, 'pauta').vars;
+    expect(v['--hub-primary']).toBe('#f97316');
+    expect(v['--hub-primary-fg']).toBe('#171717');
+    expect(v['--hub-ring']).toBe('color-mix(in srgb, #f97316 22%, transparent)');
+    expect(v['--hub-acc']).toBe('#f97316');
+  });
+  it('warm surface uses PAUTA_WARM in Pauta and the classic palette otherwise', () => {
+    const warm = { ...base, surface: 'warm' as const, customized: true };
+    expect(resolveHubTheme(warm, false, 'pauta').vars['--hub-bg']).toBe('#F8F5F3');
+    expect(resolveHubTheme(warm, true, 'pauta').vars['--hub-bg']).toBe('#141110');
+    expect(resolveHubTheme(warm, false).vars['--hub-bg']).toBe('#FAF7F2');
+  });
+  it('non-customized Pauta uses the Assinatura fonts; customized keeps the stored ones', () => {
+    expect(resolveHubTheme(base, false, 'pauta').vars['--hub-font-display']).toContain(
+      'Bricolage Grotesque',
+    );
+    expect(resolveHubTheme(base, false, 'pauta').vars['--hub-font-sans']).toContain('Figtree');
+    const custom = { ...base, customized: true, fontDisplay: 'fraunces', fontBody: 'inter' };
+    expect(resolveHubTheme(custom, false, 'pauta').vars['--hub-font-display']).toContain(
+      'Fraunces',
+    );
+  });
+  it('display weight is 500 for Fraunces and 600 otherwise', () => {
+    const fr = { ...base, customized: true, fontDisplay: 'fraunces' };
+    expect(resolveHubTheme(fr, false, 'pauta').vars['--hub-display-weight']).toBe('500');
+    expect(resolveHubTheme(base, false, 'pauta').vars['--hub-display-weight']).toBe('600');
+  });
+  it('radius tokens per preset', () => {
+    const r = (radius: 'square' | 'soft' | 'pill') =>
+      resolveHubTheme({ ...base, customized: true, radius }, false, 'pauta').vars;
+    expect([
+      r('square')['--hub-r-chip'],
+      r('soft')['--hub-r-chip'],
+      r('pill')['--hub-r-chip'],
+    ]).toEqual(['3px', '8px', '999px']);
+    expect([
+      r('square')['--hub-r-tile'],
+      r('soft')['--hub-r-tile'],
+      r('pill')['--hub-r-tile'],
+    ]).toEqual(['0px', '8px', '14px']);
+    expect([
+      r('square')['--hub-r-dot'],
+      r('soft')['--hub-r-dot'],
+      r('pill')['--hub-r-dot'],
+    ]).toEqual(['0px', '2px', '999px']);
+  });
+  it('card shadow only on filled light', () => {
+    expect(resolveHubTheme(base, false, 'pauta').vars['--hub-shadow-card']).toBe(
+      '0 1px 2px rgba(16,16,16,.05)',
+    );
+    expect(resolveHubTheme(base, true, 'pauta').vars['--hub-shadow-card']).toBe('none');
+    expect(
+      resolveHubTheme({ ...base, customized: true, cardStyle: 'outline' }, false, 'pauta').vars[
+        '--hub-shadow-card'
+      ],
+    ).toBe('none');
+  });
+  it('status tokens are emitted and done reads the surface', () => {
+    const v = resolveHubTheme(base, false, 'pauta').vars;
+    expect(v['--hub-st-wait-fg']).toBe('#8A5300');
+    expect(v['--hub-st-done-fg']).toBe('var(--hub-tx2)');
+    expect(v['--hub-st-done-bg']).toBe('var(--hub-soft)');
+  });
+});
+
+describe('classic stays as it was', () => {
+  it('existing vars are identical with and without the look argument', () => {
+    for (const dark of [false, true]) {
+      for (const cfg of [
+        { ...DEFAULT_HUB_THEME, accent: '#f97316' },
+        {
+          ...DEFAULT_HUB_THEME,
+          accent: '#8b5cf6',
+          customized: true,
+          surface: 'warm' as const,
+          radius: 'pill' as const,
+        },
+      ]) {
+        const a = resolveHubTheme(cfg, dark).vars;
+        const b = resolveHubTheme(cfg, dark, 'classic').vars;
+        expect(b).toEqual(a);
+        // the 19 pre-Pauta vars keep their pre-Pauta values
+        expect(a['--hub-primary']).toBe(cfg.customized ? '#8b5cf6' : 'var(--hub-txt)');
+      }
+    }
+  });
+  it('classic accFg keeps the linear-luminance pick', () => {
+    expect(
+      resolveHubTheme({ ...DEFAULT_HUB_THEME, accent: '#f97316' }, false).vars['--hub-acc-fg'],
+    ).toBe('#ffffff');
+  });
+});
+
+describe('Pauta status tokens contrast (>= 4.5 on card and bg of every surface)', () => {
+  for (const mode of ['light', 'dark'] as const) {
+    const palettes = [PALETTES.neutral[mode], PAUTA_WARM[mode], PALETTES.cool[mode]];
+    for (const [tone, { fg }] of Object.entries(PAUTA_STATUS[mode])) {
+      if (tone === 'done') continue; // tx2 on soft, covered by the palette floors
+      it(`${mode} ${tone}`, () => {
+        for (const p of palettes) {
+          expect(contrastRatio(fg, p.card)).toBeGreaterThanOrEqual(4.5);
+          expect(contrastRatio(fg, p.bg)).toBeGreaterThanOrEqual(4.5);
+        }
+      });
+    }
+  }
+});
+
+describe('effectiveHubFonts', () => {
+  it('classic: defaults unless customized', () => {
+    expect(effectiveHubFonts('classic', false, { display: 'sora', body: 'inter' })).toEqual({
+      display: 'fraunces',
+      body: 'instrument-sans',
+    });
+    expect(effectiveHubFonts('classic', true, { display: 'sora', body: 'inter' })).toEqual({
+      display: 'sora',
+      body: 'inter',
+    });
+  });
+  it('pauta: Assinatura unless customized', () => {
+    expect(effectiveHubFonts('pauta', false, {})).toEqual({
+      display: 'bricolage-grotesque',
+      body: 'figtree',
+    });
+    expect(
+      effectiveHubFonts('pauta', true, { display: 'fraunces', body: 'instrument-sans' }),
+    ).toEqual({ display: 'fraunces', body: 'instrument-sans' });
+  });
+  it('customized with missing ids falls back to the classic defaults', () => {
+    expect(effectiveHubFonts('pauta', true, { display: null, body: undefined })).toEqual({
+      display: 'fraunces',
+      body: 'instrument-sans',
+    });
+  });
+});
+
+describe('hubFontOptions', () => {
+  const cur = { display: 'fraunces', body: 'instrument-sans' };
+  it('hides the Assinatura ids and pair without the flag', () => {
+    const o = hubFontOptions(false, cur);
+    expect(o.display.map(([id]) => id)).not.toContain('bricolage-grotesque');
+    expect(o.body.map(([id]) => id)).not.toContain('figtree');
+    expect(o.pairings.map((p) => p.label)).not.toContain('Assinatura');
+  });
+  it('shows them with the flag, Assinatura first', () => {
+    const o = hubFontOptions(true, cur);
+    expect(o.display.map(([id]) => id)).toContain('bricolage-grotesque');
+    expect(o.pairings[0].label).toBe('Assinatura');
+    expect(o.pairings).toEqual(HUB_FONT_PAIRINGS);
+  });
+  it('keeps an already-stored Assinatura id visible without the flag', () => {
+    const o = hubFontOptions(false, { display: 'bricolage-grotesque', body: 'figtree' });
+    expect(o.display.map(([id]) => id)).toContain('bricolage-grotesque');
+    expect(o.body.map(([id]) => id)).toContain('figtree');
+    expect(o.pairings.map((p) => p.label)).toContain('Assinatura');
+  });
 });

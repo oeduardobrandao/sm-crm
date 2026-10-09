@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { getClientStatusLabel } from '../lib/postView';
+import { useHubLook } from '../hooks/useHubLook';
 import { FILTER_PILL_CLASS, filterPillStyle } from './filterPill';
 
 export type StatusFilter = 'all' | 'enviado_cliente' | 'correcao_cliente' | 'aprovado_cliente';
@@ -31,6 +32,7 @@ export function StatusFilterChips({
   className = 'flex flex-wrap gap-1.5 mb-6',
 }: StatusFilterChipsProps) {
   const { t } = useTranslation('hubPosts');
+  const look = useHubLook();
   return (
     <div
       role="group"
@@ -48,7 +50,7 @@ export function StatusFilterChips({
             aria-pressed={selected}
             onClick={() => onChange(filter)}
             className={FILTER_PILL_CLASS}
-            style={filterPillStyle(selected)}
+            style={filterPillStyle(selected, look)}
           >
             {label} ({counts[filter]})
           </button>

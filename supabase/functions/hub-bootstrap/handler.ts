@@ -115,6 +115,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       featureBriefingAudio,
       brandCustomization,
       featureAgenda,
+      featureHubPauta,
     ] = await Promise.all([
         touch(),
         db
@@ -127,6 +128,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
         feature("feature_briefing_audio"),
         feature("feature_brand_customization"),
         feature("feature_agenda"),
+        feature("feature_hub_pauta"),
       ]);
     const clienteFotoUrl = cliente?.foto_url || igFotoUrl || null;
 
@@ -163,6 +165,9 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       feature_briefing_audio: featureBriefingAudio,
       // Optional on the wire: an older Hub bundle simply ignores it.
       feature_agenda: featureAgenda,
+      // Visual identity "Pauta" (aparência apenas). Optional on the wire like
+      // feature_agenda: an older Hub bundle ignores it.
+      feature_hub_pauta: featureHubPauta,
       hub_theme: brandCustomization
         ? {
             customized: true,

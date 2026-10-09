@@ -146,14 +146,14 @@ Deno.test("a throwing touchToken must NOT break the client's portal", async () =
 
 Deno.test("post-auth lookups run alongside touchToken, not behind it", async () => {
   const db = makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true });
-  // resolveHubToken's feature_hub_portal check is RPC #1; the four plan
-  // features the bootstrap serves are #2-#5.
+  // resolveHubToken's feature_hub_portal check is RPC #1; the five plan
+  // features the bootstrap serves are #2-#6.
   let rpcCalls = 0;
   let allFeaturesStarted!: () => void;
   const featuresStarted = new Promise<void>((resolve) => (allFeaturesStarted = resolve));
   const rpc = db.rpc;
   db.rpc = async () => {
-    if (++rpcCalls === 5) allFeaturesStarted();
+    if (++rpcCalls === 6) allFeaturesStarted();
     return await rpc();
   };
 
@@ -182,7 +182,7 @@ Deno.test("post-auth lookups run alongside touchToken, not behind it", async () 
   clearTimeout(timer);
   assertEquals(res.status, 200);
   assertEquals(touchWaitedOut, false);
-  assertEquals(rpcCalls, 5);
+  assertEquals(rpcCalls, 6);
 });
 
 Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", async () => {
@@ -232,6 +232,42 @@ Deno.test("feature_agenda is false and does NOT break the response when its RPC 
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.feature_agenda, false);
+  assertEquals(body.feature_mensagens, true);
+});
+
+Deno.test("feature_hub_pauta reflects the effective_plan_feature RPC result", async () => {
+  const make = (flags: Record<string, boolean>) =>
+    createHubBootstrapHandler({
+      buildCorsHeaders: cors,
+      createDb: () =>
+        makeDbWithFeatureFlags({ cliente_id: 15, conta_id: "ws-1", is_active: true }, flags) as any,
+      now: () => NOW,
+      touchToken: async () => {},
+      rateLimit: async () => true,
+    });
+  const on = await (await make({ feature_hub_pauta: true, feature_mensagens: false })(req())).json();
+  assertEquals(on.feature_hub_pauta, true);
+  assertEquals(on.feature_mensagens, false);
+  const off = await (await make({ feature_hub_pauta: false })(req())).json();
+  assertEquals(off.feature_hub_pauta, false);
+});
+
+Deno.test("feature_hub_pauta is false and does NOT break the response when its RPC errors", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithThrowingFeature(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        "feature_hub_pauta",
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    rateLimit: async () => true,
+  });
+  const res = await handler(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.feature_hub_pauta, false);
   assertEquals(body.feature_mensagens, true);
 });
 

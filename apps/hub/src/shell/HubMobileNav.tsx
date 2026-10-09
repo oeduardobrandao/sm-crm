@@ -3,9 +3,11 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { Menu, X, Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { useHubLook } from '../hooks/useHubLook';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { useMensagensUnreadCount } from '../hooks/useMensagensUnreadCount';
 import { getVisibleNavItems, type HubBadgeKey } from './navItems';
+import { PAUTA_BADGE_CLASS, pautaBadgeStyle } from './pautaNav';
 import { ClientAvatar } from '../components/ClientAvatar';
 import { WorkspaceMark, isWordmarkStyle } from '../components/WorkspaceMark';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
@@ -22,6 +24,7 @@ export function HubMobileNav() {
   const { workspace, token } = useParams<{ workspace: string; token: string }>();
   const { pathname } = useLocation();
   const { t, i18n } = useTranslation();
+  const pauta = useHubLook() === 'pauta';
   const base = `/${workspace}/hub/${token}`;
   const pendingCount = usePendingApprovalsCount(token!);
   const mensagensUnread = useMensagensUnreadCount(token!, bootstrap.feature_mensagens);
@@ -29,6 +32,7 @@ export function HubMobileNav() {
     aprovacoes: pendingCount,
     mensagens: mensagensUnread,
   };
+  const pendingTotal = pendingCount + mensagensUnread;
   const navItems = getVisibleNavItems(
     bootstrap.feature_mensagens,
     bootstrap.feature_agenda ?? false,
@@ -105,7 +109,9 @@ export function HubMobileNav() {
           to and just scrolls away. Ancestor overflow doesn't affect `fixed`. */}
       <header className="md:hidden fixed top-0 left-0 right-0 z-20 px-3 py-2 pointer-events-none">
         <div
-          className={`pointer-events-auto h-[54px] px-4 rounded-2xl flex items-center justify-between border transition-[background-color,border-color,box-shadow] duration-200 ${
+          className={`pointer-events-auto h-[54px] px-4 ${
+            pauta ? 'rounded-[var(--hub-r-card)]' : 'rounded-2xl'
+          } flex items-center justify-between border transition-[background-color,border-color,box-shadow] duration-200 ${
             scrolled
               ? 'hub-border shadow-[0_10px_30px_-12px_rgba(0,0,0,.35)]'
               : 'border-transparent'
@@ -123,7 +129,13 @@ export function HubMobileNav() {
           <span className="flex items-center gap-2 min-w-0">
             <WorkspaceMark size={28} />
             {!isWordmarkStyle(bootstrap) && (
-              <span className="font-display text-[15px] font-medium hub-txt truncate">
+              <span
+                className={
+                  pauta
+                    ? 'font-display text-[15px] hub-display-title hub-txt truncate'
+                    : 'font-display text-[15px] font-medium hub-txt truncate'
+                }
+              >
                 {bootstrap.workspace.name}
               </span>
             )}
@@ -135,13 +147,34 @@ export function HubMobileNav() {
             <button
               type="button"
               ref={triggerRef}
-              aria-label={t('nav.openMenu', 'Abrir menu')}
+              aria-label={
+                pauta && pendingTotal > 0
+                  ? t('nav.openMenuPending', { count: pendingTotal })
+                  : t('nav.openMenu', 'Abrir menu')
+              }
               aria-haspopup="dialog"
               aria-expanded={open}
               onClick={() => setOpen(true)}
-              className="w-10 h-10 rounded-lg border hub-border flex items-center justify-center hub-txt"
+              className={
+                pauta
+                  ? 'relative w-10 h-10 rounded-[var(--hub-r-ctl)] border hub-border flex items-center justify-center hub-txt'
+                  : 'w-10 h-10 rounded-lg border hub-border flex items-center justify-center hub-txt'
+              }
             >
               <Menu size={18} />
+              {pauta && pendingTotal > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 text-[10.5px] font-bold flex items-center justify-center"
+                  style={{
+                    background: 'var(--hub-primary)',
+                    color: 'var(--hub-primary-fg)',
+                    borderRadius: 'var(--hub-r-chip)',
+                  }}
+                >
+                  {pendingTotal}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -165,7 +198,13 @@ export function HubMobileNav() {
               <span className="flex items-center gap-2 min-w-0">
                 <WorkspaceMark size={28} />
                 {!isWordmarkStyle(bootstrap) && (
-                  <span className="font-display text-[15px] font-medium hub-txt truncate">
+                  <span
+                    className={
+                      pauta
+                        ? 'font-display text-[15px] hub-display-title hub-txt truncate'
+                        : 'font-display text-[15px] font-medium hub-txt truncate'
+                    }
+                  >
                     {bootstrap.workspace.name}
                   </span>
                 )}
@@ -174,7 +213,9 @@ export function HubMobileNav() {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label={t('actions.close', 'Fechar')}
-                className="w-9 h-9 rounded-full flex items-center justify-center hub-tx2 hover:bg-[var(--hub-soft)]"
+                className={`w-9 h-9 ${
+                  pauta ? 'rounded-[var(--hub-r-ctl)]' : 'rounded-full'
+                } flex items-center justify-center hub-tx2 hover:bg-[var(--hub-soft)]`}
               >
                 <X size={18} />
               </button>
@@ -191,19 +232,32 @@ export function HubMobileNav() {
                     to={href}
                     ref={i === 0 ? firstItemRef : undefined}
                     onClick={() => setOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-3 rounded-lg min-h-[48px] transition-colors ${
-                      active
-                        ? 'font-semibold hub-nav-active hub-bg-soft'
-                        : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
-                    }`}
+                    className={
+                      pauta
+                        ? `flex items-center gap-3 px-3 py-3 rounded-[var(--hub-r-ctl)] min-h-[48px] transition-colors ${
+                            active
+                              ? 'font-semibold hub-nav-pill'
+                              : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
+                          }`
+                        : `flex items-center gap-3 px-3 py-3 rounded-lg min-h-[48px] transition-colors ${
+                            active
+                              ? 'font-semibold hub-nav-active hub-bg-soft'
+                              : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
+                          }`
+                    }
                   >
                     <Icon size={18} strokeWidth={active ? 2.25 : 1.75} />
                     <span className="flex-1 text-[15px]">{t(labelKey, label)}</span>
-                    {!!badge && (
-                      <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[12px] font-bold flex items-center justify-center hub-btn-primary">
-                        {badge}
-                      </span>
-                    )}
+                    {!!badge &&
+                      (pauta ? (
+                        <span className={PAUTA_BADGE_CLASS} style={pautaBadgeStyle(active)}>
+                          {badge}
+                        </span>
+                      ) : (
+                        <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[12px] font-bold flex items-center justify-center hub-btn-primary">
+                          {badge}
+                        </span>
+                      ))}
                   </Link>
                 );
               })}
@@ -222,14 +276,22 @@ export function HubMobileNav() {
               <button
                 onClick={() => cycleLanguage(i18n.language)}
                 aria-label={t('sidebar.language')}
-                className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[var(--hub-soft)] transition-colors"
+                className={
+                  pauta
+                    ? 'w-9 h-9 flex items-center justify-center rounded-[var(--hub-r-ctl)] border hub-border hover:bg-[var(--hub-soft)] transition-colors'
+                    : 'w-9 h-9 flex items-center justify-center rounded-full hover:bg-[var(--hub-soft)] transition-colors'
+                }
               >
                 <FlagIcon lang={(i18n.language as Language) || 'pt'} size={20} />
               </button>
               <button
                 onClick={toggleTheme}
                 aria-label={theme === 'dark' ? t('sidebar.lightMode') : t('sidebar.darkMode')}
-                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:bg-[var(--hub-soft)] transition-colors"
+                className={
+                  pauta
+                    ? 'w-9 h-9 flex items-center justify-center rounded-[var(--hub-r-ctl)] border hub-border hub-tx3 hover:bg-[var(--hub-soft)] transition-colors'
+                    : 'w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:bg-[var(--hub-soft)] transition-colors'
+                }
               >
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>

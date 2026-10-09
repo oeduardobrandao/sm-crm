@@ -36,6 +36,11 @@ export interface HubBootstrap {
    * reason: a hub-bootstrap deployed before the Agenda omits it, which means off.
    */
   feature_agenda?: boolean;
+  /**
+   * Identidade visual "Pauta" (feature_hub_pauta). Optional for the same reason as
+   * feature_agenda: absent = classic look.
+   */
+  feature_hub_pauta?: boolean;
   /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
   hub_theme?: HubThemeInfo;
 }

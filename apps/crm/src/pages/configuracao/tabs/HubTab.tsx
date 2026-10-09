@@ -59,11 +59,14 @@ import { HubPreview, HUB_DISPLAY_FONTS, HUB_BODY_FONTS, type HubPreviewDraft } f
 import {
   PALETTES,
   HUB_FONT_PAIRINGS,
+  PAUTA_FONTS,
+  hubFontOptions,
   resolveHubTheme,
   relativeLuminance,
   type HubSurface,
   type HubRadius,
   type HubCardStyle,
+  type HubFontOption,
 } from '../../../../../hub/src/theme';
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
@@ -423,11 +426,15 @@ function LogoGlyph({
 function FontPairingCards({
   fontDisplay,
   fontBody,
+  pairings,
+  defaultLabel,
   onPick,
   disabled,
 }: {
   fontDisplay: string;
   fontBody: string;
+  pairings: typeof HUB_FONT_PAIRINGS;
+  defaultLabel?: string;
   onPick: (display: string, body: string) => void;
   disabled?: boolean;
 }) {
@@ -442,7 +449,7 @@ function FontPairingCards({
         marginBottom: '1rem',
       }}
     >
-      {HUB_FONT_PAIRINGS.map((pairing) => {
+      {pairings.map((pairing) => {
         const active = fontDisplay === pairing.display && fontBody === pairing.body;
         const displayFont = HUB_DISPLAY_FONTS[pairing.display];
         const bodyFont = HUB_BODY_FONTS[pairing.body];
@@ -468,6 +475,7 @@ function FontPairingCards({
             </span>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)' }}>
               {pairing.label}
+              {defaultLabel && pairing.display === PAUTA_FONTS.display ? ` · ${defaultLabel}` : ''}
             </span>
             <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
               {displayFont?.label} · {bodyFont?.label}
@@ -487,12 +495,16 @@ function FontSelectsDisclosure({
   setFontDisplay,
   fontBody,
   setFontBody,
+  displayOptions,
+  bodyOptions,
   disabled,
 }: {
   fontDisplay: string;
   setFontDisplay: (v: string) => void;
   fontBody: string;
   setFontBody: (v: string) => void;
+  displayOptions: [string, HubFontOption][];
+  bodyOptions: [string, HubFontOption][];
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -539,7 +551,7 @@ function FontSelectsDisclosure({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(HUB_DISPLAY_FONTS).map(([id, font]) => (
+                {displayOptions.map(([id, font]) => (
                   <SelectItem key={id} value={id} style={{ fontFamily: font.css }}>
                     {font.label}
                   </SelectItem>
@@ -556,7 +568,7 @@ function FontSelectsDisclosure({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(HUB_BODY_FONTS).map(([id, font]) => (
+                {bodyOptions.map(([id, font]) => (
                   <SelectItem key={id} value={id} style={{ fontFamily: font.css }}>
                     {font.label}
                   </SelectItem>
@@ -676,7 +688,7 @@ export default function HubTab() {
   // FILTERS the row out rather than raising, so PostgREST returned 200/zero
   // rows and the save toasted success without saving anything.
   const canEditConfig = can('configuracoes', 'editar') === true;
-  const { hasFeature, isLoading: entitlementsLoading } = useEntitlements();
+  const { hasFeature, features, isLoading: entitlementsLoading } = useEntitlements();
   const customized = !entitlementsLoading && hasFeature('feature_brand_customization');
 
   const { data: workspace } = useQuery({
@@ -701,6 +713,14 @@ export default function HubTab() {
   const [cardStyle, setCardStyle] = useState<HubCardStyle>('filled');
   const [fontDisplay, setFontDisplay] = useState('fraunces');
   const [fontBody, setFontBody] = useState('instrument-sans');
+  // Never hasFeature here: it treats a missing key as on (useEntitlements.ts:16).
+  const pauta = !entitlementsLoading && features?.feature_hub_pauta === true;
+  // Keyed on the STORED pair, not the draft: the carve-out is for what the workspace
+  // already has, so picking another pair must not make Assinatura vanish mid-edit.
+  const fontOptions = hubFontOptions(pauta, {
+    display: branding?.hub_font_display ?? fontDisplay,
+    body: branding?.hub_font_body ?? fontBody,
+  });
   const [logoStyle, setLogoStyle] = useState('round');
   const [defaultAppearance, setDefaultAppearance] = useState('light');
   const [hideBranding, setHideBranding] = useState(false);
@@ -741,19 +761,23 @@ export default function HubTab() {
   // CURRENTLY picked pair for the preview itself -- this one loads every allowlisted
   // display face once, so all four pairing cards render in their real fonts
   // regardless of which pair is selected.
+  const specimenFamilies = fontOptions.display
+    .map(([, font]) => `family=${font.gf.split(':')[0]}:wght@500;600`)
+    .join('&');
   useEffect(() => {
     const linkId = 'crm-hub-specimen-fonts';
-    if (document.getElementById(linkId)) return;
-    const families = Object.values(HUB_DISPLAY_FONTS).map(
-      (font) => `family=${font.gf.split(':')[0]}:wght@500;600`,
-    );
-    const link = document.createElement('link');
+    const existing = document.getElementById(linkId) as HTMLLinkElement | null;
+    const link = existing ?? document.createElement('link');
     link.id = linkId;
     link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?${families.join('&')}&display=swap`;
-    document.head.appendChild(link);
+    // Updated in place so turning the flag on adds Bricolage to the same link.
+    link.href = `https://fonts.googleapis.com/css2?${specimenFamilies}&display=swap`;
+    if (!existing) document.head.appendChild(link);
+  }, [specimenFamilies]);
+
+  useEffect(() => {
     return () => {
-      document.getElementById(linkId)?.remove();
+      document.getElementById('crm-hub-specimen-fonts')?.remove();
     };
   }, []);
 
@@ -897,6 +921,7 @@ export default function HubTab() {
           workspaceName={workspace?.name ?? ''}
           workspaceLogoUrl={workspace?.logo_url ?? null}
           customized={customized}
+          look={pauta ? 'pauta' : 'classic'}
         />
       </div>
 
@@ -995,6 +1020,8 @@ export default function HubTab() {
             <FontPairingCards
               fontDisplay={fontDisplay}
               fontBody={fontBody}
+              pairings={fontOptions.pairings}
+              defaultLabel={pauta ? 'Padrão' : undefined}
               disabled={controlsDisabled}
               onPick={(display, body) => {
                 setFontDisplay(display);
@@ -1006,6 +1033,8 @@ export default function HubTab() {
               setFontDisplay={setFontDisplay}
               fontBody={fontBody}
               setFontBody={setFontBody}
+              displayOptions={fontOptions.display}
+              bodyOptions={fontOptions.body}
               disabled={controlsDisabled}
             />
           </SectionCard>

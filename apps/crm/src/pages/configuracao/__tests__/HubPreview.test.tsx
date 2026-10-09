@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HubPreview, type HubPreviewDraft } from '../HubPreview';
+import type { HubLook } from '../../../../../hub/src/theme';
 
 const BASE_DRAFT: HubPreviewDraft = {
   brandColor: '#eab308',
@@ -15,13 +16,18 @@ const BASE_DRAFT: HubPreviewDraft = {
   defaultAppearance: 'light',
 };
 
-function renderPreview(overrides: Partial<HubPreviewDraft> = {}, customized = true) {
+function renderPreview(
+  overrides: Partial<HubPreviewDraft> = {},
+  customized = true,
+  look: HubLook = 'classic',
+) {
   return render(
     <HubPreview
       draft={{ ...BASE_DRAFT, ...overrides }}
       workspaceName="Agência Teste"
       workspaceLogoUrl="https://cdn.example.com/logo.png"
       customized={customized}
+      look={look}
     />,
   );
 }
@@ -147,6 +153,26 @@ describe('HubPreview', () => {
     // toggle actually started dark instead of defaulting to light.
     expect(wrapper.style.getPropertyValue('--hub-bg')).toBe('#151210');
     expect(screen.getByRole('button', { name: 'Escuro' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('Pauta mobile shows the floating bar with a menu button and no bottom nav', () => {
+    renderPreview({}, true, 'pauta');
+    fireEvent.click(screen.getByRole('button', { name: 'Celular' }));
+    expect(screen.getByTestId('hub-preview-floating-bar')).toBeInTheDocument();
+    expect(screen.queryByTestId('hub-preview-bottom-nav')).not.toBeInTheDocument();
+  });
+
+  it('Pauta greets and loads Assinatura for a non-customized workspace', () => {
+    renderPreview({}, false, 'pauta');
+    expect(screen.getByText('Bom dia, Ana.')).toBeInTheDocument();
+    const link = document.getElementById('crm-hub-preview-fonts') as HTMLLinkElement;
+    expect(link.href).toContain('Bricolage+Grotesque');
+    expect(link.href).toContain('Figtree');
+  });
+
+  it('classic keeps its greeting', () => {
+    renderPreview();
+    expect(screen.getByText('Bem-vindo(a) de volta')).toBeInTheDocument();
   });
 
   it('defaults to the desktop shell: sidebar present, no bottom nav', () => {

@@ -36,7 +36,9 @@
     "mais": "More",
     "ajuda": "Help",
     "suporte": "Support",
-    "novidades": "What's New"
+    "novidades": "What's New",
+    "openMenuPending_one": "Open menu, 1 pending item",
+    "openMenuPending_other": "Open menu, {{count}} pending items"
   },
   "sidebar": {
     "accountOptions": "Account Options",

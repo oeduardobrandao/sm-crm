@@ -8,6 +8,7 @@ import {
   formatarSugestao,
   linkGoogleAgenda,
   paredeNoFuso,
+  proximosEventos,
   quando,
   rotuloFuso,
   somarDias,
@@ -236,5 +237,22 @@ describe('linkGoogleAgenda', () => {
     expect(url.searchParams.get('dates')).toBe('20261009/20261010');
     expect(url.searchParams.has('details')).toBe(false);
     expect(url.searchParams.has('location')).toBe(false);
+  });
+});
+
+describe('proximosEventos', () => {
+  const agora = Date.parse('2026-10-20T18:30:00Z');
+  it('drops what has ended, keeps what is under way, sorts by start then id', () => {
+    const fim = item({ ocorrencia_id: 1, fim: '2026-10-20T18:30:00Z' }); // ended exactly now
+    const emCurso = item({ ocorrencia_id: 2 }); // 18:00-19:00
+    const depois = item({
+      ocorrencia_id: 3,
+      inicio: '2026-10-21T12:00:00Z',
+      fim: '2026-10-21T13:00:00Z',
+    });
+    const mesmoInicio = item({ ocorrencia_id: 4, inicio: '2026-10-21T12:00:00Z', fim: depois.fim });
+    const entrada = [mesmoInicio, depois, fim, emCurso];
+    expect(proximosEventos(entrada, agora).map((i) => i.ocorrencia_id)).toEqual([2, 3, 4]);
+    expect(entrada.map((i) => i.ocorrencia_id)).toEqual([4, 3, 1, 2]); // input untouched
   });
 });

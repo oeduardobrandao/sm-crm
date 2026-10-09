@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
+import { useHubLook } from '../hooks/useHubLook';
 import { FILTER_PILL_CLASS, filterPillStyle } from './filterPill';
 
 export interface FilterDropdownItem {
@@ -40,6 +41,8 @@ export function FilterDropdown({
   onChange,
 }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
+  const look = useHubLook();
+  const pauta = look === 'pauta';
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const container =
     typeof document !== 'undefined'
@@ -68,7 +71,7 @@ export function FilterDropdown({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button type="button" className={FILTER_PILL_CLASS} style={filterPillStyle(active)}>
+        <button type="button" className={FILTER_PILL_CLASS} style={filterPillStyle(active, look)}>
           <span className="min-w-0 truncate">{triggerLabel}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         </button>
@@ -84,7 +87,9 @@ export function FilterDropdown({
             e.preventDefault();
             itemRefs.current[currentIndex]?.focus();
           }}
-          className="z-50 flex w-[260px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[4px] border focus:outline-none"
+          className={`z-50 flex w-[260px] max-w-[calc(100vw-24px)] flex-col overflow-hidden ${
+            pauta ? 'rounded-[var(--hub-r-card)]' : 'rounded-[4px]'
+          } border focus:outline-none`}
           style={{
             background: 'var(--hub-card)',
             color: 'var(--hub-txt)',
@@ -111,7 +116,9 @@ export function FilterDropdown({
                   aria-checked={checked}
                   tabIndex={checked ? 0 : -1}
                   onClick={() => pick(item.key)}
-                  className="flex w-full items-center gap-2 rounded-[4px] px-2.5 py-2 text-left text-[13px] leading-snug hover:bg-[var(--hub-soft)] focus-visible:bg-[var(--hub-soft)] focus-visible:outline-none"
+                  className={`flex w-full items-center gap-2 ${
+                    pauta ? 'rounded-[var(--hub-r-chip)]' : 'rounded-[4px]'
+                  } px-2.5 py-2 text-left text-[13px] leading-snug hover:bg-[var(--hub-soft)] focus-visible:bg-[var(--hub-soft)] focus-visible:outline-none`}
                   style={{ color: 'var(--hub-txt)' }}
                 >
                   <Check

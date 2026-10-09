@@ -35,6 +35,47 @@
       "paginas": "Pages",
       "briefing": "Briefing",
       "ideias": "Ideas"
+    },
+    "pauta": {
+      "greeting": {
+        "morning": "Good morning, {{name}}.",
+        "afternoon": "Good afternoon, {{name}}.",
+        "evening": "Good evening, {{name}}."
+      },
+      "summary": {
+        "both": "You have <chip>{{posts}}</chip> to approve and <chip>{{publications}}</chip> going out this week.",
+        "pendingOnly": "You have <chip>{{posts}}</chip> to approve.",
+        "weekOnly": "<chip>{{publications}}</chip> going out this week.",
+        "none": "All caught up here."
+      },
+      "chip": {
+        "posts_one": "1 post",
+        "posts_other": "{{count}} posts",
+        "publications_one": "1 publication",
+        "publications_other": "{{count}} publications"
+      },
+      "cta": {
+        "review": "Review approvals"
+      },
+      "kpi": {
+        "pending": "To approve",
+        "reviewNow": "Review now"
+      },
+      "section": {
+        "approvals": "Approvals",
+        "calendar": "Calendar",
+        "agenda": "Agenda",
+        "resources": "Resources",
+        "results": "Results"
+      },
+      "waiting": {
+        "title": "Waiting on you",
+        "seeAll": "See all",
+        "review": "Review"
+      },
+      "resources": {
+        "title": "Quick access"
+      }
     }
   },
   "calendar": {

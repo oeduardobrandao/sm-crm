@@ -18,13 +18,21 @@ import {
   resolveHubTheme,
   DEFAULT_HUB_THEME,
   buildGoogleFontsHref,
+  effectiveHubFonts,
   HUB_DISPLAY_FONTS,
   HUB_BODY_FONTS,
   type HubSurface,
   type HubRadius,
   type HubCardStyle,
+  type HubLook,
   type HubThemeConfig,
 } from '../../../../hub/src/theme';
+import {
+  PautaPreviewFloatingBar,
+  PautaPreviewGreeting,
+  PautaPreviewKpiRow,
+  PautaPreviewStatusRow,
+} from './HubPreviewPauta';
 
 export interface HubPreviewDraft {
   brandColor: string;
@@ -47,6 +55,8 @@ interface HubPreviewProps {
    * workspaces see what the Hub renders for them TODAY: DEFAULT_HUB_THEME plus their accent
    * (brand_color editing is ungated), never the draft's customization picks. */
   customized: boolean;
+  /** Hub look being previewed: 'pauta' when the workspace has feature_hub_pauta. */
+  look?: HubLook;
 }
 
 const GOOGLE_FONTS_LINK_ID = 'crm-hub-preview-fonts';
@@ -80,7 +90,7 @@ const KPI_STATS: { label: string; value: string; spark: number[] }[] = [
  * meaningfully larger type/padding than the original design to read comfortably.
  * Mobile keeps the original compact scale — it was already sized for a narrow
  * frame and stays roughly phone-proportioned. */
-interface PreviewDims {
+export interface PreviewDims {
   maxWidth: number;
   sidebarWidth: number;
   logoSize: number;
@@ -208,13 +218,19 @@ export function HubPreview({
   workspaceName,
   workspaceLogoUrl,
   customized,
+  look = 'classic',
 }: HubPreviewProps) {
+  const pauta = look === 'pauta';
   const [dark, setDark] = useState(draft.defaultAppearance === 'dark');
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
   const dims = device === 'mobile' ? MOBILE_DIMS : DESKTOP_DIMS;
 
+  const fonts = effectiveHubFonts(look, customized, {
+    display: draft.fontDisplay,
+    body: draft.fontBody,
+  });
   useEffect(() => {
-    const href = buildGoogleFontsHref(draft.fontDisplay, draft.fontBody);
+    const href = buildGoogleFontsHref(fonts.display, fonts.body);
     const existing = document.getElementById(GOOGLE_FONTS_LINK_ID) as HTMLLinkElement | null;
     if (!href) {
       existing?.remove();
@@ -225,7 +241,7 @@ export function HubPreview({
     link.rel = 'stylesheet';
     link.href = href;
     if (!existing) document.head.appendChild(link);
-  }, [draft.fontDisplay, draft.fontBody]);
+  }, [fonts.display, fonts.body]);
 
   // Remove the preview's font link when the tab is left — nothing else on the page
   // needs Fraunces/Sora/etc. loaded once Configurações → Hub is no longer mounted.
@@ -247,7 +263,7 @@ export function HubPreview({
       }
     : { ...DEFAULT_HUB_THEME, accent: draft.brandColor, customized: false };
 
-  const resolved = resolveHubTheme(config, dark);
+  const resolved = resolveHubTheme(config, dark, look);
   const wrapperStyle = { ...resolved.vars } as CSSProperties;
 
   // Mirror WorkspaceMark (apps/hub/src/components/WorkspaceMark.tsx): it reads
@@ -489,9 +505,16 @@ export function HubPreview({
         overflow: 'auto',
       }}
     >
-      {greeting}
-      {statusPillsRow}
-      <div style={{ display: 'flex', gap: dims.kpiGap }}>{kpiCards}</div>
+      {pauta ? <PautaPreviewGreeting dims={dims} /> : greeting}
+      {pauta ? <PautaPreviewStatusRow dims={dims} /> : statusPillsRow}
+      {pauta ? (
+        <PautaPreviewKpiRow
+          dims={dims}
+          kpis={device === 'mobile' ? KPI_STATS.slice(0, 2) : KPI_STATS}
+        />
+      ) : (
+        <div style={{ display: 'flex', gap: dims.kpiGap }}>{kpiCards}</div>
+      )}
       {approvalsCard}
       {calendarRow}
       <div style={{ marginTop: 'auto' }}>{poweredBy}</div>
@@ -639,8 +662,8 @@ export function HubPreview({
                 style={{
                   width: dims.sidebarWidth,
                   flexShrink: 0,
-                  background: 'var(--hub-soft)',
-                  borderRight: '1px solid var(--hub-bd)',
+                  background: pauta ? 'var(--hub-bg)' : 'var(--hub-soft)',
+                  borderRight: pauta ? 'none' : '1px solid var(--hub-bd)',
                   padding: '22px 14px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -679,7 +702,7 @@ export function HubPreview({
                       style={{
                         fontSize: dims.navItemFont,
                         padding: dims.navItemPad,
-                        borderRadius: 8,
+                        borderRadius: pauta ? 'var(--hub-r-ctl)' : 8,
                         textAlign: 'center',
                         background: i === ACTIVE_NAV_INDEX ? 'var(--hub-primary)' : 'transparent',
                         color: i === ACTIVE_NAV_INDEX ? 'var(--hub-primary-fg)' : 'var(--hub-tx2)',
@@ -702,26 +725,29 @@ export function HubPreview({
                 flexDirection: 'column',
               }}
             >
-              {device === 'mobile' && (
-                <div
-                  data-testid="hub-preview-topbar"
-                  style={{
-                    flexShrink: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: dims.topbarPad,
-                    borderBottom: '1px solid var(--hub-bd)',
-                  }}
-                >
-                  {logoMark}
-                  <Menu size={14} color="var(--hub-tx2)" aria-hidden="true" />
-                </div>
-              )}
+              {device === 'mobile' &&
+                (pauta ? (
+                  <PautaPreviewFloatingBar dims={dims} logoMark={logoMark} />
+                ) : (
+                  <div
+                    data-testid="hub-preview-topbar"
+                    style={{
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: dims.topbarPad,
+                      borderBottom: '1px solid var(--hub-bd)',
+                    }}
+                  >
+                    {logoMark}
+                    <Menu size={14} color="var(--hub-tx2)" aria-hidden="true" />
+                  </div>
+                ))}
 
               {mainContent}
 
-              {device === 'mobile' && (
+              {device === 'mobile' && !pauta && (
                 <div
                   data-testid="hub-preview-bottom-nav"
                   style={{

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { HubPost } from '../../types';
-import { getPostCover, getPostPublishState, STATUS_COLORS } from '../../lib/postView';
+import { getPostCover, getPostPublishState, STATUS_COLORS, statusTone } from '../../lib/postView';
+import { useHubLook } from '../../hooks/useHubLook';
 import { MediaUnavailable } from '../MediaUnavailable';
 
 interface StoriesRailProps {
@@ -12,6 +13,7 @@ interface StoriesRailProps {
 
 export function StoriesRail({ posts, onOpen, dimmed }: StoriesRailProps) {
   const { t } = useTranslation('hubPosts');
+  const pauta = useHubLook() === 'pauta';
   if (posts.length === 0) return null;
   return (
     <ul
@@ -20,7 +22,10 @@ export function StoriesRail({ posts, onOpen, dimmed }: StoriesRailProps) {
     >
       {posts.map((post) => {
         const cover = getPostCover(post);
-        const color = STATUS_COLORS[getPostPublishState(post)] ?? '#94a3b8';
+        const publishState = getPostPublishState(post);
+        const color = pauta
+          ? `var(--hub-st-${statusTone(publishState)}-fg)`
+          : (STATUS_COLORS[publishState] ?? '#94a3b8');
         const src = cover?.kind === 'video' ? cover.thumbnail_url : cover?.url;
         return (
           <li key={post.id} className="shrink-0 w-[72px] flex flex-col items-center gap-1.5">

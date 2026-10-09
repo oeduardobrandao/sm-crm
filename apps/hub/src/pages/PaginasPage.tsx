@@ -30,7 +30,7 @@ export function PaginasPage() {
       />
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
         </div>
       ) : pages.length === 0 ? (
         <p className="hub-tx2 text-sm">
