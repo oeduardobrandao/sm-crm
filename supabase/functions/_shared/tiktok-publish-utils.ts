@@ -19,6 +19,7 @@ import {
   STATUS_PUBLISH_COMPLETE,
   STATUS_SEND_TO_USER_INBOX,
 } from "./tiktok.ts";
+import { TIKTOK_MSG } from "./tiktok-messages.ts";
 
 // --- Shared types ---
 
@@ -46,6 +47,7 @@ interface TikTokMediaFile {
   height: number | null;
   duration_seconds: number | null;
   r2_key: string;
+  media_lost_at: string | null;
   sort_order: number;
 }
 
@@ -190,6 +192,10 @@ function validatePrivacyLevel(errors: string[], settings: TikTokSettings) {
       "App TikTok em modo de teste: apenas publicação privada (SELF_ONLY) é permitida até a auditoria do TikTok",
     );
   }
+
+  if (settings.brand_content_toggle === true && privacyLevel === "SELF_ONLY") {
+    errors.push(TIKTOK_MSG.brandedPrivate);
+  }
 }
 
 /** Validate a post for TikTok scheduling. Throws on infrastructure errors (DB read failures);
@@ -235,7 +241,7 @@ export async function validateForTikTokScheduling(
 
   const { data: links, error: linksError } = await db
     .from("post_file_links")
-    .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, r2_key)")
+    .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, r2_key, media_lost_at)")
     .eq("post_id", postId)
     .order("sort_order", { ascending: true });
   if (linksError) {
@@ -248,6 +254,7 @@ export async function validateForTikTokScheduling(
   }));
 
   validateMediaForTipo(errors, post.tipo, post.platform, mediaFiles);
+  if (mediaFiles.some((f) => f.media_lost_at != null)) errors.push(TIKTOK_MSG.mediaLost);
 
   const settings: TikTokSettings = post.tiktok_settings ?? {};
   validatePrivacyLevel(errors, settings);
@@ -476,7 +483,8 @@ export async function clearLock(svc: SvcClient, postId: number): Promise<void> {
  * error message (≤500 chars), lock cleared, and the card moved to `falha_publicacao` via
  * record_post_status_change. `retryCount` is bumped by one UNLESS `failReason` is a TikTok wire
  * fail_reason string that is NOT in RETRYABLE_FAIL_REASONS (e.g. `spam_risk_too_many_posts`) —
- * those exhaust immediately (retry_count=3) since a retry can never succeed. Generic infra
+ * those exhaust immediately (retry_count=3) since a retry can never succeed.
+ * `nonRetryable: true` exhausts immediately (precheck failures, spec A10). Generic infra
  * failures (network, TikTok init/status errors with no documented fail_reason)
  * are always retryable and simply increment, relying on the claim RPC's `retry_count < 3`
  * cutoff to eventually stop them.
@@ -500,9 +508,10 @@ export async function markTikTokPublishFailed(
   postId: number,
   retryCount: number,
   message: string,
-  opts?: { failReason?: string },
+  opts?: { failReason?: string; nonRetryable?: boolean },
 ): Promise<void> {
-  const nonRetryable = opts?.failReason !== undefined && !RETRYABLE_FAIL_REASONS.includes(opts.failReason);
+  const nonRetryable = opts?.nonRetryable === true ||
+    (opts?.failReason !== undefined && !RETRYABLE_FAIL_REASONS.includes(opts.failReason));
   const newRetryCount = nonRetryable ? 3 : retryCount + 1;
 
   const { error: updateErr } = await svc
@@ -562,11 +571,21 @@ export async function markTikTokPublishFailed(
   }
 }
 
+const TIKTOK_PHOTO_TIPOS = new Set(["feed", "carrossel"]);
+
+/** Public TikTok URL for a published post. Photo posts live under /photo/ (spec B5; verify on
+ * a real photo post at rollout, revert this one line if TikTok serves them under /video/). */
+export function buildTikTokPostUrl(username: string, postId: string, tipo: string | null | undefined): string {
+  const segment = tipo && TIKTOK_PHOTO_TIPOS.has(tipo) ? "photo" : "video";
+  return `https://www.tiktok.com/@${username}/${segment}/${postId}`;
+}
+
 export interface ConfirmAndApplyPublishStatusPost {
   post_id: number;
   tiktok_publish_id: string | null;
   tiktok_publish_retry_count: number;
   tiktok_username: string | null;
+  tipo: string | null;
 }
 
 export interface ConfirmAndApplyPublishStatusDeps {
@@ -623,7 +642,7 @@ export async function confirmAndApplyPublishStatus(
 
     if (result.state === "published") {
       const tiktokPostUrl = result.publicPostId && post.tiktok_username
-        ? `https://www.tiktok.com/@${post.tiktok_username}/video/${result.publicPostId}`
+        ? buildTikTokPostUrl(post.tiktok_username, result.publicPostId, post.tipo)
         : undefined;
 
       const { error: markErr } = await svc.rpc("mark_platform_published", {
