@@ -404,8 +404,8 @@ export function TikTokSettingsPanel({
             {TIKTOK_MSG.mediaMissing}
           </p>
         ) : (
-          <div className="flex gap-2 items-start">
-            <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-2 items-start">
+            <div className="flex flex-wrap gap-1.5 min-w-0">
               {media.slice(0, 5).map((m) => {
                 const thumb = m.thumbnail_url || (m.kind === 'image' ? m.url : undefined);
                 return (
@@ -434,7 +434,10 @@ export function TikTokSettingsPanel({
                 </span>
               )}
             </div>
-            <p className="text-xs line-clamp-2" style={{ color: 'var(--text-muted)' }}>
+            <p
+              className="min-w-[10rem] flex-1 text-xs line-clamp-2"
+              style={{ color: 'var(--text-muted)' }}
+            >
               {post.tiktok_caption ?? post.ig_caption ?? ''}
             </p>
           </div>
