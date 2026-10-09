@@ -168,17 +168,58 @@ describe('PostReferencesPanel', () => {
     );
   });
 
-  it('removes only after the confirm', async () => {
+  it('removes only after confirming in the dialog', async () => {
     const refs = makePostReferencesStub({ canAdd: true, items: [makeReferenceItem(1)] });
-    renderPanel(refs);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    const onOverlayChange = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm');
+    render(
+      <PostReferencesPanel
+        post={post()}
+        refs={refs}
+        onOpen={vi.fn()}
+        onOverlayChange={onOverlayChange}
+      />,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Remover referência' }));
-    expect(confirm).toHaveBeenCalledWith('Remover referência?');
+    const dialog = await screen.findByRole('dialog', { name: 'Remover referência?' });
+    expect(within(dialog).getByText('A equipe deixa de ver este arquivo.')).toBeInTheDocument();
+    expect(onOverlayChange).toHaveBeenLastCalledWith(true);
+    // Cancel is the safe default focus.
+    expect(within(dialog).getByRole('button', { name: 'Cancelar' })).toHaveFocus();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(onOverlayChange).toHaveBeenLastCalledWith(false);
     expect(refs.remove).not.toHaveBeenCalled();
 
-    confirm.mockReturnValueOnce(true);
     fireEvent.click(screen.getByRole('button', { name: 'Remover referência' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remover' }),
+    );
     await waitFor(() => expect(refs.remove).toHaveBeenCalledWith(1));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('says "este link" when removing a link', async () => {
+    const refs = makePostReferencesStub({
+      canAdd: true,
+      items: [
+        makeReferenceItem(1, {
+          kind: 'link',
+          file_kind: null,
+          name: null,
+          url: null,
+          link_url: 'https://exemplo.com/',
+          link_domain: 'exemplo.com',
+        }),
+      ],
+    });
+    renderPanel(refs);
+    fireEvent.click(screen.getByRole('button', { name: 'Remover referência' }));
+    expect(
+      within(await screen.findByRole('dialog')).getByText('A equipe deixa de ver este link.'),
+    ).toBeInTheDocument();
   });
 
   it('shows the locked copy when the team already acted', async () => {
@@ -190,8 +231,10 @@ describe('PostReferencesPanel', () => {
       }),
     });
     renderPanel(refs);
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: 'Remover referência' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remover' }),
+    );
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'A equipe já recebeu esta referência. Ela não pode mais ser alterada.',
     );

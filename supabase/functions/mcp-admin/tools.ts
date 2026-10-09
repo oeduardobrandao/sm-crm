@@ -150,7 +150,7 @@ export function registerTools(server: any, deps: Deps) {
   register(server, deps, "update_popup", "popups:write", "Edita um popup. pages substitui o array inteiro: repita as páginas que devem continuar (com suas image_key).",
     { popup_id: z.string().uuid(), ...POPUP_FIELDS }, (a) => updatePopup(deps, a));
   register(server, deps, "upload_popup_image", "popups:write",
-    "Sobe uma imagem para usar em páginas de popup. Com source_url o servidor baixa a imagem (https, até 10 MB) e devolve image_key. Sem source_url, informe size_bytes e receba upload_url para um PUT com o binário e o Content-Type; a image_key só passa a valer depois do PUT.",
+    "Sobe uma imagem para usar em páginas de popup. Com source_url o servidor baixa a imagem (https, até 10 MB) e devolve image_key. Sem source_url, informe size_bytes e receba upload_url para um PUT com o binário e o Content-Type; o corpo do PUT precisa ter exatamente size_bytes bytes (outro tamanho dá 403 SignatureDoesNotMatch); a image_key só passa a valer depois do PUT.",
     { filename: z.string().max(120), mime_type: MIME, size_bytes: z.number().int().positive().optional(), source_url: z.string().url().optional() },
     (a) => uploadPopupImage(deps, a));
 

@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
     ctx,
     now: () => new Date().toISOString(),
     randomUUID: () => crypto.randomUUID(),
-    signPutUrl: (key, mime, expires) => signPutUrl(key, mime, expires),
+    signPutUrl: (key, mime, size, expires) => signPutUrl(key, mime, size, expires),
     headObject: (key) => headObject(key),
     putObject: (key, bytes, mime) => putObject(key, bytes, mime),
     deleteObject: (key) => deleteObject(key),

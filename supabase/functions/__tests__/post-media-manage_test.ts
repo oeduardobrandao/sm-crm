@@ -15,7 +15,7 @@ function makeHandler(
       return Object.assign(query, { abortSignal: (_signal: AbortSignal) => query });
     } }) as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
-    signPutUrl: async (key, _mime) => `https://r2.example.com/put/${key}`,
+    signPutUrl: async (key, _mime, size) => `https://r2.example.com/put/${key}?len=${size}`,
     randomUUID: () => "thumb-uuid",
     ...overrides,
   });
@@ -463,11 +463,25 @@ Deno.test("post-media-manage: POST /id/thumbnail returns presigned URL for video
   };
   db.queue("post_file_links", "select", { data: videoLink, error: null });
   const handler = makeHandler(db);
-  const res = await handler(req("POST", "/1/thumbnail", { mime_type: "image/jpeg" }));
+  const res = await handler(req("POST", "/1/thumbnail", { mime_type: "image/jpeg", size_bytes: 2048 }));
   assertEquals(res.status, 200);
   const body = await readJson(res);
   assertEquals(body.thumbnail_r2_key, "contas/conta-1/files/thumb-uuid.thumb.jpg");
-  assertEquals(body.thumbnail_upload_url, "https://r2.example.com/put/contas/conta-1/files/thumb-uuid.thumb.jpg");
+  assertEquals(body.thumbnail_upload_url, "https://r2.example.com/put/contas/conta-1/files/thumb-uuid.thumb.jpg?len=2048");
+});
+
+Deno.test("post-media-manage: POST /id/thumbnail needs an integer size_bytes up to 10 MB", async () => {
+  for (const size of [undefined, 0, 1.5, "2048", 11 * 1024 * 1024]) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queue("post_file_links", "select", {
+      data: { ...sampleLink, files: { ...sampleFile, kind: "video", mime_type: "video/mp4" } },
+      error: null,
+    });
+    const res = await makeHandler(db)(req("POST", "/1/thumbnail", { mime_type: "image/jpeg", size_bytes: size }));
+    assertEquals(res.status, 400, `size ${size}`);
+    assertEquals((await readJson(res)).error, "thumbnail size out of range");
+  }
 });
 
 Deno.test("post-media-manage: POST /id/thumbnail for non-video returns 400", async () => {

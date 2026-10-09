@@ -55,7 +55,10 @@ Deno.serve(async (req) => {
 
   const { post_id, filename, mime_type, size_bytes, kind, thumbnail } = body;
   if (!post_id || !filename || !mime_type || !size_bytes || !kind) return json({ error: "Missing fields" }, 400);
-  if (size_bytes <= 0 || size_bytes > MAX_SIZE) return json({ error: "size_bytes out of range" }, 400);
+  // Inteiros: viram Content-Length assinado nas URLs de upload.
+  if (!Number.isSafeInteger(size_bytes) || size_bytes <= 0 || size_bytes > MAX_SIZE) {
+    return json({ error: "size_bytes out of range" }, 400);
+  }
 
   const allowed = kind === "image" ? IMAGE_MIME : VIDEO_MIME;
   if (!allowed.has(mime_type)) return json({ error: "Unsupported mime type" }, 400);
@@ -63,7 +66,10 @@ Deno.serve(async (req) => {
   if (kind === "video" && !thumbnail) return json({ error: "video requires thumbnail" }, 400);
   if (thumbnail) {
     if (!THUMB_MIME.has(thumbnail.mime_type)) return json({ error: "Unsupported thumbnail mime type" }, 400);
-    if (thumbnail.size_bytes <= 0 || thumbnail.size_bytes > 10 * 1024 * 1024) return json({ error: "thumbnail size out of range" }, 400);
+    if (
+      !Number.isSafeInteger(thumbnail.size_bytes) || thumbnail.size_bytes <= 0 ||
+      thumbnail.size_bytes > 10 * 1024 * 1024
+    ) return json({ error: "thumbnail size out of range" }, 400);
   }
 
   // Verify post belongs to this conta
@@ -88,13 +94,13 @@ Deno.serve(async (req) => {
   const mediaId = crypto.randomUUID();
   const ext = extFromMime(mime_type);
   const r2_key = `contas/${profile.conta_id}/posts/${post_id}/${mediaId}.${ext}`;
-  const upload_url = await signPutUrl(r2_key, mime_type);
+  const upload_url = await signPutUrl(r2_key, mime_type, size_bytes);
 
   let thumbnail_r2_key: string | undefined;
   let thumbnail_upload_url: string | undefined;
   if (thumbnail) {
     thumbnail_r2_key = `contas/${profile.conta_id}/posts/${post_id}/${mediaId}.thumb.${extFromMime(thumbnail.mime_type)}`;
-    thumbnail_upload_url = await signPutUrl(thumbnail_r2_key, thumbnail.mime_type);
+    thumbnail_upload_url = await signPutUrl(thumbnail_r2_key, thumbnail.mime_type, thumbnail.size_bytes);
   }
 
   return json({ media_id: mediaId, upload_url, r2_key, thumbnail_upload_url, thumbnail_r2_key });
