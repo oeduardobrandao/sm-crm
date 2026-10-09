@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, type ReactElement } from 'react';
 import { toast } from 'sonner';
 import { Calendar, AlertCircle, RefreshCw, X, Send, Loader2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { sanitizeUrl } from '@/utils/security';
 import type { WorkflowPost } from '../../../store';
 import type { PostMedia } from '../../../store/posts';
@@ -19,6 +20,7 @@ import { hasAutoPublishTarget } from '../platformTargets';
 import { validatePostMedia } from '../instagramLimits';
 import { getPublishErrorDisplay } from '../publishErrorCopy';
 import type { Platform } from './PlatformSelector';
+import { TikTokPostingDeclaration } from './TikTokPostingDeclaration';
 import {
   cancelInstagramSchedule,
   retryInstagramPublish,
@@ -101,27 +103,35 @@ function PlatformStatusRow({ post }: { post: WorkflowPost }) {
   if (!targetsTikTok) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-      {targetsInstagram && (
-        <PlatformChip label={PLATFORM_LABELS.instagram} state={instagramChipState(post)} />
+    <>
+      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+        {targetsInstagram && (
+          <PlatformChip label={PLATFORM_LABELS.instagram} state={instagramChipState(post)} />
+        )}
+        <PlatformChip
+          label={PLATFORM_LABELS.tiktok}
+          state={tiktokChipState(post)}
+          pendingLabel={post.tiktok_publish_status === 'processing' ? 'processando' : undefined}
+        />
+        {post.tiktok_post_url && (
+          <a
+            href={sanitizeUrl(post.tiktok_post_url)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-medium"
+            style={{ color: 'var(--primary-color)' }}
+          >
+            <ExternalLink className="h-3 w-3" /> Ver no TikTok
+          </a>
+        )}
+      </div>
+      {(post.tiktok_publish_status === 'initiated' ||
+        post.tiktok_publish_status === 'processing') && (
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+          Processando no TikTok. Pode levar alguns minutos.
+        </p>
       )}
-      <PlatformChip
-        label={PLATFORM_LABELS.tiktok}
-        state={tiktokChipState(post)}
-        pendingLabel={post.tiktok_publish_status === 'processing' ? 'processando' : undefined}
-      />
-      {post.tiktok_post_url && (
-        <a
-          href={sanitizeUrl(post.tiktok_post_url)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs font-medium"
-          style={{ color: 'var(--primary-color)' }}
-        >
-          <ExternalLink className="h-3 w-3" /> Ver no TikTok
-        </a>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -153,15 +163,17 @@ interface ScheduleButtonProps {
    * (WorkflowDrawer's existing `ttAccount` query — no new query added). Ignored entirely when
    * `platform === 'instagram'`. */
   ttAccountStatus?: { revoked: boolean; expired: boolean } | null;
-  /** C2's `TikTokSettingsPanel.onCompletenessChange` contract, held by the parent (keyed by
-   * post id) and threaded through here. Ignored when the post doesn't target TikTok. */
+  /** The TikTok settings panel's readiness (`onReadinessChange`, spec A0), held by the parent
+   * and threaded through here. Ignored when the post doesn't target TikTok. */
   tiktokSettingsComplete?: boolean;
   /** Overrides the button `title` shown while a tiktok/both post is gated on
    * `tiktokSettingsComplete === false`. Lets a mount with no TikTok settings UI (e.g. the
    * compact calendar panel) point the user elsewhere instead of the default
    * "Complete as configurações do TikTok", which implies a settings panel that isn't there. */
   tiktokIncompleteTooltip?: string;
-  /** The panel's readiness `reason` (spec A0). Accepted here; wired in a follow-up task. */
+  /** The first failing A0 rule's pt-BR sentence (the panel's readiness `reason`), shown in the
+   * "Falta:" line and as the tooltip/title of the gated buttons. Takes precedence over
+   * `tiktokIncompleteTooltip`. */
   tiktokIncompleteReason?: string;
   /** Fired when a schedule/publish-now/retry attempt's error message contains the exact
    * unaudited-mode 422 string, so the parent can flip `TikTokSettingsPanel`'s
@@ -184,6 +196,7 @@ export function ScheduleButton({
   ttAccountStatus,
   tiktokSettingsComplete = false,
   tiktokIncompleteTooltip,
+  tiktokIncompleteReason,
   onTikTokUnaudited,
   onStatusChange,
   compact = false,
@@ -249,6 +262,16 @@ export function ScheduleButton({
   }
 
   const tiktokReady = !targetsTikTok || tiktokSettingsComplete === true;
+  // Spec A3: `undefined` (no settings saved yet) renders the branded declaration variant.
+  const tiktokBranded =
+    post.tiktok_settings == null
+      ? undefined
+      : (post.tiktok_settings as { brand_content_toggle?: boolean }).brand_content_toggle === true;
+  // Spec B3: Instagram pink stays Instagram's; anything that sends to TikTok uses neutral ink.
+  const publishColor =
+    platform === 'instagram'
+      ? { background: '#E1306C', color: 'white' }
+      : { background: 'var(--text-main)', color: 'var(--bg-color)' };
 
   const flagUnauditedIfPresent = (message: string | undefined) => {
     if (targetsTikTok && message?.includes(TIKTOK_UNAUDITED_MESSAGE)) onTikTokUnaudited?.();
@@ -286,7 +309,9 @@ export function ScheduleButton({
         setConfirmOpen(false);
 
         if (!igError && !ttError) {
-          toast.success('Post enviado para publicação no Instagram e no TikTok!');
+          toast.success(
+            'Enviado ao Instagram e ao TikTok. No TikTok, pode levar alguns minutos para aparecer no perfil.',
+          );
         } else if (igError && ttError) {
           toast.error(`Instagram: ${igError}; TikTok: ${ttError}`);
         } else if (igError) {
@@ -296,16 +321,14 @@ export function ScheduleButton({
         }
         onStatusChange();
       } else if (platform === 'tiktok') {
-        const result = await publishTikTokPostNow(post.id!);
+        await publishTikTokPostNow(post.id!);
         stopProgressTimer();
         setPublishPct(100);
         await new Promise((r) => setTimeout(r, 600));
         setConfirmOpen(false);
-        if (result.status === 'postado') {
-          toast.success('Post publicado no TikTok!');
-        } else {
-          toast.info(result.message ?? 'Post será publicado automaticamente em instantes.');
-        }
+        // Spec A8: TikTok processes the upload asynchronously whether the response says
+        // `postado` or still processing, so both get the same "may take a few minutes" notice.
+        toast.success('Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.');
         onStatusChange();
       } else {
         const result = await publishInstagramPostNow(post.id!);
@@ -452,7 +475,11 @@ export function ScheduleButton({
           {getPostPublishState(post) === 'publicando' ? (
             <div
               className="inline-flex items-center gap-1.5 px-3 h-8 mb-2 rounded-md text-xs font-semibold"
-              style={{ background: 'rgba(225, 48, 108, 0.12)', color: '#E1306C' }}
+              style={
+                platform === 'instagram'
+                  ? { background: 'rgba(225, 48, 108, 0.12)', color: '#E1306C' }
+                  : { background: 'var(--surface-hover)', color: 'var(--text-main)' }
+              }
             >
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Publicando…
             </div>
@@ -547,12 +574,42 @@ export function ScheduleButton({
       hasRequiredCaption && !accountWarning && tiktokReady && mediaViolations.length === 0;
     const missingItems: string[] = [];
     if (!post.scheduled_at) missingItems.push('data de publicação');
-    if (!isStoryPost && !hasRequiredCaption) missingItems.push('legenda do Instagram');
-    if (targetsTikTok && !tiktokReady) missingItems.push('configurações do TikTok');
+    const captionLabel =
+      targetsInstagram && targetsTikTok
+        ? 'legenda'
+        : targetsTikTok
+          ? 'legenda do TikTok'
+          : 'legenda do Instagram';
+    if (!isStoryPost && !hasRequiredCaption) missingItems.push(captionLabel);
+    if (targetsTikTok && !tiktokReady) {
+      missingItems.push(
+        tiktokIncompleteReason
+          ? tiktokIncompleteReason.replace(/\.$/, '').replace(/^./, (c) => c.toLowerCase())
+          : 'configurações do TikTok',
+      );
+    }
     const tiktokBlockedTitle =
       targetsTikTok && !tiktokReady
-        ? (tiktokIncompleteTooltip ?? 'Complete as configurações do TikTok')
+        ? (tiktokIncompleteReason ??
+          tiktokIncompleteTooltip ??
+          'Complete as configurações do TikTok')
         : undefined;
+    // Spec A0: the reason is shown two ways. `title` stays on the button (asserted by tests and
+    // read by assistive tech); the Radix tooltip makes it visible on hover even though a
+    // disabled button swallows pointer events, hence the focusable span trigger.
+    const withBlockedTooltip = (button: ReactElement) =>
+      tiktokBlockedTitle ? (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>{button}</span>
+            </TooltipTrigger>
+            <TooltipContent>{tiktokBlockedTitle}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        button
+      );
 
     return (
       <div className="mt-3">
@@ -564,27 +621,34 @@ export function ScheduleButton({
             <AlertCircle className="h-3 w-3 flex-shrink-0" /> {warningMessage}
           </p>
         )}
+        {targetsTikTok && tiktokReady && (
+          <TikTokPostingDeclaration brandedContent={tiktokBranded} className="mb-2" />
+        )}
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={handleSchedule}
-            disabled={!canSchedule || loading}
-            size="sm"
-            className="text-xs font-semibold"
-            style={canSchedule ? { background: '#eab308', color: '#12151a' } : undefined}
-            title={tiktokBlockedTitle}
-          >
-            <Calendar className="h-3 w-3 mr-1" /> {compact ? 'Agendar' : 'Agendar publicação'}
-          </Button>
-          <Button
-            onClick={() => setConfirmOpen(true)}
-            disabled={!canPublishNow || loading}
-            size="sm"
-            className="text-xs font-semibold"
-            style={canPublishNow ? { background: '#E1306C', color: 'white' } : undefined}
-            title={tiktokBlockedTitle}
-          >
-            <Send className="h-3 w-3 mr-1" /> {compact ? 'Publicar' : 'Publicar agora'}
-          </Button>
+          {withBlockedTooltip(
+            <Button
+              onClick={handleSchedule}
+              disabled={!canSchedule || loading}
+              size="sm"
+              className="text-xs font-semibold"
+              style={canSchedule ? { background: '#eab308', color: '#12151a' } : undefined}
+              title={tiktokBlockedTitle}
+            >
+              <Calendar className="h-3 w-3 mr-1" /> {compact ? 'Agendar' : 'Agendar publicação'}
+            </Button>,
+          )}
+          {withBlockedTooltip(
+            <Button
+              onClick={() => setConfirmOpen(true)}
+              disabled={!canPublishNow || loading}
+              size="sm"
+              className="text-xs font-semibold"
+              style={canPublishNow ? publishColor : undefined}
+              title={tiktokBlockedTitle}
+            >
+              <Send className="h-3 w-3 mr-1" /> {compact ? 'Publicar' : 'Publicar agora'}
+            </Button>,
+          )}
         </div>
         {!accountWarning && !canPublishNow && missingItems.length > 0 && (
           <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#f5a342' }}>
@@ -626,19 +690,24 @@ export function ScheduleButton({
                     className="h-full rounded-full transition-all duration-300 ease-out"
                     style={{
                       width: `${publishPct}%`,
-                      background: publishPct < 100 ? '#E1306C' : '#3ecf8e',
+                      background:
+                        publishPct < 100
+                          ? platform === 'instagram'
+                            ? '#E1306C'
+                            : 'var(--text-main)'
+                          : '#3ecf8e',
                     }}
                   />
                 </div>
               </div>
             )}
+            {!publishing && targetsTikTok && tiktokReady && (
+              <TikTokPostingDeclaration brandedContent={tiktokBranded} />
+            )}
             {!publishing && (
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <Button
-                  onClick={handlePublishNow}
-                  style={{ background: '#E1306C', color: 'white' }}
-                >
+                <Button onClick={handlePublishNow} style={publishColor}>
                   Publicar
                 </Button>
               </AlertDialogFooter>
