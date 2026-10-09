@@ -10,7 +10,8 @@
       "@mesaas/app-lifecycle": ["../../packages/app-lifecycle/index.ts"],
       "@mesaas/link-policy": ["../../packages/link-policy/index.ts"],
       "@mesaas/text-diff": ["../../packages/text-diff/index.ts"],
-      "@mesaas/platforms": ["../../supabase/functions/_shared/platform-registry.ts"]
+      "@mesaas/platforms": ["../../supabase/functions/_shared/platform-registry.ts"],
+      "@mesaas/tiktok-messages": ["../../supabase/functions/_shared/tiktok-messages.ts"]
     },
     "target": "ES2021",
     "useDefineForClassFields": true,
