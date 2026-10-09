@@ -139,6 +139,7 @@ complete = !loading && !loadError && canPost && privacyChosen
 - **`ScheduleButton`, row:** above the "Agendar" / "Publicar agora" row when the post targets TikTok. "Agendar" sends.
 - **`ScheduleButton`, publish-now dialog:** inside `AlertDialogContent`, above `AlertDialogFooter`, when the post targets TikTok. "Publicar agora" (`ScheduleButton.tsx:576-585`) only opens the dialog; its "Publicar" (`:636-641`) is what sends.
 - **`AutoSchedulePromptDialog` and `AutoScheduleBatchDialog`:** above the confirm button, when any post in them targets TikTok.
+- **"Tentar novamente" (`ScheduleButton` retry, `PublishErrorBlock`):** no declaration. A retry re-sends the same content whose consent was given at the original send; recorded deliberately.
 
 **Data:**
 - `ScheduleButton` passes `post.tiktok_settings?.brand_content_toggle`.

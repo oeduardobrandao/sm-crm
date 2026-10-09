@@ -35,14 +35,30 @@ Deno.test("tiktok-messages: maps every documented code to pt-BR", () => {
   assertEquals(tiktokErrorMessage(undefined), null);
 });
 
+Deno.test("tiktok-messages: prototype member names are not codes", () => {
+  // assertEquals compares JSON, and JSON.stringify(fn) is undefined, so check identity.
+  assertEquals(tiktokErrorMessage("constructor") === null, true);
+  assertEquals(tiktokErrorMessage("toString") === null, true);
+  assertEquals(tiktokErrorMessage("__proto__") === null, true);
+});
+
 Deno.test("tiktok-messages: can't-post codes", () => {
   assertEquals(TIKTOK_CANNOT_POST_CODES.length, 3);
+  assertEquals([...TIKTOK_CANNOT_POST_CODES], [
+    "spam_risk_too_many_posts",
+    "spam_risk_user_banned_from_posting",
+    "reached_active_user_cap",
+  ]);
   assertEquals(isTikTokCannotPostCode("reached_active_user_cap"), true);
   assertEquals(isTikTokCannotPostCode("access_token_invalid"), false);
 });
 
 Deno.test("tiktok-messages: fixed sentences, no em dashes", () => {
   assertEquals(TIKTOK_MSG.privacyMissing, "Configurações do TikTok incompletas. Abra o post e defina a privacidade.");
+  assertEquals(
+    TIKTOK_MSG.privacyMismatch,
+    "A privacidade escolhida não está disponível para esta conta. Escolha outra e tente novamente.",
+  );
   assertEquals(TIKTOK_MSG.brandedPrivate, "A visibilidade de conteúdo de marca não pode ser privada.");
   assertEquals(TIKTOK_MSG.mediaLost, "Uma das mídias deste post foi perdida. Substitua-a antes de publicar.");
   assertEquals(TIKTOK_MSG.mediaMissing, "Adicione mídia ao post para publicar no TikTok.");

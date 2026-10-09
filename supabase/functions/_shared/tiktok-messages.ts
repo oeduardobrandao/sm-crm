@@ -29,7 +29,9 @@ const CODE_MESSAGES: Record<string, string> = {
 
 export function tiktokErrorMessage(code: string | null | undefined): string | null {
   if (!code) return null;
-  return CODE_MESSAGES[code] ?? null;
+  // Own keys only: a code like "constructor" must not resolve to an Object.prototype member.
+  // (Not Object.hasOwn: the CRM imports this module and its tsconfig lib is ES2021.)
+  return Object.prototype.hasOwnProperty.call(CODE_MESSAGES, code) ? CODE_MESSAGES[code] : null;
 }
 
 export const TIKTOK_MSG = {
