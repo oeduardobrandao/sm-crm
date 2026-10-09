@@ -215,7 +215,7 @@ export function AprovacoesPage() {
 
       {isLoading ? (
         <div className="hub-fade-up flex justify-center py-20">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+          <div className="animate-spin h-6 w-6 rounded-full border-2 hub-spinner" />
         </div>
       ) : fatalError ? (
         <div className="hub-fade-up py-20 text-center text-sm hub-tx2">

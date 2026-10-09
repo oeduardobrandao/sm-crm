@@ -115,7 +115,7 @@ export function HubShell() {
   if (loading) {
     return (
       <div className="hub-root min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-stone-300 border-t-stone-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-2 hub-spinner" />
       </div>
     );
   }
