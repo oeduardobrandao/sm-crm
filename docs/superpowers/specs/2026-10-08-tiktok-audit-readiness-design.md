@@ -142,7 +142,7 @@ complete = !loading && !loadError && canPost && privacyChosen
 - **"Tentar novamente" (`ScheduleButton` retry, `PublishErrorBlock`):** no declaration. A retry re-sends the same content whose consent was given at the original send; recorded deliberately.
 
 **Data:**
-- `ScheduleButton` passes `post.tiktok_settings?.brand_content_toggle`.
+- All three sites derive the variant with `declarationBrandedFlag(settings)` (`TikTokPostingDeclaration.tsx`): null or undefined settings give `undefined` (branded variant); otherwise `brand_content_toggle === true`, matching how the panel reads a missing key.
 - `AutoSchedulePromptPost` gains an optional `tiktok_settings`, filled where the caller's post object has it.
 - The batch dialog uses the branded variant if any selected TikTok post has `brand_content_toggle` or has no settings.
 - In `ScheduleButton` the declaration renders only while the TikTok gate is open (the post targets TikTok and `tiktokSettingsComplete` is true), i.e. only when a click actually sends. Blocked states show the "Falta:" line instead, as in the mockups.
