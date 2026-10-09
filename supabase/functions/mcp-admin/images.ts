@@ -209,8 +209,8 @@ export async function uploadPopupImage(
   }
   await assertQuota(d, contaId, size as number);
   const key = `contas/${contaId}/files/${d.randomUUID()}.${EXT[mime]}`;
-  const upload_url = await d.signPutUrl(key, mime, 900);
-  return { image_key: key, upload_url, expires_in: 900 };
+  const upload_url = await d.signPutUrl(key, mime, size as number, 900);
+  return { image_key: key, upload_url, expires_in: 900, size_bytes: size as number };
 }
 
 /** Modo B dos popups: no persist, garante a linha em files para cada image_key nova. */

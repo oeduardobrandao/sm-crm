@@ -57,7 +57,7 @@ export interface Deps {
   genId?: () => string;
   randomUUID?: () => string;
   /** Presigned R2 PUT URL for direct client upload (create_media_upload). */
-  signPutUrl?: (key: string, mimeType: string) => Promise<string>;
+  signPutUrl?: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   /** R2 object HEAD for finalize integrity check (set_post_media). */
   headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   /** Plan storage quota in bytes (null = unlimited). */

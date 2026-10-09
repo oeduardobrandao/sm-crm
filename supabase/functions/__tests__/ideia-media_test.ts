@@ -2,7 +2,7 @@ import { assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { presignIdeiaImage, finalizeIdeiaImage } from "../_shared/ideia-media.ts";
 
-const signPutUrl = async (key: string) => `https://put.example.com/${key}`;
+const signPutUrl = async (key: string, _mime: string, size: number) => `https://put.example.com/${key}?len=${size}`;
 const randomUUID = () => "uuid-1";
 
 function baseArgs(db: ReturnType<typeof createSupabaseQueryMock>) {
@@ -30,6 +30,15 @@ Deno.test("presign: rejects oversize main file with 400", async () => {
   const db = createSupabaseQueryMock();
   const res = await presignIdeiaImage({ ...baseArgs(db), size_bytes: 26214401 });
   assertEquals(res.status, 400);
+});
+
+Deno.test("presign: rejects non-integer sizes with 400 (they become a signed Content-Length)", async () => {
+  const db = createSupabaseQueryMock();
+  assertEquals((await presignIdeiaImage({ ...baseArgs(db), size_bytes: 10.5 })).status, 400);
+  assertEquals(
+    (await presignIdeiaImage({ ...baseArgs(db), thumbnail: { mime_type: "image/webp", size_bytes: 1.5 } })).status,
+    400,
+  );
 });
 
 Deno.test("presign: rejects non-webp thumbnail with 400", async () => {
@@ -67,7 +76,8 @@ Deno.test("presign: happy path returns upload_id + keys under conta prefix", asy
   assertEquals(res.body.upload_id, "uuid-1");
   assertEquals(res.body.r2_key, "contas/conta-1/files/uuid-1.png");
   assertEquals(res.body.thumbnail_r2_key, "contas/conta-1/files/uuid-1.thumb.webp");
-  assertEquals(res.body.upload_url, "https://put.example.com/contas/conta-1/files/uuid-1.png");
+  assertEquals(res.body.upload_url, "https://put.example.com/contas/conta-1/files/uuid-1.png?len=5000");
+  assertEquals(res.body.thumbnail_upload_url, "https://put.example.com/contas/conta-1/files/uuid-1.thumb.webp?len=2000");
 });
 
 Deno.test("presign: 413 when projected usage exceeds quota", async () => {

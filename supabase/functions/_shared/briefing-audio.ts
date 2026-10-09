@@ -99,7 +99,8 @@ export async function buildAudioView(
 }
 
 function validSize(n: number | undefined): boolean {
-  return typeof n === "number" && Number.isFinite(n) && n > 0 && n <= MAX_AUDIO_BYTES;
+  // Inteiro: o tamanho vira Content-Length assinado na URL de upload.
+  return typeof n === "number" && Number.isSafeInteger(n) && n > 0 && n <= MAX_AUDIO_BYTES;
 }
 
 export interface PresignAudioArgs {
@@ -109,7 +110,7 @@ export interface PresignAudioArgs {
   question_id: string;
   mime_type: string;
   size_bytes: number;
-  signPutUrl: (key: string, mime: string) => Promise<string>;
+  signPutUrl: (key: string, mime: string, sizeBytes: number) => Promise<string>;
   randomUUID?: () => string;
 }
 
@@ -144,7 +145,7 @@ export async function presignBriefingAudio(a: PresignAudioArgs): Promise<Briefin
 
   const id = (a.randomUUID ?? crypto.randomUUID.bind(crypto))();
   const r2_key = `${AUDIO_KEY_PREFIX}${a.conta_id}/${a.question_id}/${id}.${extFromAudioMime(mime)}`;
-  const upload_url = await a.signPutUrl(r2_key, mime);
+  const upload_url = await a.signPutUrl(r2_key, mime, a.size_bytes);
   return { status: 200, body: { upload_url, r2_key, mime_type: mime } };
 }
 

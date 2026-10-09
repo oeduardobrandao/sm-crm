@@ -266,7 +266,7 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   register(server, deps, "create_media_upload", "posts:write",
-    "Gera URL(s) de upload presigned (PUT) para subir imagens JPG/PNG prontas ao workspace (cota checada antes de assinar). Depois use set_post_media com os r2_key retornados para colocá-las como mídia de um post. Máx 10 arquivos, ≤ 8MB cada.",
+    "Gera URL(s) de upload presigned (PUT) para subir imagens JPG/PNG prontas ao workspace (cota checada antes de assinar). Cada URL só aceita um corpo de exatamente size_bytes bytes (outro tamanho dá 403 SignatureDoesNotMatch): informe o tamanho real do arquivo. Depois use set_post_media com os r2_key retornados para colocá-las como mídia de um post. Máx 10 arquivos, ≤ 8MB cada.",
     { files: z.array(z.object({
         filename: z.string().trim().min(1).max(200),
         mime_type: z.enum(["image/jpeg", "image/png"]),

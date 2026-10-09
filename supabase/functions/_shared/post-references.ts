@@ -92,7 +92,7 @@ export type ReferencesDb = {
 };
 
 export type SignGetUrl = (key: string, expiresSeconds?: number, downloadName?: string) => Promise<string>;
-export type SignPutUrl = (key: string, mime: string) => Promise<string>;
+export type SignPutUrl = (key: string, mime: string, sizeBytes: number) => Promise<string>;
 export type HeadObject = (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
 
 /** Entrada da allowlist, ou null. hasOwnProperty: "toString" não é um tipo de arquivo. */
@@ -404,8 +404,12 @@ export async function presignReferenceUpload(a: {
   const stem = `contas/${a.conta_id}/files/${uuid}`;
   const r2_key = `${stem}.${spec.ext}`;
   const thumbnail_r2_key = spec.kind === "document" ? null : `${stem}.thumb.webp`;
-  const upload_url = await a.signPutUrl(r2_key, mime);
-  const thumbnail_upload_url = thumbnail_r2_key ? await a.signPutUrl(thumbnail_r2_key, "image/webp") : null;
+  const upload_url = await a.signPutUrl(r2_key, mime, size);
+  // presignThumbnailOk garantiu thumbnail.size_bytes inteiro quando há thumbnail.
+  const thumbSize = (a.thumbnail as { size_bytes?: number } | null)?.size_bytes as number;
+  const thumbnail_upload_url = thumbnail_r2_key
+    ? await a.signPutUrl(thumbnail_r2_key, "image/webp", thumbSize)
+    : null;
   return { status: 200, body: { upload_url, r2_key, thumbnail_upload_url, thumbnail_r2_key } };
 }
 

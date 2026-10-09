@@ -18,7 +18,7 @@ type DbClient = {
 interface Deps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
-  signPutUrl: (key: string, mime: string) => Promise<string>;
+  signPutUrl: (key: string, mime: string, sizeBytes: number) => Promise<string>;
   signGetUrl: (key: string, expires?: number) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   transcribe: Transcriber | null;

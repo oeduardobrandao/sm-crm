@@ -7,7 +7,7 @@ export interface Deps {
   ctx: AdminMcpContext;
   now: () => string;
   randomUUID: () => string;
-  signPutUrl: (key: string, mime: string, expiresSeconds?: number) => Promise<string>;
+  signPutUrl: (key: string, mime: string, sizeBytes: number, expiresSeconds?: number) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   putObject: (key: string, bytes: Uint8Array, contentType: string) => Promise<void>;
   deleteObject: (key: string) => Promise<void>;
