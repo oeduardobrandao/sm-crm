@@ -42,7 +42,11 @@ import {
   tiktokFetch as realTiktokFetch,
   TikTokApiError,
 } from "../_shared/tiktok.ts";
-import { isTikTokCannotPostCode } from "../_shared/tiktok-messages.ts";
+import { isTikTokCannotPostCode, tiktokErrorMessage } from "../_shared/tiktok-messages.ts";
+import {
+  evaluateTikTokPrecheck,
+  fetchCreatorCheck as realFetchCreatorCheck,
+} from "../_shared/tiktok-precheck.ts";
 import { buildTikTokMediaUrl as realBuildTikTokMediaUrl } from "../_shared/tiktok-media-url.ts";
 
 type DbClient = {
@@ -62,9 +66,13 @@ export interface TikTokPublishDeps {
   validateForScheduling?: typeof realValidateForScheduling;
   getFreshTikTokToken?: typeof realGetFreshTikTokToken;
   tiktokFetch?: typeof realTiktokFetch;
+  fetchCreatorCheck?: typeof realFetchCreatorCheck;
   buildTikTokMediaUrl?: typeof realBuildTikTokMediaUrl;
   sleep?: (ms: number) => Promise<void>;
 }
+
+/** A failure whose message is a curated pt-BR sentence: safe to persist and return (422). */
+class TikTokUserFacingError extends Error {}
 
 const PUBLISH_NOW_MAX_POLLS = 12;
 const PUBLISH_NOW_POLL_INTERVAL_MS = 3000;
@@ -402,6 +410,19 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         const account = validation.account!;
         const { accessToken } = await getFreshToken(svcDb as never, account.id);
 
+        const creator = await (deps.fetchCreatorCheck ?? realFetchCreatorCheck)(tiktokFetchFn, accessToken);
+        const precheckFailure = evaluateTikTokPrecheck({
+          tipo: post.tipo,
+          settings: post.tiktok_settings,
+          media: (validation.media ?? []).map((m) => ({
+            kind: m.kind,
+            duration_seconds: m.duration_seconds,
+            media_lost_at: m.media_lost_at ?? null,
+          })),
+          creator,
+        });
+        if (precheckFailure) throw new TikTokUserFacingError(precheckFailure);
+
         const claimedPost: ClaimedTikTokPost = {
           tipo: post.tipo,
           caption: post.tiktok_caption ?? post.ig_caption ?? "",
@@ -506,15 +527,18 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
           statusResult.failReason ? `TikTok publish failed: ${statusResult.failReason}` : "TikTok publish failed",
         );
       } catch (err) {
-        const message = (err as Error)?.message ?? "Unknown error";
-        console.error(`[TIKTOK-PUBLISH-NOW] failed for post ${postId}:`, message);
+        const mapped = err instanceof TikTokUserFacingError
+          ? err.message
+          : tiktokErrorMessage(err instanceof TikTokApiError ? err.code : undefined);
+        const message = mapped ?? (err as Error)?.message ?? "Unknown error";
+        console.error(`[TIKTOK-PUBLISH-NOW] failed for post ${postId}:`, (err as Error)?.message);
 
         const { error: failErr } = await svcDb
           .from("workflow_posts")
           .update({
             tiktok_publish_status: "failed",
             tiktok_publish_error: message.slice(0, 500),
-            tiktok_publish_retry_count: (post.tiktok_publish_retry_count ?? 0) + 1,
+            tiktok_publish_retry_count: mapped ? 3 : (post.tiktok_publish_retry_count ?? 0) + 1,
             tiktok_publish_processing_at: null,
           })
           .eq("id", postId);
@@ -539,7 +563,9 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
           );
         }
 
-        return validationFailure ?? internalServerError(json, "tiktok-publish:publish-now", err);
+        if (validationFailure) return validationFailure;
+        if (mapped) return json({ error: mapped }, 422);
+        return internalServerError(json, "tiktok-publish:publish-now", err);
       }
     }
 

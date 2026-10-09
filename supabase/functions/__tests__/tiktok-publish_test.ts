@@ -83,6 +83,7 @@ const okTikTokValidation = (overrides: Partial<TikTokValidationResult> = {}): Ti
     duration_seconds: null,
     r2_key: "img/1.jpg",
     sort_order: 0,
+    media_lost_at: null,
   }],
   account: {
     id: "acct-1",
@@ -658,6 +659,7 @@ Deno.test("tiktok-publish publish-now: success calls mark_platform_published and
     validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
     getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
     tiktokFetch: tiktokFetchStub,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
     buildTikTokMediaUrl,
     sleep: noopSleep,
   }));
@@ -825,3 +827,104 @@ for (const outcome of ["replaced", "invalid", "read-error"] as const) {
     }
   });
 }
+
+Deno.test("tiktok-publish publish-now: precheck failure -> 422 with pt-BR message, retry_count 3, no init", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "reels" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("record_post_status_change", { data: null, error: null }); // -> agendado
+  db.queue("workflow_posts", "update", { data: null, error: null }); // lock
+  db.queue("workflow_posts", "update", { data: null, error: null }); // failure write
+  db.queueRpc("record_post_status_change", { data: null, error: null }); // -> falha_publicacao
+
+  const { fn, calls } = stubTiktokFetch();
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation({
+      media: [{ id: 1, kind: "video", mime_type: "video/mp4", size_bytes: 1, width: 1080, height: 1920,
+        duration_seconds: 750, r2_key: "v.mp4", sort_order: 0, media_lost_at: null }],
+    }))) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: fn,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "ok", privacyLevelOptions: ["SELF_ONLY"], maxVideoPostDurationSec: 600 })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Este vídeo tem 750s. O máximo permitido para esta conta é 600s." });
+  assertEquals(calls.filter((c) => c.path.endsWith("/init/")).length, 0);
+  const failWrite = callsFor(db, "workflow_posts", "update").at(-1)!.payload as Record<string, unknown>;
+  assertEquals(failWrite.tiktok_publish_status, "failed");
+  assertEquals(failWrite.tiktok_publish_retry_count, 3);
+});
+
+Deno.test("tiktok-publish publish-now: mapped init error -> 422 pt-BR, retry_count 3", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "feed" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("record_post_status_change", { data: null, error: null }); // -> agendado
+  db.queue("workflow_posts", "update", { data: null, error: null }); // lock
+  db.queue("workflow_posts", "update", { data: null, error: null }); // failure write
+  db.queueRpc("record_post_status_change", { data: null, error: null }); // -> falha_publicacao
+
+  const initCalls: string[] = [];
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: ((path: string) => {
+      initCalls.push(path);
+      return Promise.reject(new TikTokApiError("unaudited", "unaudited_client_can_only_post_to_private_accounts", false));
+    }) as never,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), {
+    error: "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.",
+  });
+  assertEquals(initCalls, ["/post/publish/content/init/"]);
+  const failWrite = callsFor(db, "workflow_posts", "update").at(-1)!.payload as Record<string, unknown>;
+  assertEquals(failWrite.tiktok_publish_status, "failed");
+  assertEquals(failWrite.tiktok_publish_retry_count, 3);
+  assertEquals(
+    failWrite.tiktok_publish_error,
+    "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.",
+  );
+  const statusRpc = rpcCalls(db, "record_post_status_change");
+  assertEquals((statusRpc.at(-1)!.payload as Record<string, unknown>).p_new_status, "falha_publicacao");
+});
+
+Deno.test("tiktok-publish publish-now: unmapped init error keeps +1 and the generic 500", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "feed", tiktok_publish_retry_count: 1 }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: (() => Promise.reject(new Error("socket hang up"))) as never,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 500);
+  const failWrite = callsFor(db, "workflow_posts", "update").at(-1)!.payload as Record<string, unknown>;
+  assertEquals(failWrite.tiktok_publish_retry_count, 2);
+  assertEquals(failWrite.tiktok_publish_error, "socket hang up");
+});
