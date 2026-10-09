@@ -181,6 +181,11 @@ export function compararInicio(a: AgendaItemBase, b: AgendaItemBase): number {
   return d !== 0 ? d : a.ocorrencia_id - b.ocorrencia_id;
 }
 
+/** Home: occurrences that have not ended by `agora` (ms), soonest first. Returns a copy. */
+export function proximosEventos<T extends AgendaItemBase>(itens: readonly T[], agora: number): T[] {
+  return itens.filter((i) => Date.parse(i.fim) > agora).sort(compararInicio);
+}
+
 /**
  * Validates a reschedule suggestion typed as wall time in the occurrence's tz.
  * Pure wall-clock comparisons in tz (no offset math): the server still

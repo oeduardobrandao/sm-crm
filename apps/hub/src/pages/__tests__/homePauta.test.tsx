@@ -73,6 +73,7 @@ const post = (id: number, titulo: string, status: string, scheduled_at: string |
   titulo,
   status,
   scheduled_at,
+  ordem: id,
   tipo: 'feed',
   media: [],
 });
@@ -193,6 +194,38 @@ describe('Home, Pauta look', () => {
       'href',
       '/mesaas/hub/tk/agenda?ocorrencia=7',
     );
+  });
+
+  it('agenda card shows an error line when the agenda fails to load', async () => {
+    posts.mockResolvedValue({ posts: [], historyCutoff: null } as never);
+    agenda.mockRejectedValue(new Error('boom'));
+    renderHome(hubValue({ feature_agenda: true }));
+    const card = (await screen.findByText('02 · Agenda')).closest('section') as HTMLElement;
+    expect(await within(card).findByText('Erro ao carregar a agenda')).toBeInTheDocument();
+    expect(within(card).queryByText('Nenhum evento nos próximos dias')).toBeNull();
+    expect(within(card).getByRole('link', { name: /Ver agenda/ })).toBeInTheDocument();
+  });
+
+  it('waiting list is chronological, unscheduled last, capped at 3', async () => {
+    posts.mockResolvedValue({
+      posts: [
+        post(1, 'Sem data', 'enviado_cliente'),
+        post(2, 'Sexta', 'enviado_cliente', new Date(2026, 9, 16, 10).toISOString()),
+        post(3, 'Sábado', 'enviado_cliente', new Date(2026, 9, 17, 10).toISOString()),
+        post(4, 'Amanhã', 'enviado_cliente', new Date(2026, 9, 9, 10).toISOString()),
+      ],
+      historyCutoff: null,
+    } as never);
+    renderHome();
+    const card = (await screen.findByText('01 · Aprovações')).closest('section') as HTMLElement;
+    const hrefs = within(card)
+      .getAllByRole('link', { name: 'Revisar' })
+      .map((a) => a.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/mesaas/hub/tk/aprovacoes/4',
+      '/mesaas/hub/tk/aprovacoes/2',
+      '/mesaas/hub/tk/aprovacoes/3',
+    ]);
   });
 
   it('agenda card shows a spinner while the agenda loads', async () => {

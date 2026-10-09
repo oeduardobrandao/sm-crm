@@ -105,6 +105,7 @@ export function HomePage() {
 
   const firstName = bootstrap.cliente_nome.split(' ')[0];
   const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const nextPostLabel = nextPost ? formatNextPost(nextPost.scheduled_at!, dateLocale) : '—';
 
   const kpis = [
     {
@@ -129,7 +130,7 @@ export function HomePage() {
     },
     {
       label: t('home.kpi.nextPost.label', 'Próximo post'),
-      value: nextPost ? formatNextPost(nextPost.scheduled_at!, dateLocale) : '—',
+      value: nextPostLabel,
       hint: nextPost?.titulo ?? t('home.kpi.nextPost.hintEmpty', 'Nada agendado'),
     },
   ];
@@ -197,7 +198,7 @@ export function HomePage() {
           thisMonth: String(thisMonthCount),
           pending: String(pendingCount),
           approvalRate,
-          nextPost: nextPost ? formatNextPost(nextPost.scheduled_at!, dateLocale) : '—',
+          nextPost: nextPostLabel,
         }}
         calendar={calendarBody}
         eventDialog={eventDialog}

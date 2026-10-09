@@ -18,7 +18,7 @@ export function WaitingSection({
 }) {
   const { t } = useTranslation('hubHome');
   const { t: tp, i18n } = useTranslation('hubPosts');
-  const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const dateLang = i18n.language.startsWith('en') ? 'en-US' : 'pt-BR';
   return (
     <section className="hub-card p-5">
       <SectionHeader

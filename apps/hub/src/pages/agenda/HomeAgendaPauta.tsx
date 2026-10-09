@@ -5,7 +5,7 @@ import { ArrowRight, CalendarDays, ChevronRight } from 'lucide-react';
 import { hubAgendaQuery } from '../../queries';
 import { StatusPill } from '../../components/StatusPill';
 import { SectionHeader } from '../../components/SectionHeader';
-import { compararInicio, quando } from './formatar';
+import { proximosEventos, quando } from './formatar';
 import { localeDe, selo, textoQuando } from './AgendaCard';
 
 const MAX_ITENS = 3;
@@ -24,12 +24,9 @@ export function HomeAgendaPauta({
   const { t, i18n } = useTranslation('hubAgenda');
   const { t: tHome } = useTranslation('hubHome');
   const locale = localeDe(i18n.language);
-  const { data, isPending } = useInfiniteQuery(hubAgendaQuery(token));
+  const { data, isPending, isError } = useInfiniteQuery(hubAgendaQuery(token));
 
-  const agora = Date.now();
-  const proximos = (data?.pages[0]?.itens ?? [])
-    .filter((i) => Date.parse(i.fim) > agora)
-    .sort(compararInicio);
+  const proximos = proximosEventos(data?.pages[0]?.itens ?? [], Date.now());
   const aguardando = proximos.filter((i) => i.resposta === null).length;
 
   return (
@@ -55,6 +52,10 @@ export function HomeAgendaPauta({
         <div className="flex justify-center py-8">
           <div className="animate-spin h-5 w-5 rounded-full border-2 hub-spinner" />
         </div>
+      ) : isError ? (
+        <p className="py-6 text-center text-[13px] hub-tx3">
+          {t('loadError.title', 'Erro ao carregar a agenda')}
+        </p>
       ) : (
         <>
           {aguardando > 0 && (

@@ -11,6 +11,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { WaitingSection } from './home/WaitingSection';
 import { numberSections, weekCount } from './home/pautaHome';
 import { RESOURCE_LINKS } from './home/resourceLinks';
+import { sortPostsChronologically } from '../lib/postView';
 
 export function HomePagePauta({
   base,
@@ -39,7 +40,9 @@ export function HomePagePauta({
   const navigate = useNavigate();
   const goApprovals = () => navigate(`${base}/aprovacoes`);
   const sections = numberSections(pendingCount > 0, agendaEnabled);
-  const pending = posts.filter((p) => p.status === 'enviado_cliente').slice(0, 3);
+  const pending = sortPostsChronologically(
+    posts.filter((p) => p.status === 'enviado_cliente'),
+  ).slice(0, 3);
 
   return (
     <div className="hub-fade-up flex flex-col gap-6">
