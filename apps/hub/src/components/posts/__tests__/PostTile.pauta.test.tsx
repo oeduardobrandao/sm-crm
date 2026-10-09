@@ -79,6 +79,20 @@ describe('PostTile Pauta', () => {
     expect(glyph).not.toHaveClass('rounded-md');
   });
 
+  it('status tag stays clear of the format glyph and truncates', () => {
+    const { container } = renderTile(true, false);
+    const tag = container.querySelector('[data-hub-status]') as HTMLElement;
+    expect(tag.parentElement!.className).toContain('right-10');
+    expect(tag.querySelector('.truncate')).not.toBeNull();
+  });
+
+  it('classic status tag wrapper is unchanged', () => {
+    const { container } = renderTile(false, false);
+    const label = screen.getAllByText(/aguardando/i)[0];
+    expect(label.parentElement!.className).toBe('absolute top-2 left-2 z-10');
+    expect(container.querySelector('[data-hub-status]')).toBeNull();
+  });
+
   it('classic keeps the Instagram blue and rounded-md', () => {
     const { container } = renderTile(false);
     expect(screen.getByRole('checkbox')).toHaveClass('ring-[#0095f6]');

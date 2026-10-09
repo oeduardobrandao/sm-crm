@@ -10,7 +10,7 @@ export function StatusTag({ status, size = 'sm' }: { status: string; size?: 'sm'
     return (
       <span
         data-hub-status={tone}
-        className="inline-flex items-center gap-1.5 font-semibold whitespace-nowrap"
+        className="inline-flex max-w-full items-center gap-1.5 font-semibold whitespace-nowrap"
         style={{
           fontSize: size === 'md' ? '0.72rem' : '0.68rem',
           padding: size === 'md' ? '0.25rem 0.6rem' : '0.2rem 0.5rem',
@@ -25,11 +25,12 @@ export function StatusTag({ status, size = 'sm' }: { status: string; size?: 'sm'
           style={{
             width: 6,
             height: 6,
+            flexShrink: 0,
             borderRadius: 'var(--hub-r-dot)',
             background: 'currentColor',
           }}
         />
-        {getClientStatusLabel(t, status)}
+        <span className="min-w-0 truncate">{getClientStatusLabel(t, status)}</span>
       </span>
     );
   }

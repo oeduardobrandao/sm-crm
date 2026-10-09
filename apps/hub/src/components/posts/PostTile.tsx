@@ -58,7 +58,14 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
 
   const overlays = (
     <>
-      <span className="absolute top-2 left-2 z-10">
+      {/* Pauta's tag is wider (status dot); keep it clear of the type glyph and let it truncate. */}
+      <span
+        className={
+          pauta
+            ? `absolute top-2 left-2 z-10 flex min-w-0 ${glyph ? 'right-10' : 'right-2'}`
+            : 'absolute top-2 left-2 z-10'
+        }
+      >
         <StatusTag status={status} />
       </span>
       {glyph && (
