@@ -211,6 +211,7 @@ export function WorkflowDrawer({
       titulo: updated.titulo,
       platform: updated.platform,
       scheduled_at: updated.scheduled_at ?? null,
+      tiktok_settings: updated.tiktok_settings,
     });
   };
 

@@ -37,11 +37,14 @@ vi.mock('@/services/tiktok', async (importOriginal) => ({
   getTikTokSummary: (...args: unknown[]) => getTikTokSummaryMock(...args),
 }));
 
-const { toastInfoMock, toastErrorMock } = vi.hoisted(() => ({
+const { toastInfoMock, toastErrorMock, toastSuccessMock } = vi.hoisted(() => ({
   toastInfoMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
 }));
-vi.mock('sonner', () => ({ toast: { info: toastInfoMock, error: toastErrorMock } }));
+vi.mock('sonner', () => ({
+  toast: { info: toastInfoMock, error: toastErrorMock, success: toastSuccessMock },
+}));
 
 // AutomationContactsSection has its own suite (it needs AuthContext and the
 // contacts store, neither relevant here); stub it so query isolation stays
@@ -252,7 +255,32 @@ describe('RedesSociaisTab', () => {
       expect(captureEventMock).not.toHaveBeenCalled();
       expect(toastInfoMock).not.toHaveBeenCalled();
       expect(toastErrorMock).not.toHaveBeenCalled();
+      expect(toastSuccessMock).not.toHaveBeenCalled();
       expect(screen.queryByText('A Meta bloqueou a conexão')).not.toBeInTheDocument();
+    });
+
+    it('tt_connected=1: toasts success, captures tiktok_connected once and strips the param', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      mockFeatures = { feature_tiktok: true };
+      getTikTokSummaryMock.mockResolvedValue(null);
+      renderTab('/clientes/42/redes-sociais?tt_connected=1&tab=redes');
+
+      await waitFor(() =>
+        expect(toastSuccessMock).toHaveBeenCalledWith('Conta do TikTok conectada.'),
+      );
+      expect(captureEventMock).toHaveBeenCalledWith('tiktok_connected', { cliente_id: 42 });
+      expect(captureEventMock).toHaveBeenCalledTimes(1);
+      expect(toastErrorMock).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent('?tab=redes'));
+    });
+
+    it('tt_connected with any other value: no toast, no event, param still stripped', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      renderTab('/clientes/42/redes-sociais?tt_connected=0');
+
+      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(''));
+      expect(toastSuccessMock).not.toHaveBeenCalled();
+      expect(captureEventMock).not.toHaveBeenCalled();
     });
 
     it('preserves unrelated query parameters while stripping only the OAuth-callback ones', async () => {

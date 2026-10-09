@@ -254,21 +254,14 @@ describe('MobileNav', () => {
     expect(items).toContain('Privacidade');
   });
 
-  it('renders the TikTok analytics item as an inert row with a coming-soon badge', () => {
+  it('does not render the TikTok analytics placeholder (spec B4)', () => {
     setAuth();
     renderMobileNav('/dashboard');
     fireEvent.click(document.getElementById('mobile-more-btn')!);
 
-    const tiktokRow = Array.from(document.querySelectorAll('.mobile-more-item')).find((el) =>
-      el.textContent?.includes('TikTok'),
-    );
-    expect(tiktokRow).toBeTruthy();
-    expect(tiktokRow?.tagName).toBe('DIV');
-    expect(tiktokRow).toHaveAttribute('aria-disabled', 'true');
-    expect(tiktokRow?.textContent).toContain('Em breve');
-
-    fireEvent.click(tiktokRow!);
-    expect(screen.getByTestId('path').textContent).toBe('/dashboard');
+    const rows = Array.from(document.querySelectorAll('.mobile-more-item'));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((el) => el.textContent?.includes('TikTok'))).toBe(false);
   });
 
   it('toggles theme and signs out', async () => {

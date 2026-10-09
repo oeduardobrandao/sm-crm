@@ -15,6 +15,7 @@ export default defineConfig({
       '@mesaas/link-policy': path.resolve(__dirname, 'packages/link-policy/index.ts'),
       '@mesaas/text-diff': path.resolve(__dirname, 'packages/text-diff/index.ts'),
       '@mesaas/platforms': path.resolve(__dirname, 'supabase/functions/_shared/platform-registry.ts'),
+      '@mesaas/tiktok-messages': path.resolve(__dirname, 'supabase/functions/_shared/tiktok-messages.ts'),
       '@shared': path.resolve(__dirname, 'supabase/functions/_shared'),
     },
   },

@@ -122,7 +122,7 @@ describe('getNavGroups legacy-agent positive parity', () => {
   // AGENT_ROLE_PRESET grants 'editar' (satisfies 'ver'-gated nav items) for
   // clientes/entregas/calendario/arquivos/ideias/tarefas/automacoes, 'ver'
   // for analytics, and 'none' (hidden) for leads/financeiro/contratos/equipe.
-  // Ids with no NAV_MODULE entry at all (dashboard, analytics-tiktok,
+  // Ids with no NAV_MODULE entry at all (dashboard,
   // novidades, ajuda, configuracao, politica-de-privacidade) always pass
   // through regardless of permission.
   it('shows exactly the agent-visible id set, in declaration order', () => {
@@ -139,7 +139,6 @@ describe('getNavGroups legacy-agent positive parity', () => {
       'tarefas',
       'arquivos',
       'analytics',
-      'analytics-tiktok',
       'novidades',
       'ajuda',
       'configuracao',
@@ -152,6 +151,14 @@ describe('getNavGroups legacy-agent positive parity', () => {
     expect(ownerIds).toEqual(
       expect.arrayContaining(['leads', 'financeiro', 'contratos', 'equipe']),
     );
+  });
+});
+
+describe('TikTok analytics placeholder', () => {
+  it('is gone for every role (spec B4)', () => {
+    expect(ids(getNavGroups(null, 'owner', ownerCan))).not.toContain('analytics-tiktok');
+    expect(ids(getNavGroups(null, 'agent', agentCan))).not.toContain('analytics-tiktok');
+    expect(ids(getMoreSheetGroups(null, 'owner', ownerCan))).not.toContain('analytics-tiktok');
   });
 });
 

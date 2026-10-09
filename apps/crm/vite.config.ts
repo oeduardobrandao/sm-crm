@@ -22,6 +22,10 @@ export default defineConfig(() => {
           __dirname,
           '../../supabase/functions/_shared/platform-registry.ts',
         ),
+        '@mesaas/tiktok-messages': path.resolve(
+          __dirname,
+          '../../supabase/functions/_shared/tiktok-messages.ts',
+        ),
       },
     },
     // The FFmpeg wrapper resolves its worker relative to its module URL.

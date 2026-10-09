@@ -28,6 +28,7 @@ import {
   validateForTikTokScheduling as realValidateForTikTokScheduling,
   buildVideoInitPayload,
   buildPhotoInitPayload,
+  buildTikTokPostUrl,
   mapStatusFetch,
   type TikTokValidationResult,
   type ClaimedTikTokPost,
@@ -40,7 +41,13 @@ import {
 import {
   getFreshTikTokToken as realGetFreshTikTokToken,
   tiktokFetch as realTiktokFetch,
+  TikTokApiError,
 } from "../_shared/tiktok.ts";
+import { isTikTokCannotPostCode, tiktokErrorMessage } from "../_shared/tiktok-messages.ts";
+import {
+  evaluateTikTokPrecheck,
+  fetchCreatorCheck as realFetchCreatorCheck,
+} from "../_shared/tiktok-precheck.ts";
 import { buildTikTokMediaUrl as realBuildTikTokMediaUrl } from "../_shared/tiktok-media-url.ts";
 
 type DbClient = {
@@ -60,9 +67,13 @@ export interface TikTokPublishDeps {
   validateForScheduling?: typeof realValidateForScheduling;
   getFreshTikTokToken?: typeof realGetFreshTikTokToken;
   tiktokFetch?: typeof realTiktokFetch;
+  fetchCreatorCheck?: typeof realFetchCreatorCheck;
   buildTikTokMediaUrl?: typeof realBuildTikTokMediaUrl;
   sleep?: (ms: number) => Promise<void>;
 }
+
+/** A failure whose message is a curated pt-BR sentence: safe to persist and return (422). */
+class TikTokUserFacingError extends Error {}
 
 const PUBLISH_NOW_MAX_POLLS = 12;
 const PUBLISH_NOW_POLL_INTERVAL_MS = 3000;
@@ -119,6 +130,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       return json({ error: "Conta do TikTok não está ativa. Reconecte a conta." }, 422);
     }
 
+    const appAudited = Deno.env.get("TIKTOK_APP_AUDITED") === "true";
     try {
       const { accessToken } = await getFreshToken(svcDb as never, (account as { id: string }).id);
       const data = (await tiktokFetchFn("/post/publish/creator_info/query/", {
@@ -135,8 +147,15 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         duet_disabled: data.duet_disabled,
         stitch_disabled: data.stitch_disabled,
         max_video_post_duration_sec: data.max_video_post_duration_sec,
+        can_post: true,
+        app_audited: appAudited,
       });
     } catch (e) {
+      // A6: TikTok answers "can't post right now" with HTTP 200 + a non-ok error.code, which
+      // tiktokFetch surfaces as TikTokApiError.code. No `data` comes with it.
+      if (e instanceof TikTokApiError && isTikTokCannotPostCode(e.code)) {
+        return json({ can_post: false, cannot_post_reason: e.code, app_audited: appAudited });
+      }
       console.error("[TIKTOK-PUBLISH] creator-info error:", (e as Error)?.message);
       return json({ error: "Erro ao consultar informações do criador no TikTok." }, 500);
     }
@@ -392,6 +411,19 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         const account = validation.account!;
         const { accessToken } = await getFreshToken(svcDb as never, account.id);
 
+        const creator = await (deps.fetchCreatorCheck ?? realFetchCreatorCheck)(tiktokFetchFn, accessToken);
+        const precheckFailure = evaluateTikTokPrecheck({
+          tipo: post.tipo,
+          settings: post.tiktok_settings,
+          media: (validation.media ?? []).map((m) => ({
+            kind: m.kind,
+            duration_seconds: m.duration_seconds,
+            media_lost_at: m.media_lost_at ?? null,
+          })),
+          creator,
+        });
+        if (precheckFailure) throw new TikTokUserFacingError(precheckFailure);
+
         const claimedPost: ClaimedTikTokPost = {
           tipo: post.tipo,
           caption: post.tiktok_caption ?? post.ig_caption ?? "",
@@ -450,7 +482,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
             .maybeSingle();
           const username = (accountRow as { username?: string } | null)?.username;
           const tiktokPostUrl = statusResult.publicPostId && username
-            ? `https://www.tiktok.com/@${username}/video/${statusResult.publicPostId}`
+            ? buildTikTokPostUrl(username, statusResult.publicPostId, post.tipo)
             : undefined;
 
           const { error: markErr } = await svcDb.rpc("mark_platform_published", {
@@ -496,15 +528,18 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
           statusResult.failReason ? `TikTok publish failed: ${statusResult.failReason}` : "TikTok publish failed",
         );
       } catch (err) {
-        const message = (err as Error)?.message ?? "Unknown error";
-        console.error(`[TIKTOK-PUBLISH-NOW] failed for post ${postId}:`, message);
+        const mapped = err instanceof TikTokUserFacingError
+          ? err.message
+          : tiktokErrorMessage(err instanceof TikTokApiError ? err.code : undefined);
+        const message = mapped ?? (err as Error)?.message ?? "Unknown error";
+        console.error(`[TIKTOK-PUBLISH-NOW] failed for post ${postId}:`, (err as Error)?.message);
 
         const { error: failErr } = await svcDb
           .from("workflow_posts")
           .update({
             tiktok_publish_status: "failed",
             tiktok_publish_error: message.slice(0, 500),
-            tiktok_publish_retry_count: (post.tiktok_publish_retry_count ?? 0) + 1,
+            tiktok_publish_retry_count: mapped ? 3 : (post.tiktok_publish_retry_count ?? 0) + 1,
             tiktok_publish_processing_at: null,
           })
           .eq("id", postId);
@@ -529,7 +564,9 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
           );
         }
 
-        return validationFailure ?? internalServerError(json, "tiktok-publish:publish-now", err);
+        if (validationFailure) return validationFailure;
+        if (mapped) return json({ error: mapped }, 422);
+        return internalServerError(json, "tiktok-publish:publish-now", err);
       }
     }
 

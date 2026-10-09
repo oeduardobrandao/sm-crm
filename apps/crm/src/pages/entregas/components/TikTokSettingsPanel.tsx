@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Music2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import { TIKTOK_MSG } from '@mesaas/tiktok-messages';
 import {
   Select,
   SelectContent,
@@ -15,33 +16,40 @@ import { Label } from '@/components/ui/label';
 import { sanitizeUrl } from '@/utils/security';
 import { getTikTokCreatorInfo, type TikTokCreatorInfo } from '../../../services/tiktok';
 import type { WorkflowPost } from '../../../store';
+import type { PostMedia } from '../../../store/posts';
+import {
+  brandedCheckboxState,
+  cannotPostMessage,
+  computeTikTokReadiness,
+  disclosureLabel,
+  DISCLOSURE_INCOMPLETE_MSG,
+  isAppAudited,
+  isPublicAccountInTestMode,
+  longestVideoSeconds,
+  privacyOptionState,
+  type TikTokReadiness,
+} from '../tiktokComposerRules';
 
 // =============================================================================
 // TikTok settings panel — audit-mandated creator_info compliance UI
 // (design doc §"Frontend (CRM)" → "TikTok settings panel", 2026-07-17).
 // =============================================================================
 //
-// ── Completeness contract for C3's ScheduleButton ──────────────────────────
-// `onCompletenessChange(complete: boolean)` fires whenever either gating input
-// changes:
-//   1. `tiktok_settings.privacy_level` chosen — PERSISTED, derivable by anyone
-//      reading the post row (post.tiktok_settings?.privacy_level != null).
-//   2. The music-usage confirmation checkbox is ticked — EPHEMERAL, intentionally
-//      never written to tiktok_settings or any column. The audit requires an
-//      affirmative re-confirmation every time this panel is opened, so this bit
-//      cannot be derived from the post row. C3's ScheduleButton MUST hold the
-//      latest value this callback reports (keyed by post id) for as long as the
-//      panel stays mounted, and AND it with any other TikTok readiness it
-//      computes (media, account) before enabling the Schedule action for
-//      platform 'tiktok'/'both'. `complete = privacyChosen && musicConfirmed`.
+// ── Readiness contract (spec 2026-10-08-tiktok-audit-readiness A0) ───────────
+// The panel reports `computeTikTokReadiness` (tiktokComposerRules.ts) through
+// `onReadinessChange({ complete, reason })` whenever the result changes. Every
+// input is either persisted (tiktok_settings), server-fetched (creator_info) or
+// passed in by the parent (media, mediaError); there is no ephemeral state any
+// more (the music-usage confirmation moved to TikTokPostingDeclaration). The
+// parent holds the latest value and hands it to ScheduleButton, which uses
+// `reason` as the blocking explanation.
 //
 // ── Test-mode banner ─────────────────────────────────────────────────────
-// Server-authoritative (design doc "Unaudited-mode gate"): this component never
-// reads TIKTOK_APP_AUDITED or any client-side env var. The parent controls
-// `showTestModeBanner`, flipping it to true only after a schedule attempt's
-// response indicates the app is still unaudited (the 422 from tiktok-publish's
-// /schedule route). C3 wires that catch-block signal in; until then this stays
-// false and the banner never renders.
+// Server-authoritative: this component never reads TIKTOK_APP_AUDITED or any
+// client-side env var. It shows whenever creator_info says `app_audited: false`,
+// OR when the parent sets `showTestModeBanner` (a schedule attempt hit the
+// unaudited-mode 422 from tiktok-publish, the fallback for an older deploy that
+// doesn't send `app_audited`).
 //
 // ── Persistence ──────────────────────────────────────────────────────────
 // All writes go through the same `onFieldChange` callback WorkflowDrawer already
@@ -61,8 +69,12 @@ const CAPTION_MAX_PHOTO = 4000; // already counts UTF-16 code units, no extra li
 const TITLE_MAX = 90;
 const CAPTION_DEBOUNCE_MS = 1500;
 
-const MUSIC_USAGE_CONFIRMATION_URL =
-  'https://www.tiktok.com/legal/page/global/music-usage-confirmation/en';
+const TEST_MODE_BANNER =
+  'App em modo de teste: até a aprovação do TikTok, as publicações saem como privadas.';
+
+function formatDuration(s: number): string {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
 
 const PRIVACY_LABELS: Record<string, string> = {
   PUBLIC_TO_EVERYONE: 'Todos',
@@ -136,13 +148,20 @@ function draftFromSettings(
 
 export interface TikTokSettingsPanelProps {
   clientId: number;
-  post: Pick<WorkflowPost, 'id' | 'tipo' | 'tiktok_settings' | 'tiktok_caption' | 'tiktok_title'>;
+  post: Pick<
+    WorkflowPost,
+    'id' | 'tipo' | 'tiktok_settings' | 'tiktok_caption' | 'tiktok_title' | 'ig_caption'
+  >;
   /** Same optimistic-write path `tipo`/`platform`/`ig_caption` already use
    * (WorkflowDrawer's onFieldChange -> updateWorkflowPost). */
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
-  /** See the module-level "Completeness contract for C3's ScheduleButton" comment above. */
-  onCompletenessChange?: (complete: boolean) => void;
-  /** See the module-level "Test-mode banner" comment above. Defaults to false. */
+  /** See the module-level "Readiness contract" comment above. */
+  onReadinessChange?: (readiness: TikTokReadiness) => void;
+  /** The post's media; `undefined` while the query is still loading. */
+  media: PostMedia[] | undefined;
+  /** The media query failed: readiness blocks instead of reading as "still loading". */
+  mediaError?: boolean;
+  /** See the module-level "Test-mode banner" comment above. OR-ed with `!app_audited`. */
   showTestModeBanner?: boolean;
   /** Com feature_multiplatform a legenda do TikTok mora na aba do TikTok
    *  (DestinationCaptionTabs); o painel fica só com as configurações. */
@@ -153,19 +172,19 @@ export function TikTokSettingsPanel({
   clientId,
   post,
   onFieldChange,
-  onCompletenessChange,
+  onReadinessChange,
+  media,
+  mediaError = false,
   showTestModeBanner = false,
   hideCaption = false,
 }: TikTokSettingsPanelProps) {
   const [creatorInfo, setCreatorInfo] = useState<TikTokCreatorInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Ephemeral — see module comment. Never persisted, never seeded from props.
-  const [musicConfirmed, setMusicConfirmed] = useState(false);
 
   // Local optimistic echo of tiktok_settings (mirrors InstagramCaptionField's `local`
   // pattern): updates immediately on interaction so checkbox/select state and the
-  // completeness callback reflect a change in the same tick, while `onFieldChange`
+  // readiness callback reflect a change in the same tick, while `onFieldChange`
   // fires the actual persistence write.
   const [draft, setDraft] = useState<TikTokSettingsDraft>(() =>
     draftFromSettings(post.tiktok_settings),
@@ -173,6 +192,20 @@ export function TikTokSettingsPanel({
   useEffect(() => {
     setDraft(draftFromSettings(post.tiktok_settings));
   }, [post.tiktok_settings]);
+
+  // Commercial content disclosure master switch (spec A1). Local UI state: turning it on
+  // persists nothing until one of its checkboxes is ticked; a saved toggle opens it on mount.
+  const [disclosureOn, setDisclosureOn] = useState(
+    () =>
+      !!(post.tiktok_settings?.brand_organic_toggle || post.tiktok_settings?.brand_content_toggle),
+  );
+  // Re-sync when a saved toggle arrives after mount (the post prop changes under an open
+  // panel): a ticked toggle means disclosure is on. Never forces the switch off, so turning
+  // it on with nothing ticked yet survives re-renders.
+  const draftHasDisclosure = draft.brand_organic_toggle || draft.brand_content_toggle;
+  useEffect(() => {
+    if (draftHasDisclosure) setDisclosureOn(true);
+  }, [draftHasDisclosure]);
 
   const [captionLocal, setCaptionLocal] = useState(post.tiktok_caption ?? '');
   useEffect(() => {
@@ -222,13 +255,29 @@ export function TikTokSettingsPanel({
     };
   }, [clientId]);
 
-  const privacyChosen = !!draft.privacy_level;
+  const readiness = computeTikTokReadiness({
+    loading,
+    loadError,
+    creator: creatorInfo,
+    tipo: post.tipo,
+    privacyLevel: draft.privacy_level,
+    disclosureOn,
+    brandOrganic: draft.brand_organic_toggle,
+    brandContent: draft.brand_content_toggle,
+    media: media?.map((m) => ({
+      kind: m.kind,
+      duration_seconds: m.duration_seconds,
+      media_lost_at: m.media_lost_at ?? null,
+    })),
+    mediaError,
+  });
+  const readinessKey = `${readiness.complete}|${readiness.reason ?? ''}`;
   useEffect(() => {
-    onCompletenessChange?.(privacyChosen && musicConfirmed);
-    // onCompletenessChange is a parent-supplied callback; re-running only when the two
-    // actual gating inputs change is the point (avoids re-firing on unrelated re-renders).
+    onReadinessChange?.(readiness);
+    // onReadinessChange is a parent-supplied callback; re-firing only when the result
+    // changes is the point (avoids re-reporting on unrelated re-renders).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [privacyChosen, musicConfirmed]);
+  }, [readinessKey]);
 
   // Defensive — PlatformSelector already prevents platform from being 'tiktok'/'both'
   // while tipo is 'stories' (TikTok has no Stories API), so WorkflowDrawer should never
@@ -239,7 +288,17 @@ export function TikTokSettingsPanel({
   const isVideoTipo = post.tipo === 'reels';
   const isPhotoTipo = post.tipo === 'feed' || post.tipo === 'carrossel';
   const captionMax = isVideoTipo ? CAPTION_MAX_VIDEO : CAPTION_MAX_PHOTO;
-  const isBrandedContent = draft.brand_organic_toggle || draft.brand_content_toggle;
+
+  const audited = isAppAudited(creatorInfo);
+  const brandedState = brandedCheckboxState({ audited, privacyLevel: draft.privacy_level });
+  const label = disclosureLabel(draft.brand_organic_toggle, draft.brand_content_toggle);
+  const cannotPost = cannotPostMessage(creatorInfo);
+  const maxDur = creatorInfo?.max_video_post_duration_sec;
+  const longest = longestVideoSeconds(media);
+  const durationError =
+    isVideoTipo && maxDur != null && longest != null && longest > maxDur
+      ? TIKTOK_MSG.durationExceeded(longest, maxDur)
+      : null;
 
   const persist = (patch: Partial<TikTokSettingsDraft>) => {
     const next = { ...draft, ...patch };
@@ -274,40 +333,126 @@ export function TikTokSettingsPanel({
       className="mt-3 rounded-lg border-2 p-3 flex flex-col gap-3"
       style={{ borderColor: 'var(--border-color)', background: 'var(--surface-hover)' }}
     >
-      {showTestModeBanner && (
+      {(showTestModeBanner || (creatorInfo != null && !audited)) && (
         <div
           role="status"
           className="text-xs rounded-md px-2 py-1.5"
           style={{ color: 'var(--warning)', background: 'rgba(245, 163, 66, 0.1)' }}
         >
-          App em modo de teste: publicações TikTok saem como privadas
+          {TEST_MODE_BANNER}
         </div>
       )}
 
-      {/* Creator header */}
-      <div className="flex items-center gap-2.5">
-        {creatorInfo?.creator_avatar_url && (
-          <img
-            data-testid="tiktok-creator-avatar"
-            src={sanitizeUrl(creatorInfo.creator_avatar_url)}
-            alt="TikTok"
-            className="h-9 w-9 rounded-full object-cover"
-            style={{ border: '2px solid #000000' }}
-          />
-        )}
-        <div className="flex flex-col">
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
-            {loading
-              ? 'Carregando informações do criador…'
-              : (creatorInfo?.creator_nickname ?? '—')}
-          </span>
-          {isVideoTipo && creatorInfo?.max_video_post_duration_sec != null && (
-            <span className="text-xs" style={{ color: 'var(--text-light)' }}>
-              Duração máxima de vídeo permitida: {creatorInfo.max_video_post_duration_sec}s
-            </span>
+      {isPublicAccountInTestMode(creatorInfo) && (
+        <p
+          role="alert"
+          className="text-xs rounded-md px-2 py-1.5"
+          style={{ color: 'var(--danger-text)', background: 'rgba(245, 90, 66, 0.08)' }}
+        >
+          {TIKTOK_MSG.publicAccountInTestMode}
+        </p>
+      )}
+
+      {/* Creator header (spec A6: replaced by the can't-post notice when TikTok refuses) */}
+      {cannotPost ? (
+        <p
+          role="alert"
+          className="text-xs rounded-md px-2 py-1.5"
+          style={{ color: 'var(--danger-text)', background: 'rgba(245, 90, 66, 0.08)' }}
+        >
+          {cannotPost}
+        </p>
+      ) : (
+        <div className="flex items-center gap-2.5">
+          {creatorInfo?.creator_avatar_url && (
+            <img
+              data-testid="tiktok-creator-avatar"
+              src={sanitizeUrl(creatorInfo.creator_avatar_url)}
+              alt="TikTok"
+              className="h-9 w-9 rounded-full object-cover"
+              style={{ border: '2px solid #000000' }}
+            />
           )}
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
+              {loading ? (
+                'Carregando informações do criador…'
+              ) : creatorInfo?.creator_nickname ? (
+                <>
+                  Publicando como @<span>{creatorInfo.creator_nickname}</span>
+                </>
+              ) : (
+                '—'
+              )}
+            </span>
+            {isVideoTipo && maxDur != null && (
+              <span className="text-xs" style={{ color: 'var(--text-light)' }}>
+                Duração máxima de vídeo nesta conta: {maxDur}s
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Preview (spec A5): what will be sent */}
+      <section aria-label="Prévia" className="flex flex-col gap-1.5">
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+          Prévia
+        </span>
+        {media === undefined ? null : media.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-light)' }}>
+            {TIKTOK_MSG.mediaMissing}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2 items-start">
+            <div className="flex flex-wrap gap-1.5 min-w-0">
+              {media.slice(0, 5).map((m) => {
+                const thumb = m.thumbnail_url || (m.kind === 'image' ? m.url : undefined);
+                return (
+                  <div
+                    key={m.id}
+                    className="relative h-28 w-16 overflow-hidden rounded-md flex-shrink-0"
+                    style={{ background: 'var(--surface-3)' }}
+                  >
+                    {thumb && !m.media_lost_at && (
+                      <img src={sanitizeUrl(thumb)} alt="" className="h-full w-full object-cover" />
+                    )}
+                    {m.kind === 'video' && m.duration_seconds != null && (
+                      <span
+                        className="absolute bottom-1 right-1 rounded px-1 text-[10px] font-semibold"
+                        style={{ background: 'var(--dark)', color: '#fff' }}
+                      >
+                        {formatDuration(m.duration_seconds)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+              {media.length > 5 && (
+                <span className="self-center text-xs" style={{ color: 'var(--text-muted)' }}>
+                  +{media.length - 5}
+                </span>
+              )}
+            </div>
+            <p
+              className="min-w-[10rem] flex-1 text-xs line-clamp-2"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              {post.tiktok_caption ?? post.ig_caption ?? ''}
+            </p>
+          </div>
+        )}
+        {media?.some((m) => m.media_lost_at) && (
+          <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
+            {TIKTOK_MSG.mediaLost}
+          </p>
+        )}
+        {durationError && (
+          <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
+            {durationError}
+          </p>
+        )}
+      </section>
 
       {loadError && (
         <p className="text-xs" style={{ color: 'var(--danger)' }}>
@@ -326,11 +471,18 @@ export function TikTokSettingsPanel({
             <SelectValue placeholder="Selecione a privacidade" />
           </SelectTrigger>
           <SelectContent>
-            {(creatorInfo?.privacy_level_options ?? []).map((opt) => (
-              <SelectItem key={opt} value={opt}>
-                {PRIVACY_LABELS[opt] ?? opt}
-              </SelectItem>
-            ))}
+            {(creatorInfo?.privacy_level_options ?? []).map((opt) => {
+              const st = privacyOptionState(opt, {
+                audited,
+                brandContent: draft.brand_content_toggle,
+              });
+              return (
+                <SelectItem key={opt} value={opt} disabled={st.disabled}>
+                  {PRIVACY_LABELS[opt] ?? opt}
+                  {st.suffix ? ` ${st.suffix}` : ''}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -370,29 +522,94 @@ export function TikTokSettingsPanel({
         )}
       </div>
 
-      {/* Commercial content */}
-      <div className="flex flex-col gap-2">
+      {/* Commercial content disclosure (spec A1/A2) */}
+      <div
+        className="flex flex-col gap-2 pt-3"
+        style={{ borderTop: '1px solid var(--border-color)' }}
+      >
         <div className="flex items-center justify-between gap-2">
-          <Label htmlFor={`tt-brand-organic-${post.id}`}>
-            Seu conteúdo promove você ou seu negócio
-          </Label>
+          <Label htmlFor={`tt-disclosure-${post.id}`}>Divulgação de conteúdo comercial</Label>
           <Switch
-            id={`tt-brand-organic-${post.id}`}
-            checked={draft.brand_organic_toggle}
-            onCheckedChange={(checked) => persist({ brand_organic_toggle: checked === true })}
+            id={`tt-disclosure-${post.id}`}
+            aria-label="Divulgação de conteúdo comercial"
+            checked={disclosureOn}
+            onCheckedChange={(checked) => {
+              setDisclosureOn(checked === true);
+              if (checked !== true) {
+                persist({ brand_organic_toggle: false, brand_content_toggle: false });
+              }
+            }}
           />
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <Label htmlFor={`tt-brand-content-${post.id}`}>Conteúdo de marca — parceria paga</Label>
-          <Switch
-            id={`tt-brand-content-${post.id}`}
-            checked={draft.brand_content_toggle}
-            onCheckedChange={(checked) => persist({ brand_content_toggle: checked === true })}
-          />
-        </div>
-        {draft.brand_content_toggle && (
-          <p className="text-xs" style={{ color: 'var(--text-light)' }}>
-            Este post exibirá o rótulo <strong>Parceria paga</strong> no TikTok.
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          Indique se este conteúdo promove você, uma marca, um produto ou um serviço.
+        </p>
+        {disclosureOn && (
+          <>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id={`tt-brand-organic-${post.id}`}
+                checked={draft.brand_organic_toggle}
+                onCheckedChange={(c) => persist({ brand_organic_toggle: c === true })}
+              />
+              <div className="flex flex-col">
+                <Label htmlFor={`tt-brand-organic-${post.id}`}>Sua marca</Label>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Você está promovendo a si mesmo ou o seu negócio.
+                </span>
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id={`tt-brand-content-${post.id}`}
+                checked={draft.brand_content_toggle}
+                // A legacy row with branded already on can still be unticked, to clear the conflict.
+                disabled={brandedState.disabled && !draft.brand_content_toggle}
+                onCheckedChange={(c) => persist({ brand_content_toggle: c === true })}
+              />
+              <div className="flex flex-col">
+                <Label htmlFor={`tt-brand-content-${post.id}`}>
+                  Conteúdo de marca{' '}
+                  {brandedState.suffix && (
+                    <span
+                      data-testid="tt-branded-suffix"
+                      className="text-xs"
+                      style={{ color: 'var(--text-light)' }}
+                    >
+                      {brandedState.suffix}
+                    </span>
+                  )}
+                </Label>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {brandedState.helper ?? 'Você está promovendo outra marca ou um terceiro.'}
+                </span>
+              </div>
+            </div>
+            {label ? (
+              <p
+                className="text-xs rounded-md px-2 py-1.5"
+                style={{
+                  background: 'var(--surface-main)',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                Seu post será rotulado como <strong>{label}</strong>.
+              </p>
+            ) : (
+              <p className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-main)' }}>
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="mt-px h-3.5 w-3.5 shrink-0"
+                  style={{ color: 'var(--warning)' }}
+                />
+                <span>{DISCLOSURE_INCOMPLETE_MSG}</span>
+              </p>
+            )}
+          </>
+        )}
+        {draft.brand_content_toggle && draft.privacy_level === 'SELF_ONLY' && (
+          <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
+            {TIKTOK_MSG.brandedPrivate}
           </p>
         )}
       </div>
@@ -419,46 +636,12 @@ export function TikTokSettingsPanel({
         </div>
       )}
 
-      {/* Music-usage confirmation — audit requirement, must be ticked before scheduling */}
-      <div
-        className="flex flex-col gap-1.5 rounded-md p-2"
-        style={{ background: 'var(--surface-light)' }}
-      >
-        <p className="text-xs flex items-start gap-1.5" style={{ color: 'var(--text-light)' }}>
-          <Music2 className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-          <span>
-            {isBrandedContent
-              ? 'Este conteúdo promove uma marca ou é uma parceria paga. Confirmo que tenho os direitos de uso da música utilizada e que este conteúdo está de acordo com as políticas de conteúdo de marca do TikTok, incluindo a '
-              : 'Confirmo que tenho os direitos de uso da música utilizada neste conteúdo, conforme a '}
-            <a
-              href={MUSIC_USAGE_CONFIRMATION_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: 'var(--primary-color)' }}
-            >
-              Confirmação de Uso de Música do TikTok
-            </a>
-            .
-          </span>
-        </p>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id={`tt-music-confirm-${post.id}`}
-            checked={musicConfirmed}
-            onCheckedChange={(checked) => setMusicConfirmed(checked === true)}
-          />
-          <Label htmlFor={`tt-music-confirm-${post.id}`}>
-            Confirmo que tenho os direitos de uso da música
-          </Label>
-        </div>
-      </div>
-
       {/* Caption override */}
       {!hideCaption && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <Label htmlFor={`tt-caption-${post.id}`}>
-              Legenda do TikTok (opcional — usa a legenda do Instagram se vazia)
+              Legenda do TikTok (opcional: usa a legenda do Instagram se vazia)
             </Label>
             <span
               className="text-xs"

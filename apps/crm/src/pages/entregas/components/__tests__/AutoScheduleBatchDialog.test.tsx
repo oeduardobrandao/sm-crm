@@ -369,4 +369,131 @@ describe('AutoScheduleBatchDialog', () => {
     );
     expect(container).toBeEmptyDOMElement();
   });
+
+  const batchDialog = () => (
+    <AutoScheduleBatchDialog
+      workflowId={7}
+      tiktokFeatureEnabled
+      isFinalApprovalCycle
+      onClose={vi.fn()}
+      onScheduled={vi.fn()}
+    />
+  );
+
+  it('mixed batch with one branded TikTok post: branded declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      {
+        id: 1,
+        titulo: 'A',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: future(3),
+      },
+      {
+        id: 2,
+        titulo: 'B',
+        status: 'aprovado_cliente',
+        platform: 'tiktok',
+        scheduled_at: future(4),
+        tiktok_settings: { brand_content_toggle: false, privacy_level: 'SELF_ONLY' },
+      },
+      {
+        id: 3,
+        titulo: 'C',
+        status: 'aprovado_cliente',
+        platform: 'both',
+        scheduled_at: future(5),
+        tiktok_settings: { brand_content_toggle: true, privacy_level: 'PUBLIC_TO_EVERYONE' },
+      },
+    ]);
+    wrap(batchDialog());
+    expect(await screen.findByTestId('tiktok-posting-declaration')).toHaveTextContent(
+      'Política de Conteúdo de Marca',
+    );
+  });
+
+  it('batch whose TikTok posts are all non-branded: music-only declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      {
+        id: 1,
+        titulo: 'A',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: future(3),
+      },
+      {
+        id: 2,
+        titulo: 'B',
+        status: 'aprovado_cliente',
+        platform: 'tiktok',
+        scheduled_at: future(4),
+        tiktok_settings: { brand_content_toggle: false },
+      },
+    ]);
+    wrap(batchDialog());
+    const decl = await screen.findByTestId('tiktok-posting-declaration');
+    expect(decl).toHaveTextContent('Confirmação de Uso de Música');
+    expect(decl).not.toHaveTextContent('Política de Conteúdo de Marca');
+  });
+
+  it('TikTok post with no settings in the batch: branded declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      {
+        id: 2,
+        titulo: 'B',
+        status: 'aprovado_cliente',
+        platform: 'tiktok',
+        scheduled_at: future(4),
+      },
+    ]);
+    wrap(batchDialog());
+    expect(await screen.findByTestId('tiktok-posting-declaration')).toHaveTextContent(
+      'Política de Conteúdo de Marca',
+    );
+  });
+
+  it('Instagram-only batch: no declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      {
+        id: 1,
+        titulo: 'A',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: future(3),
+      },
+    ]);
+    wrap(batchDialog());
+    await screen.findByRole('button', { name: /Agendar 1 post/ });
+    expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+  });
+
+  it('TikTok posts blocked by the missing add-on do not trigger the declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      {
+        id: 1,
+        titulo: 'A',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: future(3),
+      },
+      {
+        id: 2,
+        titulo: 'B',
+        status: 'aprovado_cliente',
+        platform: 'tiktok',
+        scheduled_at: future(4),
+      },
+    ]);
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled={false}
+        isFinalApprovalCycle
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    await screen.findByRole('button', { name: /Agendar 1 post/ });
+    expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+  });
 });

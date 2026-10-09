@@ -171,14 +171,6 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.instagram',
         icon: 'ph-instagram-logo',
       },
-      {
-        id: 'analytics-tiktok',
-        route: '/analytics/tiktok',
-        label: 'TikTok',
-        labelKey: 'nav.tiktok',
-        icon: 'ph-tiktok-logo',
-        disabled: true,
-      },
     ],
   },
   {
@@ -247,7 +239,7 @@ const NAV_FEATURE: Record<string, string> = {
  * for every legacy role, so nothing here re-encodes role literals.
  *
  * Ids with no entry (dashboard, ajuda, configuracao, novidades,
- * politica-de-privacidade, analytics-tiktok) are outside the permission
+ * politica-de-privacidade) are outside the permission
  * catalog and always pass through unfiltered here.
  */
 /** Exported so MobileNav.tsx's fixed primary bar (dashboard/clientes/

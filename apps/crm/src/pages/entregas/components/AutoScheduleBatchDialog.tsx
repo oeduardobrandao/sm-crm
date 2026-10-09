@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { getWorkflowPosts } from '@/store';
 import { partitionByScheduleEligibility, targetsTikTokService } from '../autoScheduleNudge';
 import { scheduleApprovedPost } from '../scheduleApprovedPost';
+import { declarationBrandedFlag, TikTokPostingDeclaration } from './TikTokPostingDeclaration';
 
 function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
@@ -110,6 +111,12 @@ export function AutoScheduleBatchDialog({
   // literalmente falso para o segundo grupo.
   const tiktokBlocked = byDate.eligible.filter(blockedByTikTok);
   const missingDate = byDate.missingDate;
+  // Spec A3: one declaration covers the batch; branded if any TikTok post is (or has no
+  // settings yet, which over-discloses).
+  const tiktokEligible = eligible.filter((p) => targetsTikTokService(p.platform));
+  const tiktokDeclarationBranded = tiktokEligible.some(
+    (p) => declarationBrandedFlag(p.tiktok_settings) !== false,
+  );
 
   // Nada aprovado (aprovação em lote sem efeito, ou tudo já agendado): não vale
   // um diálogo vazio.
@@ -183,6 +190,10 @@ export function AutoScheduleBatchDialog({
               ))}
             </ul>
           </div>
+        )}
+
+        {tiktokEligible.length > 0 && (
+          <TikTokPostingDeclaration brandedContent={tiktokDeclarationBranded} className="mb-2" />
         )}
 
         <AlertDialogFooter>

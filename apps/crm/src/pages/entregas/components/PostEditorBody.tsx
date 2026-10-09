@@ -38,6 +38,7 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField, type InstagramCaptionFieldHandle } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
+import type { TikTokReadiness } from '../tiktokComposerRules';
 import { TrialReelPanel } from './TrialReelPanel';
 import { ScheduleButton } from './ScheduleButton';
 import { PostAutomationSection } from './PostAutomationSection';
@@ -225,7 +226,7 @@ export function PostEditorBody({
   // Shares the ['post-media', post.id] cache key with PostMediaGallery below, so this is a
   // cache hit whenever the gallery already loaded it. Feeds ScheduleButton's client-side
   // media preflight (size/format/aspect-ratio) once the post is expanded.
-  const { data: postMedia } = useQuery({
+  const { data: postMedia, isError: postMediaError } = useQuery({
     queryKey: ['post-media', post.id],
     queryFn: () => listPostMedia(post.id!),
     staleTime: 5 * 60 * 1000,
@@ -238,17 +239,17 @@ export function PostEditorBody({
   // One viewer for both entry points (tile "Abrir" and bubble chips).
   const [viewingReference, setViewingReference] = useState<ReferenceItem | null>(null);
 
-  // TikTok settings completeness/test-mode-banner seam (Task C3), held here rather than
-  // inside ScheduleButton because TikTokSettingsPanel and ScheduleButton are siblings —
-  // this component instance is scoped to a single post row, so per-post-id keying is
-  // implicit. Reset on collapse (isExpanded -> false below) so a fresh open always
-  // re-requires the ephemeral music-usage confirmation, matching TikTokSettingsPanel's
-  // documented "re-confirm every open" contract instead of silently trusting a stale value.
-  const [tiktokSettingsComplete, setTiktokSettingsComplete] = useState(false);
+  // TikTok readiness/test-mode-banner seam, held here rather than inside ScheduleButton
+  // because TikTokSettingsPanel and ScheduleButton are siblings — this component instance
+  // is scoped to a single post row, so per-post-id keying is implicit. The panel reports
+  // readiness (spec 2026-10-08-tiktok-audit-readiness A0: complete + blocking reason). Reset
+  // on collapse (isExpanded -> false below) so a reopen re-fetches creator_info and
+  // re-derives readiness instead of silently trusting a stale value.
+  const [tiktokReadiness, setTiktokReadiness] = useState<TikTokReadiness>({ complete: false });
   const [tiktokTestModeBanner, setTiktokTestModeBanner] = useState(false);
   useEffect(() => {
     if (!isExpanded) {
-      setTiktokSettingsComplete(false);
+      setTiktokReadiness({ complete: false });
       setTiktokTestModeBanner(false);
     }
   }, [isExpanded]);
@@ -483,7 +484,9 @@ export function PostEditorBody({
       clientId={clienteId}
       post={post}
       onFieldChange={onFieldChange}
-      onCompletenessChange={setTiktokSettingsComplete}
+      onReadinessChange={setTiktokReadiness}
+      media={postMedia}
+      mediaError={postMediaError}
       showTestModeBanner={tiktokTestModeBanner}
       hideCaption={hideCaption}
     />
@@ -833,8 +836,8 @@ export function PostEditorBody({
           caption hidden). Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
           tipo==='stories' guard (TikTok has no Stories API, so platform can never be
           'tiktok'/'both' on a stories post — PlatformSelector self-heals that case).
-          `onCompletenessChange`/`showTestModeBanner` wire into the sibling ScheduleButton
-          below via the local state declared above (Task C3). */}
+          `onReadinessChange`/`showTestModeBanner` wire into the sibling ScheduleButton
+          below via the local state declared above. */}
       {!multiplatform &&
         (post.platform === 'tiktok' || post.platform === 'both') &&
         tiktokSettingsPanel(false)}
@@ -845,7 +848,8 @@ export function PostEditorBody({
         hasInstagramAccount={hasInstagramAccount}
         igAccountStatus={igAccountStatus}
         ttAccountStatus={ttAccountStatus}
-        tiktokSettingsComplete={tiktokSettingsComplete}
+        tiktokSettingsComplete={tiktokReadiness.complete}
+        tiktokIncompleteReason={tiktokReadiness.reason}
         onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
         onStatusChange={onRefresh}
         explainMissingInstagramAccount={multiplatform}

@@ -9,6 +9,7 @@ import {
   buildVideoInitPayload,
   buildPhotoInitPayload,
   mapStatusFetch,
+  buildTikTokPostUrl,
   type ClaimedTikTokPost,
 } from "../_shared/tiktok-publish-utils.ts";
 import { FIELD_PUBLIC_POST_ID } from "../_shared/tiktok.ts";
@@ -517,6 +518,52 @@ Deno.test("validateForTikTokScheduling: unaudited app + SELF_ONLY passes the una
   );
 });
 
+Deno.test("validateForTikTokScheduling: branded content + SELF_ONLY is rejected (spec A2)", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, {
+    tipo: "feed",
+    tiktok_settings: { ...VALID_SETTINGS, privacy_level: "SELF_ONLY", brand_content_toggle: true },
+  });
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(
+    res.errors.includes("A visibilidade de conteúdo de marca não pode ser privada."),
+    res.errors.join(" | "),
+  );
+});
+
+Deno.test("validateForTikTokScheduling: branded content + PUBLIC_TO_EVERYONE passes the A2 rule", async () => {
+  Deno.env.set("TIKTOK_APP_AUDITED", "true");
+  try {
+    const db = createSupabaseQueryMock();
+    seed(db, {
+      tipo: "feed",
+      tiktok_settings: { ...VALID_SETTINGS, privacy_level: "PUBLIC_TO_EVERYONE", brand_content_toggle: true },
+    });
+    const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+    assertEquals(res.errors.includes("A visibilidade de conteúdo de marca não pode ser privada."), false);
+  } finally {
+    Deno.env.delete("TIKTOK_APP_AUDITED");
+  }
+});
+
+Deno.test("validateForTikTokScheduling: media with media_lost_at is rejected (spec A10 rule 5)", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, { tipo: "feed", links: [imageLink(0, { media_lost_at: "2026-08-14T00:00:00Z" })] });
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(
+    res.errors.includes("Uma das mídias deste post foi perdida. Substitua-a antes de publicar."),
+    res.errors.join(" | "),
+  );
+});
+
+Deno.test("validateForTikTokScheduling: selects media_lost_at from files", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, { tipo: "feed" });
+  await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  const linksCall = db.calls.find((c) => c.table === "post_file_links" && c.operation === "select");
+  assertEquals(String(linksCall?.selectArgs[0]?.[0]).includes("media_lost_at"), true);
+});
+
 Deno.test("validateForTikTokScheduling: TIKTOK_APP_AUDITED=true allows non-SELF_ONLY privacy", async () => {
   const db = createSupabaseQueryMock();
   Deno.env.set("TIKTOK_APP_AUDITED", "true");
@@ -922,4 +969,11 @@ Deno.test("mapStatusFetch: FAILED with no fail_reason → failed, failReason key
 
 Deno.test("mapStatusFetch: unrecognized/future status defaults conservatively to processing", () => {
   assertEquals(mapStatusFetch({ status: "SOME_FUTURE_STATUS" }), { state: "processing" });
+});
+
+Deno.test("buildTikTokPostUrl: photo tipos use /photo/, others /video/", () => {
+  assertEquals(buildTikTokPostUrl("u", "1", "feed"), "https://www.tiktok.com/@u/photo/1");
+  assertEquals(buildTikTokPostUrl("u", "1", "carrossel"), "https://www.tiktok.com/@u/photo/1");
+  assertEquals(buildTikTokPostUrl("u", "1", "reels"), "https://www.tiktok.com/@u/video/1");
+  assertEquals(buildTikTokPostUrl("u", "1", null), "https://www.tiktok.com/@u/video/1");
 });

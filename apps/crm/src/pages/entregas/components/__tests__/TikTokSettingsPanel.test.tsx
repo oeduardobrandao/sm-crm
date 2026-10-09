@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({
@@ -40,7 +40,11 @@ vi.mock('@/components/ui/select', async () => {
     );
   }
   function SelectTrigger({ children }: { children: React.ReactNode }) {
-    return <button type="button">{children}</button>;
+    return (
+      <button type="button" role="combobox">
+        {children}
+      </button>
+    );
   }
   function SelectValue({ placeholder }: { placeholder?: string }) {
     const { value } = ReactModule.useContext(SelectContext);
@@ -49,10 +53,24 @@ vi.mock('@/components/ui/select', async () => {
   function SelectContent({ children }: { children: React.ReactNode }) {
     return <div>{children}</div>;
   }
-  function SelectItem({ value, children }: { value: string; children: React.ReactNode }) {
+  function SelectItem({
+    value,
+    children,
+    disabled,
+  }: {
+    value: string;
+    children: React.ReactNode;
+    disabled?: boolean;
+  }) {
     const { onValueChange } = ReactModule.useContext(SelectContext);
     return (
-      <button type="button" onClick={() => onValueChange?.(value)}>
+      <button
+        type="button"
+        role="option"
+        disabled={disabled}
+        data-disabled={disabled ? '' : undefined}
+        onClick={() => onValueChange?.(value)}
+      >
         {children}
       </button>
     );
@@ -111,16 +129,19 @@ vi.mock('@/components/ui/switch', () => ({
 
 import { TikTokSettingsPanel } from '../TikTokSettingsPanel';
 import type { WorkflowPost } from '../../../../store';
+import type { PostMedia } from '../../../../store/posts';
+import type { TikTokCreatorInfo } from '../../../../services/tiktok';
 
 const basePost: Pick<
   WorkflowPost,
-  'id' | 'tipo' | 'tiktok_settings' | 'tiktok_caption' | 'tiktok_title'
+  'id' | 'tipo' | 'tiktok_settings' | 'tiktok_caption' | 'tiktok_title' | 'ig_caption'
 > = {
   id: 42,
   tipo: 'reels',
   tiktok_settings: null,
   tiktok_caption: null,
   tiktok_title: null,
+  ig_caption: null,
 };
 
 const defaultCreatorInfo = {
@@ -133,22 +154,55 @@ const defaultCreatorInfo = {
   max_video_post_duration_sec: 180,
 };
 
+const video42 = [
+  {
+    id: 1,
+    kind: 'video',
+    duration_seconds: 42,
+    media_lost_at: null,
+    thumbnail_url: null,
+    url: 'u',
+    is_cover: true,
+    sort_order: 0,
+  },
+] as unknown as PostMedia[];
+
+type PanelProps = React.ComponentProps<typeof TikTokSettingsPanel>;
+
+function reelsPost(overrides: Partial<WorkflowPost> = {}): WorkflowPost {
+  return { ...basePost, ...overrides } as WorkflowPost;
+}
+function panelElement(props: Partial<PanelProps> & { post: WorkflowPost }) {
+  return <TikTokSettingsPanel clientId={7} onFieldChange={vi.fn()} media={video42} {...props} />;
+}
+function renderPanelProps(props: Partial<PanelProps> & { post: WorkflowPost }) {
+  return render(panelElement(props));
+}
+function mockCreatorInfo(info: Partial<TikTokCreatorInfo>) {
+  getTikTokCreatorInfoMock.mockResolvedValue(info);
+}
+/** The Select mock renders each option as a button; clicking it fires onValueChange. */
+async function selectPrivacy(label: string) {
+  fireEvent.click(await screen.findByRole('option', { name: label }));
+}
+
 function renderPanel(
   postOverrides: Partial<typeof basePost> = {},
-  propOverrides: Partial<React.ComponentProps<typeof TikTokSettingsPanel>> = {},
+  propOverrides: Partial<PanelProps> = {},
 ) {
   const onFieldChange = vi.fn();
-  const onCompletenessChange = vi.fn();
+  const onReadinessChange = vi.fn();
   const utils = render(
     <TikTokSettingsPanel
       clientId={7}
       post={{ ...basePost, ...postOverrides } as WorkflowPost}
       onFieldChange={onFieldChange}
-      onCompletenessChange={onCompletenessChange}
+      onReadinessChange={onReadinessChange}
+      media={video42}
       {...propOverrides}
     />,
   );
-  return { ...utils, onFieldChange, onCompletenessChange };
+  return { ...utils, onFieldChange, onReadinessChange };
 }
 
 beforeEach(() => {
@@ -359,56 +413,6 @@ describe('TikTokSettingsPanel', () => {
     expect(screen.queryByText('Parceria paga')).toBeNull();
   });
 
-  it('toggling brand_content persists brand_content_toggle=true', async () => {
-    const { onFieldChange } = renderPanel();
-    await screen.findByText('Dra Marina');
-    fireEvent.click(screen.getByLabelText('Conteúdo de marca — parceria paga'));
-    expect(onFieldChange).toHaveBeenCalledWith(
-      'tiktok_settings',
-      expect.objectContaining({ brand_content_toggle: true }),
-    );
-  });
-
-  // ─── Music-usage confirmation gate ───────────────────────────
-  it('links to the official Music Usage Confirmation page', async () => {
-    renderPanel();
-    await screen.findByText('Dra Marina');
-    const link = screen.getByText('Confirmação de Uso de Música do TikTok').closest('a');
-    expect(link?.getAttribute('href')).toBe(
-      'https://www.tiktok.com/legal/page/global/music-usage-confirmation/en',
-    );
-  });
-
-  it('switches to the branded-content music confirmation copy when a brand toggle is on', async () => {
-    renderPanel({ tiktok_settings: { brand_organic_toggle: true } });
-    await screen.findByText('Dra Marina');
-    expect(screen.getByText(/conteúdo de marca do TikTok/i)).toBeTruthy();
-  });
-
-  // ─── Schedule-blocking completeness contract (seam for C3) ──
-  it('reports incomplete until privacy is chosen AND the music confirmation is ticked', async () => {
-    const { onCompletenessChange } = renderPanel();
-    await screen.findByText('Dra Marina');
-    expect(onCompletenessChange).toHaveBeenLastCalledWith(false);
-
-    fireEvent.click(screen.getByText('Somente eu (privado)'));
-    expect(onCompletenessChange).toHaveBeenLastCalledWith(false);
-
-    fireEvent.click(screen.getByLabelText('Confirmo que tenho os direitos de uso da música'));
-    expect(onCompletenessChange).toHaveBeenLastCalledWith(true);
-  });
-
-  it('reports incomplete again if the music confirmation is unticked', async () => {
-    const { onCompletenessChange } = renderPanel();
-    await screen.findByText('Dra Marina');
-    fireEvent.click(screen.getByText('Somente eu (privado)'));
-    const musicCheckbox = screen.getByLabelText('Confirmo que tenho os direitos de uso da música');
-    fireEvent.click(musicCheckbox);
-    expect(onCompletenessChange).toHaveBeenLastCalledWith(true);
-    fireEvent.click(musicCheckbox);
-    expect(onCompletenessChange).toHaveBeenLastCalledWith(false);
-  });
-
   // ─── Test-mode banner (server-authoritative, reactive only) ─
   it('does not show the test-mode banner by default', async () => {
     renderPanel();
@@ -420,7 +424,9 @@ describe('TikTokSettingsPanel', () => {
     renderPanel({}, { showTestModeBanner: true });
     await screen.findByText('Dra Marina');
     expect(
-      screen.getByText('App em modo de teste: publicações TikTok saem como privadas'),
+      screen.getByText(
+        'App em modo de teste: até a aprovação do TikTok, as publicações saem como privadas.',
+      ),
     ).toBeTruthy();
   });
 
@@ -445,5 +451,376 @@ describe('hideCaption (P2: a aba do TikTok é dona da legenda)', () => {
     await screen.findByLabelText('Permitir comentários');
     expect(screen.queryByText(/Legenda do TikTok/)).toBeNull();
     expect(screen.getByText('Título do TikTok (opcional)')).toBeInTheDocument();
+  });
+});
+
+describe('readiness contract (spec A0)', () => {
+  it('reports readiness with a reason, and completes once privacy is chosen', async () => {
+    mockCreatorInfo({
+      privacy_level_options: ['SELF_ONLY'],
+      can_post: true,
+      app_audited: false,
+      max_video_post_duration_sec: 600,
+    });
+    const onReadinessChange = vi.fn();
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }), onReadinessChange });
+    await waitFor(() =>
+      expect(onReadinessChange).toHaveBeenLastCalledWith({
+        complete: false,
+        reason: 'Escolha a privacidade do post no TikTok.',
+      }),
+    );
+    await selectPrivacy('Somente eu (privado)');
+    await waitFor(() => expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: true }));
+  });
+
+  it('reports the creator-info loading reason first', async () => {
+    const onReadinessChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }),
+      onReadinessChange,
+    });
+    expect(onReadinessChange).toHaveBeenCalledWith({
+      complete: false,
+      reason: 'Carregando informações do criador no TikTok…',
+    });
+    await screen.findByText('Dra Marina');
+    await waitFor(() => expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: true }));
+  });
+
+  it('a creator-info failure blocks with its message', async () => {
+    getTikTokCreatorInfoMock.mockRejectedValue(new Error('Erro X'));
+    const onReadinessChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }),
+      onReadinessChange,
+    });
+    await waitFor(() =>
+      expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: 'Erro X' }),
+    );
+  });
+
+  it('media undefined reports loading; mediaError reports the error', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    const onReadinessChange = vi.fn();
+    const post = reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } });
+    const { rerender } = renderPanelProps({ post, media: undefined, onReadinessChange });
+    await waitFor(() =>
+      expect(onReadinessChange).toHaveBeenLastCalledWith({
+        complete: false,
+        reason: 'Carregando mídias do post…',
+      }),
+    );
+    rerender(panelElement({ post, media: undefined, mediaError: true, onReadinessChange }));
+    await waitFor(() =>
+      expect(onReadinessChange).toHaveBeenLastCalledWith({
+        complete: false,
+        reason: 'Não foi possível carregar as mídias. Reabra o post.',
+      }),
+    );
+  });
+});
+
+describe('commercial content disclosure (spec A1/A2/A7)', () => {
+  it('master off by default; on reveals two checkboxes; nothing checked warns', async () => {
+    mockCreatorInfo({
+      privacy_level_options: ['SELF_ONLY', 'PUBLIC_TO_EVERYONE'],
+      app_audited: true,
+    });
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }),
+    });
+    const master = await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' });
+    expect(master).not.toBeChecked();
+    expect(screen.queryByRole('checkbox', { name: /Sua marca/ })).toBeNull();
+    fireEvent.click(master);
+    expect(screen.getByRole('checkbox', { name: /Sua marca/ })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeInTheDocument();
+    expect(
+      screen.getByText('Indique se o conteúdo promove você, um terceiro ou ambos.'),
+    ).toBeInTheDocument();
+  });
+
+  it('"Sua marca" shows Conteúdo promocional; adding branded shows Parceria paga and persists both', async () => {
+    mockCreatorInfo({
+      privacy_level_options: ['SELF_ONLY', 'PUBLIC_TO_EVERYONE'],
+      app_audited: true,
+    });
+    const onFieldChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }),
+      onFieldChange,
+    });
+    fireEvent.click(
+      await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }),
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: /Sua marca/ }));
+    expect(screen.getByText(/Seu post será rotulado como/)).toHaveTextContent(
+      'Seu post será rotulado como Conteúdo promocional.',
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: /Conteúdo de marca/ }));
+    expect(screen.getByText(/Seu post será rotulado como/)).toHaveTextContent(
+      'Seu post será rotulado como Parceria paga.',
+    );
+    expect(onFieldChange).toHaveBeenLastCalledWith(
+      'tiktok_settings',
+      expect.objectContaining({ brand_organic_toggle: true, brand_content_toggle: true }),
+    );
+  });
+
+  it('turning the master on persists nothing until a checkbox is ticked', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
+    const onFieldChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }),
+      onFieldChange,
+    });
+    fireEvent.click(
+      await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }),
+    );
+    expect(onFieldChange).not.toHaveBeenCalled();
+  });
+
+  it('turning the master off persists both toggles false', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
+    const onFieldChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({
+        tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_organic_toggle: true },
+      }),
+      onFieldChange,
+    });
+    const master = await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' });
+    expect(master).toBeChecked();
+    fireEvent.click(master);
+    expect(onFieldChange).toHaveBeenLastCalledWith(
+      'tiktok_settings',
+      expect.objectContaining({ brand_organic_toggle: false, brand_content_toggle: false }),
+    );
+    expect(screen.queryByRole('checkbox', { name: /Sua marca/ })).toBeNull();
+  });
+
+  it('re-opens the master switch when a later post prop carries a saved toggle', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
+    const { rerender } = renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }),
+    });
+    const master = await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' });
+    expect(master).not.toBeChecked();
+    rerender(
+      panelElement({
+        post: reelsPost({
+          tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_organic_toggle: true },
+        }),
+      }),
+    );
+    expect(screen.getByRole('switch', { name: 'Divulgação de conteúdo comercial' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Sua marca/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeInTheDocument();
+  });
+
+  it('the label pill uses a surface distinct from the panel; the incomplete warning is AA text with an icon', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
+    const { rerender } = renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }),
+    });
+    fireEvent.click(
+      await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }),
+    );
+    const warning = screen.getByText('Indique se o conteúdo promove você, um terceiro ou ambos.');
+    expect(warning.closest('p')).toHaveStyle({ color: 'var(--text-main)' });
+    const icon = warning.closest('p')!.querySelector('svg');
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
+
+    rerender(
+      panelElement({
+        post: reelsPost({
+          tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_organic_toggle: true },
+        }),
+      }),
+    );
+    const pill = screen.getByText(/Seu post será rotulado como/);
+    expect(pill.getAttribute('style')).toContain('background: var(--surface-main)');
+    expect(pill.getAttribute('style')).toContain('border: 1px solid var(--border-color)');
+  });
+
+  it('unaudited: branded disabled with suffix; non-SELF_ONLY options disabled; banner always shown', async () => {
+    mockCreatorInfo({
+      privacy_level_options: ['FOLLOWER_OF_CREATOR', 'SELF_ONLY'],
+      app_audited: false,
+    });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }) });
+    expect(
+      await screen.findByText(
+        'App em modo de teste: até a aprovação do TikTok, as publicações saem como privadas.',
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('switch', { name: 'Divulgação de conteúdo comercial' }));
+    expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeDisabled();
+    expect(screen.getByTestId('tt-branded-suffix')).toHaveTextContent(
+      '(disponível após a aprovação do app)',
+    );
+    expect(screen.getByRole('option', { name: /Seguidores/ })).toBeDisabled();
+    expect(screen.getByRole('option', { name: /Seguidores/ })).toHaveTextContent(
+      '(disponível após a aprovação do app)',
+    );
+    expect(screen.getByRole('option', { name: 'Somente eu (privado)' })).toBeEnabled();
+  });
+
+  it('audited: SELF_ONLY chosen disables branded with the helper line', async () => {
+    mockCreatorInfo({
+      privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'],
+      app_audited: true,
+    });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }) });
+    fireEvent.click(
+      await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }),
+    );
+    expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeDisabled();
+    expect(
+      screen.getByText('Conteúdo de marca não pode ter visibilidade privada.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('tt-branded-suffix')).toBeNull();
+  });
+
+  it('audited: branded checked disables the SELF_ONLY option with its suffix', async () => {
+    mockCreatorInfo({
+      privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'],
+      app_audited: true,
+    });
+    renderPanelProps({
+      post: reelsPost({
+        tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_content_toggle: true },
+      }),
+    });
+    const selfOnly = await screen.findByRole('option', { name: /Somente eu/ });
+    expect(selfOnly).toBeDisabled();
+    expect(selfOnly).toHaveTextContent('(não disponível para conteúdo de marca)');
+    expect(screen.getByRole('option', { name: 'Todos' })).toBeEnabled();
+  });
+
+  it('legacy branded + SELF_ONLY row shows the inline error and keeps branded uncheckable', async () => {
+    mockCreatorInfo({
+      privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'],
+      app_audited: true,
+    });
+    const onFieldChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({
+        tiktok_settings: { privacy_level: 'SELF_ONLY', brand_content_toggle: true },
+      }),
+      onFieldChange,
+    });
+    expect(
+      await screen.findByText('A visibilidade de conteúdo de marca não pode ser privada.'),
+    ).toBeInTheDocument();
+    const branded = screen.getByRole('checkbox', { name: /Conteúdo de marca/ });
+    expect(branded).toBeEnabled();
+    fireEvent.click(branded);
+    expect(onFieldChange).toHaveBeenLastCalledWith(
+      'tiktok_settings',
+      expect.objectContaining({ brand_content_toggle: false }),
+    );
+  });
+});
+
+describe('notices, preview and duration (spec A4/A5/A6/A7)', () => {
+  it('can_post false replaces the nickname header with the pt-BR notice', async () => {
+    mockCreatorInfo({
+      can_post: false,
+      cannot_post_reason: 'spam_risk_too_many_posts',
+      app_audited: false,
+    });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }) });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Esta conta atingiu o limite diário de publicações do TikTok. Tente novamente amanhã.',
+    );
+    expect(screen.queryByTestId('tiktok-creator-avatar')).toBeNull();
+  });
+
+  it('can_post false with an unknown reason uses the fallback sentence', async () => {
+    mockCreatorInfo({ can_post: false, cannot_post_reason: 'something_new' });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }) });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'O TikTok não permite novas publicações nesta conta agora. Tente novamente mais tarde.',
+    );
+  });
+
+  it('public account in test mode shows the blocking warning', async () => {
+    mockCreatorInfo({
+      privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'],
+      app_audited: false,
+    });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }) });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e reabra o post.',
+    );
+  });
+
+  it('preview shows the duration badge and the caption that will be sent', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    renderPanelProps({
+      post: reelsPost({ tiktok_caption: 'Legenda do TikTok', tiktok_settings: {} }),
+    });
+    const preview = await screen.findByRole('region', { name: 'Prévia' });
+    expect(within(preview).getByText('0:42')).toBeInTheDocument();
+    expect(within(preview).getByText('Legenda do TikTok')).toBeInTheDocument();
+  });
+
+  it('preview falls back to ig_caption and shows +N beyond five thumbnails', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    const seven = Array.from({ length: 7 }, (_, i) => ({
+      ...video42[0],
+      id: i + 1,
+      kind: 'image',
+      duration_seconds: null,
+      url: `https://cdn.example/${i}.jpg`,
+    })) as unknown as PostMedia[];
+    renderPanelProps({
+      post: reelsPost({
+        tipo: 'carrossel',
+        tiktok_caption: null,
+        ig_caption: 'Legenda do IG',
+        tiktok_settings: {},
+      }),
+      media: seven,
+    });
+    const preview = await screen.findByRole('region', { name: 'Prévia' });
+    expect(preview.querySelectorAll('img')).toHaveLength(5);
+    expect(within(preview).getByText('+2')).toBeInTheDocument();
+    expect(within(preview).getByText('Legenda do IG')).toBeInTheDocument();
+  });
+
+  it('preview: empty media and lost media messages', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    const post = reelsPost({ tiktok_settings: {} });
+    const { rerender } = renderPanelProps({ post, media: [] });
+    expect(
+      await screen.findByText('Adicione mídia ao post para publicar no TikTok.'),
+    ).toBeInTheDocument();
+    rerender(
+      panelElement({
+        post,
+        media: [{ ...video42[0], media_lost_at: '2026-08-14' }] as unknown as PostMedia[],
+      }),
+    );
+    expect(
+      await screen.findByText(
+        'Uma das mídias deste post foi perdida. Substitua-a antes de publicar.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('video over the creator limit shows the duration error', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'], max_video_post_duration_sec: 600 });
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: {} }),
+      media: [{ ...video42[0], duration_seconds: 750 }] as unknown as PostMedia[],
+    });
+    expect(
+      await screen.findByText('Este vídeo tem 750s. O máximo permitido para esta conta é 600s.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Duração máxima de vídeo nesta conta: 600s')).toBeInTheDocument();
   });
 });

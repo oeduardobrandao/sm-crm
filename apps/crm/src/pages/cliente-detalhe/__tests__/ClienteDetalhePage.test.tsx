@@ -197,7 +197,7 @@ describe('ClienteDetalhePage', () => {
       expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/visao-geral?foo=bar');
     });
 
-    it.each(['ig_connected', 'ig_error', 'tt_error'])(
+    it.each(['ig_connected', 'ig_error', 'tt_error', 'tt_connected'])(
       'sends OAuth callbacks with %s to Redes sociais, params intact',
       async (param) => {
         setAuth('owner');

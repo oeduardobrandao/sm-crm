@@ -184,7 +184,7 @@ Deno.test("tiktok-webhook: publicly_available stores tiktok_post_id/tiktok_post_
   db.queue("tiktok_accounts", "select", { data: baseAccount({ username: "dktest" }), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
   db.queue("workflow_posts", "select", {
-    data: { id: 70, tiktok_publish_id: "pub-70", tiktok_publish_retry_count: 0 },
+    data: { id: 70, tipo: "carrossel", tiktok_publish_id: "pub-70", tiktok_publish_retry_count: 0 },
     error: null,
   });
   db.queue("workflow_posts", "update", { data: null, error: null });
@@ -204,7 +204,7 @@ Deno.test("tiktok-webhook: publicly_available stores tiktok_post_id/tiktok_post_
   assertEquals(updateCalls.length, 1);
   assertEquals(updateCalls[0].payload, {
     tiktok_post_id: "post-70",
-    tiktok_post_url: "https://www.tiktok.com/@dktest/video/post-70",
+    tiktok_post_url: "https://www.tiktok.com/@dktest/photo/post-70",
   });
 });
 
