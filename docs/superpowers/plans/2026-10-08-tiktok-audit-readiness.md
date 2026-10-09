@@ -7,10 +7,10 @@
 **Spec:** `docs/superpowers/specs/2026-10-08-tiktok-audit-readiness-design.md` (A0-A10, B1-B6, C1-C4). Section ids below refer to it.
 
 **Architecture:**
-- **Two independent lanes**, which can run in parallel:
-  - **Backend (Deno edge functions):** Tasks 1-7.
-  - **Frontend (CRM, React):** Tasks 8-14.
-- **The lanes share one runtime-neutral module,** `supabase/functions/_shared/tiktok-messages.ts`, created in Task 1. The CRM imports it through the `@mesaas/tiktok-messages` alias. Frontend tasks that need it start after Task 1 is committed.
+- **Two independent lanes**, which run in parallel in two worktrees (see "Execution order"):
+  - **Backend (Deno edge functions):** Tasks 1-7. Task 1 runs in the main worktree; Tasks 2-7 run in the backend worktree.
+  - **Frontend (CRM, React):** Tasks 8-14, in the main worktree.
+- **The lanes share one runtime-neutral module,** `supabase/functions/_shared/tiktok-messages.ts`, created in Task 1. The CRM imports it through the `@mesaas/tiktok-messages` alias. Both lanes start after Task 1 is committed.
 - **Composer rules live in one pure, tested module,** `tiktokComposerRules.ts`. `TikTokSettingsPanel` only renders what that module decides.
 - **The server pre-init check is split in two:**
   - a pure evaluator (`evaluateTikTokPrecheck`)
@@ -19,16 +19,42 @@
 
 **Tech stack:** React 19, TypeScript, Vitest + Testing Library, shadcn/ui (Radix), Deno edge functions, `deno test` with `test/shared/supabaseMock.ts`.
 
+## Execution order
+
+1. **Task 1** in the main worktree (`/Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe`, branch `feat/tiktok-audit-readiness`). Commit it.
+2. **Create the backend worktree** from that commit, so the backend lane's `deno test` runs never touch the main worktree's `node_modules`:
+
+   ```bash
+   git -C /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe worktree add \
+     -b feat/tiktok-audit-readiness-backend \
+     /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend \
+     feat/tiktok-audit-readiness
+   ```
+
+   Deno creates its own `node_modules` there (`--node-modules-dir=auto`). Never run `npm install`/`npm ci` in the backend worktree.
+3. **In parallel:** Tasks 2-7 in the backend worktree (every command there is prefixed with `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend &&`), Tasks 8-14 in the main worktree. The two lanes touch disjoint files.
+4. **Before Task 15**, in the main worktree:
+
+   ```bash
+   git merge --no-ff feat/tiktok-audit-readiness-backend
+   git worktree remove /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend
+   git branch -d feat/tiktok-audit-readiness-backend
+   npm ci
+   ```
+
+5. **Task 15.**
+
 ## Global Constraints
 
 - All user-facing copy is pt-BR, sentence case, **no em dashes** (use a period or a colon).
-- Copy strings are exactly as written in the spec. Do not paraphrase them.
+- Copy strings are verbatim: strings the spec writes are exactly as the spec writes them; strings this plan introduces (loading/placeholder sentences, the `both` toast, labels) are exactly as this plan writes them. Do not paraphrase either.
+- **Deno test command.** Every per-file Deno run in this plan is written out in full with the same flags as `npm run test:functions` (`package.json:33`): `deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys <files> [--filter "<test name>"]`. Without `--allow-env` the test files' top-level `Deno.env.set` throws NotCapable; without `--node-modules-dir=auto` the `npm:` imports resolve differently. `--filter` matches TEST NAMES (substring), never file names. Runs in Tasks 2-7 are prefixed with `cd` into the backend worktree so their `node_modules` writes never land in the main worktree; Task 1's two runs are in the main worktree on purpose (the backend worktree does not exist yet) and Task 1 Step 8 restores `node_modules` with `npm ci`.
 - Edge functions never return raw error details. When a message is persisted to `tiktok_publish_error`, it is one of the pt-BR sentences from `tiktok-messages.ts`, or the existing generic text.
 - `tiktok-messages.ts` has **no imports at all**: no Deno APIs, no `npm:` and no relative imports. Vite, Vitest, tsc and Deno all load it.
 - **No migrations** in this plan.
 - Icons come from `lucide-react` only.
 - Do not use `useBlocker`.
-- Gate order (see the memory gotcha): `npm ci`, then frontend gates, then the Deno gates **last**. `npm run test:functions` pollutes `node_modules`.
+- Gate order (see the memory gotcha): `npm ci`, then frontend gates, then the Deno gates **last**, then `npm ci` again. Any `deno test` run pollutes the `node_modules` of the worktree it runs in, which is why Tasks 2-7 run in their own worktree.
 - Frontend gates:
   - `npx tsc -p apps/crm/tsconfig.json --noEmit`
   - `npx tsc -p apps/hub/tsconfig.json --noEmit`
@@ -161,7 +187,7 @@ Deno.test("tiktok-messages: fixed sentences, no em dashes", () => {
 
 - [ ] **Step 2: Run it and confirm it fails**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-messages_test.ts`
+Run: `deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-messages_test.ts`
 Expected: FAIL, module not found.
 
 - [ ] **Step 3: Implement the module**
@@ -217,7 +243,7 @@ export const TIKTOK_MSG = {
 
 - [ ] **Step 4: Run the Deno test and confirm it passes**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-messages_test.ts`
+Run: `deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-messages_test.ts`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Wire the alias in three places**
@@ -267,7 +293,11 @@ git add supabase/functions/_shared/tiktok-messages.ts supabase/functions/__tests
 git commit -m "feat(tiktok): shared pt-BR message module + @mesaas/tiktok-messages alias"
 ```
 
+- [ ] **Step 8: Create the backend worktree** (Execution order, step 2) and run `npm ci` in the main worktree to undo the `node_modules` pollution from Steps 2 and 4.
+
 ---
+
+**Tasks 2-7 run in the backend worktree** (`/Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend`, branch `feat/tiktok-audit-readiness-backend`). Every file path below is relative to that worktree; every command runs there. The frontend lane (Tasks 8-14) runs in the main worktree at the same time.
 
 ### Task 2: creator-info returns `can_post` and `app_audited` (A6, A7)
 
@@ -354,7 +384,7 @@ Add `import { TikTokApiError } from "../_shared/tiktok.ts";` at the top of the t
 
 - [ ] **Step 2: Run and confirm the new and updated tests fail**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish_test.ts --filter "creator-info"`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish_test.ts --filter "creator-info"`
 Expected: FAIL. The bodies are missing `can_post` and `app_audited`, and a can't-post code returns 500.
 
 - [ ] **Step 3: Implement**
@@ -395,7 +425,7 @@ In the creator-info route, replace the `try { ... } catch` block with the follow
 
 - [ ] **Step 4: Run and confirm it passes**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish_test.ts --filter "creator-info"`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish_test.ts --filter "creator-info"`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -422,61 +452,71 @@ git commit -m "feat(tiktok): creator-info reports can_post and app_audited"
 
 - [ ] **Step 1: Write the failing tests**
 
-Find the existing `validateForTikTokScheduling` tests in `tiktok-publish-utils_test.ts`. They queue `workflow_posts` select, `post_file_links` select and `tiktok_accounts` select on a `createSupabaseQueryMock`. Copy the structure of the closest happy-path test and add:
+`tiktok-publish-utils_test.ts` already has the fixtures these tests need. Do not add new ones:
+- `imageLink(i: number, overrides)` (`:22-37`): `overrides` is spread into the `files` object.
+- `VALID_SETTINGS` (`:54-65`): a complete `tiktok_settings` with `privacy_level: "SELF_ONLY"` and both brand toggles `false`.
+- `seed(db, opts)` (`:86-128`): queues the `workflow_posts`, `post_file_links` and `tiktok_accounts` selects in call order. Its default account has fake token material, so the result also carries "Erro ao decifrar token do TikTok. Reconecte a conta."; the assertions below use `includes`, which is unaffected.
+
+Add, after the "unaudited app + SELF_ONLY passes the unaudited gate" test (`:507`):
 
 ```ts
-Deno.test("validateForTikTokScheduling: branded content + SELF_ONLY is rejected", async () => {
+Deno.test("validateForTikTokScheduling: branded content + SELF_ONLY is rejected (spec A2)", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("workflow_posts", "select", { data: {
-    id: 1, platform: "tiktok", tipo: "feed", tiktok_caption: "x", tiktok_title: null, ig_caption: null,
-    scheduled_at: new Date(Date.now() + 3600_000).toISOString(), workflow_id: 1, cliente_id: 9,
-    tiktok_settings: { privacy_level: "SELF_ONLY", brand_content_toggle: true },
-  }, error: null });
-  db.queue("post_file_links", "select", { data: [imageLink()], error: null });
-  db.queue("tiktok_accounts", "select", { data: activeAccount(), error: null });
-  const result = await validateForTikTokScheduling(db as never, 1);
-  assert(result.errors.includes("A visibilidade de conteúdo de marca não pode ser privada."), result.errors.join("|"));
-});
-
-Deno.test("validateForTikTokScheduling: media with media_lost_at is rejected", async () => {
-  const db = createSupabaseQueryMock();
-  db.queue("workflow_posts", "select", { data: {
-    id: 1, platform: "tiktok", tipo: "feed", tiktok_caption: "x", tiktok_title: null, ig_caption: null,
-    scheduled_at: new Date(Date.now() + 3600_000).toISOString(), workflow_id: 1, cliente_id: 9,
-    tiktok_settings: { privacy_level: "SELF_ONLY" },
-  }, error: null });
-  db.queue("post_file_links", "select", {
-    data: [imageLink({ media_lost_at: "2026-08-14T00:00:00Z" })], error: null,
+  seed(db, {
+    tipo: "feed",
+    tiktok_settings: { ...VALID_SETTINGS, privacy_level: "SELF_ONLY", brand_content_toggle: true },
   });
-  db.queue("tiktok_accounts", "select", { data: activeAccount(), error: null });
-  const result = await validateForTikTokScheduling(db as never, 1);
-  assert(result.errors.includes("Uma das mídias deste post foi perdida. Substitua-a antes de publicar."));
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(
+    res.errors.includes("A visibilidade de conteúdo de marca não pode ser privada."),
+    res.errors.join(" | "),
+  );
+});
+
+Deno.test("validateForTikTokScheduling: branded content + PUBLIC_TO_EVERYONE passes the A2 rule", async () => {
+  Deno.env.set("TIKTOK_APP_AUDITED", "true");
+  try {
+    const db = createSupabaseQueryMock();
+    seed(db, {
+      tipo: "feed",
+      tiktok_settings: { ...VALID_SETTINGS, privacy_level: "PUBLIC_TO_EVERYONE", brand_content_toggle: true },
+    });
+    const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+    assertEquals(res.errors.includes("A visibilidade de conteúdo de marca não pode ser privada."), false);
+  } finally {
+    Deno.env.delete("TIKTOK_APP_AUDITED");
+  }
+});
+
+Deno.test("validateForTikTokScheduling: media with media_lost_at is rejected (spec A10 rule 5)", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, { tipo: "feed", links: [imageLink(0, { media_lost_at: "2026-08-14T00:00:00Z" })] });
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(
+    res.errors.includes("Uma das mídias deste post foi perdida. Substitua-a antes de publicar."),
+    res.errors.join(" | "),
+  );
+});
+
+Deno.test("validateForTikTokScheduling: selects media_lost_at from files", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, { tipo: "feed" });
+  await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  const linksCall = db.calls.find((c) => c.table === "post_file_links" && c.operation === "select");
+  assertEquals(String(linksCall?.selectArgs[0]?.[0]).includes("media_lost_at"), true);
 });
 ```
 
-If the file has no `imageLink`/`activeAccount` helpers, add them next to the existing fixtures:
-
-```ts
-function imageLink(fileOverrides: Record<string, unknown> = {}) {
-  return { sort_order: 0, files: { id: 1, kind: "image", mime_type: "image/jpeg", size_bytes: 1000,
-    width: 1080, height: 1350, duration_seconds: null, r2_key: "img/1.jpg", media_lost_at: null, ...fileOverrides } };
-}
-function activeAccount() {
-  return { id: "acct-1", encrypted_access_token: "a", encrypted_refresh_token: "r", tiktok_open_id: "o",
-    authorization_status: "active" };
-}
-```
-
-Reuse the existing helpers if equivalent ones already exist; don't add duplicates.
+`db.calls[].selectArgs` is how `test/shared/supabaseMock.ts` (`:14-21`) records the `.select(...)` arguments; there is no `columns` field.
 
 - [ ] **Step 2: Run and confirm they fail**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish-utils_test.ts --filter "validateForTikTokScheduling"`
-Expected: the two new tests FAIL.
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish-utils_test.ts --filter "validateForTikTokScheduling"`
+Expected: the "branded content + SELF_ONLY", "media_lost_at" and "selects media_lost_at" tests FAIL; the PUBLIC_TO_EVERYONE one already passes.
 
 - [ ] **Step 3: Implement**
 
-1. Add `media_lost_at: string | null;` to `TikTokMediaFile`.
+1. Add `media_lost_at: string | null;` to `TikTokMediaFile` (the non-exported interface at `:40` that types `TikTokValidationResult.media`; it stays non-exported).
 2. In the `post_file_links` select string, add `media_lost_at` inside `files!inner(...)`:
    `"sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, r2_key, media_lost_at)"`.
 3. After `validateMediaForTipo(...)`, add:
@@ -498,7 +538,7 @@ Expected: the two new tests FAIL.
 
 - [ ] **Step 4: Run and confirm it passes, plus the whole file**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish-utils_test.ts`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish-utils_test.ts`
 Expected: PASS. Any older fixture whose `files` object lacks `media_lost_at` still passes, because `undefined != null` is false.
 
 - [ ] **Step 5: Commit**
@@ -552,16 +592,31 @@ export function evaluateTikTokPrecheck(input: {
    - If `tipo === "reels"`, `maxVideoPostDurationSec != null`, and a video's `duration_seconds > max` → `TIKTOK_MSG.durationExceeded(longest, max)`.
 5. Otherwise `null`.
 
-Rule 2 sits before rule 3 on purpose: lost media must block even when creator_info fails open (spec A10 rule 5).
+This is the spec's A10 order (rule 1, then rule 5, then rules 2-4): the two rules that need no creator_info always run, so lost media blocks even when creator_info fails open.
 
 - [ ] **Step 1: Write the failing precheck tests**
 
 ```ts
 // supabase/functions/__tests__/tiktok-precheck_test.ts
-import { assertEquals, assertRejects } from "./assert.ts";
+import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { TikTokApiError } from "../_shared/tiktok.ts";
 import { evaluateTikTokPrecheck, fetchCreatorCheck, fetchPrecheckMedia } from "../_shared/tiktok-precheck.ts";
+
+/** Local stand-in for std's assertRejects — ./assert.ts deliberately stays tiny
+ * (same helper as tiktok-shared_test.ts). */
+// deno-lint-ignore no-explicit-any
+async function assertRejects(fn: () => Promise<unknown>, ErrClass?: new (...a: any[]) => Error): Promise<Error> {
+  try {
+    await fn();
+  } catch (e) {
+    if (ErrClass) {
+      assert(e instanceof ErrClass, `expected ${ErrClass.name}, got ${(e as Error)?.constructor?.name}`);
+    }
+    return e as Error;
+  }
+  throw new Error("expected the function to throw, but it did not");
+}
 
 const video = (d: number | null, lost: string | null = null) => ({ kind: "video", duration_seconds: d, media_lost_at: lost });
 const ok = (opts: Partial<{ privacyLevelOptions: string[] | null; maxVideoPostDurationSec: number | null }> = {}) =>
@@ -631,7 +686,11 @@ Deno.test("fetchCreatorCheck: ok / cannot_post / fail-open / token errors rethro
   }
 
   for (const code of ["TOKEN_INVALID", "REVOKED"]) {
-    await assertRejects(() => fetchCreatorCheck((() => Promise.reject(new TikTokApiError("x", code, false))) as never, "t"));
+    const err = await assertRejects(
+      () => fetchCreatorCheck((() => Promise.reject(new TikTokApiError("x", code, false))) as never, "t"),
+      TikTokApiError,
+    );
+    assertEquals((err as TikTokApiError).code, code);
   }
 });
 
@@ -642,17 +701,21 @@ Deno.test("fetchPrecheckMedia: selects kind, duration, media_lost_at in order", 
   ], error: null });
   assertEquals(await fetchPrecheckMedia(db as never, 7), [{ kind: "video", duration_seconds: 42, media_lost_at: null }]);
   const call = db.calls.find((c) => c.table === "post_file_links");
-  assertEquals(String(call?.columns ?? call?.select ?? "").includes("media_lost_at"), true);
+  // supabaseMock records `.select(...)` arguments in `selectArgs: unknown[][]` (test/shared/supabaseMock.ts:14-21).
+  assertEquals(String(call?.selectArgs[0]?.[0]), "sort_order, files!inner(kind, duration_seconds, media_lost_at)");
+  assertEquals(call?.modifiers.map((m) => m.method), ["eq", "order"]);
+});
+
+Deno.test("fetchPrecheckMedia: a DB error throws (never read as 'no media')", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("post_file_links", "select", { data: null, error: { message: "boom" } });
+  await assertRejects(() => fetchPrecheckMedia(db as never, 7));
 });
 ```
 
-Check how `supabaseMock.ts` records the select columns (`grep -n "columns\|select" test/shared/supabaseMock.ts`). Adjust that last assertion to the field it actually uses. Do not leave a disjunction in the final test.
-
-If `assertRejects` isn't exported from `./assert.ts`, add it there as a re-export from the same std module the file already uses.
-
 - [ ] **Step 2: Run and confirm it fails**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-precheck_test.ts`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-precheck_test.ts`
 Expected: FAIL, module not found.
 
 - [ ] **Step 3: Implement `tiktok-precheck.ts`**
@@ -747,7 +810,7 @@ export function evaluateTikTokPrecheck(input: {
 
 - [ ] **Step 4: Run the precheck tests and confirm they pass**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-precheck_test.ts`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-precheck_test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Add `nonRetryable` to `markTikTokPublishFailed`**
@@ -770,38 +833,172 @@ Leave the rest unchanged. Update the doc comment above it with one sentence: "`n
 
 - [ ] **Step 6: Write the failing cron tests**
 
-`tiktok-publish-cron_test.ts` builds `TikTokPublishCronDeps` with stubs, including `tiktokFetch` and `fetchPostMedia`. Read its init-phase happy-path test and reuse its setup helper. Add two new optional deps to `TikTokPublishCronDeps`, `fetchCreatorCheck?` and `fetchPrecheckMedia?`, so tests stub them instead of queueing extra DB calls. Then add:
+`tiktok-publish-cron_test.ts` already defines the helpers these tests use (`:28-85`): `callsFor(db, table, op)`, `rpcCalls(db, name)`, `claimedPost(overrides)` (default `tipo: "feed"`, `tiktok_account_id: "acct-1"`, `tiktok_settings: { privacy_level: "SELF_ONLY" }`, `tiktok_publish_retry_count: 0`), `queueClaims(db, init, status, retry)` and `baseDeps(db, overrides)`. Two new optional deps, `fetchCreatorCheck?` and `fetchPrecheckMedia?`, are added to `TikTokPublishCronDeps` in Step 8 so tests stub them instead of queueing extra DB calls.
+
+1. Add `TikTokApiError` to the existing `../_shared/tiktok.ts` import (`:19`): `import { FIELD_PUBLIC_POST_ID, TikTokApiError } from "../_shared/tiktok.ts";`
+
+2. **Stub the two new deps in the two existing init tests**, otherwise they break for the wrong reason once Step 8 lands: the real `fetchCreatorCheck` calls `tiktokFetch`, and both tests count every `tiktokFetch` call (`initCalls.length === 5` at `:142`, `calls.length === 2` at `:196`); the real `fetchPrecheckMedia` reads an unqueued `post_file_links` select, which the mock answers with `data: []`, so every post would fail with "Adicione mídia…". Add to the `baseDeps(db, { ... })` overrides of both test (b) "caps at 5 inits per account" (`:127-138`) and test (c) "reels hits video/init…" (`:179-193`):
+
+   ```ts
+       fetchCreatorCheck: async () => ({ kind: "skip" }),
+       fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+   ```
+
+   (The precheck's duration rule only looks at `kind === "video"` items for `tipo === "reels"`, and `null` durations never block, so one image row is a valid stub for every tipo.)
+
+3. Add these five tests right after test (c) (before the `// ── (e) status phase` comment):
 
 ```ts
-Deno.test("tiktok-publish-cron init: precheck failure -> non-retryable fail, no init call", async () => {
-  // Arrange exactly like the existing init happy-path test, but with:
-  //   fetchCreatorCheck: () => Promise.resolve({ kind: "cannot_post", code: "spam_risk_too_many_posts" })
-  //   fetchPrecheckMedia: () => Promise.resolve([{ kind: "video", duration_seconds: 10, media_lost_at: null }])
-  // and a claimed reels post with tiktok_settings { privacy_level: "SELF_ONLY" }.
-  // Assert:
-  //   - no tiktokFetch call to /post/publish/video/init/
-  //   - the workflow_posts update payload has tiktok_publish_status 'failed',
-  //     tiktok_publish_retry_count 3, tiktok_publish_error
-  //     'Esta conta atingiu o limite diário de publicações do TikTok. Tente novamente amanhã.'
+// ── (d) init phase: pre-init creator/media precheck (spec A10) ─────────────────
+
+Deno.test("tiktok-publish-cron init phase: precheck failure -> non-retryable fail, no init call", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [claimedPost({ post_id: 1, tipo: "reels", tiktok_settings: { privacy_level: "SELF_ONLY" } })], [], []);
+
+  const fetchPaths: string[] = [];
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async (path) => {
+      fetchPaths.push(path);
+      return { publish_id: "pub-1" };
+    },
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "video", r2_key: "vid/1.mp4", sort_order: 0 }],
+    fetchCreatorCheck: async () => ({ kind: "cannot_post", code: "spam_risk_too_many_posts" }),
+    fetchPrecheckMedia: async () => [{ kind: "video", duration_seconds: 10, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(fetchPaths, [], "a precheck failure must never reach TikTok init");
+
+  const updates = callsFor(db, "workflow_posts", "update");
+  assertEquals(updates.length, 1);
+  const payload = updates[0].payload as Record<string, unknown>;
+  assertEquals(payload.tiktok_publish_status, "failed");
+  assertEquals(payload.tiktok_publish_retry_count, 3);
+  assertEquals(payload.tiktok_publish_processing_at, null);
+  assertEquals(
+    payload.tiktok_publish_error,
+    "Esta conta atingiu o limite diário de publicações do TikTok. Tente novamente amanhã.",
+  );
+  const statusRpc = rpcCalls(db, "record_post_status_change");
+  assertEquals(statusRpc.length, 1);
+  assertEquals((statusRpc[0].payload as Record<string, unknown>).p_new_status, "falha_publicacao");
 });
 
-Deno.test("tiktok-publish-cron init: creator check runs once per account", async () => {
-  // Two claimed posts for the same account; count fetchCreatorCheck invocations === 1.
+Deno.test("tiktok-publish-cron init phase: creator check runs once per account, with that account's token", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [
+    claimedPost({ post_id: 1 }),
+    claimedPost({ post_id: 2 }),
+    claimedPost({ post_id: 3, tiktok_account_id: "acct-2" }),
+  ], [], []);
+
+  const checkedWith: string[] = [];
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async (_svc, accountId) => ({ accessToken: `tok-${accountId}`, openId: "open-1" }),
+    tiktokFetch: async () => ({ publish_id: "pub-x" }),
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async (_tiktokFetch, accessToken) => {
+      checkedWith.push(accessToken);
+      return { kind: "skip" };
+    },
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(checkedWith, ["tok-acct-1", "tok-acct-2"], "one creator_info call per account, never per post");
+  const inited = callsFor(db, "workflow_posts", "update")
+    .filter((c) => (c.payload as Record<string, unknown>).tiktok_publish_status === "initiated");
+  assertEquals(inited.length, 3);
 });
 
-Deno.test("tiktok-publish-cron init: TikTok init error code -> pt-BR message, non-retryable", async () => {
-  // fetchCreatorCheck -> { kind: "skip" }; tiktokFetch init rejects with
-  // new TikTokApiError("x", "unaudited_client_can_only_post_to_private_accounts", false).
-  // Assert the update has retry_count 3 and the mapped pt-BR message.
+Deno.test("tiktok-publish-cron init phase: mapped TikTok init error -> pt-BR message, non-retryable", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [claimedPost({ post_id: 1 })], [], []);
+
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async () => {
+      throw new TikTokApiError("unaudited", "unaudited_client_can_only_post_to_private_accounts", false);
+    },
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async () => ({ kind: "skip" }),
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  const payload = callsFor(db, "workflow_posts", "update")[0].payload as Record<string, unknown>;
+  assertEquals(payload.tiktok_publish_status, "failed");
+  assertEquals(payload.tiktok_publish_retry_count, 3);
+  assertEquals(
+    payload.tiktok_publish_error,
+    "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.",
+  );
+});
+
+Deno.test("tiktok-publish-cron init phase: unmapped init error stays retryable (+1, raw message)", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [claimedPost({ post_id: 1, tiktok_publish_retry_count: 1 })], [], []);
+
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async () => {
+      throw new Error("network down");
+    },
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async () => ({ kind: "skip" }),
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  const payload = callsFor(db, "workflow_posts", "update")[0].payload as Record<string, unknown>;
+  assertEquals(payload.tiktok_publish_status, "failed");
+  assertEquals(payload.tiktok_publish_retry_count, 2);
+  assertEquals(payload.tiktok_publish_error, "network down");
+});
+
+Deno.test("tiktok-publish-cron init phase: TOKEN_INVALID from the creator check fails every post of the account, retryable, no init", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [claimedPost({ post_id: 1 }), claimedPost({ post_id: 2 })], [], []);
+
+  const fetchPaths: string[] = [];
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async (path) => {
+      fetchPaths.push(path);
+      return { publish_id: "pub-x" };
+    },
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async () => {
+      throw new TikTokApiError("access token invalid", "TOKEN_INVALID", false);
+    },
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(fetchPaths, []);
+  const updates = callsFor(db, "workflow_posts", "update");
+  assertEquals(updates.length, 2);
+  for (const u of updates) {
+    const payload = u.payload as Record<string, unknown>;
+    assertEquals(payload.tiktok_publish_status, "failed");
+    assertEquals(payload.tiktok_publish_retry_count, 1);
+    assertEquals(payload.tiktok_publish_error, "Erro ao obter token do TikTok: access token invalid");
+  }
 });
 ```
 
-Write these three tests as complete code, using the existing init happy-path test in the same file as the template: its `makeDeps`, its claim RPC queue, its `workflow_posts` update assertions. Copy them fully; don't reference the template from the test body.
+`tokenErrorMessage` (`core.ts:155-159`) only special-cases `TOKEN_EXPIRED`; every other code renders as `Erro ao obter token do TikTok: <message>`, which is the string the last test pins (spec A10, "fail as the `getFreshTikTokToken` catch does, retryable").
 
 - [ ] **Step 7: Run and confirm they fail**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish-cron_test.ts --filter "init"`
-Expected: the new tests FAIL.
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish-cron_test.ts --filter "init phase"`
+Expected: the five new tests FAIL (no precheck yet, so init is called and the mapped/unmapped errors are both stored raw with `+1`); tests (b) and (c) still pass because `baseDeps` ignores the two unknown overrides until Step 8 adds them.
 
 - [ ] **Step 8: Implement in `core.ts`**
 
@@ -812,7 +1009,18 @@ Expected: the new tests FAIL.
    fetchPrecheckMedia?: typeof realFetchPrecheckMedia;
    ```
 
-   Import them from `../_shared/tiktok-precheck.ts` as `realFetchCreatorCheck`, `realFetchPrecheckMedia` and `evaluateTikTokPrecheck`. Also import `TikTokApiError` from `../_shared/tiktok.ts` and `tiktokErrorMessage` from `../_shared/tiktok-messages.ts`.
+   Add these imports to `core.ts` (`deno check` over `tiktok-publish-cron/index.ts` type-checks this file, so the `CreatorCheck` type import is required by the `let creator: CreatorCheck` below):
+
+   ```ts
+   import {
+     type CreatorCheck,
+     evaluateTikTokPrecheck,
+     fetchCreatorCheck as realFetchCreatorCheck,
+     fetchPrecheckMedia as realFetchPrecheckMedia,
+   } from "../_shared/tiktok-precheck.ts";
+   import { TikTokApiError } from "../_shared/tiktok.ts";
+   import { tiktokErrorMessage } from "../_shared/tiktok-messages.ts";
+   ```
 
 2. In `processInitPhase`, after the access token is obtained and before the `for (const post of toProcess)` loop:
 
@@ -821,7 +1029,8 @@ Expected: the new tests FAIL.
        try {
          creator = await fetchCreatorCheck(tiktokFetch, accessToken);
        } catch (err) {
-         // TOKEN_INVALID / REVOKED: same treatment the token-fetch failure above gets.
+         // TOKEN_INVALID / REVOKED rethrown by fetchCreatorCheck: same treatment as the
+         // getFreshTikTokToken catch above (spec A10): tokenErrorMessage, retryable (+1).
          const message = tokenErrorMessage(err);
          for (const post of toProcess) {
            await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, message);
@@ -871,10 +1080,8 @@ Expected: the new tests FAIL.
 
 - [ ] **Step 9: Run the whole cron and utils suites**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish-cron_test.ts supabase/functions/__tests__/tiktok-publish-utils_test.ts supabase/functions/__tests__/tiktok-precheck_test.ts`
-Expected: PASS.
-
-Existing init tests that don't stub the new deps now hit the real `fetchPrecheckMedia`, which queries `post_file_links`. Update those tests to pass `fetchPrecheckMedia: () => Promise.resolve([{ kind: "image", duration_seconds: null, media_lost_at: null }])` (or a video for reels) and `fetchCreatorCheck: () => Promise.resolve({ kind: "skip" })`. Don't add DB queues for them.
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish-cron_test.ts supabase/functions/__tests__/tiktok-publish-utils_test.ts supabase/functions/__tests__/tiktok-precheck_test.ts`
+Expected: PASS, including tests (b) and (c), which Step 6.2 already stubbed. If either fails with "Adicione mídia ao post…" or an off-by-one call count, the Step 6.2 stubs were not added.
 
 - [ ] **Step 10: Commit**
 
@@ -894,7 +1101,7 @@ git commit -m "feat(tiktok): pre-init creator/media precheck in the cron; mapped
 **Interfaces, consumed:**
 - `fetchCreatorCheck`, `evaluateTikTokPrecheck` (Task 4)
 - `tiktokErrorMessage` (Task 1)
-- `TikTokMediaFile.media_lost_at` (Task 3)
+- `media_lost_at` on each `validation.media` item (Task 3; the item type is the non-exported `TikTokMediaFile` behind `TikTokValidationResult.media`, so nothing is imported for it)
 
 Publish-now already has the validated media, with `duration_seconds` and `media_lost_at`, in `validation.media`. It does **not** call `fetchPrecheckMedia`.
 
@@ -945,23 +1152,99 @@ Deno.test("tiktok-publish publish-now: precheck failure -> 422 with pt-BR messag
 });
 
 Deno.test("tiktok-publish publish-now: mapped init error -> 422 pt-BR, retry_count 3", async () => {
-  // Same setup as the success test (feed post), fetchCreatorCheck -> { kind: "skip" },
-  // tiktokFetch init rejects new TikTokApiError("x", "unaudited_client_can_only_post_to_private_accounts", false).
-  // Expect 422 { error: "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente." }
-  // and the failure write has retry_count 3.
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "feed" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("record_post_status_change", { data: null, error: null }); // -> agendado
+  db.queue("workflow_posts", "update", { data: null, error: null });     // lock
+  db.queue("workflow_posts", "update", { data: null, error: null });     // failure write
+  db.queueRpc("record_post_status_change", { data: null, error: null }); // -> falha_publicacao
+
+  const initCalls: string[] = [];
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: ((path: string) => {
+      initCalls.push(path);
+      return Promise.reject(new TikTokApiError("unaudited", "unaudited_client_can_only_post_to_private_accounts", false));
+    }) as never,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), {
+    error: "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.",
+  });
+  assertEquals(initCalls, ["/post/publish/content/init/"]);
+  const failWrite = callsFor(db, "workflow_posts", "update").at(-1)!.payload as Record<string, unknown>;
+  assertEquals(failWrite.tiktok_publish_status, "failed");
+  assertEquals(failWrite.tiktok_publish_retry_count, 3);
+  assertEquals(
+    failWrite.tiktok_publish_error,
+    "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.",
+  );
+  const statusRpc = rpcCalls(db, "record_post_status_change");
+  assertEquals((statusRpc.at(-1)!.payload as Record<string, unknown>).p_new_status, "falha_publicacao");
+});
+
+Deno.test("tiktok-publish publish-now: unmapped init error keeps +1 and the generic 500", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "feed", tiktok_publish_retry_count: 1 }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: (() => Promise.reject(new Error("socket hang up"))) as never,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 500);
+  const failWrite = callsFor(db, "workflow_posts", "update").at(-1)!.payload as Record<string, unknown>;
+  assertEquals(failWrite.tiktok_publish_retry_count, 2);
+  assertEquals(failWrite.tiktok_publish_error, "socket hang up");
 });
 ```
 
-Write the second test in full, using the first one's code as the template: copy the queues, and swap the `validateForTikTokScheduling` stub for `okTikTokValidation()`.
+`TikTokApiError` is already imported at the top of this test file by Task 2.
 
-Also update the existing publish-now success test. Its `okTikTokValidation` media item must include `media_lost_at: null`; add it to the `okTikTokValidation` fixture once. It also needs `fetchCreatorCheck: () => Promise.resolve({ kind: "skip" })`, so `fetchCalls.length` stays 2.
+Then update the existing fixtures and tests in the same file:
+- `okTikTokValidation` (`:72-93`): add `media_lost_at: null,` to its media item, once.
+- "publish-now: success calls mark_platform_published and returns postado" (`:578-634`): add `fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,` to its `makeDeps` overrides, so the `fetchCalls.length === 2` assertion at `:611` still holds (the real `fetchCreatorCheck` would route a third call through the `tiktokFetch` stub).
+- "publish-now: still-processing after 12 polls" (`:636-677`) and the `media changes before claiming` family (`:698-765`) do not need the stub: `stubTiktokFetch()` answers `/post/publish/creator_info/query/` with `{}`, which `fetchCreatorCheck` reads as `{ kind: "ok", privacyLevelOptions: null, maxVideoPostDurationSec: null }`, and none of those tests asserts the total call count except `:757`, whose branch fails validation before any token is fetched.
 
 - [ ] **Step 2: Run and confirm they fail**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish_test.ts --filter "publish-now"`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish_test.ts --filter "publish-now"`
 Expected: the new tests FAIL.
 
 - [ ] **Step 3: Implement**
+
+0. Imports at the top of `handler.ts` (Task 2 already added `TikTokApiError` and `isTikTokCannotPostCode`):
+
+   ```ts
+   import {
+     evaluateTikTokPrecheck,
+     fetchCreatorCheck as realFetchCreatorCheck,
+   } from "../_shared/tiktok-precheck.ts";
+   import { isTikTokCannotPostCode, tiktokErrorMessage } from "../_shared/tiktok-messages.ts";
+   ```
+
+   (Merge the second line with Task 2's existing `tiktok-messages.ts` import rather than importing the module twice.)
 
 1. Inside the claimed `try`, after `const { accessToken } = await getFreshToken(...)`:
 
@@ -1020,7 +1303,7 @@ Expected: the new tests FAIL.
 
 - [ ] **Step 4: Run and confirm it passes**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish_test.ts`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish_test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1070,17 +1353,32 @@ Deno.test("buildTikTokPostUrl: photo tipos use /photo/, others /video/", () => {
 });
 ```
 
-In `tiktok-publish_test.ts`, the success test publishes a **feed** post. Change its URL expectation to `"https://www.tiktok.com/@dramarina/photo/7123456"`.
+Then update the three existing URL expectations (these are the only `tiktok.com/@` assertions in the suite):
 
-In `tiktok-publish-cron_test.ts` and `tiktok-webhook_test.ts`:
-- Find every expectation of `tiktok.com/@…/video/…` built for a post.
-- Where the fixture's `tipo` is `feed` or `carrossel`, change it to `/photo/`.
-- Where the fixture has no `tipo`, add `tipo: "reels"` to the fixture and keep `/video/`.
-- In the webhook test for `publicly_available`, add `tipo: "carrossel"` to the queued `workflow_posts` select row and expect `/photo/`.
+- `tiktok-publish_test.ts:632`, success test, `basePost({ platform: "tiktok", tipo: "feed" })`: expect `"https://www.tiktok.com/@dramarina/photo/7123456"`.
+- `tiktok-publish-cron_test.ts:256`, status-phase PUBLISH_COMPLETE test: `claimedPost()` defaults to `tipo: "feed"` (`:44`), so expect `"https://www.tiktok.com/@dktest/photo/7301234"`. Add a sibling test right after it that pins the video branch:
+
+  ```ts
+  Deno.test("tiktok-publish-cron status phase: a reels post keeps the /video/ URL", async () => {
+    const db = createSupabaseQueryMock();
+    const post = claimedPost({ post_id: 31, tipo: "reels", tiktok_publish_id: "pub-31", tiktok_username: "dktest" });
+    queueClaims(db, [], [post], []);
+    const response = await runTikTokPublishCron(baseDeps(db, {
+      getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+      tiktokFetch: async () => ({ status: "PUBLISH_COMPLETE", [FIELD_PUBLIC_POST_ID]: "7301235" }),
+      buildTikTokMediaUrl: async () => "",
+    }));
+    assertEquals(response.status, 200);
+    const fields = (rpcCalls(db, "mark_platform_published")[0].payload as Record<string, unknown>).p_fields as Record<string, unknown>;
+    assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dktest/video/7301235");
+  });
+  ```
+
+- `tiktok-webhook_test.ts:182-209`, "publicly_available stores tiktok_post_id/tiktok_post_url": change the queued row at `:187` to `{ id: 70, tipo: "carrossel", tiktok_publish_id: "pub-70", tiktok_publish_retry_count: 0 }` and the expectation at `:207` to `"https://www.tiktok.com/@dktest/photo/post-70"`. The redelivery test (`:211-241`) compares the two payloads to each other and its row has no `tipo` (→ `null` → `/video/`), so it needs no change. The `confirmAndApplyPublishStatus` stubs in that file (`:321`, `:367`, `:461`) only read `post.post_id`, so the new `tipo` field in the object the handler builds does not break them.
 
 - [ ] **Step 2: Run and confirm they fail**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-publish-utils_test.ts supabase/functions/__tests__/tiktok-publish_test.ts supabase/functions/__tests__/tiktok-publish-cron_test.ts supabase/functions/__tests__/tiktok-webhook_test.ts`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-publish-utils_test.ts supabase/functions/__tests__/tiktok-publish_test.ts supabase/functions/__tests__/tiktok-publish-cron_test.ts supabase/functions/__tests__/tiktok-webhook_test.ts`
 Expected: FAIL in the updated tests.
 
 - [ ] **Step 3: Implement**
@@ -1136,19 +1434,42 @@ git commit -m "fix(tiktok): photo posts link to /photo/ on every completion path
 grep -n "clientes/\|video.upload\|TIKTOK_SCOPES\|scope=" supabase/functions/__tests__/tiktok-integration_test.ts supabase/functions/__tests__/tiktok-shared_test.ts
 ```
 
-- Every successful-callback test that asserts `Location` ending in `/clientes/<id>` must now expect `/clientes/<id>?tt_connected=1`.
-- Every assertion on the scope string must expect exactly `user.info.basic,user.info.profile,user.info.stats,video.list,video.publish`.
-- If no test pins the scope, add one to `tiktok-shared_test.ts`:
+The grep finds exactly one `Location` assertion and no scope assertion (the `scope: "user.info.basic,video.list"` at `tiktok-integration_test.ts:68` is the token-exchange fixture, not the auth URL; `:238` only checks the URL prefix).
+
+- `tiktok-integration_test.ts:297`: change `"https://app.example.com/clientes/42"` to `"https://app.example.com/clientes/42?tt_connected=1"`.
+- `tiktok-shared_test.ts`: add `TIKTOK_SCOPES` to the existing `../_shared/tiktok.ts` import (`:5-12`), then add:
 
 ```ts
-Deno.test("TIKTOK_SCOPES: only demonstrated scopes (no video.upload)", () => {
+Deno.test("tiktok-shared: TIKTOK_SCOPES requests only the demonstrated scopes (no video.upload)", () => {
   assertEquals(TIKTOK_SCOPES, "user.info.basic,user.info.profile,user.info.stats,video.list,video.publish");
 });
 ```
 
+- `tiktok-integration_test.ts`, after the "/auth with feature_tiktok=true returns an authorize url" test (`:225-240`), add a test that the auth URL carries the new scope list end to end:
+
+```ts
+Deno.test("tiktok-integration: /auth requests the scope list without video.upload", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: true, error: null });
+  db.queue("oauth_states", "delete", { data: null, error: null });
+  db.queue("oauth_states", "insert", { data: null, error: null });
+  const { storage } = makeStorage();
+  const handler = makeHandler(db, storage);
+  const res = await handler(authedRequest("/auth/5"));
+  const body = await res.json();
+  const scope = new URL(body.url).searchParams.get("scope");
+  assertEquals(scope, "user.info.basic,user.info.profile,user.info.stats,video.list,video.publish");
+});
+```
+
+(`makeStorage`, `makeHandler` and `authedRequest` are the file's existing helpers, used by the test right above.)
+
 - [ ] **Step 2: Run and confirm they fail**
 
-Run: `deno test --no-check supabase/functions/__tests__/tiktok-integration_test.ts supabase/functions/__tests__/tiktok-shared_test.ts`
+Run: `cd /Users/eduardosouza/projects/sm-crm/.claude/worktrees/new-session-3cb9fe-backend && deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/tiktok-integration_test.ts supabase/functions/__tests__/tiktok-shared_test.ts`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -1174,8 +1495,8 @@ Same command. Expected: PASS.
 
 - [ ] **Step 5: Run the full backend gates**
 
-Run: `npm run check:functions && npm run test:functions`
-Expected: both PASS. Then run `npm ci` to undo the `node_modules` pollution (memory gotcha).
+Run, in the backend worktree: `npm run check:functions && npm run test:functions`
+Expected: both PASS. Do **not** run `npm ci` here: this worktree has no npm `node_modules` to restore, and the main worktree gets its `npm ci` after the merge (Execution order, step 4). If `git status --short` shows `deno.lock` modified, run `git checkout deno.lock` before committing.
 
 - [ ] **Step 6: Commit**
 
@@ -1649,14 +1970,91 @@ export interface TikTokSettingsPanelProps {
 
 **Implementation and test order:** do the steps below in order. Each one is a red-green cycle on `TikTokSettingsPanel.test.tsx`.
 
-The existing tests mock `getTikTokCreatorInfo`. Tests for the music checkbox (ticking it, completeness `privacyChosen && musicConfirmed`) are **deleted**: the checkbox no longer exists (spec A3). Every other existing test must keep passing:
-- privacy no default
-- interactions locked per creator
-- no-store fetch per mount
-- caption/title debounce
-- `hideCaption`
+**How the existing test file works** (`TikTokSettingsPanel.test.tsx`), so every edit below fits it:
+- `getTikTokCreatorInfoMock` is a `vi.hoisted` mock (`:9-13`); the service module is NOT imported, so `vi.mocked(getTikTokCreatorInfo)` does not exist here.
+- Radix `Select*` are mocked as plain elements (`:18-62`): `SelectTrigger` is a `<button>`, `SelectItem` is a `<button onClick={() => onValueChange(value)}>` that **drops `disabled`**. There is no `combobox` or `option` role.
+- `Checkbox` and `Switch` are mocked as native `<input type="checkbox">` with `role="checkbox"` / `role="switch"` and a real `disabled` prop (`:66-110`). They have no `aria-checked`; assert with `toBeChecked()`.
+- The file uses `fireEvent` (not `userEvent`) and imports `act, cleanup, fireEvent, render, screen, waitFor` (`:2`); `within` is not imported.
+- `basePost` (`:117-126`) is a `Pick` without `ig_caption`; `renderPanel(postOverrides, propOverrides)` (`:135-151`) passes `onCompletenessChange`.
 
-Update completeness tests to the new `onReadinessChange` object.
+**Step 0, before any new test: adapt the file's scaffolding.**
+
+1. Imports: add `within` to the `@testing-library/react` import; add `import type { PostMedia } from '../../../../store/posts';` and `import type { TikTokCreatorInfo } from '../../../../services/tiktok';` (type-only, so the `vi.mock` of that module is unaffected).
+2. Extend the `SelectTrigger`/`SelectItem` mocks so disabled items are observable:
+
+   ```tsx
+   function SelectTrigger({ children }: { children: React.ReactNode }) {
+     return <button type="button" role="combobox">{children}</button>;
+   }
+   function SelectItem({ value, children, disabled }: { value: string; children: React.ReactNode; disabled?: boolean }) {
+     const { onValueChange } = ReactModule.useContext(SelectContext);
+     return (
+       <button type="button" role="option" disabled={disabled} data-disabled={disabled ? '' : undefined} onClick={() => onValueChange?.(value)}>
+         {children}
+       </button>
+     );
+   }
+   ```
+
+3. `basePost`: add `'ig_caption'` to its `Pick` and `ig_caption: null,` to the object (the panel's `post` prop gains `ig_caption` in Step 5).
+4. Add, right after `defaultCreatorInfo`:
+
+   ```tsx
+   const video42 = [
+     { id: 1, kind: 'video', duration_seconds: 42, media_lost_at: null, thumbnail_url: null, url: 'u', is_cover: true, sort_order: 0 },
+   ] as unknown as PostMedia[];
+
+   type PanelProps = React.ComponentProps<typeof TikTokSettingsPanel>;
+
+   function reelsPost(overrides: Partial<WorkflowPost> = {}): WorkflowPost {
+     return { ...basePost, ...overrides } as WorkflowPost;
+   }
+   function panelElement(props: Partial<PanelProps> & { post: WorkflowPost }) {
+     return <TikTokSettingsPanel clientId={7} onFieldChange={vi.fn()} media={video42} {...props} />;
+   }
+   function renderPanelProps(props: Partial<PanelProps> & { post: WorkflowPost }) {
+     return render(panelElement(props));
+   }
+   function mockCreatorInfo(info: Partial<TikTokCreatorInfo>) {
+     getTikTokCreatorInfoMock.mockResolvedValue(info);
+   }
+   /** The Select mock renders each option as a button; clicking it fires onValueChange. */
+   async function selectPrivacy(label: string) {
+     fireEvent.click(await screen.findByRole('option', { name: label }));
+   }
+   ```
+
+5. Rewrite the existing `renderPanel` so the ~30 old call sites keep working against the new props:
+
+   ```tsx
+   function renderPanel(
+     postOverrides: Partial<typeof basePost> = {},
+     propOverrides: Partial<PanelProps> = {},
+   ) {
+     const onFieldChange = vi.fn();
+     const onReadinessChange = vi.fn();
+     const utils = render(
+       <TikTokSettingsPanel
+         clientId={7}
+         post={{ ...basePost, ...postOverrides } as WorkflowPost}
+         onFieldChange={onFieldChange}
+         onReadinessChange={onReadinessChange}
+         media={video42}
+         {...propOverrides}
+       />,
+     );
+     return { ...utils, onFieldChange, onReadinessChange };
+   }
+   ```
+
+6. Existing tests that change meaning under the new UI (each named so nothing is guessed):
+   - `:362-371` "toggling brand_content persists brand_content_toggle=true": the switch labelled `'Conteúdo de marca — parceria paga'` no longer exists. Replace with the Step 4 disclosure tests (delete this one).
+   - `:373-388` "links to the official Music Usage Confirmation page" and "switches to the branded-content music confirmation copy": **delete** (the block moves to `TikTokPostingDeclaration`, Task 9).
+   - `:389-411` "reports incomplete until privacy is chosen AND the music confirmation is ticked" and "reports incomplete again if the music confirmation is unticked": **delete**; the Step 2 readiness tests replace them.
+   - `:419-426` "shows the test-mode banner when the parent sets showTestModeBanner": change the expected text to `'App em modo de teste: até a aprovação do TikTok, as publicações saem como privadas.'`.
+   - `:350-360` ("Parceria paga" note shown/hidden) keep passing as written: with `brand_content_toggle: true` the disclosure master initialises on and the label prompt renders `<strong>Parceria paga</strong>`; with it off, nothing renders that text.
+   - `:413` "does not show the test-mode banner by default" keeps passing: `defaultCreatorInfo` has no `app_audited`, which the panel treats as audited.
+   - Every other existing test (privacy no default, interactions locked per creator, no-store fetch per mount, caption/title caps and debounce, `hideCaption`, stories renders nothing) must keep passing unchanged.
 
 - [ ] **Step 1: Extend `TikTokCreatorInfo`**
 
@@ -1664,39 +2062,53 @@ In `services/tiktok.ts`, add `can_post?: boolean; cannot_post_reason?: string; a
 
 - [ ] **Step 2: Readiness contract tests (red)**
 
-Add to `TikTokSettingsPanel.test.tsx`. Use the file's existing render helper and mock, extended with a `media` prop:
+Apply Step 0 above, then add to `TikTokSettingsPanel.test.tsx`:
 
 ```tsx
-const video42 = [{ id: 1, kind: 'video', duration_seconds: 42, media_lost_at: null, thumbnail_url: null, url: 'u', is_cover: true, sort_order: 0 }] as unknown as PostMedia[];
+describe('readiness contract (spec A0)', () => {
+  it('reports readiness with a reason, and completes once privacy is chosen', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'], can_post: true, app_audited: false, max_video_post_duration_sec: 600 });
+    const onReadinessChange = vi.fn();
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }), onReadinessChange });
+    await waitFor(() =>
+      expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: 'Escolha a privacidade do post no TikTok.' }),
+    );
+    await selectPrivacy('Somente eu (privado)');
+    await waitFor(() => expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: true }));
+  });
 
-it('reports readiness with a reason, and completes once privacy is chosen', async () => {
-  mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'], can_post: true, app_audited: false, max_video_post_duration_sec: 600 });
-  const onReadinessChange = vi.fn();
-  renderPanel({ post: reelsPost({ tiktok_settings: {} }), media: video42, onReadinessChange });
-  await waitFor(() =>
-    expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: 'Escolha a privacidade do post no TikTok.' }),
-  );
-  await selectPrivacy('Somente eu (privado)');
-  await waitFor(() => expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: true }));
-});
+  it('reports the creator-info loading reason first', async () => {
+    const onReadinessChange = vi.fn();
+    renderPanelProps({ post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }), onReadinessChange });
+    expect(onReadinessChange).toHaveBeenCalledWith({ complete: false, reason: 'Carregando informações do criador no TikTok…' });
+    await screen.findByText('Dra Marina');
+    await waitFor(() => expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: true }));
+  });
 
-it('media undefined reports loading; mediaError reports the error', async () => {
-  mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
-  const onReadinessChange = vi.fn();
-  const { rerender } = renderPanel({ post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }), media: undefined, onReadinessChange });
-  await waitFor(() => expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: 'Carregando mídias do post…' }));
-  rerender(panelElement({ post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }), media: undefined, mediaError: true, onReadinessChange }));
-  await waitFor(() => expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: 'Não foi possível carregar as mídias. Reabra o post.' }));
+  it('a creator-info failure blocks with its message', async () => {
+    getTikTokCreatorInfoMock.mockRejectedValue(new Error('Erro X'));
+    const onReadinessChange = vi.fn();
+    renderPanelProps({ post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }), onReadinessChange });
+    await waitFor(() => expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: 'Erro X' }));
+  });
+
+  it('media undefined reports loading; mediaError reports the error', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    const onReadinessChange = vi.fn();
+    const post = reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } });
+    const { rerender } = renderPanelProps({ post, media: undefined, onReadinessChange });
+    await waitFor(() =>
+      expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: 'Carregando mídias do post…' }),
+    );
+    rerender(panelElement({ post, media: undefined, mediaError: true, onReadinessChange }));
+    await waitFor(() =>
+      expect(onReadinessChange).toHaveBeenLastCalledWith({ complete: false, reason: 'Não foi possível carregar as mídias. Reabra o post.' }),
+    );
+  });
 });
 ```
 
-`reelsPost`, `renderPanel`, `panelElement`, `mockCreatorInfo` and `selectPrivacy` are helpers to add at the top of the test file if the existing ones don't fit:
-- `renderPanel(props)` = `render(panelElement(props))`.
-- `panelElement` returns `<TikTokSettingsPanel clientId={9} onFieldChange={vi.fn()} {...props} />`.
-- `mockCreatorInfo(info)` = `vi.mocked(getTikTokCreatorInfo).mockResolvedValue(info)`.
-- `selectPrivacy(label)` opens the Radix select with `userEvent.click(screen.getByRole('combobox'))`, then `userEvent.click(await screen.findByRole('option', { name: new RegExp(label) }))`. The file already uses Radix select interactions; copy its existing approach, including any `pointer-events` polyfill it relies on.
-
-Run: `npx vitest run apps/crm/src/pages/entregas/components/__tests__/TikTokSettingsPanel.test.tsx`. Expected: the new tests FAIL.
+Run: `npx vitest run apps/crm/src/pages/entregas/components/__tests__/TikTokSettingsPanel.test.tsx`. Expected: the four new tests FAIL (the prop does not exist yet); the deleted tests are gone; the rest still pass.
 
 - [ ] **Step 3: Implement the readiness wiring (green)**
 
@@ -1729,72 +2141,117 @@ In `TikTokSettingsPanel.tsx`:
 
   This must sit before the `if (post.tipo === 'stories') return null;` early return, so the hook order stays stable.
 
-Run the test file. Expected: the two new tests PASS. Delete the music-checkbox tests and update the remaining old completeness tests to `onReadinessChange` objects.
+Run the test file. Expected: the four Step 2 tests PASS and every remaining old test still passes.
 
 - [ ] **Step 4: Disclosure UI tests (red), then the implementation (green)**
 
-Tests:
+Tests (`fireEvent`, native-input mocks; see Step 0):
 
 ```tsx
-it('disclosure: master off by default, on reveals two checkboxes, nothing checked warns', async () => {
-  mockCreatorInfo({ privacy_level_options: ['SELF_ONLY', 'PUBLIC_TO_EVERYONE'], app_audited: true });
-  renderPanel({ post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }), media: video42 });
-  const master = await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' });
-  expect(master).toHaveAttribute('aria-checked', 'false');
-  expect(screen.queryByRole('checkbox', { name: /Sua marca/ })).toBeNull();
-  await userEvent.click(master);
-  expect(screen.getByRole('checkbox', { name: /Sua marca/ })).toBeInTheDocument();
-  expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeInTheDocument();
-  expect(screen.getByText('Indique se o conteúdo promove você, um terceiro ou ambos.')).toBeInTheDocument();
-});
+describe('commercial content disclosure (spec A1/A2/A7)', () => {
+  it('master off by default; on reveals two checkboxes; nothing checked warns', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY', 'PUBLIC_TO_EVERYONE'], app_audited: true });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }) });
+    const master = await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' });
+    expect(master).not.toBeChecked();
+    expect(screen.queryByRole('checkbox', { name: /Sua marca/ })).toBeNull();
+    fireEvent.click(master);
+    expect(screen.getByRole('checkbox', { name: /Sua marca/ })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeInTheDocument();
+    expect(screen.getByText('Indique se o conteúdo promove você, um terceiro ou ambos.')).toBeInTheDocument();
+  });
 
-it('disclosure: "Sua marca" shows Conteúdo promocional; adding branded shows Parceria paga', async () => {
-  mockCreatorInfo({ privacy_level_options: ['SELF_ONLY', 'PUBLIC_TO_EVERYONE'], app_audited: true });
-  const onFieldChange = vi.fn();
-  renderPanel({ post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }), media: video42, onFieldChange });
-  await userEvent.click(await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }));
-  await userEvent.click(screen.getByRole('checkbox', { name: /Sua marca/ }));
-  expect(screen.getByText(/Seu post será rotulado como/)).toHaveTextContent('Seu post será rotulado como Conteúdo promocional.');
-  await userEvent.click(screen.getByRole('checkbox', { name: /Conteúdo de marca/ }));
-  expect(screen.getByText(/Seu post será rotulado como/)).toHaveTextContent('Seu post será rotulado como Parceria paga.');
-  expect(onFieldChange).toHaveBeenLastCalledWith('tiktok_settings', expect.objectContaining({ brand_organic_toggle: true, brand_content_toggle: true }));
-});
+  it('"Sua marca" shows Conteúdo promocional; adding branded shows Parceria paga and persists both', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY', 'PUBLIC_TO_EVERYONE'], app_audited: true });
+    const onFieldChange = vi.fn();
+    renderPanelProps({ post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }), onFieldChange });
+    fireEvent.click(await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Sua marca/ }));
+    expect(screen.getByText(/Seu post será rotulado como/)).toHaveTextContent('Seu post será rotulado como Conteúdo promocional.');
+    fireEvent.click(screen.getByRole('checkbox', { name: /Conteúdo de marca/ }));
+    expect(screen.getByText(/Seu post será rotulado como/)).toHaveTextContent('Seu post será rotulado como Parceria paga.');
+    expect(onFieldChange).toHaveBeenLastCalledWith(
+      'tiktok_settings',
+      expect.objectContaining({ brand_organic_toggle: true, brand_content_toggle: true }),
+    );
+  });
 
-it('disclosure: turning master off persists both toggles false', async () => {
-  mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
-  const onFieldChange = vi.fn();
-  renderPanel({ post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_organic_toggle: true } }), media: video42, onFieldChange });
-  const master = await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' });
-  expect(master).toHaveAttribute('aria-checked', 'true');
-  await userEvent.click(master);
-  expect(onFieldChange).toHaveBeenLastCalledWith('tiktok_settings', expect.objectContaining({ brand_organic_toggle: false, brand_content_toggle: false }));
-});
+  it('turning the master on persists nothing until a checkbox is ticked', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
+    const onFieldChange = vi.fn();
+    renderPanelProps({ post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }), onFieldChange });
+    fireEvent.click(await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }));
+    expect(onFieldChange).not.toHaveBeenCalled();
+  });
 
-it('unaudited: branded disabled with suffix; non-SELF_ONLY options disabled; banner always shown', async () => {
-  mockCreatorInfo({ privacy_level_options: ['FOLLOWER_OF_CREATOR', 'SELF_ONLY'], app_audited: false });
-  renderPanel({ post: reelsPost({ tiktok_settings: {} }), media: video42 });
-  expect(await screen.findByText('App em modo de teste: até a aprovação do TikTok, as publicações saem como privadas.')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('switch', { name: 'Divulgação de conteúdo comercial' }));
-  expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeDisabled();
-  expect(screen.getByText('(disponível após a aprovação do app)', { selector: '[data-testid="tt-branded-suffix"]' })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('combobox'));
-  expect(await screen.findByRole('option', { name: /Seguidores/ })).toHaveAttribute('data-disabled');
-});
+  it('turning the master off persists both toggles false', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
+    const onFieldChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_organic_toggle: true } }),
+      onFieldChange,
+    });
+    const master = await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' });
+    expect(master).toBeChecked();
+    fireEvent.click(master);
+    expect(onFieldChange).toHaveBeenLastCalledWith(
+      'tiktok_settings',
+      expect.objectContaining({ brand_organic_toggle: false, brand_content_toggle: false }),
+    );
+    expect(screen.queryByRole('checkbox', { name: /Sua marca/ })).toBeNull();
+  });
 
-it('audited: branded checked disables SELF_ONLY; SELF_ONLY chosen disables branded with helper', async () => {
-  mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'], app_audited: true });
-  renderPanel({ post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }), media: video42 });
-  await userEvent.click(await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }));
-  expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeDisabled();
-  expect(screen.getByText('Conteúdo de marca não pode ter visibilidade privada.')).toBeInTheDocument();
-});
+  it('unaudited: branded disabled with suffix; non-SELF_ONLY options disabled; banner always shown', async () => {
+    mockCreatorInfo({ privacy_level_options: ['FOLLOWER_OF_CREATOR', 'SELF_ONLY'], app_audited: false });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }) });
+    expect(
+      await screen.findByText('App em modo de teste: até a aprovação do TikTok, as publicações saem como privadas.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('switch', { name: 'Divulgação de conteúdo comercial' }));
+    expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeDisabled();
+    expect(screen.getByTestId('tt-branded-suffix')).toHaveTextContent('(disponível após a aprovação do app)');
+    expect(screen.getByRole('option', { name: /Seguidores/ })).toBeDisabled();
+    expect(screen.getByRole('option', { name: /Seguidores/ })).toHaveTextContent('(disponível após a aprovação do app)');
+    expect(screen.getByRole('option', { name: 'Somente eu (privado)' })).toBeEnabled();
+  });
 
-it('legacy branded + SELF_ONLY row shows the inline error', async () => {
-  mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'], app_audited: true });
-  renderPanel({ post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY', brand_content_toggle: true } }), media: video42 });
-  expect(await screen.findByText('A visibilidade de conteúdo de marca não pode ser privada.')).toBeInTheDocument();
+  it('audited: SELF_ONLY chosen disables branded with the helper line', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'], app_audited: true });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY' } }) });
+    fireEvent.click(await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }));
+    expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeDisabled();
+    expect(screen.getByText('Conteúdo de marca não pode ter visibilidade privada.')).toBeInTheDocument();
+    expect(screen.queryByTestId('tt-branded-suffix')).toBeNull();
+  });
+
+  it('audited: branded checked disables the SELF_ONLY option with its suffix', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'], app_audited: true });
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_content_toggle: true } }),
+    });
+    const selfOnly = await screen.findByRole('option', { name: /Somente eu/ });
+    expect(selfOnly).toBeDisabled();
+    expect(selfOnly).toHaveTextContent('(não disponível para conteúdo de marca)');
+    expect(screen.getByRole('option', { name: 'Todos' })).toBeEnabled();
+  });
+
+  it('legacy branded + SELF_ONLY row shows the inline error and keeps branded uncheckable', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'], app_audited: true });
+    const onFieldChange = vi.fn();
+    renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'SELF_ONLY', brand_content_toggle: true } }),
+      onFieldChange,
+    });
+    expect(await screen.findByText('A visibilidade de conteúdo de marca não pode ser privada.')).toBeInTheDocument();
+    const branded = screen.getByRole('checkbox', { name: /Conteúdo de marca/ });
+    expect(branded).toBeEnabled();
+    fireEvent.click(branded);
+    expect(onFieldChange).toHaveBeenLastCalledWith('tiktok_settings', expect.objectContaining({ brand_content_toggle: false }));
+  });
 });
 ```
+
+Accessible names come from the `<Label htmlFor>` association (the mocks drop `aria-label`); the "Conteúdo de marca" label also contains the suffix span, so its name is matched with a regex.
 
 Implementation, replacing the "Commercial content" block:
 
@@ -1902,38 +2359,67 @@ Run the test file. Expected: PASS.
 Tests:
 
 ```tsx
-it('can_post false replaces the nickname header with the pt-BR notice', async () => {
-  mockCreatorInfo({ can_post: false, cannot_post_reason: 'spam_risk_too_many_posts', app_audited: false });
-  renderPanel({ post: reelsPost({ tiktok_settings: {} }), media: video42 });
-  expect(await screen.findByRole('alert')).toHaveTextContent('Esta conta atingiu o limite diário de publicações do TikTok. Tente novamente amanhã.');
-});
+describe('notices, preview and duration (spec A4/A5/A6/A7)', () => {
+  it('can_post false replaces the nickname header with the pt-BR notice', async () => {
+    mockCreatorInfo({ can_post: false, cannot_post_reason: 'spam_risk_too_many_posts', app_audited: false });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }) });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Esta conta atingiu o limite diário de publicações do TikTok. Tente novamente amanhã.',
+    );
+    expect(screen.queryByTestId('tiktok-creator-avatar')).toBeNull();
+  });
 
-it('public account in test mode shows the blocking warning', async () => {
-  mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'], app_audited: false });
-  renderPanel({ post: reelsPost({ tiktok_settings: {} }), media: video42 });
-  expect(await screen.findByRole('alert')).toHaveTextContent('Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e reabra o post.');
-});
+  it('can_post false with an unknown reason uses the fallback sentence', async () => {
+    mockCreatorInfo({ can_post: false, cannot_post_reason: 'something_new' });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }) });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'O TikTok não permite novas publicações nesta conta agora. Tente novamente mais tarde.',
+    );
+  });
 
-it('preview shows media thumbnails, a duration badge and the caption', async () => {
-  mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
-  renderPanel({ post: reelsPost({ tiktok_caption: 'Legenda do TikTok', tiktok_settings: {} }), media: video42 });
-  const preview = await screen.findByRole('region', { name: 'Prévia' });
-  expect(within(preview).getByText('0:42')).toBeInTheDocument();
-  expect(within(preview).getByText('Legenda do TikTok')).toBeInTheDocument();
-});
+  it('public account in test mode shows the blocking warning', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'], app_audited: false });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }) });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e reabra o post.',
+    );
+  });
 
-it('preview: empty media and lost media messages', async () => {
-  mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
-  const { rerender } = renderPanel({ post: reelsPost({ tiktok_settings: {} }), media: [] });
-  expect(await screen.findByText('Adicione mídia ao post para publicar no TikTok.')).toBeInTheDocument();
-  rerender(panelElement({ post: reelsPost({ tiktok_settings: {} }), media: [{ ...video42[0], media_lost_at: '2026-08-14' }] as unknown as PostMedia[] }));
-  expect(await screen.findByText('Uma das mídias deste post foi perdida. Substitua-a antes de publicar.')).toBeInTheDocument();
-});
+  it('preview shows the duration badge and the caption that will be sent', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    renderPanelProps({ post: reelsPost({ tiktok_caption: 'Legenda do TikTok', tiktok_settings: {} }) });
+    const preview = await screen.findByRole('region', { name: 'Prévia' });
+    expect(within(preview).getByText('0:42')).toBeInTheDocument();
+    expect(within(preview).getByText('Legenda do TikTok')).toBeInTheDocument();
+  });
 
-it('video over the creator limit shows the duration error', async () => {
-  mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'], max_video_post_duration_sec: 600 });
-  renderPanel({ post: reelsPost({ tiktok_settings: {} }), media: [{ ...video42[0], duration_seconds: 750 }] as unknown as PostMedia[] });
-  expect(await screen.findByText('Este vídeo tem 750s. O máximo permitido para esta conta é 600s.')).toBeInTheDocument();
+  it('preview falls back to ig_caption and shows +N beyond five thumbnails', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    const seven = Array.from({ length: 7 }, (_, i) => ({
+      ...video42[0], id: i + 1, kind: 'image', duration_seconds: null, url: `https://cdn.example/${i}.jpg`,
+    })) as unknown as PostMedia[];
+    renderPanelProps({ post: reelsPost({ tipo: 'carrossel', tiktok_caption: null, ig_caption: 'Legenda do IG', tiktok_settings: {} }), media: seven });
+    const preview = await screen.findByRole('region', { name: 'Prévia' });
+    expect(preview.querySelectorAll('img')).toHaveLength(5);
+    expect(within(preview).getByText('+2')).toBeInTheDocument();
+    expect(within(preview).getByText('Legenda do IG')).toBeInTheDocument();
+  });
+
+  it('preview: empty media and lost media messages', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'] });
+    const post = reelsPost({ tiktok_settings: {} });
+    const { rerender } = renderPanelProps({ post, media: [] });
+    expect(await screen.findByText('Adicione mídia ao post para publicar no TikTok.')).toBeInTheDocument();
+    rerender(panelElement({ post, media: [{ ...video42[0], media_lost_at: '2026-08-14' }] as unknown as PostMedia[] }));
+    expect(await screen.findByText('Uma das mídias deste post foi perdida. Substitua-a antes de publicar.')).toBeInTheDocument();
+  });
+
+  it('video over the creator limit shows the duration error', async () => {
+    mockCreatorInfo({ privacy_level_options: ['SELF_ONLY'], max_video_post_duration_sec: 600 });
+    renderPanelProps({ post: reelsPost({ tiktok_settings: {} }), media: [{ ...video42[0], duration_seconds: 750 }] as unknown as PostMedia[] });
+    expect(await screen.findByText('Este vídeo tem 750s. O máximo permitido para esta conta é 600s.')).toBeInTheDocument();
+    expect(screen.getByText('Duração máxima de vídeo nesta conta: 600s')).toBeInTheDocument();
+  });
 });
 ```
 
@@ -2033,67 +2519,168 @@ git commit -m "feat(tiktok): audit-compliant composer panel (disclosure, preview
 
 **Interfaces, produced:**
 - New prop: `tiktokIncompleteReason?: string`.
-- `PublicacoesPanel` passes neither the reason nor the settings, so the declaration there renders the branded variant (spec A3).
+- `PublicacoesPanel` mounts with `tiktokSettingsComplete={false}` (`PublicacoesPanel.tsx:114`), so the gate is never open there and no declaration renders (spec A3). Its `title` assertion (`PublicacoesPanel.test.tsx:108`) keeps passing because `title` stays on the buttons (Step 3.9).
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `ScheduleButton.test.tsx`, reusing its existing `approvedPost`/render helpers:
+`ScheduleButton.test.tsx` has no `approvedPost`/`renderButton` helpers. It uses `makePost(overrides)` (default `status: 'aprovado_cliente'`, `tipo: 'feed'`, `scheduled_at` set, `ig_caption` set; `:45-59`), `defaultProps` (`:61-64`), direct `render(<ScheduleButton ... />)`, `fireEvent`, fake timers with `shouldAdvanceTime` (`:89-96`) and `act` + `vi.advanceTimersByTimeAsync` for the 600 ms post-publish delay (`:586-604`). `within` is not imported: add it to the `@testing-library/react` import on `:1`.
+
+Add this `describe` block at the end of the top-level `describe('ScheduleButton')`:
 
 ```tsx
-it('TikTok post: declaration renders above the actions', () => {
-  renderButton({ post: approvedPost({ platform: 'tiktok', scheduled_at: future, tiktok_settings: { brand_content_toggle: false } }), tiktokSettingsComplete: true });
-  expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent('Ao publicar, você concorda com a Confirmação de Uso de Música do TikTok.');
-});
+  describe('audit readiness (spec A0/A3/A8/B3)', () => {
+    it('TikTok post: declaration renders above the actions once the gate is open', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok', tiktok_settings: { brand_content_toggle: false } })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent(
+        'Ao publicar, você concorda com a Confirmação de Uso de Música do TikTok.',
+      );
+    });
 
-it('TikTok post with incomplete settings: no declaration (nothing can send)', () => {
-  renderButton({ post: approvedPost({ platform: 'tiktok', scheduled_at: future, tiktok_caption: 'x' }), tiktokSettingsComplete: false });
-  expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
-});
+    it('TikTok post without settings: branded variant of the declaration', () => {
+      render(<ScheduleButton post={makePost({ platform: 'tiktok' })} {...defaultProps} tiktokSettingsComplete />);
+      expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent('Política de Conteúdo de Marca');
+    });
 
-it('Instagram-only post: no TikTok declaration', () => {
-  renderButton({ post: approvedPost({ platform: 'instagram', scheduled_at: future }), hasInstagramAccount: true });
-  expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
-});
+    it('TikTok post with incomplete settings: no declaration (nothing can send)', () => {
+      render(<ScheduleButton post={makePost({ platform: 'tiktok' })} {...defaultProps} tiktokSettingsComplete={false} />);
+      expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+    });
 
-it('publish-now dialog repeats the declaration above Publicar for TikTok', async () => {
-  renderButton({ post: approvedPost({ platform: 'tiktok', ig_caption: 'x' }), tiktokSettingsComplete: true });
-  await userEvent.click(screen.getByRole('button', { name: /Publicar agora/ }));
-  const dialog = await screen.findByRole('alertdialog');
-  expect(within(dialog).getByTestId('tiktok-posting-declaration')).toBeInTheDocument();
-});
+    it('Instagram-only post: no TikTok declaration', () => {
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+      expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+    });
 
-it('shows the panel reason in the Falta line', () => {
-  renderButton({ post: approvedPost({ platform: 'tiktok', scheduled_at: future, tiktok_caption: 'x' }), tiktokSettingsComplete: false, tiktokIncompleteReason: 'Indique se o conteúdo promove você, um terceiro ou ambos.' });
-  expect(screen.getByText(/Falta:/)).toHaveTextContent('Falta: indique se o conteúdo promove você, um terceiro ou ambos');
-});
+    it('publish-now dialog repeats the declaration above Publicar for TikTok', async () => {
+      render(<ScheduleButton post={makePost({ platform: 'tiktok' })} {...defaultProps} tiktokSettingsComplete />);
+      fireEvent.click(screen.getByText('Publicar agora'));
+      const dialog = await screen.findByRole('alertdialog');
+      expect(within(dialog).getByTestId('tiktok-posting-declaration')).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
+    });
 
-it('missing caption names the platform', () => {
-  renderButton({ post: approvedPost({ platform: 'tiktok', scheduled_at: future, ig_caption: null, tiktok_caption: null }), tiktokSettingsComplete: true });
-  expect(screen.getByText(/Falta:/)).toHaveTextContent('legenda do TikTok');
-});
+    it('shows the panel reason in the Falta line, lowercased and without its final period', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete={false}
+          tiktokIncompleteReason="Indique se o conteúdo promove você, um terceiro ou ambos."
+        />,
+      );
+      expect(screen.getByText(/Falta:/)).toHaveTextContent(
+        'Falta: indique se o conteúdo promove você, um terceiro ou ambos',
+      );
+      const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
+      expect(scheduleBtn.getAttribute('title')).toBe('Indique se o conteúdo promove você, um terceiro ou ambos.');
+    });
 
-it('TikTok post: publish button is not Instagram pink', () => {
-  renderButton({ post: approvedPost({ platform: 'tiktok', ig_caption: 'x' }), tiktokSettingsComplete: true });
-  expect(screen.getByRole('button', { name: /Publicar agora/ })).not.toHaveStyle({ background: '#E1306C' });
-});
+    it('missing caption names the platform whose caption is empty', () => {
+      render(
+        <ScheduleButton post={makePost({ platform: 'tiktok', ig_caption: null })} {...defaultProps} tiktokSettingsComplete />,
+      );
+      expect(screen.getByText(/Falta:/)).toHaveTextContent('legenda do TikTok');
+      cleanup();
+      render(
+        <ScheduleButton post={makePost({ platform: 'both', ig_caption: null })} {...defaultProps} tiktokSettingsComplete />,
+      );
+      expect(screen.getByText(/Falta:/)).toHaveTextContent('Falta: legenda');
+      expect(screen.getByText(/Falta:/)).not.toHaveTextContent('legenda do');
+    });
 
-it('TikTok publish-now success toasts the processing notice', async () => {
-  vi.mocked(publishTikTokPostNow).mockResolvedValue({ ok: true, status: 'agendado', message: 'x' } as never);
-  renderButton({ post: approvedPost({ platform: 'tiktok', ig_caption: 'x' }), tiktokSettingsComplete: true });
-  await userEvent.click(screen.getByRole('button', { name: /Publicar agora/ }));
-  await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Publicar' }));
-  await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.'));
-});
+    it('TikTok post: row button, dialog confirm and progress bar use the ink style, never pink', async () => {
+      let resolvePublish: (v: unknown) => void = () => {};
+      vi.mocked(publishTikTokPostNow).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolvePublish = resolve;
+        }) as never,
+      );
+      render(<ScheduleButton post={makePost({ platform: 'tiktok' })} {...defaultProps} tiktokSettingsComplete />);
+      const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+      expect(publishBtn.style.background).toBe('var(--text-main)');
+      expect(publishBtn.style.color).toBe('var(--bg-color)');
 
-it('status row shows the processing notice while TikTok processes', () => {
-  renderButton({ post: approvedPost({ platform: 'tiktok', status: 'agendado', tiktok_publish_status: 'processing' }) });
-  expect(screen.getByText('Processando no TikTok. Pode levar alguns minutos.')).toBeInTheDocument();
-});
+      fireEvent.click(publishBtn);
+      const confirm = await screen.findByRole('button', { name: 'Publicar' });
+      expect(confirm.style.background).toBe('var(--text-main)');
+
+      await act(async () => {
+        fireEvent.click(confirm);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+      const pct = screen.getByText(/\d+%/);
+      const bar = pct.closest('.px-1')!.querySelector('.h-full') as HTMLElement;
+      expect(bar.style.background).toBe('var(--text-main)');
+
+      await act(async () => {
+        resolvePublish({ ok: true, status: 'postado' });
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+    });
+
+    it('Instagram post keeps the pink publish button (unchanged)', () => {
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+      const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+      expect(publishBtn.style.background).toBe('rgb(225, 48, 108)');
+    });
+
+    it('agendado "Publicando…" pill uses the ink style for a TikTok post', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ status: 'agendado', platform: 'tiktok', scheduled_at: '2099-01-01T00:00:00Z', tiktok_publish_status: 'initiated' })}
+          {...defaultProps}
+        />,
+      );
+      const pill = screen.getByText('Publicando…').closest('div')!;
+      expect(pill.style.background).toBe('var(--surface-hover)');
+      expect(pill.style.color).toBe('var(--text-main)');
+    });
+
+    it('TikTok publish-now success toasts the processing notice for both postado and processing', async () => {
+      for (const result of [{ ok: true, status: 'postado' }, { ok: true, status: 'agendado', message: 'x' }]) {
+        vi.mocked(publishTikTokPostNow).mockResolvedValueOnce(result as never);
+        render(<ScheduleButton post={makePost({ platform: 'tiktok' })} {...defaultProps} tiktokSettingsComplete />);
+        fireEvent.click(screen.getByText('Publicar agora'));
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+          await vi.advanceTimersByTimeAsync(1000);
+        });
+        await waitFor(() =>
+          expect(toast.success).toHaveBeenLastCalledWith('Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.'),
+        );
+        expect(toast.info).not.toHaveBeenCalled();
+        cleanup();
+      }
+    });
+
+    it('status row shows the processing notice while TikTok processes', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ status: 'agendado', platform: 'tiktok', tiktok_publish_status: 'processing' })}
+          {...defaultProps}
+        />,
+      );
+      expect(screen.getByText('Processando no TikTok. Pode levar alguns minutos.')).toBeInTheDocument();
+    });
+  });
 ```
 
-If the existing test file stubs timers for the 600 ms delay in `handlePublishNow`, follow that same approach.
+`cleanup` comes from `@testing-library/react` (add it to the `:1` import). jsdom keeps `var(...)` values verbatim on `style.background` and serialises `#E1306C` as `rgb(225, 48, 108)`, which is what the colour assertions rely on.
 
-Where an existing test asserts `toast.success('Post publicado no TikTok!')` or `toast.info(...)` on the TikTok branch, update it to the new string. Where one asserts `'legenda do Instagram'` for a TikTok-only post, update it too.
+Existing tests whose expectations change (update each to the new string; nothing else in them moves):
+- `:603` "platform tiktok calls publishTikTokPostNow, not instagram": `toast.success` is now called with `'Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.'`.
+- `:626` "platform tiktok shows info toast when TikTok is still processing": rename to "…shows the processing notice when TikTok is still processing" and assert `toast.success` with the same sentence instead of `toast.info('TikTok ainda processando.')`.
+- `:654` "platform both calls publishInstagramPostNow THEN publishTikTokPostNow": `toast.success` with `'Enviado ao Instagram e ao TikTok. No TikTok, pode levar alguns minutos para aparecer no perfil.'`.
+- `:881` "disables Agendar/Publicar for platform tiktok until tiktokSettingsComplete is true" keeps passing: `title` stays `'Complete as configurações do TikTok'` when no reason is passed.
+- `:161` "shows missing items hint when caption is empty" is an Instagram post and still reads `legenda do Instagram`.
 
 - [ ] **Step 2: Run and confirm they fail**
 
@@ -2167,19 +2754,30 @@ Expected: the new tests FAIL.
    ```
 
    `PlatformStatusRow` returns a single `div` today. Wrap the chips `div` and this `p` in a fragment.
-9. Tooltip on the disabled buttons. Wrap each of the two action buttons as follows when `tiktokBlockedTitle` is set; otherwise render the bare button. Remove the now-redundant `title` attribute from both buttons.
+9. Tooltip on the disabled buttons (spec A0: the reason is shown two ways). Compute `const tiktokBlockedTitle = targetsTikTok && !tiktokReady ? (tiktokIncompleteReason ?? tiktokIncompleteTooltip ?? 'Complete as configurações do TikTok') : undefined;` (replacing the existing expression at `:550-553`). **Keep** `title={tiktokBlockedTitle}` on both buttons (`:572`, `:582`; `ScheduleButton.test.tsx:881` and `PublicacoesPanel.test.tsx:108` assert it), and additionally wrap each button when `tiktokBlockedTitle` is set:
 
    ```tsx
-   <TooltipProvider><Tooltip><TooltipTrigger asChild><span tabIndex={0}>{button}</span></TooltipTrigger>
-   <TooltipContent>{tiktokIncompleteReason ?? tiktokBlockedTitle}</TooltipContent></Tooltip></TooltipProvider>
+   const withBlockedTooltip = (button: ReactElement) =>
+     tiktokBlockedTitle ? (
+       <TooltipProvider>
+         <Tooltip>
+           <TooltipTrigger asChild>
+             <span tabIndex={0}>{button}</span>
+           </TooltipTrigger>
+           <TooltipContent>{tiktokBlockedTitle}</TooltipContent>
+         </Tooltip>
+       </TooltipProvider>
+     ) : (
+       button
+     );
    ```
 
-   Import from `@/components/ui/tooltip`; check its exports with `grep -n "export" apps/crm/src/components/ui/tooltip.tsx`.
+   and render `{withBlockedTooltip(<Button ...>Agendar…</Button>)}` / `{withBlockedTooltip(<Button ...>Publicar…</Button>)}`. `@/components/ui/tooltip` exports exactly `Tooltip, TooltipTrigger, TooltipContent, TooltipProvider` (`tooltip.tsx:27`); import `type ReactElement` from `react`.
 
 - [ ] **Step 4: Run and confirm it passes**
 
 Run: `npx vitest run apps/crm/src/pages/entregas/components/__tests__/ScheduleButton.test.tsx apps/crm/src/pages/entregas/components/__tests__/PublicacoesPanel.test.tsx`
-Expected: PASS. If `PublicacoesPanel` tests count buttons or text, update them for the new declaration line.
+Expected: PASS with no change to `PublicacoesPanel.test.tsx` (its TikTok post is gated closed, so no declaration renders, and `title` is kept). The Radix Tooltip wrapper renders fine in jsdom: `test/vitest.setup.ts:97` polyfills `ResizeObserver`, and `NotificationBell.test.tsx` already renders `Tooltip` from `@/components/ui/tooltip` without mocks.
 
 - [ ] **Step 5: Commit**
 
@@ -2195,44 +2793,158 @@ git commit -m "feat(tiktok): declaration before every send, neutral TikTok butto
 **Files:**
 - Modify: `apps/crm/src/pages/entregas/components/AutoSchedulePromptDialog.tsx`
 - Modify: `apps/crm/src/pages/entregas/components/AutoScheduleBatchDialog.tsx`
-- Modify the callers that build `AutoSchedulePromptPost`: `apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx` and `apps/crm/src/pages/entregas/views/PostsKanbanView.tsx`
-- Tests: `AutoSchedulePromptDialog.test.tsx`, `AutoScheduleBatchDialog.test.tsx`
+- Modify the caller that builds `AutoSchedulePromptPost` from a `WorkflowPost`: `apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx` (`maybeNudge`, `:207-214`). `PostsKanbanView.tsx` (`:686-691`, `:803-808`) builds it from `ActivePost` (`store/posts.ts:380`), which has no `tiktok_settings`; leave it as is, the branded fallback covers it.
+- Tests: `apps/crm/src/pages/entregas/components/__tests__/AutoSchedulePromptDialog.test.tsx`, `apps/crm/src/pages/entregas/components/__tests__/AutoScheduleBatchDialog.test.tsx`
+
+**Interfaces, consumed:** `TikTokPostingDeclaration` (Task 9), `targetsTikTokService(platform: string | null | undefined): boolean` (`autoScheduleNudge.ts:50`, already imported by `AutoScheduleBatchDialog.tsx:15`).
 
 - [ ] **Step 1: Write the failing tests**
 
-```tsx
-// AutoSchedulePromptDialog.test.tsx
-it('TikTok post: declaration above the confirm button, variant from settings', () => {
-  renderDialog({ post: { id: 1, titulo: 'P', platform: 'tiktok', scheduled_at: future, tiktok_settings: { brand_content_toggle: true } } });
-  expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent('Política de Conteúdo de Marca');
-});
-it('TikTok post without settings: branded variant', () => {
-  renderDialog({ post: { id: 1, titulo: 'P', platform: 'tiktok', scheduled_at: future } });
-  expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent('Política de Conteúdo de Marca');
-});
-it('Instagram post: no declaration', () => {
-  renderDialog({ post: { id: 1, titulo: 'P', platform: 'instagram', scheduled_at: future } });
-  expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
-});
+`AutoSchedulePromptDialog.test.tsx` renders the component directly with `post={{ id, titulo, platform, scheduled_at }}` and a `FUTURE` ISO constant (`:43`, `:64-70`). Append inside its `describe`:
 
-// AutoScheduleBatchDialog.test.tsx
-it('mixed batch with one branded TikTok post: branded variant', async () => {
-  mockWorkflowPosts([
-    approved({ id: 1, platform: 'instagram' }),
-    approved({ id: 2, platform: 'tiktok', tiktok_settings: { brand_content_toggle: false, privacy_level: 'SELF_ONLY' } }),
-    approved({ id: 3, platform: 'both', tiktok_settings: { brand_content_toggle: true, privacy_level: 'PUBLIC_TO_EVERYONE' } }),
-  ]);
-  renderBatch();
-  expect(await screen.findByTestId('tiktok-posting-declaration')).toHaveTextContent('Política de Conteúdo de Marca');
-});
-it('batch with only non-branded TikTok posts: music-only variant', async () => {
-  mockWorkflowPosts([approved({ id: 2, platform: 'tiktok', tiktok_settings: { brand_content_toggle: false } })]);
-  renderBatch();
-  expect(await screen.findByTestId('tiktok-posting-declaration')).not.toHaveTextContent('Política de Conteúdo de Marca');
-});
+```tsx
+  it('TikTok post with settings: music-only declaration above Agendar', () => {
+    render(
+      <AutoSchedulePromptDialog
+        post={{ id: 11, titulo: 'Post A', platform: 'tiktok', scheduled_at: FUTURE, tiktok_settings: { brand_content_toggle: false } }}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    const decl = screen.getByTestId('tiktok-posting-declaration');
+    expect(decl).toHaveTextContent('Ao publicar, você concorda com a Confirmação de Uso de Música do TikTok.');
+    expect(decl).not.toHaveTextContent('Política de Conteúdo de Marca');
+    // Declaration precedes the confirm button in DOM order (spec A3: above the control).
+    const agendar = screen.getByRole('button', { name: /^Agendar$/ });
+    expect(decl.compareDocumentPosition(agendar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('TikTok post with branded settings: branded declaration', () => {
+    render(
+      <AutoSchedulePromptDialog
+        post={{ id: 11, titulo: 'Post A', platform: 'both', scheduled_at: FUTURE, tiktok_settings: { brand_content_toggle: true } }}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent('Política de Conteúdo de Marca');
+  });
+
+  it('TikTok post without settings: branded variant (caller has no settings)', () => {
+    render(
+      <AutoSchedulePromptDialog
+        post={{ id: 11, titulo: 'Post A', platform: 'tiktok', scheduled_at: FUTURE }}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent('Política de Conteúdo de Marca');
+  });
+
+  it('Instagram post: no declaration', () => {
+    render(
+      <AutoSchedulePromptDialog
+        post={{ id: 11, titulo: 'Post A', platform: 'instagram', scheduled_at: FUTURE }}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+  });
 ```
 
-Match the helper names (`renderDialog`, `renderBatch`, `mockWorkflowPosts`, `approved`, `future`) to what each test file already defines. Add any that are missing at the top of that file.
+`AutoScheduleBatchDialog.test.tsx` wraps in a `QueryClientProvider` via `wrap(...)` (`:30-33`), feeds posts through `getWorkflowPosts.mockResolvedValue([...])` with `status: 'aprovado_cliente'` and `scheduled_at: future(n)` (`:26`, `:97-112`). Append inside its `describe`:
+
+```tsx
+  const batchDialog = () => (
+    <AutoScheduleBatchDialog
+      workflowId={7}
+      tiktokFeatureEnabled
+      isFinalApprovalCycle
+      onClose={vi.fn()}
+      onScheduled={vi.fn()}
+    />
+  );
+
+  it('mixed batch with one branded TikTok post: branded declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      { id: 1, titulo: 'A', status: 'aprovado_cliente', platform: 'instagram', scheduled_at: future(3) },
+      {
+        id: 2,
+        titulo: 'B',
+        status: 'aprovado_cliente',
+        platform: 'tiktok',
+        scheduled_at: future(4),
+        tiktok_settings: { brand_content_toggle: false, privacy_level: 'SELF_ONLY' },
+      },
+      {
+        id: 3,
+        titulo: 'C',
+        status: 'aprovado_cliente',
+        platform: 'both',
+        scheduled_at: future(5),
+        tiktok_settings: { brand_content_toggle: true, privacy_level: 'PUBLIC_TO_EVERYONE' },
+      },
+    ]);
+    wrap(batchDialog());
+    expect(await screen.findByTestId('tiktok-posting-declaration')).toHaveTextContent('Política de Conteúdo de Marca');
+  });
+
+  it('batch whose TikTok posts are all non-branded: music-only declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      { id: 1, titulo: 'A', status: 'aprovado_cliente', platform: 'instagram', scheduled_at: future(3) },
+      {
+        id: 2,
+        titulo: 'B',
+        status: 'aprovado_cliente',
+        platform: 'tiktok',
+        scheduled_at: future(4),
+        tiktok_settings: { brand_content_toggle: false },
+      },
+    ]);
+    wrap(batchDialog());
+    const decl = await screen.findByTestId('tiktok-posting-declaration');
+    expect(decl).toHaveTextContent('Confirmação de Uso de Música');
+    expect(decl).not.toHaveTextContent('Política de Conteúdo de Marca');
+  });
+
+  it('TikTok post with no settings in the batch: branded declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      { id: 2, titulo: 'B', status: 'aprovado_cliente', platform: 'tiktok', scheduled_at: future(4) },
+    ]);
+    wrap(batchDialog());
+    expect(await screen.findByTestId('tiktok-posting-declaration')).toHaveTextContent('Política de Conteúdo de Marca');
+  });
+
+  it('Instagram-only batch: no declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      { id: 1, titulo: 'A', status: 'aprovado_cliente', platform: 'instagram', scheduled_at: future(3) },
+    ]);
+    wrap(batchDialog());
+    await screen.findByRole('button', { name: /Agendar 1 post/ });
+    expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+  });
+
+  it('TikTok posts blocked by the missing add-on do not trigger the declaration', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      { id: 1, titulo: 'A', status: 'aprovado_cliente', platform: 'instagram', scheduled_at: future(3) },
+      { id: 2, titulo: 'B', status: 'aprovado_cliente', platform: 'tiktok', scheduled_at: future(4) },
+    ]);
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled={false}
+        isFinalApprovalCycle
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    await screen.findByRole('button', { name: /Agendar 1 post/ });
+    expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+  });
+```
+
+The last test pins the declaration to `eligible` (what the confirm button actually sends), not to every approved post: with the add-on off, TikTok posts land in `tiktokBlocked` (`AutoScheduleBatchDialog.tsx:111`) and are not sent.
 
 - [ ] **Step 2: Run and confirm they fail**
 
@@ -2257,7 +2969,7 @@ Expected: FAIL.
           )}
   ```
 
-- Import `targetsTikTokService` from `../autoScheduleNudge` and check its signature (`grep -n "export function targetsTikTokService" -A5 apps/crm/src/pages/entregas/autoScheduleNudge.ts`). If it takes a post rather than a platform, pass `post`.
+- Import `targetsTikTokService` from `../autoScheduleNudge` (it takes the platform string, `autoScheduleNudge.ts:50`) and `TikTokPostingDeclaration` from `./TikTokPostingDeclaration`.
 
 `AutoScheduleBatchDialog.tsx`, before `<AlertDialogFooter>`:
 
@@ -2269,13 +2981,13 @@ Expected: FAIL.
             (p) => p.tiktok_settings == null ||
               (p.tiktok_settings as { brand_content_toggle?: boolean }).brand_content_toggle === true,
           );
-          return <TikTokPostingDeclaration brandedContent={branded ? true : false} />;
+          return <TikTokPostingDeclaration brandedContent={branded} className="mb-2" />;
         })()}
 ```
 
-`eligible` is the existing list of posts that the confirm button schedules. Use that variable name, or adapt it if it differs.
+`eligible` (`AutoScheduleBatchDialog.tsx:105`) is the list the confirm button schedules (`:126`); `tiktokBlocked` posts are excluded on purpose, see the last test. Import `TikTokPostingDeclaration` from `./TikTokPostingDeclaration`.
 
-Callers: in `WorkflowDrawer.tsx` and `PostsKanbanView.tsx`, find where the `AutoSchedulePromptPost` object is built (`grep -n "titulo:" ...` near `AutoSchedulePromptDialog`). Add `tiktok_settings: <sourcePost>.tiktok_settings` where the source object has it. Leave it out where the source lacks it; the branded fallback covers that case.
+Caller: in `WorkflowDrawer.tsx` `maybeNudge` (`:207-214`), add `tiktok_settings: updated.tiktok_settings,` after `scheduled_at`. `PostsKanbanView.tsx` is not changed (see Files).
 
 - [ ] **Step 4: Run and confirm it passes**
 
@@ -2284,7 +2996,7 @@ Same command, plus `npx vitest run apps/crm/src/pages/entregas`. Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/crm/src/pages/entregas/components/AutoSchedulePromptDialog.tsx apps/crm/src/pages/entregas/components/AutoScheduleBatchDialog.tsx apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx apps/crm/src/pages/entregas/views/PostsKanbanView.tsx apps/crm/src/pages/entregas/components/__tests__/AutoSchedulePromptDialog.test.tsx apps/crm/src/pages/entregas/components/__tests__/AutoScheduleBatchDialog.test.tsx
+git add apps/crm/src/pages/entregas/components/AutoSchedulePromptDialog.tsx apps/crm/src/pages/entregas/components/AutoScheduleBatchDialog.tsx apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx apps/crm/src/pages/entregas/components/__tests__/AutoSchedulePromptDialog.test.tsx apps/crm/src/pages/entregas/components/__tests__/AutoScheduleBatchDialog.test.tsx
 git commit -m "feat(tiktok): posting declaration in the auto-schedule dialogs"
 ```
 
@@ -2295,39 +3007,83 @@ git commit -m "feat(tiktok): posting declaration in the auto-schedule dialogs"
 **Files:**
 - Modify: `apps/crm/src/pages/cliente-detalhe/ClienteDetalheIndexRedirect.tsx`
 - Modify: `apps/crm/src/pages/cliente-detalhe/tabs/RedesSociaisTab.tsx` (effect at lines 72-97)
-- Modify: `apps/crm/src/services/tiktok.ts` (`getTikTokAuthUrl`)
+- Modify: `apps/crm/src/services/tiktok.ts` (`getTikTokAuthUrl`, `:114-125`)
+- Modify: `apps/crm/src/lib/analytics.ts` (`AnalyticsEvent` closed union, `:9`): add `| 'tiktok_connected'` right after `| 'instagram_connected'` (`:17`), with the comment `// TikTok activation milestone: fired once by RedesSociaisTab when the OAuth callback lands with tt_connected=1.`
 - Modify: `packages/i18n/locales/pt/clients.json` and `packages/i18n/locales/en/clients.json` (`detail.ttConnected`)
-- Tests: `apps/crm/src/pages/cliente-detalhe/__tests__/` (find the redirect test with `grep -rln ClienteDetalheIndexRedirect apps/crm/src`), `apps/crm/src/pages/cliente-detalhe/tabs/__tests__/RedesSociaisTab.test.tsx`, `apps/crm/src/services/__tests__/tiktok.test.ts`
+- Tests: `apps/crm/src/pages/cliente-detalhe/__tests__/ClienteDetalhePage.test.tsx` (redirect, `:200-210`), `apps/crm/src/pages/cliente-detalhe/tabs/__tests__/RedesSociaisTab.test.tsx`, `apps/crm/src/services/__tests__/tiktok.test.ts`
 
 - [ ] **Step 1: Write the failing tests**
 
+Redirect (`ClienteDetalhePage.test.tsx:200`): add `'tt_connected'` to the existing `it.each` list so it reads `it.each(['ig_connected', 'ig_error', 'tt_error', 'tt_connected'])`. Nothing else changes there.
+
+`RedesSociaisTab.test.tsx` already mocks `@/lib/analytics` as `captureEventMock` (`:16-17`) and `sonner` with `{ info, error }` only (`:40-44`). Extend the sonner mock:
+
 ```tsx
-// redirect test
-it('tt_connected routes to redes-sociais', () => {
-  renderAt('/clientes/7?tt_connected=1');
-  expect(currentPath()).toBe('/clientes/7/redes-sociais?tt_connected=1');
-});
-
-// RedesSociaisTab.test.tsx
-it('tt_connected: toasts, captures tiktok_connected and strips the param in one update', async () => {
-  renderTabAt('/clientes/7/redes-sociais?tt_connected=1&foo=bar');
-  await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Conta do TikTok conectada.'));
-  expect(captureEvent).toHaveBeenCalledWith('tiktok_connected', { cliente_id: 7 });
-  await waitFor(() => expect(currentSearch()).toBe('?foo=bar'));
-});
-
-// services/__tests__/tiktok.test.ts
-it('getTikTokAuthUrl: feature_disabled -> plan message', async () => {
-  mockFetchOnce(403, { error: 'feature_disabled' });
-  await expect(getTikTokAuthUrl(1)).rejects.toThrow('O TikTok não está disponível no seu plano.');
-});
-it('getTikTokAuthUrl: { error: true, message } uses the message', async () => {
-  mockFetchOnce(500, { error: true, message: 'Falha X' });
-  await expect(getTikTokAuthUrl(1)).rejects.toThrow('Falha X');
-});
+const { toastInfoMock, toastErrorMock, toastSuccessMock } = vi.hoisted(() => ({
+  toastInfoMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
+}));
+vi.mock('sonner', () => ({
+  toast: { info: toastInfoMock, error: toastErrorMock, success: toastSuccessMock },
+}));
 ```
 
-Match the helper names to each file's existing helpers (render-at-route, mocked `toast` and `captureEvent`, fetch mock). If `RedesSociaisTab.test.tsx` doesn't mock `@/lib/analytics`, add `vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }))`.
+and add to the `'OAuth callback processing'` describe (it renders with `renderTab(path)` and reads the URL through `screen.getByTestId('search')`; i18n is real in this suite, the existing `tt_error` test asserts the resolved pt string):
+
+```tsx
+    it('tt_connected=1: toasts success, captures tiktok_connected once and strips the param', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      mockFeatures = { feature_tiktok: true };
+      getTikTokSummaryMock.mockResolvedValue(null);
+      renderTab('/clientes/42/redes-sociais?tt_connected=1&tab=redes');
+
+      await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('Conta do TikTok conectada.'));
+      expect(captureEventMock).toHaveBeenCalledWith('tiktok_connected', { cliente_id: 42 });
+      expect(captureEventMock).toHaveBeenCalledTimes(1);
+      expect(toastErrorMock).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent('?tab=redes'));
+    });
+
+    it('tt_connected with any other value: no toast, no event, param still stripped', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      renderTab('/clientes/42/redes-sociais?tt_connected=0');
+
+      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(''));
+      expect(toastSuccessMock).not.toHaveBeenCalled();
+      expect(captureEventMock).not.toHaveBeenCalled();
+    });
+```
+
+Also extend the `'does not process anything on an ordinary visit'` test (`:247-256`) with `expect(toastSuccessMock).not.toHaveBeenCalled();`.
+
+`services/__tests__/tiktok.test.ts` has `jsonResponse(body, { status, ok })` and `invalidJsonResponse()` helpers (`:26-41`). Add after the existing auth-url error tests (`:139-152`):
+
+```ts
+  it('getTikTokAuthUrl: feature_disabled maps to the plan message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: 'feature_disabled' }, { status: 403, ok: false }),
+    );
+    await expect(getTikTokAuthUrl(7)).rejects.toThrow('O TikTok não está disponível no seu plano.');
+  });
+
+  it('getTikTokAuthUrl: { error: true, message } surfaces the message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: true, message: 'Falha X' }, { status: 500, ok: false }),
+    );
+    await expect(getTikTokAuthUrl(7)).rejects.toThrow('Falha X');
+  });
+
+  // Spec B2: "otherwise it uses typeof data.error === 'string' ? data.error : data.message".
+  it('getTikTokAuthUrl: a string error code other than feature_disabled is surfaced as the message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: 'client_not_found' }, { status: 404, ok: false }),
+    );
+    await expect(getTikTokAuthUrl(7)).rejects.toThrow('client_not_found');
+  });
+```
+
+Existing test whose expectation changes: `:149-152` "falls back to a generic message when the error body is not valid JSON" now expects `'Erro ao gerar o link de conexão do TikTok.'` (the English `'Error generating auth url'` fallback is replaced). `:139-146` (`{ message }` body) keeps passing.
 
 - [ ] **Step 2: Run and confirm they fail**
 
@@ -2336,7 +3092,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement**
 
-`ClienteDetalheIndexRedirect.tsx`: the `hasOAuthCallback` condition adds `|| params.has('tt_connected')`. Update the doc comment's param list.
+`ClienteDetalheIndexRedirect.tsx`: the `hasOAuthCallback` condition (`:19-20`) adds `|| params.has('tt_connected')`. Add `tt_connected` to the doc comment's param list (`:5`).
 
 `RedesSociaisTab.tsx`, inside the existing effect:
 
@@ -2352,9 +3108,10 @@ Expected: FAIL.
     next.delete('tt_connected');
 ```
 
-- Add `clienteId` to the effect's dependency array.
-- Import `captureEvent` from `@/lib/analytics`.
+- The effect's dependency array (`:97`) becomes `[searchParams, setSearchParams, t, clienteId]`.
+- Import `captureEvent` from `@/lib/analytics` (the `'tiktok_connected'` member is added to `AnalyticsEvent` in this same task, see Files).
 - Extend the module doc comment's param list with `tt_connected`.
+- The server side of B1 (the `?tt_connected=1` redirect in `tiktok-integration/handlers.ts` `handleCallback`, today a bare `/clientes/{id}`) is Task 7 in the backend lane. This task is testable on its own because the tests drive the URL directly; the end-to-end connect flow only works once both lanes are merged (Execution order step 4).
 
 i18n:
 - pt `detail.ttConnected`: `"Conta do TikTok conectada."`
@@ -2373,6 +3130,8 @@ i18n:
   }
 ```
 
+(`data` is the parsed body, typed `Record<string, unknown>`; narrow `data.message` with `typeof data.message === 'string' ? data.message : undefined` if tsc complains.)
+
 - [ ] **Step 4: Run and confirm it passes**
 
 Same command. Expected: PASS.
@@ -2380,7 +3139,7 @@ Same command. Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/crm/src/pages/cliente-detalhe apps/crm/src/services/tiktok.ts apps/crm/src/services/__tests__/tiktok.test.ts packages/i18n/locales/pt/clients.json packages/i18n/locales/en/clients.json
+git add apps/crm/src/pages/cliente-detalhe apps/crm/src/lib/analytics.ts apps/crm/src/services/tiktok.ts apps/crm/src/services/__tests__/tiktok.test.ts packages/i18n/locales/pt/clients.json packages/i18n/locales/en/clients.json
 git commit -m "fix(tiktok): connect lands on Redes sociais with a toast; clear auth-url errors"
 ```
 
@@ -2389,22 +3148,28 @@ git commit -m "fix(tiktok): connect lands on Redes sociais with a toast; clear a
 ### Task 14: Remove the "TikTok · Em breve" analytics nav item (B4)
 
 **Files:**
-- Modify: `apps/crm/src/components/layout/nav-data.ts:174-181` and the comment at line ~250
-- Modify: `apps/crm/src/components/layout/__tests__/nav-data.test.ts` (lines ~125 and ~142)
-- Modify: `packages/i18n/locales/pt/common.json`, `packages/i18n/locales/en/common.json`: remove `nav.tiktok` (line ~22; its only user is `nav-data.ts:178`). Keep `sidebar.comingSoon` and the generic disabled branch in `Sidebar.tsx` / `MobileNav.tsx`.
+- Modify: `apps/crm/src/components/layout/nav-data.ts:174-181` (the `analytics-tiktok` item) and the comment at `:250`
+- Modify: `apps/crm/src/components/layout/__tests__/nav-data.test.ts` (comment `:125`, agent id list `:142`)
+- Modify: `packages/i18n/locales/pt/common.json:22`, `packages/i18n/locales/en/common.json:22`: remove `nav.tiktok` (its only user is `nav-data.ts:178`; confirm with `grep -rn "nav.tiktok" apps packages --include=*.ts --include=*.tsx`). Keep `sidebar.comingSoon` and the generic disabled branch in `Sidebar.tsx` / `MobileNav.tsx`.
 
 - [ ] **Step 1: Update the test first**
 
-In `nav-data.test.ts`, remove `'analytics-tiktok'` from the id lists, and add:
+In `nav-data.test.ts`:
+- Delete the `'analytics-tiktok',` line from the agent id list (`:142`) in "shows exactly the agent-visible id set, in declaration order".
+- In the comment at `:125`, change `(dashboard, analytics-tiktok,` to `(dashboard,`.
+- Add, using the file's existing `ids` helper, `getNavGroups` import and `ownerCan` (`:1-11`):
 
 ```ts
-it('has no TikTok analytics placeholder', () => {
-  const ids = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id));
-  expect(ids).not.toContain('analytics-tiktok');
+describe('TikTok analytics placeholder', () => {
+  it('is gone for every role (spec B4)', () => {
+    expect(ids(getNavGroups(null, 'owner', ownerCan))).not.toContain('analytics-tiktok');
+    expect(ids(getNavGroups(null, 'agent', agentCan))).not.toContain('analytics-tiktok');
+    expect(ids(getMoreSheetGroups(null, 'owner', ownerCan))).not.toContain('analytics-tiktok');
+  });
 });
 ```
 
-Use the file's actual export name for the groups (check the existing imports at the top of the test).
+`getMoreSheetGroups` takes the same `(features, workspaceRole, can)` triple as `getNavGroups` (`nav-data.ts:343-346`; the test already calls it that way at `:108`).
 
 - [ ] **Step 2: Run and confirm it fails**
 
@@ -2413,7 +3178,7 @@ Expected: the new test FAILS.
 
 - [ ] **Step 3: Implement**
 
-Delete the `analytics-tiktok` item, remove `analytics-tiktok` from the comment at line ~250, and remove `nav.tiktok` from both `common.json` files.
+Delete the `analytics-tiktok` item (`nav-data.ts:174-181`), change `politica-de-privacidade, analytics-tiktok)` to `politica-de-privacidade)` in the comment at `:250`, and remove the `"tiktok": "TikTok",` line from `nav` in both `common.json` files (`:22`). Check `Sidebar.tsx` / `MobileNav.tsx` still compile (the generic `disabled` branch stays; only the item goes).
 
 - [ ] **Step 4: Run and confirm it passes**
 
@@ -2432,10 +3197,11 @@ git commit -m "chore(nav): remove the TikTok 'Em breve' analytics placeholder"
 
 ### Task 15: Gates, browser verification, PR, deploy checklist
 
-- [ ] **Step 1: Frontend gates** (after `npm ci`)
+Precondition: Execution order step 4 is done in the main worktree (`git merge --no-ff feat/tiktok-audit-readiness-backend`, `git worktree remove .../new-session-3cb9fe-backend`, `git branch -d feat/tiktok-audit-readiness-backend`, `npm ci`). `git worktree list` must no longer show the backend path and `git log --oneline -1` must be the merge commit.
+
+- [ ] **Step 1: Frontend gates**
 
 ```bash
-npm ci
 npm run lint
 npm run format:check
 npx tsc -p apps/crm/tsconfig.json --noEmit
@@ -2448,6 +3214,8 @@ npm run test
 Expected: all green. If `format:check` fails, run `npm run format` and commit.
 
 - [ ] **Step 2: Backend gates (last), then restore `node_modules`**
+
+The backend lane already ran these per file in its own worktree; this is the full-suite pass on the merged tree, and it is the one `deno` run the main worktree ever sees.
 
 ```bash
 npm run check:functions
@@ -2498,7 +3266,7 @@ No migrations.
 - [ ] vitest, tsc x4, lint, format
 - [ ] check:functions, test:functions
 - [ ] browser walk of C2 steps 3-5 with stubbed creator-info (light/dark, drawer, 390px)
-- [ ] owner: verify /@user/photo/{id} on a real photo post (revert buildTikTokPostUrl's photo branch if it 404s)
+- [ ] owner pre-deploy gate: /@user/photo/{id} verified on a real photo post (Task 15 Step 5)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -2507,6 +3275,7 @@ EOF
 
 - [ ] **Step 5: Hand the owner the deploy and demo checklist. Do not run it without explicit approval.**
 
+- **Pre-deploy owner gate: the `/photo/` URL.** Before any prod deploy, the owner opens a real TikTok photo post of the sandbox account and confirms `https://www.tiktok.com/@{user}/photo/{publish_id}` resolves (Task 6 switches `buildTikTokPostUrl` to that shape for photos). If it 404s, revert the photo branch of `buildTikTokPostUrl` to `/video/` in a follow-up commit (update the Task 6 photo test expectation back to `/video/`) **before** deploying; the PR test-plan checkbox above is this gate.
 - **Deploy the edge functions to prod** in the table order, using `--use-api` (memory) and the explicit `--project-ref skjzpekeqefvlojenfsw`. Ask before each prod deploy.
 - **Spec C1:**
   - DK TESTE overrides
