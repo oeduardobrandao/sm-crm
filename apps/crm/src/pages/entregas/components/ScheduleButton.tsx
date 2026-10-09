@@ -161,6 +161,8 @@ interface ScheduleButtonProps {
    * compact calendar panel) point the user elsewhere instead of the default
    * "Complete as configurações do TikTok", which implies a settings panel that isn't there. */
   tiktokIncompleteTooltip?: string;
+  /** The panel's readiness `reason` (spec A0). Accepted here; wired in a follow-up task. */
+  tiktokIncompleteReason?: string;
   /** Fired when a schedule/publish-now/retry attempt's error message contains the exact
    * unaudited-mode 422 string, so the parent can flip `TikTokSettingsPanel`'s
    * `showTestModeBanner` prop. */
