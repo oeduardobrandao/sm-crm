@@ -122,9 +122,16 @@ describe('Home, Pauta look', () => {
     expect(screen.getByText('02 · Calendário')).toBeInTheDocument();
     expect(screen.getByText('03 · Recursos')).toBeInTheDocument();
     expect(screen.getByText('Esperando você')).toBeInTheDocument();
-    const review = screen.getAllByRole('link', { name: 'Revisar' });
+    const review = screen.getAllByRole('link', { name: /^Revisar: / });
     expect(review).toHaveLength(2);
-    expect(review[0]).toHaveAttribute('href', '/mesaas/hub/tk/aprovacoes/1');
+    expect(screen.getByRole('link', { name: 'Revisar: A' })).toHaveAttribute(
+      'href',
+      '/mesaas/hub/tk/aprovacoes/1',
+    );
+    expect(screen.getByRole('link', { name: 'Revisar: B' })).toHaveAttribute(
+      'href',
+      '/mesaas/hub/tk/aprovacoes/2',
+    );
     expect(screen.getByRole('link', { name: /Ver todas/ })).toHaveAttribute(
       'href',
       '/mesaas/hub/tk/aprovacoes',
@@ -219,7 +226,7 @@ describe('Home, Pauta look', () => {
     renderHome();
     const card = (await screen.findByText('01 · Aprovações')).closest('section') as HTMLElement;
     const hrefs = within(card)
-      .getAllByRole('link', { name: 'Revisar' })
+      .getAllByRole('link', { name: /^Revisar: / })
       .map((a) => a.getAttribute('href'));
     expect(hrefs).toEqual([
       '/mesaas/hub/tk/aprovacoes/4',
@@ -291,7 +298,7 @@ describe('DashboardSection sectionNumber', () => {
   it('renders a numbered Results header when given a number', async () => {
     renderWithHub(<RealDashboard sectionNumber={5} />);
     expect(await screen.findByText('05 · Resultados')).toHaveClass('hub-eyebrow');
-    expect(screen.getByRole('heading', { level: 3, name: 'Desempenho' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Desempenho' })).toBeInTheDocument();
   });
 
   it('keeps the classic h2 header without a number', async () => {

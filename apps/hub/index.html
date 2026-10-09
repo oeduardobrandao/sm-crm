@@ -402,6 +402,14 @@
       .hub-root[data-hub-look='pauta'] .hub-card {
         box-shadow: var(--hub-shadow-card);
       }
+      /* Same specificity as the rule above and later in the file, so without this the
+         resting-shadow override would cancel the classic hover lift. On dark, the
+         warm low-alpha shadow is imperceptible against the surface, as in classic. */
+      .hub-root[data-hub-look='pauta'] .hub-card-hover:hover {
+        box-shadow:
+          0 1px 0 rgba(0, 0, 0, 0.02),
+          0 6px 16px -8px rgba(28, 25, 23, 0.08);
+      }
       /* :not(.rounded-full) keeps the circular counters, monogram and icon buttons
          that also carry hub-btn-primary round in every radius preset. */
       .hub-root[data-hub-look='pauta']

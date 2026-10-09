@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { pad2 } from '../pages/home/pautaHome';
+import { pad2 } from '../lib/pad2';
 
 export function SectionHeader({
   number,
@@ -18,9 +18,9 @@ export function SectionHeader({
         <div className="hub-eyebrow">
           {pad2(number)} · {label}
         </div>
-        <h3 className="font-display hub-display-title text-[20px] leading-tight tracking-tight hub-txt mt-2">
+        <h2 className="font-display hub-display-title text-[20px] leading-tight tracking-tight hub-txt mt-2">
           {title}
-        </h3>
+        </h2>
       </div>
       {action}
     </div>

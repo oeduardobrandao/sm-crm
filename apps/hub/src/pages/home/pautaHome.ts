@@ -48,4 +48,4 @@ export function numberSections(hasPending: boolean, hasAgenda: boolean) {
   return { approvals, calendar, agenda, resources, results };
 }
 
-export const pad2 = (n: number) => String(n).padStart(2, '0');
+export { pad2 } from '../../lib/pad2';

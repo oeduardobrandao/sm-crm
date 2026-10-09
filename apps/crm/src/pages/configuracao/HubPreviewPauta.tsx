@@ -19,7 +19,7 @@ export function PautaPreviewGreeting({ dims }: { dims: PreviewDims }) {
       <div
         style={{
           fontFamily: 'var(--hub-font-display)',
-          fontWeight: 'var(--hub-display-weight)' as unknown as number,
+          fontWeight: 'var(--hub-display-weight)',
           fontSize: dims.greetingFont,
           lineHeight: 1.2,
           color: 'var(--hub-txt)',

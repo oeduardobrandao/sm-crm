@@ -416,6 +416,34 @@ describe('HubTab — Personalizar Hub', () => {
     expect(screen.getByTestId('hub-preview-stub')).toHaveAttribute('data-look', 'classic');
   });
 
+  it('keeps the stored Assinatura pair offered after picking another pair (flag off)', async () => {
+    mockEntitlements = {
+      hasFeature: () => true,
+      isLoading: false,
+      features: { feature_brand_customization: true },
+    };
+    storeMock.getHubBranding.mockResolvedValue({
+      brand_color: '#111111',
+      hub_surface_theme: 'neutral',
+      hub_font_display: 'bricolage-grotesque',
+      hub_font_body: 'figtree',
+      hub_radius: 'soft',
+      hub_card_style: 'filled',
+      hub_logo_style: 'round',
+      hub_logo_dark_url: null,
+      hub_hide_branding: false,
+      hub_default_appearance: 'light',
+    });
+    renderTab();
+    const group = await screen.findByRole('group', { name: 'Combinações de fontes sugeridas' });
+    await waitFor(() => expect(getHexInput()).toHaveValue('#111111'));
+    expect(within(group).getByRole('button', { name: /assinatura/i })).toBeInTheDocument();
+
+    fireEvent.click(within(group).getByRole('button', { name: /editorial/i }));
+
+    expect(within(group).getByRole('button', { name: /assinatura/i })).toBeInTheDocument();
+  });
+
   it('the surface theme picker is an accessible group', async () => {
     renderTab();
     await waitFor(() => {

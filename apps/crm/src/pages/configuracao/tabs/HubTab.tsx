@@ -59,6 +59,7 @@ import { HubPreview, HUB_DISPLAY_FONTS, HUB_BODY_FONTS, type HubPreviewDraft } f
 import {
   PALETTES,
   HUB_FONT_PAIRINGS,
+  PAUTA_FONTS,
   hubFontOptions,
   resolveHubTheme,
   relativeLuminance,
@@ -474,9 +475,7 @@ function FontPairingCards({
             </span>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)' }}>
               {pairing.label}
-              {defaultLabel && pairing.display === 'bricolage-grotesque'
-                ? ` · ${defaultLabel}`
-                : ''}
+              {defaultLabel && pairing.display === PAUTA_FONTS.display ? ` · ${defaultLabel}` : ''}
             </span>
             <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
               {displayFont?.label} · {bodyFont?.label}
@@ -716,7 +715,12 @@ export default function HubTab() {
   const [fontBody, setFontBody] = useState('instrument-sans');
   // Never hasFeature here: it treats a missing key as on (useEntitlements.ts:16).
   const pauta = !entitlementsLoading && features?.feature_hub_pauta === true;
-  const fontOptions = hubFontOptions(pauta, { display: fontDisplay, body: fontBody });
+  // Keyed on the STORED pair, not the draft: the carve-out is for what the workspace
+  // already has, so picking another pair must not make Assinatura vanish mid-edit.
+  const fontOptions = hubFontOptions(pauta, {
+    display: branding?.hub_font_display ?? fontDisplay,
+    body: branding?.hub_font_body ?? fontBody,
+  });
   const [logoStyle, setLogoStyle] = useState('round');
   const [defaultAppearance, setDefaultAppearance] = useState('light');
   const [hideBranding, setHideBranding] = useState(false);

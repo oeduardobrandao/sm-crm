@@ -69,6 +69,9 @@ export function WaitingSection({
               </span>
               <Link
                 to={`${base}/aprovacoes/${p.id}`}
+                aria-label={
+                  p.titulo ? `${t('home.pauta.waiting.review', 'Revisar')}: ${p.titulo}` : undefined
+                }
                 className="hub-btn-secondary h-9 px-3 inline-flex items-center text-[13px] font-semibold shrink-0"
               >
                 {t('home.pauta.waiting.review', 'Revisar')}
