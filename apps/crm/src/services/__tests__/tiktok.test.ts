@@ -146,7 +146,29 @@ describe('tiktok service', () => {
 
   it('falls back to a generic message when the error body is not valid JSON', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(invalidJsonResponse());
-    await expect(getTikTokAuthUrl(7)).rejects.toThrow('Error generating auth url');
+    await expect(getTikTokAuthUrl(7)).rejects.toThrow('Erro ao gerar o link de conexão do TikTok.');
+  });
+
+  it('getTikTokAuthUrl: feature_disabled maps to the plan message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: 'feature_disabled' }, { status: 403, ok: false }),
+    );
+    await expect(getTikTokAuthUrl(7)).rejects.toThrow('O TikTok não está disponível no seu plano.');
+  });
+
+  it('getTikTokAuthUrl: { error: true, message } surfaces the message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: true, message: 'Falha X' }, { status: 500, ok: false }),
+    );
+    await expect(getTikTokAuthUrl(7)).rejects.toThrow('Falha X');
+  });
+
+  // Spec B2: "otherwise it uses typeof data.error === 'string' ? data.error : data.message".
+  it('getTikTokAuthUrl: a string error code other than feature_disabled is surfaced as the message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: 'client_not_found' }, { status: 404, ok: false }),
+    );
+    await expect(getTikTokAuthUrl(7)).rejects.toThrow('client_not_found');
   });
 
   it('maps TOKEN_EXPIRED on sync to a typed error for callers to catch', async () => {

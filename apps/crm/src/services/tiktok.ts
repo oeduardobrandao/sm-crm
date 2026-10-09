@@ -117,7 +117,11 @@ export async function getTikTokAuthUrl(clientId: number): Promise<string> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.message || 'Error generating auth url');
+    if (data.error === 'feature_disabled') {
+      throw new Error('O TikTok não está disponível no seu plano.');
+    }
+    const message = typeof data.error === 'string' ? data.error : data.message;
+    throw new Error(message || 'Erro ao gerar o link de conexão do TikTok.');
   }
 
   const data = await res.json();

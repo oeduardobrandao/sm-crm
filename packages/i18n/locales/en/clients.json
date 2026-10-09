@@ -164,6 +164,7 @@
     "igOffMetaStep3": "Open \"Manage future activity\" and enable \"Connect future activity\".",
     "igOffMetaStep4": "Wait a few minutes and try connecting Instagram again.",
     "igOffMetaOk": "Got it",
+    "ttConnected": "TikTok account connected.",
     "ttError": "There was an error connecting the TikTok account. Please try again.",
     "ttSyncing": "Syncing TikTok data...",
     "noTitle": "Untitled",

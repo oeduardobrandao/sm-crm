@@ -15,6 +15,8 @@ export type AnalyticsEvent =
   // leg redirects to /clientes/:id with no marker to key off (instagram-integration/index.ts).
   | 'instagram_connect_started'
   | 'instagram_connected'
+  // TikTok activation milestone: fired once by RedesSociaisTab when the OAuth callback lands with tt_connected=1.
+  | 'tiktok_connected'
   | 'workflow_created'
   | 'workflow_wizard_source'
   | 'workflow_saved_as_template'

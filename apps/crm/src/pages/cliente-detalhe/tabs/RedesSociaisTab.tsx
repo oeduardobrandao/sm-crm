@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { getInstagramSummary, syncInstagramData } from '@/services/instagram';
 import { useInstagramActivationEvent } from '@/hooks/useInstagramActivationEvent';
+import { captureEvent } from '@/lib/analytics';
 import { resolveIgError } from '@/lib/instagram-oauth-errors';
 import { InstagramSection } from '../components/InstagramSection';
 import { AutomationContactsSection } from '../components/AutomationContactsSection';
@@ -30,7 +31,7 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  * whatever TikTokSection fires internally (`ttSummary`, gated by
  * `feature_tiktok`) — never Entregas/Hub/Financeiro/dates/addresses queries.
  *
- * OAuth params (`ig_connected`, `ig_error`, `tt_error`): historically this
+ * OAuth params (`ig_connected`, `ig_error`, `tt_error`, `tt_connected`): historically this
  * page mixed two mechanisms — `useInstagramActivationEvent` already used
  * React Router's `useSearchParams` for `ig_connected`, while a second,
  * separate effect used raw `window.history.replaceState` for `ig_error`/
@@ -76,7 +77,8 @@ export default function RedesSociaisTab() {
     const igConnected = searchParams.get('ig_connected');
     const igError = searchParams.get('ig_error');
     const ttError = searchParams.get('tt_error');
-    if (!igConnected && !igError && !ttError) return;
+    const ttConnected = searchParams.get('tt_connected');
+    if (!igConnected && !igError && !ttError && !ttConnected) return;
     processedOAuthParams.current = true;
 
     const action = resolveIgError(igError);
@@ -89,13 +91,18 @@ export default function RedesSociaisTab() {
     if (ttError === '1') {
       toast.error(t('detail.ttError'));
     }
+    if (ttConnected === '1') {
+      toast.success(t('detail.ttConnected'));
+      captureEvent('tiktok_connected', { cliente_id: clienteId });
+    }
 
     const next = new URLSearchParams(searchParams);
     next.delete('ig_connected');
     next.delete('ig_error');
     next.delete('tt_error');
+    next.delete('tt_connected');
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, t]);
+  }, [searchParams, setSearchParams, t, clienteId]);
 
   const {
     data: igSummary,

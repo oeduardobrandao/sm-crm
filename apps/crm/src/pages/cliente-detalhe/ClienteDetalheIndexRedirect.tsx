@@ -2,8 +2,8 @@ import { Navigate, useLocation, useParams } from 'react-router-dom';
 
 /**
  * Index route for /clientes/:id. Picks the landing tab based on OAuth
- * callback query params — `ig_connected`, `ig_error`, `tt_error` route to
- * Redes sociais, everything else to Visão geral — and preserves the rest of
+ * callback query params — `ig_connected`, `ig_error`, `tt_error`,
+ * `tt_connected` route to Redes sociais, everything else to Visão geral — and preserves the rest of
  * the query string either way.
  *
  * This only decides the REDIRECT TARGET. Processing those params (toasts,
@@ -16,7 +16,10 @@ export default function ClienteDetalheIndexRedirect() {
 
   const params = new URLSearchParams(search);
   const hasOAuthCallback =
-    params.has('ig_connected') || params.has('ig_error') || params.has('tt_error');
+    params.has('ig_connected') ||
+    params.has('ig_error') ||
+    params.has('tt_error') ||
+    params.has('tt_connected');
   const targetTab = hasOAuthCallback ? 'redes-sociais' : 'visao-geral';
 
   return <Navigate to={`/clientes/${id}/${targetTab}${search}`} replace />;
