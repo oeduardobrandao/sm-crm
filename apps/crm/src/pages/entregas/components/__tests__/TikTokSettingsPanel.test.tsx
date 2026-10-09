@@ -600,6 +600,51 @@ describe('commercial content disclosure (spec A1/A2/A7)', () => {
     expect(screen.queryByRole('checkbox', { name: /Sua marca/ })).toBeNull();
   });
 
+  it('re-opens the master switch when a later post prop carries a saved toggle', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
+    const { rerender } = renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }),
+    });
+    const master = await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' });
+    expect(master).not.toBeChecked();
+    rerender(
+      panelElement({
+        post: reelsPost({
+          tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_organic_toggle: true },
+        }),
+      }),
+    );
+    expect(screen.getByRole('switch', { name: 'Divulgação de conteúdo comercial' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Sua marca/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Conteúdo de marca/ })).toBeInTheDocument();
+  });
+
+  it('the label pill uses a surface distinct from the panel; the incomplete warning is AA text with an icon', async () => {
+    mockCreatorInfo({ privacy_level_options: ['PUBLIC_TO_EVERYONE'], app_audited: true });
+    const { rerender } = renderPanelProps({
+      post: reelsPost({ tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE' } }),
+    });
+    fireEvent.click(
+      await screen.findByRole('switch', { name: 'Divulgação de conteúdo comercial' }),
+    );
+    const warning = screen.getByText('Indique se o conteúdo promove você, um terceiro ou ambos.');
+    expect(warning.closest('p')).toHaveStyle({ color: 'var(--text-main)' });
+    const icon = warning.closest('p')!.querySelector('svg');
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
+
+    rerender(
+      panelElement({
+        post: reelsPost({
+          tiktok_settings: { privacy_level: 'PUBLIC_TO_EVERYONE', brand_organic_toggle: true },
+        }),
+      }),
+    );
+    const pill = screen.getByText(/Seu post será rotulado como/);
+    expect(pill.getAttribute('style')).toContain('background: var(--surface-main)');
+    expect(pill.getAttribute('style')).toContain('border: 1px solid var(--border-color)');
+  });
+
   it('unaudited: branded disabled with suffix; non-SELF_ONLY options disabled; banner always shown', async () => {
     mockCreatorInfo({
       privacy_level_options: ['FOLLOWER_OF_CREATOR', 'SELF_ONLY'],

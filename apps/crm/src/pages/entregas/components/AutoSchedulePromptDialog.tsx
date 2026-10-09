@@ -17,7 +17,7 @@ import { updateWorkflowPost } from '@/store';
 import type { PostPlatform, WorkflowPost } from '@/store/posts';
 import { isEligibleToScheduleNow, targetsTikTokService } from '../autoScheduleNudge';
 import { scheduleApprovedPost, scheduleSuccessMessage } from '../scheduleApprovedPost';
-import { TikTokPostingDeclaration } from './TikTokPostingDeclaration';
+import { declarationBrandedFlag, TikTokPostingDeclaration } from './TikTokPostingDeclaration';
 
 export interface AutoSchedulePromptPost {
   id: number;
@@ -154,14 +154,7 @@ export function AutoSchedulePromptDialog({
         )}
 
         {targetsTikTokService(post.platform) && (
-          <TikTokPostingDeclaration
-            brandedContent={
-              post.tiktok_settings == null
-                ? undefined
-                : (post.tiktok_settings as { brand_content_toggle?: boolean })
-                    .brand_content_toggle === true
-            }
-          />
+          <TikTokPostingDeclaration brandedContent={declarationBrandedFlag(post.tiktok_settings)} />
         )}
 
         <AlertDialogFooter>

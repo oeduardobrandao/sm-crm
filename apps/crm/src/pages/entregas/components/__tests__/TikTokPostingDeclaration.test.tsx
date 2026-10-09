@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import {
   BRANDED_CONTENT_POLICY_URL,
+  declarationBrandedFlag,
   MUSIC_USAGE_CONFIRMATION_URL,
   TikTokPostingDeclaration,
 } from '../TikTokPostingDeclaration';
@@ -35,5 +36,17 @@ describe('TikTokPostingDeclaration', () => {
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+});
+
+describe('declarationBrandedFlag', () => {
+  it.each([
+    ['null', null, undefined],
+    ['undefined', undefined, undefined],
+    ['{}', {}, false],
+    ['brand_content_toggle false', { brand_content_toggle: false }, false],
+    ['brand_content_toggle true', { brand_content_toggle: true }, true],
+  ])('%s -> %s', (_label, settings, expected) => {
+    expect(declarationBrandedFlag(settings)).toBe(expected);
   });
 });

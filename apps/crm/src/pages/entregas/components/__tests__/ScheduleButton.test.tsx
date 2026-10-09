@@ -722,6 +722,52 @@ describe('ScheduleButton', () => {
       });
     });
 
+    it('platform both: Instagram fails but TikTok succeeds also confirms the TikTok send', async () => {
+      vi.mocked(publishInstagramPostNow).mockRejectedValueOnce(new Error('Container falhou'));
+      vi.mocked(publishTikTokPostNow).mockResolvedValueOnce({ ok: true, status: 'postado' });
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'both' })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      fireEvent.click(screen.getByText('Publicar agora'));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Instagram: Container falhou');
+        expect(toast.success).toHaveBeenCalledWith(
+          'Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.',
+        );
+      });
+    });
+
+    it('disables the dialog Publicar when the TikTok gate closes while the dialog is open', async () => {
+      const { rerender } = render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      fireEvent.click(screen.getByText('Publicar agora'));
+      expect(screen.getByRole('button', { name: 'Publicar' })).toBeEnabled();
+      rerender(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete={false}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+      expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+      expect(publishTikTokPostNow).not.toHaveBeenCalled();
+    });
+
     it('flags onTikTokUnaudited from a both publish-now attempt when TikTok 422s as unaudited', async () => {
       vi.mocked(publishInstagramPostNow).mockResolvedValueOnce({ ok: true, status: 'postado' });
       vi.mocked(publishTikTokPostNow).mockRejectedValueOnce(new Error(TIKTOK_UNAUDITED_MESSAGE));

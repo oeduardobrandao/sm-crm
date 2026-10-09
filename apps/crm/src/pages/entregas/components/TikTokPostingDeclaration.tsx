@@ -8,6 +8,13 @@ export const MUSIC_USAGE_CONFIRMATION_URL =
   'https://www.tiktok.com/legal/page/global/music-usage-confirmation/en';
 export const BRANDED_CONTENT_POLICY_URL = 'https://www.tiktok.com/legal/page/global/bc-policy/en';
 
+/** The `brandedContent` prop for a post's saved `tiktok_settings`: no settings yet ->
+ * `undefined` (renders the branded variant), otherwise whether brand_content_toggle is on. */
+export function declarationBrandedFlag(settings: unknown): boolean | undefined {
+  if (settings == null) return undefined;
+  return (settings as { brand_content_toggle?: boolean }).brand_content_toggle === true;
+}
+
 function PolicyLink({ href, children }: { href: string; children: string }) {
   return (
     <a

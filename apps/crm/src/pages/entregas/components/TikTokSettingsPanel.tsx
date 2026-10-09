@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { TIKTOK_MSG } from '@mesaas/tiktok-messages';
 import {
   Select,
@@ -198,6 +199,13 @@ export function TikTokSettingsPanel({
     () =>
       !!(post.tiktok_settings?.brand_organic_toggle || post.tiktok_settings?.brand_content_toggle),
   );
+  // Re-sync when a saved toggle arrives after mount (the post prop changes under an open
+  // panel): a ticked toggle means disclosure is on. Never forces the switch off, so turning
+  // it on with nothing ticked yet survives re-renders.
+  const draftHasDisclosure = draft.brand_organic_toggle || draft.brand_content_toggle;
+  useEffect(() => {
+    if (draftHasDisclosure) setDisclosureOn(true);
+  }, [draftHasDisclosure]);
 
   const [captionLocal, setCaptionLocal] = useState(post.tiktok_caption ?? '');
   useEffect(() => {
@@ -577,13 +585,21 @@ export function TikTokSettingsPanel({
             {label ? (
               <p
                 className="text-xs rounded-md px-2 py-1.5"
-                style={{ background: 'var(--surface-hover)' }}
+                style={{
+                  background: 'var(--surface-main)',
+                  border: '1px solid var(--border-color)',
+                }}
               >
                 Seu post será rotulado como <strong>{label}</strong>.
               </p>
             ) : (
-              <p className="text-xs" style={{ color: 'var(--warning)' }}>
-                {DISCLOSURE_INCOMPLETE_MSG}
+              <p className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-main)' }}>
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="mt-px h-3.5 w-3.5 shrink-0"
+                  style={{ color: 'var(--warning)' }}
+                />
+                <span>{DISCLOSURE_INCOMPLETE_MSG}</span>
               </p>
             )}
           </>
@@ -622,7 +638,7 @@ export function TikTokSettingsPanel({
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <Label htmlFor={`tt-caption-${post.id}`}>
-              Legenda do TikTok (opcional — usa a legenda do Instagram se vazia)
+              Legenda do TikTok (opcional: usa a legenda do Instagram se vazia)
             </Label>
             <span
               className="text-xs"

@@ -20,7 +20,7 @@ import { hasAutoPublishTarget } from '../platformTargets';
 import { validatePostMedia } from '../instagramLimits';
 import { getPublishErrorDisplay } from '../publishErrorCopy';
 import type { Platform } from './PlatformSelector';
-import { TikTokPostingDeclaration } from './TikTokPostingDeclaration';
+import { declarationBrandedFlag, TikTokPostingDeclaration } from './TikTokPostingDeclaration';
 import {
   cancelInstagramSchedule,
   retryInstagramPublish,
@@ -263,10 +263,7 @@ export function ScheduleButton({
 
   const tiktokReady = !targetsTikTok || tiktokSettingsComplete === true;
   // Spec A3: `undefined` (no settings saved yet) renders the branded declaration variant.
-  const tiktokBranded =
-    post.tiktok_settings == null
-      ? undefined
-      : (post.tiktok_settings as { brand_content_toggle?: boolean }).brand_content_toggle === true;
+  const tiktokBranded = declarationBrandedFlag(post.tiktok_settings);
   // Spec B3: Instagram pink stays Instagram's; anything that sends to TikTok uses neutral ink.
   const publishColor =
     platform === 'instagram'
@@ -316,6 +313,8 @@ export function ScheduleButton({
           toast.error(`Instagram: ${igError}; TikTok: ${ttError}`);
         } else if (igError) {
           toast.error(`Instagram: ${igError}`);
+          // The TikTok half did go out: say so, or the user only sees the failure.
+          toast.success('Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.');
         } else {
           toast.error(`TikTok: ${ttError}`);
         }
@@ -707,7 +706,13 @@ export function ScheduleButton({
             {!publishing && (
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <Button onClick={handlePublishNow} style={publishColor}>
+                {/* The TikTok gate can close while the dialog is open (the declaration above
+                    disappears with it), so the confirm re-checks it. */}
+                <Button
+                  onClick={handlePublishNow}
+                  disabled={!canPublishNow}
+                  style={canPublishNow ? publishColor : undefined}
+                >
                   Publicar
                 </Button>
               </AlertDialogFooter>
