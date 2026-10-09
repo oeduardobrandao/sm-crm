@@ -30,7 +30,7 @@ Other gaps:
 - `reorder_post_schedules` (`20260923000009:144-151`) does not check for a TikTok publish in flight.
 - The TikTok claim has no ORDER BY.
 - The claim also sets the lock on rows that its account join then drops.
-- Nothing stops a signed-in user from writing `post_targets.status`, `external_id` or `permalink`, or from deleting a published destination row. The table has a plain `GRANT SELECT, INSERT, UPDATE, DELETE` to `authenticated` (`20261010100002:105-107`).
+- Nothing stops a signed-in user from writing `post_targets.status`, `external_id` or `permalink`, or from deleting a published destination row. The table has a plain `GRANT SELECT, INSERT, UPDATE, DELETE` to `authenticated` (`20261010100002:104-106`).
 
 ## Decisions (user, 2026-10-09)
 
@@ -43,7 +43,7 @@ Other gaps:
 ## Goal
 
 1. `post_targets` (platform `tiktok`) is the only record of TikTok publish state.
-2. Every transition that changes the post's status happens in one transaction with the destination write.
+2. On the TikTok path, every transition that changes the post's status happens in one transaction with the destination write. The Instagram path keeps its direct writes until P5 (see P5 debt).
 3. The `tiktok_*` publish columns are frozen: backfilled once and then never written again.
 4. Bugs 1–3 are fixed.
 5. No visible change in the CRM or the Hub.
@@ -51,10 +51,24 @@ Other gaps:
 ## Non-goals
 
 - Instagram publish state. That is P5. Instagram keeps writing its legacy columns and calling `mark_platform_published('instagram')`.
-- Full decoupling: a TikTok failure no longer blocks a *pending* Instagram publish. That also needs Instagram's claim to read its destination row, so it is P5.
+- **Full decoupling, in both directions. Both need Instagram's claim to read its destination row, so they are P5.**
+  - A TikTok failure can still block an Instagram publish that hasn't started.
+  - An Instagram failure (the IG cron writes `falha_publicacao` directly) can still block a TikTok init that hasn't started, until IG's retry phase moves the post back to `agendado`.
 - Removing the BEFORE UPDATE OF `platform` trigger (a2). `PlatformSelector` still writes `platform` while `feature_multiplatform` is off.
 - Dropping the `tiktok_*` columns.
 - Geral, `disponivel` and the zip export. Those are P3, which has not shipped.
+
+## P5 debt (known, documented, not fixed here)
+
+- **The Instagram cron writes status directly.** `processRetry` does `UPDATE status='agendado'` (`instagram-publish-cron/index.ts:388-391`) and `markFailed` does `UPDATE status='falha_publicacao'` (`:103-121`). Both bypass the recompute.
+- **A status flap on posts going to both.** The IG retry claim (`20260925000013:68-74`) does not check `publish_error`. So when a TikTok failure moves a post to `falha_publicacao`:
+  1. IG's retry phase claims the post and moves it to `agendado`, with the TikTok row still `falha`.
+  2. When IG publishes, `mark_platform_published` → recompute moves the post back to `falha_publicacao`.
+  3. That fires a second `falha_publicacao` status event.
+
+  The TikTok phases tolerate this because they accept both post statuses. TikTok is dark, so no customer sees it.
+- **Instagram cancel on a post going to both** (`instagram-publish/handler.ts:141-160`) does not touch the TikTok destination.
+- **`hub-approve`'s auto-schedule** (`handler.ts:273-290`) validates Instagram only. A pending TikTok destination is then claimed with no TikTok validation. This is pre-existing; A10's server-side `creator_info` check is the guard.
 
 ## Approaches considered
 
@@ -104,7 +118,12 @@ One migration with a version above main's latest. The version must be checked at
 - `error ← tiktok_publish_error`, `retry_count ← tiktok_publish_retry_count`, `processing_at ← tiktok_publish_processing_at`;
 - `published_at ← workflow_posts.published_at` when the post is published.
 
-The migration ends with a parity assertion: a `DO` block raises an exception if any `tiktok` destination's mapped status differs from its post's legacy status.
+**Reset rule applied in the backfill.** A legacy `failed` on a post outside publication (status not `agendado`, `falha_publicacao` or `postado`) becomes `pendente`, with `error`, `error_code`, `publish_ref` and `retry_count` cleared. This is the same rule as the 2e trigger, which only fires on later updates. Without it, an old non-retryable failure (`retry_count = 3`) would stay stuck forever, which is bug 3.
+
+**Parity assertions** (a `DO` block raises an exception on any mismatch):
+- Per-status counts of legacy versus destination match, after applying the reset rule.
+- Every post with `platform IN ('tiktok','both')` has exactly one `tiktok` destination, and no other post has one.
+- No `tiktok` destination sits on a `tipo = 'stories'` post.
 
 **c. `recompute_post_publish_status(p_post_id bigint, p_source text)`.** Internal; it expects the caller to hold the post row lock. Rules:
 - Return without doing anything unless the post's status is in `agendado` or `falha_publicacao`. `postado` is never downgraded. Earlier statuses belong to the user.
@@ -123,13 +142,16 @@ The migration ends with a parity assertion: a `DO` block raises an exception if 
   - otherwise `agendado`.
 - Call `record_post_status_change` only when the status actually changes, so status events and automations keep firing.
 
+**Every writer** in 2d and 2e also sets `updated_at = now()`. `post_targets` has no `updated_at` trigger (`store/postTargets.ts:147-149`).
+
 **d. Writers.** All are `SECURITY DEFINER` with `search_path = public, pg_temp`. Each does `REVOKE ALL … FROM public, anon, authenticated` and then `GRANT EXECUTE … TO service_role`, the pair from `20260925000001:53-54`. Each locks the `workflow_posts` row `FOR UPDATE` before touching the destination, the same order as `mark_platform_published`.
 - **`mark_target_published(p_post_id, p_platform, p_fields jsonb, p_source)`**
   - Sets `status='publicado'`, `external_id` / `permalink` (COALESCE from `p_fields`), `published_at`, `processing_at=NULL`, `error=NULL`, `error_code=NULL`.
   - Then recomputes.
 - **`mark_target_failed(p_post_id, p_platform, p_error, p_error_code, p_retryable, p_source)`**
-  - Sets `status='falha'`, the error fields, `retry_count = CASE WHEN p_retryable THEN retry_count + 1 ELSE 3 END` and `processing_at=NULL`.
+  - Sets `status='falha'`, the error fields, `retry_count = CASE WHEN p_retryable THEN retry_count + 1 ELSE 3 END` and `processing_at=NULL`. It keeps `publish_ref`.
   - Then recomputes.
+  - It is idempotent: a row that is already `falha` with the same `publish_ref` is left alone. This closes the existing double count, where the cron's status phase and a webhook `failed` both report the same publish.
 - **`requeue_target(p_post_id, p_platform, p_source)`**
   - Only acts on a `falha` row whose post is in `agendado` or `falha_publicacao`.
   - Sets `status='agendado'`, `error=NULL`, `error_code=NULL`, `publish_ref=NULL`, `processing_at=NULL`, and keeps `retry_count`.
@@ -138,13 +160,14 @@ The migration ends with a parity assertion: a `DO` block raises an exception if 
   - The manual retry and the cron retry phase both use it.
 - **`begin_target_publish(p_post_id, p_platform, p_source, p_actor) returns boolean`**, used by publish-now. In one transaction it:
   - refuses (raises with a code the handler maps to 422) unless the post is in `aprovado_cliente` or `agendado` and the destination is in `pendente` or `agendado`;
+    - a destination in `processando` or `publicado` gets its own message ("Já está publicando no TikTok" / "Já publicado no TikTok");
   - moves an `aprovado_cliente` post to `agendado` through `record_post_status_change`;
   - takes the destination lock: `processing_at = now()` only when it is NULL or older than 10 minutes.
   - It returns false when the lock is held, which the handler maps to today's "já está publicando" response.
 - **`cancel_target_publish(p_post_id, p_platform, p_source, p_actor)`**, used by cancel. In one transaction it:
-  - refuses while the destination is `processando`;
+  - accepts only a post in `agendado` (today's rule, `tiktok-publish/handler.ts:310-312`) and refuses while the destination is `processando`;
   - sets the destination back to `pendente`, clearing `publish_ref`, `error`, `error_code` and `processing_at`;
-  - for a post that also goes to Instagram, clears the same Instagram container, processing and error fields the handler clears today (`tiktok-publish/handler.ts:325-333`);
+  - for a post that also goes to Instagram, clears the same Instagram container, processing and error fields the handler clears today (`tiktok-publish/handler.ts:322-331`);
   - moves the post to `aprovado_cliente` through `record_post_status_change`.
 - **What stays a single-statement write from the edge functions:** setting `processando` + `publish_ref` after TikTok accepts the init, releasing a lock, and the webhook's `external_id`/`permalink` updates. None of these change the post's status.
 - **`mark_platform_published`**, latest body `20260807000001:67-120`, copied forward in full:
@@ -153,17 +176,18 @@ The migration ends with a parity assertion: a `DO` block raises an exception if 
     - It translates the legacy `p_fields` keys that today's callers send (`_shared/tiktok-publish-utils.ts:649-657`): `tiktok_post_id` becomes `external_id` and `tiktok_post_url` becomes `permalink`, and `published_at` passes through. Without this, the public id and URL are lost in the mixed-version window.
   - Grants stay the same.
 
-**e. Reset on leaving publication.** An AFTER UPDATE OF `status` trigger on `workflow_posts`:
+**e. Reset on leaving publication.** An AFTER UPDATE OF `status` trigger on `workflow_posts`, `WHEN (NEW.status IS DISTINCT FROM OLD.status)`. It needs the WHEN clause because `record_post_status_change` always writes `status`.
 - When the new status is not `agendado`, `falha_publicacao` or `postado`, it sets that post's `tiktok` destination from `falha` or `agendado` back to `pendente`, and clears `error`, `error_code`, `publish_ref` and `retry_count`.
 - It never touches `processando` or `publicado`.
 - This fixes bug 3.
-- It shares the `app.post_targets_sync` recursion GUC.
+- It needs no recursion GUC. It only writes `status` and the error fields on `post_targets`, and `post_targets_sync_platform` fires only on INSERT, DELETE and UPDATE OF `platform`, `post_id`.
+- **`processando` is never reset.** The status phase below does not filter on the post's status, so a publish in flight still finishes after the user moves the post away. The recompute then does nothing, because the post is outside publication.
 
-**f. Claim.** New function `claim_tiktok_targets_for_publishing(p_limit int)`, service_role only. It replaces `claim_posts_for_tiktok_publishing` (latest `20260830000002:139-214`).
+**f. Claim.** New function `claim_tiktok_targets_for_publishing(p_phase text, p_limit int)`, service_role only. It replaces `claim_posts_for_tiktok_publishing` (latest `20260830000002:139-214`).
 - Joins `post_targets t` with `t.platform = 'tiktok'`. Posts without a TikTok destination never match, so `wp.platform` is not checked.
 - Phases:
   - **init:** `scheduled_at <= now()` AND either `t.status = 'agendado' AND wp.status IN ('agendado','falha_publicacao')` or `t.status = 'pendente' AND wp.status = 'agendado'`.
-  - **status:** `t.status = 'processando' AND t.publish_ref IS NOT NULL AND wp.status IN ('agendado','falha_publicacao')`.
+  - **status:** `t.status = 'processando' AND t.publish_ref IS NOT NULL`, with no filter on the post's status. Otherwise a post moved away mid-publish leaves the row orphaned, landing only if a webhook arrives.
   - **retry:** `t.status = 'falha' AND t.retry_count < 3 AND wp.status IN ('agendado','falha_publicacao')`. The cron calls `requeue_target` on these.
 - All phases require `t.processing_at IS NULL OR < now() - interval '10 minutes'`.
 - The active-account join (`tiktok_accounts.client_id = cliente_id AND authorization_status = 'active'`) moves into the candidate CTE, before `FOR UPDATE SKIP LOCKED`, so the lock lands only on rows that are returned.
@@ -180,7 +204,7 @@ The cron's `ClaimedTikTokCronPost` type changes the same way: `tiktok_publish_id
 **The old `claim_posts_for_tiktok_publishing`** keeps its signature, but its body becomes a no-op that returns zero rows. A cron still on the old code between the migration and the function deploy then claims nothing, instead of publishing from frozen columns. A follow-up drops it.
 
 **g. Copied-forward guards.**
-- **`reorder_post_schedules`** (latest `20260923000009:77-218`): the publishing guard also refuses when the post has a destination with `processing_at IS NOT NULL` or `status = 'processando'`. Full body copied.
+- **`reorder_post_schedules`** (latest `20260923000009:77-218`): the publishing guard also refuses when the post has a destination with `processing_at >= now() - interval '10 minutes'` (the same staleness window as the Instagram check at `:149-150`) or `status = 'processando'`. Full body copied.
 - **`post_file_link_replace`** (latest `20260916000001:98-104`): the TikTok condition reads the destination (`processing_at IS NOT NULL OR status IN ('processando','publicado')`) instead of the `tiktok_*` columns. Full body copied.
 
 **h. `post_targets` privileges.**
@@ -188,7 +212,13 @@ The cron's `ClaimedTikTokCronPost` type changes the same way: `tiktok_publish_id
 - Grant `INSERT (conta_id, post_id, platform, format, caption, title, settings)` and `UPDATE (caption, title, settings, format)`.
 - The CRM writes only `conta_id`, `post_id`, `platform` and `caption` (`store/postTargets.ts:89-91,148-155`).
 - The P1 triggers that write `platform` and `post_id` are `SECURITY DEFINER`, so they are unaffected. Every function in `20261010100002` is DEFINER.
-- **BEFORE DELETE trigger:** refuses to delete a destination in `processando` or `publicado` while its post still exists. A cascade from deleting the post finds no parent row and goes through.
+- **BEFORE DELETE trigger:** refuses to delete a destination in `processando` or `publicado` while its post still exists.
+  - It raises `ERRCODE 'P0409'` with message `target_not_removable`. The CRM's `removePostDestination` maps that to a pt-BR toast.
+  - A cascade from deleting the post finds no parent row and goes through: the RI cascade runs after the parent delete, and `post_targets_sync_platform` already relies on this.
+  - The P1 triggers that delete the TikTok row are copied forward so they skip rows in `processando` or `publicado`. `platform` stays derived from what remains. The two triggers are:
+    - `workflow_posts_a2_platform_to_targets` (`20261010100002:297-311`), for a legacy `platform` write from `PlatformSelector`;
+    - `z7_stories_drop_tiktok` (`:352-360`), for a `tipo` → stories edit.
+  - Without that copy-forward, those edits would raise a raw SQL error in the editor.
 
 ### 3. Edge functions
 
@@ -202,7 +232,7 @@ The cron's `ClaimedTikTokCronPost` type changes the same way: `tiktok_publish_id
 
 **`tiktok-publish/handler.ts`**
 - Loads the TikTok destination alongside the post.
-- **schedule:** unchanged. A stale `falha` was already reset by the 2e trigger when the post left publication.
+- **schedule:** refuses when the TikTok destination is `processando` or `publicado`, with the same messages as `begin_target_publish`. Otherwise a re-scheduled TikTok-only post that is already published would sit at `agendado` forever. A stale `falha` was already reset, by the 2e trigger or by the backfill.
 - **cancel:** calls `cancel_target_publish`.
 - **retry:**
   - Requires the destination in `falha` and the post in `agendado` or `falha_publicacao`.
@@ -226,6 +256,7 @@ The cron's `ClaimedTikTokCronPost` type changes the same way: `tiktok_publish_id
 
 **Other readers**
 - **`data-import/handler.ts:250-253`** (`guardPublishedPosts`): a post also counts as published when it has a `publicado` destination, in place of `tiktok_post_id IS NOT NULL`.
+  - PostgREST can't `.or()` across an embed, so this becomes a second query: `post_targets` with `status = 'publicado'` and `post_id IN (…)`, unioned with the existing `instagram_media_id` check.
 - **`hub-posts/handler.ts:167`:** `tiktok_post_url` comes from the TikTok destination's `permalink`. The response field name stays, so the Hub doesn't change.
 
 ### 4. CRM adapter
@@ -260,7 +291,11 @@ The cron's `ClaimedTikTokCronPost` type changes the same way: `tiktok_publish_id
 2. Apply the migration to staging, then prod.
 3. Deploy the functions to prod right away: `tiktok-publish` (verify_jwt=true); `tiktok-publish-cron`, `tiktok-webhook`, `data-import`, `hub-posts` (`--no-verify-jwt`, their current settings).
    - Staging has no TikTok functions deployed (TikTok testing happens on prod with DK TESTE). Deploy `data-import` and `hub-posts` to staging too, for parity.
-4. Run the reconcile query. It copies `tiktok_post_id` / `tiktok_post_url` onto any TikTok destination whose `external_id` / `permalink` is still NULL while the legacy column has a value. This catches a `publicly_available` webhook that the old webhook wrote to the frozen columns during the window (`tiktok-webhook/handler.ts:252-301`). The query is idempotent and lives in the plan.
+4. Run the reconcile query, which lives in the plan. It re-applies the backfill mapping only where the legacy columns hold state the destination lacks:
+   - a destination still `pendente` while the legacy status is not NULL, which catches an old publish-now or webhook failure (`tiktok-publish/handler.ts:536-560`) written to the frozen columns;
+   - an `external_id` / `permalink` still NULL while `tiktok_post_id` / `tiktok_post_url` has a value, which catches the old webhook's `publicly_available` (`tiktok-webhook/handler.ts:252-301`).
+
+   It never touches a destination the new functions have already moved, and it is idempotent.
 5. Merge the PR, which deploys the frontend.
 6. Run the end-to-end check on prod with DK TESTE:
    - a TikTok-only video post goes through publish-now, then schedule, then a forced failure and retry;
@@ -271,6 +306,14 @@ During the window between steps 2 and 3:
 - The old webhook's complete/failed events still call `mark_platform_published('tiktok')`, which now lands on the destination (with key translation).
 - Its `publicly_available` / `no_longer_publicly_available` events write the frozen columns directly; step 4 reconciles them.
 - An old publish-now writes the frozen columns. TikTok is dark outside DK TESTE, so nobody else can trigger it.
+
+## Rollback
+
+The rollback is fix-forward. There is no down migration.
+- **Rolling back only the functions is unsafe.** The old claim is now a no-op, so TikTok publishing silently halts. Old publish-now writes the frozen columns while `mark_platform_published` lands on destinations.
+- **A down migration** would have to restore four copied-forward bodies, the old claim, the grants and two triggers, and copy destination state back into `tiktok_*`. That is more risk than the fix it would undo.
+- **Why fix-forward is acceptable:** TikTok is dark outside DK TESTE, the TikTok functions are deployed only to prod, and the end-to-end check runs minutes after the deploy.
+- **Emergency stop without a rollback:** the TikTok cron can be paused by unscheduling its `pg_cron` job. Instagram is unaffected either way.
 
 ## Testing
 
@@ -290,7 +333,10 @@ During the window between steps 2 and 3:
   - the reset trigger, including that it leaves `processando`/`publicado` alone;
   - column privileges: authenticated cannot set `status`, `external_id` or `publish_ref`, and can set `caption`;
   - the delete guard, including that a cascade from deleting the post still works;
-  - backfill parity.
+  - backfill parity, including the reset rule for a `failed` legacy row on a post outside publication;
+  - the delete guard's interaction with the a2 and z7 triggers: a legacy `platform` write and a stories edit leave a `publicado` TikTok row in place;
+  - `mark_target_failed` idempotency on the same `publish_ref`;
+  - the status phase picks up a `processando` row whose post was moved to `aprovado_cliente`.
 - `post_file_link_replace.sql` and the reorder test gain the TikTok destination guard.
 
 **Deno**
@@ -310,6 +356,6 @@ During the window between steps 2 and 3:
 ## Risks
 
 - **Copying RPCs forward.** The claim, reorder, `post_file_link_replace` and `mark_platform_published` each copy the full latest body. The plan cites each source line range.
-- **Recursion.** The reset trigger and the recompute share the GUC, and the recompute writes only through `record_post_status_change`.
+- **Recursion.** The recompute writes only through `record_post_status_change`. The reset trigger fires on that write, but it does nothing inside publication and only touches `post_targets`, so it cannot loop.
 - **Column grants on a table that triggers write.** Every trigger and function that writes `post_targets` must be DEFINER. A test inserts a post as `authenticated` and checks that the seed trigger still creates its destinations.
 - **Adapter coverage.** A loader that misses the embed silently shows stale frozen values. The plan lists every query by line, and a test asserts the mapper runs on each one.
