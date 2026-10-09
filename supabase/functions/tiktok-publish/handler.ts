@@ -40,7 +40,9 @@ import {
 import {
   getFreshTikTokToken as realGetFreshTikTokToken,
   tiktokFetch as realTiktokFetch,
+  TikTokApiError,
 } from "../_shared/tiktok.ts";
+import { isTikTokCannotPostCode } from "../_shared/tiktok-messages.ts";
 import { buildTikTokMediaUrl as realBuildTikTokMediaUrl } from "../_shared/tiktok-media-url.ts";
 
 type DbClient = {
@@ -119,6 +121,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       return json({ error: "Conta do TikTok não está ativa. Reconecte a conta." }, 422);
     }
 
+    const appAudited = Deno.env.get("TIKTOK_APP_AUDITED") === "true";
     try {
       const { accessToken } = await getFreshToken(svcDb as never, (account as { id: string }).id);
       const data = (await tiktokFetchFn("/post/publish/creator_info/query/", {
@@ -135,8 +138,15 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         duet_disabled: data.duet_disabled,
         stitch_disabled: data.stitch_disabled,
         max_video_post_duration_sec: data.max_video_post_duration_sec,
+        can_post: true,
+        app_audited: appAudited,
       });
     } catch (e) {
+      // A6: TikTok answers "can't post right now" with HTTP 200 + a non-ok error.code, which
+      // tiktokFetch surfaces as TikTokApiError.code. No `data` comes with it.
+      if (e instanceof TikTokApiError && isTikTokCannotPostCode(e.code)) {
+        return json({ can_post: false, cannot_post_reason: e.code, app_audited: appAudited });
+      }
       console.error("[TIKTOK-PUBLISH] creator-info error:", (e as Error)?.message);
       return json({ error: "Erro ao consultar informações do criador no TikTok." }, 500);
     }

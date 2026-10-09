@@ -18,6 +18,7 @@ import { createPublishHandler, type TikTokPublishDeps } from "../tiktok-publish/
 import type { TikTokValidationResult } from "../_shared/tiktok-publish-utils.ts";
 import type { ScheduleValidationResult } from "../_shared/instagram-publish-utils.ts";
 import { buildTikTokMediaUrl, verifyTikTokMediaToken } from "../_shared/tiktok-media-url.ts";
+import { TikTokApiError } from "../_shared/tiktok.ts";
 
 Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-tiktok-publish-key");
 Deno.env.set("SUPABASE_URL", "https://supabase.example");
@@ -567,8 +568,66 @@ Deno.test("tiktok-publish creator-info: returns TikTok's fields verbatim with no
   const body = await res.json();
 
   assertEquals(res.status, 200);
-  assertEquals(body, creatorInfoPayload);
+  assertEquals(body, { ...creatorInfoPayload, can_post: true, app_audited: false });
   assertEquals(res.headers.get("Cache-Control"), "no-store");
+});
+
+for (const code of ["spam_risk_too_many_posts", "spam_risk_user_banned_from_posting", "reached_active_user_cap"]) {
+  Deno.test(`tiktok-publish creator-info: ${code} -> 200 can_post false`, async () => {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+    db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+    gateOn(db);
+    db.queue("tiktok_accounts", "select", { data: { id: "acct-1", authorization_status: "active" }, error: null });
+
+    const handler = createPublishHandler(makeDeps(db, {
+      getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+      tiktokFetch: (() => Promise.reject(new TikTokApiError("blocked", code, false))) as never,
+    }));
+    const res = await handler(tiktokRequest("creator-info", 5, { method: "GET" }));
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { can_post: false, cannot_post_reason: code, app_audited: false });
+    assertEquals(res.headers.get("Cache-Control"), "no-store");
+  });
+}
+
+Deno.test("tiktok-publish creator-info: app_audited true when TIKTOK_APP_AUDITED=true", async () => {
+  Deno.env.set("TIKTOK_APP_AUDITED", "true");
+  try {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+    db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+    gateOn(db);
+    db.queue("tiktok_accounts", "select", { data: { id: "acct-1", authorization_status: "active" }, error: null });
+    const { fn } = stubTiktokFetch({ creatorInfo: { privacy_level_options: ["SELF_ONLY"] } });
+    const handler = createPublishHandler(makeDeps(db, {
+      getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+      tiktokFetch: fn,
+    }));
+    const body = await (await handler(tiktokRequest("creator-info", 5, { method: "GET" }))).json();
+    assertEquals(body.app_audited, true);
+    assertEquals(body.can_post, true);
+  } finally {
+    Deno.env.delete("TIKTOK_APP_AUDITED");
+  }
+});
+
+Deno.test("tiktok-publish creator-info: other TikTok errors stay 500 generic", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queue("tiktok_accounts", "select", { data: { id: "acct-1", authorization_status: "active" }, error: null });
+  const handler = createPublishHandler(makeDeps(db, {
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: (() => Promise.reject(new TikTokApiError("boom", "internal_error", false))) as never,
+  }));
+  const res = await handler(tiktokRequest("creator-info", 5, { method: "GET" }));
+  assertEquals(res.status, 500);
+  assertEquals(await res.json(), { error: "Erro ao consultar informações do criador no TikTok." });
 });
 
 // ============================================================
