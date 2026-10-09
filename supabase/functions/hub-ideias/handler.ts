@@ -22,7 +22,7 @@ interface HubIdeiasHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
-  signPutUrl: (key: string, mime: string) => Promise<string>;
+  signPutUrl: (key: string, mime: string, sizeBytes: number) => Promise<string>;
   signGetUrl: (key: string, expires?: number) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;

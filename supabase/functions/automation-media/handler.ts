@@ -19,7 +19,7 @@ export interface AutomationMediaDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   // deno-lint-ignore no-explicit-any
   createDb: () => any;
-  signPutUrl: (key: string, mimeType: string) => Promise<string>;
+  signPutUrl: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   signGetUrl: (key: string) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   trashObject: (key: string) => Promise<void>;
@@ -112,7 +112,8 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       const mime = String(body.mime_type ?? "");
       const size = Number(body.size_bytes ?? 0);
       if (!(mime in ALLOWED_MIME)) return json({ error: "unsupported file type" }, 415);
-      if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
+      // Inteiro: vira Content-Length assinado na URL de upload.
+      if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
       }
       // Upload SEMPRE no prefixo tmp. A key FINAL (a única que dm_media
@@ -120,7 +121,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       // então sobrescrever a tmp depois (a URL vive 15 min) não alcança o
       // objeto contabilizado/servido. Tmp abandonada é órfã aceita.
       const key = `automation-media-tmp/${contaId}/${randomUUID()}.${ALLOWED_MIME[mime]}`;
-      const upload_url = await deps.signPutUrl(key, mime);
+      const upload_url = await deps.signPutUrl(key, mime, size);
       return json({ upload_url, key });
     }
 
@@ -131,7 +132,8 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       const tmpPrefix = `automation-media-tmp/${contaId}/`;
       if (!tmpKey.startsWith(tmpPrefix)) return json({ error: "invalid key" }, 400);
       if (!(mime in ALLOWED_MIME)) return json({ error: "unsupported file type" }, 415);
-      if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
+      // Inteiro: vira Content-Length assinado na URL de upload.
+      if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
       }
       const key = `${tenantPrefix}${tmpKey.slice(tmpPrefix.length)}`;

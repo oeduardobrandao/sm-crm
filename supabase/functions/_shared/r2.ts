@@ -38,8 +38,26 @@ export function getBucket(): string {
   return _bucket;
 }
 
-export async function signPutUrl(key: string, mimeType: string, expiresSeconds = 900) {
-  const cmd = new PutObjectCommand({ Bucket: getBucket(), Key: key, ContentType: mimeType });
+/** Presigned PUT bound to the declared size: ContentLength entra em X-Amz-SignedHeaders
+ * (content-length;host), então um corpo de outro tamanho falha a assinatura no R2 em vez
+ * de gravar e só ser pego (quando é) no HEAD do finalize. O navegador define o
+ * Content-Length pelo Blob enviado; o chamador só precisa declarar o MESMO Blob.
+ * Lança se o tamanho não for um inteiro positivo: o chamador valida antes (400). */
+export async function signPutUrl(
+  key: string,
+  mimeType: string,
+  sizeBytes: number,
+  expiresSeconds = 900,
+) {
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) {
+    throw new Error(`signPutUrl: invalid size ${sizeBytes}`);
+  }
+  const cmd = new PutObjectCommand({
+    Bucket: getBucket(),
+    Key: key,
+    ContentType: mimeType,
+    ContentLength: sizeBytes,
+  });
   return getSignedUrl(getR2(), cmd, { expiresIn: expiresSeconds });
 }
 
@@ -442,7 +460,7 @@ export async function putObject(
   bytes: Uint8Array,
   contentType: string,
 ): Promise<void> {
-  const url = await signPutUrl(key, contentType, 300);
+  const url = await signPutUrl(key, contentType, bytes.byteLength, 300);
   const res = await fetch(url, {
     method: "PUT",
     headers: { "Content-Type": contentType },

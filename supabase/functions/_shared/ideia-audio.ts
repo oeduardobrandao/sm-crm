@@ -37,7 +37,8 @@ export interface IdeiaAudioScope {
 type FullRow = AudioRow & { id?: string | null; audio_transcript?: string | null };
 
 function validSize(n: number | undefined): boolean {
-  return typeof n === "number" && Number.isFinite(n) && n > 0 && n <= MAX_AUDIO_BYTES;
+  // Inteiro: o tamanho vira Content-Length assinado na URL de upload.
+  return typeof n === "number" && Number.isSafeInteger(n) && n > 0 && n <= MAX_AUDIO_BYTES;
 }
 
 function scoped(q: ReturnType<BriefingAudioDb["from"]>, a: IdeiaAudioScope) {
@@ -78,7 +79,7 @@ async function view(row: FullRow, signGetUrl: (key: string) => Promise<string>):
 export async function presignIdeiaAudio(a: IdeiaAudioScope & {
   mime_type: string;
   size_bytes: number;
-  signPutUrl: (key: string, mime: string) => Promise<string>;
+  signPutUrl: (key: string, mime: string, sizeBytes: number) => Promise<string>;
   randomUUID?: () => string;
 }): Promise<IdeiaAudioResult> {
   const mime = normalizeAudioMime(a.mime_type);
@@ -102,7 +103,7 @@ export async function presignIdeiaAudio(a: IdeiaAudioScope & {
 
   const id = (a.randomUUID ?? crypto.randomUUID.bind(crypto))();
   const r2_key = `${IDEIA_AUDIO_KEY_PREFIX}${a.workspace_id}/${a.ideia_id}/${id}.${extFromAudioMime(mime)}`;
-  const upload_url = await a.signPutUrl(r2_key, mime);
+  const upload_url = await a.signPutUrl(r2_key, mime, a.size_bytes);
   return { status: 200, body: { upload_url, r2_key, mime_type: mime } };
 }
 
