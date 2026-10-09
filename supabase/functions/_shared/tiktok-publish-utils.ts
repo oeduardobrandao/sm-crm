@@ -483,7 +483,8 @@ export async function clearLock(svc: SvcClient, postId: number): Promise<void> {
  * error message (≤500 chars), lock cleared, and the card moved to `falha_publicacao` via
  * record_post_status_change. `retryCount` is bumped by one UNLESS `failReason` is a TikTok wire
  * fail_reason string that is NOT in RETRYABLE_FAIL_REASONS (e.g. `spam_risk_too_many_posts`) —
- * those exhaust immediately (retry_count=3) since a retry can never succeed. Generic infra
+ * those exhaust immediately (retry_count=3) since a retry can never succeed.
+ * `nonRetryable: true` exhausts immediately (precheck failures, spec A10). Generic infra
  * failures (network, TikTok init/status errors with no documented fail_reason)
  * are always retryable and simply increment, relying on the claim RPC's `retry_count < 3`
  * cutoff to eventually stop them.
@@ -507,9 +508,10 @@ export async function markTikTokPublishFailed(
   postId: number,
   retryCount: number,
   message: string,
-  opts?: { failReason?: string },
+  opts?: { failReason?: string; nonRetryable?: boolean },
 ): Promise<void> {
-  const nonRetryable = opts?.failReason !== undefined && !RETRYABLE_FAIL_REASONS.includes(opts.failReason);
+  const nonRetryable = opts?.nonRetryable === true ||
+    (opts?.failReason !== undefined && !RETRYABLE_FAIL_REASONS.includes(opts.failReason));
   const newRetryCount = nonRetryable ? 3 : retryCount + 1;
 
   const { error: updateErr } = await svc

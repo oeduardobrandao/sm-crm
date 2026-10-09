@@ -16,7 +16,7 @@ import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { createTikTokPublishCronHandler } from "../tiktok-publish-cron/handler.ts";
 import { runTikTokPublishCron, type TikTokPublishCronDeps } from "../tiktok-publish-cron/core.ts";
-import { FIELD_PUBLIC_POST_ID } from "../_shared/tiktok.ts";
+import { FIELD_PUBLIC_POST_ID, TikTokApiError } from "../_shared/tiktok.ts";
 import { buildTikTokMediaUrl, verifyTikTokMediaToken } from "../_shared/tiktok-media-url.ts";
 
 const timingSafeEqual = (a: string, b: string) => a === b;
@@ -135,6 +135,8 @@ Deno.test("tiktok-publish-cron init phase: caps at 5 inits per account per run, 
     },
     buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
     fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async () => ({ kind: "skip" }),
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
   }));
 
   assertEquals(response.status, 200);
@@ -190,6 +192,8 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
           { id: 2, kind: "image", r2_key: "img/1.jpg", sort_order: 0 },
           { id: 3, kind: "image", r2_key: "img/2.jpg", sort_order: 1 },
         ],
+    fetchCreatorCheck: async () => ({ kind: "skip" }),
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
   }));
 
   assertEquals(response.status, 200);
@@ -229,6 +233,149 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
     "each proxy token must resolve back to its linked image's r2_key, in order",
   );
   assertEquals(photoBody.post_info.description, "legenda carrossel");
+});
+
+// ── (d) init phase: pre-init creator/media precheck (spec A10) ─────────────────
+
+Deno.test("tiktok-publish-cron init phase: precheck failure -> non-retryable fail, no init call", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [claimedPost({ post_id: 1, tipo: "reels", tiktok_settings: { privacy_level: "SELF_ONLY" } })], [], []);
+
+  const fetchPaths: string[] = [];
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async (path) => {
+      fetchPaths.push(path);
+      return { publish_id: "pub-1" };
+    },
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "video", r2_key: "vid/1.mp4", sort_order: 0 }],
+    fetchCreatorCheck: async () => ({ kind: "cannot_post", code: "spam_risk_too_many_posts" }),
+    fetchPrecheckMedia: async () => [{ kind: "video", duration_seconds: 10, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(fetchPaths, [], "a precheck failure must never reach TikTok init");
+
+  const updates = callsFor(db, "workflow_posts", "update");
+  assertEquals(updates.length, 1);
+  const payload = updates[0].payload as Record<string, unknown>;
+  assertEquals(payload.tiktok_publish_status, "failed");
+  assertEquals(payload.tiktok_publish_retry_count, 3);
+  assertEquals(payload.tiktok_publish_processing_at, null);
+  assertEquals(
+    payload.tiktok_publish_error,
+    "Esta conta atingiu o limite diário de publicações do TikTok. Tente novamente amanhã.",
+  );
+  const statusRpc = rpcCalls(db, "record_post_status_change");
+  assertEquals(statusRpc.length, 1);
+  assertEquals((statusRpc[0].payload as Record<string, unknown>).p_new_status, "falha_publicacao");
+});
+
+Deno.test("tiktok-publish-cron init phase: creator check runs once per account, with that account's token", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [
+    claimedPost({ post_id: 1 }),
+    claimedPost({ post_id: 2 }),
+    claimedPost({ post_id: 3, tiktok_account_id: "acct-2" }),
+  ], [], []);
+
+  const checkedWith: string[] = [];
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async (_svc, accountId) => ({ accessToken: `tok-${accountId}`, openId: "open-1" }),
+    tiktokFetch: async () => ({ publish_id: "pub-x" }),
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async (_tiktokFetch, accessToken) => {
+      checkedWith.push(accessToken);
+      return { kind: "skip" };
+    },
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(checkedWith, ["tok-acct-1", "tok-acct-2"], "one creator_info call per account, never per post");
+  const inited = callsFor(db, "workflow_posts", "update")
+    .filter((c) => (c.payload as Record<string, unknown>).tiktok_publish_status === "initiated");
+  assertEquals(inited.length, 3);
+});
+
+Deno.test("tiktok-publish-cron init phase: mapped TikTok init error -> pt-BR message, non-retryable", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [claimedPost({ post_id: 1 })], [], []);
+
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async () => {
+      throw new TikTokApiError("unaudited", "unaudited_client_can_only_post_to_private_accounts", false);
+    },
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async () => ({ kind: "skip" }),
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  const payload = callsFor(db, "workflow_posts", "update")[0].payload as Record<string, unknown>;
+  assertEquals(payload.tiktok_publish_status, "failed");
+  assertEquals(payload.tiktok_publish_retry_count, 3);
+  assertEquals(
+    payload.tiktok_publish_error,
+    "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.",
+  );
+});
+
+Deno.test("tiktok-publish-cron init phase: unmapped init error stays retryable (+1, raw message)", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [claimedPost({ post_id: 1, tiktok_publish_retry_count: 1 })], [], []);
+
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async () => {
+      throw new Error("network down");
+    },
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async () => ({ kind: "skip" }),
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  const payload = callsFor(db, "workflow_posts", "update")[0].payload as Record<string, unknown>;
+  assertEquals(payload.tiktok_publish_status, "failed");
+  assertEquals(payload.tiktok_publish_retry_count, 2);
+  assertEquals(payload.tiktok_publish_error, "network down");
+});
+
+Deno.test("tiktok-publish-cron init phase: TOKEN_INVALID from the creator check fails every post of the account, retryable, no init", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [claimedPost({ post_id: 1 }), claimedPost({ post_id: 2 })], [], []);
+
+  const fetchPaths: string[] = [];
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async (path) => {
+      fetchPaths.push(path);
+      return { publish_id: "pub-x" };
+    },
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
+    fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
+    fetchCreatorCheck: async () => {
+      throw new TikTokApiError("access token invalid", "TOKEN_INVALID", false);
+    },
+    fetchPrecheckMedia: async () => [{ kind: "image", duration_seconds: null, media_lost_at: null }],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(fetchPaths, []);
+  const updates = callsFor(db, "workflow_posts", "update");
+  assertEquals(updates.length, 2);
+  for (const u of updates) {
+    const payload = u.payload as Record<string, unknown>;
+    assertEquals(payload.tiktok_publish_status, "failed");
+    assertEquals(payload.tiktok_publish_retry_count, 1);
+    assertEquals(payload.tiktok_publish_error, "Erro ao obter token do TikTok: access token invalid");
+  }
 });
 
 // ── (e) status phase: PUBLISH_COMPLETE ──────────────────────────────────────────

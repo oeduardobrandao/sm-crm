@@ -45,6 +45,14 @@ import {
   type ClaimedTikTokPost,
   type TikTokSettings,
 } from "../_shared/tiktok-publish-utils.ts";
+import {
+  type CreatorCheck,
+  evaluateTikTokPrecheck,
+  fetchCreatorCheck as realFetchCreatorCheck,
+  fetchPrecheckMedia as realFetchPrecheckMedia,
+} from "../_shared/tiktok-precheck.ts";
+import { TikTokApiError } from "../_shared/tiktok.ts";
+import { tiktokErrorMessage } from "../_shared/tiktok-messages.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = any;
@@ -100,6 +108,10 @@ export interface TikTokPublishCronDeps {
    * normally just queue `post_file_links` responses on the mock db and let the real
    * (platform-agnostic, already-exported) helper run. */
   fetchPostMedia?: (db: DbClient, postId: number) => Promise<FetchedMediaFile[]>;
+  /** Optional DI seams for the pre-init creator/media precheck (spec A10) — default to the
+   * real _shared/tiktok-precheck.ts implementations. */
+  fetchCreatorCheck?: typeof realFetchCreatorCheck;
+  fetchPrecheckMedia?: typeof realFetchPrecheckMedia;
   now?: () => Date;
 }
 
@@ -166,6 +178,8 @@ async function processInitPhase(
 ): Promise<PhaseResult> {
   const { svc, getFreshTikTokToken, tiktokFetch, buildTikTokMediaUrl } = deps;
   const fetchPostMedia = deps.fetchPostMedia ?? realFetchPostMedia;
+  const fetchCreatorCheck = deps.fetchCreatorCheck ?? realFetchCreatorCheck;
+  const fetchPrecheckMedia = deps.fetchPrecheckMedia ?? realFetchPrecheckMedia;
 
   let succeeded = 0;
   let failed = 0;
@@ -193,8 +207,38 @@ async function processInitPhase(
       continue;
     }
 
+    // One creator_info call per account per run (same invariant as the token fetch above).
+    let creator: CreatorCheck;
+    try {
+      creator = await fetchCreatorCheck(tiktokFetch, accessToken);
+    } catch (err) {
+      // TOKEN_INVALID / REVOKED rethrown by fetchCreatorCheck: same treatment as the
+      // getFreshTikTokToken catch above (spec A10): tokenErrorMessage, retryable (+1).
+      const message = tokenErrorMessage(err);
+      for (const post of toProcess) {
+        await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, message);
+        failed++;
+      }
+      continue;
+    }
+
     for (const post of toProcess) {
       try {
+        const precheckMedia = await fetchPrecheckMedia(svc, post.post_id);
+        const precheckFailure = evaluateTikTokPrecheck({
+          tipo: post.tipo,
+          settings: post.tiktok_settings,
+          media: precheckMedia,
+          creator,
+        });
+        if (precheckFailure) {
+          await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, precheckFailure, {
+            nonRetryable: true,
+          });
+          failed++;
+          continue;
+        }
+
         const media = await fetchPostMedia(svc, post.post_id);
         const claimedForBuilder: ClaimedTikTokPost = {
           tipo: post.tipo,
@@ -239,7 +283,15 @@ async function processInitPhase(
         succeeded++;
         console.log(`[${CRON_NAME}] Init: post ${post.post_id} -> publish_id ${publishId}`);
       } catch (err) {
-        await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, errorMessage(err));
+        const code = err instanceof TikTokApiError ? err.code : undefined;
+        const mapped = tiktokErrorMessage(code);
+        await markTikTokPublishFailed(
+          svc,
+          post.post_id,
+          post.tiktok_publish_retry_count,
+          mapped ?? errorMessage(err),
+          mapped ? { nonRetryable: true } : undefined,
+        );
         failed++;
       }
     }
