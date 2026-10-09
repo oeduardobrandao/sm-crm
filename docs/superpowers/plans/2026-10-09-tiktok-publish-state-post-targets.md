@@ -40,7 +40,7 @@ The edge functions (`tiktok-publish`, `tiktok-publish-cron`, `tiktok-webhook`, `
   `psql "${SUPABASE_DB_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}" -v ON_ERROR_STOP=1 -f <file>`
   from the repo root. If Docker is unavailable, CI's `entitlement-tests` job is the gate. Say so in the task report instead of claiming a pass.
 - Deploy steps (Task 9) are owner-approval-gated. Implementers never run them.
-- Commit trailer: every commit message ends with a blank line, then `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commit trailer: end commit messages with the attribution line from the session's system reminder (currently: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`), after a blank line. The commit steps below spell out the current line.
 
 ## Deviations from spec
 
@@ -63,32 +63,39 @@ The edge functions (`tiktok-publish`, `tiktok-publish-cron`, `tiktok-webhook`, `
    - a `publicado` destination, because cancelling would erase a real publication. Legacy cancel blindly nulled `tiktok_publish_status`.
 
    Both refusals raise `P0422` (`target_publishing` / `target_published`).
-8. **`data-import` deploy flag.** The spec lists `data-import` under `--no-verify-jwt`. However, `supabase/config.toml` has no `[functions.data-import]` entry, so the gateway verifies JWTs, and `docs/superpowers/plans/2026-07-27-data-import-wizard.md:24` says to deploy it plainly. Task 9 keeps the function's current setting: read `verify_jwt` first and pass `--no-verify-jwt` only if it is already `false`.
+8. **`data-import` keeps its live `verify_jwt` setting instead of the spec's `--no-verify-jwt`.** The spec lists `data-import` with the `--no-verify-jwt` functions as "their current settings", but `supabase/config.toml` has no `[functions.data-import]` entry (so the gateway default, JWT verification on, applies), and the data-import plan (`docs/superpowers/plans/2026-07-27-data-import-wizard.md:24`) deploys it plainly. The function also verifies the user JWT itself (`data-import/handler.ts:600-606`), so either setting is safe. Task 9 Step 6.4 has the owner confirm the live value first and keep it: deploy plainly when JWT verification is on, add `--no-verify-jwt` only when it is already off.
 9. **Backfill copies `publish_ref` and `error` only when the mapped state carries them.**
    - `publish_ref` is copied for `processando`, `publicado` and `falha`.
    - `error` is copied for `falha` only.
    - The legacy retry (`tiktok-publish/handler.ts:344-347`) cleared the status but kept `tiktok_publish_id`. Copying that stale ref onto a `pendente` row would let a late webhook act on a superseded publish.
-10. **The mapping is a permanent helper, `public.tiktok_legacy_target_status(p_legacy text, p_post_status text)`** (IMMUTABLE, service_role only). The backfill, the parity block, the reconcile script and the SQL tests share one mapping instead of four copies. It is dropped with the columns in the follow-up.
+10. **The mapping is a permanent helper, `public.tiktok_legacy_target_status(p_legacy text, p_post_status text)`** (IMMUTABLE, service_role only). The backfill, the parity block, the reconcile script and the SQL tests share one mapping instead of four copies. The backfill UPDATE itself is also a function, `public.tiktok_backfill_targets(p_conta uuid DEFAULT NULL)` (DEFINER, service_role only): the migration calls it with `NULL`, and the test calls it with its own workspace id, so the test exercises the shipped UPDATE rather than a copy. Both are dropped with the columns in the follow-up.
 11. **Parity on stories may abort the migration on prod.** P1's backfill (`20261010100002:110-115`) created a `tiktok` row for every `tiktok`/`both` post with no `tipo` filter, and `20261010100006:117-119` documents that such legacy rows exist. The migration keeps the spec's assertion. Task 9's pre-deploy query counts these rows and ships an owner-gated remediation `DELETE` (pendente rows only), to run before the migration if the count is non-zero.
 12. **The reconcile query is time-bounded.**
     - It only touches posts whose `workflow_posts.updated_at >= :'window_start'` (the moment the migration ran).
     - Without the bound, a legacy `failed` left behind on a post that was later rescheduled would be copied back onto a fresh `pendente` destination. That would reintroduce bug 3.
     - A `permalink` that the new webhook cleared on purpose would also be restored.
 13. **The reorder TikTok guard applies regardless of the post's status.** The Instagram guard only checks `agendado`. A `processando` destination can sit on a post that was moved to `aprovado_cliente` mid-publish (spec §2e), and its schedule should not move under it either.
-14. **The claim locks `OF wp, t`, not only `t`.** The legacy TikTok claim locked the post row (`FOR UPDATE OF wp SKIP LOCKED`), and `post_file_link_replace` relies on "publishers lock this same row" (`20260916000001:67-69`). Locking both keeps that serialization. `SKIP LOCKED` means the claim never waits, so there is no deadlock with the writers (post first, then target).
+14. **The claim locks `OF wp, t`, not only `t`.** The legacy TikTok claim locked the post row (`FOR UPDATE OF wp SKIP LOCKED`), and `post_file_link_replace` relies on "publishers lock this same row" (`20260916000001:67-69`). Locking both keeps that serialization. The rowmarks lock in `FROM` order, `t` then `wp`, while the writers lock the post first and then the target. When `t` locks but `wp` is busy, `SKIP LOCKED` skips the join row, but the `t` lock stays until the statement's transaction ends. That is safe only because the claim runs in its own autocommit transaction (one rpc call from the cron): it ends at once, and since `SKIP LOCKED` never waits, there is no deadlock. The claim must never be wrapped in a longer transaction; the migration comment says so.
 15. **CRM adapter extras.**
     - It also nulls `tiktok_publish_id`, which `select('*')` still returns frozen and nothing reads.
     - It emits `'processing'` for `processando`. The TikTok chip in `ScheduleButton.tsx:114` therefore reads "processando" during the short window that used to be `initiated` ("pendente"). The spec already treats both as one "Publicando" state.
     - With no TikTok row, `tiktok_publish_retry_count` becomes `0`, not `null`, because the field is typed `number`.
 16. **The existing select pin in `apps/crm/src/__tests__/store.posts.test.ts:792` is updated** to the new `getStandalonePost` select string. It is a select-string contract test, not a ScheduleButton, postLabels or postDestinations test.
-17. **The init phase claims a re-queued `agendado` destination regardless of `scheduled_at`** (Task 3). A failed publish-now can leave the post with a null or future date, and the legacy retry stranded exactly those. A `pendente` destination still waits for its post to be `agendado` and due.
-18. **The recompute counts Instagram as present when legacy `wp.platform` is `instagram`/`both` OR an Instagram destination row exists** (Task 2). A drifted post (P1 trigger skipped, or a hand edit) is therefore never moved to `postado` with its Instagram side unpublished.
-19. **`data-import` deploys without `--no-verify-jwt`** (Task 9, Step 6). The spec lists it with the `--no-verify-jwt` functions as "their current settings", but `supabase/config.toml` has no `[functions.data-import]` entry and the data-import plan (`2026-07-27-data-import-wizard.md:24`) deploys it plainly. The function also verifies the user JWT itself, so either setting is safe; the runbook has the owner confirm the live value first and keep it.
+17. **The recompute counts Instagram as present when legacy `wp.platform` is `instagram`/`both` OR an Instagram destination row exists** (Task 2). A drifted post (P1 trigger skipped, or a hand edit) is therefore never moved to `postado` with its Instagram side unpublished.
+18. **`schedule` refuses a `publicado` TikTok destination only when nothing else is left to publish** (Task 5; a refinement of spec §3 decided in review). The spec's blanket refusal left a dead end: a `both` post moved to draft mid-publish after TikTok landed could never be scheduled again for Instagram. Now:
+    - `processando` always refuses (`target_publishing`);
+    - `publicado` refuses (`target_published`) only when the post is TikTok-only, or Instagram is already published (`instagram_media_id` set);
+    - otherwise the post schedules normally, running only the Instagram validator. The published TikTok destination is never re-claimed (init takes only `pendente`/`agendado`), and the recompute reaches `postado` when Instagram lands.
+
+    Task 9's end-to-end checklist covers this scenario.
+19. **`mark_platform_published('tiktok')` copy-forward: a TikTok completion sets the post's `published_at` only when the recompute reaches `postado`** (Task 2; follows spec §2c). The legacy TikTok branch stamped `workflow_posts.published_at` on every TikTok completion, including the first side of a `both` post. Now the TikTok timestamp lands on the destination (`post_targets.published_at`), and the post-level `published_at` moves only with the transition to `postado` (`COALESCE(published_at, now())` in the recompute). The Instagram branch keeps its legacy `published_at` write unchanged.
+20. **`mark_platform_published` copy-forward: no re-fire of `postado` on a post that is already `postado`** (Task 2; follows spec §2c). The recompute never downgrades and never re-writes the same status, so a late or duplicate completion records no second `postado` status event or notification.
+21. **`mark_platform_published('instagram')` no longer moves a post outside `agendado`/`falha_publicacao` to `postado`** (Task 2; follows spec §2c). The recompute returns `NULL` for a post outside publication, so the Instagram fields still land but the status stays. `supabase/tests/entitlements/66_instagram_automation_post_targets.sql:276` and `:573` call it on posts outside publication and assert only the automation link fields, never the post status, so they keep passing; Task 10's grep re-checks them.
 
 ## File map
 
 **SQL**
-- `supabase/migrations/20261013000001_post_targets_publish_state.sql` (create): `publish_ref` and its index, the mapping helper, backfill with the reset rule, the parity `DO` block, column grants, the delete guard, and the a2/z7 copy-forward.
+- `supabase/migrations/20261013000001_post_targets_publish_state.sql` (create): `publish_ref` and its index, the mapping helper, the backfill function `tiktok_backfill_targets` (with the reset rule) and its call, the parity `DO` block, column grants, the delete guard, and the a2/z7 copy-forward.
 - `supabase/migrations/20261013000002_post_targets_publish_writers.sql` (create): `recompute_post_publish_status`, `mark_target_published`, `mark_target_failed`, `requeue_target`, `begin_target_publish`, `cancel_target_publish`, the `mark_platform_published` copy-forward, and the z9 reset trigger.
 - `supabase/migrations/20261013000003_tiktok_target_claim.sql` (create): `claim_tiktok_targets_for_publishing`, the old claim as a no-op, and the `reorder_post_schedules` and `post_file_link_replace` copy-forwards.
 - `supabase/tests/post_targets_publish_state.sql` (create): sections 1-4 (Task 1), 5-11 (Task 2), 12 (Task 3).
@@ -141,6 +148,7 @@ The edge functions (`tiktok-publish`, `tiktok-publish-cron`, `tiktok-webhook`, `
   - column `post_targets.publish_ref text`;
   - index `post_targets_publish_ref_idx` on `(platform, publish_ref) WHERE publish_ref IS NOT NULL` (non-unique);
   - `public.tiktok_legacy_target_status(p_legacy text, p_post_status text) RETURNS text` (IMMUTABLE; service_role only);
+  - `public.tiktok_backfill_targets(p_conta uuid DEFAULT NULL) RETURNS integer` (SECURITY DEFINER, `search_path` pinned, service_role only): the backfill with the reset rule, limited to one workspace when `p_conta` is set. The migration calls it with `NULL`, then runs the parity `DO` block; the test calls it with its workspace id. It is dropped together with the legacy `tiktok_*` columns in the follow-up;
   - trigger `post_targets_a0_guard_delete` (BEFORE DELETE), which raises `ERRCODE 'P0409'`, MESSAGE `target_not_removable`;
   - `authenticated` loses table-level `INSERT` and `UPDATE` on `post_targets`, and gains `INSERT (conta_id, post_id, platform, format, caption, title, settings)` and `UPDATE (caption, title, settings, format)`.
 
@@ -226,30 +234,9 @@ begin
     values (v_wf, v_ws, 'none', 'feed', 'agendado', 'tiktok', null, 'pid-stale', 1)
     returning id into v_none;
 
-  -- Backfill replicado de 20261013000001 (a migration já rodou antes do teste;
-  -- mesmo padrão da seção 8b da suíte 66). Restrito aos posts deste workspace.
-  update post_targets t set
-    status        = m.st,
-    publish_ref   = case when m.st in ('processando','publicado','falha') then m.tiktok_publish_id end,
-    external_id   = m.tiktok_post_id,
-    permalink     = m.tiktok_post_url,
-    error         = case when m.st = 'falha' then m.tiktok_publish_error end,
-    error_code    = null,
-    retry_count   = case when m.was_reset then 0 else coalesce(m.tiktok_publish_retry_count, 0) end,
-    processing_at = m.tiktok_publish_processing_at,
-    published_at  = case when m.st = 'publicado' then m.published_at end,
-    updated_at    = now()
-  from (
-    select wp.id, wp.tiktok_publish_id, wp.tiktok_post_id, wp.tiktok_post_url,
-           wp.tiktok_publish_error, wp.tiktok_publish_retry_count,
-           wp.tiktok_publish_processing_at, wp.published_at,
-           tiktok_legacy_target_status(wp.tiktok_publish_status, wp.status) as st,
-           (wp.tiktok_publish_status = 'failed'
-            and tiktok_legacy_target_status(wp.tiktok_publish_status, wp.status) = 'pendente') as was_reset
-      from workflow_posts wp
-     where wp.conta_id = v_ws
-  ) m
-  where t.post_id = m.id and t.platform = 'tiktok';
+  -- A migration já rodou antes do teste: chama a MESMA função de backfill que ela
+  -- chamou, restrita aos posts deste workspace (5 posts TikTok/both).
+  assert tiktok_backfill_targets(v_ws) = 5, 'backfill deve tocar os 5 destinos TikTok do workspace';
 
   select * into r from post_targets where post_id = v_pub and platform = 'tiktok';
   assert r.status = 'publicado' and r.publish_ref = 'pid-pub' and r.external_id = 'tt-1'
@@ -305,6 +292,12 @@ begin
     'anon executa tiktok_legacy_target_status';
   assert not has_function_privilege('authenticated', 'public.tiktok_legacy_target_status(text,text)', 'EXECUTE'),
     'authenticated executa tiktok_legacy_target_status';
+  assert not has_function_privilege('anon', 'public.tiktok_backfill_targets(uuid)', 'EXECUTE'),
+    'anon executa tiktok_backfill_targets';
+  assert not has_function_privilege('authenticated', 'public.tiktok_backfill_targets(uuid)', 'EXECUTE'),
+    'authenticated executa tiktok_backfill_targets';
+  assert has_function_privilege('service_role', 'public.tiktok_backfill_targets(uuid)', 'EXECUTE'),
+    'service_role deve executar tiktok_backfill_targets';
   raise notice 'PASS p4.1 publish_ref, mapeamento e backfill';
 end $$;
 rollback;
@@ -515,7 +508,7 @@ npx supabase db reset
 psql "${SUPABASE_DB_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}" -v ON_ERROR_STOP=1 -f supabase/tests/post_targets_publish_state.sql
 ```
 
-Expected: FAIL in section 1 with `assertion failed: post_targets.publish_ref ausente` (or `function tiktok_legacy_target_status(...) does not exist`).
+Expected: FAIL in section 1 with `assertion failed: post_targets.publish_ref ausente` (or `function tiktok_legacy_target_status(...) does not exist` / `function tiktok_backfill_targets(uuid) does not exist`).
 
 - [ ] **Step 4: Write the migration**
 
@@ -567,30 +560,47 @@ $$;
 REVOKE ALL ON FUNCTION public.tiktok_legacy_target_status(text, text) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.tiktok_legacy_target_status(text, text) TO service_role;
 
+-- O backfill mora numa função para o teste exercitar o MESMO UPDATE da migration
+-- (restrito ao workspace do teste) em vez de uma cópia. p_conta NULL = todos os
+-- posts (a chamada da migration). Sai junto das colunas tiktok_* no follow-up.
 -- publish_ref só onde o estado carrega uma publicação (o retry legado limpava o
 -- status mas deixava tiktok_publish_id velho); error só em 'falha'. O reset
 -- zera retry_count; nas demais linhas a contagem legada vem junto.
-UPDATE public.post_targets t SET
-  status        = m.st,
-  publish_ref   = CASE WHEN m.st IN ('processando','publicado','falha') THEN m.tiktok_publish_id END,
-  external_id   = m.tiktok_post_id,
-  permalink     = m.tiktok_post_url,
-  error         = CASE WHEN m.st = 'falha' THEN m.tiktok_publish_error END,
-  error_code    = NULL,
-  retry_count   = CASE WHEN m.was_reset THEN 0 ELSE COALESCE(m.tiktok_publish_retry_count, 0) END,
-  processing_at = m.tiktok_publish_processing_at,
-  published_at  = CASE WHEN m.st = 'publicado' THEN m.published_at END,
-  updated_at    = now()
-FROM (
-  SELECT wp.id, wp.tiktok_publish_id, wp.tiktok_post_id, wp.tiktok_post_url,
-         wp.tiktok_publish_error, wp.tiktok_publish_retry_count,
-         wp.tiktok_publish_processing_at, wp.published_at,
-         public.tiktok_legacy_target_status(wp.tiktok_publish_status, wp.status) AS st,
-         (wp.tiktok_publish_status = 'failed'
-          AND public.tiktok_legacy_target_status(wp.tiktok_publish_status, wp.status) = 'pendente') AS was_reset
-    FROM public.workflow_posts wp
-) m
-WHERE t.post_id = m.id AND t.platform = 'tiktok';
+CREATE OR REPLACE FUNCTION public.tiktok_backfill_targets(p_conta uuid DEFAULT NULL)
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_n integer;
+BEGIN
+  UPDATE public.post_targets t SET
+    status        = m.st,
+    publish_ref   = CASE WHEN m.st IN ('processando','publicado','falha') THEN m.tiktok_publish_id END,
+    external_id   = m.tiktok_post_id,
+    permalink     = m.tiktok_post_url,
+    error         = CASE WHEN m.st = 'falha' THEN m.tiktok_publish_error END,
+    error_code    = NULL,
+    retry_count   = CASE WHEN m.was_reset THEN 0 ELSE COALESCE(m.tiktok_publish_retry_count, 0) END,
+    processing_at = m.tiktok_publish_processing_at,
+    published_at  = CASE WHEN m.st = 'publicado' THEN m.published_at END,
+    updated_at    = now()
+  FROM (
+    SELECT wp.id, wp.tiktok_publish_id, wp.tiktok_post_id, wp.tiktok_post_url,
+           wp.tiktok_publish_error, wp.tiktok_publish_retry_count,
+           wp.tiktok_publish_processing_at, wp.published_at,
+           public.tiktok_legacy_target_status(wp.tiktok_publish_status, wp.status) AS st,
+           (wp.tiktok_publish_status = 'failed'
+            AND public.tiktok_legacy_target_status(wp.tiktok_publish_status, wp.status) = 'pendente') AS was_reset
+      FROM public.workflow_posts wp
+     WHERE p_conta IS NULL OR wp.conta_id = p_conta
+  ) m
+  WHERE t.post_id = m.id AND t.platform = 'tiktok';
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN v_n;
+END $$;
+REVOKE ALL ON FUNCTION public.tiktok_backfill_targets(uuid) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.tiktok_backfill_targets(uuid) TO service_role;
+
+SELECT public.tiktok_backfill_targets(NULL);
 
 -- Paridade: qualquer divergência derruba a migration inteira.
 DO $$
@@ -798,7 +808,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `public.mark_target_published(p_post_id bigint, p_platform text, p_fields jsonb DEFAULT '{}'::jsonb, p_source text DEFAULT 'system', p_actor uuid DEFAULT NULL) RETURNS void`. `p_fields` keys: `external_id`, `permalink`, `published_at`.
   - `public.mark_target_failed(p_post_id bigint, p_platform text, p_error text, p_error_code text, p_retryable boolean, p_source text DEFAULT 'system', p_actor uuid DEFAULT NULL) RETURNS boolean`. Returns `false` (no write) when the row is already `falha` or `publicado`.
   - `public.requeue_target(p_post_id bigint, p_platform text, p_source text DEFAULT 'system', p_actor uuid DEFAULT NULL) RETURNS boolean`.
-  - `public.begin_target_publish(p_post_id bigint, p_platform text, p_source text, p_actor uuid DEFAULT NULL) RETURNS boolean`. Returns `false` when the lock is held.
+  - `public.begin_target_publish(p_post_id bigint, p_platform text, p_source text, p_actor uuid DEFAULT NULL) RETURNS boolean`. Returns `false` when the lock is held. When it takes the lock it stamps `workflow_posts.scheduled_at = now()` in the same transaction: through `record_post_status_change`'s `p_fields` when it moves `aprovado_cliente` → `agendado`, or with a direct `UPDATE` when the post is already `agendado`. This mirrors `instagram-publish/handler.ts:225,304,363`, so a destination re-queued after a failed publish-now satisfies the claim's `scheduled_at <= now()`.
   - `public.cancel_target_publish(p_post_id bigint, p_platform text, p_source text, p_actor uuid DEFAULT NULL) RETURNS void`.
   - `public.mark_platform_published(bigint, text, text, uuid, jsonb)`: same signature and grants as today.
   - Trigger `workflow_posts_z9_reset_tiktok_target` (AFTER UPDATE OF status, `WHEN (NEW.status IS DISTINCT FROM OLD.status)`), backed by `public.workflow_posts_reset_tiktok_target()`.
@@ -1078,12 +1088,19 @@ declare
 begin
   -- 9a aprovado_cliente + pendente: post vai a agendado, trava o destino
   v_p := pg_temp.p4_post(v_wf, 'aprovado_cliente', 'tiktok');
+  update workflow_posts set scheduled_at = null where id = v_p;
   assert begin_target_publish(v_p, 'tiktok', 'workspace_user'), '9a tomou a trava';
   assert (select status from workflow_posts where id = v_p) = 'agendado', '9a post agendado';
+  -- now() é o instante da transação: o mesmo que a função gravou
+  assert (select scheduled_at from workflow_posts where id = v_p) = now(),
+    '9a publicar agora carimba scheduled_at (via record_post_status_change)';
   assert (select processing_at is not null and status = 'pendente'
             from post_targets where post_id = v_p and platform = 'tiktok'), '9a trava setada';
   -- 9b trava fresca: false, nada muda
+  update workflow_posts set scheduled_at = now() + interval '1 day' where id = v_p;
   assert not begin_target_publish(v_p, 'tiktok', 'workspace_user'), '9b trava segura';
+  assert (select scheduled_at from workflow_posts where id = v_p) = now() + interval '1 day',
+    '9b trava segura nao mexe em scheduled_at';
   -- 9c trava velha (> 10 min) é retomada
   update post_targets set processing_at = now() - interval '20 minutes'
    where post_id = v_p and platform = 'tiktok';
@@ -1091,7 +1108,11 @@ begin
 
   -- 9d post já agendado (o publicar agora do Instagram rodou antes: bug 1)
   v_p := pg_temp.p4_post(v_wf, 'agendado', 'both');
+  update workflow_posts set scheduled_at = now() + interval '3 days' where id = v_p;
   assert begin_target_publish(v_p, 'tiktok', 'workspace_user'), '9d aceita agendado';
+  assert (select scheduled_at from workflow_posts where id = v_p) = now(),
+    '9d post ja agendado com data futura: scheduled_at carimbado para agora';
+  assert (select status from workflow_posts where id = v_p) = 'agendado', '9d post segue agendado';
 
   -- 9e destino re-enfileirado (agendado) também é aceito
   v_p := pg_temp.p4_post(v_wf, 'agendado', 'tiktok');
@@ -1450,7 +1471,8 @@ GRANT EXECUTE ON FUNCTION public.requeue_target(bigint, text, text, uuid) TO ser
 
 -- Publicar agora: aceita post em aprovado_cliente OU agendado (o publicar agora
 -- do Instagram pode ter rodado antes: bug 1) e destino pendente/agendado.
--- false = trava fresca (outro processo publicando).
+-- false = trava fresca (outro processo publicando). Ao tomar a trava, carimba
+-- scheduled_at = now() no post, na mesma transação.
 CREATE OR REPLACE FUNCTION public.begin_target_publish(
   p_post_id  bigint,
   p_platform text,
@@ -1491,8 +1513,15 @@ BEGIN
     RETURN false;
   END IF;
 
+  -- Publicar agora carimba scheduled_at = now(), como o instagram-publish
+  -- (handler.ts:225,304,363): se o init falhar e o destino for re-enfileirado, o
+  -- claim (scheduled_at <= now(), 20261013000003) o pega no próximo ciclo em vez de
+  -- esperar uma data futura ou nula.
   IF v_post_status = 'aprovado_cliente' THEN
-    PERFORM public.record_post_status_change(p_post_id, 'agendado', p_source, p_actor, NULL, '{}'::jsonb);
+    PERFORM public.record_post_status_change(p_post_id, 'agendado', p_source, p_actor, NULL,
+      jsonb_build_object('scheduled_at', now()));
+  ELSE
+    UPDATE public.workflow_posts SET scheduled_at = now() WHERE id = p_post_id;
   END IF;
   UPDATE public.post_targets SET processing_at = now(), updated_at = now()
    WHERE post_id = p_post_id AND platform = p_platform;
@@ -1552,11 +1581,13 @@ BEGIN
 
   IF EXISTS (SELECT 1 FROM public.post_targets
               WHERE post_id = p_post_id AND platform = 'instagram') THEN
+    -- NULL::text: jsonb_build_object com NULL sem tipo é "unknown" (ambiguidade
+    -- de tipo em alguns contextos); tipado, cada chave vira JSON null.
     v_fields := jsonb_build_object(
-      'instagram_container_id', NULL,
-      'publish_processing_at',  NULL,
-      'publish_error',          NULL,
-      'publish_error_code',     NULL);
+      'instagram_container_id', NULL::text,
+      'publish_processing_at',  NULL::text,
+      'publish_error',          NULL::text,
+      'publish_error_code',     NULL::text);
   END IF;
   PERFORM public.record_post_status_change(p_post_id, 'aprovado_cliente', p_source, p_actor, NULL, v_fields);
 END $$;
@@ -1710,8 +1741,9 @@ Replace the whole content of `supabase/tests/tiktok_publishing_rpcs.sql` with:
 --       conta inativa e stories; não deixa trava em linha que não devolve
 --   (e) claim do IG (inalterado): pula post both com instagram_media_id
 --   (f) claim retry: destino falha + retry_count < 3 + post em agendado/falha_publicacao
---   (g) init: destino re-enfileirado (agendado) com post em falha_publicacao, mesmo com
---       data futura; pendente só com post agendado e data vencida
+--   (g) init: só com data vencida; destino re-enfileirado (agendado) com post em
+--       falha_publicacao entra; re-enfileirado com data futura NÃO entra; pendente só
+--       com post agendado
 --   (h) status: destino processando com publish_ref, sem filtro de status do post
 --   (i) ORDER BY scheduled_at
 --   (j) o claim antigo devolve zero linhas e não trava nada
@@ -1855,8 +1887,10 @@ begin
   -- (g)
   assert exists (select 1 from tt_claim_init where post_id = v_requeued_falha),
     '(g) re-enfileirado com post em falha_publicacao';
-  assert exists (select 1 from tt_claim_init where post_id = v_requeued_future),
-    '(g) re-enfileirado ignora a data futura';
+  assert not exists (select 1 from tt_claim_init where post_id = v_requeued_future),
+    '(g) re-enfileirado com data futura fica (spec §2f: scheduled_at <= now())';
+  assert (select processing_at from post_targets where post_id = v_requeued_future and platform = 'tiktok') is null,
+    '(g) re-enfileirado com data futura nao e travado';
   assert not exists (select 1 from tt_claim_init where post_id = v_pend_falha),
     '(g) pendente com post em falha_publicacao fica';
   assert not exists (select 1 from tt_claim_init where post_id = v_pend_future),
@@ -2113,7 +2147,7 @@ Expected:
 - `tiktok_publishing_rpcs.sql` fails at `(j) claim antigo vazio`. The old claim still claims the new fixtures, because it reads `tiktok_publish_status IS NULL`.
 - `post_file_link_replace.sql` fails with `Replacement should have failed with P0409`. The destination lock is not checked yet.
 - `70_workflow_posts_avulsos.sql` fails at `reorder deve recusar destino processando`.
-- `post_targets_publish_state.sql` fails in section 12 with `function claim_tiktok_targets_for_publishing(unknown, integer) does not exist`.
+- `post_targets_publish_state.sql` fails in section 12 inside `pg_temp.p4_expect`, which catches the missing-function error and turns it into an assertion: `assertion failed: esperado 22023/invalid_phase, veio 42883/function claim_tiktok_targets_for_publishing(unknown, integer) does not exist em: select * from claim_tiktok_targets_for_publishing('bogus', 5)`.
 
 - [ ] **Step 6: Write the migration**
 
@@ -2130,17 +2164,23 @@ Create `supabase/migrations/20261013000003_tiktok_target_claim.sql`:
 SET LOCAL lock_timeout = '5s';
 
 -- ---------- f. claim por destino --------------------------------------------
--- init:   destino re-enfileirado (agendado) com post em agendado/falha_publicacao
---         (sem filtro de data: um reenvio de um publicar-agora pode ter data futura
---         ou nula), ou destino pendente com post agendado e data vencida.
+-- init:   data vencida (scheduled_at <= now(), spec §2f) E destino re-enfileirado
+--         (agendado) com post em agendado/falha_publicacao, ou destino pendente com
+--         post agendado. Um reenvio de publicar-agora tem data vencida porque
+--         begin_target_publish carimba scheduled_at = now() (20261013000002).
 -- status: destino processando com publish_ref, sem filtro de status do post (um
 --         publish em voo termina mesmo se o post foi movido).
 -- retry:  destino falha, retry_count < 3, post em agendado/falha_publicacao; o cron
 --         chama requeue_target.
--- A conta ativa entra no CTE antes do FOR UPDATE SKIP LOCKED: a trava só cai em
--- linha devolvida. Trava post e destino (OF wp, t): post_file_link_replace e os
--- writers serializam na linha do post (20260916000001:67-69). SKIP LOCKED nunca
--- espera, então não há deadlock com os writers (post antes de destino).
+-- A conta ativa entra no CTE antes do FOR UPDATE SKIP LOCKED: processing_at só é
+-- carimbado em linha devolvida. Trava post e destino (OF wp, t): post_file_link_replace
+-- e os writers serializam na linha do post (20260916000001:67-69).
+-- Ordem das travas: os rowmarks travam na ordem do FROM, t e depois wp (os writers
+-- travam wp e depois t). Se t trava e wp está ocupado, SKIP LOCKED pula a linha do
+-- join mas a trava de t FICA até o fim da transação do statement. Isso só é seguro
+-- porque o claim roda na própria transação autocommit (uma chamada rpc do cron): ela
+-- termina logo, o writer que esperava por t segue, e como SKIP LOCKED nunca espera
+-- não há deadlock. NUNCA chame este claim dentro de uma transação mais longa.
 CREATE OR REPLACE FUNCTION public.claim_tiktok_targets_for_publishing(
   p_phase text,
   p_limit int DEFAULT 25
@@ -2177,8 +2217,9 @@ BEGIN
      WHERE t.platform = 'tiktok'
        AND CASE p_phase
          WHEN 'init' THEN
-              (t.status = 'agendado' AND wp.status IN ('agendado','falha_publicacao'))
-           OR (t.status = 'pendente' AND wp.status = 'agendado' AND wp.scheduled_at <= now())
+              wp.scheduled_at <= now()
+              AND (   (t.status = 'agendado' AND wp.status IN ('agendado','falha_publicacao'))
+                   OR (t.status = 'pendente' AND wp.status = 'agendado'))
          WHEN 'status' THEN
               t.status = 'processando' AND t.publish_ref IS NOT NULL
          WHEN 'retry' THEN
@@ -3696,7 +3737,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `:27-36` (imports);
   - `:75-79` (constants and helpers);
   - `:199-206` (post select);
-  - `:222-232` (target lookup and schedule refusal);
+  - `:222-300` (target lookup, schedule refusal, and skipping the TikTok validator when TikTok is already published);
   - `:309-571` (cancel, retry, publish-now).
 - Modify: `supabase/functions/__tests__/tiktok-publish_test.ts`:
   - `:44-58` (`basePost`);
@@ -3711,6 +3752,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - from Task 2: rpc `begin_target_publish`, `cancel_target_publish`, `requeue_target` and `mark_target_published`, with the P0422 identifiers.
 - Produces (HTTP contract; the CRM's `ScheduleButton` and services call these):
   - the existing routes and success bodies are unchanged: schedule `{ ok, status: "agendado" }`, cancel `{ ok, status: "aprovado_cliente" }`, retry `{ ok, status: "agendado" }`, publish-now `{ ok, status: "postado" }` or `{ ok, status: "agendado", message }`;
+    - pre-existing and kept: publish-now on a `both` post whose Instagram side is still pending answers `{ ok, status: "postado" }` once TikTok lands, although the recompute leaves the post `agendado` until Instagram publishes. The body describes the TikTok side, not the post. The CRM ignores this body's `status` for TikTok and refetches through `onStatusChange()` (`ScheduleButton.tsx:296-331`), so it shows the real post status. Not changed in P4;
+    - the retry body stays `{ ok, status: "agendado" }` even when a `both` post stays in `falha_publicacao` because Instagram still failed (same reason);
+  - changed: schedule refuses with `target_published` only when the TikTok destination is `publicado` AND nothing else is left to publish (TikTok-only post, or Instagram already published). A `both` post with Instagram pending schedules normally, validating Instagram only. `processando` always refuses (Deviation 18);
   - new: publish-now while the destination lock is held returns `409 { error: "Já está publicando no TikTok." }`;
   - new: P0422 refusals return `422 { error: <pt-BR> }` from `TARGET_REFUSALS`.
 
@@ -3768,15 +3812,19 @@ Deno.test("tiktok-publish: the post select embeds the TikTok destination, not th
   assert(!select.includes("tiktok_publish_"), select);
 });
 
-for (const [status, message] of [
-  ["processando", "Já está publicando no TikTok."],
-  ["publicado", "Já publicado no TikTok."],
+// processando always refuses; publicado refuses only when nothing else is left to publish
+// (TikTok-only, or Instagram already published). See the `both` + publicado tests below.
+for (const [platform, status, extra, message] of [
+  ["tiktok", "processando", {}, "Já está publicando no TikTok."],
+  ["both", "processando", {}, "Já está publicando no TikTok."],
+  ["tiktok", "publicado", {}, "Já publicado no TikTok."],
+  ["both", "publicado", { instagram_media_id: "ig-media-1" }, "Já publicado no TikTok."],
 ] as const) {
-  Deno.test(`tiktok-publish schedule: destination ${status} -> 422, nothing written`, async () => {
+  Deno.test(`tiktok-publish schedule: ${platform} post, destination ${status}${"instagram_media_id" in extra ? ", Instagram published" : ""} -> 422, nothing written`, async () => {
     const db = createSupabaseQueryMock();
     db.withAuth({ id: "actor-1" });
     db.queue("workflow_posts", "select", {
-      data: basePost({ platform: "both", targets_state: ttTarget(status) }),
+      data: basePost({ platform, targets_state: ttTarget(status), ...extra }),
       error: null,
     });
     db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
@@ -3794,6 +3842,74 @@ for (const [status, message] of [
     assertEquals(rpcCalls(db, "record_post_status_change").length, 0);
   });
 }
+
+Deno.test("tiktok-publish schedule: `both` post, TikTok publicado, Instagram pending -> schedules for Instagram only", async () => {
+  // The post went back to draft mid-publish after TikTok landed. Scheduling it again is how
+  // Instagram goes out: init never re-claims a publicado destination, and the recompute
+  // reaches postado when Instagram lands.
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({
+      platform: "both",
+      instagram_media_id: null,
+      targets_state: [...ttTarget("publicado"), { id: 502, platform: "instagram", status: "pendente", processing_at: null }],
+    }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queue("workflow_posts", "update", { data: null, error: null }); // scheduled_at write
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+
+  let tiktokCalled = 0;
+  let igCalled = 0;
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => {
+      tiktokCalled++;
+      return Promise.resolve(okTikTokValidation());
+    }) as never,
+    validateForScheduling: (() => {
+      igCalled++;
+      return Promise.resolve({ ok: true, errors: [] } as ScheduleValidationResult);
+    }) as never,
+  }));
+
+  const res = await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2030-01-01T12:00:00Z" } }));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { ok: true, status: "agendado" });
+  assertEquals(tiktokCalled, 0); // TikTok already published: nothing left to validate there
+  assertEquals(igCalled, 1);
+  const rpc = rpcCalls(db, "record_post_status_change");
+  assertEquals(rpc.length, 1);
+  assertEquals((rpc[0].payload as Record<string, unknown>).p_new_status, "agendado");
+});
+
+Deno.test("tiktok-publish schedule: `both` post, TikTok publicado, Instagram validation fails -> 422 with IG details only", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ platform: "both", targets_state: ttTarget("publicado"), scheduled_at: "2025-01-01T00:00:00Z" }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queue("workflow_posts", "update", { data: null, error: null }); // candidate write
+  db.queue("workflow_posts", "update", { data: null, error: null }); // restore write
+
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => {
+      throw new Error("must not validate TikTok");
+    }) as never,
+    validateForScheduling: (() =>
+      Promise.resolve({ ok: false, errors: ["Legenda do Instagram não definida."] } as ScheduleValidationResult)) as never,
+  }));
+
+  const res = await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2030-01-01T12:00:00Z" } }));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Validação falhou", details: ["Legenda do Instagram não definida."] });
+  assertEquals(rpcCalls(db, "record_post_status_change").length, 0);
+});
 ```
 
 Replace lines 371-526 (the `retry` and `cancel` sections, from the `// retry` banner through the end of the last cancel test) with:
@@ -4441,7 +4557,7 @@ Replace the post select (lines 199-206) with:
       .from("workflow_posts")
       .select(
         "id, status, platform, tipo, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at, " +
-          "targets_state:post_targets(id, platform, status, processing_at)",
+          "instagram_media_id, targets_state:post_targets(id, platform, status, processing_at)",
       )
       .eq("id", postId)
       .single();
@@ -4456,10 +4572,63 @@ Directly after the platform check that closes at line 227, add:
 In the schedule branch, after the `aprovado_cliente` check (closes at line 232), add:
 
 ```ts
-      // An already-published (or still-publishing) TikTok destination would sit at agendado
-      // forever: the init claim only takes pendente/agendado destinations.
+      // A still-publishing TikTok destination always refuses. A published one is never
+      // re-claimed (init takes only pendente/agendado), so scheduling is refused only when nothing
+      // else is left to publish: a TikTok-only post, or Instagram already published. A `both` post
+      // whose Instagram side is pending (post moved to draft mid-publish after TikTok landed) may
+      // be scheduled: Instagram goes out and the recompute reaches postado when it lands.
       if (target?.status === "processando") return json({ error: TARGET_REFUSALS.target_publishing }, 422);
-      if (target?.status === "publicado") return json({ error: TARGET_REFUSALS.target_published }, 422);
+      const tiktokDone = target?.status === "publicado";
+      const instagramPending =
+        (post.platform === "both" ||
+          ((post.targets_state ?? []) as TikTokTargetState[]).some((t) => t.platform === "instagram")) &&
+        !post.instagram_media_id;
+      if (tiktokDone && !instagramPending) return json({ error: TARGET_REFUSALS.target_published }, 422);
+```
+
+Then, further down the same branch, skip the TikTok validator when TikTok is already published. Replace:
+
+```ts
+      let tiktokValidation: TikTokValidationResult;
+      try {
+        tiktokValidation = await validateTikTok(svcDb as never, postId);
+      } catch (e) {
+        console.error("[TIKTOK-PUBLISH] schedule TikTok validation error:", (e as Error)?.message);
+        const restoreFailure = await restoreScheduledAt();
+        if (restoreFailure) return restoreFailure;
+        return json({ error: "Erro ao validar post para agendamento no TikTok." }, 500);
+      }
+```
+
+with:
+
+```ts
+      // TikTok already published: nothing left to validate on that side.
+      let tiktokValidation: TikTokValidationResult | null = null;
+      if (!tiktokDone) {
+        try {
+          tiktokValidation = await validateTikTok(svcDb as never, postId);
+        } catch (e) {
+          console.error("[TIKTOK-PUBLISH] schedule TikTok validation error:", (e as Error)?.message);
+          const restoreFailure = await restoreScheduledAt();
+          if (restoreFailure) return restoreFailure;
+          return json({ error: "Erro ao validar post para agendamento no TikTok." }, 500);
+        }
+      }
+```
+
+and replace:
+
+```ts
+      const mergedErrors = [...tiktokValidation.errors, ...(igValidation?.errors ?? [])];
+      const ok = tiktokValidation.ok && (igValidation ? igValidation.ok : true);
+```
+
+with:
+
+```ts
+      const mergedErrors = [...(tiktokValidation?.errors ?? []), ...(igValidation?.errors ?? [])];
+      const ok = (tiktokValidation ? tiktokValidation.ok : true) && (igValidation ? igValidation.ok : true);
 ```
 
 Replace the cancel, retry and publish-now branches (lines 309-571) with:
@@ -6148,7 +6317,8 @@ Create `scripts/tiktok-p4-predeploy.sql`:
 ```sql
 -- P4 pré-deploy (TikTok publish state em post_targets): relatório SOMENTE LEITURA.
 -- Rodar em prod e em staging ANTES de aplicar 20261013000001..3:
---   npx supabase db query --linked --project-ref <ref> --file scripts/tiktok-p4-predeploy.sql
+--   npx supabase link --project-ref <ref> < /dev/null
+--   npx supabase db query --linked --file scripts/tiktok-p4-predeploy.sql
 -- (só a última statement volta: o relatório inteiro é um SELECT).
 -- Plano: docs/superpowers/plans/2026-10-09-tiktok-publish-state-post-targets.md (Task 9).
 --
@@ -6158,6 +6328,9 @@ Create `scripts/tiktok-p4-predeploy.sql`:
 --     investigar antes (não há remediação automática).
 -- O que precisa de ação antes do passo 2 do deploy:
 --   * in_flight_posts não vazio -> terminar (aguardar o cron) ou limpar antes.
+--   * instagram_post_without_target / instagram_target_on_other_post não vazios -> drift de
+--     P1 no lado Instagram. Não derruba a migration (o recompute conta o Instagram pelo
+--     platform legado OU pela linha de destino), mas investigar antes: o P5 vai ler só a linha.
 -- Informativo: legacy_status_counts, duplicate_publish_ids (esperado vazio),
 --   failed_outside_publication (viram pendente pela regra de reset do backfill).
 SELECT jsonb_pretty(jsonb_build_object(
@@ -6197,6 +6370,17 @@ SELECT jsonb_pretty(jsonb_build_object(
       FROM public.post_targets t
       JOIN public.workflow_posts wp ON wp.id = t.post_id
      WHERE t.platform = 'tiktok' AND wp.platform NOT IN ('tiktok','both')),
+  'instagram_post_without_target', (
+    SELECT COALESCE(jsonb_agg(wp.id ORDER BY wp.id), '[]'::jsonb)
+      FROM public.workflow_posts wp
+     WHERE wp.platform IN ('instagram','both')
+       AND NOT EXISTS (SELECT 1 FROM public.post_targets t
+                        WHERE t.post_id = wp.id AND t.platform = 'instagram')),
+  'instagram_target_on_other_post', (
+    SELECT COALESCE(jsonb_agg(t.post_id ORDER BY t.post_id), '[]'::jsonb)
+      FROM public.post_targets t
+      JOIN public.workflow_posts wp ON wp.id = t.post_id
+     WHERE t.platform = 'instagram' AND wp.platform NOT IN ('instagram','both')),
   'legacy_state_without_target', (
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
              'post_id', wp.id, 'platform', wp.platform, 'tiktok_publish_status', wp.tiktok_publish_status) ORDER BY wp.id), '[]'::jsonb)
@@ -6232,7 +6416,8 @@ Create `scripts/tiktok-p4-reconcile.sql`:
 ```sql
 -- P4 reconcile (TikTok publish state em post_targets). Passo 4 do deploy (spec §5):
 -- rodar UMA vez, logo depois do deploy das functions, em prod (e staging, por paridade):
---   npx supabase db query --linked --project-ref <ref> --file scripts/tiktok-p4-reconcile.sql
+--   npx supabase link --project-ref <ref> < /dev/null
+--   npx supabase db query --linked --file <cópia editada deste arquivo>
 -- Plano: docs/superpowers/plans/2026-10-09-tiktok-publish-state-post-targets.md (Task 9).
 --
 -- Reaplica o mapeamento do backfill SÓ onde as colunas congeladas ganharam estado que o
@@ -6246,6 +6431,13 @@ Create `scripts/tiktok-p4-reconcile.sql`:
 -- depois voltaria como falha (bug 3), e um permalink limpo de propósito voltaria.
 -- Idempotente: na segunda execução nada casa (remapped exige destino pendente; filled exige
 -- campo nulo). Não move status de post: as versões antigas já moveram junto da escrita legada.
+--
+-- LIMITE CONHECIDO: só destino PENDENTE é remapeado. Um destino re-enfileirado (agendado)
+-- que um publicar-agora ANTIGO derrubou dentro da janela (escreveu tiktok_publish_status =
+-- 'failed' nas colunas congeladas) NÃO é remapeado: continua agendado e o cron novo o
+-- publica de novo no próximo ciclo. É aceito porque o TikTok está escuro fora do DK TESTE e
+-- o owner segura publicações entre os passos 2 e 5; se o relatório de antes mostrar uma
+-- linha assim, decidir à mão.
 --
 -- EDITAR ANTES DE RODAR: troque o valor abaixo pelo instante anotado no passo 2 do runbook
 -- (ISO 8601 com fuso). O valor de fábrica não é uma data e faz o script falhar de propósito.
@@ -6332,7 +6524,7 @@ npx supabase db reset
 Run every command from the repo root: the fixture's `\i` path is relative to the CWD, as in `scripts/test-entitlements.sh`. `_helpers.sql` provides `et_make_workspace`, the same fixture helper `supabase/tests/tiktok_publishing_rpcs.sql` uses.
 
 Expected:
-1. The pre-deploy report prints JSON whose `in_flight_posts`, `duplicate_publish_ids`, `tiktok_targets_on_stories`, `tiktok_both_without_one_target` and `tiktok_target_on_other_post` are `[]` on the seed database.
+1. The pre-deploy report prints JSON whose `in_flight_posts`, `duplicate_publish_ids`, `tiktok_targets_on_stories`, `tiktok_both_without_one_target`, `tiktok_target_on_other_post`, `instagram_post_without_target` and `instagram_target_on_other_post` are `[]` on the seed database.
 2. The first reconcile run prints `remapped` with one `{"post_id": <id>, "status": "falha"}`.
 3. The second run prints `{"filled": [], "remapped": []}` (idempotent).
 4. The unedited script fails with `invalid input syntax for type timestamp with time zone: "DEFINA-O-INSTANTE-DO-PASSO-2"` and prints `unedited script refused, as intended`.
@@ -6362,15 +6554,25 @@ The steps follow spec §5. Prod is `skjzpekeqefvlojenfsw` and staging is `wlyzhy
 
 2. **Pre-deploy report**, on prod, then staging:
 
+   `db query --linked` runs against whichever project the worktree is linked to, so link first, exactly as step 3 does. Do not rely on `--project-ref` for `db query`. A fresh worktree is unlinked (memory `reference_edge_deploy_from_unlinked_worktree`).
+
    ```bash
-   npx supabase db query --linked --project-ref skjzpekeqefvlojenfsw --file scripts/tiktok-p4-predeploy.sql
-   npx supabase db query --linked --project-ref wlyzhyfondykzpsiqsce --file scripts/tiktok-p4-predeploy.sql
+   npx supabase link --project-ref skjzpekeqefvlojenfsw < /dev/null
+   npx supabase db query --linked --file scripts/tiktok-p4-predeploy.sql
+   npx supabase link --project-ref wlyzhyfondykzpsiqsce < /dev/null
+   npx supabase db query --linked --file scripts/tiktok-p4-predeploy.sql
    ```
 
    - Act on the report as the script header says.
-   - If `tiktok_targets_on_stories` is not empty, run the commented `DELETE` from the script as a separate file, with the owner's OK.
+   - If `tiktok_targets_on_stories` is not empty, run the commented `DELETE` from the script as a separate file, with the owner's OK (link to that project first).
    - The owner holds off TikTok publishing (DK TESTE) from here until step 5 ends.
-   - **Write down the current time** with `npx supabase db query --linked --project-ref skjzpekeqefvlojenfsw` on a file containing `select now();`. It is the reconcile `window_start`.
+   - **Write down the current time** on prod. It is the reconcile `window_start`:
+
+     ```bash
+     npx supabase link --project-ref skjzpekeqefvlojenfsw < /dev/null
+     printf 'select now();\n' > <scratch>/now.sql
+     npx supabase db query --linked --file <scratch>/now.sql
+     ```
 
 3. **Migrations**, staging first, then prod. Check that the env is healthy first (memory `reference_staging_ops_management_api`):
 
@@ -6397,7 +6599,7 @@ The steps follow spec §5. Prod is `skjzpekeqefvlojenfsw` and staging is `wlyzhy
    npx supabase functions deploy data-import --project-ref skjzpekeqefvlojenfsw --use-api
    ```
 
-   Before deploying `data-import`, the owner confirms its live `verify_jwt` (Dashboard > Edge Functions > data-import > "Enforce JWT verification", on prod and on staging). If it is off, add `--no-verify-jwt` to its two deploy lines, so the deploy keeps the current value instead of flipping it (Deviation 19).
+   Before deploying `data-import`, the owner confirms its live `verify_jwt` (Dashboard > Edge Functions > data-import > "Enforce JWT verification", on prod and on staging). If it is off, add `--no-verify-jwt` to its two deploy lines, so the deploy keeps the current value instead of flipping it (Deviation 8).
 
    Staging parity (staging has no TikTok functions):
 
@@ -6411,7 +6613,8 @@ The steps follow spec §5. Prod is `skjzpekeqefvlojenfsw` and staging is `wlyzhy
 5. **Reconcile** (prod; staging optional). Copy `scripts/tiktok-p4-reconcile.sql` to a scratch file, replace `DEFINA-O-INSTANTE-DO-PASSO-2` with the time from step 2, then run:
 
    ```bash
-   npx supabase db query --linked --project-ref skjzpekeqefvlojenfsw --file <scratch>/reconcile.sql
+   npx supabase link --project-ref skjzpekeqefvlojenfsw < /dev/null
+   npx supabase db query --linked --file <scratch>/reconcile.sql
    ```
 
    Run it a second time: the second run must return `{"filled": [], "remapped": []}`.
@@ -6420,7 +6623,8 @@ The steps follow spec §5. Prod is `skjzpekeqefvlojenfsw` and staging is `wlyzhy
 
 7. **End-to-end check on prod with DK TESTE:**
    - a TikTok-only video post goes through publish-now, then schedule, then a forced failure (for example, media over the creator's duration limit), then Reenviar;
-   - one Instagram+TikTok post goes through "Publicar agora".
+   - one Instagram+TikTok post goes through "Publicar agora";
+   - one Instagram+TikTok post is moved back to draft mid-publish (after TikTok lands, before Instagram does), then rescheduled: scheduling succeeds, TikTok is not published again, and the post reaches `postado` when Instagram lands (Deviation 18).
 
    Confirm that the post status, the TikTok chip and the Hub link match `post_targets`:
 
@@ -6453,7 +6657,8 @@ grep -rln "tiktok_publish_status\|claim_posts_for_tiktok_publishing\|mark_platfo
 
 Expected before the fixes from Tasks 4-8: the first command lists writers in `tiktok-publish/handler.ts`, `tiktok-publish-cron/core.ts`, `tiktok-webhook/handler.ts` and `_shared/tiktok-publish-utils.ts`. After them, the only remaining hits are:
 - `hub-posts/handler.ts`, where `tiktok_post_url` is the response key, not a column read;
-- the CRM adapter's `tiktok_publish_*` field names in `apps/crm/src/store/posts.ts` (they are the legacy shape that Task 8's adapter fills in on purpose).
+- the CRM adapter's `tiktok_publish_*` field names in `apps/crm/src/store/posts.ts` (they are the legacy shape that Task 8's adapter fills in on purpose);
+- in the Hub, `apps/hub/src/types.ts`, `PostTile.tsx` and `PostDetailDialog.tsx` read the `tiktok_post_url` field of the `hub-posts` response. That field keeps its name and is now filled from the destination's `permalink` (Task 7), so these are expected and need no change.
 
 Any other hit is a missed writer or reader. Each test file from the second command must be one that Tasks 3-8 already updated (contract changes break tests in both suites, memory `feedback_contract_change_update_existing_tests`).
 
