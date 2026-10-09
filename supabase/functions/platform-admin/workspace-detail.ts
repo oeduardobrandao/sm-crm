@@ -53,7 +53,7 @@ export async function handleGetWorkspace(
 
   const { data: ws, error } = await svc
     .from("workspaces")
-    .select("id, name, logo_url, created_at, plan_id, plan_source")
+    .select("id, name, logo_url, created_at, plan_id, plan_source, storage_used_bytes")
     .eq("id", workspace_id)
     .single();
   if (error || !ws) {
@@ -97,6 +97,15 @@ export async function handleGetWorkspace(
     .select("id", { count: "exact", head: true })
     .eq("conta_id", workspace_id);
 
+  // Mirrors admin_list_workspaces v7 / workspace_usage(): instagram_accounts is reached through
+  // clientes.conta_id, and the total includes revoked/expired links (they still hold a plan
+  // slot). The 'active' subset is what still has a good authorization.
+  const { data: igRows } = await svc
+    .from("instagram_accounts")
+    .select("authorization_status, clientes!inner(conta_id)")
+    .eq("clientes.conta_id", workspace_id);
+  const igAccounts = (igRows ?? []) as { authorization_status: string | null }[];
+
   const { data: override } = await svc
     .from("workspace_plan_overrides")
     .select("resource_overrides, feature_overrides, notes")
@@ -125,8 +134,10 @@ export async function handleGetWorkspace(
 
   const subscription = await buildSubscriptionDetail(svc, workspace_id, opts);
 
+  const { storage_used_bytes: storageUsed, ...workspace } = ws;
+
   return new Response(JSON.stringify({
-    workspace: ws,
+    workspace,
     owner,
     members: enrichedMembers,
     plan: plan ? { id: plan.id, name: plan.name } : null,
@@ -142,6 +153,9 @@ export async function handleGetWorkspace(
       client_count: clientCount || 0,
       member_count: enrichedMembers.length,
       integration_count: integrationCount || 0,
+      instagram_account_count: igAccounts.length,
+      instagram_account_count_active: igAccounts.filter((a) => a.authorization_status === "active").length,
+      storage_used_bytes: Number(storageUsed ?? 0),
     },
   }), { status: 200, headers });
 }

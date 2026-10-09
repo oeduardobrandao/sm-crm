@@ -29,6 +29,9 @@ import {
 const CANCEL_WARNING =
   'Isso exclui o convite e, se a pessoa nunca terminou o onboarding, também exclui a conta dela, removendo-a de TODOS os workspaces. Continuar?';
 
+/** Rows shown before "Ver mais"; the rest unfold in place. */
+export const INVITES_PREVIEW_COUNT = 5;
+
 const SEAT_LIMIT_MESSAGE =
   'Este workspace está no limite de membros da equipe. Reenviar excederia o número de vagas do plano.';
 
@@ -55,6 +58,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
   const [formOpen, setFormOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'admin' | 'agent'>('agent');
+  const [expanded, setExpanded] = useState(false);
 
   const closeForm = () => {
     setFormOpen(false);
@@ -121,6 +125,8 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
 
   const invites = data?.invites ?? [];
   const total = data?.total ?? invites.length;
+  const hiddenCount = Math.max(0, invites.length - INVITES_PREVIEW_COUNT);
+  const shownInvites = expanded ? invites : invites.slice(0, INVITES_PREVIEW_COUNT);
 
   return (
     <Card className="mb-6 mt-6 min-w-0 overflow-hidden">
@@ -207,7 +213,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
               <span>Ações</span>
             </div>
             <div className="flex flex-col gap-2">
-              {invites.map((it) => (
+              {shownInvites.map((it) => (
                 <InviteRow
                   key={it.id}
                   invite={it}
@@ -219,6 +225,17 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
                 />
               ))}
             </div>
+            {hiddenCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start text-primary"
+                aria-expanded={expanded}
+                onClick={() => setExpanded((v) => !v)}
+              >
+                {expanded ? 'Ver menos' : `Ver mais (${hiddenCount})`}
+              </Button>
+            )}
           </>
         )}
       </CardContent>

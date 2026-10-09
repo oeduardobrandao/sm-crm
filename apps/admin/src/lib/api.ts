@@ -39,7 +39,15 @@ export interface WorkspaceDetail {
   resolved_limits: Record<string, number | null> | null;
   resolved_features: Record<string, boolean> | null;
   subscription: SubscriptionInfo | null;
-  usage: { client_count: number; member_count: number; integration_count: number };
+  usage: {
+    client_count: number;
+    member_count: number;
+    integration_count: number;
+    /** Absent until platform-admin is redeployed with the brand metrics; render as '—'. */
+    instagram_account_count?: number;
+    instagram_account_count_active?: number;
+    storage_used_bytes?: number;
+  };
 }
 
 export interface MemberInfo {

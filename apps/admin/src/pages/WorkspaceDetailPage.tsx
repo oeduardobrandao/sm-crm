@@ -38,10 +38,25 @@ import { computeOverridesPayload } from './workspace-overrides';
 import { describeDrift, formatCard, formatLongDay } from './workspace-subscription';
 import WorkspaceInvitesCard from './WorkspaceInvitesCard';
 import WorkspaceEventsCard from './WorkspaceEventsCard';
+import {
+  formatBytes,
+  limitCaption,
+  overrideCount,
+  visibleConnections,
+} from './workspace-detail-view';
 import { ErrorState } from '../components/ErrorState';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Skeleton } from '../components/ui/skeleton';
@@ -67,6 +82,25 @@ import { cn } from '../lib/utils';
 /** Radix Select rejects '' as an item value; this sentinel stands for "Sem plano". */
 const NO_PLAN = '__none__';
 const HEAD_CLASS = 'text-[0.7rem] uppercase tracking-wider';
+const DISCARD_EDITS_WARNING = 'Descartar as alterações não salvas?';
+
+type WorkspaceData = Awaited<ReturnType<typeof getWorkspace>>;
+
+/** The editable copy of the resolved limits/features, seeded from the server response. */
+function editsFrom(data: WorkspaceData) {
+  const resources: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data.resolved_limits ?? {})) {
+    resources[k] = v != null ? String(v) : '';
+  }
+  const features: Record<string, boolean> = { ...(data.resolved_features ?? {}) };
+  return { resources, features };
+}
+
+function sameEdits<T>(a: Record<string, T>, b: Record<string, T>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) if (a[k] !== b[k]) return false;
+  return true;
+}
 
 export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -90,6 +124,7 @@ export default function WorkspaceDetailPage() {
     enabled: !!id,
   });
   const mcpKeys = mcpKeysData?.keys;
+  const [showRevokedKeys, setShowRevokedKeys] = useState(false);
 
   const revokeMcpKeyMutation = useMutation({
     mutationFn: (keyId: string) => revokeMcpKey(id!, keyId),
@@ -114,6 +149,7 @@ export default function WorkspaceDetailPage() {
     enabled: !!id,
   });
   const oauthGrants = oauthGrantsData?.grants;
+  const [showRevokedGrants, setShowRevokedGrants] = useState(false);
 
   const revokeOAuthGrantMutation = useMutation({
     mutationFn: (grantId: string) => revokeOAuthGrant(id!, grantId),
@@ -136,26 +172,15 @@ export default function WorkspaceDetailPage() {
   const [featureEdits, setFeatureEdits] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [openPanel, setOpenPanel] = useState<'limits' | 'features' | null>(null);
 
   useEffect(() => {
     if (data) {
       setSelectedPlanId(data.plan?.id || '');
       setNotes(data.override?.notes || '');
-      const rEdits: Record<string, string> = {};
-      if (data.resolved_limits) {
-        for (const [k, v] of Object.entries(data.resolved_limits)) {
-          rEdits[k] = v != null ? String(v) : '';
-        }
-      }
-      setResourceEdits(rEdits);
-
-      const fEdits: Record<string, boolean> = {};
-      if (data.resolved_features) {
-        for (const [k, v] of Object.entries(data.resolved_features)) {
-          fEdits[k] = v;
-        }
-      }
-      setFeatureEdits(fEdits);
+      const edits = editsFrom(data);
+      setResourceEdits(edits.resources);
+      setFeatureEdits(edits.features);
     }
   }, [data]);
 
@@ -191,6 +216,7 @@ export default function WorkspaceDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
+      setOpenPanel(null);
       toast.success('Overrides salvos');
     },
     onError: (err: Error) => toast.error(err.message),
@@ -209,6 +235,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => clearWorkspaceOverrides(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
+      setOpenPanel(null);
       toast.success('Overrides removidos');
     },
     onError: (err: Error) => toast.error(err.message),
@@ -246,6 +273,48 @@ export default function WorkspaceDetailPage() {
     if (type === 'resource') return data.override.resource_overrides?.[key] !== undefined;
     return data.override.feature_overrides?.[key] !== undefined;
   };
+
+  const initialEdits = editsFrom(data);
+  const editsDirty =
+    !sameEdits(resourceEdits, initialEdits.resources) ||
+    !sameEdits(featureEdits, initialEdits.features);
+
+  // Closing a panel discards its unsaved edits: both panels feed one save payload, so a
+  // half-edited limit left behind would otherwise ride along on the next features save.
+  const closePanel = () => {
+    if (editsDirty && !window.confirm(DISCARD_EDITS_WARNING)) return;
+    setResourceEdits(initialEdits.resources);
+    setFeatureEdits(initialEdits.features);
+    setOpenPanel(null);
+  };
+
+  const resourceOverrideCount = overrideCount(data.override?.resource_overrides);
+  const featureOverrideCount = overrideCount(data.override?.feature_overrides);
+  const activeFeatureCount = FEATURE_FLAG_KEYS.filter((k) => data.resolved_features?.[k]).length;
+  const keysView = visibleConnections(mcpKeys, showRevokedKeys);
+  const grantsView = visibleConnections(oauthGrants, showRevokedGrants);
+
+  const panelFooter = (
+    <DialogFooter>
+      <Button
+        variant="ghost"
+        onClick={() => clearMutation.mutate()}
+        disabled={clearMutation.isPending}
+        className="sm:mr-auto"
+      >
+        Restaurar padrões do plano
+      </Button>
+      <Button variant="outline" onClick={closePanel}>
+        Cancelar
+      </Button>
+      <Button
+        onClick={() => saveOverridesMutation.mutate()}
+        disabled={saveOverridesMutation.isPending || !editsDirty}
+      >
+        {saveOverridesMutation.isPending ? 'Salvando…' : 'Salvar overrides'}
+      </Button>
+    </DialogFooter>
+  );
 
   return (
     <div className="w-full min-w-0 max-w-full overflow-x-hidden">
@@ -316,6 +385,8 @@ export default function WorkspaceDetailPage() {
           )}
         </div>
       </div>
+
+      <BrandMetrics data={data} />
 
       {/* Provider subscription — the customer's real billing, even when an admin has
           manually comped the effective plan above. */}
@@ -433,11 +504,29 @@ export default function WorkspaceDetailPage() {
       </Card>
 
       <div className="mb-6 grid min-w-0 max-w-full grid-cols-1 gap-6 md:grid-cols-2">
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle>Limites de recursos</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+        <SummaryCard
+          title="Limites de recursos"
+          summary={`${RESOURCE_LIMIT_KEYS.length + RATE_LIMIT_KEYS.length} limites`}
+          overrides={resourceOverrideCount}
+          onOpen={() => setOpenPanel('limits')}
+        />
+        <SummaryCard
+          title="Funcionalidades"
+          summary={`${activeFeatureCount} de ${FEATURE_FLAG_KEYS.length} ativas`}
+          overrides={featureOverrideCount}
+          onOpen={() => setOpenPanel('features')}
+        />
+      </div>
+
+      <Dialog open={openPanel === 'limits'} onOpenChange={(open) => !open && closePanel()}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Limites de recursos</DialogTitle>
+            <DialogDescription>
+              Valores diferentes do plano viram override deste workspace.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="grid auto-rows-max gap-2">
             {RESOURCE_LIMIT_KEYS.map((key) => (
               <LimitRow
                 key={key}
@@ -461,14 +550,20 @@ export default function WorkspaceDetailPage() {
                 onChange={(val) => setResourceEdits((prev) => ({ ...prev, [key]: val }))}
               />
             ))}
-          </CardContent>
-        </Card>
+          </DialogBody>
+          {panelFooter}
+        </DialogContent>
+      </Dialog>
 
-        <Card className="min-w-0 overflow-hidden">
-          <CardHeader>
-            <CardTitle>Funcionalidades</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+      <Dialog open={openPanel === 'features'} onOpenChange={(open) => !open && closePanel()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Funcionalidades</DialogTitle>
+            <DialogDescription>
+              O ponto amarelo marca um override; passe o mouse para ver o valor do plano.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="grid auto-rows-max gap-3">
             {FEATURE_FLAG_KEYS.map((key) => {
               const id = `feature-${key}`;
               return (
@@ -497,28 +592,38 @@ export default function WorkspaceDetailPage() {
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
-      </div>
+          </DialogBody>
+          {panelFooter}
+        </DialogContent>
+      </Dialog>
 
       <Card className="mb-6 min-w-0">
         <CardHeader>
           <CardTitle>Chaves de API do MCP</CardTitle>
-          {mcpKeys?.some((k) => !k.revoked_at) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => revokeAllMcpKeysMutation.mutate()}
-              disabled={revokeAllMcpKeysMutation.isPending}
-            >
-              Revogar todas
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {keysView.revokedCount > 0 && (
+              <RevokedToggle
+                shown={showRevokedKeys}
+                count={keysView.revokedCount}
+                onToggle={() => setShowRevokedKeys((v) => !v)}
+              />
+            )}
+            {keysView.activeCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => revokeAllMcpKeysMutation.mutate()}
+                disabled={revokeAllMcpKeysMutation.isPending}
+              >
+                Revogar todas
+              </Button>
+            )}
+          </div>
         </CardHeader>
-        {!mcpKeys || mcpKeys.length === 0 ? (
+        {keysView.visible.length === 0 ? (
           <CardContent>
-            <p className="text-sm text-muted-foreground">Nenhuma chave.</p>
+            <p className="text-sm text-muted-foreground">Nenhuma chave ativa.</p>
           </CardContent>
         ) : (
           <Table>
@@ -530,7 +635,7 @@ export default function WorkspaceDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mcpKeys.map((k) => (
+              {keysView.visible.map((k) => (
                 <TableRow key={k.id}>
                   <TableCell className="text-sm">
                     <span className="font-medium">{k.name}</span>
@@ -564,21 +669,30 @@ export default function WorkspaceDetailPage() {
       <Card className="mb-6 min-w-0">
         <CardHeader>
           <CardTitle>Conexões OAuth do MCP</CardTitle>
-          {oauthGrants?.some((g) => !g.revoked_at) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => revokeAllOAuthGrantsMutation.mutate()}
-              disabled={revokeAllOAuthGrantsMutation.isPending}
-            >
-              Revogar todas
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {grantsView.revokedCount > 0 && (
+              <RevokedToggle
+                shown={showRevokedGrants}
+                count={grantsView.revokedCount}
+                onToggle={() => setShowRevokedGrants((v) => !v)}
+              />
+            )}
+            {grantsView.activeCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => revokeAllOAuthGrantsMutation.mutate()}
+                disabled={revokeAllOAuthGrantsMutation.isPending}
+              >
+                Revogar todas
+              </Button>
+            )}
+          </div>
         </CardHeader>
-        {!oauthGrants || oauthGrants.length === 0 ? (
+        {grantsView.visible.length === 0 ? (
           <CardContent>
-            <p className="text-sm text-muted-foreground">Nenhuma conexão.</p>
+            <p className="text-sm text-muted-foreground">Nenhuma conexão ativa.</p>
           </CardContent>
         ) : (
           <Table>
@@ -590,7 +704,7 @@ export default function WorkspaceDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {oauthGrants.map((g) => (
+              {grantsView.visible.map((g) => (
                 <TableRow key={g.id}>
                   <TableCell className="text-sm font-medium">
                     {g.connected_by ?? 'Claude'}
@@ -644,24 +758,6 @@ export default function WorkspaceDetailPage() {
           />
         </CardContent>
       </Card>
-
-      <div className="mb-8 flex min-w-0 flex-col gap-3 sm:flex-row">
-        <Button
-          onClick={() => saveOverridesMutation.mutate()}
-          disabled={saveOverridesMutation.isPending}
-          className="w-full sm:w-auto"
-        >
-          {saveOverridesMutation.isPending ? 'Salvando…' : 'Salvar overrides'}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => clearMutation.mutate()}
-          disabled={clearMutation.isPending}
-          className="w-full sm:w-auto"
-        >
-          Restaurar padrões do plano
-        </Button>
-      </div>
 
       <Card className="min-w-0 overflow-hidden">
         <CardHeader>
@@ -753,6 +849,112 @@ export default function WorkspaceDetailPage() {
   );
 }
 
+/** Brand-level usage: the numbers the CRM's "Uso do plano" panel shows, against this workspace's limits. */
+function BrandMetrics({ data }: { data: WorkspaceData }) {
+  const limits = data.resolved_limits;
+  const { usage } = data;
+  const igTotal = usage.instagram_account_count;
+  const igActive = usage.instagram_account_count_active;
+  const igNeedingReauth = igTotal != null && igActive != null ? igTotal - igActive : 0;
+  const tiles: { label: string; value: string | number; caption: string; warn?: string }[] = [
+    {
+      label: 'Clientes',
+      value: usage.client_count,
+      caption: limitCaption(limits?.max_clients),
+    },
+    {
+      label: 'Membros',
+      value: usage.member_count,
+      caption: limitCaption(limits?.max_team_members),
+    },
+    {
+      label: 'Contas do Instagram',
+      value: igTotal ?? '—',
+      caption: limitCaption(limits?.max_instagram_accounts),
+      warn:
+        igNeedingReauth > 0
+          ? `${igNeedingReauth} ${igNeedingReauth === 1 ? 'precisa reconectar' : 'precisam reconectar'}`
+          : undefined,
+    },
+    {
+      label: 'Armazenamento',
+      value: usage.storage_used_bytes != null ? formatBytes(usage.storage_used_bytes) : '—',
+      caption: limitCaption(limits?.storage_quota_bytes, formatBytes),
+    },
+  ];
+  return (
+    <div className="mb-6 grid min-w-0 grid-cols-2 gap-4 lg:grid-cols-4">
+      {tiles.map((t) => (
+        <div
+          key={t.label}
+          data-testid="brand-metric"
+          className="glass-surface min-w-0 rounded-2xl border border-border bg-card p-5"
+        >
+          <p className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">{t.label}</p>
+          <p className="break-words font-sf text-2xl font-bold sm:text-3xl">{t.value}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t.caption}</p>
+          {t.warn && <p className="mt-0.5 text-xs text-warning">{t.warn}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummaryCard({
+  title,
+  summary,
+  overrides,
+  onOpen,
+}: {
+  title: string;
+  summary: string;
+  overrides: number;
+  onOpen: () => void;
+}) {
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <Button variant="ghost" size="sm" className="text-primary" onClick={onOpen}>
+          Ver e editar
+        </Button>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-center gap-2 py-4">
+        <span className="text-sm text-muted-foreground">{summary}</span>
+        {overrides > 0 ? (
+          <Badge variant="warning" size="sm">
+            {overrides} {overrides === 1 ? 'override' : 'overrides'}
+          </Badge>
+        ) : (
+          <span className="text-xs text-dim-foreground">padrão do plano</span>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RevokedToggle({
+  shown,
+  count,
+  onToggle,
+}: {
+  shown: boolean;
+  count: number;
+  onToggle: () => void;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="text-muted-foreground"
+      aria-pressed={shown}
+      onClick={onToggle}
+    >
+      {shown ? 'Ocultar revogadas' : `Mostrar revogadas (${count})`}
+    </Button>
+  );
+}
+
 /** Drift warning + live-read failure note for a Pagar.me subscription (display only). */
 function PagarmeLiveNotes({ subscription }: { subscription: SubscriptionInfo }) {
   const lines = describeDrift(subscription.pagarme_live?.drift);
@@ -804,10 +1006,17 @@ function LimitRow({
   onChange: (val: string) => void;
 }) {
   const id = `limit-${fieldKey}`;
+  // Byte quotas are unreadable as raw digits; show them humanized next to the input.
+  const isBytes = fieldKey.endsWith('_bytes');
+  const fmt = (n: number | null) => (n == null ? '—' : isBytes ? formatBytes(n) : String(n));
+  const current = value.trim() === '' ? null : Number(value);
   return (
     <div className="flex min-w-0 items-center justify-between gap-2">
-      <Label htmlFor={id} className="truncate text-sm font-normal text-muted-foreground">
-        {label}
+      <Label htmlFor={id} className="min-w-0 text-sm font-normal text-muted-foreground">
+        <span className="block truncate">{label}</span>
+        {isBytes && current != null && Number.isFinite(current) && (
+          <span className="block text-[0.7rem] text-dim-foreground">{formatBytes(current)}</span>
+        )}
       </Label>
       <div className="flex shrink-0 items-center gap-2">
         <Input
@@ -816,19 +1025,26 @@ function LimitRow({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={cn(
-            'h-8 w-20 text-right font-sf text-sm',
+            'h-8 text-right font-sf text-sm',
+            isBytes ? 'w-36' : 'w-20',
             isOverridden && 'border-primary/40 text-primary',
           )}
         />
-        {isOverridden ? (
+        <span
+          className={cn(
+            'hidden w-24 items-center gap-1.5 whitespace-nowrap text-[0.7rem] sm:inline-flex',
+            isOverridden ? 'text-warning' : 'text-dim-foreground',
+          )}
+          title={isOverridden ? 'override deste workspace' : undefined}
+        >
+          {isOverridden && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />}
+          plano: {fmt(planValue)}
+        </span>
+        {isOverridden && (
           <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning"
-            title={`plano: ${planValue ?? '—'}`}
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning sm:hidden"
+            title={`plano: ${fmt(planValue)}`}
           />
-        ) : (
-          <span className="hidden whitespace-nowrap text-[0.7rem] text-dim-foreground sm:inline">
-            plano: {planValue ?? '—'}
-          </span>
         )}
       </div>
     </div>

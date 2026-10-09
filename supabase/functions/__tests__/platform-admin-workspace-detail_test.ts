@@ -186,3 +186,37 @@ Deno.test("stripe row: new fields are null/false and the Pagar.me gateway is nev
   assertEquals(info.pagarme_live, null);
   assertEquals(info.pagarme_live_error, false);
 });
+
+Deno.test("handleGetWorkspace: usage carries Instagram counts (total + active) and storage", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const { db, calls } = makeFakeDb({
+    workspaces: [{
+      data: { id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: null, plan_source: null, storage_used_bytes: 5_000_000 },
+      error: null,
+    }],
+    workspace_members: [{ data: [], error: null }],
+    clientes: [{ data: null, error: null, count: 3 } as never],
+    integracoes_status: [{ data: null, error: null, count: 0 } as never],
+    instagram_accounts: [{
+      data: [
+        { authorization_status: "active" },
+        { authorization_status: "revoked" },
+        { authorization_status: "active" },
+      ],
+      error: null,
+    }],
+    workspace_subscriptions: [{ data: null, error: null }],
+  });
+  const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+  const body = await res.json();
+  assertEquals(body.usage.instagram_account_count, 3);
+  assertEquals(body.usage.instagram_account_count_active, 2);
+  assertEquals(body.usage.storage_used_bytes, 5_000_000);
+  assertEquals(body.usage.client_count, 3);
+  assert(!("storage_used_bytes" in body.workspace), "storage lives under usage, not workspace");
+  assert(
+    calls.some((c) => c.table === "instagram_accounts" && c.method === "eq" &&
+      JSON.stringify(c.args) === JSON.stringify(["clientes.conta_id", "w1"])),
+    "Instagram accounts must be scoped to the workspace through clientes.conta_id",
+  );
+});
