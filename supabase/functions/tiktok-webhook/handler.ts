@@ -172,11 +172,18 @@ interface ProcessArgs {
 
 /** Claims the SAME post_targets.processing_at lock claim_tiktok_targets_for_publishing uses
  * (NULL or older than the 10-minute stale window), so a webhook-triggered re-confirmation and a
- * concurrently running cron status-fetch can never both act on the same destination. `claimed:
- * false` means the cron currently holds it (not an error — the caller cedes). */
+ * concurrently running cron status-fetch can never both act on the same destination.
+ *
+ * It only claims a destination that is STILL `processando` AND still carries the publish_ref the
+ * lookup resolved. Otherwise the claim would stamp a lock on a row nothing will ever release: a
+ * destination the cron already marked `falha` (mark_target_failed declines an already-failed row
+ * and never clears processing_at), or one requeue_target reset to `pendente` between the lookup
+ * and this claim, where a stale webhook would act on the NEW attempt. `claimed: false` means the
+ * cron holds the lock OR the destination moved on (not an error — the caller cedes). */
 async function claimPublishLock(
   svc: DbClient,
   targetId: number,
+  publishRef: string,
   now: () => Date,
 ): Promise<{ claimed: boolean }> {
   const staleBefore = new Date(now().getTime() - 10 * 60_000).toISOString();
@@ -185,6 +192,8 @@ async function claimPublishLock(
     .from("post_targets")
     .update({ processing_at: nowIso, updated_at: nowIso })
     .eq("id", targetId)
+    .eq("status", "processando")
+    .eq("publish_ref", publishRef)
     .or(`processing_at.is.null,processing_at.lt.${staleBefore}`)
     .select("id")
     .maybeSingle();
@@ -200,18 +209,21 @@ async function claimPublishLock(
  *
  * Race with the cron (design doc follow-up): without coordination, a cron status-fetch that
  * started against the PRIOR TikTok state just before this webhook arrived could commit AFTER
- * this webhook applies the fresher outcome — e.g. re-writing the destination's lock release
- * right after this handler committed 'published'. Self-heals on the cron's next run, but it's a
+ * this webhook applies the fresher outcome — e.g. overwriting the outcome this handler just
+ * committed ('published') with a stale one. Self-heals on the cron's next run, but it's a
  * routine occurrence, not a rare one (the webhook and the per-minute cron are both normal, active
  * paths to the same row). Fixed by claiming the exact same `post_targets.processing_at` lock
  * the cron's claim RPC uses (claimPublishLock above) before calling confirmAndApplyPublishStatus:
  * whichever side wins the claim is the one that gets to resolve this destination for this pass; if the
  * cron already holds it, the cron's own status-fetch converges to the same truth, so ceding to it
- * is a safe no-op, not a missed update.
+ * is a safe no-op, not a missed update. The claim is also gated on the destination still being
+ * `processando` with this publish_ref, so a webhook that arrives after the cron already failed the
+ * destination, or after a requeue started a new attempt, cedes instead of acting on (or stamping a
+ * never-released lock on) a row that has moved on.
  *
  * Never throws on the "normal" paths (confirmAndApplyPublishStatus's own contract): a destination that
- * can't be found by publish_ref, or a lock currently held by the cron, is logged and treated as a
- * no-op. A DB error while claiming the lock DOES throw (same as findTargetByPublishRef's own
+ * can't be found by publish_ref, or a lock currently held by the cron (or a destination
+ * no longer processando for this publish_ref), is logged and treated as a no-op. A DB error while claiming the lock DOES throw (same as findTargetByPublishRef's own
  * DB-error path) — that leaves the event's `processed_at` NULL so it stays a candidate for
  * redelivery/sweep rather than being silently marked processed. */
 async function handlePublishCompleteOrFailed(
@@ -227,10 +239,13 @@ async function handlePublishCompleteOrFailed(
     return;
   }
 
-  const { claimed } = await claimPublishLock(ctx.svc, target.target_id, ctx.now);
+  // The lookup matched on publish_ref, so it is always set here; the claim pins it so a requeue
+  // between lookup and claim (new attempt, new publish_ref) can't be acted on by this stale event.
+  const { claimed } = await claimPublishLock(ctx.svc, target.target_id, target.publish_ref ?? "", ctx.now);
   if (!claimed) {
     console.log(
-      `[tiktok-webhook] ${args.eventName}: post ${target.post_id} publish lock held by tiktok-publish-cron — ` +
+      `[tiktok-webhook] ${args.eventName}: post ${target.post_id} (publish_ref ${target.publish_ref}): ` +
+        `lock held or destination no longer processing for this publish_ref — ` +
         `ceding resolution to the cron's own status-fetch`,
     );
     return;
@@ -248,12 +263,12 @@ async function handlePublishCompleteOrFailed(
     },
   );
   console.log(`[tiktok-webhook] ${args.eventName}: post ${target.post_id} re-confirmed as ${outcome}`);
-  // NOTE: no explicit lock release here. confirmAndApplyPublishStatus's own module comment
-  // (_shared/tiktok-publish-utils.ts) documents that every outcome branch clears
-  // post_targets.processing_at as part of its write: "published" via mark_target_published
-  // (whose SQL unconditionally clears the column), "processing" via its own explicit update, and
-  // "failed" via markTikTokPublishFailed's update — so the claim taken above is released on
-  // every branch by the time this function returns.
+  // NOTE: no explicit lock release here. The claim above only succeeds on a `processando`
+  // destination still carrying this publish_ref, and every outcome clears processing_at as part of
+  // confirmAndApplyPublishStatus's own write (see its doc comment in _shared/tiktok-publish-utils.ts):
+  // "published" via mark_target_published (whose SQL unconditionally clears the column), "processing"
+  // via its own explicit release, "failed" via mark_target_failed acting on the still-processando row.
+  // The webhook therefore never holds the lock past this function on a row it could not resolve.
 }
 
 /** post.publish.publicly_available: stores the public id + URL on the destination via a direct,

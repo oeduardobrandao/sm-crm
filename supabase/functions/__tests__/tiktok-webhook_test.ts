@@ -469,11 +469,57 @@ Deno.test("tiktok-webhook: publish.complete cedes to the cron when the destinati
   assertEquals(lock.length, 1, "the claim attempt itself must still run");
   assertEquals(lock[0].modifiers, [
     { method: "eq", args: ["id", 7090] },
+    { method: "eq", args: ["status", "processando"] },
+    { method: "eq", args: ["publish_ref", "pub-90"] },
     { method: "or", args: ["processing_at.is.null,processing_at.lt.2026-07-18T11:50:00.000Z"] },
     { method: "maybeSingle", args: [] },
   ]);
   assertEquals(lock[0].selectArgs, [["id"]]);
   assertEquals(callsFor(db, "tiktok_webhook_events", "update").length, 1, "ceding is a normal no-op");
+});
+
+Deno.test("tiktok-webhook: publish.failed cedes without a status fetch or mark_target_* when the destination is no longer processando for this publish_ref", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
+  db.queue("post_targets", "select", { data: ttTargetRow(93, "pub-93"), error: null });
+  // The cron already marked the destination falha (or requeue_target reset it): the gated claim
+  // matches zero rows, so the webhook must not stamp a lock nor act on the row.
+  db.queue("post_targets", "update", { data: null, error: null });
+  db.queue("tiktok_webhook_events", "update", { data: null, error: null });
+
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    const waited: Promise<void>[] = [];
+    // getFreshTikTokToken / tiktokFetch / confirmAndApplyPublishStatus stay the default
+    // `unreachable` spies: any status fetch would throw and fail this test.
+    const handler = createTikTokWebhookHandler(baseDeps(db, { waitUntil: (p) => waited.push(p) }));
+    const payload = webhookPayload({
+      event: EVENT_PUBLISH_FAILED,
+      content: JSON.stringify({ publish_id: "pub-93", reason: "video_pull_failed" }),
+    });
+    const response = await handler(webhookRequest(payload));
+    await Promise.all(waited);
+    assertEquals(response.status, 200);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assertEquals(callsFor(db, "post_targets", "update").length, 1, "only the (empty) gated claim ran");
+  assertEquals(
+    db.calls.filter((c) => /mark_target_|requeue_target/.test(JSON.stringify(c))).length,
+    0,
+    "no mark_target_* / requeue RPC may run on a ceded destination",
+  );
+  assertEquals(callsFor(db, "tiktok_webhook_events", "update").length, 1, "ceding stamps the event processed");
+  assert(
+    logs.some((l) => l.includes("ceding") && l.includes("pub-93")),
+    `expected a ceded log line naming the publish_ref, got: ${JSON.stringify(logs)}`,
+  );
 });
 
 Deno.test("tiktok-webhook: publish.complete claims the free lock and proceeds to confirmAndApplyPublishStatus", async () => {

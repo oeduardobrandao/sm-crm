@@ -566,18 +566,19 @@ export type ConfirmAndApplyPublishStatusOutcome = "published" | "processing" | "
  * FAILED status) funnels into markTikTokPublishFailed and resolves to "failed" — callers just
  * tally/branch on the returned outcome, they never need their own try/catch around this call.
  *
- * Note on `post_targets.processing_at`: the "published" (via mark_target_published, whose SQL
- * unconditionally clears this column), "processing", and "failed" outcomes all clear this lock as
- * part of their write, same as before extraction. tiktok-webhook (_shared use, Task B6) claims
- * this exact same lock itself immediately before calling this function (handler.ts's
- * claimPublishLock, which takes the same post_targets.processing_at lock as
- * claim_tiktok_targets_for_publishing) — so a webhook
- * re-confirmation and a concurrently running cron status-fetch on the same destination always serialize
- * on that claim rather than racing to write this column. Without that claim, a cron status-fetch
- * still in flight against the PRIOR TikTok state could commit its (stale) outcome AFTER this
- * function already applied the fresher one, transiently regressing the row — routine, not a rare
- * corner case, since the webhook and the per-minute cron are both normal, active paths to the
- * same row.
+ * Note on `post_targets.processing_at`: every outcome clears this lock as part of its write:
+ * "published" via mark_target_published (whose SQL unconditionally clears the column), "processing"
+ * via its own explicit release, and "failed" via mark_target_failed acting on a still-processando
+ * row. tiktok-webhook (_shared use, Task B6) claims this exact same lock itself immediately before
+ * calling this function (handler.ts's claimPublishLock, which takes the same
+ * post_targets.processing_at lock as claim_tiktok_targets_for_publishing), and only on a
+ * `processando` destination still carrying this publish_ref, so the webhook only ever holds the
+ * lock on a row this function can resolve. A webhook re-confirmation and a concurrently running
+ * cron status-fetch on the same destination thus serialize on that claim rather than racing to
+ * write this column. Without that claim, a cron status-fetch still in flight against the PRIOR
+ * TikTok state could commit its (stale) outcome AFTER this function already applied the fresher
+ * one, transiently regressing the row: routine, not a rare corner case, since the webhook and the
+ * per-minute cron are both normal, active paths to the same row.
  */
 export async function confirmAndApplyPublishStatus(
   deps: ConfirmAndApplyPublishStatusDeps,
