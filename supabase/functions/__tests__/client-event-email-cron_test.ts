@@ -313,11 +313,11 @@ Deno.test("claimed client with 2 pending posts + 1 unseen message: window, one e
   assertEquals(r, { claimed: 1, emailed: 1, skippedNoContent: 0, skippedNoHub: 0, failed: 0, released: 0 });
   assertEquals(sent.length, 1);
   assert(sent[0].html.includes("Post A") && sent[0].html.includes("Post B"), "expected both post titles");
-  // `tipo` (added by this task) flows from the workflow_posts embed all the
-  // way to the icon the builder renders for each post row -- feed's 🖼 and
-  // reels' 🎬 both present proves the field is actually read, not dropped.
-  assert(sent[0].html.includes("🖼"), "expected the feed icon for Post A");
-  assert(sent[0].html.includes("🎬"), "expected the reels icon for Post B");
+  // `tipo` flows from the workflow_posts embed all the way to the format pill
+  // the builder renders for each post row -- Feed and Reels both present
+  // proves the field is actually read, not dropped.
+  assert(sent[0].html.includes("Feed"), "expected the feed label for Post A");
+  assert(sent[0].html.includes("Reels"), "expected the reels label for Post B");
   // Adaptive title/CTA (this task): 2 posts + 1 message -> the title counts
   // posts (not messages), and the CTA reads "Revisar e aprovar".
   assert(sent[0].html.includes("2 posts esperam sua aprovação"), "expected the adaptive posts title");
