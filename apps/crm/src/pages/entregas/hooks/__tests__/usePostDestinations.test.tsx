@@ -137,6 +137,23 @@ describe('usePostDestinations', () => {
     expect(toast.error).toHaveBeenCalledWith('Não foi possível atualizar os destinos.');
   });
 
+  it('onError explains a destination that is publishing or published', async () => {
+    vi.mocked(store.removePostDestination).mockRejectedValueOnce(
+      Object.assign(new Error('x'), { name: 'TargetNotRemovableError' }),
+    );
+    const { result } = renderHook(() => usePostDestinations(post, true, vi.fn()), {
+      wrapper: wrapper(),
+    });
+    await act(async () => {
+      await result.current.toggle
+        .mutateAsync({ platform: 'tiktok', on: false, seedCaption: null })
+        .catch(() => {});
+    });
+    expect(toast.error).toHaveBeenCalledWith(
+      'Este destino já está publicando ou foi publicado e não pode ser removido.',
+    );
+  });
+
   it('toggle.isPending stays true until the post-targets refetch resolves', async () => {
     const { result } = renderHook(() => usePostDestinations(post, true, vi.fn()), {
       wrapper: wrapper(),

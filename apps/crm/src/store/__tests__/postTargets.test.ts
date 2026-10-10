@@ -8,6 +8,7 @@ import {
   getBoardPlatforms,
   getPostTargets,
   removePostDestination,
+  TargetNotRemovableError,
   savePostCaption,
 } from '../postTargets';
 
@@ -130,6 +131,16 @@ describe('postTargets store', () => {
     const del = calls('post_targets', 'delete')[0];
     expect(del.modifiers).toContainEqual({ method: 'eq', args: ['post_id', 9] });
     expect(del.modifiers).toContainEqual({ method: 'eq', args: ['platform', 'tiktok'] });
+  });
+
+  it('removePostDestination maps the delete guard (P0409) to TargetNotRemovableError', async () => {
+    mocked.__queueSupabaseResult('post_targets', 'delete', {
+      data: null,
+      error: { code: 'P0409', message: 'target_not_removable' },
+    });
+    const err = await removePostDestination(9, 'tiktok').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TargetNotRemovableError);
+    expect((err as Error).name).toBe('TargetNotRemovableError');
   });
 
   it('savePostCaption routes TikTok to workflow_posts and Geral to post_targets', async () => {

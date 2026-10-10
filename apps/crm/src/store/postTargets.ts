@@ -115,7 +115,19 @@ export async function removePostDestination(postId: number, platform: PlatformId
     .delete()
     .eq('post_id', postId)
     .eq('platform', platform);
-  if (error) throw error;
+  if (error) {
+    // Guarda de DELETE (P4): destino publicando ou publicado não sai enquanto o post existe.
+    if ((error as { code?: string }).code === 'P0409') throw new TargetNotRemovableError();
+    throw error;
+  }
+}
+
+/** O destino publicando ou publicado não pode ser removido (P0409 target_not_removable, migration P4). */
+export class TargetNotRemovableError extends Error {
+  constructor() {
+    super('Destino publicando ou publicado não pode ser removido.');
+    this.name = 'TargetNotRemovableError';
+  }
 }
 
 /** O destino Geral não existe mais (tirado em Destinos enquanto um rascunho esperava o debounce). */
