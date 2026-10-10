@@ -14,8 +14,11 @@
  */
 import { escapeHtml } from "./report-template/escape.ts";
 import { type ResendAttachment, sanitizeSubjectValue } from "./lifecycle-emails.ts";
-import { buildBrandHeaderBand, buildPreheader, pickHeaderTextColor } from "./report-template/brand-header.ts";
 import { gerarCalendario, type IcsEvento } from "./ics.ts";
+import { corSegura, linkSeguro } from "./email/safe.ts";
+import { brandedEmail } from "./email/shell.ts";
+import { button, callout, dateList, eventCard, heading, link, paragraph, quote, spacer } from "./email/blocks.ts";
+import { EMAIL } from "./email/tokens.ts";
 
 // ─── Contract types (shapes from the plan's "Shared contracts") ─────────────
 
@@ -125,7 +128,6 @@ export class SnapshotVazioError extends Error {
 
 const TZ_PADRAO = "America/Sao_Paulo";
 const DIAS_LISTADOS = 10;
-const COR_PADRAO = "#eab308";
 
 /** An unknown IANA name makes Intl throw; fall back rather than fail the send. */
 function tzSegura(tz: string | null | undefined): string {
@@ -213,6 +215,27 @@ export function formatarQuandoAgenda(q: QuandoAgenda): string {
   return `${comeco} a ${rotuloDia(fim, tz)} · ${relogio(fim, tz)}${sufixo}`;
 }
 
+/** "OUT" / "15" for the date tile. All-day rows use `data_inicio_local` as a
+ * plain calendar date (same rule as formatarQuandoAgenda) so the tile can
+ * never land a day off from the "quando" line. */
+export function mesDiaAgenda(q: QuandoAgenda): { mes: string; dia: string } {
+  const tz = tzSegura(q.tz);
+  let d: Date;
+  let zona: string;
+  if (q.dia_inteiro) {
+    const primeiro = q.data_inicio_local && YMD_RE.test(q.data_inicio_local)
+      ? q.data_inicio_local
+      : ymd(new Date(q.inicio), tz);
+    d = dataLocal(primeiro);
+    zona = "UTC";
+  } else {
+    d = new Date(q.inicio);
+    zona = tz;
+  }
+  const p = partes(d, zona, { day: "numeric", month: "short" });
+  return { mes: (p.month ?? "").replace(".", "").toUpperCase(), dia: p.day ?? "" };
+}
+
 /** A suggested start alone (no end): "Quinta, 9 de outubro · 14:00". */
 function formatarInicioSugerido(iso: string, diaInteiro: boolean, tzBruta: string): string {
   const tz = tzSegura(tzBruta);
@@ -257,100 +280,32 @@ function paraIcs(o: AgendaClienteOcorrencia): IcsEvento {
 
 // ─── HTML pieces ───────────────────────────────────────────────────────────────
 
-// deno-lint-ignore no-control-regex
-const URL_SEGURA = /^https?:\/\/[^\s\x00-\x1f\x7f]+$/i;
-
-function linkSeguro(u: string | null | undefined): string | null {
-  const t = u?.trim();
-  return t && URL_SEGURA.test(t) ? t : null;
-}
-
-function corSegura(c: string | null | undefined): string {
-  return c && /^#[0-9a-fA-F]{6}$/.test(c) ? c : COR_PADRAO;
-}
-
-function plural(n: number, um: string, varios: string): string {
-  return `${n} ${n === 1 ? um : varios}`;
-}
-
-function paragrafo(html: string, estilo = "margin: 0 0 16px; font-size: 15px; line-height: 1.5; color: #4b5563;"): string {
-  return `<p style="${estilo}">${html}</p>`;
-}
-
-/** Details card for the first active occurrence plus, for a series, the list
- * of its dates (up to DIAS_LISTADOS, then "e mais N datas"). */
-function cartaoEvento(ativas: AgendaClienteOcorrencia[]): string {
+/** Card for the first active occurrence; a series lists its dates below (one <li> each). */
+function cartaoEvento(ativas: AgendaClienteOcorrencia[], cor: string, organizador: string | null): string {
   const base = ativas[0];
-  const local = base.local?.trim()
-    ? `<p style="margin: 6px 0 0; font-size: 13px; color: #4b5563;">Local: ${escapeHtml(base.local.trim())}</p>`
-    : "";
-  const link = linkSeguro(base.link_reuniao);
-  const reuniao = link
-    ? `<p style="margin: 8px 0 0;"><a href="${
-      escapeHtml(link)
-    }" style="color: #111827; font-weight: 600; font-size: 13px; text-decoration: underline;">Entrar na reunião</a></p>`
-    : "";
-  const descricao = base.descricao?.trim()
-    ? `<p style="margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: #4b5563; white-space: pre-line;">${
-      escapeHtml(base.descricao.trim())
-    }</p>`
-    : "";
-
-  let quando: string;
-  if (ativas.length === 1) {
-    quando = `<p style="margin: 6px 0 0; font-size: 14px; color: #374151;">${escapeHtml(formatarQuandoAgenda(base))}</p>`;
-  } else {
-    const visiveis = ativas.slice(0, DIAS_LISTADOS);
-    const resto = ativas.length - visiveis.length;
-    const linhas = visiveis.map((o) => {
-      const outroTitulo = o.titulo !== base.titulo ? `${escapeHtml(o.titulo)}: ` : "";
-      return `<li style="margin: 0 0 4px;">${outroTitulo}${escapeHtml(formatarQuandoAgenda(o))}</li>`;
-    }).join("");
-    const mais = resto > 0
-      ? `<p style="margin: 4px 0 0; font-size: 13px; color: #6b7280;">e mais ${plural(resto, "data", "datas")}</p>`
-      : "";
-    quando = `<ul style="margin: 8px 0 0; padding: 0 0 0 18px; font-size: 14px; color: #374151;">${linhas}</ul>${mais}`;
+  const { mes, dia } = mesDiaAgenda(base);
+  const linhas = [formatarQuandoAgenda(base)];
+  if (base.local?.trim()) linhas.push(`Local: ${base.local.trim()}`);
+  if (organizador) linhas.push(`Organizado por ${organizador}`);
+  let html = eventCard({ mes, dia, tileColor: cor, titulo: base.titulo, lines: linhas, meetingUrl: base.link_reuniao });
+  if (ativas.length > 1) {
+    const visiveis = ativas.slice(0, DIAS_LISTADOS).map((o) =>
+      `${o.titulo !== base.titulo ? `${o.titulo}: ` : ""}${formatarQuandoAgenda(o)}`
+    );
+    html += spacer(14) + dateList(visiveis, ativas.length - visiveis.length);
   }
-
-  return `<tr><td style="padding: 0 30px 16px;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #f8f9fa; border-radius: 8px;">
-    <tr><td style="padding: 16px 18px;">
-      <p style="margin: 0; font-size: 16px; font-weight: 700; color: #111827;">${escapeHtml(base.titulo)}</p>
-      ${quando}${local}${reuniao}${descricao}
-    </td></tr>
-  </table>
-</td></tr>`;
+  if (base.descricao?.trim()) {
+    html += `<p style="margin: 14px 0 0; font-size: 14px; line-height: 22px; color: ${EMAIL.text}; word-break: break-word;">${escapeHtml(base.descricao.trim()).replace(/\r?\n/g, "<br>")}</p>`;
+  }
+  return html;
 }
 
-/** Struck-through list of cancelled dates (up to DIAS_LISTADOS). */
 function listaCanceladas(canceladas: AgendaClienteOcorrencia[], rotulo: string): string {
-  const visiveis = canceladas.slice(0, DIAS_LISTADOS);
-  const resto = canceladas.length - visiveis.length;
-  const linhas = visiveis.map((o) =>
-    `<li style="margin: 0 0 4px;"><span style="text-decoration: line-through;">${escapeHtml(o.titulo)}: ${
-      escapeHtml(formatarQuandoAgenda(o))
-    }</span></li>`
-  ).join("");
-  const mais = resto > 0
-    ? `<p style="margin: 4px 0 0; font-size: 13px; color: #6b7280;">e mais ${plural(resto, "data", "datas")}</p>`
-    : "";
-  return `<tr><td style="padding: 0 30px 16px;">
-  <p style="margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #374151;">${rotulo}</p>
-  <ul style="margin: 0; padding: 0 0 0 18px; font-size: 14px; color: #6b7280;">${linhas}</ul>${mais}
-</td></tr>`;
-}
-
-function citacao(rotulo: string, texto: string): string {
-  return `<tr><td style="padding: 0 30px 16px;">
-  <p style="margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #374151;">${rotulo}</p>
-  <p style="margin: 0; padding: 10px 12px; background: #f8f9fa; border-left: 3px solid #d1d5db; font-size: 14px; line-height: 1.5; color: #374151; white-space: pre-line;">${
-    escapeHtml(texto)
-  }</p>
-</td></tr>`;
-}
-
-function linha(html: string): string {
-  return `<tr><td style="padding: 0 30px;">${html}</td></tr>`;
+  const visiveis = canceladas.slice(0, DIAS_LISTADOS).map((o) => `${o.titulo}: ${formatarQuandoAgenda(o)}`);
+  return callout(
+    `<p style="margin: 0 0 6px; font-size: 13px; font-weight: 600; color: ${EMAIL.muted};">${escapeHtml(rotulo)}</p>` +
+      dateList(visiveis, canceladas.length - visiveis.length, true),
+  );
 }
 
 // ─── Builder ──────────────────────────────────────────────────────────────────
@@ -397,13 +352,12 @@ export function montarEmailAgendaCliente(
 
   const convidado = ehConvidado(item);
   const workspaceName = item.workspace_nome?.trim() || "Mesaas";
-  const safeWorkspace = escapeHtml(workspaceName);
   const brandColor = corSegura(item.brand_color);
   // Full name, like the digest: clientes are usually businesses ("Clínica
   // Sorriso"), so a first-word greeting reads "Olá, Clínica!". A guest's name
   // is optional (the team may only have typed the e-mail).
   const nome = ((convidado ? item.nome : item.cliente_nome ?? item.nome) ?? "").trim();
-  const saudacao = nome ? `Olá, ${escapeHtml(nome)}!` : "Olá!";
+  const saudacao = nome ? `Olá, ${nome}!` : "Olá!";
   const organizador = item.organizador_nome?.trim() || null;
 
   const prefixoAssunto = convidado && variante === "convite"
@@ -416,56 +370,50 @@ export function montarEmailAgendaCliente(
 
   let h1 = "";
   let preheader = "";
+  let abertura = "";
   const secoes: string[] = [];
   let aviso: string | null = null;
 
   switch (variante) {
     case "convite": {
       if (convidado) {
-        // Guest copy (spec §3.6): no Hub, the organizer invites on the workspace's behalf.
         h1 = "Convite";
-        const frase = organizador
+        abertura = organizador
           ? `${organizador} convidou você em nome de ${workspaceName}.`
           : `${workspaceName} convidou você para um evento.`;
-        preheader = frase;
-        const fraseHtml = organizador
-          ? `${escapeHtml(organizador)} convidou você em nome de ${safeWorkspace}.`
-          : `${safeWorkspace} convidou você para um evento.`;
-        secoes.push(linha(paragrafo(`${saudacao} ${fraseHtml}`)));
+        preheader = abertura;
       } else {
         h1 = "Novo evento";
-        preheader = `${workspaceName} compartilhou um evento com você.`;
-        secoes.push(linha(paragrafo(`${saudacao} ${safeWorkspace} compartilhou um evento com você.`)));
+        abertura = `${workspaceName} compartilhou um evento com você.`;
+        preheader = abertura;
       }
-      if (ativas.length > 0) secoes.push(cartaoEvento(ativas));
+      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador));
       aviso = "Para adicionar ao seu calendário, abra o arquivo anexo.";
       break;
     }
     case "alteracao": {
       h1 = "Evento atualizado";
-      preheader = `${workspaceName} atualizou um evento.`;
-      secoes.push(linha(paragrafo(`${saudacao} ${safeWorkspace} atualizou um evento.`)));
-      if (ativas.length > 0) secoes.push(cartaoEvento(ativas));
+      abertura = `${workspaceName} atualizou um evento.`;
+      preheader = abertura;
+      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador));
       if (canceladas.length > 0) secoes.push(listaCanceladas(canceladas, "Datas canceladas"));
       aviso = AVISO_ALTERACAO;
       break;
     }
     case "cancelamento": {
       h1 = "Evento cancelado";
-      preheader = `${workspaceName} cancelou um evento.`;
-      secoes.push(linha(paragrafo(`${saudacao} ${safeWorkspace} cancelou um evento.`)));
+      abertura = `${workspaceName} cancelou um evento.`;
+      preheader = abertura;
       secoes.push(listaCanceladas(canceladas, canceladas.length === 1 ? "Data cancelada" : "Datas canceladas"));
       aviso = AVISO_CANCELAMENTO;
       break;
     }
     case "remarcacao_aceita": {
       h1 = "Remarcação aceita";
+      abertura = `${workspaceName} aceitou seu pedido de remarcação.${ativas.length > 0 ? " O novo horário é:" : ""}`;
       preheader = `${workspaceName} aceitou seu pedido de remarcação.`;
-      secoes.push(linha(paragrafo(
-        `${saudacao} ${safeWorkspace} aceitou seu pedido de remarcação.${ativas.length > 0 ? " O novo horário é:" : ""}`,
-      )));
-      if (ativas.length > 0) secoes.push(cartaoEvento(ativas));
-      if (respostaEquipe) secoes.push(citacao("Mensagem da equipe", respostaEquipe));
+      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador));
+      if (respostaEquipe) secoes.push(quote("Mensagem da equipe", respostaEquipe));
       if (ativas.length > 0) aviso = AVISO_ALTERACAO;
       break;
     }
@@ -473,23 +421,12 @@ export function montarEmailAgendaCliente(
       h1 = "Remarcação não aceita";
       preheader = `${workspaceName} não pôde aceitar o horário que você sugeriu.`;
       const sugerido = remarcacao?.inicio_sugerido
-        ? ` (${
-          escapeHtml(
-            formatarInicioSugerido(
-              remarcacao.inicio_sugerido,
-              principal?.dia_inteiro ?? false,
-              principal?.tz ?? TZ_PADRAO,
-            ),
-          )
-        })`
+        ? ` (${formatarInicioSugerido(remarcacao.inicio_sugerido, principal?.dia_inteiro ?? false, principal?.tz ?? TZ_PADRAO)})`
         : "";
-      secoes.push(linha(paragrafo(
-        `${saudacao} ${safeWorkspace} não pôde aceitar o horário que você sugeriu${sugerido}.`,
-      )));
-      if (respostaEquipe) secoes.push(citacao("Mensagem da equipe", respostaEquipe));
+      abertura = `${workspaceName} não pôde aceitar o horário que você sugeriu${sugerido}.`;
+      if (respostaEquipe) secoes.push(quote("Mensagem da equipe", respostaEquipe));
       if (ativas.length > 0) {
-        secoes.push(linha(paragrafo("O horário que continua valendo:", "margin: 0 0 8px; font-size: 14px; color: #374151;")));
-        secoes.push(cartaoEvento(ativas));
+        secoes.push(paragraph("O horário que continua valendo:", "body", "0 0 10px") + cartaoEvento(ativas, brandColor, organizador));
       }
       break;
     }
@@ -525,44 +462,22 @@ export function montarEmailAgendaCliente(
       : `${hubBase}/agenda`;
     rotuloBotao = confirmar ? "Confirmar presença" : "Ver no portal";
   }
-  const botao = destino
-    ? `<a href="${escapeHtml(destino)}" style="display: inline-block; background: ${brandColor}; color: ${
-      pickHeaderTextColor(brandColor)
-    }; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 600;">${rotuloBotao}</a>`
-    : "";
+  const fecho = [
+    aviso ? paragraph(aviso, "small", "0 0 16px") : "",
+    button(destino, rotuloBotao, { brandColor }),
+  ].join("");
 
-  const avisoHtml = aviso
-    ? linha(paragrafo(aviso, "margin: 0 0 8px; font-size: 13px; line-height: 1.5; color: #6b7280;"))
-    : "";
-
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-${buildPreheader(preheader)}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #f3f4f6; padding: 40px 20px;">
-<tr><td align="center">
-<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-${buildBrandHeaderBand({ workspaceName, brandColor, logoUrl: item.logo_url ?? null })}
-<tr><td style="padding: 24px 30px 0;">
-  <h1 style="margin: 0 0 12px; font-size: 22px; font-weight: 700; color: #111827;">${h1}</h1>
-</td></tr>
-${secoes.join("\n")}
-${avisoHtml}
-<tr><td align="center" style="padding: 16px 30px 30px;">
-  ${botao}
-</td></tr>
-<tr><td style="padding: 20px 30px; background: #f5f3ee; text-align: center;">
-  <p style="margin: 0 0 8px; font-size: 12px; color: #888780;">Enviado por ${safeWorkspace} via Mesaas</p>
-  <p style="margin: 0; font-size: 12px; color: #888780;"><a href="${
-    escapeHtml(ctx.unsubUrl)
-  }" style="color: #888780;">Não quero mais receber esses avisos</a></p>
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
+  const html = brandedEmail({
+    preheader,
+    workspaceName,
+    brandColor,
+    logoUrl: item.logo_url ?? null,
+    sections: [heading(h1) + paragraph(`${saudacao} ${abertura}`, "body", "0"), ...secoes, fecho].filter((s) => s !== ""),
+    footerHtml: [
+      `Enviado por ${escapeHtml(workspaceName)} via Mesaas`,
+      link(ctx.unsubUrl, "Não quero mais receber esses avisos", EMAIL.muted),
+    ],
+  });
 
   return { subject, html, attachments };
 }

@@ -1,13 +1,15 @@
 import { escapeHtml } from "./report-template/escape.ts";
 import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
-import { buildBrandHeaderBand, buildPreheader, pickHeaderTextColor } from "./report-template/brand-header.ts";
-import { formatarQuandoAgenda } from "./agenda-cliente-email.ts";
+import { formatarQuandoAgenda, mesDiaAgenda } from "./agenda-cliente-email.ts";
+import { brandedEmail } from "./email/shell.ts";
+import { button, callout, eventCard, heading, link, paragraph, postList, sectionTitle, spacer } from "./email/blocks.ts";
+import { corSegura } from "./email/safe.ts";
+import { EMAIL } from "./email/tokens.ts";
 
 /**
  * Client-facing "you have pending items" email (Fase 2 do Hub: pendências).
- * Visual family mirrors _shared/report-template/email.ts (560px card, brand
- * header band from Task 1's shared module, button pattern) so client-facing
- * transactional mail reads as one system.
+ * Renders through brandedEmail (_shared/email/shell.ts): the agency brand
+ * band, shared blocks and footer, like every other whitelabel e-mail.
  */
 export interface ClientEventEmailParams {
   clienteNome: string;
@@ -38,20 +40,6 @@ export const CLIENT_EVENT_REMINDERS_HEADING = "Eventos aguardando sua confirmaç
 
 /** Max pending-post titles rendered as a list before folding the rest into "e mais N...". */
 const RENDERED_POSTS_CAP = 20;
-
-/** `workflow_posts.tipo` CHECK: feed | reels | stories | carrossel (spec §11).
- * An unknown/future tipo (defensive -- the CHECK could grow before this map
- * does) falls back to the feed icon rather than rendering nothing. */
-const POST_TYPE_ICONS: Record<string, string> = {
-  feed: "🖼",
-  carrossel: "🗂",
-  reels: "🎬",
-  stories: "📱",
-};
-
-function postTypeIcon(tipo: string): string {
-  return POST_TYPE_ICONS[tipo] ?? "🖼";
-}
 
 /**
  * `workspaceName` is tenant-editable free text. sanitizeSubjectValue strips
@@ -103,148 +91,74 @@ function buildPendingPreheaderText(postsCount: number, messagesCount: number, ev
   return `${parts.join(" e ")}.`;
 }
 
-/** One post row: 24px icon cell (by tipo) + escaped titulo, its own bordered
- * box (spec §11: border #eceef2, radius 8). */
-function buildPostRow(post: { titulo: string; tipo: string }): string {
-  return `<tr><td style="padding: 0 0 8px;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #eceef2; border-radius: 8px;">
-      <tr>
-        <td width="24" align="center" valign="middle" style="width: 24px; padding: 10px 0 10px 12px; font-size: 16px;">${
-    postTypeIcon(post.tipo)
-  }</td>
-        <td valign="middle" style="padding: 10px 12px 10px 8px; font-size: 14px; color: #374151;">${
-    escapeHtml(post.titulo)
-  }</td>
-      </tr>
-    </table>
-  </td></tr>`;
-}
-
-/** One reminder row: calendar icon + title (deep link to the occurrence in
- * the Hub Agenda when there is a Hub URL) + when, in the event's time zone. */
-function buildEventRow(ev: ClientEventReminder, hubUrl: string): string {
-  const titulo = escapeHtml(ev.titulo);
-  const tituloHtml = hubUrl
-    ? `<a href="${
-      escapeHtml(`${hubUrl.replace(/\/+$/, "")}/agenda?ocorrencia=${ev.ocorrencia_id}`)
-    }" style="color: #111827; text-decoration: none; font-weight: 600;">${titulo}</a>`
-    : `<span style="font-weight: 600;">${titulo}</span>`;
-  const quando = escapeHtml(formatarQuandoAgenda(ev));
-  return `<tr><td style="padding: 0 0 8px;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #eceef2; border-radius: 8px;">
-      <tr>
-        <td width="24" align="center" valign="top" style="width: 24px; padding: 10px 0 10px 12px; font-size: 16px;">📅</td>
-        <td valign="middle" style="padding: 10px 12px 10px 8px; font-size: 14px; color: #374151;">${tituloHtml}<br><span style="font-size: 13px; color: #6b7280;">${quando}</span></td>
-      </tr>
-    </table>
-  </td></tr>`;
-}
-
 export function buildClientEventEmail(p: ClientEventEmailParams): string {
-  const {
-    clienteNome, workspaceName, brandColor, logoUrl,
-    pendingPosts, unreadMessages, hubUrl, unsubUrl,
-  } = p;
+  const { clienteNome, workspaceName, logoUrl, pendingPosts, unreadMessages, hubUrl, unsubUrl } = p;
+  const brandColor = corSegura(p.brandColor);
   const pendingEvents = p.pendingEvents ?? [];
+  const firstName = clienteNome.split(" ")[0];
+  const hubBase = hubUrl.replace(/\/+$/, "");
 
-  const safeName = escapeHtml(clienteNome.split(" ")[0]);
-  const safeWorkspace = escapeHtml(workspaceName);
-
-  const headerBand = buildBrandHeaderBand({ workspaceName, brandColor, logoUrl });
-  const preheader = buildPreheader(
-    buildPendingPreheaderText(pendingPosts.length, unreadMessages, pendingEvents.length),
-  );
-  const title = buildPendingTitle(pendingPosts.length, unreadMessages, pendingEvents.length);
   const greeting = pendingPosts.length > 0
-    ? `Olá, ${safeName}! Quando puder, dá uma olhada no que a equipe preparou:`
+    ? `Olá, ${firstName}! Quando puder, dá uma olhada no que a equipe preparou:`
     : pendingEvents.length > 0
-    ? `Olá, ${safeName}! Confirme sua presença nos próximos eventos:`
-    : `Olá, ${safeName}!`;
+    ? `Olá, ${firstName}! Confirme sua presença nos próximos eventos:`
+    : `Olá, ${firstName}!`;
 
-  // A pathologically dense digest window (see client-event-email-cron/handler.ts's
-  // EVENTS_QUERY_CAP) could hand this builder hundreds of pending posts; render at
-  // most RENDERED_POSTS_CAP as rows and fold the rest into a single summary line
-  // rather than shipping an e-mail that's actually a wall of rows.
-  const visiblePosts = pendingPosts.slice(0, RENDERED_POSTS_CAP);
-  const hiddenPostsCount = Math.max(0, pendingPosts.length - RENDERED_POSTS_CAP);
-  const morePostsLine = hiddenPostsCount > 0
-    ? `<p style="margin: 8px 0 0; font-size: 13px; color: #6b7280;">e mais ${hiddenPostsCount} posts aguardando aprovação.</p>`
-    : "";
+  const sections: string[] = [
+    heading(buildPendingTitle(pendingPosts.length, unreadMessages, pendingEvents.length)) +
+      paragraph(greeting, "body", "0"),
+  ];
 
-  const postsSection = pendingPosts.length > 0
-    ? `<tr><td style="padding: 0 30px 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          ${visiblePosts.map(buildPostRow).join("")}
-        </table>
-        ${morePostsLine}
-       </td></tr>`
-    : "";
+  if (pendingPosts.length > 0) {
+    const visible = pendingPosts.slice(0, RENDERED_POSTS_CAP);
+    const hidden = Math.max(0, pendingPosts.length - RENDERED_POSTS_CAP);
+    sections.push(
+      postList(visible) +
+        (hidden > 0 ? paragraph(`e mais ${hidden} posts aguardando aprovação.`, "small", "8px 0 0") : ""),
+    );
+  }
 
-  const unreadLabel = unreadMessages === 1
-    ? "<strong>1 mensagem não lida</strong> da equipe esperando você."
-    : `<strong>${unreadMessages} mensagens não lidas</strong> da equipe esperando você.`;
-  const unreadSection = unreadMessages > 0
-    ? `<tr><td style="padding: 0 30px 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #f8f9fa; border-radius: 8px;">
-          <tr>
-            <td width="24" align="center" valign="middle" style="width: 24px; padding: 12px 0 12px 14px; font-size: 16px;">💬</td>
-            <td valign="middle" style="padding: 12px 14px 12px 8px; font-size: 14px; color: #374151;">${unreadLabel}</td>
-          </tr>
-        </table>
-       </td></tr>`
-    : "";
+  if (pendingEvents.length > 0) {
+    sections.push(
+      sectionTitle(CLIENT_EVENT_REMINDERS_HEADING) +
+        pendingEvents.map((ev, i) => {
+          const { mes, dia } = mesDiaAgenda(ev);
+          return spacer(i === 0 ? 8 : 10) + (
+            eventCard({
+              mes, dia, tileColor: brandColor, titulo: ev.titulo,
+              titleHref: hubBase ? `${hubBase}/agenda?ocorrencia=${ev.ocorrencia_id}` : null,
+              lines: [formatarQuandoAgenda(ev)],
+            })
+          );
+        }).join(""),
+    );
+  }
 
-  const eventsSection = pendingEvents.length > 0
-    ? `<tr><td style="padding: 0 30px 20px;">
-        <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #111827;">${CLIENT_EVENT_REMINDERS_HEADING}</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          ${pendingEvents.map((ev) => buildEventRow(ev, hubUrl)).join("")}
-        </table>
-       </td></tr>`
-    : "";
+  if (unreadMessages > 0) {
+    const label = unreadMessages === 1
+      ? "<strong>1 mensagem não lida</strong> da equipe esperando você."
+      : `<strong>${unreadMessages} mensagens não lidas</strong> da equipe esperando você.`;
+    sections.push(callout(label));
+  }
 
-  // Posts keep their CTA; an events-only digest (no posts) leads to the Hub
-  // Agenda instead of the Hub home.
+  // Posts keep their CTA; an events-only digest leads to the Hub Agenda.
   const eventsCta = pendingPosts.length === 0 && pendingEvents.length > 0;
   const ctaLabel = pendingPosts.length > 0 ? "Revisar e aprovar" : eventsCta ? "Confirmar presença" : "Ver mensagens";
-  const ctaHref = eventsCta ? `${hubUrl.replace(/\/+$/, "")}/agenda` : hubUrl;
-  const textColor = pickHeaderTextColor(brandColor);
-  const hubButton = hubUrl
-    ? `<a href="${
-      escapeHtml(ctaHref)
-    }" style="display: inline-block; background: ${brandColor}; color: ${textColor}; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 600;">${ctaLabel}</a>`
-    : "";
+  const ctaHref = eventsCta ? `${hubBase}/agenda` : hubUrl;
+  const cta = hubUrl ? button(ctaHref, ctaLabel, { brandColor }) : "";
+  if (cta) sections.push(cta);
 
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-${preheader}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #f3f4f6; padding: 40px 20px;">
-<tr><td align="center">
-<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-${headerBand}
-<tr><td style="padding: 24px 30px 0;">
-  <h1 style="margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #111827;">${title}</h1>
-  <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.5; color: #4b5563;">${greeting}</p>
-</td></tr>
-${postsSection}
-${eventsSection}
-${unreadSection}
-<tr><td align="center" style="padding: 24px 30px 30px;">
-  ${hubButton}
-</td></tr>
-<tr><td style="padding: 20px 30px; background: #f5f3ee; text-align: center;">
-  <p style="margin: 0 0 8px; font-size: 12px; color: #888780;">Enviado por ${safeWorkspace} via Mesaas</p>
-  <p style="margin: 0; font-size: 12px; color: #888780;"><a href="${
-    escapeHtml(unsubUrl)
-  }" style="color: #888780;">Não quero mais receber esses avisos</a></p>
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
+  return brandedEmail({
+    preheader: buildPendingPreheaderText(pendingPosts.length, unreadMessages, pendingEvents.length),
+    workspaceName,
+    brandColor,
+    logoUrl,
+    sections,
+    footerHtml: [
+      `Enviado por ${escapeHtml(workspaceName)} via Mesaas`,
+      link(unsubUrl, "Não quero mais receber esses avisos", EMAIL.muted),
+    ],
+  });
 }
 
 // --- Unsubscribe token ---------------------------------------------------------

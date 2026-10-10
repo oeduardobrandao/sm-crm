@@ -10,8 +10,8 @@ import type { EmailKpis } from "./brand-header.ts";
  * carregam delta -- YAGNI, a spec permite omitir.
  *
  * Retorna `null` quando NENHUM campo tem valor: a coluna fica null e o
- * e-mail degrada para a versão sem a fila (buildKpiRow/buildReportPreheader
- * já tratam `null` em brand-header.ts / email.ts). */
+ * e-mail degrada para a versão sem a fila (buildKpiRow/buildReportPreheaderText
+ * já tratam `null` em report-template/email.ts). */
 export function buildEmailKpis(p: {
   viewsMonth: number | null;
   prevViewsMonth: number | null;
