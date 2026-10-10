@@ -110,7 +110,7 @@ export function alert(text: string): string {
 
 export function quote(label: string, text: string): string {
   return `<p style="margin: 0 0 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: ${EMAIL.muted};">${escapeHtml(label)}</p>` +
-    callout(`<span style="white-space: pre-line;">${escapeHtml(text)}</span>`);
+    callout(escapeHtml(text).replace(/\r?\n/g, "<br>"));
 }
 
 export function detailRows(rows: Array<{ label: string; value: string }>): string {
@@ -127,7 +127,7 @@ export function badge(tone: BadgeTone, label: string): string {
 }
 
 function formatPill(tipo: string): string {
-  const f = POST_TIPOS[tipo] ?? POST_TIPO_FALLBACK;
+  const f = Object.hasOwn(POST_TIPOS, tipo) ? POST_TIPOS[tipo] : POST_TIPO_FALLBACK;
   return `<span style="display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid ${EMAIL.border}; font-size: 12px; line-height: 18px; font-weight: 600; color: ${EMAIL.text}; white-space: nowrap;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 4px; background: ${f.color}; margin-right: 6px;"></span>${f.label}</span>`;
 }
 
