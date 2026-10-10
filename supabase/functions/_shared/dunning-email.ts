@@ -1,6 +1,6 @@
 import type { DunningStage } from "./dunning-logic.ts";
 import { mesaasEmail } from "./email/shell.ts";
-import { alert, button, detailRows, heading, paragraph } from "./email/blocks.ts";
+import { alert, button, detailRows, heading, paragraph, spacer } from "./email/blocks.ts";
 
 export interface DunningCopy {
   subject: string;
@@ -74,7 +74,7 @@ export function buildDunningEmail(params: {
     eyebrowTone: final ? "danger" : "brand",
     sections: [
       heading(copy.heading) + paragraph(copy.body, "body", "0"),
-      detailRows(rows) + (copy.alerta ? `<div style="margin: 12px 0 0;">${alert(copy.alerta)}</div>` : ""),
+      detailRows(rows) + (copy.alerta ? spacer(12) + alert(copy.alerta) : ""),
       button(params.billingUrl, copy.cta) +
         paragraph("Se você já atualizou seu pagamento, pode ignorar este e-mail.", "small", "16px 0 0"),
     ],

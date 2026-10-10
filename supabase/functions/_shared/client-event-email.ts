@@ -2,7 +2,7 @@ import { escapeHtml } from "./report-template/escape.ts";
 import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
 import { formatarQuandoAgenda, mesDiaAgenda } from "./agenda-cliente-email.ts";
 import { brandedEmail } from "./email/shell.ts";
-import { button, callout, eventCard, heading, link, paragraph, postList, sectionTitle } from "./email/blocks.ts";
+import { button, callout, eventCard, heading, link, paragraph, postList, sectionTitle, spacer } from "./email/blocks.ts";
 import { corSegura } from "./email/safe.ts";
 
 /**
@@ -123,13 +123,13 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
       sectionTitle(CLIENT_EVENT_REMINDERS_HEADING) +
         pendingEvents.map((ev, i) => {
           const { mes, dia } = mesDiaAgenda(ev);
-          return `<div style="margin: ${i === 0 ? "8px" : "10px"} 0 0;">${
+          return spacer(i === 0 ? 8 : 10) + (
             eventCard({
               mes, dia, tileColor: brandColor, titulo: ev.titulo,
               titleHref: hubBase ? `${hubBase}/agenda?ocorrencia=${ev.ocorrencia_id}` : null,
               lines: [formatarQuandoAgenda(ev)],
             })
-          }</div>`;
+          );
         }).join(""),
     );
   }

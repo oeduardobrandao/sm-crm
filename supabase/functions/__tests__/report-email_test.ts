@@ -7,7 +7,7 @@ const base = {
   pdfUrl: "https://x/r.pdf", hubUrl: "https://x/hub",
 };
 
-Deno.test("shell: faixa com brandColor, radius 16, rodapé creme com tagline", () => {
+Deno.test("shell: faixa com brandColor, radius 12, sem rodapé creme nem tagline antiga", () => {
   const h = buildReportEmail(base);
   assertStringIncludes(h, "background: #e11d48");
   assertStringIncludes(h, "border-radius: 12px");

@@ -2,7 +2,7 @@ import { escapeHtml } from "./report-template/escape.ts";
 import { fetchStripeAmount } from "./stripe-amount.ts";
 import { whatsAppSupportUrl } from "./whatsapp.ts";
 import { mesaasEmail } from "./email/shell.ts";
-import { button, callout, featureGrid, heading, link, paragraph, paragraphHtml, sectionTitle, signature, steps } from "./email/blocks.ts";
+import { button, callout, featureGrid, heading, link, paragraph, paragraphHtml, sectionTitle, signature, spacer, steps } from "./email/blocks.ts";
 
 export const WELCOME_SUBJECT = "Boas-vindas ao Mesaas 👋";
 export const THANKYOU_SUBJECT = "Obrigado pela confiança 💚";
@@ -34,7 +34,7 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
       sectionTitle("Comece em 3 passos") +
         steps([
           "Cadastre seu primeiro cliente.",
-          `<strong>Importe seus dados</strong>: trazemos tudo do Notion, Trello, ClickUp ou CSV em poucos cliques.<div style="margin-top: 14px;">${button(`${base}/importar`, "Importar meus dados")}</div>`,
+          `<strong>Importe seus dados</strong>: trazemos tudo do Notion, Trello, ClickUp ou CSV em poucos cliques.${spacer(14)}${button(`${base}/importar`, "Importar meus dados")}`,
           "Convide sua equipe e compartilhe o Hub com o cliente.",
         ]),
       featureGrid([
@@ -45,7 +45,7 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
       ]),
       callout(`Dúvidas? A ${link(`${base}/ajuda`, "Central de Ajuda")} tem guias passo a passo, e as ${link(`${base}/novidades`, "Novidades")} mostram o que estamos lançando.`),
       paragraphHtml(closingLine, "body", "0 0 18px") +
-        (waUrl ? `<div style="margin: 0 0 24px;">${button(waUrl, "Falar no WhatsApp", "outline")}</div>` : "") +
+        (waUrl ? button(waUrl, "Falar no WhatsApp", "outline") + spacer(24) : "") +
         signature(),
     ],
     footerLines: ["Você recebeu este e-mail porque criou uma conta no Mesaas."],

@@ -17,7 +17,8 @@ import { type ResendAttachment, sanitizeSubjectValue } from "./lifecycle-emails.
 import { gerarCalendario, type IcsEvento } from "./ics.ts";
 import { corSegura, linkSeguro } from "./email/safe.ts";
 import { brandedEmail } from "./email/shell.ts";
-import { button, callout, dateList, eventCard, heading, link, paragraph, quote } from "./email/blocks.ts";
+import { button, callout, dateList, eventCard, heading, link, paragraph, quote, spacer } from "./email/blocks.ts";
+import { EMAIL } from "./email/tokens.ts";
 
 // ─── Contract types (shapes from the plan's "Shared contracts") ─────────────
 
@@ -291,10 +292,10 @@ function cartaoEvento(ativas: AgendaClienteOcorrencia[], cor: string, organizado
     const visiveis = ativas.slice(0, DIAS_LISTADOS).map((o) =>
       `${o.titulo !== base.titulo ? `${o.titulo}: ` : ""}${formatarQuandoAgenda(o)}`
     );
-    html += `<div style="margin: 14px 0 0;">${dateList(visiveis, ativas.length - visiveis.length)}</div>`;
+    html += spacer(14) + dateList(visiveis, ativas.length - visiveis.length);
   }
   if (base.descricao?.trim()) {
-    html += `<p style="margin: 14px 0 0; font-size: 14px; line-height: 22px; color: #374151; white-space: pre-line; word-break: break-word;">${escapeHtml(base.descricao.trim())}</p>`;
+    html += `<p style="margin: 14px 0 0; font-size: 14px; line-height: 22px; color: ${EMAIL.text}; word-break: break-word;">${escapeHtml(base.descricao.trim()).replace(/\r?\n/g, "<br>")}</p>`;
   }
   return html;
 }

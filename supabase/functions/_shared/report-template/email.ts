@@ -4,7 +4,7 @@ import { formatCompactPtBr, type EmailKpis } from "./brand-header.ts";
 import { brandedEmail } from "../email/shell.ts";
 import { button, heading, link, paragraphHtml, quote } from "../email/blocks.ts";
 import { EMAIL } from "../email/tokens.ts";
-import { corSegura } from "../email/safe.ts";
+import { corSegura, linkSeguro } from "../email/safe.ts";
 
 export const REPORT_FROM_ADDRESS = "relatorios@mesaas.com.br";
 
@@ -100,7 +100,7 @@ export function buildReportEmail(params: ReportEmailParams & { emailKpis?: Email
   if (kpiRow) sections.push(kpiRow);
   if (typeof aiSummary === "string" && aiSummary) sections.push(quote("Destaque do mês", aiSummary.substring(0, 300)));
   const cta = button(hubUrl, "Ver relatório completo", { brandColor });
-  const pdf = pdfUrl ? paragraphHtml(link(pdfUrl, "Baixar em PDF", EMAIL.muted), "small", cta ? "12px 0 0" : "0") : "";
+  const pdf = linkSeguro(pdfUrl) ? paragraphHtml(link(pdfUrl, "Baixar em PDF", EMAIL.muted), "small", cta ? "12px 0 0" : "0") : "";
   if (cta || pdf) sections.push(cta + pdf);
 
   return brandedEmail({

@@ -694,7 +694,7 @@ Deno.test("agenda-cliente: tile day equals the 'quando' day for an all-day event
 Deno.test("agenda-cliente: brand band kept, light brand flips tile/button text, organizer line, no emoji", () => {
   const { html } = montarEmailAgendaCliente(item({ tipo: "convite", brand_color: "#facc15", organizador_nome: "Ana Souza" }), CTX);
   assert(html.includes("background: #facc15"), "band");
-  assert(html.includes("color: #171717;"), "dark text on light brand");
+  assert(html.split("color: #171717;").length - 1 >= 3, "dark text on light brand: band, tile and button");
   assert(html.includes("Organizado por Ana Souza"));
   assert(!/[📅💬]/u.test(html));
   assert(html.includes(`<meta name="color-scheme" content="light">`));

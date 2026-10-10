@@ -2,7 +2,7 @@ import { escapeHtml } from "./report-template/escape.ts";
 import { appBaseUrl } from "./app-url.ts";
 import { getPublishErrorDisplay } from "./publish-error-codes.ts";
 import { mesaasEmail } from "./email/shell.ts";
-import { badge, callout, heading, link, paragraph } from "./email/blocks.ts";
+import { badge, callout, heading, link, paragraph, spacer } from "./email/blocks.ts";
 import type { BadgeTone } from "./email/tokens.ts";
 
 export interface DigestItem {
@@ -157,7 +157,7 @@ function itemRow(it: DigestItem, appBase: string, last: boolean): string {
     <p style="margin: 0 0 10px;">${badge(b.tone, b.label)}</p>
     <p style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;">${escapeHtml(it.heading)}</p>
     ${it.context ? paragraph(it.context, "small", "2px 0 0") : ""}
-    ${it.body ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td height="10" style="height: 10px; font-size: 0; line-height: 0;">&nbsp;</td></tr></table>${callout(escapeHtml(it.body))}` : ""}
+    ${it.body ? spacer(10) + callout(escapeHtml(it.body)) : ""}
     <p style="margin: 12px 0 0; font-size: 14px;">${link(`${appBase}${it.link}`, "Abrir no Mesaas")}</p>
   </td></tr>`;
 }

@@ -100,6 +100,11 @@ export function featureGrid(items: Array<{ title: string; text: string }>): stri
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.join("")}</table>`;
 }
 
+/** Vertical gap as a table row: Outlook's Word engine ignores margins on div. */
+export function spacer(px: number): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td height="${px}" style="height: ${px}px; font-size: 0; line-height: 0;">&nbsp;</td></tr></table>`;
+}
+
 export function callout(innerHtml: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td bgcolor="${EMAIL.calloutBg}" style="background: ${EMAIL.calloutBg}; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: ${EMAIL.text}; ${WRAP}">${innerHtml}</td></tr></table>`;
 }
