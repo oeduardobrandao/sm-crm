@@ -16,7 +16,7 @@ The edge functions (`tiktok-publish`, `tiktok-publish-cron`, `tiktok-webhook`, `
 ## Global Constraints
 
 - Spec (source of truth): `docs/superpowers/specs/2026-10-09-tiktok-publish-state-post-targets-design.md`.
-- Migration versions: `20261013000001`, `20261013000002`, `20261013000003` (main's tail is `20261012000001`). Re-check `ls supabase/migrations | tail -3` against `origin/main` right before `gh pr create`; renumber above main's tail if anything landed. Duplicate prefixes fail `migration-version-guard`.
+- Migration versions: `20261014000001`, `20261014000002`, `20261014000003` (main's tail is `20261013000002`; renumbered from 20261013000001..3 after the affiliate migrations landed). Re-check `ls supabase/migrations | tail -3` against `origin/main` right before `gh pr create`; renumber above main's tail if anything landed. Duplicate prefixes fail `migration-version-guard`.
 - Every new or copied-forward function: `SECURITY DEFINER SET search_path = public, pg_temp`.
 - Callable RPCs: `REVOKE ALL ON FUNCTION … FROM public, anon, authenticated;` then `GRANT EXECUTE ON FUNCTION … TO service_role;` (the pair from `20260925000001:53-54`).
 - Trigger functions: `REVOKE ALL ON FUNCTION … FROM public, anon, authenticated;` with no grant (P1 convention, `20261010100002`).
@@ -45,9 +45,9 @@ The edge functions (`tiktok-publish`, `tiktok-publish-cron`, `tiktok-webhook`, `
 ## Deviations from spec
 
 1. **Three migrations instead of one.**
-   - `20261013000001` holds §2a, §2b and §2h.
-   - `20261013000002` holds §2c, §2d and §2e.
-   - `20261013000003` holds §2f and §2g.
+   - `20261014000001` holds §2a, §2b and §2h.
+   - `20261014000002` holds §2c, §2d and §2e.
+   - `20261014000003` holds §2f and §2g.
 
    They apply in order in one `db push`. Each file is smaller and can be reviewed on its own.
 2. **Claim return shape follows the explicit "Signature and return contract" list, not §2f's "same fields as today … plus `phase`".**
@@ -97,9 +97,9 @@ The edge functions (`tiktok-publish`, `tiktok-publish-cron`, `tiktok-webhook`, `
 ## File map
 
 **SQL**
-- `supabase/migrations/20261013000001_post_targets_publish_state.sql` (create): `publish_ref` and its index, the mapping helper, the backfill function `tiktok_backfill_targets` (with the reset rule) and its call, the parity `DO` block, column grants, the delete guard, and the a2/z7 copy-forward.
-- `supabase/migrations/20261013000002_post_targets_publish_writers.sql` (create): `recompute_post_publish_status`, `mark_target_published`, `mark_target_failed`, `requeue_target`, `begin_target_publish`, `cancel_target_publish`, the `mark_platform_published` copy-forward, and the z9 reset trigger.
-- `supabase/migrations/20261013000003_tiktok_target_claim.sql` (create): `claim_tiktok_targets_for_publishing`, the old claim as a no-op, and the `reorder_post_schedules` and `post_file_link_replace` copy-forwards.
+- `supabase/migrations/20261014000001_post_targets_publish_state.sql` (create): `publish_ref` and its index, the mapping helper, the backfill function `tiktok_backfill_targets` (with the reset rule) and its call, the parity `DO` block, column grants, the delete guard, and the a2/z7 copy-forward.
+- `supabase/migrations/20261014000002_post_targets_publish_writers.sql` (create): `recompute_post_publish_status`, `mark_target_published`, `mark_target_failed`, `requeue_target`, `begin_target_publish`, `cancel_target_publish`, the `mark_platform_published` copy-forward, and the z9 reset trigger.
+- `supabase/migrations/20261014000003_tiktok_target_claim.sql` (create): `claim_tiktok_targets_for_publishing`, the old claim as a no-op, and the `reorder_post_schedules` and `post_file_link_replace` copy-forwards.
 - `supabase/tests/post_targets_publish_state.sql` (create): sections 1-4 (Task 1), 5-11 (Task 2), 12 (Task 3).
 - `supabase/tests/tiktok_publishing_rpcs.sql` (rewrite, Task 3): the new claim phases, ordering, locks, and the old claim's no-op.
 - `supabase/tests/post_file_link_replace.sql` (modify, Task 3): the TikTok guard now reads the destination.
@@ -137,7 +137,7 @@ The edge functions (`tiktok-publish`, `tiktok-publish-cron`, `tiktok-webhook`, `
 ### Task 1: Destination columns, backfill, parity, grants and delete guard
 
 **Files:**
-- Create: `supabase/migrations/20261013000001_post_targets_publish_state.sql`
+- Create: `supabase/migrations/20261014000001_post_targets_publish_state.sql`
 - Create: `supabase/tests/post_targets_publish_state.sql` (sections 1-4)
 - Modify: `supabase/tests/entitlements/99_post_targets.sql:648-650` (column classification list in section 13)
 - Test: `supabase/tests/post_targets_publish_state.sql`, `supabase/tests/entitlements/99_post_targets.sql`
@@ -167,7 +167,7 @@ Create `supabase/tests/post_targets_publish_state.sql`:
 \i supabase/tests/entitlements/_helpers.sql
 
 -- P4: estado de publicação do TikTok em post_targets
--- (migrations 20261013000001..20261013000003).
+-- (migrations 20261014000001..20261014000003).
 -- Spec: docs/superpowers/specs/2026-10-09-tiktok-publish-state-post-targets-design.md
 -- Seções 1-4: Task 1 (coluna, backfill, privilégios, guarda de DELETE, a2/z7).
 -- Seções 5-11: Task 2 (recompute, writers, reset). Seção 12: Task 3 (claim).
@@ -514,7 +514,7 @@ Expected: FAIL in section 1 with `assertion failed: post_targets.publish_ref aus
 
 - [ ] **Step 4: Write the migration**
 
-Create `supabase/migrations/20261013000001_post_targets_publish_state.sql`:
+Create `supabase/migrations/20261014000001_post_targets_publish_state.sql`:
 
 ```sql
 -- ============================================================
@@ -526,7 +526,7 @@ Create `supabase/migrations/20261013000001_post_targets_publish_state.sql`:
 -- Depois desta migration as colunas tiktok_* de publicação em workflow_posts
 -- (tiktok_publish_status/id/error/retry_count/processing_at, tiktok_post_id/url)
 -- ficam congeladas: o backfill abaixo é a última leitura delas por escrita.
--- 20261013000002 traz os writers; 20261013000003 o claim novo.
+-- 20261014000002 traz os writers; 20261014000003 o claim novo.
 -- ============================================================
 
 -- CREATE TRIGGER e ALTER em post_targets pedem lock forte: desiste em 5s em vez
@@ -546,7 +546,7 @@ CREATE INDEX post_targets_publish_ref_idx
 -- ---------- b. backfill -----------------------------------------------------
 -- Mapeamento legado -> destino, com a regra de reset (§2b): 'failed' num post
 -- fora de publicação vira 'pendente' (mesma regra do trigger z9 de
--- 20261013000002, que só pega updates futuros). Fonte única para o backfill,
+-- 20261014000002, que só pega updates futuros). Fonte única para o backfill,
 -- a paridade abaixo, scripts/tiktok-p4-reconcile.sql e os testes.
 CREATE OR REPLACE FUNCTION public.tiktok_legacy_target_status(p_legacy text, p_post_status text)
 RETURNS text
@@ -785,7 +785,7 @@ Expected:
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20261013000001_post_targets_publish_state.sql supabase/tests/post_targets_publish_state.sql supabase/tests/entitlements/99_post_targets.sql
+git add supabase/migrations/20261014000001_post_targets_publish_state.sql supabase/tests/post_targets_publish_state.sql supabase/tests/entitlements/99_post_targets.sql
 git commit -m "feat(db): backfill TikTok publish state into post_targets (P4 1/3)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -796,7 +796,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: Recompute, destination writers, `mark_platform_published` copy-forward, reset trigger
 
 **Files:**
-- Create: `supabase/migrations/20261013000002_post_targets_publish_writers.sql`
+- Create: `supabase/migrations/20261014000002_post_targets_publish_writers.sql`
 - Modify: `supabase/tests/post_targets_publish_state.sql` (append the fixture helpers and sections 5-11)
 - Test: `supabase/tests/post_targets_publish_state.sql`, `supabase/tests/tiktok_publishing_rpcs.sql` cases (a) and (b), which must stay green unchanged until Task 3 rewrites (c), (d) and (f)
 
@@ -1266,7 +1266,7 @@ Expected: sections 1-4 pass. Section 5 then fails with `function recompute_post_
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/20261013000002_post_targets_publish_writers.sql`:
+Create `supabase/migrations/20261014000002_post_targets_publish_writers.sql`:
 
 ```sql
 -- ============================================================
@@ -1517,7 +1517,7 @@ BEGIN
 
   -- Publicar agora carimba scheduled_at = now(), como o instagram-publish
   -- (handler.ts:225,304,363): se o init falhar e o destino for re-enfileirado, o
-  -- claim (scheduled_at <= now(), 20261013000003) o pega no próximo ciclo em vez de
+  -- claim (scheduled_at <= now(), 20261014000003) o pega no próximo ciclo em vez de
   -- esperar uma data futura ou nula.
   IF v_post_status = 'aprovado_cliente' THEN
     PERFORM public.record_post_status_change(p_post_id, 'agendado', p_source, p_actor, NULL,
@@ -1691,7 +1691,7 @@ Do not run `supabase/tests/tiktok_publishing_rpcs.sql` yet. Its case (c) asserts
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261013000002_post_targets_publish_writers.sql supabase/tests/post_targets_publish_state.sql
+git add supabase/migrations/20261014000002_post_targets_publish_writers.sql supabase/tests/post_targets_publish_state.sql
 git commit -m "feat(db): TikTok destination writers, recompute and reset trigger (P4 2/3)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -1702,7 +1702,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 3: Destination claim, old claim no-op, reorder and media-replace guards
 
 **Files:**
-- Create: `supabase/migrations/20261013000003_tiktok_target_claim.sql`
+- Create: `supabase/migrations/20261014000003_tiktok_target_claim.sql`
 - Rewrite: `supabase/tests/tiktok_publishing_rpcs.sql` (whole file)
 - Modify: `supabase/tests/post_file_link_replace.sql:27` (declare) and `:79-82` (TikTok guard lines)
 - Modify: `supabase/tests/entitlements/70_workflow_posts_avulsos.sql`: insert section 8b after section 8 (after line 668); extend section 11 (lines 738-760)
@@ -1733,8 +1733,8 @@ Latest-definition check (done while writing this plan):
 Replace the whole content of `supabase/tests/tiktok_publishing_rpcs.sql` with:
 
 ```sql
--- Validação do claim por destino (20261013000003) e da paridade de
--- mark_platform_published copiado para frente (20261013000002). Casos:
+-- Validação do claim por destino (20261014000003) e da paridade de
+-- mark_platform_published copiado para frente (20261014000002). Casos:
 --   (a) mark_platform_published('instagram') num post só Instagram -> postado (paridade)
 --   (b) both: só o lado IG concluído, destino TikTok pendente -> segue agendado
 --   (c) mark_platform_published('tiktok') nesse post -> postado; estado no destino,
@@ -2056,7 +2056,7 @@ In `supabase/tests/entitlements/70_workflow_posts_avulsos.sql`, insert after the
 
 -- =====================================================================
 -- 8b. reorder_post_schedules recusa post com destino TikTok publicando
---     (P4, 20261013000003), qualquer que seja o status do post
+--     (P4, 20261014000003), qualquer que seja o status do post
 -- =====================================================================
 begin;
 do $$
@@ -2153,7 +2153,7 @@ Expected:
 
 - [ ] **Step 6: Write the migration**
 
-Create `supabase/migrations/20261013000003_tiktok_target_claim.sql`:
+Create `supabase/migrations/20261014000003_tiktok_target_claim.sql`:
 
 ```sql
 -- ============================================================
@@ -2169,7 +2169,7 @@ SET LOCAL lock_timeout = '5s';
 -- init:   data vencida (scheduled_at <= now(), spec §2f) E destino re-enfileirado
 --         (agendado) com post em agendado/falha_publicacao, ou destino pendente com
 --         post agendado. Um reenvio de publicar-agora tem data vencida porque
---         begin_target_publish carimba scheduled_at = now() (20261013000002).
+--         begin_target_publish carimba scheduled_at = now() (20261014000002).
 -- status: destino processando com publish_ref, sem filtro de status do post (um
 --         publish em voo termina mesmo se o post foi movido).
 -- retry:  destino falha, retry_count < 3, post em agendado/falha_publicacao; o cron
@@ -2572,7 +2572,7 @@ Expected:
 - [ ] **Step 8: Commit**
 
 ```bash
-git add supabase/migrations/20261013000003_tiktok_target_claim.sql supabase/tests/tiktok_publishing_rpcs.sql supabase/tests/post_file_link_replace.sql supabase/tests/entitlements/70_workflow_posts_avulsos.sql supabase/tests/post_targets_publish_state.sql
+git add supabase/migrations/20261014000003_tiktok_target_claim.sql supabase/tests/tiktok_publishing_rpcs.sql supabase/tests/post_file_link_replace.sql supabase/tests/entitlements/70_workflow_posts_avulsos.sql supabase/tests/post_targets_publish_state.sql
 git commit -m "feat(db): claim TikTok publishes by destination, copy guards forward (P4 3/3)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -2658,7 +2658,7 @@ function assertNoWorkflowPostWrites(db: Db) {
   assertEquals(rpcCalls(db, "claim_posts_for_tiktok_publishing").length, 0, "the old claim is never called");
 }
 
-// Matches claim_tiktok_targets_for_publishing's RETURNS TABLE (20261013000003).
+// Matches claim_tiktok_targets_for_publishing's RETURNS TABLE (20261014000003).
 // target_id defaults to 1000 + post_id so assertions can tell the two apart.
 function claimedPost(overrides: Partial<Record<string, unknown>> = {}) {
   const postId = (overrides.post_id as number | undefined) ?? 1;
@@ -3443,7 +3443,7 @@ with:
 Replace lines 71-88 (`interface ClaimedTikTokCronPost`) with:
 
 ```ts
-/** Row of claim_tiktok_targets_for_publishing (20261013000003). */
+/** Row of claim_tiktok_targets_for_publishing (20261014000003). */
 interface ClaimedTikTokCronPost {
   post_id: number;
   conta_id: string;
@@ -6318,7 +6318,7 @@ Create `scripts/tiktok-p4-predeploy.sql`:
 
 ```sql
 -- P4 pré-deploy (TikTok publish state em post_targets): relatório SOMENTE LEITURA.
--- Rodar em prod e em staging ANTES de aplicar 20261013000001..3:
+-- Rodar em prod e em staging ANTES de aplicar 20261014000001..3:
 --   npx supabase link --project-ref <ref> < /dev/null
 --   npx supabase db query --linked --file scripts/tiktok-p4-predeploy.sql
 -- (só a última statement volta: o relatório inteiro é um SELECT).
@@ -6587,7 +6587,7 @@ The steps follow spec §5. Prod is `skjzpekeqefvlojenfsw` and staging is `wlyzhy
    npx supabase db push --linked
    ```
 
-   The dry runs must list exactly `20261013000001`, `20261013000002` and `20261013000003`. If `db push` refuses because of drift, follow the out-of-band path in that memory. A parity exception aborts the whole migration: read the message, fix the data, retry. A `lock_timeout` abort on a busy DB is retried the same way as a parity abort.
+   The dry runs must list exactly `20261014000001`, `20261014000002` and `20261014000003`. If `db push` refuses because of drift, follow the out-of-band path in that memory. A parity exception aborts the whole migration: read the message, fix the data, retry. A `lock_timeout` abort on a busy DB is retried the same way as a parity abort.
 
    **Verify the push really applied the DDL**, on each project right after its `db push` (a committed version row with rolled-back DDL has happened before, memory `reference_db_push_batch_rollback_drift`):
 
@@ -6730,7 +6730,7 @@ git ls-tree --name-only origin/main supabase/migrations/ | sort | tail -1
 
 Expected:
 - the `uniq -d` command prints nothing;
-- main's last migration sorts below `20261013000001`.
+- main's last migration sorts below `20261014000001`.
 
 If main has moved past it (memory `feedback_migration_version_collision`), renumber the three migrations above main's tail with `git mv`, update every reference to the old file names in the plan and in comments, rerun Step 5, and commit with `chore(db): renumber P4 migrations above main`.
 

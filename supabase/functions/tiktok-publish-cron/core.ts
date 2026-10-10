@@ -69,7 +69,7 @@ const MAX_INIT_PER_ACCOUNT = 5;
 
 const CRON_NAME = "tiktok-publish-cron";
 
-/** Row of claim_tiktok_targets_for_publishing (20261013000003). */
+/** Row of claim_tiktok_targets_for_publishing (20261014000003). */
 interface ClaimedTikTokCronPost {
   post_id: number;
   conta_id: string;

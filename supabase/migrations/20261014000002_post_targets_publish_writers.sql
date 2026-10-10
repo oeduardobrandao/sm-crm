@@ -246,7 +246,7 @@ BEGIN
 
   -- Publicar agora carimba scheduled_at = now(), como o instagram-publish
   -- (handler.ts:225,304,363): se o init falhar e o destino for re-enfileirado, o
-  -- claim (scheduled_at <= now(), 20261013000003) o pega no próximo ciclo em vez de
+  -- claim (scheduled_at <= now(), 20261014000003) o pega no próximo ciclo em vez de
   -- esperar uma data futura ou nula.
   IF v_post_status = 'aprovado_cliente' THEN
     PERFORM public.record_post_status_change(p_post_id, 'agendado', p_source, p_actor, NULL,

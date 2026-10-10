@@ -7,7 +7,7 @@
 -- Depois desta migration as colunas tiktok_* de publicação em workflow_posts
 -- (tiktok_publish_status/id/error/retry_count/processing_at, tiktok_post_id/url)
 -- ficam congeladas: o backfill abaixo é a última leitura delas por escrita.
--- 20261013000002 traz os writers; 20261013000003 o claim novo.
+-- 20261014000002 traz os writers; 20261014000003 o claim novo.
 -- ============================================================
 
 -- CREATE TRIGGER e ALTER em post_targets pedem lock forte: desiste em 5s em vez
@@ -27,7 +27,7 @@ CREATE INDEX post_targets_publish_ref_idx
 -- ---------- b. backfill -----------------------------------------------------
 -- Mapeamento legado -> destino, com a regra de reset (§2b): 'failed' num post
 -- fora de publicação vira 'pendente' (mesma regra do trigger z9 de
--- 20261013000002, que só pega updates futuros). Fonte única para o backfill,
+-- 20261014000002, que só pega updates futuros). Fonte única para o backfill,
 -- a paridade abaixo, scripts/tiktok-p4-reconcile.sql e os testes.
 CREATE OR REPLACE FUNCTION public.tiktok_legacy_target_status(p_legacy text, p_post_status text)
 RETURNS text

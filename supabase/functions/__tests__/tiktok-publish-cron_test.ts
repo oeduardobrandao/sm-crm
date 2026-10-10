@@ -45,7 +45,7 @@ function assertNoWorkflowPostWrites(db: Db) {
   assertEquals(rpcCalls(db, "claim_posts_for_tiktok_publishing").length, 0, "the old claim is never called");
 }
 
-// Matches claim_tiktok_targets_for_publishing's RETURNS TABLE (20261013000003).
+// Matches claim_tiktok_targets_for_publishing's RETURNS TABLE (20261014000003).
 // target_id defaults to 1000 + post_id so assertions can tell the two apart.
 function claimedPost(overrides: Partial<Record<string, unknown>> = {}) {
   const postId = (overrides.post_id as number | undefined) ?? 1;

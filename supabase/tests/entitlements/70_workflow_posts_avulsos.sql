@@ -669,7 +669,7 @@ rollback;
 
 -- =====================================================================
 -- 8b. reorder_post_schedules recusa post com destino TikTok publicando
---     (P4, 20261013000003), qualquer que seja o status do post
+--     (P4, 20261014000003), qualquer que seja o status do post
 -- =====================================================================
 begin;
 do $$

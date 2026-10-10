@@ -1,5 +1,5 @@
 -- P4 pré-deploy (TikTok publish state em post_targets): relatório SOMENTE LEITURA.
--- Rodar em prod e em staging ANTES de aplicar 20261013000001..3:
+-- Rodar em prod e em staging ANTES de aplicar 20261014000001..3:
 --   npx supabase link --project-ref <ref> < /dev/null
 --   npx supabase db query --linked --file scripts/tiktok-p4-predeploy.sql
 -- (só a última statement volta: o relatório inteiro é um SELECT).

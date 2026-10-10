@@ -11,7 +11,7 @@ SET LOCAL lock_timeout = '5s';
 -- init:   data vencida (scheduled_at <= now(), spec §2f) E destino re-enfileirado
 --         (agendado) com post em agendado/falha_publicacao, ou destino pendente com
 --         post agendado. Um reenvio de publicar-agora tem data vencida porque
---         begin_target_publish carimba scheduled_at = now() (20261013000002).
+--         begin_target_publish carimba scheduled_at = now() (20261014000002).
 -- status: destino processando com publish_ref, sem filtro de status do post (um
 --         publish em voo termina mesmo se o post foi movido).
 -- retry:  destino falha, retry_count < 3, post em agendado/falha_publicacao; o cron

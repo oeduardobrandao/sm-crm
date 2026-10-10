@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- P4: estado de publicação do TikTok em post_targets
--- (migrations 20261013000001..20261013000003).
+-- (migrations 20261014000001..20261014000003).
 -- Spec: docs/superpowers/specs/2026-10-09-tiktok-publish-state-post-targets-design.md
 -- Seções 1-4: Task 1 (coluna, backfill, privilégios, guarda de DELETE, a2/z7).
 -- Seções 5-11: Task 2 (recompute, writers, reset). Seção 12: Task 3 (claim).

@@ -1,5 +1,5 @@
--- Validação do claim por destino (20261013000003) e da paridade de
--- mark_platform_published copiado para frente (20261013000002). Casos:
+-- Validação do claim por destino (20261014000003) e da paridade de
+-- mark_platform_published copiado para frente (20261014000002). Casos:
 --   (a) mark_platform_published('instagram') num post só Instagram -> postado (paridade)
 --   (b) both: só o lado IG concluído, destino TikTok pendente -> segue agendado
 --   (c) mark_platform_published('tiktok') nesse post -> postado; estado no destino,
