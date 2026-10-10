@@ -1,16 +1,11 @@
 import { escapeHtml } from "./report-template/escape.ts";
 import { appBaseUrl } from "./app-url.ts";
-import { getPublishErrorDisplay } from "./publish-error-codes.ts";
 import { mesaasEmail } from "./email/shell.ts";
 import { badge, callout, heading, link, paragraph, spacer } from "./email/blocks.ts";
 import { type BadgeTone, EMAIL } from "./email/tokens.ts";
+import { type NotificationRow, type RenderedNotification, renderNotification } from "./notification-render.ts";
 
-export interface DigestItem {
-  priority: number;
-  heading: string;
-  body?: string;
-  context?: string;
-  link: string;
+export interface DigestItem extends RenderedNotification {
   /** Optional: absent renders the neutral "Notificação" badge. */
   badge?: { tone: BadgeTone; label: string };
 }
@@ -36,102 +31,10 @@ const DEFAULT_BADGE = { tone: "neutral" as const, label: "Notificação" };
 
 const DIGEST_FROM = "Mesaas <notificacoes@mesaas.com.br>";
 
-function s(metadata: Record<string, unknown> | null, key: string): string | undefined {
-  const v = metadata?.[key];
-  return typeof v === "string" && v.length > 0 ? v : undefined;
-}
-
-function ctx(a?: string, b?: string): string | undefined {
-  return [a, b].filter(Boolean).join(" · ") || undefined;
-}
-
-function eventHeading(prefix: string, titulo?: string): string {
-  return titulo ? `${prefix}: ${titulo}` : prefix;
-}
-
-/** Map a claimed notification row to a rendered digest item. Metadata keys are
- * read defensively (verified against the emitting triggers); anything missing
- * degrades to a generic line rather than throwing. Priority = urgency order. */
-function resolveDigestItemBase(
-  row: { type: string; metadata: Record<string, unknown> | null; link: string | null },
-): DigestItem {
-  const m = row.metadata;
-  const link = row.link ?? "/";
-  switch (row.type) {
-    case "post_publish_failed": {
-      const d = getPublishErrorDisplay(s(m, "publish_error_code"));
-      return { priority: 1, heading: d.titulo, body: d.explicacao, context: ctx(s(m, "client_name"), s(m, "post_title")), link };
-    }
-    case "post_correction":
-      return { priority: 2, heading: "Correção solicitada pelo cliente", body: s(m, "comentario"), context: ctx(s(m, "client_name"), s(m, "post_title")), link };
-    case "post_message":
-      return { priority: 2, heading: "Nova mensagem no post", body: s(m, "comentario"), context: ctx(s(m, "client_name"), s(m, "post_title")), link };
-    case "client_message":
-      return { priority: 2, heading: "Nova mensagem do cliente", body: s(m, "comentario"), context: s(m, "client_name"), link };
-    case "deadline_approaching":
-      return { priority: 3, heading: "Prazo se aproximando", body: ctx(s(m, "workflow_title"), s(m, "step_name")), context: s(m, "client_name"), link };
-    case "task_assigned":
-      return { priority: 4, heading: "Tarefa atribuída a você", body: s(m, "task_title"), context: s(m, "client_name"), link };
-    case "post_assigned":
-      return { priority: 4, heading: "Post atribuído a você", body: s(m, "post_title"), context: s(m, "client_name"), link };
-    case "mention":
-      return { priority: 5, heading: `${s(m, "actor_name") ?? "Alguém"} mencionou você`, body: s(m, "excerpt"), context: s(m, "context_title"), link };
-    case "post_approved":
-      return { priority: 6, heading: "Post aprovado pelo cliente", body: s(m, "comentario"), context: ctx(s(m, "client_name"), s(m, "post_title")), link };
-    case "event_invited":
-      return { priority: 4, heading: `${s(m, "ator_nome") ?? "Alguém"} convidou você para um evento`, body: s(m, "titulo"), context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
-    case "event_updated":
-      return { priority: 3, heading: eventHeading("Evento alterado", s(m, "titulo")), context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
-    case "event_cancelled": {
-      // metadata.motivo is an enum ('removido' = you were taken off the event), never display text.
-      const heading = s(m, "motivo") === "removido"
-        ? `Você foi removido de ${s(m, "titulo") ?? "um evento"}`
-        : eventHeading("Evento cancelado", s(m, "titulo"));
-      return { priority: 3, heading, context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
-    }
-    // The two client-side Agenda types have no actor (the Hub client is not a
-    // user): the copy reads `cliente_nome` and never `ator_nome`. The metadata
-    // carries no time zone, so `inicio`/`inicio_sugerido` are not rendered.
-    case "event_client_rsvp": {
-      const resposta = s(m, "resposta");
-      const prefix = resposta === "sim"
-        ? "Cliente confirmou presença"
-        : resposta === "nao"
-        ? "Cliente recusou o evento"
-        : "Cliente respondeu ao evento";
-      return { priority: 4, heading: eventHeading(prefix, s(m, "titulo")), context: s(m, "cliente_nome"), link };
-    }
-    // External guest answered on the public invite page (sub-project 4, spec
-    // §3.8). Like the client types there is no actor: the guest is named by
-    // `convidado_nome`, falling back to the address they were invited at.
-    case "event_guest_rsvp": {
-      const quem = s(m, "convidado_nome") ?? s(m, "convidado_email") ?? "Convidado";
-      const resposta = s(m, "resposta");
-      const prefix = resposta === "sim"
-        ? `${quem} confirmou presença`
-        : resposta === "nao"
-        ? `${quem} recusou o evento`
-        : `${quem} respondeu ao evento`;
-      return { priority: 4, heading: eventHeading(prefix, s(m, "titulo")), context: "Convidado externo", link };
-    }
-    case "event_reschedule_requested":
-      return {
-        priority: 2,
-        heading: eventHeading("Cliente pediu para remarcar", s(m, "titulo")),
-        context: s(m, "cliente_nome"),
-        link,
-      };
-    default:
-      return { priority: 9, heading: "Nova notificação no Mesaas", context: undefined, link };
-  }
-}
-
-export function resolveDigestItem(
-  row: { type: string; metadata: Record<string, unknown> | null; link: string | null },
-): DigestItem {
+export function resolveDigestItem(row: NotificationRow): DigestItem {
   // Object.hasOwn: a type like "constructor" must not hit Object.prototype.
   const b = Object.hasOwn(DIGEST_BADGES, row.type) ? DIGEST_BADGES[row.type] : DEFAULT_BADGE;
-  return { ...resolveDigestItemBase(row), badge: b };
+  return { ...renderNotification(row), badge: b };
 }
 
 export function digestSubject(items: DigestItem[]): string {
