@@ -57,7 +57,13 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
         }),
       );
     },
-    onError: () => toast.error('Não foi possível atualizar os destinos.'),
+    // Pelo nome, não instanceof: os testes dos drawers mockam '@/store' com lista fixa.
+    onError: (err) =>
+      toast.error(
+        err instanceof Error && err.name === 'TargetNotRemovableError'
+          ? 'Este destino já está publicando ou foi publicado e não pode ser removido.'
+          : 'Não foi possível atualizar os destinos.',
+      ),
     // Também em erro: o INSERT pode ter passado e só a cópia da legenda falhado.
     // Retorna a promise: o TanStack espera por ela, então toggle.isPending só cai
     // quando `targets` já está fresco (um segundo clique rápido não age sobre dados velhos

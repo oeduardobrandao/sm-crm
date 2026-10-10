@@ -668,6 +668,55 @@ end $$;
 rollback;
 
 -- =====================================================================
+-- 8b. reorder_post_schedules recusa post com destino TikTok publicando
+--     (P4, 20261014000003), qualquer que seja o status do post
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint; v_result jsonb; v_raised boolean;
+  v_allowed text[] := array['rascunho','revisao_interna','aprovado_interno','enviado_cliente','aprovado_cliente','correcao_cliente'];
+  v_updates jsonb;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_posts (conta_id, cliente_id, titulo, status, platform)
+    values (v_ws, v_cli, 'avulso-tt', 'aprovado_cliente', 'tiktok') returning id into v_post;
+  v_updates := jsonb_build_array(jsonb_build_object('post_id', v_post, 'scheduled_at', now() + interval '2 days'));
+
+  -- processando (post já fora de agendado: o publish segue em voo)
+  update post_targets set status = 'processando' where post_id = v_post and platform = 'tiktok';
+  v_raised := false;
+  begin
+    perform reorder_post_schedules(v_cli, v_ws, v_updates, v_allowed);
+  exception when others then
+    assert sqlerrm = format('LOCKED: publishing in progress: {%s}', v_post), format('mensagem: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'reorder deve recusar destino processando';
+
+  -- trava fresca num destino pendente
+  update post_targets set status = 'pendente', processing_at = now() where post_id = v_post and platform = 'tiktok';
+  v_raised := false;
+  begin
+    perform reorder_post_schedules(v_cli, v_ws, v_updates, v_allowed);
+  exception when others then v_raised := true;
+  end;
+  assert v_raised, 'reorder deve recusar trava fresca';
+
+  -- trava velha não segura
+  update post_targets set processing_at = now() - interval '20 minutes' where post_id = v_post and platform = 'tiktok';
+  select reorder_post_schedules(v_cli, v_ws, v_updates, v_allowed) into v_result;
+  assert (v_result->>'updated')::int = 1, format('trava velha nao segura: %s', v_result);
+
+  raise notice 'PASS 70.8b reorder_post_schedules guarda do destino TikTok';
+end $$;
+rollback;
+
+-- =====================================================================
 -- 9. Notifications on an avulso post (migration 3): trg_notify_post_publish_failed
 --    and a mencoes mention, both with the null-safe '/entregas?post=' link
 -- =====================================================================
@@ -756,6 +805,13 @@ begin
     'authenticated must not be able to call claim_posts_for_tiktok_publishing';
   assert has_function_privilege('service_role', 'claim_posts_for_tiktok_publishing(text,int)', 'EXECUTE') = true,
     'service_role must still be able to call claim_posts_for_tiktok_publishing';
+
+  assert has_function_privilege('anon', 'claim_tiktok_targets_for_publishing(text,int)', 'EXECUTE') = false,
+    'anon must not be able to call claim_tiktok_targets_for_publishing';
+  assert has_function_privilege('authenticated', 'claim_tiktok_targets_for_publishing(text,int)', 'EXECUTE') = false,
+    'authenticated must not be able to call claim_tiktok_targets_for_publishing';
+  assert has_function_privilege('service_role', 'claim_tiktok_targets_for_publishing(text,int)', 'EXECUTE') = true,
+    'service_role must be able to call claim_tiktok_targets_for_publishing';
 
   raise notice 'PASS 70.11 claim RPCs ACL';
 end $$;

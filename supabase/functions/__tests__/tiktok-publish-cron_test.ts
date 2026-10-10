@@ -1,16 +1,13 @@
-// tiktok-publish-cron (Task B5) — mirrors tiktok-refresh-cron_test.ts's convention (handler.ts's
-// timingSafeEqual auth gate tested in isolation, core.ts's business logic tested via DI'd
-// getFreshTikTokToken / tiktokFetch / buildTikTokMediaUrl / reportCronFailure against the
-// shared supabaseMock). fetchPostMedia is left to its REAL implementation (imported by core.ts
-// from _shared/instagram-publish-utils.ts) in most tests — queued via `post_file_links`
-// responses on the mock db — except where a test only cares about downstream behavior, where
-// it is overridden directly for brevity.
+// tiktok-publish-cron (Task B5, P4) — handler.ts's timingSafeEqual auth gate tested in isolation;
+// core.ts's business logic tested via DI'd getFreshTikTokToken / tiktokFetch / buildTikTokMediaUrl /
+// reportCronFailure against the shared supabaseMock. P4: the cron claims TikTok DESTINATIONS
+// (claim_tiktok_targets_for_publishing), writes `post_targets` by target_id, and every transition
+// that moves the post's status goes through a SECURITY DEFINER RPC (mark_target_failed,
+// mark_target_published, requeue_target). No test here may see a workflow_posts write.
 //
-// buildTikTokMediaUrl replaced a raw R2 signGetUrl call (tiktok-media proxy fast-follow):
-// TikTok's PULL_FROM_URL source needs a TikTok-verifiable URL prefix, which raw
-// *.r2.cloudflarestorage.com presigned URLs can't satisfy. Most tests below stub it with a
-// throwaway string (they only care that init/status flow correctly); test (c) uses the REAL
-// shared implementation to pin the URL shape TikTok actually receives.
+// buildTikTokMediaUrl: TikTok's PULL_FROM_URL source needs a TikTok-verifiable URL prefix, which
+// raw *.r2.cloudflarestorage.com presigned URLs can't satisfy. Most tests stub it; test (c) uses
+// the REAL shared implementation to pin the URL shape TikTok actually receives.
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
@@ -24,6 +21,8 @@ const timingSafeEqual = (a: string, b: string) => a === b;
 Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-tiktok-publish-cron-key");
 Deno.env.set("SUPABASE_URL", "https://supabase.example");
 const MEDIA_URL_PREFIX = "https://supabase.example/functions/v1/tiktok-media/m/";
+const NOW = new Date("2026-10-13T12:00:00.000Z");
+const NOW_ISO = NOW.toISOString();
 
 type Db = ReturnType<typeof createSupabaseQueryMock>;
 
@@ -35,36 +34,44 @@ function rpcCalls(db: Db, name: string) {
   return db.calls.filter((c: QueryCall) => c.table === `rpc:${name}`);
 }
 
-// Matches claim_posts_for_tiktok_publishing's RETURNS TABLE shape (migration
-// 20260719000001_tiktok_publishing.sql).
+function eqId(call: QueryCall): unknown {
+  return call.modifiers.find((m) => m.method === "eq" && m.args[0] === "id")?.args[1];
+}
+
+/** No P4 code path writes workflow_posts directly any more. */
+function assertNoWorkflowPostWrites(db: Db) {
+  assertEquals(callsFor(db, "workflow_posts", "update").length, 0, "no direct workflow_posts write");
+  assertEquals(rpcCalls(db, "record_post_status_change").length, 0, "status moves only inside the RPCs");
+  assertEquals(rpcCalls(db, "claim_posts_for_tiktok_publishing").length, 0, "the old claim is never called");
+}
+
+// Matches claim_tiktok_targets_for_publishing's RETURNS TABLE (20261014000003).
+// target_id defaults to 1000 + post_id so assertions can tell the two apart.
 function claimedPost(overrides: Partial<Record<string, unknown>> = {}) {
+  const postId = (overrides.post_id as number | undefined) ?? 1;
   return {
-    post_id: 1,
-    workflow_id: 1,
+    post_id: postId,
+    conta_id: "conta-1",
+    cliente_id: 101,
     tipo: "feed",
     scheduled_at: new Date().toISOString(),
     caption: "legenda",
     tiktok_title: null,
     tiktok_settings: { privacy_level: "SELF_ONLY" },
-    tiktok_publish_id: null,
-    tiktok_publish_retry_count: 0,
-    encrypted_access_token: "enc-access",
-    encrypted_refresh_token: "enc-refresh",
-    access_token_expires_at: new Date(Date.now() + 3600_000).toISOString(),
-    tiktok_account_id: "acct-1",
-    tiktok_open_id: "open-1",
     tiktok_username: "dktest",
-    client_id: 101,
+    tiktok_account_id: "acct-1",
+    target_id: 1000 + postId,
+    publish_ref: null,
+    retry_count: 0,
     ...overrides,
   };
 }
 
-/** Queues the three claim_posts_for_tiktok_publishing responses in call order (init, status,
- * retry) — runTikTokPublishCron always calls the RPC exactly once per phase, in that order. */
+/** Queues the three claim responses in call order (init, status, retry). */
 function queueClaims(db: Db, init: unknown[], status: unknown[], retry: unknown[]) {
-  db.queueRpc("claim_posts_for_tiktok_publishing", { data: init, error: null });
-  db.queueRpc("claim_posts_for_tiktok_publishing", { data: status, error: null });
-  db.queueRpc("claim_posts_for_tiktok_publishing", { data: retry, error: null });
+  db.queueRpc("claim_tiktok_targets_for_publishing", { data: init, error: null });
+  db.queueRpc("claim_tiktok_targets_for_publishing", { data: status, error: null });
+  db.queueRpc("claim_tiktok_targets_for_publishing", { data: retry, error: null });
 }
 
 function unreachable(label: string) {
@@ -80,7 +87,20 @@ function baseDeps(db: Db, overrides: Partial<TikTokPublishCronDeps> = {}): TikTo
     tiktokFetch: (unreachable("tiktokFetch") as unknown) as TikTokPublishCronDeps["tiktokFetch"],
     buildTikTokMediaUrl: (unreachable("buildTikTokMediaUrl") as unknown) as TikTokPublishCronDeps["buildTikTokMediaUrl"],
     reportCronFailure: async () => {},
+    now: () => NOW,
     ...overrides,
+  };
+}
+
+function failedPayload(postId: number, error: string, errorCode: string | null, retryable: boolean) {
+  return {
+    p_post_id: postId,
+    p_platform: "tiktok",
+    p_error: error,
+    p_error_code: errorCode,
+    p_retryable: retryable,
+    p_source: "system",
+    p_actor: null,
   };
 }
 
@@ -116,7 +136,7 @@ Deno.test("tiktok-publish-cron: wrong x-cron-secret returns 401 before any DB ac
 
 // ── (b) init phase: per-account cap + token-once-per-account ───────────────────
 
-Deno.test("tiktok-publish-cron init phase: caps at 5 inits per account per run, releases overflow locks untouched", async () => {
+Deno.test("tiktok-publish-cron init phase: caps at 5 inits per account, releases overflow destination locks", async () => {
   const db = createSupabaseQueryMock();
   const sevenPosts = Array.from({ length: 7 }, (_, i) => claimedPost({ post_id: i + 1 }));
   queueClaims(db, sevenPosts, [], []);
@@ -140,30 +160,37 @@ Deno.test("tiktok-publish-cron init phase: caps at 5 inits per account per run, 
   }));
 
   assertEquals(response.status, 200);
+  assertEquals(rpcCalls(db, "claim_tiktok_targets_for_publishing").map((c) => c.payload), [
+    { p_phase: "init", p_limit: 25 },
+    { p_phase: "status", p_limit: 25 },
+    { p_phase: "retry", p_limit: 10 },
+  ]);
   assertEquals(tokenCalls, ["acct-1"], "token must be fetched exactly once for the whole account batch");
   assertEquals(initCalls.length, 5, "only 5 of the 7 claimed posts get an init call this run");
 
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  // 5 successful inits (publish_id/status write) + 2 overflow lock releases = 7.
-  assertEquals(updateCalls.length, 7);
+  const updates = callsFor(db, "post_targets", "update");
+  assertEquals(updates.length, 7, "5 init writes + 2 overflow lock releases");
 
-  const overflowUpdates = updateCalls.filter((c) => {
-    const payload = c.payload as Record<string, unknown>;
-    return payload.tiktok_publish_processing_at === null && !("tiktok_publish_status" in payload);
+  const overflow = updates.filter((c) => !("status" in (c.payload as Record<string, unknown>)));
+  assertEquals(overflow.map((c) => c.payload), [
+    { processing_at: null, updated_at: NOW_ISO },
+    { processing_at: null, updated_at: NOW_ISO },
+  ]);
+  assertEquals(overflow.map(eqId), [1006, 1007], "overflow releases the destinations, by target_id");
+
+  const inited = updates.filter((c) => (c.payload as Record<string, unknown>).status === "processando");
+  assertEquals(inited.length, 5);
+  assertEquals(inited[0].payload, {
+    status: "processando",
+    publish_ref: "pub-1",
+    processing_at: null,
+    updated_at: NOW_ISO,
   });
-  assertEquals(overflowUpdates.length, 2, "the 2 overflow posts must only have their lock cleared");
-
-  const initedUpdates = updateCalls.filter((c) => (c.payload as Record<string, unknown>).tiktok_publish_status === "initiated");
-  assertEquals(initedUpdates.length, 5);
+  assertEquals(eqId(inited[0]), 1001);
+  assertNoWorkflowPostWrites(db);
 });
 
 // ── (c) init phase: payload shape per tipo ──────────────────────────────────────
-//
-// Uses the REAL buildTikTokMediaUrl (not a stub) so the assertions below pin the actual URL
-// shape TikTok receives post-swap: `${SUPABASE_URL}/functions/v1/tiktok-media/m/{token}`, never
-// a raw R2 presigned URL — and confirms each URL's token resolves back to the exact r2_key that
-// was linked to the post, via verifyTikTokMediaToken (the tiktok-media function's own
-// resolution step).
 
 Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video payload; carrossel hits content/init with a photo payload", async () => {
   const db = createSupabaseQueryMock();
@@ -205,11 +232,7 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
   assertEquals(videoBody.source_info.source, "PULL_FROM_URL");
   const videoUrl = videoBody.source_info.video_url as string;
   assert(videoUrl.startsWith(MEDIA_URL_PREFIX), `video_url must be a tiktok-media proxy URL, got ${videoUrl}`);
-  assertEquals(
-    await verifyTikTokMediaToken(videoUrl.slice(MEDIA_URL_PREFIX.length)),
-    "vid/1.mp4",
-    "the proxy token must resolve back to the linked video's r2_key",
-  );
+  assertEquals(await verifyTikTokMediaToken(videoUrl.slice(MEDIA_URL_PREFIX.length)), "vid/1.mp4");
   assertEquals(videoBody.post_info.title, "legenda video");
 
   const photoCall = calls.find((c) => c.path === "/post/publish/content/init/");
@@ -230,16 +253,15 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
   assertEquals(
     await Promise.all(photoUrls.map((u) => verifyTikTokMediaToken(u.slice(MEDIA_URL_PREFIX.length)))),
     ["img/1.jpg", "img/2.jpg"],
-    "each proxy token must resolve back to its linked image's r2_key, in order",
   );
   assertEquals(photoBody.post_info.description, "legenda carrossel");
 });
 
-// ── (d) init phase: pre-init creator/media precheck (spec A10) ─────────────────
+// ── (d) init phase: precheck, mapped / unmapped errors, token errors ──────────
 
-Deno.test("tiktok-publish-cron init phase: precheck failure -> non-retryable fail, no init call", async () => {
+Deno.test("tiktok-publish-cron init phase: precheck failure -> non-retryable mark_target_failed, no init call", async () => {
   const db = createSupabaseQueryMock();
-  queueClaims(db, [claimedPost({ post_id: 1, tipo: "reels", tiktok_settings: { privacy_level: "SELF_ONLY" } })], [], []);
+  queueClaims(db, [claimedPost({ post_id: 1, tipo: "reels" })], [], []);
 
   const fetchPaths: string[] = [];
   const response = await runTikTokPublishCron(baseDeps(db, {
@@ -256,20 +278,11 @@ Deno.test("tiktok-publish-cron init phase: precheck failure -> non-retryable fai
 
   assertEquals(response.status, 200);
   assertEquals(fetchPaths, [], "a precheck failure must never reach TikTok init");
-
-  const updates = callsFor(db, "workflow_posts", "update");
-  assertEquals(updates.length, 1);
-  const payload = updates[0].payload as Record<string, unknown>;
-  assertEquals(payload.tiktok_publish_status, "failed");
-  assertEquals(payload.tiktok_publish_retry_count, 3);
-  assertEquals(payload.tiktok_publish_processing_at, null);
-  assertEquals(
-    payload.tiktok_publish_error,
-    "Esta conta atingiu o limite diário de publicações do TikTok. Tente novamente amanhã.",
-  );
-  const statusRpc = rpcCalls(db, "record_post_status_change");
-  assertEquals(statusRpc.length, 1);
-  assertEquals((statusRpc[0].payload as Record<string, unknown>).p_new_status, "falha_publicacao");
+  assertEquals(rpcCalls(db, "mark_target_failed").map((c) => c.payload), [
+    failedPayload(1, "Esta conta atingiu o limite diário de publicações do TikTok. Tente novamente amanhã.", null, false),
+  ]);
+  assertEquals(callsFor(db, "post_targets", "update").length, 0);
+  assertNoWorkflowPostWrites(db);
 });
 
 Deno.test("tiktok-publish-cron init phase: creator check runs once per account, with that account's token", async () => {
@@ -295,9 +308,9 @@ Deno.test("tiktok-publish-cron init phase: creator check runs once per account, 
 
   assertEquals(response.status, 200);
   assertEquals(checkedWith, ["tok-acct-1", "tok-acct-2"], "one creator_info call per account, never per post");
-  const inited = callsFor(db, "workflow_posts", "update")
-    .filter((c) => (c.payload as Record<string, unknown>).tiktok_publish_status === "initiated");
-  assertEquals(inited.length, 3);
+  const inited = callsFor(db, "post_targets", "update")
+    .filter((c) => (c.payload as Record<string, unknown>).status === "processando");
+  assertEquals(inited.map(eqId), [1001, 1002, 1003]);
 });
 
 Deno.test("tiktok-publish-cron init phase: mapped TikTok init error -> pt-BR message, non-retryable", async () => {
@@ -316,18 +329,20 @@ Deno.test("tiktok-publish-cron init phase: mapped TikTok init error -> pt-BR mes
   }));
 
   assertEquals(response.status, 200);
-  const payload = callsFor(db, "workflow_posts", "update")[0].payload as Record<string, unknown>;
-  assertEquals(payload.tiktok_publish_status, "failed");
-  assertEquals(payload.tiktok_publish_retry_count, 3);
-  assertEquals(
-    payload.tiktok_publish_error,
-    "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.",
-  );
+  assertEquals(rpcCalls(db, "mark_target_failed").map((c) => c.payload), [
+    failedPayload(
+      1,
+      "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.",
+      null,
+      false,
+    ),
+  ]);
+  assertNoWorkflowPostWrites(db);
 });
 
-Deno.test("tiktok-publish-cron init phase: unmapped init error stays retryable (+1, raw message)", async () => {
+Deno.test("tiktok-publish-cron init phase: unmapped init error stays retryable with the raw message", async () => {
   const db = createSupabaseQueryMock();
-  queueClaims(db, [claimedPost({ post_id: 1, tiktok_publish_retry_count: 1 })], [], []);
+  queueClaims(db, [claimedPost({ post_id: 1, retry_count: 1 })], [], []);
 
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
@@ -341,10 +356,9 @@ Deno.test("tiktok-publish-cron init phase: unmapped init error stays retryable (
   }));
 
   assertEquals(response.status, 200);
-  const payload = callsFor(db, "workflow_posts", "update")[0].payload as Record<string, unknown>;
-  assertEquals(payload.tiktok_publish_status, "failed");
-  assertEquals(payload.tiktok_publish_retry_count, 2);
-  assertEquals(payload.tiktok_publish_error, "network down");
+  assertEquals(rpcCalls(db, "mark_target_failed").map((c) => c.payload), [
+    failedPayload(1, "network down", null, true),
+  ]);
 });
 
 Deno.test("tiktok-publish-cron init phase: TOKEN_INVALID from the creator check fails every post of the account, retryable, no init", async () => {
@@ -368,45 +382,49 @@ Deno.test("tiktok-publish-cron init phase: TOKEN_INVALID from the creator check 
 
   assertEquals(response.status, 200);
   assertEquals(fetchPaths, []);
-  const updates = callsFor(db, "workflow_posts", "update");
-  assertEquals(updates.length, 2);
-  for (const u of updates) {
-    const payload = u.payload as Record<string, unknown>;
-    assertEquals(payload.tiktok_publish_status, "failed");
-    assertEquals(payload.tiktok_publish_retry_count, 1);
-    assertEquals(payload.tiktok_publish_error, "Erro ao obter token do TikTok: access token invalid");
-  }
+  assertEquals(rpcCalls(db, "mark_target_failed").map((c) => c.payload), [
+    failedPayload(1, "Erro ao obter token do TikTok: access token invalid", null, true),
+    failedPayload(2, "Erro ao obter token do TikTok: access token invalid", null, true),
+  ]);
 });
 
 // ── (e) status phase: PUBLISH_COMPLETE ──────────────────────────────────────────
 
-Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE with a public id calls mark_platform_published with a built tiktok_post_url", async () => {
+Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE with a public id calls mark_target_published with a built permalink", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 30, tiktok_publish_id: "pub-30", tiktok_username: "dktest" });
+  const post = claimedPost({ post_id: 30, publish_ref: "pub-30", tiktok_username: "dktest" });
   queueClaims(db, [], [post], []);
 
+  const fetchBodies: unknown[] = [];
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
-    tiktokFetch: async () => ({ status: "PUBLISH_COMPLETE", [FIELD_PUBLIC_POST_ID]: "7301234" }),
+    tiktokFetch: async (_path, init) => {
+      fetchBodies.push(JSON.parse(String(init.body)));
+      return { status: "PUBLISH_COMPLETE", [FIELD_PUBLIC_POST_ID]: "7301234" };
+    },
     buildTikTokMediaUrl: async () => "",
-    now: () => new Date("2026-07-18T12:00:00.000Z"),
   }));
 
   assertEquals(response.status, 200);
-  const markCalls = rpcCalls(db, "mark_platform_published");
-  assertEquals(markCalls.length, 1);
-  const payload = markCalls[0].payload as Record<string, unknown>;
-  assertEquals(payload.p_post_id, 30);
-  assertEquals(payload.p_platform, "tiktok");
-  const fields = payload.p_fields as Record<string, unknown>;
-  assertEquals(fields.tiktok_post_id, "7301234");
-  assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dktest/photo/7301234");
-  assertEquals(fields.published_at, "2026-07-18T12:00:00.000Z");
+  assertEquals(fetchBodies, [{ publish_id: "pub-30" }], "status fetch uses the destination's publish_ref");
+  assertEquals(rpcCalls(db, "mark_target_published").map((c) => c.payload), [{
+    p_post_id: 30,
+    p_platform: "tiktok",
+    p_fields: {
+      external_id: "7301234",
+      permalink: "https://www.tiktok.com/@dktest/photo/7301234",
+      published_at: NOW_ISO,
+    },
+    p_source: "system",
+    p_actor: null,
+  }]);
+  assertEquals(rpcCalls(db, "mark_platform_published").length, 0);
+  assertNoWorkflowPostWrites(db);
 });
 
 Deno.test("tiktok-publish-cron status phase: a reels post keeps the /video/ URL", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 31, tipo: "reels", tiktok_publish_id: "pub-31", tiktok_username: "dktest" });
+  const post = claimedPost({ post_id: 31, tipo: "reels", publish_ref: "pub-31", tiktok_username: "dktest" });
   queueClaims(db, [], [post], []);
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
@@ -414,13 +432,14 @@ Deno.test("tiktok-publish-cron status phase: a reels post keeps the /video/ URL"
     buildTikTokMediaUrl: async () => "",
   }));
   assertEquals(response.status, 200);
-  const fields = (rpcCalls(db, "mark_platform_published")[0].payload as Record<string, unknown>).p_fields as Record<string, unknown>;
-  assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dktest/video/7301235");
+  const fields = (rpcCalls(db, "mark_target_published")[0].payload as Record<string, unknown>)
+    .p_fields as Record<string, unknown>;
+  assertEquals(fields.permalink, "https://www.tiktok.com/@dktest/video/7301235");
 });
 
-Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE without a public id omits tiktok_post_id/tiktok_post_url", async () => {
+Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE without a public id omits external_id/permalink", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 31, tiktok_publish_id: "pub-31", tiktok_username: "dktest" });
+  const post = claimedPost({ post_id: 32, publish_ref: "pub-32", tiktok_username: "dktest" });
   queueClaims(db, [], [post], []);
 
   const response = await runTikTokPublishCron(baseDeps(db, {
@@ -430,19 +449,16 @@ Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE without a public i
   }));
 
   assertEquals(response.status, 200);
-  const markCalls = rpcCalls(db, "mark_platform_published");
-  assertEquals(markCalls.length, 1);
-  const fields = (markCalls[0].payload as Record<string, unknown>).p_fields as Record<string, unknown>;
-  assert(!("tiktok_post_id" in fields), "no public id in the status response -> no tiktok_post_id field");
-  assert(!("tiktok_post_url" in fields), "no public id -> no tiktok_post_url can be built");
-  assert("published_at" in fields);
+  const fields = (rpcCalls(db, "mark_target_published")[0].payload as Record<string, unknown>)
+    .p_fields as Record<string, unknown>;
+  assertEquals(fields, { published_at: NOW_ISO });
 });
 
 // ── (f) status phase: still processing ──────────────────────────────────────────
 
-Deno.test("tiktok-publish-cron status phase: still processing sets tiktok_publish_status='processing' and clears the lock", async () => {
+Deno.test("tiktok-publish-cron status phase: still processing only releases the destination lock", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 40, tiktok_publish_id: "pub-40" });
+  const post = claimedPost({ post_id: 40, publish_ref: "pub-40" });
   queueClaims(db, [], [post], []);
 
   const response = await runTikTokPublishCron(baseDeps(db, {
@@ -452,18 +468,19 @@ Deno.test("tiktok-publish-cron status phase: still processing sets tiktok_publis
   }));
 
   assertEquals(response.status, 200);
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 1);
-  assertEquals(updateCalls[0].payload, { tiktok_publish_status: "processing", tiktok_publish_processing_at: null });
-  assertEquals(rpcCalls(db, "mark_platform_published").length, 0);
+  const updates = callsFor(db, "post_targets", "update");
+  assertEquals(updates.map((c) => c.payload), [{ processing_at: null, updated_at: NOW_ISO }]);
+  assertEquals(eqId(updates[0]), 1040);
+  assertEquals(rpcCalls(db, "mark_target_published").length, 0);
+  assertEquals(rpcCalls(db, "mark_target_failed").length, 0);
+  assertNoWorkflowPostWrites(db);
 });
 
 // ── (g) status phase: FAILED retryable vs non-retryable reasons ────────────────
 
-Deno.test("tiktok-publish-cron status phase: FAILED with video_pull_failed is retryable (retry_count+1, stays under 3)", async () => {
+Deno.test("tiktok-publish-cron status phase: FAILED with video_pull_failed is retryable and carries the reason as error_code", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 50, tiktok_publish_id: "pub-50", tiktok_publish_retry_count: 0 });
-  queueClaims(db, [], [post], []);
+  queueClaims(db, [], [claimedPost({ post_id: 50, publish_ref: "pub-50" })], []);
 
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
@@ -472,22 +489,15 @@ Deno.test("tiktok-publish-cron status phase: FAILED with video_pull_failed is re
   }));
 
   assertEquals(response.status, 200);
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 1);
-  const payload = updateCalls[0].payload as Record<string, unknown>;
-  assertEquals(payload.tiktok_publish_status, "failed");
-  assertEquals(payload.tiktok_publish_retry_count, 1, "retryable reason increments by exactly one");
-  assertEquals(payload.tiktok_publish_processing_at, null);
-
-  const statusRpc = rpcCalls(db, "record_post_status_change");
-  assertEquals(statusRpc.length, 1);
-  assertEquals((statusRpc[0].payload as Record<string, unknown>).p_new_status, "falha_publicacao");
+  assertEquals(rpcCalls(db, "mark_target_failed").map((c) => c.payload), [
+    failedPayload(50, "Falha ao publicar no TikTok: video_pull_failed", "video_pull_failed", true),
+  ]);
+  assertNoWorkflowPostWrites(db);
 });
 
-Deno.test("tiktok-publish-cron status phase: FAILED with spam_risk_too_many_posts is non-retryable (retry_count jumps to 3)", async () => {
+Deno.test("tiktok-publish-cron status phase: FAILED with spam_risk_too_many_posts is non-retryable", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 51, tiktok_publish_id: "pub-51", tiktok_publish_retry_count: 0 });
-  queueClaims(db, [], [post], []);
+  queueClaims(db, [], [claimedPost({ post_id: 51, publish_ref: "pub-51" })], []);
 
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
@@ -496,53 +506,33 @@ Deno.test("tiktok-publish-cron status phase: FAILED with spam_risk_too_many_post
   }));
 
   assertEquals(response.status, 200);
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 1);
-  const payload = updateCalls[0].payload as Record<string, unknown>;
-  assertEquals(payload.tiktok_publish_retry_count, 3, "non-retryable reason skips straight to the retry ceiling");
+  const payload = rpcCalls(db, "mark_target_failed")[0].payload as Record<string, unknown>;
+  assertEquals(payload.p_retryable, false, "non-retryable reason exhausts the destination");
+  assertEquals(payload.p_error_code, "spam_risk_too_many_posts");
 });
 
-// ── (g2) markTikTokFailed partial-write failures self-heal, never orphan ───────
-//
-// Both new tests drive markTikTokFailed via the status phase's FAILED branch (as (g) does).
-// clearLock and the compensating status update reuse the SAME workflow_posts:update queue key
-// as write (1) on the mock — queuing exactly one error response there lets write (1) consume it
-// and leaves the queue empty (-> default success) for whichever best-effort write follows.
-
-Deno.test("tiktok-publish-cron markTikTokFailed: write (1) failure skips the RPC, clears the lock, never throws", async () => {
+Deno.test("tiktok-publish-cron status phase: a destination without publish_ref fails through mark_target_failed", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 52, tiktok_publish_id: "pub-52", tiktok_publish_retry_count: 0 });
-  queueClaims(db, [], [post], []);
-  db.queue("workflow_posts", "update", { error: { message: "boom" } });
+  queueClaims(db, [], [claimedPost({ post_id: 52, publish_ref: null })], []);
 
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
-    tiktokFetch: async () => ({ status: "FAILED", fail_reason: "video_pull_failed" }),
+    tiktokFetch: (unreachable("tiktokFetch") as unknown) as TikTokPublishCronDeps["tiktokFetch"],
     buildTikTokMediaUrl: async () => "",
   }));
 
-  assertEquals(response.status, 200, "must not throw even though write (1) failed");
-
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 2, "the failed write (1) attempt + the best-effort clearLock");
-  assertEquals(
-    updateCalls[1].payload,
-    { tiktok_publish_processing_at: null },
-    "clearLock is attempted after write (1) fails, releasing the post back to its claiming phase",
-  );
-
-  assertEquals(
-    rpcCalls(db, "record_post_status_change").length,
-    0,
-    "record_post_status_change must NOT fire when write (1) itself failed — that would orphan the post",
-  );
+  assertEquals(response.status, 200);
+  assertEquals(rpcCalls(db, "mark_target_failed").map((c) => c.payload), [
+    failedPayload(52, "Destino sem publish_id do TikTok para consultar status.", null, true),
+  ]);
 });
 
-Deno.test("tiktok-publish-cron markTikTokFailed: write (1) ok, RPC failure runs a compensating status update", async () => {
+// ── (g2) mark_target_failed RPC error: logged, never thrown, no compensating writes ──
+
+Deno.test("tiktok-publish-cron: a mark_target_failed RPC error does not throw and writes nothing else", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 53, tiktok_publish_id: "pub-53", tiktok_publish_retry_count: 0 });
-  queueClaims(db, [], [post], []);
-  db.queueRpc("record_post_status_change", { error: { message: "boom" } });
+  queueClaims(db, [], [claimedPost({ post_id: 53, publish_ref: "pub-53" })], []);
+  db.queueRpc("mark_target_failed", { data: null, error: { message: "boom" } });
 
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
@@ -551,49 +541,63 @@ Deno.test("tiktok-publish-cron markTikTokFailed: write (1) ok, RPC failure runs 
   }));
 
   assertEquals(response.status, 200, "must not throw even though the RPC failed");
-
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 2, "write (1) succeeds + the compensating status update");
-  assertEquals(
-    (updateCalls[0].payload as Record<string, unknown>).tiktok_publish_status,
-    "failed",
-    "write (1) itself still succeeds",
-  );
-  assertEquals(
-    updateCalls[1].payload,
-    { status: "falha_publicacao" },
-    "compensating write moves the card status directly since the RPC that normally does it failed",
-  );
+  assertEquals(rpcCalls(db, "mark_target_failed").length, 1);
+  assertEquals(callsFor(db, "post_targets", "update").length, 0, "the stale-lock window re-claims it");
+  assertNoWorkflowPostWrites(db);
 });
 
-// ── (h) retry phase: pure state reset ───────────────────────────────────────────
+// ── (h) retry phase: requeue_target ─────────────────────────────────────────────
 
-Deno.test("tiktok-publish-cron retry phase: resets tiktok_publish_status/error and moves the card back to agendado", async () => {
+Deno.test("tiktok-publish-cron retry phase: re-queues the destination through requeue_target", async () => {
   const db = createSupabaseQueryMock();
-  const post = claimedPost({ post_id: 60, tiktok_publish_retry_count: 1 });
-  queueClaims(db, [], [], [post]);
+  queueClaims(db, [], [], [claimedPost({ post_id: 60, retry_count: 1 })]);
+  db.queueRpc("requeue_target", { data: true, error: null });
 
-  const response = await runTikTokPublishCron(baseDeps(db)); // getFreshTikTokToken/tiktokFetch/buildTikTokMediaUrl unreachable
+  const response = await runTikTokPublishCron(baseDeps(db));
 
   assertEquals(response.status, 200);
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 1);
-  assertEquals(updateCalls[0].payload, {
-    tiktok_publish_status: null,
-    tiktok_publish_error: null,
-    tiktok_publish_processing_at: null,
-  });
+  assertEquals(rpcCalls(db, "requeue_target").map((c) => c.payload), [
+    { p_post_id: 60, p_platform: "tiktok", p_source: "system", p_actor: null },
+  ]);
+  assertEquals(callsFor(db, "post_targets", "update").length, 0);
+  assertNoWorkflowPostWrites(db);
+});
 
-  const statusRpc = rpcCalls(db, "record_post_status_change");
-  assertEquals(statusRpc.length, 1);
-  assertEquals((statusRpc[0].payload as Record<string, unknown>).p_new_status, "agendado");
+Deno.test("tiktok-publish-cron retry phase: a declined requeue (post moved away) releases the lock", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [], [], [claimedPost({ post_id: 61 })]);
+  db.queueRpc("requeue_target", { data: false, error: null });
+
+  const response = await runTikTokPublishCron(baseDeps(db));
+
+  assertEquals(response.status, 200);
+  const updates = callsFor(db, "post_targets", "update");
+  assertEquals(updates.map((c) => c.payload), [{ processing_at: null, updated_at: NOW_ISO }]);
+  assertEquals(eqId(updates[0]), 1061);
+});
+
+Deno.test("tiktok-publish-cron retry phase: a requeue_target error releases the lock and is reported", async () => {
+  const db = createSupabaseQueryMock();
+  queueClaims(db, [], [], [claimedPost({ post_id: 62 })]);
+  db.queueRpc("requeue_target", { data: null, error: { message: "boom" } });
+
+  const failures: unknown[] = [];
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    reportCronFailure: async (_svc, _name, detail) => {
+      failures.push(detail);
+    },
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(eqId(callsFor(db, "post_targets", "update")[0]), 1062);
+  assertEquals(failures.length, 1, "a failed retry counts toward the cron failure report");
 });
 
 // ── (i) outer failure path reports via reportCronFailure ───────────────────────
 
 Deno.test("tiktok-publish-cron: a broken claim query aborts the run and is reported via reportCronFailure", async () => {
   const db = createSupabaseQueryMock();
-  db.queueRpc("claim_posts_for_tiktok_publishing", { data: null, error: { message: "connection reset" } });
+  db.queueRpc("claim_tiktok_targets_for_publishing", { data: null, error: { message: "connection reset" } });
 
   const failureCalls: Array<{ cronName: string; detail: unknown }> = [];
 
@@ -621,4 +625,5 @@ Deno.test("tiktok-publish-cron: no posts claimed in any phase returns 200 withou
 
   assertEquals(response.status, 200);
   assertEquals(failureCalls.length, 0);
+  assertNoWorkflowPostWrites(db);
 });

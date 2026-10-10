@@ -789,7 +789,9 @@ describe('posts avulsos', () => {
     expect(result).toMatchObject({ id: 300, titulo: 'Post avulso', cliente_nome: 'Beto' });
     expect((result as { clientes?: unknown }).clientes).toBeUndefined();
     const call = getCalls('workflow_posts', 'select').at(-1)!;
-    expect(call.selectArgs).toContainEqual(['*, clientes(nome)']);
+    expect(call.selectArgs).toContainEqual([
+      '*, clientes(nome), targets_state:post_targets(platform,status,error,permalink,external_id,retry_count,processing_at)',
+    ]);
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 300] });
     expect(call.modifiers).toContainEqual({ method: 'maybeSingle', args: [] });
   });

@@ -1065,7 +1065,7 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
   });
   // published-post guard: one of the two posts has a platform id
   db.queue("workflow_posts", "select", {
-    data: [{ id: 31, instagram_media_id: "ig1", tiktok_post_id: null }],
+    data: [{ id: 31, instagram_media_id: "ig1" }],
     error: null,
   });
   db.queue("workflow_posts", "delete", { data: [{ id: 32 }], error: null });
@@ -1107,9 +1107,13 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
   // would make undo delete every PUBLISHED post and keep the drafts, and no
   // other assertion here would notice — the fixture would still produce the
   // same shape.
-  assertModifier(oneCall(db, "workflow_posts", "select", 0), "or", [
-    "instagram_media_id.not.is.null,tiktok_post_id.not.is.null",
-  ]);
+  assertModifier(oneCall(db, "workflow_posts", "select", 0), "not", ["instagram_media_id", "is", null]);
+  // P4: TikTok publish state lives on the destination; the frozen tiktok_post_id is not read.
+  const targetsProbe = oneCall(db, "post_targets", "select");
+  assertEquals(targetsProbe.selectArgs, [["post_id"]]);
+  assertModifier(targetsProbe, "eq", ["conta_id", "conta-1"]);
+  assertModifier(targetsProbe, "eq", ["status", "publicado"]);
+  assertModifier(targetsProbe, "in", ["post_id", [31, 32]]);
   assertModifier(oneCall(db, "workflow_posts", "select", 0), "eq", ["conta_id", "conta-1"]);
   assertModifier(oneCall(db, "workflow_posts", "select", 1), "eq", ["conta_id", "conta-1"]);
   assertModifier(oneCall(db, "workflows", "select"), "eq", ["conta_id", "conta-1"]);
@@ -1122,6 +1126,26 @@ Deno.test("data-import: undo deletes recorded rows in order, skips published pos
   const jobUpdate = oneCall(db, "import_jobs", "update", 1);
   assertEquals(jobUpdate.payload, { status: "undone" });
   assertModifier(jobUpdate, "eq", ["conta_id", "conta-1"]);
+});
+
+Deno.test("data-import: undo keeps a post whose TikTok destination is publicado (P4)", async () => {
+  const db = createSupabaseQueryMock();
+  authAs(db);
+  queueOwnedJob(db);
+  db.queue("import_job_items", "select", {
+    data: [{ table_name: "workflow_posts", row_id: "31", source_row_key: "p1", ordinal: 0, merged: false }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: [], error: null }); // no Instagram media
+  db.queue("post_targets", "select", { data: [{ post_id: 31 }], error: null }); // published on TikTok
+  db.queue("workflow_posts", "delete", { data: [{ id: 31 }], error: null }); // must go unused
+  db.queue("import_jobs", "update", UNDO_CLAIM_OK);
+  db.queue("audit_log", "insert", { data: null, error: null });
+  const res = await makeHandler(db)(post("undo", { jobId: 7 }));
+  const body = await readJson(res);
+  assertEquals(body.skippedPublished, ["31"]);
+  assertEquals(body.deleted, 0);
+  assertEquals(callsFor(db, "workflow_posts", "delete").length, 0);
 });
 
 // --- published-post guard: post_property_values cascade ---------------------

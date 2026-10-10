@@ -167,6 +167,74 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   assertEquals(body.posts[0].cover_media.playback, null);
 });
 
+Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permalink (P4)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Publicado no TikTok",
+        tipo: "reels",
+        status: "postado",
+        ordem: 0,
+        scheduled_at: "2026-04-16T10:00:00.000Z",
+        published_at: "2026-04-16T10:01:00.000Z",
+        platform: "both",
+        workflow_id: 7,
+        workflows: { titulo: "Calendário Abril" },
+        targets_state: [
+          { platform: "instagram", permalink: "https://instagram.com/p/x" },
+          { platform: "tiktok", permalink: "https://www.tiktok.com/@marca/video/123" },
+        ],
+      },
+      {
+        id: 100,
+        titulo: "Só Instagram",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 1,
+        scheduled_at: "2026-04-20T10:00:00.000Z",
+        platform: "instagram",
+        workflow_id: 7,
+        workflows: { titulo: "Calendário Abril" },
+        targets_state: [{ platform: "instagram", permalink: null }],
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  const byId = new Map((body.posts as Array<Record<string, unknown>>).map((p) => [p.id, p]));
+  assertEquals(byId.get(99)?.tiktok_post_url, "https://www.tiktok.com/@marca/video/123");
+  assertEquals(byId.get(100)?.tiktok_post_url, null);
+  assert(!("targets_state" in byId.get(99)!), "the embed must not leak into the response");
+
+  const postsSelect = db.calls.find((c) =>
+    c.table === "workflow_posts" && c.operation === "select" && String(c.selectArgs[0]?.[0]).includes("titulo")
+  )!;
+  const select = String(postsSelect.selectArgs[0][0]);
+  assert(select.includes("targets_state:post_targets(platform, permalink)"), select);
+  assert(!/(^|[ ,])tiktok_post_url/.test(select), "the frozen column is no longer selected");
+});
+
 Deno.test("hub-posts cover_media is the first slide by sort_order, not a stale is_cover flag", async () => {
   // Instagram shows a carousel's first slide in the feed. A slide moved to the
   // front keeps is_cover=false while the old first slide keeps the flag.

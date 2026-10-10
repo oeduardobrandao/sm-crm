@@ -79,11 +79,12 @@ interface TikTokAccountRow {
   authorization_status: string;
 }
 
-interface FoundPost {
+/** The TikTok destination a webhook's publish_id points at (P4: post_targets.publish_ref). */
+interface FoundTarget {
   post_id: number;
+  target_id: number;
   tipo: string | null;
-  tiktok_publish_id: string | null;
-  tiktok_publish_retry_count: number;
+  publish_ref: string | null;
 }
 
 export interface TikTokWebhookDeps {
@@ -116,22 +117,28 @@ function parseContent(raw: string | undefined): TikTokWebhookContent {
   }
 }
 
-async function findPostByPublishId(svc: DbClient, publishId: string | undefined): Promise<FoundPost | null> {
+/** publish_ref is indexed (platform, publish_ref) but not unique: the legacy tiktok_publish_id
+ * never was. A duplicate resolves to the newest destination row. */
+async function findTargetByPublishRef(svc: DbClient, publishId: string | undefined): Promise<FoundTarget | null> {
   if (!publishId) return null;
   const { data, error } = await svc
-    .from("workflow_posts")
-    .select("id, tipo, tiktok_publish_id, tiktok_publish_retry_count")
-    .eq("tiktok_publish_id", publishId)
+    .from("post_targets")
+    .select("id, post_id, publish_ref, workflow_posts(tipo)")
+    .eq("platform", "tiktok")
+    .eq("publish_ref", publishId)
+    .order("id", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) {
-    throw new Error(`tiktok-webhook: workflow_posts lookup by publish_id failed: ${error.message}`);
+    throw new Error(`tiktok-webhook: post_targets lookup by publish_ref failed: ${error.message}`);
   }
   if (!data) return null;
+  const parent = data.workflow_posts as { tipo?: string | null } | null;
   return {
-    post_id: data.id,
-    tipo: data.tipo ?? null,
-    tiktok_publish_id: data.tiktok_publish_id,
-    tiktok_publish_retry_count: data.tiktok_publish_retry_count,
+    post_id: data.post_id,
+    target_id: data.id,
+    tipo: parent?.tipo ?? null,
+    publish_ref: data.publish_ref ?? null,
   };
 }
 
@@ -163,26 +170,35 @@ interface ProcessArgs {
   contentRaw: string | undefined;
 }
 
-/** Claims the SAME `tiktok_publish_processing_at` lock claim_posts_for_tiktok_publishing uses
- * (migration 20260719000001_tiktok_publishing.sql: NULL or older than the 10-minute stale
- * window) so a webhook-triggered re-confirmation and a concurrently running cron status-fetch
- * can never both act on the same post. Returns the claimed post id, or `null` if the cron
- * currently holds the lock (not an error — the caller treats that as "cron owns this one"). */
+/** Claims the SAME post_targets.processing_at lock claim_tiktok_targets_for_publishing uses
+ * (NULL or older than the 10-minute stale window), so a webhook-triggered re-confirmation and a
+ * concurrently running cron status-fetch can never both act on the same destination.
+ *
+ * It only claims a destination that is STILL `processando` AND still carries the publish_ref the
+ * lookup resolved. Otherwise the claim would stamp a lock on a row nothing will ever release: a
+ * destination the cron already marked `falha` (mark_target_failed declines an already-failed row
+ * and never clears processing_at), or one requeue_target reset to `pendente` between the lookup
+ * and this claim, where a stale webhook would act on the NEW attempt. `claimed: false` means the
+ * cron holds the lock OR the destination moved on (not an error — the caller cedes). */
 async function claimPublishLock(
   svc: DbClient,
-  postId: number,
+  targetId: number,
+  publishRef: string,
   now: () => Date,
 ): Promise<{ claimed: boolean }> {
   const staleBefore = new Date(now().getTime() - 10 * 60_000).toISOString();
+  const nowIso = now().toISOString();
   const { data, error } = await svc
-    .from("workflow_posts")
-    .update({ tiktok_publish_processing_at: now().toISOString() })
-    .eq("id", postId)
-    .or(`tiktok_publish_processing_at.is.null,tiktok_publish_processing_at.lt.${staleBefore}`)
+    .from("post_targets")
+    .update({ processing_at: nowIso, updated_at: nowIso })
+    .eq("id", targetId)
+    .eq("status", "processando")
+    .eq("publish_ref", publishRef)
+    .or(`processing_at.is.null,processing_at.lt.${staleBefore}`)
     .select("id")
     .maybeSingle();
   if (error) {
-    throw new Error(`tiktok-webhook: failed to claim publish lock for post ${postId}: ${error.message}`);
+    throw new Error(`tiktok-webhook: failed to claim publish lock for target ${targetId}: ${error.message}`);
   }
   return { claimed: !!data };
 }
@@ -193,18 +209,21 @@ async function claimPublishLock(
  *
  * Race with the cron (design doc follow-up): without coordination, a cron status-fetch that
  * started against the PRIOR TikTok state just before this webhook arrived could commit AFTER
- * this webhook applies the fresher outcome — e.g. re-writing `tiktok_publish_status='processing'`
- * right after this handler committed 'published'. Self-heals on the cron's next run, but it's a
+ * this webhook applies the fresher outcome — e.g. overwriting the outcome this handler just
+ * committed ('published') with a stale one. Self-heals on the cron's next run, but it's a
  * routine occurrence, not a rare one (the webhook and the per-minute cron are both normal, active
- * paths to the same row). Fixed by claiming the exact same `tiktok_publish_processing_at` lock
+ * paths to the same row). Fixed by claiming the exact same `post_targets.processing_at` lock
  * the cron's claim RPC uses (claimPublishLock above) before calling confirmAndApplyPublishStatus:
- * whichever side wins the claim is the one that gets to resolve this post for this pass; if the
+ * whichever side wins the claim is the one that gets to resolve this destination for this pass; if the
  * cron already holds it, the cron's own status-fetch converges to the same truth, so ceding to it
- * is a safe no-op, not a missed update.
+ * is a safe no-op, not a missed update. The claim is also gated on the destination still being
+ * `processando` with this publish_ref, so a webhook that arrives after the cron already failed the
+ * destination, or after a requeue started a new attempt, cedes instead of acting on (or stamping a
+ * never-released lock on) a row that has moved on.
  *
- * Never throws on the "normal" paths (confirmAndApplyPublishStatus's own contract): a post that
- * can't be found by publish_id, or a lock currently held by the cron, is logged and treated as a
- * no-op. A DB error while claiming the lock DOES throw (same as findPostByPublishId's own
+ * Never throws on the "normal" paths (confirmAndApplyPublishStatus's own contract): a destination that
+ * can't be found by publish_ref, or a lock currently held by the cron (or a destination
+ * no longer processando for this publish_ref), is logged and treated as a no-op. A DB error while claiming the lock DOES throw (same as findTargetByPublishRef's own
  * DB-error path) — that leaves the event's `processed_at` NULL so it stays a candidate for
  * redelivery/sweep rather than being silently marked processed. */
 async function handlePublishCompleteOrFailed(
@@ -212,18 +231,21 @@ async function handlePublishCompleteOrFailed(
   args: ProcessArgs,
   content: TikTokWebhookContent,
 ): Promise<void> {
-  const post = await findPostByPublishId(ctx.svc, content.publish_id);
-  if (!post) {
+  const target = await findTargetByPublishRef(ctx.svc, content.publish_id);
+  if (!target) {
     console.log(
-      `[tiktok-webhook] ${args.eventName}: no post found for publish_id ${content.publish_id ?? "(missing)"}`,
+      `[tiktok-webhook] ${args.eventName}: no destination found for publish_id ${content.publish_id ?? "(missing)"}`,
     );
     return;
   }
 
-  const { claimed } = await claimPublishLock(ctx.svc, post.post_id, ctx.now);
+  // The lookup matched on publish_ref, so it is always set here; the claim pins it so a requeue
+  // between lookup and claim (new attempt, new publish_ref) can't be acted on by this stale event.
+  const { claimed } = await claimPublishLock(ctx.svc, target.target_id, target.publish_ref ?? "", ctx.now);
   if (!claimed) {
     console.log(
-      `[tiktok-webhook] ${args.eventName}: post ${post.post_id} publish lock held by tiktok-publish-cron — ` +
+      `[tiktok-webhook] ${args.eventName}: post ${target.post_id} (publish_ref ${target.publish_ref}): ` +
+        `lock held or destination no longer processing for this publish_ref — ` +
         `ceding resolution to the cron's own status-fetch`,
     );
     return;
@@ -233,25 +255,25 @@ async function handlePublishCompleteOrFailed(
   const outcome: ConfirmAndApplyPublishStatusOutcome = await ctx.confirmAndApply(
     { svc: ctx.svc, tiktokFetch: ctx.tiktokFetchFn, accessToken, now: ctx.now },
     {
-      post_id: post.post_id,
-      tiktok_publish_id: post.tiktok_publish_id,
-      tiktok_publish_retry_count: post.tiktok_publish_retry_count,
+      post_id: target.post_id,
+      target_id: target.target_id,
+      publish_ref: target.publish_ref,
       tiktok_username: args.account.username,
-      tipo: post.tipo,
+      tipo: target.tipo,
     },
   );
-  console.log(`[tiktok-webhook] ${args.eventName}: post ${post.post_id} re-confirmed as ${outcome}`);
-  // NOTE: no explicit lock release here. confirmAndApplyPublishStatus's own module comment
-  // (_shared/tiktok-publish-utils.ts) documents that every outcome branch clears
-  // tiktok_publish_processing_at as part of its write: "published" via mark_platform_published
-  // (whose SQL unconditionally clears the column), "processing" via its own explicit update, and
-  // "failed" via markTikTokPublishFailed's update — so the claim taken above is released on
-  // every branch by the time this function returns.
+  console.log(`[tiktok-webhook] ${args.eventName}: post ${target.post_id} re-confirmed as ${outcome}`);
+  // NOTE: no explicit lock release here. The claim above only succeeds on a `processando`
+  // destination still carrying this publish_ref, and every outcome clears processing_at as part of
+  // confirmAndApplyPublishStatus's own write (see its doc comment in _shared/tiktok-publish-utils.ts):
+  // "published" via mark_target_published (whose SQL unconditionally clears the column), "processing"
+  // via its own explicit release, "failed" via mark_target_failed acting on the still-processando row.
+  // The webhook therefore never holds the lock past this function on a row it could not resolve.
 }
 
-/** post.publish.publicly_available: stores tiktok_post_id + tiktok_post_url via a direct,
- * error-checked update (NOT via mark_platform_published — the post was already published by an
- * earlier post.publish.complete/status-fetch confirmation; this only adds the public URL once
+/** post.publish.publicly_available: stores the public id + URL on the destination via a direct,
+ * error-checked update (NOT via mark_target_published — the destination was already published by
+ * an earlier post.publish.complete/status-fetch confirmation; this only adds the public URL once
  * TikTok's own review makes it visible). Idempotent by construction: re-delivery writes the
  * exact same values, and the update is unconditional (no read-then-branch), so there is no
  * lost-update window between two deliveries. */
@@ -260,47 +282,51 @@ async function handlePubliclyAvailable(
   args: ProcessArgs,
   content: TikTokWebhookContent,
 ): Promise<void> {
-  const post = await findPostByPublishId(ctx.svc, content.publish_id);
-  if (!post || !content.post_id) {
+  const target = await findTargetByPublishRef(ctx.svc, content.publish_id);
+  if (!target || !content.post_id) {
     console.log(
-      `[tiktok-webhook] publicly_available: missing post/post_id (publish_id ${content.publish_id ?? "(missing)"})`,
+      `[tiktok-webhook] publicly_available: missing destination/post_id (publish_id ${content.publish_id ?? "(missing)"})`,
     );
     return;
   }
 
-  const fields: Record<string, unknown> = { tiktok_post_id: content.post_id };
+  const fields: Record<string, unknown> = { external_id: content.post_id };
   if (args.account.username) {
-    fields.tiktok_post_url = buildTikTokPostUrl(args.account.username, content.post_id, post.tipo);
+    fields.permalink = buildTikTokPostUrl(args.account.username, content.post_id, target.tipo);
   }
+  fields.updated_at = ctx.now().toISOString();
 
-  const { error } = await ctx.svc.from("workflow_posts").update(fields).eq("id", post.post_id);
+  const { error } = await ctx.svc.from("post_targets").update(fields).eq("id", target.target_id);
   if (error) {
-    throw new Error(`tiktok-webhook: failed to store tiktok_post_id/url for post ${post.post_id}: ${error.message}`);
+    throw new Error(`tiktok-webhook: failed to store external_id/permalink for post ${target.post_id}: ${error.message}`);
   }
-  console.log(`[tiktok-webhook] publicly_available: post ${post.post_id} -> ${content.post_id}`);
+  console.log(`[tiktok-webhook] publicly_available: post ${target.post_id} -> ${content.post_id}`);
 }
 
-/** post.publish.no_longer_publicaly_available (sic): clears tiktok_post_url only, KEEPING
- * tiktok_post_id — the post still exists on TikTok, it's just no longer publicly viewable
+/** post.publish.no_longer_publicaly_available (sic): clears the permalink only, KEEPING
+ * external_id — the post still exists on TikTok, it's just no longer publicly viewable
  * (e.g. flipped to private). Idempotent: re-delivery clears an already-null column. */
 async function handleNoLongerPubliclyAvailable(
   ctx: ProcessCtx,
   args: ProcessArgs,
   content: TikTokWebhookContent,
 ): Promise<void> {
-  const post = await findPostByPublishId(ctx.svc, content.publish_id);
-  if (!post) {
+  const target = await findTargetByPublishRef(ctx.svc, content.publish_id);
+  if (!target) {
     console.log(
-      `[tiktok-webhook] no_longer_publicaly_available: no post found for publish_id ${content.publish_id ?? "(missing)"}`,
+      `[tiktok-webhook] no_longer_publicaly_available: no destination found for publish_id ${content.publish_id ?? "(missing)"}`,
     );
     return;
   }
 
-  const { error } = await ctx.svc.from("workflow_posts").update({ tiktok_post_url: null }).eq("id", post.post_id);
+  const { error } = await ctx.svc
+    .from("post_targets")
+    .update({ permalink: null, updated_at: ctx.now().toISOString() })
+    .eq("id", target.target_id);
   if (error) {
-    throw new Error(`tiktok-webhook: failed to clear tiktok_post_url for post ${post.post_id}: ${error.message}`);
+    throw new Error(`tiktok-webhook: failed to clear permalink for post ${target.post_id}: ${error.message}`);
   }
-  console.log(`[tiktok-webhook] post ${post.post_id} is no longer publicly available.`);
+  console.log(`[tiktok-webhook] post ${target.post_id} is no longer publicly available.`);
 }
 
 /** authorization.removed: revokes the account (error-checked — a failure here throws, so the

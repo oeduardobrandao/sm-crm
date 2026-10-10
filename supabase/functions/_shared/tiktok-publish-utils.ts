@@ -300,7 +300,7 @@ export async function validateForTikTokScheduling(
 
 // --- Payload builders ---
 
-/** Subset of claim_posts_for_tiktok_publishing's row shape needed to build an init payload.
+/** Subset of claim_tiktok_targets_for_publishing's row shape needed to build an init payload.
  * `caption` is already tipo-fallback-resolved (tiktok_caption ?? ig_caption ?? '') by the
  * caller/RPC — this module does not re-resolve it here. */
 export interface ClaimedTikTokPost {
@@ -464,111 +464,66 @@ export function errorMessage(err: unknown): string {
   return "unknown";
 }
 
-/** Releases the tiktok_publish_processing_at lock WITHOUT touching tiktok_publish_status —
- * used by tiktok-publish-cron when a post is deferred (per-account overflow) rather than failed,
- * so the next run's claim can pick it straight back up. Also used as the best-effort lock
- * release inside markTikTokPublishFailed's self-healing paths. */
-export async function clearLock(svc: SvcClient, postId: number): Promise<void> {
+/** Releases a TikTok destination's `processing_at` lock WITHOUT touching its status — used by
+ * tiktok-publish-cron when a claimed destination is deferred (per-account overflow) or when
+ * requeue_target declines (the post left publication), so the next claim can pick it back up. */
+export async function clearLock(
+  svc: SvcClient,
+  targetId: number,
+  now: () => Date = () => new Date(),
+): Promise<void> {
   const { error } = await svc
-    .from("workflow_posts")
-    .update({ tiktok_publish_processing_at: null })
-    .eq("id", postId);
+    .from("post_targets")
+    .update({ processing_at: null, updated_at: now().toISOString() })
+    .eq("id", targetId);
   if (error) {
-    console.error(`[tiktok-publish] failed to clear lock for post ${postId}:`, error.message);
+    console.error(`[tiktok-publish] failed to clear lock for target ${targetId}:`, error.message);
   }
 }
 
+export interface MarkTikTokPublishFailedOpts {
+  /** TikTok wire fail_reason; persisted as post_targets.error_code. A reason outside
+   * RETRYABLE_FAIL_REASONS exhausts the destination (retry_count = 3). */
+  failReason?: string;
+  /** Precheck failures and mapped (curated pt-BR) errors: exhaust immediately (spec A10). */
+  nonRetryable?: boolean;
+  source?: "system" | "workspace_user";
+  actorId?: string | null;
+}
+
 /**
- * Marks a claimed/targeted post failed: `tiktok_publish_status='failed'`, a PT-BR-or-neutral
- * error message (≤500 chars), lock cleared, and the card moved to `falha_publicacao` via
- * record_post_status_change. `retryCount` is bumped by one UNLESS `failReason` is a TikTok wire
- * fail_reason string that is NOT in RETRYABLE_FAIL_REASONS (e.g. `spam_risk_too_many_posts`) —
- * those exhaust immediately (retry_count=3) since a retry can never succeed.
- * `nonRetryable: true` exhausts immediately (precheck failures, spec A10). Generic infra
- * failures (network, TikTok init/status errors with no documented fail_reason)
- * are always retryable and simply increment, relying on the claim RPC's `retry_count < 3`
- * cutoff to eventually stop them.
+ * Marks the post's TikTok destination failed through mark_target_failed (P4): the destination
+ * write, the retry count and the post status recompute (-> falha_publicacao) happen in ONE
+ * transaction, so the old two-write compensation dance is gone. The RPC is idempotent: a
+ * destination already in `falha` (the same publish reported by both the cron's status phase and
+ * a webhook) or already `publicado` is left alone and the call resolves `false`.
  *
- * Self-healing on partial failure: this function does TWO writes (the direct
- * tiktok_publish_status='failed' update, then the record_post_status_change RPC), and every
- * claim phase's WHERE clause only recognizes specific status+tiktok_publish_status PAIRS (see
- * claim_posts_for_tiktok_publishing). If either write fails outright, this function never lets
- * the two columns drift into an unrecognized pair — see the inline comments at each failure
- * branch below for exactly how each case converges back to a claimable state.
- *
- * Shared by tiktok-publish-cron (init/status phases, direct token-failure calls) and
- * tiktok-webhook (via confirmAndApplyPublishStatus below, on webhook-triggered re-confirmation).
- * A webhook-triggered call never held the claim RPC's processing lock in the first place, so
- * its `clearLock` write is a harmless no-op (the column is already NULL) rather than releasing
- * anything meaningful — see confirmAndApplyPublishStatus's module comment for the same point
- * about `tiktok_publish_processing_at` on the published/processing paths.
+ * Never throws. An RPC error is logged and resolves `false`; the destination keeps its claim
+ * lock, so the claim's 10-minute stale window hands it back to the same phase.
  */
 export async function markTikTokPublishFailed(
   svc: SvcClient,
   postId: number,
-  retryCount: number,
   message: string,
-  opts?: { failReason?: string; nonRetryable?: boolean },
-): Promise<void> {
+  opts?: MarkTikTokPublishFailedOpts,
+): Promise<boolean> {
   const nonRetryable = opts?.nonRetryable === true ||
     (opts?.failReason !== undefined && !RETRYABLE_FAIL_REASONS.includes(opts.failReason));
-  const newRetryCount = nonRetryable ? 3 : retryCount + 1;
 
-  const { error: updateErr } = await svc
-    .from("workflow_posts")
-    .update({
-      tiktok_publish_status: "failed",
-      tiktok_publish_error: message.slice(0, 500),
-      tiktok_publish_retry_count: newRetryCount,
-      tiktok_publish_processing_at: null,
-    })
-    .eq("id", postId);
-  if (updateErr) {
-    console.error(`[tiktok-publish] failed to persist failure state for post ${postId}:`, updateErr.message);
-    // Write (1) itself failed: tiktok_publish_status was never set to 'failed', so the post is
-    // left exactly as the claiming phase found it — status='agendado' paired with whatever
-    // tiktok_publish_status that phase's own WHERE clause required (NULL for init, 'initiated'/
-    // 'processing' for status; see claim_posts_for_tiktok_publishing). That pair is one the SAME
-    // phase re-claims on its own once the lock's 10-minute stale window elapses — clearLock below
-    // releases it immediately instead of making it wait — so this self-heals with no RPC needed.
-    // Firing record_post_status_change anyway would flip status to 'falha_publicacao' while
-    // tiktok_publish_status never became 'failed', producing a pair NO claim phase's WHERE clause
-    // recognizes — permanently orphaning the post. So: log, best-effort clear the lock, and stop.
-    await clearLock(svc, postId);
-    return;
-  }
-
-  const { error: statusErr } = await svc.rpc("record_post_status_change", {
+  const { data, error } = await svc.rpc("mark_target_failed", {
     p_post_id: postId,
-    p_new_status: "falha_publicacao",
-    p_source: "system",
-    p_actor: null,
-    p_fields: {},
+    p_platform: "tiktok",
+    p_error: message.slice(0, 500),
+    p_error_code: opts?.failReason ?? null,
+    p_retryable: !nonRetryable,
+    p_source: opts?.source ?? "system",
+    p_actor: opts?.actorId ?? null,
   });
-  if (statusErr) {
-    console.error(`[tiktok-publish] record_post_status_change failed for post ${postId}:`, statusErr.message);
-    // Write (1) already committed tiktok_publish_status='failed', but status is still 'agendado'
-    // — a pair no claim phase's WHERE clause recognizes either (retry needs status=
-    // 'falha_publicacao' AND tiktok_publish_status='failed' together). Compensate with a direct
-    // status write so the retry phase can pick it back up next run. The status-capture trigger
-    // (workflow_posts_status_event, migration 20260606000001) still records the transition off
-    // this direct UPDATE; losing actor/source context on this backstop path is acceptable.
-    const { error: compensateErr } = await svc
-      .from("workflow_posts")
-      .update({ status: "falha_publicacao" })
-      .eq("id", postId);
-    if (compensateErr) {
-      // Both writes failed: the post is stuck as status='agendado' + tiktok_publish_status=
-      // 'failed', a pair no claim phase recognizes — it will NOT self-heal on its own. The
-      // caller's own failure-reporting path (reportCronFailure for the cron; processed_at simply
-      // stays NULL for the webhook, per its own crash-leaves-unprocessed contract) is the human
-      // signal that something needs attention; this loud marker is for whoever is reading logs
-      // off that signal to find the specific orphaned post.
-      console.error(
-        `[TIKTOK-PUBLISH] ORPHAN RISK post ${postId}: failed+agendado state, manual fix needed`,
-      );
-    }
+  if (error) {
+    console.error(`[tiktok-publish] mark_target_failed failed for post ${postId}:`, error.message);
+    return false;
   }
+  return data === true;
 }
 
 const TIKTOK_PHOTO_TIPOS = new Set(["feed", "carrossel"]);
@@ -582,8 +537,10 @@ export function buildTikTokPostUrl(username: string, postId: string, tipo: strin
 
 export interface ConfirmAndApplyPublishStatusPost {
   post_id: number;
-  tiktok_publish_id: string | null;
-  tiktok_publish_retry_count: number;
+  /** post_targets.id of the TikTok destination (the lock the caller holds). */
+  target_id: number;
+  /** TikTok's temporary publish_id, stored on the destination. */
+  publish_ref: string | null;
   tiktok_username: string | null;
   tipo: string | null;
 }
@@ -600,7 +557,7 @@ export interface ConfirmAndApplyPublishStatusDeps {
 export type ConfirmAndApplyPublishStatusOutcome = "published" | "processing" | "failed";
 
 /**
- * The ONE place that turns a TikTok publish_id into applied `workflow_posts` state — "confirm
+ * The ONE place that turns a TikTok publish_id into applied `post_targets` state — "confirm
  * via status fetch, then apply" (design doc, tiktok-webhook section). Shared by
  * tiktok-publish-cron's status phase (Task B5) and tiktok-webhook's post.publish.complete/failed
  * handling (Task B6, always re-confirming rather than trusting the webhook payload directly).
@@ -609,17 +566,19 @@ export type ConfirmAndApplyPublishStatusOutcome = "published" | "processing" | "
  * FAILED status) funnels into markTikTokPublishFailed and resolves to "failed" — callers just
  * tally/branch on the returned outcome, they never need their own try/catch around this call.
  *
- * Note on `tiktok_publish_processing_at`: the "published" (via mark_platform_published, whose SQL
- * unconditionally clears this column), "processing", and "failed" outcomes all clear this lock as
- * part of their write, same as before extraction. tiktok-webhook (_shared use, Task B6) claims
- * this exact same lock itself immediately before calling this function (handler.ts's
- * claimPublishLock, same claim shape as claim_posts_for_tiktok_publishing) — so a webhook
- * re-confirmation and a concurrently running cron status-fetch on the same post always serialize
- * on that claim rather than racing to write this column. Without that claim, a cron status-fetch
- * still in flight against the PRIOR TikTok state could commit its (stale) outcome AFTER this
- * function already applied the fresher one, transiently regressing the row — routine, not a rare
- * corner case, since the webhook and the per-minute cron are both normal, active paths to the
- * same row.
+ * Note on `post_targets.processing_at`: every outcome clears this lock as part of its write:
+ * "published" via mark_target_published (whose SQL unconditionally clears the column), "processing"
+ * via its own explicit release, and "failed" via mark_target_failed acting on a still-processando
+ * row. tiktok-webhook (_shared use, Task B6) claims this exact same lock itself immediately before
+ * calling this function (handler.ts's claimPublishLock, which takes the same
+ * post_targets.processing_at lock as claim_tiktok_targets_for_publishing), and only on a
+ * `processando` destination still carrying this publish_ref, so the webhook only ever holds the
+ * lock on a row this function can resolve. A webhook re-confirmation and a concurrently running
+ * cron status-fetch on the same destination thus serialize on that claim rather than racing to
+ * write this column. Without that claim, a cron status-fetch still in flight against the PRIOR
+ * TikTok state could commit its (stale) outcome AFTER this function already applied the fresher
+ * one, transiently regressing the row: routine, not a rare corner case, since the webhook and the
+ * per-minute cron are both normal, active paths to the same row.
  */
 export async function confirmAndApplyPublishStatus(
   deps: ConfirmAndApplyPublishStatusDeps,
@@ -629,43 +588,43 @@ export async function confirmAndApplyPublishStatus(
   const now = deps.now ?? (() => new Date());
 
   try {
-    if (!post.tiktok_publish_id) {
-      throw new Error("Post sem publish_id do TikTok para consultar status.");
+    if (!post.publish_ref) {
+      throw new Error("Destino sem publish_id do TikTok para consultar status.");
     }
 
     const statusData = await tiktokFetch("/post/publish/status/fetch/", {
       method: "POST",
       accessToken,
-      body: JSON.stringify({ publish_id: post.tiktok_publish_id }),
+      body: JSON.stringify({ publish_id: post.publish_ref }),
     });
     const result = mapStatusFetch(statusData);
 
     if (result.state === "published") {
-      const tiktokPostUrl = result.publicPostId && post.tiktok_username
+      const permalink = result.publicPostId && post.tiktok_username
         ? buildTikTokPostUrl(post.tiktok_username, result.publicPostId, post.tipo)
         : undefined;
 
-      const { error: markErr } = await svc.rpc("mark_platform_published", {
+      const { error: markErr } = await svc.rpc("mark_target_published", {
         p_post_id: post.post_id,
         p_platform: "tiktok",
-        p_source: "system",
-        p_actor: null,
         p_fields: {
-          ...(result.publicPostId ? { tiktok_post_id: result.publicPostId } : {}),
-          ...(tiktokPostUrl ? { tiktok_post_url: tiktokPostUrl } : {}),
+          ...(result.publicPostId ? { external_id: result.publicPostId } : {}),
+          ...(permalink ? { permalink } : {}),
           published_at: now().toISOString(),
         },
+        p_source: "system",
+        p_actor: null,
       });
-      if (markErr) throw new Error(`mark_platform_published falhou: ${markErr.message}`);
+      if (markErr) throw new Error(`mark_target_published falhou: ${markErr.message}`);
       return "published";
     }
 
     if (result.state === "processing") {
       const { error: updErr } = await svc
-        .from("workflow_posts")
-        .update({ tiktok_publish_status: "processing", tiktok_publish_processing_at: null })
-        .eq("id", post.post_id);
-      if (updErr) throw new Error(`Falha ao atualizar status de processamento: ${updErr.message}`);
+        .from("post_targets")
+        .update({ processing_at: null, updated_at: now().toISOString() })
+        .eq("id", post.target_id);
+      if (updErr) throw new Error(`Falha ao liberar a trava do destino TikTok: ${updErr.message}`);
       return "processing";
     }
 
@@ -673,10 +632,10 @@ export async function confirmAndApplyPublishStatus(
     const message = failReason
       ? `Falha ao publicar no TikTok: ${failReason}`
       : "Falha ao publicar no TikTok.";
-    await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, message, { failReason });
+    await markTikTokPublishFailed(svc, post.post_id, message, { failReason });
     return "failed";
   } catch (err) {
-    await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, errorMessage(err));
+    await markTikTokPublishFailed(svc, post.post_id, errorMessage(err));
     return "failed";
   }
 }

@@ -42,6 +42,13 @@ function baseAccount(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+/** A post_targets row as the lookup selects it (P4: publish state lives on the destination). */
+function ttTargetRow(postId: number, publishRef: string, tipo: string | null = "feed") {
+  return { id: 7000 + postId, post_id: postId, publish_ref: publishRef, workflow_posts: { tipo } };
+}
+
+const NOW_ISO = "2026-07-18T12:00:00.000Z";
+
 function webhookPayload(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     client_key: CLIENT_KEY,
@@ -177,17 +184,14 @@ Deno.test("tiktok-webhook: processing runs via the injected waitUntil (not inlin
   assert("processed_at" in (stampCalls[0].payload as Record<string, unknown>));
 });
 
-// ── (6) publicly_available: stores tiktok_post_id/url, idempotent across redelivery ─
+// ── (6) publicly_available: stores external_id/permalink on the destination ─────
 
-Deno.test("tiktok-webhook: publicly_available stores tiktok_post_id/tiktok_post_url via a direct update", async () => {
+Deno.test("tiktok-webhook: publicly_available stores external_id/permalink on the TikTok destination", async () => {
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: baseAccount({ username: "dktest" }), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
-  db.queue("workflow_posts", "select", {
-    data: { id: 70, tipo: "carrossel", tiktok_publish_id: "pub-70", tiktok_publish_retry_count: 0 },
-    error: null,
-  });
-  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queue("post_targets", "select", { data: ttTargetRow(70, "pub-70", "carrossel"), error: null });
+  db.queue("post_targets", "update", { data: null, error: null });
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
   const waited: Promise<void>[] = [];
@@ -200,12 +204,25 @@ Deno.test("tiktok-webhook: publicly_available stores tiktok_post_id/tiktok_post_
   await handler(webhookRequest(payload));
   await Promise.all(waited);
 
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 1);
-  assertEquals(updateCalls[0].payload, {
-    tiktok_post_id: "post-70",
-    tiktok_post_url: "https://www.tiktok.com/@dktest/photo/post-70",
+  const lookup = callsFor(db, "post_targets", "select")[0];
+  assertEquals(lookup.selectArgs, [["id, post_id, publish_ref, workflow_posts(tipo)"]]);
+  assertEquals(lookup.modifiers, [
+    { method: "eq", args: ["platform", "tiktok"] },
+    { method: "eq", args: ["publish_ref", "pub-70"] },
+    { method: "order", args: ["id", { ascending: false }] },
+    { method: "limit", args: [1] },
+    { method: "maybeSingle", args: [] },
+  ]);
+
+  const updates = callsFor(db, "post_targets", "update");
+  assertEquals(updates.length, 1);
+  assertEquals(updates[0].payload, {
+    external_id: "post-70",
+    permalink: "https://www.tiktok.com/@dktest/photo/post-70",
+    updated_at: NOW_ISO,
   });
+  assertEquals(updates[0].modifiers, [{ method: "eq", args: ["id", 7070] }]);
+  assertEquals(callsFor(db, "workflow_posts", "update").length, 0, "the frozen tiktok_* columns are never written");
 });
 
 Deno.test("tiktok-webhook: publicly_available redelivery writes the exact same fields again (idempotent, no error)", async () => {
@@ -213,9 +230,9 @@ Deno.test("tiktok-webhook: publicly_available redelivery writes the exact same f
   const account = baseAccount({ username: "dktest" });
   db.queue("tiktok_accounts", "select", { data: account, error: null }, { data: account, error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null }, { data: null, error: null });
-  const postRow = { id: 70, tiktok_publish_id: "pub-70", tiktok_publish_retry_count: 0 };
-  db.queue("workflow_posts", "select", { data: postRow, error: null }, { data: postRow, error: null });
-  db.queue("workflow_posts", "update", { data: null, error: null }, { data: null, error: null });
+  const row = ttTargetRow(70, "pub-70");
+  db.queue("post_targets", "select", { data: row, error: null }, { data: row, error: null });
+  db.queue("post_targets", "update", { data: null, error: null }, { data: null, error: null });
   db.queue("tiktok_webhook_events", "update", { data: null, error: null }, { data: null, error: null });
 
   const waited: Promise<void>[] = [];
@@ -227,28 +244,24 @@ Deno.test("tiktok-webhook: publicly_available redelivery writes the exact same f
   });
 
   const first = await handler(webhookRequest(payload));
-  const second = await handler(webhookRequest(payload)); // redelivery, e.g. within the 72h retry window
+  const second = await handler(webhookRequest(payload));
   await Promise.all(waited);
 
   assertEquals(first.status, 200);
   assertEquals(second.status, 200);
-
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 2, "each delivery re-applies the update");
-  assertEquals(updateCalls[0].payload, updateCalls[1].payload, "redelivery converges to the exact same state");
+  const updates = callsFor(db, "post_targets", "update");
+  assertEquals(updates.length, 2, "each delivery re-applies the update");
+  assertEquals(updates[0].payload, updates[1].payload, "redelivery converges to the exact same state");
 });
 
-// ── (7) no_longer_publicaly_available: clears url, keeps post id ───────────────
+// ── (7) no_longer_publicaly_available: clears permalink, keeps external_id ──────
 
-Deno.test("tiktok-webhook: no_longer_publicaly_available clears tiktok_post_url but keeps tiktok_post_id", async () => {
+Deno.test("tiktok-webhook: no_longer_publicaly_available clears the permalink but keeps external_id", async () => {
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
-  db.queue("workflow_posts", "select", {
-    data: { id: 71, tiktok_publish_id: "pub-71", tiktok_publish_retry_count: 0 },
-    error: null,
-  });
-  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queue("post_targets", "select", { data: ttTargetRow(71, "pub-71"), error: null });
+  db.queue("post_targets", "update", { data: null, error: null });
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
   const waited: Promise<void>[] = [];
@@ -261,9 +274,10 @@ Deno.test("tiktok-webhook: no_longer_publicaly_available clears tiktok_post_url 
   await handler(webhookRequest(payload));
   await Promise.all(waited);
 
-  const updateCalls = callsFor(db, "workflow_posts", "update");
-  assertEquals(updateCalls.length, 1);
-  assertEquals(updateCalls[0].payload, { tiktok_post_url: null }, "tiktok_post_id must NOT be touched");
+  const updates = callsFor(db, "post_targets", "update");
+  assertEquals(updates.length, 1);
+  assertEquals(updates[0].payload, { permalink: null, updated_at: NOW_ISO }, "external_id must NOT be touched");
+  assertEquals(updates[0].modifiers, [{ method: "eq", args: ["id", 7071] }]);
 });
 
 // ── (8) authorization.removed: revokes + audit logs ─────────────────────────────
@@ -333,26 +347,23 @@ Deno.test("tiktok-webhook: authorization.removed after an in-app disconnect leav
 });
 
 // ── (9) publish.failed / publish.complete: re-confirm via the shared status ────
-// resolution (spy) instead of mutating workflow_posts directly ─────────────────
+// resolution (spy) instead of mutating the destination directly ────────────────
 
-Deno.test("tiktok-webhook: post.publish.failed re-confirms via confirmAndApplyPublishStatus, never mutates status directly", async () => {
+Deno.test("tiktok-webhook: post.publish.failed re-confirms via confirmAndApplyPublishStatus with the destination", async () => {
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
-  db.queue("workflow_posts", "select", {
-    data: { id: 80, tiktok_publish_id: "pub-80", tiktok_publish_retry_count: 0 },
-    error: null,
-  });
-  db.queue("workflow_posts", "update", { data: { id: 80 }, error: null }); // publish-lock claim succeeds
+  db.queue("post_targets", "select", { data: ttTargetRow(80, "pub-80", "reels"), error: null });
+  db.queue("post_targets", "update", { data: { id: 7080 }, error: null }); // lock claim succeeds
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
-  const confirmCalls: Array<{ postId: number; accessToken: string }> = [];
+  const confirmCalls: Array<{ post: unknown; accessToken: string }> = [];
   const waited: Promise<void>[] = [];
   const handler = createTikTokWebhookHandler(baseDeps(db, {
     waitUntil: (p) => waited.push(p),
     getFreshTikTokToken: async () => ({ accessToken: "fresh-tok", openId: "open-1" }),
-    confirmAndApplyPublishStatus: (async (deps: { accessToken: string }, post: { post_id: number }) => {
-      confirmCalls.push({ postId: post.post_id, accessToken: deps.accessToken });
+    confirmAndApplyPublishStatus: (async (deps: { accessToken: string }, post: unknown) => {
+      confirmCalls.push({ post, accessToken: deps.accessToken });
       return "failed";
     }) as unknown as TikTokWebhookDeps["confirmAndApplyPublishStatus"],
   }));
@@ -365,31 +376,27 @@ Deno.test("tiktok-webhook: post.publish.failed re-confirms via confirmAndApplyPu
   await Promise.all(waited);
 
   assertEquals(confirmCalls.length, 1);
-  assertEquals(confirmCalls[0].postId, 80);
   assertEquals(confirmCalls[0].accessToken, "fresh-tok");
+  assertEquals(confirmCalls[0].post, {
+    post_id: 80,
+    target_id: 7080,
+    publish_ref: "pub-80",
+    tiktok_username: "dktest",
+    tipo: "reels",
+  });
 
-  const lockUpdates = callsFor(db, "workflow_posts", "update");
-  assertEquals(
-    lockUpdates.length,
-    1,
-    "the webhook handler must touch workflow_posts only to claim the publish lock — " +
-      "confirmAndApplyPublishStatus (mocked here) owns the actual status mutation",
-  );
-  assert(
-    "tiktok_publish_processing_at" in (lockUpdates[0].payload as Record<string, unknown>),
-    "the one workflow_posts write here must be the publish-lock claim",
-  );
+  const lockUpdates = callsFor(db, "post_targets", "update");
+  assertEquals(lockUpdates.length, 1, "the handler only claims the destination lock");
+  assertEquals(lockUpdates[0].payload, { processing_at: NOW_ISO, updated_at: NOW_ISO });
+  assertEquals(callsFor(db, "workflow_posts", "update").length, 0);
 });
 
 Deno.test("tiktok-webhook: post.publish.complete also re-confirms via confirmAndApplyPublishStatus", async () => {
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
-  db.queue("workflow_posts", "select", {
-    data: { id: 81, tiktok_publish_id: "pub-81", tiktok_publish_retry_count: 0 },
-    error: null,
-  });
-  db.queue("workflow_posts", "update", { data: { id: 81 }, error: null }); // publish-lock claim succeeds
+  db.queue("post_targets", "select", { data: ttTargetRow(81, "pub-81"), error: null });
+  db.queue("post_targets", "update", { data: { id: 7081 }, error: null });
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
   const confirmCalls: number[] = [];
@@ -417,7 +424,7 @@ Deno.test("tiktok-webhook: publish.failed for an unknown publish_id logs and no-
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
-  db.queue("workflow_posts", "select", { data: null, error: null }); // no matching post
+  db.queue("post_targets", "select", { data: null, error: null }); // no matching destination
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
   const waited: Promise<void>[] = [];
@@ -430,31 +437,24 @@ Deno.test("tiktok-webhook: publish.failed for an unknown publish_id logs and no-
   await handler(webhookRequest(payload));
   await Promise.all(waited);
 
-  const stampCalls = callsFor(db, "tiktok_webhook_events", "update");
-  assertEquals(stampCalls.length, 1, "an unresolvable publish_id is a logged no-op, not a crash");
+  assertEquals(callsFor(db, "tiktok_webhook_events", "update").length, 1, "an unresolvable publish_id is a logged no-op");
+  assertEquals(callsFor(db, "post_targets", "update").length, 0);
 });
 
-// ── (9b) webhook/cron lock coordination: claim tiktok_publish_processing_at before ─
+// ── (9b) webhook/cron lock coordination: claim the destination's processing_at before ─
 // re-confirming, so a mid-flight cron status-fetch can never race the webhook's write ─
 
-Deno.test("tiktok-webhook: publish.complete cedes to the cron when the publish lock is already held (fresh timestamp)", async () => {
+Deno.test("tiktok-webhook: publish.complete cedes to the cron when the destination lock is held", async () => {
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
-  db.queue("workflow_posts", "select", {
-    data: { id: 90, tiktok_publish_id: "pub-90", tiktok_publish_retry_count: 0 },
-    error: null,
-  });
-  // maybeSingle() resolving to null data simulates the claim's .or() filter matching zero rows
-  // — i.e. tiktok_publish_processing_at is set to a fresh (non-stale) timestamp, so the cron
-  // currently owns this post.
-  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queue("post_targets", "select", { data: ttTargetRow(90, "pub-90"), error: null });
+  // maybeSingle() resolving to null data = the claim's .or() filter matched zero rows
+  // (processing_at is fresh, the cron owns this destination).
+  db.queue("post_targets", "update", { data: null, error: null });
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
   const waited: Promise<void>[] = [];
-  // getFreshTikTokToken/confirmAndApplyPublishStatus deliberately stay "unreachable" (baseDeps'
-  // default) — if the handler called either one despite losing the claim, the test would fail
-  // with "must not be called" rather than silently passing.
   const handler = createTikTokWebhookHandler(baseDeps(db, { waitUntil: (p) => waited.push(p) }));
 
   const payload = webhookPayload({
@@ -465,25 +465,69 @@ Deno.test("tiktok-webhook: publish.complete cedes to the cron when the publish l
   await Promise.all(waited);
 
   assertEquals(response.status, 200);
+  const lock = callsFor(db, "post_targets", "update");
+  assertEquals(lock.length, 1, "the claim attempt itself must still run");
+  assertEquals(lock[0].modifiers, [
+    { method: "eq", args: ["id", 7090] },
+    { method: "eq", args: ["status", "processando"] },
+    { method: "eq", args: ["publish_ref", "pub-90"] },
+    { method: "or", args: ["processing_at.is.null,processing_at.lt.2026-07-18T11:50:00.000Z"] },
+    { method: "maybeSingle", args: [] },
+  ]);
+  assertEquals(lock[0].selectArgs, [["id"]]);
+  assertEquals(callsFor(db, "tiktok_webhook_events", "update").length, 1, "ceding is a normal no-op");
+});
 
-  const lockUpdates = callsFor(db, "workflow_posts", "update");
-  assertEquals(lockUpdates.length, 1, "the claim attempt itself must still run");
+Deno.test("tiktok-webhook: publish.failed cedes without a status fetch or mark_target_* when the destination is no longer processando for this publish_ref", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
+  db.queue("post_targets", "select", { data: ttTargetRow(93, "pub-93"), error: null });
+  // The cron already marked the destination falha (or requeue_target reset it): the gated claim
+  // matches zero rows, so the webhook must not stamp a lock nor act on the row.
+  db.queue("post_targets", "update", { data: null, error: null });
+  db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
-  const stampCalls = callsFor(db, "tiktok_webhook_events", "update");
-  assertEquals(stampCalls.length, 1, "ceding to the cron is a normal no-op — processed_at must still be stamped");
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    const waited: Promise<void>[] = [];
+    // getFreshTikTokToken / tiktokFetch / confirmAndApplyPublishStatus stay the default
+    // `unreachable` spies: any status fetch would throw and fail this test.
+    const handler = createTikTokWebhookHandler(baseDeps(db, { waitUntil: (p) => waited.push(p) }));
+    const payload = webhookPayload({
+      event: EVENT_PUBLISH_FAILED,
+      content: JSON.stringify({ publish_id: "pub-93", reason: "video_pull_failed" }),
+    });
+    const response = await handler(webhookRequest(payload));
+    await Promise.all(waited);
+    assertEquals(response.status, 200);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assertEquals(callsFor(db, "post_targets", "update").length, 1, "only the (empty) gated claim ran");
+  assertEquals(
+    db.calls.filter((c) => /mark_target_|requeue_target/.test(JSON.stringify(c))).length,
+    0,
+    "no mark_target_* / requeue RPC may run on a ceded destination",
+  );
+  assertEquals(callsFor(db, "tiktok_webhook_events", "update").length, 1, "ceding stamps the event processed");
+  assert(
+    logs.some((l) => l.includes("ceding") && l.includes("pub-93")),
+    `expected a ceded log line naming the publish_ref, got: ${JSON.stringify(logs)}`,
+  );
 });
 
 Deno.test("tiktok-webhook: publish.complete claims the free lock and proceeds to confirmAndApplyPublishStatus", async () => {
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
-  db.queue("workflow_posts", "select", {
-    data: { id: 91, tiktok_publish_id: "pub-91", tiktok_publish_retry_count: 0 },
-    error: null,
-  });
-  // maybeSingle() resolving to a row simulates the claim's .or() filter matching (lock was NULL
-  // or stale) — the webhook wins the claim and proceeds.
-  db.queue("workflow_posts", "update", { data: { id: 91 }, error: null });
+  db.queue("post_targets", "select", { data: ttTargetRow(91, "pub-91"), error: null });
+  db.queue("post_targets", "update", { data: { id: 7091 }, error: null });
   db.queue("tiktok_webhook_events", "update", { data: null, error: null });
 
   const confirmCalls: number[] = [];
@@ -504,27 +548,16 @@ Deno.test("tiktok-webhook: publish.complete claims the free lock and proceeds to
   await handler(webhookRequest(payload));
   await Promise.all(waited);
 
-  const lockUpdates = callsFor(db, "workflow_posts", "update");
-  assertEquals(lockUpdates.length, 1, "the claim update must have run");
-  assert(
-    "tiktok_publish_processing_at" in (lockUpdates[0].payload as Record<string, unknown>),
-    "the claim update must set tiktok_publish_processing_at",
-  );
+  assertEquals(callsFor(db, "post_targets", "update").length, 1, "the claim update must have run");
   assertEquals(confirmCalls, [91], "winning the claim must lead to confirmAndApplyPublishStatus being called");
 });
 
-Deno.test("tiktok-webhook: a DB error while claiming the publish lock leaves processed_at unstamped and never throws out", async () => {
+Deno.test("tiktok-webhook: a DB error while claiming the lock leaves processed_at unstamped and never throws out", async () => {
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
   db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
-  db.queue("workflow_posts", "select", {
-    data: { id: 92, tiktok_publish_id: "pub-92", tiktok_publish_retry_count: 0 },
-    error: null,
-  });
-  db.queue("workflow_posts", "update", { data: null, error: { message: "connection reset" } });
-  // Deliberately NOT queuing a tiktok_webhook_events update response — if the handler tried to
-  // stamp processed_at despite the claim error, the mock would fall back to its update default
-  // (data: null, error: null) rather than failing, so we assert on call COUNT instead (below).
+  db.queue("post_targets", "select", { data: ttTargetRow(92, "pub-92"), error: null });
+  db.queue("post_targets", "update", { data: null, error: { message: "connection reset" } });
 
   const waited: Promise<void>[] = [];
   const handler = createTikTokWebhookHandler(baseDeps(db, { waitUntil: (p) => waited.push(p) }));
@@ -534,15 +567,25 @@ Deno.test("tiktok-webhook: a DB error while claiming the publish lock leaves pro
     content: JSON.stringify({ publish_id: "pub-92" }),
   });
   const response = await handler(webhookRequest(payload));
-
-  // await Promise.all rejecting here would mean the background processing promise itself threw
-  // — processTikTokWebhookEvent's own catch must absorb the claim error instead.
   await Promise.all(waited);
 
-  assertEquals(response.status, 200, "the synchronous HTTP response is unaffected — the event was already durably inserted");
+  assertEquals(response.status, 200);
+  assertEquals(callsFor(db, "tiktok_webhook_events", "update").length, 0, "processed_at must stay NULL");
+});
 
-  const stampCalls = callsFor(db, "tiktok_webhook_events", "update");
-  assertEquals(stampCalls.length, 0, "processed_at must stay NULL so redelivery/sweep can retry the claim");
+Deno.test("tiktok-webhook: a DB error on the destination lookup leaves processed_at unstamped", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: baseAccount(), error: null });
+  db.queue("tiktok_webhook_events", "insert", { data: null, error: null });
+  db.queue("post_targets", "select", { data: null, error: { message: "timeout" } });
+
+  const waited: Promise<void>[] = [];
+  const handler = createTikTokWebhookHandler(baseDeps(db, { waitUntil: (p) => waited.push(p) }));
+
+  await handler(webhookRequest(webhookPayload({ content: JSON.stringify({ publish_id: "pub-93" }) })));
+  await Promise.all(waited);
+
+  assertEquals(callsFor(db, "tiktok_webhook_events", "update").length, 0);
 });
 
 // ── (10) unknown event type -> processed_at stamped, nothing else ──────────────

@@ -99,6 +99,8 @@ export interface WorkflowPost {
   tiktok_publish_status?: 'initiated' | 'processing' | 'published' | 'failed' | null;
   tiktok_publish_error?: string | null;
   tiktok_publish_retry_count?: number;
+  /** Lock of an in-flight TikTok publish (P4: post_targets.processing_at via the adapter). */
+  tiktok_publish_processing_at?: string | null;
   tiktok_caption?: string | null;
   tiktok_title?: string | null;
   tiktok_settings?: Record<string, unknown> | null;
@@ -281,6 +283,70 @@ export interface ScheduledPost {
 }
 
 /**
+ * P4: TikTok publish state lives on the post's TikTok destination (post_targets). Loaders embed
+ * it under this alias (no clash with getActivePosts' `post_targets(platform, status)` chips
+ * embed) and project it onto the legacy tiktok_* field names, so components, postLabels and
+ * polling keep their vocabulary. The workflow_posts.tiktok_* publish columns are frozen:
+ * `select('*')` still returns them, and the adapter overwrites every one.
+ */
+export const TIKTOK_TARGET_STATE_EMBED =
+  'targets_state:post_targets(platform,status,error,permalink,external_id,retry_count,processing_at)';
+
+interface TikTokTargetStateRow {
+  platform: string;
+  status: string;
+  error: string | null;
+  permalink: string | null;
+  external_id: string | null;
+  retry_count: number | null;
+  processing_at: string | null;
+}
+
+/** Destination status -> legacy tiktok_publish_status (spec §1). */
+const TIKTOK_LEGACY_STATUS: Record<string, WorkflowPost['tiktok_publish_status']> = {
+  pendente: null,
+  agendado: null,
+  processando: 'processing',
+  publicado: 'published',
+  falha: 'failed',
+};
+
+export interface TikTokLegacyState {
+  tiktok_publish_status: WorkflowPost['tiktok_publish_status'];
+  tiktok_publish_error: string | null;
+  tiktok_post_url: string | null;
+  tiktok_post_id: string | null;
+  tiktok_publish_retry_count: number;
+  tiktok_publish_processing_at: string | null;
+  /** Frozen column; nothing reads it after P4. Nulled so a stale value never surfaces. */
+  tiktok_publish_id: null;
+}
+
+/** Legacy tiktok_* fields from the `targets_state` embed; all null when there is no TikTok row. */
+export function tiktokLegacyState(targets: unknown): TikTokLegacyState {
+  const row = Array.isArray(targets)
+    ? (targets as TikTokTargetStateRow[]).find((t) => t?.platform === 'tiktok')
+    : undefined;
+  return {
+    tiktok_publish_status: row ? (TIKTOK_LEGACY_STATUS[row.status] ?? null) : null,
+    tiktok_publish_error: row?.error ?? null,
+    tiktok_post_url: row?.permalink ?? null,
+    tiktok_post_id: row?.external_id ?? null,
+    tiktok_publish_retry_count: row?.retry_count ?? 0,
+    tiktok_publish_processing_at: row?.processing_at ?? null,
+    tiktok_publish_id: null,
+  };
+}
+
+/** Strips the `targets_state` embed and overwrites the frozen tiktok_* columns with it. */
+export function applyTikTokTargetState<T extends object>(
+  row: T,
+): Omit<T, 'targets_state'> & TikTokLegacyState {
+  const { targets_state, ...rest } = row as T & { targets_state?: unknown };
+  return { ...(rest as Omit<T, 'targets_state'>), ...tiktokLegacyState(targets_state) };
+}
+
+/**
  * All posts (across active workflows / all clients) whose scheduled_at falls in
  * [startISO, endISO). workflow_posts has only workflow_id as an FK, so the client
  * name is reached through a nested workflows -> clientes join (mirrors
@@ -296,8 +362,7 @@ export interface ScheduledPost {
  * migrations before the frontend, so by the time this code ships the column
  * already exists; do not reorder that deploy sequence.
  */
-export const POST_CONTEXT_COLUMNS =
-  'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy, board_ordem';
+export const POST_CONTEXT_COLUMNS = `id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, instagram_media_id, ig_trial_strategy, board_ordem, ${TIKTOK_TARGET_STATE_EMBED}`;
 
 // Exported for store/postProcesses.ts, which embeds a workflow_posts row (avulso arm shape).
 /**
@@ -307,6 +372,7 @@ export const POST_CONTEXT_COLUMNS =
  * `clientes(nome)` embed directly off the post row instead.
  */
 export function mapPostContextRow(row: any): ActivePost {
+  const tiktok = tiktokLegacyState(row.targets_state);
   return {
     id: row.id,
     workflow_id: row.workflow_id ?? null,
@@ -326,9 +392,9 @@ export function mapPostContextRow(row: any): ActivePost {
     ordem: row.ordem,
     responsavel_id: row.responsavel_id ?? null,
     platform: row.platform ?? 'instagram',
-    tiktok_publish_status: row.tiktok_publish_status ?? null,
-    tiktok_publish_error: row.tiktok_publish_error ?? null,
-    tiktok_post_url: row.tiktok_post_url ?? null,
+    tiktok_publish_status: tiktok.tiktok_publish_status,
+    tiktok_publish_error: tiktok.tiktok_publish_error,
+    tiktok_post_url: tiktok.tiktok_post_url,
     instagram_media_id: row.instagram_media_id ?? null,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
     board_ordem: row.board_ordem ?? null,
@@ -564,11 +630,11 @@ export async function getPropertyDefinitions(
 export async function getWorkflowPosts(workflowId: number): Promise<WorkflowPost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('*')
+    .select(`*, ${TIKTOK_TARGET_STATE_EMBED}`)
     .eq('workflow_id', workflowId)
     .order('ordem', { ascending: true });
   if (error) throw error;
-  return data || [];
+  return (data || []).map((row: WorkflowPost) => applyTikTokTargetState(row)) as WorkflowPost[];
 }
 
 /**
@@ -707,10 +773,10 @@ export async function getAwaitingClientePosts(): Promise<AwaitingClientePost[]> 
 export async function getAllWorkflowPosts(): Promise<WorkflowPost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('*')
+    .select(`*, ${TIKTOK_TARGET_STATE_EMBED}`)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return (data || []).map((row: WorkflowPost) => applyTikTokTargetState(row)) as WorkflowPost[];
 }
 
 export async function getWorkflowPostsWithProperties(
@@ -721,6 +787,7 @@ export async function getWorkflowPostsWithProperties(
     .select(
       `
       *,
+      ${TIKTOK_TARGET_STATE_EMBED},
       post_property_values (
         id,
         property_definition_id,
@@ -738,7 +805,7 @@ export async function getWorkflowPostsWithProperties(
   return (data || []).map((post: any) => {
     const { post_property_values: rawPvs, post_file_links: rawMedia, ...rest } = post;
     return {
-      ...rest,
+      ...applyTikTokTargetState(rest as WorkflowPost),
       has_media: Array.isArray(rawMedia) && rawMedia.length > 0,
       property_values: (rawPvs || []).map((pv: any) => ({
         id: pv.id,
@@ -1122,14 +1189,17 @@ export interface StandalonePost extends WorkflowPost {
 export async function getStandalonePost(postId: number): Promise<StandalonePost | null> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('*, clientes(nome)')
+    .select(`*, clientes(nome), ${TIKTOK_TARGET_STATE_EMBED}`)
     .eq('id', postId)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const { clientes, ...rest } = data as WorkflowPost & { clientes: { nome: string } | null };
+  const { clientes, ...rest } = data as WorkflowPost & {
+    clientes: { nome: string } | null;
+    targets_state?: unknown;
+  };
   return {
-    ...rest,
+    ...(applyTikTokTargetState(rest) as WorkflowPost),
     cliente_nome: clientes?.nome ?? '',
   };
 }
