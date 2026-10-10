@@ -218,6 +218,10 @@ Monorepo with npm workspaces:
   pdf_not_configured; as demais rotas seguem normais
 - `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing. Also used (optionally) by billing-downgrade-cron for the switch's leg D enforcement; absent, that leg is skipped with `switchSkipped: true`
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
+- `AFFILIATE_MIN_PAYOUT_CENTS` -- repasse mínimo do programa de afiliados, em centavos
+  (padrão 5000 = R$ 50; valores inválidos ou abaixo de 100 caem no padrão). Lido pelo
+  `affiliate-payout-cron` (saldo abaixo disso acumula para o mês seguinte) e pelo
+  `affiliate-public` (só para exibir no painel). Mudar não precisa de deploy
 - `PAGARME_SECRET_KEY` -- Pagar.me v5 API secret for 12x installment billing (pagarme-client). No default; shared client throws on first call when missing
 - `PAGARME_WEBHOOK_TOKEN` -- secret path segment of the Pagar.me webhook URL
   (`/pagarme-webhook/{token}`). REQUIRED by pagarme-webhook, no default -- throws at module load
@@ -311,11 +315,13 @@ Monorepo with npm workspaces:
 - Page param validation: `Math.max(1, parseInt(pageStr) || 1)`
 - localStorage iteration: collect keys first, then remove. Modifying during iteration skips items
 - Roles are `owner | admin | agent` -- always check via `AuthContext`, never hardcode
-- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing`, `hub-agenda` and `hub-post-references` (token do hub), `agenda-convite` (token do convidado externo), `agenda-cliente-email` (cron, `x-cron-secret`), `briefing-audio`, `geo-autocomplete` and `post-references` (verify the user JWT themselves) need it too
+- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing`, `hub-agenda` and `hub-post-references` (token do hub), `agenda-convite` (token do convidado externo), `agenda-cliente-email` (cron, `x-cron-secret`), `briefing-audio`, `geo-autocomplete` and `post-references` (verify the user JWT themselves) need it too, and so do `affiliate-public` (programa de afiliados, token do painel por e-mail) and `affiliate-payout-cron` (cron, `x-cron-secret`)
 - Hub app uses token-based access (no Supabase auth), builds to `dist/hub/` with base path `/hub/`
 - Vercel rewrites in `vercel.json` route Hub URLs to `/hub/index.html` and CRM URLs to `/index.html`
 - `membros` and `clientes` use column-level `GRANT SELECT` allowlists (Migration `20260728000002`). Any column added to either table is invisible to the CRM until it is added to the grant, to `membros_v`/`clientes_v`, and to the `*_SAFE_COLUMNS` constants in `store/team.ts` / `store/clients.ts`. The failure surfaces as a confusing missing-column error. The same allowlist also keeps six PostgREST embeds, ten dependent RLS policies and `get_client_health_aggregates()` working -- none of which a `from('clientes')` grep finds.
 - Deploys trocam de versão em silêncio (`installSilentUpdate` em `packages/app-lifecycle`). Todo editor fora de modal com conteúdo não persistido ou save em voo chama `useUnsavedWork(condição)`, e toda função de upload envolve a promise em `trackUnsavedWork`. Modais com `confirmClose` já estão cobertos pelo `DialogContent`. A heurística de DOM só segura diálogo aberto, campo focado e controle de formulário que o usuário alterou nesta sessão; um save silencioso em voo só o registro vê. Nunca use `useBlocker` nos apps: o React Router honra só o último blocker registrado e `installSilentUpdate` já registra um, então um segundo desliga a troca silenciosa sem aviso. Spec: `docs/superpowers/specs/2026-09-05-seamless-updates-design.md`
+
+- Programa de afiliados (spec `docs/superpowers/specs/2026-10-10-programa-de-afiliados-design.md`): só pagamentos Stripe geram comissão, via `stripe-webhook`, com percentual e janela de meses por plano em `affiliate_commission_rules` (editável no Admin). O repasse é por Stripe Connect (conta Express do afiliado, transfer mensal do `affiliate-payout-cron`), então o Connect precisa estar ativado na conta Stripe. O endpoint do webhook no painel do Stripe precisa ter `invoice.paid`, `charge.refunded`, `charge.dispute.created` e `charge.dispute.closed` ativos, senão nenhuma comissão é registrada. A atribuição é o trigger `on_auth_user_created_zz_affiliate_referral`, que depende de rodar DEPOIS de `on_auth_user_created_workspace` (ordem alfabética): não renomeie nenhum dos dois sem conferir isso
 
 ## Deployment
 

@@ -31,6 +31,8 @@ const BlogIndexPage = lazy(() => import('./pages/blog/BlogIndexPage'));
 const BlogPostPage = lazy(() => import('./pages/blog/BlogPostPage'));
 const PrecosPage = lazy(() => import('./pages/precos/PrecosPage'));
 const MarketingPage = lazy(() => import('./pages/marketing/MarketingPage'));
+const AfiliadosPage = lazy(() => import('./pages/afiliados/AfiliadosPage'));
+const AfiliadoPainelPage = lazy(() => import('./pages/afiliados/AfiliadoPainelPage'));
 
 // Protected pages
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
@@ -151,6 +153,8 @@ export default function App() {
               />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/conectar/:token" element={<ConectarPage />} />
+              <Route path="/afiliados" element={<AfiliadosPage />} />
+              <Route path="/afiliados/painel/:token" element={<AfiliadoPainelPage />} />
               <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
               <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
               <Route path="/termos-de-uso" element={<TermosPage />} />

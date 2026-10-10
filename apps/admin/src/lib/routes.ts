@@ -6,3 +6,5 @@ export const metricasPath = () => '/admin/metricas';
 export const kbVideosPath = () => '/admin/kb-videos';
 export const kbVideoNewPath = () => '/admin/kb-videos/new';
 export const kbVideoEditPath = (id: number) => `/admin/kb-videos/${id}/edit`;
+export const affiliatesPath = () => '/admin/afiliados';
+export const affiliateDetailPath = (id: string) => `/admin/afiliados/${id}`;

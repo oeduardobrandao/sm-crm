@@ -37,6 +37,12 @@ import {
 } from "./kb-videos.ts";
 import { handleKbViewStats } from "./kb-views.ts";
 import { handleReorderKbArticles } from "./kb-articles.ts";
+import {
+  handleGetAffiliate,
+  handleListAffiliates,
+  handleUpdateAffiliate,
+  handleUpdateCommissionRule,
+} from "./affiliates.ts";
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
 
 // Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
@@ -217,6 +223,14 @@ Deno.serve(async (req: Request) => {
         return await handleReorderKbVideos(svc, body, headers);
       case "kb-view-stats":
         return await handleKbViewStats(svc, headers);
+      case "list-affiliates":
+        return await handleListAffiliates(svc, headers);
+      case "get-affiliate":
+        return await handleGetAffiliate(svc, body, headers);
+      case "update-affiliate":
+        return await handleUpdateAffiliate(svc, body, user.id, headers);
+      case "update-affiliate-commission-rule":
+        return await handleUpdateCommissionRule(svc, body, user.id, headers);
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers });
     }

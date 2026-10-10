@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
 import { signIn, signUp, resetPassword } from '../../lib/supabase';
+import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
@@ -111,10 +112,17 @@ export default function LoginPage() {
       return;
     }
     setLoading(true);
+    const refCode = getStoredReferral();
     const { data, error } = await signUp(
       regEmail,
       regPassword,
-      { nome, empresa, telefone: regTelefone, marketing_opt_in: regMarketingOptIn },
+      {
+        nome,
+        empresa,
+        telefone: regTelefone,
+        marketing_opt_in: regMarketingOptIn,
+        ...(refCode ? { ref_code: refCode } : {}),
+      },
       intentQuery ? `/login?${intentQuery}` : '/login',
     );
     setLoading(false);
@@ -126,6 +134,8 @@ export default function LoginPage() {
     // personless forever, orphaning every signup from its later activity. signUp returns the
     // user's uuid even while email confirmation is pending, and the uuid is all identify needs.
     if (data?.user?.id) identifySignup(data.user.id);
+    // A atribuição já foi gravada com o usuário; não reaproveitar em outro cadastro deste navegador.
+    if (refCode) clearStoredReferral();
     captureEvent('signup_completed');
     // With email confirmation disabled signUp returns a live session, so the
     // user goes straight to the trial step. When it is enabled there is no

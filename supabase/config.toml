@@ -251,3 +251,9 @@ verify_jwt = false
 
 [functions.metrics-snapshot-cron]
 verify_jwt = false
+
+[functions.affiliate-public]
+verify_jwt = false
+
+[functions.affiliate-payout-cron]
+verify_jwt = false

@@ -31,6 +31,14 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/WorkspaceDetailPage')).default }),
       },
       {
+        path: 'afiliados',
+        lazy: async () => ({ Component: (await import('./pages/AffiliatesPage')).default }),
+      },
+      {
+        path: 'afiliados/:id',
+        lazy: async () => ({ Component: (await import('./pages/AffiliateDetailPage')).default }),
+      },
+      {
         path: 'metricas',
         lazy: async () => ({ Component: (await import('./pages/MetricasPage')).default }),
       },
