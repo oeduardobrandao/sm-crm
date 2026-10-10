@@ -982,31 +982,41 @@ export interface AffiliateSummary {
   lifetime_cents: number;
 }
 
-export interface AffiliateListItem {
+export interface AffiliateStripeFields {
+  stripe_account_id: string | null;
+  stripe_details_submitted: boolean;
+  stripe_transfers_active: boolean;
+}
+
+export interface AffiliateListItem extends AffiliateStripeFields {
   id: string;
   code: string;
   nome: string;
   email: string;
   status: 'active' | 'suspended';
-  commission_rate_bps: number;
-  has_pix: boolean;
   created_at: string;
   summary: AffiliateSummary;
 }
 
+export interface AffiliateCommissionRuleRow {
+  plan_id: string;
+  plan_name: string;
+  price_brl: number | null;
+  rate_bps: number;
+  months: number;
+  /** false = plano pago sem regra (não gera comissão). */
+  configured: boolean;
+}
+
 export interface AffiliateDetail {
-  affiliate: {
+  affiliate: AffiliateStripeFields & {
     id: string;
     code: string;
     nome: string;
     email: string;
     telefone: string | null;
     status: 'active' | 'suspended';
-    commission_rate_bps: number;
-    pix_key_type: string | null;
-    pix_key: string | null;
-    documento: string | null;
-    titular_nome: string | null;
+    stripe_status_checked_at: string | null;
     terms_accepted_at: string;
     created_at: string;
   };
@@ -1026,6 +1036,10 @@ export interface AffiliateDetail {
     workspace_name: string | null;
     stripe_invoice_id: string;
     invoice_amount_cents: number;
+    plan_id: string | null;
+    billing_reason: string | null;
+    commissionable_cents: number;
+    covered_months: number;
     rate_bps: number;
     commission_cents: number;
     refunded_amount_cents: number;
@@ -1037,43 +1051,41 @@ export interface AffiliateDetail {
   payouts: Array<{
     id: string;
     amount_cents: number;
-    method: string;
-    reference: string | null;
-    note: string | null;
-    paid_at: string;
+    status: 'pending' | 'paid' | 'failed';
+    stripe_account_id: string;
+    stripe_transfer_id: string | null;
+    failure_code: string | null;
+    created_at: string;
+    paid_at: string | null;
   }>;
 }
 
-export type UpdateAffiliateParams = {
-  status?: 'active' | 'suspended';
-  commission_rate_bps?: number;
-};
-
-export type CreateAffiliatePayoutParams = {
-  amount_cents: number;
-  reference?: string;
-  note?: string;
-  paid_at?: string;
+export type UpdateAffiliateCommissionRuleParams = {
+  plan_id: string;
+  rate_bps: number;
+  months: number;
 };
 
 export function listAffiliates() {
-  return adminApi<{ affiliates: AffiliateListItem[] }>('list-affiliates');
+  return adminApi<{ affiliates: AffiliateListItem[]; rules: AffiliateCommissionRuleRow[] }>(
+    'list-affiliates',
+  );
 }
 
 export function getAffiliate(affiliateId: string) {
   return adminApi<AffiliateDetail>('get-affiliate', { affiliate_id: affiliateId });
 }
 
-export function updateAffiliate(affiliateId: string, params: UpdateAffiliateParams) {
-  return adminApi<{ affiliate: { id: string; status: string; commission_rate_bps: number } }>(
-    'update-affiliate',
-    { affiliate_id: affiliateId, ...params },
-  );
+export function updateAffiliateStatus(affiliateId: string, status: 'active' | 'suspended') {
+  return adminApi<{ affiliate: { id: string; status: string } }>('update-affiliate', {
+    affiliate_id: affiliateId,
+    status,
+  });
 }
 
-export function createAffiliatePayout(affiliateId: string, params: CreateAffiliatePayoutParams) {
-  return adminApi<{ payout: AffiliateDetail['payouts'][number] }>('create-affiliate-payout', {
-    affiliate_id: affiliateId,
-    ...params,
-  });
+export function updateAffiliateCommissionRule(params: UpdateAffiliateCommissionRuleParams) {
+  return adminApi<{ rule: { plan_id: string; rate_bps: number; months: number } }>(
+    'update-affiliate-commission-rule',
+    params,
+  );
 }

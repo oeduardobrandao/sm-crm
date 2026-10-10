@@ -5,10 +5,13 @@
  * SHA-256 do token fica no banco.
  *
  * Ações (POST { action, ... }):
- *   signup        { nome, email, telefone?, aceite_termos } → cria (ou reaproveita) e manda o link
- *   send_link     { email }                                → manda um link novo, se o e-mail existir
- *   dashboard     { token }                                → painel do afiliado
- *   update_payout { token, pix_key_type, pix_key, documento?, titular_nome }
+ *   signup            { nome, email, telefone?, aceite_termos } → cria (ou reaproveita) e manda o link
+ *   send_link         { email }       → manda um link novo, se o e-mail existir
+ *   dashboard         { token }       → painel do afiliado (relê no Stripe a conta ainda não apta)
+ *   connect_start     { token }       → cria a conta Express (uma vez) e devolve o link de onboarding
+ *   connect_dashboard { token }       → link de login no painel Express (repasses, dados bancários)
+ *
+ * O repasse em si é do affiliate-payout-cron (transfer mensal por Stripe Connect).
  *
  * signup e send_link respondem igual exista ou não o e-mail, para não revelar quem é afiliado.
  *
@@ -21,15 +24,18 @@ import {
   base64Url,
   buildAffiliateCode,
   commissionSituacao,
-  maskDocumento,
   normalizeEmail,
   referralSituacao,
   sha256Hex,
   shapeSummary,
   tokenExpiry,
-  validatePayoutInfo,
   validateSignup,
 } from "./logic.ts";
+import {
+  type AffiliateConnectGateway,
+  ConnectError,
+  refreshAffiliateStripeStatus,
+} from "../_shared/affiliate-connect.ts";
 
 export interface AffiliatePublicDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
@@ -40,11 +46,16 @@ export interface AffiliatePublicDeps {
   appBaseUrl: () => string;
   now: () => Date;
   randomBytes: (n: number) => Uint8Array;
+  /** null = Stripe não configurado neste ambiente: as ações de Connect respondem 503. */
+  connect: AffiliateConnectGateway | null;
+  /** Repasse mínimo (centavos), só para exibir no painel. */
+  minPayoutCents: number;
 }
 
 const MSG_RATE = "Muitas tentativas. Tente de novo em alguns minutos.";
 const MSG_INVALID_LINK = "Link inválido ou expirado. Peça um novo link de acesso.";
 const MSG_EMAIL_FAILED = "Não foi possível enviar o e-mail agora. Tente de novo em alguns minutos.";
+const MSG_STRIPE_UNAVAILABLE = "Não foi possível falar com o Stripe agora. Tente de novo em alguns minutos.";
 const DB_TIMEOUT_MS = 10_000;
 const CODE_ATTEMPTS = 5;
 
@@ -54,15 +65,13 @@ interface AffiliateRow {
   email: string;
   code: string;
   status: string;
-  commission_rate_bps: number;
-  pix_key_type: string | null;
-  pix_key: string | null;
-  documento: string | null;
-  titular_nome: string | null;
+  stripe_account_id: string | null;
+  stripe_details_submitted: boolean;
+  stripe_transfers_active: boolean;
 }
 
 const AFFILIATE_COLUMNS =
-  "id, nome, email, code, status, commission_rate_bps, pix_key_type, pix_key, documento, titular_nome";
+  "id, nome, email, code, status, stripe_account_id, stripe_details_submitted, stripe_transfers_active";
 
 function isUniqueViolation(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === "23505";
@@ -192,6 +201,25 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
     const affiliate = await resolveToken(body.token);
     if (!affiliate) return json({ error: MSG_INVALID_LINK }, 404);
 
+    // Conta criada mas ainda não apta (onboarding em andamento ou em análise): relê no Stripe,
+    // que é a única fonte do status. Sem webhook de Connect, é aqui e no cron que o flag anda.
+    let stripeStatus = {
+      detailsSubmitted: affiliate.stripe_details_submitted,
+      transfersActive: affiliate.stripe_transfers_active,
+    };
+    if (affiliate.stripe_account_id && !affiliate.stripe_transfers_active && deps.connect) {
+      try {
+        stripeStatus = await refreshAffiliateStripeStatus(
+          db,
+          deps.connect,
+          { id: affiliate.id, stripe_account_id: affiliate.stripe_account_id },
+          deps.now(),
+        );
+      } catch (err) {
+        console.error("[affiliate-public] stripe status refresh failed:", err instanceof Error ? err.message : String(err));
+      }
+    }
+
     const [summaryRes, referralsRes, commissionsRes, payoutsRes] = await Promise.all([
       db.rpc("affiliate_summaries", { p_affiliate_id: affiliate.id }).maybeSingle(),
       db.from("affiliate_referrals")
@@ -200,14 +228,14 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
         .order("created_at", { ascending: true })
         .limit(500),
       db.from("affiliate_commissions")
-        .select("paid_at, invoice_amount_cents, commission_cents, net_cents, disputed, available_at")
+        .select("paid_at, invoice_amount_cents, plan_id, rate_bps, commission_cents, net_cents, disputed, available_at")
         .eq("affiliate_id", affiliate.id)
         .order("paid_at", { ascending: false })
         .limit(200),
       db.from("affiliate_payouts")
-        .select("paid_at, amount_cents, method")
+        .select("created_at, paid_at, amount_cents, status")
         .eq("affiliate_id", affiliate.id)
-        .order("paid_at", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(100),
     ]);
     for (const r of [summaryRes, referralsRes, commissionsRes, payoutsRes]) {
@@ -235,12 +263,13 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
         email: affiliate.email,
         code: affiliate.code,
         status: affiliate.status,
-        commission_rate_bps: affiliate.commission_rate_bps,
-        pix_key_type: affiliate.pix_key_type,
-        pix_key: affiliate.pix_key,
-        documento_mascarado: maskDocumento(affiliate.documento),
-        titular_nome: affiliate.titular_nome,
+        stripe: {
+          connected: !!affiliate.stripe_account_id,
+          details_submitted: stripeStatus.detailsSubmitted,
+          transfers_active: stripeStatus.transfersActive,
+        },
       },
+      min_payout_cents: deps.minPayoutCents,
       summary: shapeSummary(summaryRes.data as Record<string, unknown> | null),
       referrals: referrals.map((r, i) => ({
         numero: i + 1,
@@ -250,6 +279,8 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
       commissions: ((commissionsRes.data ?? []) as Array<{
         paid_at: string;
         invoice_amount_cents: number;
+        plan_id: string | null;
+        rate_bps: number;
         commission_cents: number;
         net_cents: number;
         disputed: boolean;
@@ -257,6 +288,8 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
       }>).map((c) => ({
         paid_at: c.paid_at,
         invoice_amount_cents: c.invoice_amount_cents,
+        plan_id: c.plan_id,
+        rate_bps: c.rate_bps,
         commission_cents: c.commission_cents,
         net_cents: c.net_cents,
         available_at: c.available_at,
@@ -266,33 +299,75 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
     });
   }
 
-  async function updatePayout(req: Request, body: Record<string, unknown>, json: JsonResponder) {
+  async function connectStart(req: Request, body: Record<string, unknown>, json: JsonResponder) {
     if (!(await deps.rateLimit(`affiliate-dashboard:ip:${deps.getClientIP(req)}`, 60, 60))) {
       return json({ error: MSG_RATE }, 429);
     }
     const affiliate = await resolveToken(body.token);
     if (!affiliate) return json({ error: MSG_INVALID_LINK }, 404);
-    if (!(await deps.rateLimit(`affiliate-payout:${affiliate.id}`, 20, 3600))) return json({ error: MSG_RATE }, 429);
-
-    const input = validatePayoutInfo(body);
-    if (!input.ok) return json({ error: input.error }, 400);
-    if (!input.value.documento && !affiliate.documento) {
-      return json({ error: "Informe o CPF ou CNPJ do titular." }, 400);
+    if (affiliate.status !== "active") {
+      return json({ error: "Sua participação no programa está suspensa." }, 403);
     }
+    if (!deps.connect) return json({ error: MSG_STRIPE_UNAVAILABLE }, 503);
+    if (!(await deps.rateLimit(`affiliate-connect:${affiliate.id}`, 10, 3600))) return json({ error: MSG_RATE }, 429);
 
-    const { error } = await db
-      .from("affiliates")
-      .update({
-        pix_key_type: input.value.pix_key_type,
-        pix_key: input.value.pix_key,
-        titular_nome: input.value.titular_nome,
-        ...(input.value.documento ? { documento: input.value.documento } : {}),
-        updated_at: deps.now().toISOString(),
-      })
-      .eq("id", affiliate.id)
-      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
-    if (error) throw new Error(`payout update failed: ${(error as { message?: string }).message}`);
-    return json({ ok: true });
+    try {
+      let accountId = affiliate.stripe_account_id;
+      if (!accountId) {
+        const created = await deps.connect.createExpressAccount({ email: affiliate.email, affiliateId: affiliate.id });
+        // Compare-and-set: só grava se ainda não houver conta. A chave de idempotência do
+        // Stripe faz cliques concorrentes devolverem a mesma conta; se outra requisição gravou
+        // antes, vale a conta que já está no banco.
+        const { data: saved, error } = await db
+          .from("affiliates")
+          .update({ stripe_account_id: created, updated_at: deps.now().toISOString() })
+          .eq("id", affiliate.id)
+          .is("stripe_account_id", null)
+          .select("stripe_account_id")
+          .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+        if (error) throw new Error(`stripe account write failed: ${(error as { message?: string }).message}`);
+        if (saved && saved.length > 0) {
+          accountId = created;
+        } else {
+          const fresh = await resolveToken(body.token);
+          accountId = fresh?.stripe_account_id ?? created;
+        }
+      }
+      const base = `${deps.appBaseUrl().replace(/\/+$/, "")}/afiliados/painel/${body.token as string}`;
+      const url = await deps.connect.createOnboardingLink({
+        accountId,
+        refreshUrl: `${base}?stripe=refresh`,
+        returnUrl: `${base}?stripe=retorno`,
+      });
+      return json({ url });
+    } catch (err) {
+      if (err instanceof ConnectError) {
+        console.error("[affiliate-public] connect_start stripe error:", err.message);
+        return json({ error: MSG_STRIPE_UNAVAILABLE }, 502);
+      }
+      throw err;
+    }
+  }
+
+  async function connectDashboard(req: Request, body: Record<string, unknown>, json: JsonResponder) {
+    if (!(await deps.rateLimit(`affiliate-dashboard:ip:${deps.getClientIP(req)}`, 60, 60))) {
+      return json({ error: MSG_RATE }, 429);
+    }
+    const affiliate = await resolveToken(body.token);
+    if (!affiliate) return json({ error: MSG_INVALID_LINK }, 404);
+    if (!deps.connect) return json({ error: MSG_STRIPE_UNAVAILABLE }, 503);
+    if (!affiliate.stripe_account_id || !affiliate.stripe_details_submitted) {
+      return json({ error: "Conclua o cadastro no Stripe primeiro." }, 400);
+    }
+    try {
+      return json({ url: await deps.connect.createDashboardLink(affiliate.stripe_account_id) });
+    } catch (err) {
+      if (err instanceof ConnectError) {
+        console.error("[affiliate-public] connect_dashboard stripe error:", err.message);
+        return json({ error: MSG_STRIPE_UNAVAILABLE }, 502);
+      }
+      throw err;
+    }
   }
 
   return async (req: Request): Promise<Response> => {
@@ -318,8 +393,10 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
           return await sendLink(req, body, json);
         case "dashboard":
           return await dashboard(req, body, json);
-        case "update_payout":
-          return await updatePayout(req, body, json);
+        case "connect_start":
+          return await connectStart(req, body, json);
+        case "connect_dashboard":
+          return await connectDashboard(req, body, json);
         default:
           return json({ error: "Invalid action" }, 400);
       }

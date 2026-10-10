@@ -4,7 +4,6 @@
 export const ACCESS_TOKEN_TTL_DAYS = 180;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** 32 random bytes, base64url without padding = 43 chars. */
 export const ACCESS_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 /** Sem 0/o/1/l/i para o código ser fácil de ditar. */
@@ -55,104 +54,6 @@ export function validateSignup(body: Record<string, unknown>): Validated<SignupI
     return { ok: false, error: "É preciso aceitar os termos do programa." };
   }
   return { ok: true, value: { nome, email, telefone } };
-}
-
-export function isValidCpf(raw: string): boolean {
-  const cpf = onlyDigits(raw);
-  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
-  const digit = (len: number) => {
-    let sum = 0;
-    for (let i = 0; i < len; i++) sum += Number(cpf[i]) * (len + 1 - i);
-    const rest = (sum * 10) % 11;
-    return rest === 10 ? 0 : rest;
-  };
-  return digit(9) === Number(cpf[9]) && digit(10) === Number(cpf[10]);
-}
-
-export function isValidCnpj(raw: string): boolean {
-  const cnpj = onlyDigits(raw);
-  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
-  const digit = (len: number) => {
-    const weights = len === 12
-      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-    let sum = 0;
-    for (let i = 0; i < len; i++) sum += Number(cnpj[i]) * weights[i];
-    const rest = sum % 11;
-    return rest < 2 ? 0 : 11 - rest;
-  };
-  return digit(12) === Number(cnpj[12]) && digit(13) === Number(cnpj[13]);
-}
-
-export type PixKeyType = "cpf" | "cnpj" | "email" | "telefone" | "aleatoria";
-const PIX_KEY_TYPES: PixKeyType[] = ["cpf", "cnpj", "email", "telefone", "aleatoria"];
-
-/** Normaliza a chave PIX conforme o tipo; null se inválida. */
-export function normalizePixKey(type: PixKeyType, raw: string): string | null {
-  const v = raw.trim();
-  switch (type) {
-    case "cpf":
-      return isValidCpf(v) ? onlyDigits(v) : null;
-    case "cnpj":
-      return isValidCnpj(v) ? onlyDigits(v) : null;
-    case "email": {
-      const email = normalizeEmail(v);
-      return email && email.length <= 77 ? email : null;
-    }
-    case "telefone": {
-      let digits = onlyDigits(v);
-      if (digits.length === 10 || digits.length === 11) digits = "55" + digits;
-      return /^55[0-9]{10,11}$/.test(digits) ? `+${digits}` : null;
-    }
-    case "aleatoria": {
-      const key = v.toLowerCase();
-      return UUID_RE.test(key) ? key : null;
-    }
-  }
-}
-
-export interface PayoutInput {
-  pix_key_type: PixKeyType;
-  pix_key: string;
-  /** null = manter o documento já salvo. */
-  documento: string | null;
-  titular_nome: string;
-}
-
-export function validatePayoutInfo(body: Record<string, unknown>): Validated<PayoutInput> {
-  const type = body.pix_key_type;
-  if (typeof type !== "string" || !PIX_KEY_TYPES.includes(type as PixKeyType)) {
-    return { ok: false, error: "Escolha o tipo da chave PIX." };
-  }
-  if (typeof body.pix_key !== "string") return { ok: false, error: "Informe a chave PIX." };
-  const pixKey = normalizePixKey(type as PixKeyType, body.pix_key);
-  if (!pixKey) return { ok: false, error: "Chave PIX inválida para o tipo escolhido." };
-
-  const titular = normalizeNome(body.titular_nome);
-  if (!titular) return { ok: false, error: "Informe o nome do titular da conta." };
-
-  let documento: string | null = null;
-  if (typeof body.documento === "string" && body.documento.trim() !== "") {
-    const digits = onlyDigits(body.documento);
-    const valid = digits.length === 11 ? isValidCpf(digits) : digits.length === 14 && isValidCnpj(digits);
-    if (!valid) return { ok: false, error: "CPF ou CNPJ inválido." };
-    documento = digits;
-  } else if (body.documento != null && typeof body.documento !== "string") {
-    return { ok: false, error: "CPF ou CNPJ inválido." };
-  }
-
-  return {
-    ok: true,
-    value: { pix_key_type: type as PixKeyType, pix_key: pixKey, documento, titular_nome: titular },
-  };
-}
-
-// CPF -> "***.***.789-01", CNPJ -> "**.***.***/0001-23". O painel nunca devolve o documento inteiro.
-export function maskDocumento(doc: string | null): string | null {
-  if (!doc) return null;
-  if (doc.length === 11) return `***.***.${doc.slice(6, 9)}-${doc.slice(9)}`;
-  if (doc.length === 14) return `**.***.***/${doc.slice(8, 12)}-${doc.slice(12)}`;
-  return null;
 }
 
 /** Primeiro nome sem acento (até 8 letras) + 4 caracteres aleatórios: "ana7k3f". */

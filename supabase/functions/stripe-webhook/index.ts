@@ -25,6 +25,7 @@ import { notifyOwnerOfFailure } from "../_shared/dunning-notify.ts";
 import {
   applyCommissionAdjustment,
   disputeClosedIsLoss,
+  invoicePriceId,
   recordInvoiceCommission,
   resolveChargeInvoiceId,
   type CommissionInvoice,
@@ -107,6 +108,7 @@ async function handleEvent(svc: SupabaseClient, event: Stripe.Event) {
         svc,
         event.data.object as unknown as CommissionInvoice,
         event.created,
+        { retrieveInvoicePriceId: retrieveInvoicePriceIdForAffiliate },
       );
       if (outcome === "recorded") {
         console.log(`[stripe-webhook] affiliate commission recorded for invoice ${event.data.object.id}`);
@@ -361,6 +363,11 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
     },
     { logPrefix: "[stripe-webhook]" },
   );
+}
+
+async function retrieveInvoicePriceIdForAffiliate(id: string): Promise<string | null> {
+  const invoice = await stripe.invoices.retrieve(id, undefined, { timeout: STRIPE_READ_TIMEOUT_MS });
+  return invoicePriceId(invoice as unknown as CommissionInvoice);
 }
 
 async function retrieveChargeForAffiliate(id: string) {

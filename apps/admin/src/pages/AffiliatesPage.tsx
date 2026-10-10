@@ -4,7 +4,8 @@ import { HandCoins } from 'lucide-react';
 import { listAffiliates } from '../lib/api';
 import { affiliateDetailPath } from '../lib/routes';
 import { formatMoney } from '../lib/subscription';
-import { formatRateBps } from '../lib/affiliates';
+import { STRIPE_STATE_LABEL, stripeConnectState } from '../lib/affiliates';
+import { CommissionRulesCard } from './affiliates/CommissionRulesCard';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
@@ -39,9 +40,11 @@ export default function AffiliatesPage() {
         description={
           affiliates.length > 0
             ? `${affiliates.length} afiliados · ${formatMoney(totalAvailable)} disponível para repasse`
-            : 'Programa de afiliados (comissão sobre pagamentos Stripe)'
+            : 'Programa de afiliados (comissão sobre pagamentos Stripe, repasse por Stripe Connect)'
         }
       />
+
+      {data?.rules && data.rules.length > 0 && <CommissionRulesCard rules={data.rules} />}
 
       <Card>
         {isLoading ? (
@@ -103,11 +106,15 @@ export default function AffiliatesPage() {
                           {a.status === 'suspended' ? (
                             <Badge variant="danger">Suspenso</Badge>
                           ) : (
-                            <Badge variant="success">
-                              Ativo · {formatRateBps(a.commission_rate_bps)}
+                            <Badge variant="success">Ativo</Badge>
+                          )}
+                          {stripeConnectState(a) === 'ready' ? (
+                            <Badge variant="info">{STRIPE_STATE_LABEL.ready}</Badge>
+                          ) : (
+                            <Badge variant="warning">
+                              {STRIPE_STATE_LABEL[stripeConnectState(a)]}
                             </Badge>
                           )}
-                          {!a.has_pix && <Badge variant="warning">Sem PIX</Badge>}
                         </div>
                       </TableCell>
                     </TableRow>

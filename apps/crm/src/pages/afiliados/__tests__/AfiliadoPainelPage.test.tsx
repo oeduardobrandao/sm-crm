@@ -1,5 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AfiliadoPainelPage from '../AfiliadoPainelPage';
@@ -7,13 +8,18 @@ import { listPublicPricingPlans } from '@/services/billing';
 import {
   AffiliateApiError,
   getAffiliateDashboard,
+  listCommissionRules,
+  openAffiliateStripeDashboard,
+  startAffiliateStripeConnect,
   type AffiliateDashboard,
 } from '@/services/affiliates';
 
 vi.mock('@/services/affiliates', async (orig) => ({
   ...(await orig<typeof import('@/services/affiliates')>()),
   getAffiliateDashboard: vi.fn(),
-  updateAffiliatePayout: vi.fn(),
+  startAffiliateStripeConnect: vi.fn(),
+  openAffiliateStripeDashboard: vi.fn(),
+  listCommissionRules: vi.fn(),
 }));
 vi.mock('@/services/billing', () => ({ listPublicPricingPlans: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -24,20 +30,17 @@ const DASHBOARD: AffiliateDashboard = {
     email: 'ana@x.com',
     code: 'ana7k3f',
     status: 'active',
-    commission_rate_bps: 2000,
-    pix_key_type: null,
-    pix_key: null,
-    documento_mascarado: null,
-    titular_nome: null,
+    stripe: { connected: false, details_submitted: false, transfers_active: false },
   },
+  min_payout_cents: 5000,
   summary: {
     referrals_count: 2,
     trialing_count: 1,
     paying_count: 1,
-    pending_cents: 1998,
+    pending_cents: 2497,
     available_cents: 0,
     paid_out_cents: 0,
-    lifetime_cents: 1998,
+    lifetime_cents: 2497,
   },
   referrals: [
     { numero: 1, created_at: '2026-09-01T00:00:00Z', situacao: 'ativo' },
@@ -47,14 +50,18 @@ const DASHBOARD: AffiliateDashboard = {
     {
       paid_at: '2026-10-01T12:00:00Z',
       invoice_amount_cents: 9990,
-      commission_cents: 1998,
-      net_cents: 1998,
+      plan_id: 'pro',
+      rate_bps: 2500,
+      commission_cents: 2497,
+      net_cents: 2497,
       available_at: '2026-10-31T12:00:00Z',
       situacao: 'pendente',
     },
   ],
   payouts: [],
 };
+
+const assign = vi.fn();
 
 function renderAt(path: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -72,8 +79,18 @@ function renderAt(path: string) {
 describe('AfiliadoPainelPage', () => {
   beforeEach(() => {
     vi.mocked(getAffiliateDashboard).mockReset();
-    vi.mocked(listPublicPricingPlans).mockResolvedValue([]);
+    vi.mocked(startAffiliateStripeConnect).mockReset();
+    vi.mocked(openAffiliateStripeDashboard).mockReset();
+    vi.mocked(listPublicPricingPlans).mockResolvedValue([
+      { id: 'pro', name: 'Pro', price_brl: 9990 },
+    ] as never);
+    vi.mocked(listCommissionRules).mockResolvedValue([
+      { plan_id: 'pro', rate_bps: 2500, months: 3 },
+    ]);
+    assign.mockReset();
+    vi.stubGlobal('location', { ...window.location, assign });
   });
+  afterEach(() => vi.unstubAllGlobals());
 
   it('shows the referral link, totals, commissions and anonymised referrals', async () => {
     vi.mocked(getAffiliateDashboard).mockResolvedValue(DASHBOARD);
@@ -84,6 +101,49 @@ describe('AfiliadoPainelPage', () => {
     expect(screen.getByText('Indicação #1')).toBeInTheDocument();
     expect(screen.getByText('Em teste grátis', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getAllByText('Pendente').length).toBeGreaterThan(0);
+  });
+
+  it('not connected: the Stripe button opens onboarding', async () => {
+    vi.mocked(getAffiliateDashboard).mockResolvedValue(DASHBOARD);
+    vi.mocked(startAffiliateStripeConnect).mockResolvedValue({
+      url: 'https://connect.stripe.com/x',
+    });
+    const user = userEvent.setup();
+    renderAt('/afiliados/painel/tok123');
+    expect(await screen.findByText('Conecte sua conta para receber')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Conectar com Stripe' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://connect.stripe.com/x'));
+    expect(startAffiliateStripeConnect).toHaveBeenCalledWith('tok123');
+  });
+
+  it('ready: opens the Stripe Express dashboard', async () => {
+    vi.mocked(getAffiliateDashboard).mockResolvedValue({
+      ...DASHBOARD,
+      affiliate: {
+        ...DASHBOARD.affiliate,
+        stripe: { connected: true, details_submitted: true, transfers_active: true },
+      },
+    });
+    vi.mocked(openAffiliateStripeDashboard).mockResolvedValue({
+      url: 'https://connect.stripe.com/e',
+    });
+    const user = userEvent.setup();
+    renderAt('/afiliados/painel/tok123');
+    expect(await screen.findByText('Pronto para receber')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Abrir painel do Stripe/ }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://connect.stripe.com/e'));
+  });
+
+  it('submitted but not active: shows the review state', async () => {
+    vi.mocked(getAffiliateDashboard).mockResolvedValue({
+      ...DASHBOARD,
+      affiliate: {
+        ...DASHBOARD.affiliate,
+        stripe: { connected: true, details_submitted: true, transfers_active: false },
+      },
+    });
+    renderAt('/afiliados/painel/tok123');
+    expect(await screen.findByText('Cadastro em análise pelo Stripe')).toBeInTheDocument();
   });
 
   it('flags a suspended affiliate', async () => {

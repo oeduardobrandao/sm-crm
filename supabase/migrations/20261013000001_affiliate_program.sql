@@ -2,11 +2,13 @@
 --
 -- Qualquer pessoa vira afiliada por cadastro público (edge function affiliate-public), sem
 -- conta no Mesaas. Quem se cadastra pelo link (?ref=<code>) fica preso ao afiliado por
--- workspace, e cada fatura Stripe paga por esse workspace gera uma comissão.
+-- workspace. As faturas Stripe pagas por esse workspace nos primeiros meses (janela e
+-- percentual por plano, em affiliate_commission_rules) geram comissão, e o repasse sai por
+-- Stripe Connect (transfer para a conta Express do afiliado, affiliate-payout-cron).
 --
--- Todas as tabelas são service-role only: o afiliado lê o próprio painel pelo token
--- (affiliate-public) e os admins da plataforma pelo platform-admin. Nada aqui é lido pelo
--- CRM com o JWT do usuário.
+-- Tabelas service-role only, exceto affiliate_commission_rules (leitura pública, para a
+-- página do programa). O afiliado lê o próprio painel pelo token (affiliate-public) e os
+-- admins da plataforma pelo platform-admin.
 
 -- (1) Afiliados -------------------------------------------------------------------------
 CREATE TABLE public.affiliates (
@@ -16,13 +18,12 @@ CREATE TABLE public.affiliates (
   email               text NOT NULL UNIQUE CHECK (email = lower(email) AND char_length(email) <= 254),
   telefone            text CHECK (telefone IS NULL OR telefone ~ '^[0-9]{10,13}$'),
   status              text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
-  -- Basis points: 2000 = 20%. Copiado para cada comissão no momento do pagamento, então
-  -- mudar aqui só afeta pagamentos futuros.
-  commission_rate_bps integer NOT NULL DEFAULT 2000 CHECK (commission_rate_bps BETWEEN 0 AND 10000),
-  pix_key_type        text CHECK (pix_key_type IN ('cpf', 'cnpj', 'email', 'telefone', 'aleatoria')),
-  pix_key             text CHECK (pix_key IS NULL OR char_length(pix_key) <= 140),
-  documento           text CHECK (documento IS NULL OR documento ~ '^([0-9]{11}|[0-9]{14})$'),
-  titular_nome        text CHECK (titular_nome IS NULL OR char_length(titular_nome) <= 120),
+  -- Stripe Connect (conta Express). Os flags espelham a conta e são relidos do Stripe pelo
+  -- painel e pelo cron de repasse; só stripe_transfers_active libera transfer.
+  stripe_account_id        text UNIQUE,
+  stripe_details_submitted boolean NOT NULL DEFAULT false,
+  stripe_transfers_active  boolean NOT NULL DEFAULT false,
+  stripe_status_checked_at timestamptz,
   terms_accepted_at   timestamptz NOT NULL,
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now()
@@ -38,6 +39,22 @@ CREATE TABLE public.affiliate_access_tokens (
   expires_at   timestamptz NOT NULL
 );
 CREATE INDEX affiliate_access_tokens_affiliate_idx ON public.affiliate_access_tokens (affiliate_id);
+
+-- (2b) Tabela de comissões por plano: percentual (basis points, 3000 = 30%) e quantos meses
+-- pagos de cada indicação geram comissão. Editável no Admin; leitura pública para a página
+-- do programa e o simulador. Cada comissão copia o percentual do momento do pagamento.
+CREATE TABLE public.affiliate_commission_rules (
+  plan_id    text PRIMARY KEY REFERENCES public.plans(id) ON DELETE CASCADE,
+  rate_bps   integer NOT NULL CHECK (rate_bps BETWEEN 0 AND 10000),
+  months     integer NOT NULL CHECK (months BETWEEN 1 AND 120),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO public.affiliate_commission_rules (plan_id, rate_bps, months)
+SELECT p.id, v.rate_bps, v.months
+FROM (VALUES ('start', 3000, 3), ('pro', 2500, 3), ('max', 2000, 3)) AS v(plan_id, rate_bps, months)
+JOIN public.plans p ON p.id = v.plan_id
+ON CONFLICT (plan_id) DO NOTHING;
 
 -- (3) Indicações: um afiliado por workspace, gravado no cadastro e nunca reescrito.
 CREATE TABLE public.affiliate_referrals (
@@ -57,6 +74,13 @@ CREATE TABLE public.affiliate_commissions (
   stripe_invoice_id     text NOT NULL UNIQUE,
   currency              text NOT NULL DEFAULT 'brl',
   invoice_amount_cents  integer NOT NULL CHECK (invoice_amount_cents > 0),
+  plan_id               text,
+  billing_reason        text,
+  -- Parte da fatura dentro da janela de meses do plano (anual pago à vista: 3/12 do valor
+  -- quando a janela é de 3 meses). A comissão é rate_bps sobre este valor.
+  commissionable_cents  integer NOT NULL CHECK (commissionable_cents >= 0),
+  -- Meses da janela que esta fatura consumiu (mensal 1, anual até 12, proration 0).
+  covered_months        integer NOT NULL DEFAULT 0 CHECK (covered_months >= 0),
   rate_bps              integer NOT NULL CHECK (rate_bps BETWEEN 0 AND 10000),
   commission_cents      integer NOT NULL CHECK (commission_cents >= 0),
   -- Acumulado da cobrança (charge.amount_refunded), não um delta: reaplicar é idempotente.
@@ -78,24 +102,31 @@ CREATE TABLE public.affiliate_commissions (
   updated_at            timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX affiliate_commissions_affiliate_idx ON public.affiliate_commissions (affiliate_id, paid_at DESC);
+CREATE INDEX affiliate_commissions_workspace_idx ON public.affiliate_commissions (workspace_id);
 
--- (5) Repasses (PIX manual, registrado no Admin).
+-- (5) Repasses por Stripe Connect. A linha nasce 'pending' ANTES do transfer (o saldo
+-- reservado não é pago duas vezes) e o transfer usa transfer_group = 'affiliate_payout_<id>',
+-- que o cron consulta para reconciliar uma linha 'pending' de uma execução interrompida.
+-- 'failed' não conta no saldo: o valor volta a ficar disponível na próxima execução.
 CREATE TABLE public.affiliate_payouts (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  affiliate_id uuid NOT NULL REFERENCES public.affiliates(id) ON DELETE RESTRICT,
-  amount_cents integer NOT NULL CHECK (amount_cents > 0),
-  method       text NOT NULL DEFAULT 'pix' CHECK (method IN ('pix')),
-  reference    text CHECK (reference IS NULL OR char_length(reference) <= 200),
-  note         text CHECK (note IS NULL OR char_length(note) <= 500),
-  paid_at      timestamptz NOT NULL DEFAULT now(),
-  created_by   uuid,
-  created_at   timestamptz NOT NULL DEFAULT now()
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  affiliate_id       uuid NOT NULL REFERENCES public.affiliates(id) ON DELETE RESTRICT,
+  amount_cents       integer NOT NULL CHECK (amount_cents > 0),
+  status             text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
+  stripe_account_id  text NOT NULL,
+  stripe_transfer_id text UNIQUE,
+  failure_code       text CHECK (failure_code IS NULL OR char_length(failure_code) <= 100),
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  paid_at            timestamptz,
+  updated_at         timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX affiliate_payouts_affiliate_idx ON public.affiliate_payouts (affiliate_id, paid_at DESC);
+CREATE INDEX affiliate_payouts_affiliate_idx ON public.affiliate_payouts (affiliate_id, created_at DESC);
+CREATE INDEX affiliate_payouts_pending_idx ON public.affiliate_payouts (status) WHERE status = 'pending';
 
 -- (6) RLS + grants: service_role only.
 ALTER TABLE public.affiliates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.affiliate_access_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.affiliate_commission_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.affiliate_referrals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.affiliate_commissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.affiliate_payouts ENABLE ROW LEVEL SECURITY;
@@ -104,6 +135,10 @@ CREATE POLICY affiliates_service_role ON public.affiliates
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY affiliate_access_tokens_service_role ON public.affiliate_access_tokens
   FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY affiliate_commission_rules_service_role ON public.affiliate_commission_rules
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY affiliate_commission_rules_public_read ON public.affiliate_commission_rules
+  FOR SELECT TO anon, authenticated USING (true);
 CREATE POLICY affiliate_referrals_service_role ON public.affiliate_referrals
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY affiliate_commissions_service_role ON public.affiliate_commissions
@@ -125,6 +160,10 @@ GRANT ALL ON TABLE
   public.affiliate_commissions,
   public.affiliate_payouts
 TO service_role;
+
+REVOKE ALL ON TABLE public.affiliate_commission_rules FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.affiliate_commission_rules TO anon, authenticated;
+GRANT ALL ON TABLE public.affiliate_commission_rules TO service_role;
 
 -- (7) Atribuição no cadastro.
 --
@@ -197,7 +236,9 @@ CREATE TRIGGER on_auth_user_created_zz_affiliate_referral
 -- (8) Totais por afiliado (painel e Admin). p_affiliate_id NULL = todos.
 --   pending_cents   = líquido ainda na carência
 --   released_cents  = líquido fora da carência (antes de descontar repasses)
---   available_cents = released - repasses (pode ser negativo após estorno de comissão já paga)
+--   paid_out_cents  = repasses 'paid'
+--   available_cents = released - repasses 'paid' - repasses 'pending' (pode ser negativo após
+--                     estorno de comissão já repassada; o negativo abate o próximo repasse)
 CREATE OR REPLACE FUNCTION public.affiliate_summaries(p_affiliate_id uuid DEFAULT NULL)
 RETURNS TABLE (
   affiliate_id     uuid,
@@ -239,7 +280,10 @@ AS $$
     GROUP BY c.affiliate_id
   ),
   pays AS (
-    SELECT p.affiliate_id, coalesce(sum(p.amount_cents), 0)::bigint AS paid_out_cents
+    SELECT
+      p.affiliate_id,
+      coalesce(sum(p.amount_cents) FILTER (WHERE p.status = 'paid'), 0)::bigint AS paid_out_cents,
+      coalesce(sum(p.amount_cents) FILTER (WHERE p.status IN ('paid', 'pending')), 0)::bigint AS reserved_cents
     FROM public.affiliate_payouts p
     WHERE p_affiliate_id IS NULL OR p.affiliate_id = p_affiliate_id
     GROUP BY p.affiliate_id
@@ -252,7 +296,7 @@ AS $$
     coalesce(comms.pending_cents, 0),
     coalesce(comms.released_cents, 0),
     coalesce(pays.paid_out_cents, 0),
-    coalesce(comms.released_cents, 0) - coalesce(pays.paid_out_cents, 0),
+    coalesce(comms.released_cents, 0) - coalesce(pays.reserved_cents, 0),
     coalesce(comms.lifetime_cents, 0)
   FROM public.affiliates a
   LEFT JOIN refs ON refs.affiliate_id = a.id

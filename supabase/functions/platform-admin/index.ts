@@ -38,10 +38,10 @@ import {
 import { handleKbViewStats } from "./kb-views.ts";
 import { handleReorderKbArticles } from "./kb-articles.ts";
 import {
-  handleCreateAffiliatePayout,
   handleGetAffiliate,
   handleListAffiliates,
   handleUpdateAffiliate,
+  handleUpdateCommissionRule,
 } from "./affiliates.ts";
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
 
@@ -229,8 +229,8 @@ Deno.serve(async (req: Request) => {
         return await handleGetAffiliate(svc, body, headers);
       case "update-affiliate":
         return await handleUpdateAffiliate(svc, body, user.id, headers);
-      case "create-affiliate-payout":
-        return await handleCreateAffiliatePayout(svc, body, user.id, headers);
+      case "update-affiliate-commission-rule":
+        return await handleUpdateCommissionRule(svc, body, user.id, headers);
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers });
     }

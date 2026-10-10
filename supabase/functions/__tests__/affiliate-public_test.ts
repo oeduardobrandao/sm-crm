@@ -5,20 +5,14 @@ import { createAffiliatePublicHandler } from "../affiliate-public/handler.ts";
 import {
   buildAffiliateCode,
   commissionSituacao,
-  isValidCnpj,
-  isValidCpf,
-  maskDocumento,
-  normalizePixKey,
   referralSituacao,
   sha256Hex,
-  validatePayoutInfo,
   validateSignup,
 } from "../affiliate-public/logic.ts";
+import { type AffiliateConnectGateway, ConnectError } from "../_shared/affiliate-connect.ts";
 import { buildAffiliateLinkEmail } from "../affiliate-public/email.ts";
 
 const NOW = new Date("2026-10-10T12:00:00Z");
-const VALID_CPF = "52998224725";
-const VALID_CNPJ = "11222333000181";
 const TOKEN = "A".repeat(43);
 
 const AFFILIATE = {
@@ -27,14 +21,28 @@ const AFFILIATE = {
   email: "ana@x.com",
   code: "ana7k3f",
   status: "active",
-  commission_rate_bps: 2000,
-  pix_key_type: null,
-  pix_key: null,
-  documento: null,
-  titular_nome: null,
+  stripe_account_id: null as string | null,
+  stripe_details_submitted: false,
+  stripe_transfers_active: false,
 };
 
-function setup(opts: { rateLimited?: boolean; emailFails?: boolean } = {}) {
+function fakeConnect(overrides: Partial<AffiliateConnectGateway> = {}) {
+  const calls: string[] = [];
+  const gateway: AffiliateConnectGateway = {
+    createExpressAccount: (p) => (calls.push(`create:${p.affiliateId}`), Promise.resolve("acct_new")),
+    createOnboardingLink: (p) => (calls.push(`link:${p.accountId}:${p.returnUrl}`), Promise.resolve("https://connect.stripe.com/setup/x")),
+    createDashboardLink: (id) => (calls.push(`dash:${id}`), Promise.resolve("https://connect.stripe.com/express/x")),
+    retrieveAccountStatus: (id) => (calls.push(`status:${id}`), Promise.resolve({ detailsSubmitted: true, transfersActive: true })),
+    findTransferByGroup: () => Promise.resolve(null),
+    createTransfer: () => Promise.resolve("tr_1"),
+    ...overrides,
+  };
+  return { gateway, calls };
+}
+
+function setup(
+  opts: { rateLimited?: boolean; emailFails?: boolean; connect?: AffiliateConnectGateway | null } = {},
+) {
   const db = createSupabaseQueryMock();
   const emails: Array<{ to: string; nome: string; link: string }> = [];
   const rateKeys: string[] = [];
@@ -54,6 +62,8 @@ function setup(opts: { rateLimited?: boolean; emailFails?: boolean } = {}) {
     appBaseUrl: () => "https://www.mesaas.com.br/",
     now: () => NOW,
     randomBytes: (n) => new Uint8Array(n).fill(7),
+    connect: opts.connect === undefined ? fakeConnect().gateway : opts.connect,
+    minPayoutCents: 5000,
   });
   return { db, emails, rateKeys, handler };
 }
@@ -80,47 +90,6 @@ Deno.test("validateSignup: requires nome, valid email and the terms", () => {
   assert(!validateSignup({ nome: "Ana", email: "ana@x.com", telefone: "123", aceite_termos: true }).ok);
   const withPhone = validateSignup({ nome: "Ana", email: "a@x.com", telefone: "(11) 98888-7777", aceite_termos: true });
   assert(withPhone.ok && withPhone.value.telefone === "11988887777");
-});
-
-Deno.test("CPF/CNPJ check digits", () => {
-  assert(isValidCpf(VALID_CPF));
-  assert(isValidCpf("529.982.247-25"));
-  assert(!isValidCpf("52998224724"));
-  assert(!isValidCpf("11111111111"));
-  assert(isValidCnpj(VALID_CNPJ));
-  assert(!isValidCnpj("11222333000180"));
-});
-
-Deno.test("normalizePixKey: per-type normalization", () => {
-  assertEquals(normalizePixKey("cpf", "529.982.247-25"), VALID_CPF);
-  assertEquals(normalizePixKey("cpf", "123"), null);
-  assertEquals(normalizePixKey("email", " Ana@X.com "), "ana@x.com");
-  assertEquals(normalizePixKey("telefone", "(11) 98888-7777"), "+5511988887777");
-  assertEquals(normalizePixKey("telefone", "+55 11 98888-7777"), "+5511988887777");
-  assertEquals(normalizePixKey("telefone", "123"), null);
-  assertEquals(
-    normalizePixKey("aleatoria", "123E4567-E89B-12D3-A456-426614174000"),
-    "123e4567-e89b-12d3-a456-426614174000",
-  );
-  assertEquals(normalizePixKey("aleatoria", "xyz"), null);
-});
-
-Deno.test("validatePayoutInfo: documento optional (keeps saved), validated when sent", () => {
-  const ok = validatePayoutInfo({ pix_key_type: "email", pix_key: "a@x.com", titular_nome: "Ana" });
-  assert(ok.ok && ok.value.documento === null);
-  const withDoc = validatePayoutInfo({
-    pix_key_type: "cnpj", pix_key: VALID_CNPJ, titular_nome: "Ana ME", documento: "11.222.333/0001-81",
-  });
-  assert(withDoc.ok && withDoc.value.documento === VALID_CNPJ);
-  assert(!validatePayoutInfo({ pix_key_type: "email", pix_key: "a@x.com", titular_nome: "Ana", documento: "1" }).ok);
-  assert(!validatePayoutInfo({ pix_key_type: "boleto", pix_key: "x", titular_nome: "Ana" }).ok);
-  assert(!validatePayoutInfo({ pix_key_type: "email", pix_key: "a@x.com", titular_nome: "" }).ok);
-});
-
-Deno.test("maskDocumento never returns the full number", () => {
-  assertEquals(maskDocumento(VALID_CPF), "***.***.247-25");
-  assertEquals(maskDocumento(VALID_CNPJ), "**.***.***/0001-81");
-  assertEquals(maskDocumento(null), null);
 });
 
 Deno.test("buildAffiliateCode: accent-free first name + 4 chars, matches the DB check", () => {
@@ -258,7 +227,7 @@ Deno.test("dashboard: unknown/expired token is a 404", async () => {
 Deno.test("dashboard: shapes summary, anonymised referrals and commission states", async () => {
   const { db, handler } = setup();
   db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
-  db.queue("affiliates", "select", { data: { ...AFFILIATE, documento: VALID_CPF } });
+  db.queue("affiliates", "select", { data: AFFILIATE });
   db.queueRpc("affiliate_summaries", {
     data: {
       referrals_count: 2, trialing_count: 1, paying_count: 1, pending_cents: "1998",
@@ -286,8 +255,8 @@ Deno.test("dashboard: shapes summary, anonymised referrals and commission states
   assertEquals(res.status, 200);
   const body = await readJson(res);
   assertEquals(body.affiliate.code, "ana7k3f");
-  assertEquals(body.affiliate.documento_mascarado, "***.***.247-25");
-  assert(!JSON.stringify(body).includes(VALID_CPF));
+  assertEquals(body.affiliate.stripe, { connected: false, details_submitted: false, transfers_active: false });
+  assertEquals(body.min_payout_cents, 5000);
   assert(!JSON.stringify(body).includes("ws-1"), "workspace ids must not leak");
   assertEquals(body.summary.pending_cents, 1998);
   assertEquals(body.referrals, [
@@ -297,32 +266,92 @@ Deno.test("dashboard: shapes summary, anonymised referrals and commission states
   assertEquals(body.commissions[0].situacao, "pendente");
 });
 
-Deno.test("update_payout: validates and writes the PIX data for the token's affiliate", async () => {
-  const { db, handler } = setup();
+Deno.test("dashboard: an account not yet able to receive is re-read from Stripe", async () => {
+  const { gateway, calls } = fakeConnect();
+  const { db, handler } = setup({ connect: gateway });
   db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
-  db.queue("affiliates", "select", { data: AFFILIATE });
+  db.queue("affiliates", "select", { data: { ...AFFILIATE, stripe_account_id: "acct_1" } });
   db.queue("affiliates", "update", { data: null });
-  const res = await handler(post({
-    action: "update_payout", token: TOKEN, pix_key_type: "cpf", pix_key: "529.982.247-25",
-    documento: VALID_CPF, titular_nome: "Ana Souza",
-  }));
+  const res = await handler(post({ action: "dashboard", token: TOKEN }));
   assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).affiliate.stripe, { connected: true, details_submitted: true, transfers_active: true });
+  assertEquals(calls, ["status:acct_1"]);
   const upd = db.calls.find((c) => c.table === "affiliates" && c.operation === "update")!;
-  const payload = upd.payload as Record<string, unknown>;
-  assertEquals(payload.pix_key, VALID_CPF);
-  assertEquals(payload.documento, VALID_CPF);
-  assert(upd.modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === "aff-1"));
+  assertEquals((upd.payload as Record<string, unknown>).stripe_transfers_active, true);
 });
 
-Deno.test("update_payout: first save without documento is refused", async () => {
-  const { db, handler } = setup();
+Deno.test("dashboard: a Stripe outage still serves the panel with the stored status", async () => {
+  const { gateway } = fakeConnect({ retrieveAccountStatus: () => Promise.reject(new ConnectError("unknown", "timeout")) });
+  const { db, handler } = setup({ connect: gateway });
+  db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
+  db.queue("affiliates", "select", { data: { ...AFFILIATE, stripe_account_id: "acct_1", stripe_details_submitted: true } });
+  const res = await handler(post({ action: "dashboard", token: TOKEN }));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).affiliate.stripe, { connected: true, details_submitted: true, transfers_active: false });
+});
+
+Deno.test("connect_start: creates the Express account once (CAS) and returns the onboarding link", async () => {
+  const { gateway, calls } = fakeConnect();
+  const { db, handler } = setup({ connect: gateway });
   db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
   db.queue("affiliates", "select", { data: AFFILIATE });
-  const res = await handler(post({
-    action: "update_payout", token: TOKEN, pix_key_type: "email", pix_key: "a@x.com", titular_nome: "Ana",
-  }));
-  assertEquals(res.status, 400);
-  assert(!db.calls.some((c) => c.operation === "update"));
+  db.queue("affiliates", "update", { data: [{ stripe_account_id: "acct_new" }] });
+  const res = await handler(post({ action: "connect_start", token: TOKEN }));
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { url: "https://connect.stripe.com/setup/x" });
+  assertEquals(calls[0], "create:aff-1");
+  assertEquals(calls[1], `link:acct_new:https://www.mesaas.com.br/afiliados/painel/${TOKEN}?stripe=retorno`);
+  const upd = db.calls.find((c) => c.table === "affiliates" && c.operation === "update")!;
+  assert(upd.modifiers.some((m) => m.method === "is" && m.args[0] === "stripe_account_id" && m.args[1] === null));
+});
+
+Deno.test("connect_start: an existing account only gets a new link", async () => {
+  const { gateway, calls } = fakeConnect();
+  const { db, handler } = setup({ connect: gateway });
+  db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
+  db.queue("affiliates", "select", { data: { ...AFFILIATE, stripe_account_id: "acct_1" } });
+  const res = await handler(post({ action: "connect_start", token: TOKEN }));
+  assertEquals(res.status, 200);
+  assertEquals(calls.length, 1);
+  assert(calls[0].startsWith("link:acct_1:"));
+});
+
+Deno.test("connect_start: suspended affiliate, Stripe off or Stripe error", async () => {
+  const suspended = setup();
+  suspended.db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
+  suspended.db.queue("affiliates", "select", { data: { ...AFFILIATE, status: "suspended" } });
+  assertEquals((await suspended.handler(post({ action: "connect_start", token: TOKEN }))).status, 403);
+
+  const off = setup({ connect: null });
+  off.db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
+  off.db.queue("affiliates", "select", { data: AFFILIATE });
+  assertEquals((await off.handler(post({ action: "connect_start", token: TOKEN }))).status, 503);
+
+  const { gateway } = fakeConnect({ createExpressAccount: () => Promise.reject(new ConnectError("rejected", "invalid")) });
+  const broken = setup({ connect: gateway });
+  broken.db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
+  broken.db.queue("affiliates", "select", { data: AFFILIATE });
+  const res = await broken.handler(post({ action: "connect_start", token: TOKEN }));
+  assertEquals(res.status, 502);
+  assert(!JSON.stringify(await readJson(res)).includes("invalid"));
+});
+
+Deno.test("connect_dashboard: needs a submitted account", async () => {
+  const notYet = setup();
+  notYet.db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
+  notYet.db.queue("affiliates", "select", { data: { ...AFFILIATE, stripe_account_id: "acct_1" } });
+  assertEquals((await notYet.handler(post({ action: "connect_dashboard", token: TOKEN }))).status, 400);
+
+  const { gateway, calls } = fakeConnect();
+  const ready = setup({ connect: gateway });
+  ready.db.queue("affiliate_access_tokens", "select", { data: { affiliate_id: "aff-1" } });
+  ready.db.queue("affiliates", "select", {
+    data: { ...AFFILIATE, stripe_account_id: "acct_1", stripe_details_submitted: true },
+  });
+  const res = await ready.handler(post({ action: "connect_dashboard", token: TOKEN }));
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { url: "https://connect.stripe.com/express/x" });
+  assertEquals(calls, ["dash:acct_1"]);
 });
 
 Deno.test("unknown action / bad body / wrong method", async () => {

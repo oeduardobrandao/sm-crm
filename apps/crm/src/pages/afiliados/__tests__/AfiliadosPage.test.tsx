@@ -1,19 +1,38 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AfiliadosPage from '../AfiliadosPage';
-import { simulateCommission, formatRate } from '../simulator';
-import { affiliateSendLink, affiliateSignup } from '@/services/affiliates';
+import {
+  buildCommissionTable,
+  formatRate,
+  headlineFor,
+  monthsPhrase,
+  simulateCommission,
+} from '../simulator';
+import { affiliateSendLink, affiliateSignup, listCommissionRules } from '@/services/affiliates';
 import { listPublicPricingPlans } from '@/services/billing';
 
 vi.mock('@/services/affiliates', async (orig) => ({
   ...(await orig<typeof import('@/services/affiliates')>()),
   affiliateSignup: vi.fn(),
   affiliateSendLink: vi.fn(),
+  listCommissionRules: vi.fn(),
 }));
 vi.mock('@/services/billing', () => ({ listPublicPricingPlans: vi.fn() }));
+
+const PLANS = [
+  { id: 'free', name: 'Free', price_brl: 0 },
+  { id: 'start', name: 'Start', price_brl: 4990 },
+  { id: 'pro', name: 'Pro', price_brl: 9990 },
+  { id: 'max', name: 'Max', price_brl: 19990 },
+];
+const RULES = [
+  { plan_id: 'start', rate_bps: 3000, months: 3 },
+  { plan_id: 'pro', rate_bps: 2500, months: 3 },
+  { plan_id: 'max', rate_bps: 2000, months: 3 },
+];
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -26,29 +45,40 @@ function renderPage() {
   );
 }
 
-describe('simulateCommission', () => {
-  it('sums 20% of each monthly price per referral', () => {
-    expect(
-      simulateCommission([
-        { priceCents: 9990, count: 5 },
-        { priceCents: 4990, count: 2 },
-      ]),
-    ).toEqual({ monthlyCents: 1998 * 5 + 998 * 2, yearlyCents: (1998 * 5 + 998 * 2) * 12 });
+describe('commission table logic', () => {
+  const rows = buildCommissionTable(PLANS, RULES);
+
+  it('keeps paid plans with a rule, in plan order, with per-referral totals', () => {
+    expect(rows.map((r) => [r.planId, r.perMonthCents, r.perReferralCents])).toEqual([
+      ['start', 1497, 4491],
+      ['pro', 2497, 7491],
+      ['max', 3998, 11994],
+    ]);
   });
 
-  it('ignores free plans, negatives and NaN', () => {
+  it('drops plans without a rule or with rate 0', () => {
     expect(
-      simulateCommission([
-        { priceCents: 0, count: 10 },
-        { priceCents: 9990, count: -1 },
-        { priceCents: Number.NaN, count: 1 },
-      ]).monthlyCents,
-    ).toBe(0);
+      buildCommissionTable(PLANS, [
+        { plan_id: 'pro', rate_bps: 2500, months: 3 },
+        { plan_id: 'max', rate_bps: 0, months: 3 },
+      ]).map((r) => r.planId),
+    ).toEqual(['pro']);
   });
 
-  it('formats the rate', () => {
-    expect(formatRate(2000)).toBe('20%');
+  it('simulates a portfolio', () => {
+    expect(simulateCommission(rows, { start: 2, pro: 5, max: -1 })).toEqual({
+      totalCents: 4491 * 2 + 7491 * 5,
+      firstMonthCents: 1497 * 2 + 2497 * 5,
+    });
+  });
+
+  it('formats rate, months and the headline', () => {
+    expect(formatRate(3000)).toBe('30%');
     expect(formatRate(1250)).toBe('12,5%');
+    expect(monthsPhrase(3)).toBe('nos 3 primeiros meses');
+    expect(monthsPhrase(1)).toBe('no primeiro mês');
+    expect(headlineFor(rows)).toBe('Ganhe até 30% de cada assinatura nos 3 primeiros meses');
+    expect(headlineFor([])).toBeNull();
   });
 });
 
@@ -56,18 +86,29 @@ describe('AfiliadosPage', () => {
   beforeEach(() => {
     vi.mocked(affiliateSignup).mockReset().mockResolvedValue({ ok: true });
     vi.mocked(affiliateSendLink).mockReset().mockResolvedValue({ ok: true });
-    vi.mocked(listPublicPricingPlans).mockResolvedValue([
-      { id: 'free', name: 'Free', price_brl: 0 },
-      { id: 'pro', name: 'Pro', price_brl: 9990 },
-    ] as never);
+    vi.mocked(listPublicPricingPlans).mockResolvedValue(PLANS as never);
+    vi.mocked(listCommissionRules).mockResolvedValue(RULES);
   });
 
-  it('simulates with real plan prices (Pro starts at 5 referrals)', async () => {
+  it('shows the commission table and a headline built from it', async () => {
     renderPage();
-    expect(await screen.findByText('Pro')).toBeInTheDocument();
-    expect(screen.queryByText('Free')).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Ganhe até 30% de cada assinatura nos 3 primeiros meses',
+      }),
+    ).toBeInTheDocument();
+    const table = within(screen.getAllByRole('table')[0]);
+    expect(table.getByText('Start')).toBeInTheDocument();
+    expect(table.getByText('30%')).toBeInTheDocument();
+    expect(table.getByText('25%')).toBeInTheDocument();
+    expect(table.getByText('20%')).toBeInTheDocument();
+    expect(table.queryByText('Free')).not.toBeInTheDocument();
+  });
+
+  it('simulates with the table (Pro starts at 5 referrals)', async () => {
+    renderPage();
     await waitFor(() =>
-      expect(screen.getByTestId('sim-monthly').textContent?.replace(/\s/g, ' ')).toContain('99,90'),
+      expect(screen.getByTestId('sim-total').textContent?.replace(/\s/g, ' ')).toContain('374,55'),
     );
   });
 

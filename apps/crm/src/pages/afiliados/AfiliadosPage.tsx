@@ -7,6 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { affiliateSendLink, affiliateSignup } from '@/services/affiliates';
 import CommissionSimulator from './CommissionSimulator';
+import CommissionTable from './CommissionTable';
+import { headlineFor } from './simulator';
+import { useCommissionTable } from './useCommissionTable';
 
 const STEPS = [
   {
@@ -21,19 +24,19 @@ const STEPS = [
   },
   {
     icon: Wallet,
-    title: 'Receba 20% de cada pagamento',
-    body: 'Você ganha 20% de tudo que o indicado pagar com cartão, todo mês, enquanto a assinatura durar.',
+    title: 'Receba pelo Stripe',
+    body: 'Cada assinatura paga gera comissão nos primeiros meses, conforme o plano. O repasse cai na sua conta bancária todo mês.',
   },
 ];
 
 const RULES = [
-  'Comissão de 20% sobre cada pagamento de assinatura feito com cartão (Stripe), no plano mensal ou anual à vista.',
+  'A comissão segue a tabela acima: um percentual por plano sobre os primeiros meses pagos de cada indicado, com cartão (Stripe), no plano mensal ou anual à vista. No anual, vale a parte do valor que corresponde a esses meses.',
   'Assinaturas pagas no parcelado em 12x não geram comissão.',
-  'O período de teste grátis não gera comissão: ela começa no primeiro pagamento.',
+  'O período de teste grátis não gera comissão: a contagem dos meses começa no primeiro pagamento.',
   'Cada comissão fica disponível 30 dias depois do pagamento. Pagamentos estornados ou contestados não geram comissão.',
   'A indicação vale para cadastros feitos em até 60 dias depois do clique no seu link. Vale o último link clicado.',
   'Não vale indicar a si mesmo. O Mesaas pode suspender afiliados em caso de fraude ou divulgação enganosa.',
-  'Os repasses são feitos por PIX para a chave cadastrada no seu painel.',
+  'Os repasses são feitos pelo Stripe: você conecta sua conta no painel (o Stripe pede seus dados e sua conta bancária) e recebe todo mês, a partir de R$ 50 disponíveis.',
 ];
 
 export default function AfiliadosPage() {
@@ -45,6 +48,8 @@ export default function AfiliadosPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const table = useCommissionTable();
+  const headline = headlineFor(table.rows);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,11 +99,11 @@ export default function AfiliadosPage() {
             Programa de afiliados
           </p>
           <h1 className="mx-auto mb-4 max-w-2xl text-3xl font-bold leading-tight md:text-4xl">
-            Indique o Mesaas e ganhe 20% de cada pagamento
+            {headline ?? 'Indique o Mesaas e ganhe comissão por cada assinante'}
           </h1>
           <p className="mx-auto max-w-xl text-base text-muted-foreground">
-            Recomende o CRM para outros social medias e agências e receba comissão recorrente
-            enquanto eles forem assinantes.
+            Recomende o CRM para outros social medias e agências e receba comissão por cada pessoa
+            que assinar pelo seu link.
           </p>
         </section>
 
@@ -112,8 +117,12 @@ export default function AfiliadosPage() {
           ))}
         </section>
 
+        <section className="mb-6">
+          <CommissionTable rows={table.rows} isLoading={table.isLoading} />
+        </section>
+
         <section className="mb-12 grid gap-6 md:grid-cols-2" id="cadastro">
-          <CommissionSimulator />
+          <CommissionSimulator rows={table.rows} isLoading={table.isLoading} />
 
           <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
             {sentTo ? (

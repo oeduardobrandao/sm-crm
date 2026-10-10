@@ -1,10 +1,10 @@
-// Programa de afiliados no Admin: listar, detalhar, suspender/reativar, mudar percentual e
-// registrar repasse PIX. Spec: docs/superpowers/specs/2026-10-10-programa-de-afiliados-design.md
+// Programa de afiliados no Admin: listar, detalhar, suspender/reativar e editar a tabela de
+// comissões por plano. Os repasses saem pelo Stripe Connect (affiliate-payout-cron); aqui só
+// são lidos. Spec: docs/superpowers/specs/2026-10-10-programa-de-afiliados-design.md
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { insertAuditLog } from "../_shared/audit.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_PAYOUT_CENTS = 100_000_000; // R$ 1.000.000,00, só um teto contra digitação errada
 
 type Headers = Record<string, string>;
 
@@ -30,76 +30,69 @@ export function shapeAffiliateSummary(row: Record<string, unknown> | null | unde
   };
 }
 
-export type AffiliateUpdate = { status?: "active" | "suspended"; commission_rate_bps?: number };
+export type AffiliateUpdate = { status: "active" | "suspended" };
 
 export function validateAffiliateUpdate(
   body: Record<string, unknown>,
 ): { ok: true; id: string; patch: AffiliateUpdate } | { ok: false; error: string } {
   const id = body.affiliate_id;
   if (typeof id !== "string" || !UUID_RE.test(id)) return { ok: false, error: "affiliate_id is required" };
-  const patch: AffiliateUpdate = {};
-  if (body.status !== undefined) {
-    if (body.status !== "active" && body.status !== "suspended") return { ok: false, error: "Invalid status" };
-    patch.status = body.status;
-  }
-  if (body.commission_rate_bps !== undefined) {
-    const rate = body.commission_rate_bps;
-    if (typeof rate !== "number" || !Number.isInteger(rate) || rate < 0 || rate > 10_000) {
-      return { ok: false, error: "Percentual inválido (0 a 100%)." };
-    }
-    patch.commission_rate_bps = rate;
-  }
-  if (Object.keys(patch).length === 0) return { ok: false, error: "Nothing to update" };
-  return { ok: true, id, patch };
+  if (body.status !== "active" && body.status !== "suspended") return { ok: false, error: "Invalid status" };
+  return { ok: true, id, patch: { status: body.status } };
 }
 
-export type PayoutInput = {
-  affiliate_id: string;
-  amount_cents: number;
-  reference: string | null;
-  note: string | null;
-  paid_at: string;
-};
+export type CommissionRuleInput = { plan_id: string; rate_bps: number; months: number };
 
-export function validatePayout(
+export function validateCommissionRule(
   body: Record<string, unknown>,
-  now: Date,
-): { ok: true; value: PayoutInput } | { ok: false; error: string } {
-  const id = body.affiliate_id;
-  if (typeof id !== "string" || !UUID_RE.test(id)) return { ok: false, error: "affiliate_id is required" };
-  const amount = body.amount_cents;
-  if (typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0 || amount > MAX_PAYOUT_CENTS) {
-    return { ok: false, error: "Valor inválido." };
+): { ok: true; value: CommissionRuleInput } | { ok: false; error: string } {
+  const planId = body.plan_id;
+  if (typeof planId !== "string" || !/^[a-z0-9_-]{1,40}$/.test(planId)) {
+    return { ok: false, error: "plan_id is required" };
   }
-  const text = (v: unknown, max: number): string | null | undefined => {
-    if (v == null || v === "") return null;
-    if (typeof v !== "string") return undefined;
-    const t = v.trim();
-    if (t.length > max) return undefined;
-    return t || null;
-  };
-  const reference = text(body.reference, 200);
-  if (reference === undefined) return { ok: false, error: "Referência inválida." };
-  const note = text(body.note, 500);
-  if (note === undefined) return { ok: false, error: "Observação inválida." };
-
-  let paidAt = now;
-  if (body.paid_at != null && body.paid_at !== "") {
-    if (typeof body.paid_at !== "string" || Number.isNaN(Date.parse(body.paid_at))) {
-      return { ok: false, error: "Data inválida." };
-    }
-    paidAt = new Date(body.paid_at);
-    if (paidAt.getTime() > now.getTime() + 60_000) return { ok: false, error: "A data não pode ser futura." };
+  const rate = body.rate_bps;
+  if (typeof rate !== "number" || !Number.isInteger(rate) || rate < 0 || rate > 10_000) {
+    return { ok: false, error: "Percentual inválido (0 a 100%)." };
   }
-  return { ok: true, value: { affiliate_id: id, amount_cents: amount, reference, note, paid_at: paidAt.toISOString() } };
+  const months = body.months;
+  if (typeof months !== "number" || !Number.isInteger(months) || months < 1 || months > 120) {
+    return { ok: false, error: "Meses inválidos (1 a 120)." };
+  }
+  return { ok: true, value: { plan_id: planId, rate_bps: rate, months } };
 }
 
-const AFFILIATE_LIST_COLS = "id, code, nome, email, status, commission_rate_bps, pix_key_type, created_at";
+/** Regras + nome/preço do plano, na ordem dos planos. Planos pagos sem regra vêm com rate 0. */
+async function loadCommissionTable(svc: SupabaseClient) {
+  const [{ data: plans, error: plansErr }, { data: rules, error: rulesErr }] = await Promise.all([
+    svc.from("plans").select("id, name, price_brl, sort_order").eq("is_active", true).order("sort_order"),
+    svc.from("affiliate_commission_rules").select("plan_id, rate_bps, months"),
+  ]);
+  if (plansErr) throw plansErr;
+  if (rulesErr) throw rulesErr;
+  const byPlan = new Map<string, { rate_bps: number; months: number }>();
+  for (const r of (rules ?? []) as Array<{ plan_id: string; rate_bps: number; months: number }>) {
+    byPlan.set(r.plan_id, r);
+  }
+  return ((plans ?? []) as Array<{ id: string; name: string; price_brl: number | null }>)
+    .filter((p) => (p.price_brl ?? 0) > 0 || byPlan.has(p.id))
+    .map((p) => ({
+      plan_id: p.id,
+      plan_name: p.name,
+      price_brl: p.price_brl,
+      rate_bps: byPlan.get(p.id)?.rate_bps ?? 0,
+      months: byPlan.get(p.id)?.months ?? 0,
+      configured: byPlan.has(p.id),
+    }));
+}
+
+const AFFILIATE_LIST_COLS =
+  "id, code, nome, email, status, stripe_account_id, stripe_details_submitted, stripe_transfers_active, created_at";
 
 export async function handleListAffiliates(svc: SupabaseClient, headers: Headers): Promise<Response> {
-  const [{ data: affiliates, error }, { data: summaries, error: sumErr }] = await Promise.all([
+  const [{ data: affiliates, error }, { data: summaries, error: sumErr }, rules] = await Promise.all([
     svc.from("affiliates").select(AFFILIATE_LIST_COLS).order("created_at", { ascending: false }).limit(1000),
     svc.rpc("affiliate_summaries", { p_affiliate_id: null }),
+    loadCommissionTable(svc),
   ]);
   if (error) throw error;
   if (sumErr) throw sumErr;
@@ -107,10 +100,9 @@ export async function handleListAffiliates(svc: SupabaseClient, headers: Headers
   for (const s of (summaries ?? []) as Array<Record<string, unknown>>) byId.set(String(s.affiliate_id), s);
   const rows = ((affiliates ?? []) as Array<Record<string, unknown>>).map((a) => ({
     ...a,
-    has_pix: a.pix_key_type != null,
     summary: shapeAffiliateSummary(byId.get(String(a.id))),
   }));
-  return json({ affiliates: rows }, 200, headers);
+  return json({ affiliates: rows, rules }, 200, headers);
 }
 
 export async function handleGetAffiliate(
@@ -124,7 +116,7 @@ export async function handleGetAffiliate(
   const { data: affiliate, error } = await svc
     .from("affiliates")
     .select(
-      "id, code, nome, email, telefone, status, commission_rate_bps, pix_key_type, pix_key, documento, titular_nome, terms_accepted_at, created_at, updated_at",
+      "id, code, nome, email, telefone, status, stripe_account_id, stripe_details_submitted, stripe_transfers_active, stripe_status_checked_at, terms_accepted_at, created_at, updated_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -137,11 +129,12 @@ export async function handleGetAffiliate(
       .order("created_at", { ascending: false }).limit(1000),
     svc.from("affiliate_commissions")
       .select(
-        "id, workspace_id, stripe_invoice_id, invoice_amount_cents, rate_bps, commission_cents, refunded_amount_cents, disputed, net_cents, paid_at, available_at",
+        "id, workspace_id, stripe_invoice_id, invoice_amount_cents, plan_id, billing_reason, commissionable_cents, covered_months, rate_bps, commission_cents, refunded_amount_cents, disputed, net_cents, paid_at, available_at",
       )
       .eq("affiliate_id", id).order("paid_at", { ascending: false }).limit(500),
-    svc.from("affiliate_payouts").select("id, amount_cents, method, reference, note, paid_at, created_by")
-      .eq("affiliate_id", id).order("paid_at", { ascending: false }).limit(500),
+    svc.from("affiliate_payouts")
+      .select("id, amount_cents, status, stripe_account_id, stripe_transfer_id, failure_code, created_at, paid_at")
+      .eq("affiliate_id", id).order("created_at", { ascending: false }).limit(500),
   ]);
   for (const r of [summaryRes, referralsRes, commissionsRes, payoutsRes]) if (r.error) throw r.error;
 
@@ -219,48 +212,33 @@ export async function handleUpdateAffiliate(
   return json({ affiliate: data }, 200, headers);
 }
 
-export async function handleCreateAffiliatePayout(
+export async function handleUpdateCommissionRule(
   svc: SupabaseClient,
   body: Record<string, unknown>,
   adminUserId: string,
   headers: Headers,
-  now: Date = new Date(),
 ): Promise<Response> {
-  const input = validatePayout(body, now);
+  const input = validateCommissionRule(body);
   if (!input.ok) return json({ error: input.error }, 400, headers);
-  const p = input.value;
+  const r = input.value;
 
-  const { data: summary, error: sumErr } = await svc
-    .rpc("affiliate_summaries", { p_affiliate_id: p.affiliate_id })
-    .maybeSingle();
-  if (sumErr) throw sumErr;
-  if (!summary) return json({ error: "Affiliate not found" }, 404, headers);
-  const available = shapeAffiliateSummary(summary as Record<string, unknown>).available_cents;
-  if (p.amount_cents > available) {
-    return json({ error: "Valor maior que o saldo disponível do afiliado." }, 400, headers);
-  }
+  const { data: plan, error: planErr } = await svc.from("plans").select("id").eq("id", r.plan_id).maybeSingle();
+  if (planErr) throw planErr;
+  if (!plan) return json({ error: "Plan not found" }, 404, headers);
 
   const { data, error } = await svc
-    .from("affiliate_payouts")
-    .insert({
-      affiliate_id: p.affiliate_id,
-      amount_cents: p.amount_cents,
-      method: "pix",
-      reference: p.reference,
-      note: p.note,
-      paid_at: p.paid_at,
-      created_by: adminUserId,
-    })
-    .select("id, amount_cents, method, reference, note, paid_at, created_by")
+    .from("affiliate_commission_rules")
+    .upsert({ ...r, updated_at: new Date().toISOString() }, { onConflict: "plan_id" })
+    .select("plan_id, rate_bps, months")
     .single();
   if (error) throw error;
 
   await insertAuditLog(svc, {
-    action: "admin-create-affiliate-payout",
+    action: "admin-update-affiliate-commission-rule",
     actor_user_id: adminUserId,
-    resource_type: "affiliate",
-    resource_id: p.affiliate_id,
-    metadata: { payout_id: (data as { id?: string } | null)?.id ?? null, amount_cents: p.amount_cents },
+    resource_type: "affiliate_commission_rule",
+    resource_id: r.plan_id,
+    metadata: { rate_bps: r.rate_bps, months: r.months },
   });
-  return json({ payout: data }, 201, headers);
+  return json({ rule: data }, 200, headers);
 }

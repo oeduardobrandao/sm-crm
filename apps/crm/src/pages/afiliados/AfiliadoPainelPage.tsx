@@ -1,31 +1,26 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CircleAlert, Copy } from 'lucide-react';
+import { CircleAlert, CircleCheck, Clock, Copy, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { buildReferralLink } from '@/lib/referral';
 import {
   formatBRL,
   getAffiliateDashboard,
-  updateAffiliatePayout,
+  openAffiliateStripeDashboard,
+  startAffiliateStripeConnect,
   type AffiliateDashboard,
   type CommissionSituacao,
-  type PixKeyType,
+  type PayoutStatus,
   type ReferralSituacao,
 } from '@/services/affiliates';
 import CommissionSimulator from './CommissionSimulator';
+import CommissionTable from './CommissionTable';
 import { formatRate } from './simulator';
+import { useCommissionTable } from './useCommissionTable';
 
 const REFERRAL_LABEL: Record<ReferralSituacao, string> = {
   cadastrado: 'Cadastrado',
@@ -42,13 +37,11 @@ const COMMISSION_LABEL: Record<CommissionSituacao, string> = {
   contestada: 'Contestada',
 };
 
-const PIX_TYPES: Array<{ value: PixKeyType; label: string }> = [
-  { value: 'cpf', label: 'CPF' },
-  { value: 'cnpj', label: 'CNPJ' },
-  { value: 'email', label: 'E-mail' },
-  { value: 'telefone', label: 'Telefone' },
-  { value: 'aleatoria', label: 'Chave aleatória' },
-];
+const PAYOUT_LABEL: Record<PayoutStatus, string> = {
+  pending: 'Processando',
+  paid: 'Enviado',
+  failed: 'Não enviado (tentaremos no próximo mês)',
+};
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR');
@@ -79,109 +72,90 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   );
 }
 
-function PayoutForm({ token, data }: { token: string; data: AffiliateDashboard }) {
-  const queryClient = useQueryClient();
-  const a = data.affiliate;
-  const [type, setType] = useState<PixKeyType>(a.pix_key_type ?? 'cpf');
-  const [pixKey, setPixKey] = useState(a.pix_key ?? '');
-  const [documento, setDocumento] = useState('');
-  const [titular, setTitular] = useState(a.titular_nome ?? a.nome);
+/** Conta Stripe do afiliado: conectar, continuar o cadastro ou abrir o painel do Stripe. */
+function StripeCard({ token, data }: { token: string; data: AffiliateDashboard }) {
+  const { stripe, status } = data.affiliate;
+  const redirect = (url: string) => window.location.assign(url);
 
-  useEffect(() => {
-    setType(a.pix_key_type ?? 'cpf');
-    setPixKey(a.pix_key ?? '');
-    setTitular(a.titular_nome ?? a.nome);
-  }, [a.pix_key_type, a.pix_key, a.titular_nome, a.nome]);
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      updateAffiliatePayout(token, {
-        pix_key_type: type,
-        pix_key: pixKey,
-        titular_nome: titular,
-        ...(documento.trim() ? { documento } : {}),
-      }),
-    onSuccess: () => {
-      setDocumento('');
-      toast.success('Dados de pagamento salvos');
-      queryClient.invalidateQueries({ queryKey: ['affiliate-dashboard', token] });
-    },
+  const start = useMutation({
+    mutationFn: () => startAffiliateStripeConnect(token),
+    onSuccess: ({ url }) => redirect(url),
+    onError: (err: Error) => toast.error(err.message),
+  });
+  const dashboard = useMutation({
+    mutationFn: () => openAffiliateStripeDashboard(token),
+    onSuccess: ({ url }) => redirect(url),
     onError: (err: Error) => toast.error(err.message),
   });
 
-  return (
-    <form
-      className="rounded-xl border border-border bg-card p-6"
-      onSubmit={(e) => {
-        e.preventDefault();
-        mutation.mutate();
-      }}
-    >
-      <h2 className="mb-1 text-lg font-semibold">Dados para receber</h2>
-      <p className="mb-5 text-sm text-muted-foreground">
-        Os repasses são feitos por PIX. O CPF ou CNPJ precisa ser do titular da chave.
-      </p>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="pix-type">Tipo de chave</Label>
-          <Select value={type} onValueChange={(v) => setType(v as PixKeyType)}>
-            <SelectTrigger id="pix-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PIX_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="pix-key">Chave PIX</Label>
-          <Input id="pix-key" value={pixKey} onChange={(e) => setPixKey(e.target.value)} required />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="pix-titular">Nome do titular</Label>
-          <Input
-            id="pix-titular"
-            value={titular}
-            maxLength={120}
-            onChange={(e) => setTitular(e.target.value)}
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="pix-doc">CPF ou CNPJ do titular</Label>
-          <Input
-            id="pix-doc"
-            inputMode="numeric"
-            value={documento}
-            placeholder={a.documento_mascarado ?? '000.000.000-00'}
-            onChange={(e) => setDocumento(e.target.value)}
-          />
-          {a.documento_mascarado && (
-            <p className="text-xs text-muted-foreground">
-              Deixe em branco para manter o documento já salvo.
-            </p>
-          )}
-        </div>
-      </div>
-      <Button type="submit" className="mt-5" disabled={mutation.isPending}>
-        {mutation.isPending ? 'Salvando…' : 'Salvar dados de pagamento'}
+  const minPayout = formatBRL(data.min_payout_cents);
+
+  let icon = <Clock className="h-5 w-5 text-[var(--warning)]" aria-hidden="true" />;
+  let title = 'Conecte sua conta para receber';
+  let body = `Os repasses são feitos pelo Stripe direto para a sua conta bancária, todo mês, a partir de ${minPayout} disponíveis. O Stripe pede seus dados e sua conta bancária.`;
+  let action = (
+    <Button onClick={() => start.mutate()} disabled={start.isPending || status !== 'active'}>
+      {start.isPending ? 'Abrindo o Stripe…' : 'Conectar com Stripe'}
+    </Button>
+  );
+
+  if (stripe.transfers_active) {
+    icon = <CircleCheck className="h-5 w-5 text-[var(--success)]" aria-hidden="true" />;
+    title = 'Pronto para receber';
+    body = `Seu saldo disponível é enviado pelo Stripe todo mês, a partir de ${minPayout}. No painel do Stripe você vê os depósitos e pode trocar a conta bancária.`;
+    action = (
+      <Button variant="outline" onClick={() => dashboard.mutate()} disabled={dashboard.isPending}>
+        <ExternalLink className="mr-2 h-4 w-4" />
+        {dashboard.isPending ? 'Abrindo…' : 'Abrir painel do Stripe'}
       </Button>
-    </form>
+    );
+  } else if (stripe.details_submitted) {
+    title = 'Cadastro em análise pelo Stripe';
+    body =
+      'O Stripe está verificando seus dados. Se ele pedir alguma informação a mais, continue o cadastro pelo botão abaixo.';
+    action = (
+      <Button variant="outline" onClick={() => start.mutate()} disabled={start.isPending}>
+        {start.isPending ? 'Abrindo o Stripe…' : 'Continuar cadastro no Stripe'}
+      </Button>
+    );
+  } else if (stripe.connected) {
+    title = 'Termine seu cadastro no Stripe';
+    action = (
+      <Button onClick={() => start.mutate()} disabled={start.isPending || status !== 'active'}>
+        {start.isPending ? 'Abrindo o Stripe…' : 'Continuar cadastro no Stripe'}
+      </Button>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-6">
+      <div className="mb-2 flex items-center gap-2">
+        {icon}
+        <h2 className="text-lg font-semibold">{title}</h2>
+      </div>
+      <p className="mb-5 text-sm text-muted-foreground">{body}</p>
+      {action}
+    </section>
   );
 }
 
 export default function AfiliadoPainelPage() {
   const { token = '' } = useParams<{ token: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const table = useCommissionTable();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['affiliate-dashboard', token],
     queryFn: () => getAffiliateDashboard(token),
     enabled: token.length > 0,
     retry: false,
   });
+
+  // Volta do onboarding do Stripe: o painel já relê a conta no carregamento.
+  const stripeReturn = searchParams.get('stripe');
+  useEffect(() => {
+    if (stripeReturn === 'retorno') toast.success('Cadastro no Stripe atualizado');
+    if (stripeReturn) setSearchParams({}, { replace: true });
+  }, [stripeReturn, setSearchParams]);
 
   if (isLoading) {
     return (
@@ -221,6 +195,8 @@ export default function AfiliadoPainelPage() {
 
   const { affiliate, summary } = data;
   const link = buildReferralLink(affiliate.code);
+  const planName = (id: string | null) =>
+    table.rows.find((r) => r.planId === id)?.planName ?? id ?? '—';
 
   const copyLink = async () => {
     try {
@@ -235,8 +211,7 @@ export default function AfiliadoPainelPage() {
     <Shell>
       <h1 className="mb-1 text-2xl font-bold">Olá, {affiliate.nome.split(' ')[0]}!</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        Você recebe {formatRate(affiliate.commission_rate_bps)} de cada pagamento com cartão dos
-        seus indicados.
+        Você recebe comissão pelos primeiros meses pagos de cada indicado, conforme a tabela abaixo.
       </p>
 
       {affiliate.status === 'suspended' && (
@@ -283,14 +258,18 @@ export default function AfiliadoPainelPage() {
         <Kpi
           label="Disponível"
           value={formatBRL(summary.available_cents)}
-          hint="A receber no próximo repasse"
+          hint="Vai no próximo repasse"
         />
         <Kpi label="Já recebido" value={formatBRL(summary.paid_out_cents)} />
       </section>
 
+      <div className="mb-6">
+        <StripeCard token={token} data={data} />
+      </div>
+
       <section className="mb-6 grid gap-6 md:grid-cols-2">
-        <PayoutForm token={token} data={data} />
-        <CommissionSimulator rateBps={affiliate.commission_rate_bps} />
+        <CommissionTable rows={table.rows} isLoading={table.isLoading} />
+        <CommissionSimulator rows={table.rows} isLoading={table.isLoading} />
       </section>
 
       <section className="mb-6 rounded-xl border border-border bg-card p-6">
@@ -305,6 +284,7 @@ export default function AfiliadoPainelPage() {
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="py-2 pr-4 font-medium">Pagamento</th>
+                  <th className="py-2 pr-4 font-medium">Plano</th>
                   <th className="py-2 pr-4 font-medium">Valor pago</th>
                   <th className="py-2 pr-4 font-medium">Sua comissão</th>
                   <th className="py-2 pr-4 font-medium">Libera em</th>
@@ -315,6 +295,10 @@ export default function AfiliadoPainelPage() {
                 {data.commissions.map((c, i) => (
                   <tr key={`${c.paid_at}-${i}`} className="border-t border-border">
                     <td className="py-2 pr-4">{formatDate(c.paid_at)}</td>
+                    <td className="py-2 pr-4">
+                      {planName(c.plan_id)}{' '}
+                      <span className="text-muted-foreground">· {formatRate(c.rate_bps)}</span>
+                    </td>
                     <td className="py-2 pr-4">{formatBRL(c.invoice_amount_cents)}</td>
                     <td className="py-2 pr-4 font-medium">{formatBRL(c.net_cents)}</td>
                     <td className="py-2 pr-4">{formatDate(c.available_at)}</td>
@@ -353,17 +337,18 @@ export default function AfiliadoPainelPage() {
         </div>
 
         <div className="rounded-xl border border-border bg-card p-6">
-          <h2 className="mb-3 text-lg font-semibold">Repasses recebidos</h2>
+          <h2 className="mb-3 text-lg font-semibold">Repasses</h2>
           {data.payouts.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum repasse ainda.</p>
           ) : (
             <ul className="divide-y divide-border text-sm">
               {data.payouts.map((p, i) => (
-                <li key={`${p.paid_at}-${i}`} className="flex items-center justify-between py-2">
-                  <span>{formatDate(p.paid_at)}</span>
-                  <span className="font-medium">
-                    {formatBRL(p.amount_cents)} <span className="text-muted-foreground">· PIX</span>
+                <li key={`${p.created_at}-${i}`} className="flex items-center justify-between py-2">
+                  <span>
+                    {formatDate(p.paid_at ?? p.created_at)}{' '}
+                    <span className="text-muted-foreground">· {PAYOUT_LABEL[p.status]}</span>
                   </span>
+                  <span className="font-medium">{formatBRL(p.amount_cents)}</span>
                 </li>
               ))}
             </ul>

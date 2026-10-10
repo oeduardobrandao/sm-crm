@@ -2,60 +2,62 @@ import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
-  handleCreateAffiliatePayout,
   handleGetAffiliate,
   handleListAffiliates,
   handleUpdateAffiliate,
+  handleUpdateCommissionRule,
   validateAffiliateUpdate,
-  validatePayout,
+  validateCommissionRule,
 } from "../platform-admin/affiliates.ts";
 
 const H = { "Content-Type": "application/json" };
 const AFF = "11111111-1111-4111-8111-111111111111";
 const ADMIN = "22222222-2222-4222-8222-222222222222";
-const NOW = new Date("2026-10-10T12:00:00Z");
 
-Deno.test("validateAffiliateUpdate: status enum, integer bps in range, something to change", () => {
+Deno.test("validateAffiliateUpdate: status only", () => {
   assertEquals(validateAffiliateUpdate({ affiliate_id: AFF, status: "suspended" }), {
     ok: true, id: AFF, patch: { status: "suspended" },
-  });
-  assertEquals(validateAffiliateUpdate({ affiliate_id: AFF, commission_rate_bps: 2500 }), {
-    ok: true, id: AFF, patch: { commission_rate_bps: 2500 },
   });
   assert(!validateAffiliateUpdate({ affiliate_id: AFF }).ok);
   assert(!validateAffiliateUpdate({ affiliate_id: "x", status: "active" }).ok);
   assert(!validateAffiliateUpdate({ affiliate_id: AFF, status: "deleted" }).ok);
-  assert(!validateAffiliateUpdate({ affiliate_id: AFF, commission_rate_bps: 20.5 }).ok);
-  assert(!validateAffiliateUpdate({ affiliate_id: AFF, commission_rate_bps: 10001 }).ok);
 });
 
-Deno.test("validatePayout: positive integer cents, no future date, trimmed text", () => {
-  const ok = validatePayout({ affiliate_id: AFF, amount_cents: 1998, reference: "  E2E123 ", note: "" }, NOW);
-  assert(ok.ok);
-  assertEquals(ok.value, {
-    affiliate_id: AFF, amount_cents: 1998, reference: "E2E123", note: null, paid_at: NOW.toISOString(),
+Deno.test("validateCommissionRule: integer bps 0..10000, months 1..120", () => {
+  assertEquals(validateCommissionRule({ plan_id: "start", rate_bps: 3000, months: 3 }), {
+    ok: true, value: { plan_id: "start", rate_bps: 3000, months: 3 },
   });
-  assert(!validatePayout({ affiliate_id: AFF, amount_cents: 0 }, NOW).ok);
-  assert(!validatePayout({ affiliate_id: AFF, amount_cents: 10.5 }, NOW).ok);
-  assert(!validatePayout({ affiliate_id: AFF, amount_cents: 100, paid_at: "2027-01-01" }, NOW).ok);
-  assert(!validatePayout({ affiliate_id: AFF, amount_cents: 100, paid_at: "garbage" }, NOW).ok);
-  const past = validatePayout({ affiliate_id: AFF, amount_cents: 100, paid_at: "2026-10-01T00:00:00Z" }, NOW);
-  assert(past.ok && past.value.paid_at === "2026-10-01T00:00:00.000Z");
+  assert(!validateCommissionRule({ plan_id: "start", rate_bps: 30.5, months: 3 }).ok);
+  assert(!validateCommissionRule({ plan_id: "start", rate_bps: 10001, months: 3 }).ok);
+  assert(!validateCommissionRule({ plan_id: "start", rate_bps: 3000, months: 0 }).ok);
+  assert(!validateCommissionRule({ plan_id: "Start Plan!", rate_bps: 3000, months: 3 }).ok);
 });
 
 Deno.test("list-affiliates merges the summaries and coerces bigint strings", async () => {
   const db = createSupabaseQueryMock();
   db.queue("affiliates", "select", {
-    data: [{ id: AFF, code: "ana7k3f", nome: "Ana", email: "a@x.com", status: "active", commission_rate_bps: 2000, pix_key_type: "cpf", created_at: "2026-10-01" }],
+    data: [{ id: AFF, code: "ana7k3f", nome: "Ana", email: "a@x.com", status: "active", stripe_account_id: "acct_1", stripe_transfers_active: true, created_at: "2026-10-01" }],
   });
+  db.queue("plans", "select", {
+    data: [
+      { id: "free", name: "Free", price_brl: 0, sort_order: 0 },
+      { id: "start", name: "Start", price_brl: 4990, sort_order: 1 },
+      { id: "max", name: "Max", price_brl: 19990, sort_order: 3 },
+    ],
+  });
+  db.queue("affiliate_commission_rules", "select", { data: [{ plan_id: "start", rate_bps: 3000, months: 3 }] });
   db.queueRpc("affiliate_summaries", {
     data: [{ affiliate_id: AFF, referrals_count: 3, trialing_count: 1, paying_count: 2, pending_cents: "500", available_cents: "1998", paid_out_cents: "0", lifetime_cents: "2498" }],
   });
   const res = await handleListAffiliates(db as unknown as SupabaseClient, H);
   assertEquals(res.status, 200);
   const body = await readJson(res);
-  assertEquals(body.affiliates[0].has_pix, true);
+  assertEquals(body.affiliates[0].stripe_transfers_active, true);
   assertEquals(body.affiliates[0].summary.available_cents, 1998);
+  assertEquals(body.rules, [
+    { plan_id: "start", plan_name: "Start", price_brl: 4990, rate_bps: 3000, months: 3, configured: true },
+    { plan_id: "max", plan_name: "Max", price_brl: 19990, rate_bps: 0, months: 0, configured: false },
+  ]);
   assertEquals(body.affiliates[0].summary.paying_count, 2);
 });
 
@@ -95,31 +97,27 @@ Deno.test("update-affiliate writes the patch and an audit row", async () => {
   assertEquals(entry.resource_id, AFF);
 });
 
-Deno.test("create-affiliate-payout refuses more than the available balance", async () => {
-  const db = createSupabaseQueryMock();
-  db.queueRpc("affiliate_summaries", { data: { available_cents: "1000" } });
-  const res = await handleCreateAffiliatePayout(
-    db as unknown as SupabaseClient, { affiliate_id: AFF, amount_cents: 1001 }, ADMIN, H, NOW,
+Deno.test("update-affiliate-commission-rule upserts and audits; unknown plan is a 404", async () => {
+  const missing = createSupabaseQueryMock();
+  missing.queue("plans", "select", { data: null });
+  const r404 = await handleUpdateCommissionRule(
+    missing as unknown as SupabaseClient, { plan_id: "nope", rate_bps: 1000, months: 3 }, ADMIN, H,
   );
-  assertEquals(res.status, 400);
-  assert(!db.calls.some((c) => c.table === "affiliate_payouts"));
-});
+  assertEquals(r404.status, 404);
 
-Deno.test("create-affiliate-payout inserts, stamps the admin and audits", async () => {
   const db = createSupabaseQueryMock();
-  db.queueRpc("affiliate_summaries", { data: { available_cents: "1998" } });
-  db.queue("affiliate_payouts", "insert", { data: { id: "p1", amount_cents: 1998 } });
-  const res = await handleCreateAffiliatePayout(
-    db as unknown as SupabaseClient, { affiliate_id: AFF, amount_cents: 1998, reference: "E2E1" }, ADMIN, H, NOW,
+  db.queue("plans", "select", { data: { id: "pro" } });
+  db.queue("affiliate_commission_rules", "upsert", { data: { plan_id: "pro", rate_bps: 2500, months: 3 } });
+  const res = await handleUpdateCommissionRule(
+    db as unknown as SupabaseClient, { plan_id: "pro", rate_bps: 2500, months: 3 }, ADMIN, H,
   );
-  assertEquals(res.status, 201);
-  const ins = db.calls.find((c) => c.table === "affiliate_payouts")!.payload as Record<string, unknown>;
-  assertEquals(ins.created_by, ADMIN);
-  assertEquals(ins.method, "pix");
-  assertEquals(ins.reference, "E2E1");
+  assertEquals(res.status, 200);
+  const up = db.calls.find((c) => c.table === "affiliate_commission_rules")!;
+  assertEquals(up.options, { onConflict: "plan_id" });
+  assertEquals((up.payload as Record<string, unknown>).rate_bps, 2500);
   const audit = db.calls.find((c) => c.table === "audit_log")!.payload as Record<string, unknown>;
-  assertEquals(audit.action, "admin-create-affiliate-payout");
-  assertEquals((audit.metadata as Record<string, unknown>).payout_id, "p1");
+  assertEquals(audit.action, "admin-update-affiliate-commission-rule");
+  assertEquals(audit.resource_id, "pro");
 });
 
 Deno.test("a DB error throws for index.ts's generic 500", async () => {
