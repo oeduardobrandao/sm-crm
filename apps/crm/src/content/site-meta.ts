@@ -42,6 +42,7 @@ export const APP_ROUTE_PREFIXES = [
   'automacoes',
   'ajuda',
   'importar',
+  'afiliados',
 ] as const;
 
 export interface RouteMeta {

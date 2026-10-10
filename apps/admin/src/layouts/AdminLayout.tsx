@@ -16,6 +16,7 @@ import {
   Plug,
   TrendingUp,
   Film,
+  HandCoins,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { BuildPrefetch } from '../components/BuildPrefetch';
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { to: '/admin/metricas', icon: TrendingUp, label: 'Métricas' },
   { to: '/admin/workspaces', icon: Building2, label: 'Workspaces' },
   { to: '/admin/plans', icon: Package, label: 'Planos' },
+  { to: '/admin/afiliados', icon: HandCoins, label: 'Afiliados' },
   { to: '/admin/admins', icon: Users, label: 'Admins' },
   { to: '/admin/integrations', icon: Plug, label: 'Integrações' },
   { to: '/admin/banners', icon: Megaphone, label: 'Banners' },

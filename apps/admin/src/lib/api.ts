@@ -969,3 +969,111 @@ export function listAdminMcpGrants() {
 export function revokeAdminMcpGrant(grantId: string) {
   return adminApi<{ ok: true }>('revoke-admin-mcp-grant', { grant_id: grantId });
 }
+
+// ─── Programa de afiliados ─────────────────────────────────────
+
+export interface AffiliateSummary {
+  referrals_count: number;
+  trialing_count: number;
+  paying_count: number;
+  pending_cents: number;
+  available_cents: number;
+  paid_out_cents: number;
+  lifetime_cents: number;
+}
+
+export interface AffiliateListItem {
+  id: string;
+  code: string;
+  nome: string;
+  email: string;
+  status: 'active' | 'suspended';
+  commission_rate_bps: number;
+  has_pix: boolean;
+  created_at: string;
+  summary: AffiliateSummary;
+}
+
+export interface AffiliateDetail {
+  affiliate: {
+    id: string;
+    code: string;
+    nome: string;
+    email: string;
+    telefone: string | null;
+    status: 'active' | 'suspended';
+    commission_rate_bps: number;
+    pix_key_type: string | null;
+    pix_key: string | null;
+    documento: string | null;
+    titular_nome: string | null;
+    terms_accepted_at: string;
+    created_at: string;
+  };
+  summary: AffiliateSummary;
+  referrals: Array<{
+    workspace_id: string;
+    workspace_name: string | null;
+    created_at: string;
+    provider: string | null;
+    status: string | null;
+    plan_id: string | null;
+    billing_interval: string | null;
+  }>;
+  commissions: Array<{
+    id: string;
+    workspace_id: string | null;
+    workspace_name: string | null;
+    stripe_invoice_id: string;
+    invoice_amount_cents: number;
+    rate_bps: number;
+    commission_cents: number;
+    refunded_amount_cents: number;
+    disputed: boolean;
+    net_cents: number;
+    paid_at: string;
+    available_at: string;
+  }>;
+  payouts: Array<{
+    id: string;
+    amount_cents: number;
+    method: string;
+    reference: string | null;
+    note: string | null;
+    paid_at: string;
+  }>;
+}
+
+export type UpdateAffiliateParams = {
+  status?: 'active' | 'suspended';
+  commission_rate_bps?: number;
+};
+
+export type CreateAffiliatePayoutParams = {
+  amount_cents: number;
+  reference?: string;
+  note?: string;
+  paid_at?: string;
+};
+
+export function listAffiliates() {
+  return adminApi<{ affiliates: AffiliateListItem[] }>('list-affiliates');
+}
+
+export function getAffiliate(affiliateId: string) {
+  return adminApi<AffiliateDetail>('get-affiliate', { affiliate_id: affiliateId });
+}
+
+export function updateAffiliate(affiliateId: string, params: UpdateAffiliateParams) {
+  return adminApi<{ affiliate: { id: string; status: string; commission_rate_bps: number } }>(
+    'update-affiliate',
+    { affiliate_id: affiliateId, ...params },
+  );
+}
+
+export function createAffiliatePayout(affiliateId: string, params: CreateAffiliatePayoutParams) {
+  return adminApi<{ payout: AffiliateDetail['payouts'][number] }>('create-affiliate-payout', {
+    affiliate_id: affiliateId,
+    ...params,
+  });
+}

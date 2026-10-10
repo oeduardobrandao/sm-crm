@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
 import { installConsentEffects } from './lib/consentEffects';
+import { captureReferral } from './lib/referral';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
@@ -32,6 +33,9 @@ initSentry();
 // PostHog and the Crisp widget start only after the visitor's consent (lib/consentEffects.ts);
 // with consent already stored they still load on idle, off the landing page's critical path.
 installConsentEffects();
+
+// Programa de afiliados: grava o ?ref= de qualquer página do site para o cadastro (lib/referral.ts).
+captureReferral(window.location.search);
 
 initI18n({
   pt: {

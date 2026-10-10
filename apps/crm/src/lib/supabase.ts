@@ -225,7 +225,14 @@ export async function signIn(email: string, password: string) {
 export async function signUp(
   email: string,
   password: string,
-  meta?: { nome?: string; empresa?: string; telefone?: string; marketing_opt_in?: boolean },
+  meta?: {
+    nome?: string;
+    empresa?: string;
+    telefone?: string;
+    marketing_opt_in?: boolean;
+    /** Código de afiliado (lib/referral.ts); validado pelo trigger de atribuição no banco. */
+    ref_code?: string;
+  },
   redirectPath = '/login',
 ) {
   return supabase.auth.signUp({
