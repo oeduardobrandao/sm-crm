@@ -314,3 +314,15 @@ Deno.test("resolveDigestItem: a type that is an Object.prototype key falls back 
   const it = resolveDigestItem({ type: "constructor", metadata: null, link: null });
   assertEquals(it.badge, { tone: "neutral", label: "Notificação" });
 });
+
+Deno.test("buildDigestHtml: caps rendered rows below Gmail's clip and summarises the rest", () => {
+  const items = Array.from({ length: 100 }, (_, i) => ({ priority: 1, heading: `Item ${i}`, link: `/x/${i}` }));
+  const html = buildDigestHtml(items, "https://app.test");
+  assertEquals(html.split(">Abrir no Mesaas<").length - 1, 30);
+  assert(html.includes("Você tem 100 novidades"));
+  assert(html.includes("E mais 70 notificações."));
+  assert(html.includes(`href="https://app.test/dashboard"`));
+  assert(new TextEncoder().encode(html).length < 102_400, "under Gmail clip");
+  const small = buildDigestHtml(items.slice(0, 30), "https://app.test");
+  assert(!small.includes("E mais"));
+});

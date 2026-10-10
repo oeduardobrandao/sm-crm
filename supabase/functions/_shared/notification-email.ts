@@ -3,7 +3,7 @@ import { appBaseUrl } from "./app-url.ts";
 import { getPublishErrorDisplay } from "./publish-error-codes.ts";
 import { mesaasEmail } from "./email/shell.ts";
 import { badge, callout, heading, link, paragraph, spacer } from "./email/blocks.ts";
-import type { BadgeTone } from "./email/tokens.ts";
+import { type BadgeTone, EMAIL } from "./email/tokens.ts";
 
 export interface DigestItem {
   priority: number;
@@ -152,25 +152,35 @@ export function digestPreheader(items: DigestItem[]): string {
 
 function itemRow(it: DigestItem, appBase: string, last: boolean): string {
   const b = it.badge ?? DEFAULT_BADGE;
-  const bd = last ? "" : "border-bottom: 1px solid #eef0f3;";
+  const bd = last ? "" : `border-bottom: 1px solid ${EMAIL.divider};`;
   return `<tr><td style="padding: 20px 0; ${bd}">
     <p style="margin: 0 0 10px;">${badge(b.tone, b.label)}</p>
-    <p style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;">${escapeHtml(it.heading)}</p>
+    <p style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: ${EMAIL.ink}; word-break: break-word;">${escapeHtml(it.heading)}</p>
     ${it.context ? paragraph(it.context, "small", "2px 0 0") : ""}
     ${it.body ? spacer(10) + callout(escapeHtml(it.body)) : ""}
     <p style="margin: 12px 0 0; font-size: 14px;">${link(`${appBase}${it.link}`, "Abrir no Mesaas")}</p>
   </td></tr>`;
 }
 
+/** Items rendered in one digest. Each row is ~1.4 KB; past ~67 the HTML
+ * crosses Gmail's 102 KB clip and the footer disappears. The rest are
+ * summarised in one line that links to the app. */
+export const DIGEST_RENDER_CAP = 30;
+
 export function buildDigestHtml(items: DigestItem[], appBase: string): string {
   const n = items.length;
-  const rows = items.map((it, i) => itemRow(it, appBase, i === n - 1)).join("");
+  const shown = items.slice(0, DIGEST_RENDER_CAP);
+  const extra = n - shown.length;
+  const rows = shown.map((it, i) => itemRow(it, appBase, i === shown.length - 1)).join("");
   return mesaasEmail({
     preheader: digestPreheader(items),
     eyebrow: "Resumo de notificações",
     sections: [
       heading(n === 1 ? "Você tem 1 novidade" : `Você tem ${n} novidades`),
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`,
+      ...(extra > 0
+        ? [paragraph(extra === 1 ? "E mais 1 notificação." : `E mais ${extra} notificações.`, "body", "0 0 12px") + link(`${appBase}/dashboard`, "Ver todas no Mesaas")]
+        : []),
     ],
     footerLines: ["Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações."],
   });

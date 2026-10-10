@@ -17,6 +17,7 @@ export const MESAAS_TAGLINE = "Mesaas · Plataforma de gestão para agências de
 // which does not inherit font-family from the wrapper table; other clients
 // inherit it from the wrapper's inline style even if <style> is stripped.
 const MOBILE_CSS = `body, table, td, p, a, li, h1, span, strong { font-family: ${FONT_STACK}; }
+a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }
 @media (max-width: 600px) {
   .m-px { padding-left: 24px !important; padding-right: 24px !important; }
   .m-h1 { font-size: 22px !important; line-height: 28px !important; }
@@ -36,6 +37,7 @@ function documentOpen(preheader: string): string {
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <style>${MOBILE_CSS}</style>
+<!--[if mso]><style>body, table, td, p, a, li, h1, span, strong { font-family: 'Segoe UI', Arial, sans-serif !important; }</style><![endif]-->
 </head>
 <body style="margin: 0; padding: 0; background: ${EMAIL.page};">
 ${buildPreheader(preheader)}
@@ -49,7 +51,9 @@ function cardOpen(): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${EMAIL.card}" style="background: ${EMAIL.card}; border: 1px solid ${EMAIL.border}; border-radius: 12px; border-collapse: separate; overflow: hidden;">`;
 }
 
-function sectionRows(sections: string[], firstTop: number, firstPrefix = ""): string {
+function sectionRows(all: string[], firstTop: number, firstPrefix = ""): string {
+  // A block that degrades to "" (button with an unsafe URL) must not leave a padded blank row.
+  const sections = all.filter((s) => s !== "");
   const rows = sections.map((s, i) =>
     `<tr><td class="m-px" style="padding: ${i === 0 ? firstTop : 24}px 40px 0;">${i === 0 ? firstPrefix : ""}${s}</td></tr>`
   ).join("\n");

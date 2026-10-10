@@ -303,7 +303,7 @@ function cartaoEvento(ativas: AgendaClienteOcorrencia[], cor: string, organizado
 function listaCanceladas(canceladas: AgendaClienteOcorrencia[], rotulo: string): string {
   const visiveis = canceladas.slice(0, DIAS_LISTADOS).map((o) => `${o.titulo}: ${formatarQuandoAgenda(o)}`);
   return callout(
-    `<p style="margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #4b5563;">${escapeHtml(rotulo)}</p>` +
+    `<p style="margin: 0 0 6px; font-size: 13px; font-weight: 600; color: ${EMAIL.muted};">${escapeHtml(rotulo)}</p>` +
       dateList(visiveis, canceladas.length - visiveis.length, true),
   );
 }
@@ -475,7 +475,7 @@ export function montarEmailAgendaCliente(
     sections: [heading(h1) + paragraph(`${saudacao} ${abertura}`, "body", "0"), ...secoes, fecho].filter((s) => s !== ""),
     footerHtml: [
       `Enviado por ${escapeHtml(workspaceName)} via Mesaas`,
-      link(ctx.unsubUrl, "Não quero mais receber esses avisos", "#4b5563"),
+      link(ctx.unsubUrl, "Não quero mais receber esses avisos", EMAIL.muted),
     ],
   });
 

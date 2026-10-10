@@ -259,7 +259,7 @@ Deno.test("preheader: singular forms for exactly 1 post / 1 message", () => {
 
 // --- shell (faixa / radius / rodapé) --------------------------------------------------
 
-Deno.test("shell: header band carries the real brandColor, card is 16px radius", () => {
+Deno.test("shell: header band carries the real brandColor, card is 12px radius", () => {
   const html = buildClientEventEmail({ ...BASE_PARAMS, brandColor: "#e11d48" });
   assert(html.includes("background: #e11d48"), "expected the brandColor on the header band");
   assert(html.includes("border-radius: 12px"), "expected the 12px card radius");
