@@ -80,27 +80,36 @@ async function call<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+async function shortHash(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest).slice(0, 6), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export function createAffiliateConnectGateway(stripe: Stripe): AffiliateConnectGateway {
   const opts = { timeout: STRIPE_TIMEOUT_MS };
   return {
     createExpressAccount: ({ email, affiliateId }) =>
       call(async () => {
-        const account = await stripe.accounts.create(
-          {
-            type: "express",
-            country: "BR",
-            email,
-            // No Brasil o Stripe recusa `transfers` sem `card_payments` ("You cannot request
-            // the transfers capability without the card_payments capability for accounts in BR").
-            // O afiliado não cobra ninguém; card_payments só destrava a conta para receber repasses.
-            capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-            metadata: { affiliate_id: affiliateId },
-          },
-          // Dois cliques em sequência devolvem a mesma conta. A chave vale só pela hora
-          // corrente: o Stripe guarda também respostas de erro por 24h, e uma chave fixa
-          // repetiria o erro antigo mesmo depois de corrigida a causa (ex.: perfil do Connect).
-          { ...opts, idempotencyKey: `affiliate-connect:${affiliateId}:${Math.floor(Date.now() / 3_600_000)}` },
-        );
+        const params: Stripe.AccountCreateParams = {
+          type: "express",
+          country: "BR",
+          email,
+          // No Brasil o Stripe recusa `transfers` sem `card_payments` ("You cannot request
+          // the transfers capability without the card_payments capability for accounts in BR").
+          // O afiliado não cobra ninguém; card_payments só destrava a conta para receber repasses.
+          capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+          metadata: { affiliate_id: affiliateId },
+        };
+        // Dois cliques em sequência devolvem a mesma conta. A chave vale só pela hora corrente
+        // (o Stripe guarda também respostas de erro por 24h, e uma chave fixa repetiria o erro
+        // antigo mesmo depois de corrigida a causa) e leva uma impressão digital dos parâmetros
+        // (o Stripe rejeita reusar uma chave com parâmetros diferentes).
+        const fingerprint = await shortHash(JSON.stringify(params));
+        const hour = Math.floor(Date.now() / 3_600_000);
+        const account = await stripe.accounts.create(params, {
+          ...opts,
+          idempotencyKey: `affiliate-connect:${affiliateId}:${hour}:${fingerprint}`,
+        });
         return account.id;
       }),
     createOnboardingLink: ({ accountId, refreshUrl, returnUrl }) =>
