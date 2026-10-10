@@ -342,7 +342,7 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
       return json({ url });
     } catch (err) {
       if (err instanceof ConnectError) {
-        console.error("[affiliate-public] connect_start stripe error:", err.message);
+        console.error("[affiliate-public] connect_start stripe error:", err.message, err.detail ?? "");
         return json({ error: MSG_STRIPE_UNAVAILABLE }, 502);
       }
       throw err;
@@ -363,7 +363,7 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
       return json({ url: await deps.connect.createDashboardLink(affiliate.stripe_account_id) });
     } catch (err) {
       if (err instanceof ConnectError) {
-        console.error("[affiliate-public] connect_dashboard stripe error:", err.message);
+        console.error("[affiliate-public] connect_dashboard stripe error:", err.message, err.detail ?? "");
         return json({ error: MSG_STRIPE_UNAVAILABLE }, 502);
       }
       throw err;
