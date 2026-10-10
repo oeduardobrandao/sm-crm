@@ -71,7 +71,8 @@ The edge functions (`tiktok-publish`, `tiktok-publish-cron`, `tiktok-webhook`, `
 10. **The mapping is a permanent helper, `public.tiktok_legacy_target_status(p_legacy text, p_post_status text)`** (IMMUTABLE, service_role only). The backfill, the parity block, the reconcile script and the SQL tests share one mapping instead of four copies. The backfill UPDATE itself is also a function, `public.tiktok_backfill_targets(p_conta uuid DEFAULT NULL)` (DEFINER, service_role only): the migration calls it with `NULL`, and the test calls it with its own workspace id, so the test exercises the shipped UPDATE rather than a copy. Both are dropped with the columns in the follow-up.
 11. **Parity on stories may abort the migration on prod.** P1's backfill (`20261010100002:110-115`) created a `tiktok` row for every `tiktok`/`both` post with no `tipo` filter, and `20261010100006:117-119` documents that such legacy rows exist. The migration keeps the spec's assertion. Task 9's pre-deploy query counts these rows and ships an owner-gated remediation `DELETE` (pendente rows only), to run before the migration if the count is non-zero.
 12. **The reconcile query is time-bounded.**
-    - It only touches posts whose `workflow_posts.updated_at >= :'window_start'` (the moment the migration ran).
+    - It only touches posts whose `workflow_posts.updated_at >= window_start` (the moment noted before the migration ran). The script has no psql variable: the owner edits the placeholder in a copy, `SELECT set_config('p4.window_start', 'DEFINA-O-INSTANTE-DO-PASSO-2', false)`, and the unedited value fails the timestamp cast on purpose.
+    - A remap to `falha` also requires the post to be in `falha_publicacao` (the legacy failure path always moved it there), so a post that the new code reset and the user rescheduled is not sent back to `falha`. A destination with a fresh `processing_at` (under 10 minutes) is skipped, so a publish lock is never wiped.
     - Without the bound, a legacy `failed` left behind on a post that was later rescheduled would be copied back onto a fresh `pendente` destination. That would reintroduce bug 3.
     - A `permalink` that the new webhook cleared on purpose would also be restored.
 13. **The reorder TikTok guard applies regardless of the post's status.** The Instagram guard only checks `agendado`. A `processando` destination can sit on a post that was moved to `aprovado_cliente` mid-publish (spec §2e), and its schedule should not move under it either.
@@ -6565,7 +6566,7 @@ The steps follow spec §5. Prod is `skjzpekeqefvlojenfsw` and staging is `wlyzhy
 
    - Act on the report as the script header says.
    - If `tiktok_targets_on_stories` is not empty, run the commented `DELETE` from the script as a separate file, with the owner's OK (link to that project first).
-   - The owner holds off TikTok publishing (DK TESTE) from here until step 5 ends.
+   - The owner holds off TikTok publishing (DK TESTE) from here until step 5 ends. Between the `db push` (step 3) and the reconcile (step 5), do not publish, cancel, move or reschedule TikTok posts: the reconcile's window cannot tell new-code writes from old-function writes on the same post, and a frozen legacy `processing`/`published` on a post the new code cancelled and the user rescheduled would still be remapped.
    - **Write down the current time** on prod. It is the reconcile `window_start`:
 
      ```bash

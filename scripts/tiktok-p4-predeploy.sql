@@ -19,7 +19,10 @@
 --   failed_retry_blocked_by_schedule: falhas pré-P4 (tiktok_publish_status = 'failed') de posts em
 --     agendado/falha_publicacao cujo scheduled_at é NULL ou futuro. Depois do P4 a fase retry do
 --     cron reenfileira o destino (agendado), mas o claim de init exige scheduled_at <= now():
---     essas linhas só voltam a publicar quando o post for reagendado (ou reenviado à mão).
+--       * scheduled_at NULL: só volta a publicar depois de reagendar (ou reenviar à mão);
+--       * scheduled_at futuro: publica sozinho quando a data chegar;
+--       * qualquer linha com tiktok_publish_retry_count >= 3 nunca é re-tentada
+--         automaticamente, qualquer que seja o agendamento.
 --     Decidir caso a caso antes do deploy.
 SELECT jsonb_pretty(jsonb_build_object(
   'legacy_status_counts', (
