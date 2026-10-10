@@ -40,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Spinner } from '@/components/ui/spinner';
+import { TableSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
 import { IDEIA_STATUS_LABELS } from './ideiaLabels';
 
@@ -358,9 +358,7 @@ export default function IdeiasPage() {
       </Sheet>
 
       {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+        <TableSkeleton columns={6} />
       ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: '2.5rem', textAlign: 'center' }}>
           <Lightbulb

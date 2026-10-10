@@ -10,6 +10,7 @@ import {
   Archive,
   ArrowRightLeft,
 } from 'lucide-react';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { getWorkflowEvents, type WorkflowEvent } from '../../../store';
 import { buildWorkflowTimeline, type WorkflowTimelineNode } from './workflowTimeline';
 
@@ -102,7 +103,7 @@ export function WorkflowHistoryView({ workflowId }: WorkflowHistoryViewProps) {
   });
 
   if (isLoading) {
-    return <div className="workflow-history-empty">Carregando...</div>;
+    return <ListSkeleton rows={4} />;
   }
 
   const nodes = buildWorkflowTimeline(events ?? []);

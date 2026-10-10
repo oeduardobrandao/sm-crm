@@ -3,7 +3,7 @@ import { ChevronUp, ChevronDown, CircleDashed, Plus, Route } from 'lucide-react'
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { TableSkeleton } from '@/components/ui/skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { getInitials } from '@/lib/initials';
 import { formatPostDate } from '@/utils/postDate';
@@ -174,13 +174,7 @@ export function PostsListView({
   }, [posts, sort, cardsByWorkflowId, postEntityByPostId, membroNomeById]);
 
   if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
-    );
+    return <TableSkeleton rows={8} columns={COLUMNS.length} />;
   }
 
   if (posts.length === 0) {

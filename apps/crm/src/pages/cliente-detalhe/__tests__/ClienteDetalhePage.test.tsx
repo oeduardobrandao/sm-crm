@@ -141,11 +141,11 @@ describe('ClienteDetalhePage', () => {
     await waitFor(() => expect(screen.getByText('lista de clientes')).toBeInTheDocument());
   });
 
-  it('shows a spinner while the client is loading, not the shell', () => {
+  it('shows a skeleton while the client is loading, not the shell', () => {
     setAuth('owner');
     mockedGetCliente.mockReturnValue(new Promise(() => undefined));
     const { container } = renderAt('/clientes/42/visao-geral');
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="crm-skeleton"]')).toBeInTheDocument();
     expect(screen.queryByText('conteudo visao-geral')).not.toBeInTheDocument();
   });
 
@@ -346,7 +346,7 @@ describe('ClienteDetalhePage', () => {
       await waitFor(() => expect(mockedGetCliente).toHaveBeenCalled());
       expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/financeiro');
       expect(screen.queryByText('conteudo financeiro')).not.toBeInTheDocument();
-      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="crm-skeleton"]')).toBeInTheDocument();
     });
 
     it('never bounces off Relatórios while workspaceRole is still resolving', () => {
@@ -375,7 +375,7 @@ describe('ClienteDetalhePage', () => {
       await waitFor(() => expect(mockedGetCliente).toHaveBeenCalled());
       expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/hub/marca');
       expect(screen.queryByText('conteudo marca')).not.toBeInTheDocument();
-      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="crm-skeleton"]')).toBeInTheDocument();
     });
 
     it('shows a loading state for Relatórios (not a redirect, not the tab) while can() is unknown', async () => {
@@ -384,7 +384,7 @@ describe('ClienteDetalhePage', () => {
       await waitFor(() => expect(mockedGetCliente).toHaveBeenCalled());
       expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/relatorios');
       expect(screen.queryByText('conteudo relatorios')).not.toBeInTheDocument();
-      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="crm-skeleton"]')).toBeInTheDocument();
     });
 
     it('redirects a portal tab to Visão geral once can() resolves false', async () => {

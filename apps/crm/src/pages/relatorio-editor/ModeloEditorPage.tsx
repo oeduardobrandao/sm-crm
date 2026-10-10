@@ -6,7 +6,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Info, Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { DocSkeleton } from '@/components/ui/skeletons';
 import type { ReportBlock } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import { getReportTemplate, type ReportTemplateRow } from '../../services/reportTemplates';
@@ -210,11 +210,8 @@ export default function ModeloEditorPage() {
   });
 
   if (isLoading) {
-    return (
-      <div style={{ display: 'grid', placeItems: 'center', minHeight: '50vh' }}>
-        <Spinner />
-      </div>
-    );
+    // Same 880px column as the editor header and canvas.
+    return <DocSkeleton style={{ maxWidth: 880, margin: '0 auto' }} />;
   }
 
   // F5 (revisão final): getReportTemplate falhar (rede, RLS, etc.) não é o

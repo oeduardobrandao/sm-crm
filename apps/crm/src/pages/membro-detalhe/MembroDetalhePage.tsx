@@ -5,7 +5,8 @@ import { ArrowLeft, Edit2, Wallet, CheckCircle2, Clock } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus, TableSkeleton } from '@/components/ui/skeletons';
 import {
   Table,
   TableBody,
@@ -95,10 +96,27 @@ export default function MembroDetalhePage() {
         )}
       </div>
 
-      {(loadingMembros || loadingTx) && (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+      {loadingMembros && !membro && (
+        <SkeletonStatus>
+          <div className="flex items-center gap-4" style={{ margin: '1.5rem 0' }}>
+            <Skeleton className="h-14 w-14 shrink-0 rounded-full" />
+            <div className="flex flex-col gap-2 min-w-0 flex-1">
+              <Skeleton className="h-6 w-48 max-w-full" />
+              <Skeleton className="h-3.5 w-32 max-w-full" />
+            </div>
+          </div>
+          {canEditTeam && (
+            <div
+              className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+              style={{ marginBottom: '1.5rem' }}
+            >
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-20" />
+              ))}
+            </div>
+          )}
+          <Skeleton className="h-28 w-full" />
+        </SkeletonStatus>
       )}
 
       {membro && (
@@ -178,7 +196,9 @@ export default function MembroDetalhePage() {
           {canEditTeam && (
             <>
               <h3 style={{ marginBottom: 12 }}>Transações</h3>
-              {canSeeFinancials === true ? (
+              {canSeeFinancials === true && loadingTx ? (
+                <TableSkeleton rows={3} columns={5} />
+              ) : canSeeFinancials === true ? (
                 <div className="card">
                   <Table>
                     <TableHeader>

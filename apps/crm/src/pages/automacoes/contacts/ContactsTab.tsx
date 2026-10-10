@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
+import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
   Select,
@@ -203,9 +204,11 @@ export function ContactsTab() {
       </div>
 
       {listQuery.isPending ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+        isDesktop ? (
+          <TableSkeleton rows={6} columns={6} />
+        ) : (
+          <CardListSkeleton rows={4} />
+        )
       ) : listQuery.isError ? (
         <div style={{ padding: '2rem', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>

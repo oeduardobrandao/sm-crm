@@ -172,12 +172,12 @@ describe('ConfiguracaoLayout', () => {
       // genuinely removed, or a transient lookup error -- the guard must
       // never run `canAccessConfigTab`/render tabs with a null role: that
       // would either flash tabs or redirect a real owner off /membros
-      // before their real role arrives. WHICH terminal UI renders (spinner,
+      // before their real role arrives. WHICH terminal UI renders (skeleton,
       // the "removed" card, or the "couldn't confirm" card) is asserted by
       // the dedicated tests below; this one only guards the tab logic
       // itself, and previously only ever exercised the `loading:false`
       // case despite its title claiming to cover "loading or resolved" too
-      // -- its three assertions held identically for the spinner and the
+      // -- its three assertions held identically for the skeleton and the
       // card, so it could never have failed for the thing its title named.
       setAuth(null, { loading, membershipResolved });
       renderAt('/configuracao/membros');
@@ -187,20 +187,20 @@ describe('ConfiguracaoLayout', () => {
     },
   );
 
-  it('shows a short explanatory message instead of spinning forever once workspaceRole resolves to no membership', () => {
+  it('shows a short explanatory message instead of loading forever once workspaceRole resolves to no membership', () => {
     // Regression: live revocation sets workspaceRole to null when a
-    // membership row disappears mid-session. Gating the spinner on
+    // membership row disappears mid-session. Gating the skeleton on
     // `workspaceRole === null` (same as the `loading` case above) left a
-    // removed user stuck on the spinner indefinitely, since nothing was ever
+    // removed user stuck on the skeleton indefinitely, since nothing was ever
     // going to make workspaceRole non-null again. `loading:false` is the
     // signal that the lookup has actually settled, so this state must render
-    // a message, not the spinner. `membershipResolved:true` is what makes
+    // a message, not the skeleton. `membershipResolved:true` is what makes
     // this the DEFINITIVE "removed" card rather than the "couldn't confirm"
     // one below -- see that test for the errored-lookup case.
     setAuth(null, { loading: false, membershipResolved: true });
     const { container } = renderAt('/configuracao/membros');
     expect(screen.getByText('Sem acesso a este workspace')).toBeInTheDocument();
-    expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-testid="crm-skeleton"]')).not.toBeInTheDocument();
   });
 
   it('shows a could-not-confirm message with a retry action, not the removed-from-workspace card, when the membership lookup errored', () => {
@@ -213,15 +213,15 @@ describe('ConfiguracaoLayout', () => {
     expect(screen.queryByText('Sem acesso a este workspace')).not.toBeInTheDocument();
     expect(screen.getByText('Não foi possível confirmar seu acesso')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /tentar novamente/i })).toBeInTheDocument();
-    expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-testid="crm-skeleton"]')).not.toBeInTheDocument();
   });
 
-  it('shows the spinner (not either message card) while still loading', () => {
+  it('shows the skeleton (not either message card) while still loading', () => {
     setAuth(null, { loading: true, membershipResolved: false });
     const { container } = renderAt('/configuracao/membros');
     expect(screen.queryByText('Sem acesso a este workspace')).not.toBeInTheDocument();
     expect(screen.queryByText('Não foi possível confirmar seu acesso')).not.toBeInTheDocument();
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="crm-skeleton"]')).toBeInTheDocument();
   });
 
   it('lets a genuine owner reach Membros even when profiles.role is stale ("agent")', () => {

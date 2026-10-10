@@ -1,7 +1,8 @@
 import { Fragment, useEffect } from 'react';
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { UserX, AlertTriangle } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { useAuth } from '../../context/AuthContext';
 import { visibleConfigTabs, canAccessConfigTab } from './configTabs';
 
@@ -22,9 +23,29 @@ export default function ConfiguracaoLayout() {
   // strip early would flash the agent-sized set of tabs at an owner, and the
   // guard below would bounce them off a tab they are allowed to see.
   if (loading || !user) {
+    // The shell's silhouette (title, section nav, content), drawn with its own classes so
+    // it lands where the real shell will. The nav is plain bars on purpose: which tabs
+    // exist depends on the role that is still loading.
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <Spinner size="lg" />
+      <div className="page-content config-page">
+        <SkeletonStatus className="config-shell">
+          <div className="config-shell-header">
+            <Skeleton className="h-7 w-44" />
+          </div>
+          <div className="config-shell-body">
+            <div className="config-nav">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-7 w-[140px] shrink-0" />
+              ))}
+            </div>
+            <div className="config-shell-content flex flex-col gap-4">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-10 w-full max-w-md" />
+              <Skeleton className="h-10 w-full max-w-md" />
+              <Skeleton className="h-10 w-full max-w-md" />
+            </div>
+          </div>
+        </SkeletonStatus>
       </div>
     );
   }
@@ -41,9 +62,9 @@ export default function ConfiguracaoLayout() {
   //   - membershipResolved === 'error' (or, defensively, anything other than
   //     `true`): the lookup THREW -- a network/RLS blip, not a resolved
   //     answer. Showing the "removed" card here would tell a real member
-  //     they've been kicked out over a transient error. Gating the spinner
+  //     they've been kicked out over a transient error. Gating the skeleton
   //     above on `workspaceRole === null` instead of `loading` -- as this
-  //     used to -- left a removed user spinning forever with no explanation,
+  //     used to -- left a removed user stuck loading forever with no explanation,
   //     since nothing was ever going to make workspaceRole non-null again;
   //     so this branch must render SOMETHING, just not the definitive claim.
   if (workspaceRole === null && membershipResolved === true) {

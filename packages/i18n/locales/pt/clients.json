@@ -80,7 +80,6 @@
     "followerChartEmpty": "Dados de seguidores insuficientes para exibir o gráfico.",
     "followerTooltip": "{{count}} Seguidores",
     "postsTitle": "Últimas Publicações",
-    "loadingPosts": "Carregando publicações",
     "noPosts": "Nenhuma publicação encontrada.",
     "colDate": "Data",
     "colCaption": "Legenda",

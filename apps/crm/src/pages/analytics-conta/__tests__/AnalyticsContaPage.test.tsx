@@ -496,12 +496,13 @@ beforeEach(() => {
 });
 
 describe('AnalyticsContaPage', () => {
-  it('shows a loading spinner while the initial queries are pending', () => {
+  it('shows a loading skeleton while the initial queries are pending', () => {
     queryState.clientes = { isLoading: true };
 
     render(<AnalyticsContaPage />);
 
-    expect(screen.getByTestId('spinner-lg')).toBeTruthy();
+    expect(screen.getByTestId('crm-skeleton')).toBeTruthy();
+    expect(screen.queryByTestId('spinner-lg')).toBeNull();
   });
 
   it('renders the Visualizações card first, before Seguidores', () => {

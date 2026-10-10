@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { ReportSkeleton } from '@/components/ui/skeletons';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { renderInstagramOverviewCard } from '@/components/instagram/InstagramOverviewCard';
@@ -82,11 +83,7 @@ export function InstagramSection({
 
   return (
     <div id="ig-container" style={{ marginBottom: '1.5rem' }}>
-      {loadingIg && (
-        <div className="flex justify-center p-4">
-          <Spinner size="lg" />
-        </div>
-      )}
+      {loadingIg && <ReportSkeleton />}
       {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
         <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
           <Spinner size="lg" />

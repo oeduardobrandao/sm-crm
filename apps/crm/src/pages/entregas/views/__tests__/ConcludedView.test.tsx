@@ -245,7 +245,7 @@ describe('ConcludedView com processos individuais', () => {
     });
     expect(screen.queryByText('Nenhum fluxo ou post individual concluído ainda.')).toBeNull();
     expect(screen.queryByText('Nenhum fluxo concluído ainda.')).toBeNull();
-    expect(screen.getByText('Carregando...')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
 
     await act(async () => {
       resolveVigente([concluded]);
@@ -269,7 +269,7 @@ describe('ConcludedView com processos individuais', () => {
       expect(store.getConcludedWorkflowSummaries).toHaveBeenCalledWith([concludedWorkflow]),
     );
     expect(screen.queryByText('Nenhum fluxo concluído ainda.')).toBeNull();
-    expect(screen.getByText('Carregando...')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
 
     await act(async () => {
       resolveSummaries([
@@ -277,6 +277,7 @@ describe('ConcludedView com processos individuais', () => {
       ]);
     });
     expect(await screen.findByText('Aurora')).toBeInTheDocument();
+    expect(screen.queryByTestId('crm-skeleton')).toBeNull();
   });
 
   it('Reabrir processo: confirma e chama transition_post_process com reabrir', async () => {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowRight, ChevronDown, ChevronRight, ChevronUp, GitFork } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import type { ActivePost, Membro } from '../../../store';
 import { formatPostDateFull, formatPostWeekday } from '@/utils/postDate';
 import {
@@ -430,6 +431,43 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: Ton
   );
 }
 
+/** The loaded fila's shape: the four numbers, "Comece por aqui", then a group of rows. */
+function FilaSkeleton() {
+  return (
+    <SkeletonStatus>
+      <div className="flex flex-col gap-5">
+        <div className="fila-stats">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="fila-stat gap-2">
+              <Skeleton className="h-3 w-20 max-w-full" />
+              <Skeleton className="h-7 w-10" />
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-[76px] w-full rounded-[14px]" />
+        <div className="flex flex-col gap-2.5">
+          <Skeleton className="h-5 w-28 rounded-full" />
+          <div className="fila-group">
+            {['72%', '58%', '66%', '50%'].map((w, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-4 border-b border-[var(--border-color)] px-4 py-3 last:border-b-0"
+              >
+                <Skeleton className="h-5 w-5 shrink-0" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <Skeleton className="h-3.5" style={{ width: w }} />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+                <Skeleton className="hidden h-5 w-24 shrink-0 sm:block" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </SkeletonStatus>
+  );
+}
+
 export function MinhaFilaView({
   fila,
   membros,
@@ -466,11 +504,7 @@ export function MinhaFilaView({
         <p className="fila-note">Não foi possível carregar a fila. Recarregue a página.</p>
       )}
 
-      {!isError && isLoading && (
-        <div style={{ textAlign: 'center', padding: '2rem' }}>
-          <Spinner size="md" />
-        </div>
-      )}
+      {!isError && isLoading && <FilaSkeleton />}
 
       {!isError && !isLoading && membroId == null && (
         <p className="fila-note">

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { TableSkeleton } from '@/components/ui/skeletons';
 import {
   Select,
   SelectContent,
@@ -354,9 +355,7 @@ export default function ContratosPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+        <TableSkeleton columns={6} />
       ) : (
         <div className="card">
           <Table>

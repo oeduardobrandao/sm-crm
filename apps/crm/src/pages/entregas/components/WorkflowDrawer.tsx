@@ -36,6 +36,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { CardListSkeleton } from '@/components/ui/skeletons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1076,7 +1077,7 @@ export function WorkflowDrawer({
               )}
 
               {isLoading ? (
-                <div className="drawer-empty">Carregando...</div>
+                <CardListSkeleton rows={4} />
               ) : posts.length === 0 ? (
                 <div className="drawer-empty">
                   Nenhum post ainda. Clique em "Novo Post" para começar.

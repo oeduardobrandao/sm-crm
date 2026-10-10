@@ -595,12 +595,12 @@ describe('AutomacoesPage', () => {
       expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
     });
 
-    it('query ainda pendente → spinner, NUNCA paywall', async () => {
+    it('query ainda pendente → skeleton, NUNCA paywall', async () => {
       mockGetAutomations.mockReturnValue(new Promise(() => {}));
-      const { container } = renderPage();
+      renderPage();
 
       await waitFor(() => {
-        expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+        expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
     });
@@ -613,11 +613,11 @@ describe('AutomacoesPage', () => {
       expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
     });
 
-    it('contagem de contatos pendente → spinner, NUNCA paywall', async () => {
+    it('contagem de contatos pendente → skeleton, NUNCA paywall', async () => {
       mockGetAutomations.mockResolvedValue([]);
       mockCountContacts.mockReturnValue(new Promise(() => {}));
-      const { container } = renderPage();
-      await waitFor(() => expect(container.querySelector('.animate-spin')).toBeInTheDocument());
+      renderPage();
+      await waitFor(() => expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument());
       expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
     });
 

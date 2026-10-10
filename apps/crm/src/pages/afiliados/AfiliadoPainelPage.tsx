@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { CircleAlert, CircleCheck, Clock, Copy, ExternalLink, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { buildReferralLink } from '@/lib/referral';
 import {
   AffiliateApiError,
@@ -55,6 +56,36 @@ function formatDate(iso: string): string {
 /** 404 da função = sessão vencida, revogada ou desconhecida. 429 e 5xx não derrubam a sessão. */
 function isSessionGone(err: unknown): boolean {
   return err instanceof AffiliateApiError && err.status === 404;
+}
+
+/** O painel antes dos dados: saudação, card do link, a fileira de KPIs e o card do Stripe. */
+function PainelSkeleton() {
+  return (
+    <SkeletonStatus>
+      <Skeleton className="mb-2 h-8 w-48" />
+      <Skeleton className="mb-6 h-4 w-full max-w-lg" />
+      <div className="mb-6 rounded-xl border border-border bg-card p-6">
+        <Skeleton className="mb-2 h-5 w-48" />
+        <Skeleton className="mb-4 h-3.5 w-72 max-w-full" />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-full sm:w-36" />
+        </div>
+      </div>
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-2 h-6 w-16" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border border-border bg-card p-6">
+        <Skeleton className="mb-2 h-5 w-40" />
+        <Skeleton className="h-3.5 w-80 max-w-full" />
+      </div>
+    </SkeletonStatus>
+  );
 }
 
 function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -228,9 +259,7 @@ export default function AfiliadoPainelPage() {
   if (isLoading || legacyToken) {
     return (
       <AfiliadosLayout headerRight={headerRight}>
-        <div className="flex justify-center py-24">
-          <Spinner size="lg" />
-        </div>
+        <PainelSkeleton />
       </AfiliadosLayout>
     );
   }

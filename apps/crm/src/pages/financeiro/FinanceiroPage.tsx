@@ -29,6 +29,8 @@ import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   Select,
   SelectContent,
@@ -135,6 +137,9 @@ const rowKey = (t: Transacao) =>
   t.referencia_agendamento ? `proj-${t.referencia_agendamento}` : `id-${t.id}`;
 
 export default function FinanceiroPage() {
+  // Same 900px split as the .financeiro-desktop-table / .financeiro-mobile-cards CSS below, so the
+  // skeleton takes the shape of whichever layout is about to render.
+  const isDesktop = useIsDesktop(901);
   const { canSeeFinancials, profile } = useAuth();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('todas');
@@ -508,9 +513,11 @@ export default function FinanceiroPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+        isDesktop ? (
+          <TableSkeleton columns={6} />
+        ) : (
+          <CardListSkeleton />
+        )
       ) : (
         <>
           {/* Desktop table */}

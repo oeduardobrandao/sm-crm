@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
-import { Spinner } from '@/components/ui/spinner';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import type { PermissionCheck } from '@/lib/permissions';
 
 /**
@@ -32,7 +32,7 @@ import type { PermissionCheck } from '@/lib/permissions';
  *   não resolveu. Ler `!== true` trata `'unknown'` como um `false` explícito
  *   e piscava o aviso de restrição para TODO viewer, owner/admin incluídos,
  *   nos primeiros um ou dois renders. Agora `false` mostra o aviso,
- *   `'unknown'` mostra um spinner (sem aviso e sem conteúdo) e só `true`
+ *   `'unknown'` mostra um skeleton (sem aviso e sem conteúdo) e só `true`
  *   renderiza o portal de verdade.
  */
 export function useHubPortalAccess(): PermissionCheck {
@@ -61,11 +61,7 @@ export function HubRoleGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation('clients');
 
   if (access === 'unknown') {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Spinner size="md" />
-      </div>
-    );
+    return <ListSkeleton rows={3} className="py-2" />;
   }
 
   if (access === false) {

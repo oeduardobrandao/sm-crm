@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
+import { PageSkeleton, type PageSkeletonBody } from '@/components/ui/skeletons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1203,13 +1203,16 @@ export default function EntregasPage() {
   };
 
   if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
-    );
+    // Shaped like the view about to render (kanban by default, or the one in the URL).
+    const body: PageSkeletonBody =
+      activeView === 'kanban'
+        ? 'board'
+        : activeView === 'calendar'
+          ? 'calendar'
+          : activeView === 'chart'
+            ? 'report'
+            : 'list';
+    return <PageSkeleton body={body} />;
   }
 
   return (

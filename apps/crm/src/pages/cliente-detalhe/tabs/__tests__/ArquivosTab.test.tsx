@@ -181,13 +181,13 @@ describe('ArquivosTab', () => {
     await waitFor(() => expect(getFolderContentsMock).toHaveBeenCalledWith(7));
   });
 
-  it('shows a loading spinner while folder-contents is in flight', async () => {
+  it('shows a loading skeleton while folder-contents is in flight', async () => {
     __queueSupabaseResult('folders', 'select', { data: { id: 7 }, error: null });
     getFolderContentsMock.mockReturnValue(new Promise(() => {})); // never resolves
-    const { container } = renderTab();
+    renderTab();
 
     await screen.findByText('Ver todos');
-    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
     expect(screen.queryByTestId('file-grid')).not.toBeInTheDocument();
   });
 

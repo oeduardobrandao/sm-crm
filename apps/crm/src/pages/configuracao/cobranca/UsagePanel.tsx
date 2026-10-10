@@ -3,6 +3,8 @@ import { useWorkspaceUsage } from '@/hooks/useWorkspaceUsage';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
 import { UsageMeter } from '@/components/usage/UsageMeter';
 import { formatStorageBytes } from '@/components/usage/usage-meter-state';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 
 /**
  * "Uso do plano": every WORKSPACE-WIDE countable limit vs current usage.
@@ -23,9 +25,22 @@ export function UsagePanel() {
   if (isUnlimited) return null; // no plan resolved: same skip as ProtectedRoute
   if (limitsLoading || usageLoading) {
     return (
-      <div className="card usage-panel" aria-busy="true">
+      <div className="card usage-panel">
         <h3 className="usage-panel-title">Uso do plano</h3>
-        <p className="usage-panel-sub">Carregando...</p>
+        <SkeletonStatus>
+          <Skeleton className="h-3 w-28 mb-4" />
+          <div className="usage-grid">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} style={{ minWidth: 0 }}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <Skeleton className="h-3.5" style={{ width: i % 2 ? '45%' : '58%' }} />
+                  <Skeleton className="h-3 w-12" />
+                </div>
+                <Skeleton className="h-[5px] w-full rounded-full" />
+              </div>
+            ))}
+          </div>
+        </SkeletonStatus>
       </div>
     );
   }

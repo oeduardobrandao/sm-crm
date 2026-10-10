@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
+import { DocSkeleton } from '@/components/ui/skeletons';
 import type { ReportBlock } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import {
@@ -272,11 +273,8 @@ export default function RelatorioEditorPage() {
   });
 
   if (isLoading) {
-    return (
-      <div style={{ display: 'grid', placeItems: 'center', minHeight: '50vh' }}>
-        <Spinner />
-      </div>
-    );
+    // Same 880px column as the editor header and canvas.
+    return <DocSkeleton style={{ maxWidth: 880, margin: '0 auto' }} />;
   }
 
   if (!doc || !doc.data_snapshot) {

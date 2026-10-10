@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-rou
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { UserX, AlertTriangle } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { DetailSkeleton } from '@/components/ui/skeletons';
 import { Button } from '@/components/ui/button';
 import { getCliente, getInitials } from '../../store';
 import { useAuth } from '../../context/AuthContext';
@@ -16,14 +16,6 @@ import {
   financeiroTabGuardOutcome,
   type ClienteDetalheOutletContext,
 } from './clienteTabs.model';
-
-function CenteredSpinner() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-      <Spinner size="lg" />
-    </div>
-  );
-}
 
 /**
  * Shell for /clientes/:id/*: loads the client, renders the header + tab nav,
@@ -65,7 +57,7 @@ export default function ClienteDetalhePage() {
   // shell early would flash the agent-sized tab set at an owner, and the
   // guard below would bounce them off a tab they are allowed to see.
   if (loading || !user) {
-    return <CenteredSpinner />;
+    return <DetailSkeleton />;
   }
 
   // `workspaceRole` is null here in two DIFFERENT real cases, and
@@ -128,25 +120,25 @@ export default function ClienteDetalhePage() {
     // FinanceiroTab) mounts in this same render — never mount-then-redirect
     // via an effect, which would let a financial query fire first.
     const outcome = financeiroTabGuardOutcome(canSeeFinancials);
-    if (outcome === 'loading') return <CenteredSpinner />;
+    if (outcome === 'loading') return <DetailSkeleton />;
     if (outcome === 'denied') {
       return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
     }
   } else if (current) {
     // Same three-state principle as financeiro above, generalized to every
     // other permission-gated tab (the five `hub/*` portal routes and
-    // `relatorios`): 'unknown' must render a spinner, not bounce someone who
+    // `relatorios`): 'unknown' must render a skeleton, not bounce someone who
     // is actually authorized just because their membership hasn't resolved
     // yet. Resolved BEFORE the Outlet mounts, same reasoning as financeiro.
     const outcome = clienteTabGuardOutcome(current, can);
-    if (outcome === 'loading') return <CenteredSpinner />;
+    if (outcome === 'loading') return <DetailSkeleton />;
     if (outcome === 'denied') {
       return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
     }
   }
 
   if (loadingCliente) {
-    return <CenteredSpinner />;
+    return <DetailSkeleton />;
   }
 
   if (!cliente) {

@@ -34,7 +34,7 @@ import {
 import { calcularPrazos, workflowsAtivosIds, type DeadlineEvent } from './camadas/prazos';
 import { useConfirmarPagamento } from './camadas/useConfirmarPagamento';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Spinner } from '@/components/ui/spinner';
+import { CalendarSkeleton } from '@/components/ui/skeletons';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 
 // Lazy: FullCalendar is heavy and workspaces without feature_agenda never render it.
@@ -771,13 +771,7 @@ function AgendaPagina() {
       </header>
 
       <div className="animate-up">
-        <Suspense
-          fallback={
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-              <Spinner />
-            </div>
-          }
-        >
+        <Suspense fallback={<CalendarSkeleton />}>
           <AgendaTab />
         </Suspense>
       </div>

@@ -23,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
+import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   Select,
   SelectContent,
@@ -155,6 +157,9 @@ function parseInstagram(raw: string): string {
 }
 
 export default function LeadsPage() {
+  // Same 900px split as the .leads-desktop-table / .leads-mobile-cards CSS below, so the
+  // skeleton takes the shape of whichever layout is about to render.
+  const isDesktop = useIsDesktop(901);
   const qc = useQueryClient();
   const { canSeeFinancials, profile, can } = useAuth();
   // No role check existed here before Task 14 -- the route itself already
@@ -557,9 +562,11 @@ export default function LeadsPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+        isDesktop ? (
+          <TableSkeleton columns={6} />
+        ) : (
+          <CardListSkeleton />
+        )
       ) : (
         <>
           {/* Desktop table */}

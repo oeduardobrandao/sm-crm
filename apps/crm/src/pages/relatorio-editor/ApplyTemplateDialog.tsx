@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Spinner } from '@/components/ui/spinner';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import {
   deleteReportTemplate,
   listReportTemplates,
@@ -79,9 +79,7 @@ export function ApplyTemplateDialog({
           </p>
         )}
         {isLoading ? (
-          <div className="flex justify-center py-6">
-            <Spinner />
-          </div>
+          <ListSkeleton rows={3} />
         ) : templates.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4">
             Nenhum template salvo ainda. Use Salvar como template no editor.

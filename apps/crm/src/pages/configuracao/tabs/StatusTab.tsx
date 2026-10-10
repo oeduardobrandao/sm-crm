@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, Archive, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
@@ -152,7 +152,7 @@ export default function StatusTab() {
         </p>
 
         {isLoading ? (
-          <Spinner size="sm" />
+          <ListSkeleton rows={3} />
         ) : defs.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
             Nenhum status personalizado ainda.
@@ -526,7 +526,7 @@ function AutomationsSection({
       </p>
 
       {isLoading ? (
-        <Spinner size="sm" />
+        <ListSkeleton rows={3} />
       ) : automations.length === 0 ? (
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhuma automação ainda.</p>
       ) : (

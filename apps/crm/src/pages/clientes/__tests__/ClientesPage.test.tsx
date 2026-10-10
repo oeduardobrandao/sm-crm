@@ -501,13 +501,13 @@ describe('ClientesPage', () => {
 
     renderPage();
 
-    expect(screen.getByTestId('spinner')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
 
     resolveClientes?.([makeCliente({ nome: 'Ana Costa', sigla: 'AC' })]);
 
     expect(await screen.findByRole('button', { name: 'Ana Costa' })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('crm-skeleton')).not.toBeInTheDocument();
     });
   });
 

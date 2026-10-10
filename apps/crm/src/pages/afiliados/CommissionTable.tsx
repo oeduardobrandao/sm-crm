@@ -1,3 +1,5 @@
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { formatBRL } from '@/services/affiliates';
 import { formatRate, monthsPhrase, type CommissionTableRow } from './simulator';
 
@@ -16,7 +18,22 @@ export default function CommissionTable({
         Quanto você recebe por cada pessoa que assinar pelo seu link, conforme o plano.
       </p>
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
+        <SkeletonStatus>
+          {/* Header row, then one row per plan, over the same four columns as the table. */}
+          <div className="grid grid-cols-4 gap-4 py-2">
+            {[0, 1, 2, 3].map((c) => (
+              <Skeleton key={c} className="h-3 w-16" />
+            ))}
+          </div>
+          {[0, 1, 2].map((r) => (
+            <div key={r} className="grid grid-cols-4 gap-4 border-t border-border py-3">
+              <Skeleton className="h-3.5 w-20" />
+              <Skeleton className="h-3.5 w-16" />
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="h-3.5 w-16" />
+            </div>
+          ))}
+        </SkeletonStatus>
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">Tabela indisponível no momento.</p>
       ) : (

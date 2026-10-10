@@ -406,7 +406,8 @@ describe('MinhaFilaView', () => {
 
   it('renders loading, error, no-membro and the two empty states', () => {
     const { unmount: u1, container } = renderView({ isLoading: true, fila: EMPTY_FILA });
-    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="fila-summary"]')).toBeNull();
     expect(screen.queryByText(/Nada na sua fila/)).not.toBeInTheDocument();
     u1();
 

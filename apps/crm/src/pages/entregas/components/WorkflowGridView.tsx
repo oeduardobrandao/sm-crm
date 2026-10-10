@@ -7,6 +7,7 @@ import {
   type ReorderUpdate,
 } from '@mesaas/ui/InstagramGrid';
 import { supabase } from '@/lib/supabase';
+import { PostGridSkeleton } from '@/components/ui/skeletons';
 import { getClientePosts } from '@/store';
 import { targetsInstagram } from '../platformTargets';
 import { getPostCovers } from '@/services/postMedia';
@@ -163,7 +164,19 @@ export function WorkflowGridView({ clienteId, clienteNome }: WorkflowGridViewPro
   };
 
   if (isLoading) {
-    return <div className="drawer-empty">Carregando grade...</div>;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '16px' }}>
+        <PostGridSkeleton
+          tiles={9}
+          style={{
+            width: 'min(420px, 100%)',
+            border: '0.5px solid var(--border-color)',
+            borderRadius: 12,
+            overflow: 'hidden',
+          }}
+        />
+      </div>
+    );
   }
 
   if (items.length === 0) {

@@ -100,9 +100,10 @@ describe('ConversationList', () => {
 
   it('shows loading and error copy', () => {
     const { unmount } = renderList({ isLoading: true });
-    expect(screen.getByText('Carregando…')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
     unmount();
     renderList({ isError: true });
     expect(screen.getByText('Não foi possível carregar as conversas.')).toBeInTheDocument();
+    expect(screen.queryByTestId('crm-skeleton')).toBeNull();
   });
 });

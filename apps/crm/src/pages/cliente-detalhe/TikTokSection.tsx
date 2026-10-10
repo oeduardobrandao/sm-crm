@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Spinner } from '@/components/ui/spinner';
+import { ReportSkeleton } from '@/components/ui/skeletons';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { getTikTokSummary } from '../../services/tiktok';
 import { renderTikTokConnectButton } from '../../components/tiktok/TikTokConnectButton';
@@ -71,11 +72,7 @@ export function TikTokSection({ clienteId }: { clienteId: number }) {
 
   return (
     <div id="tiktok-container" style={{ marginBottom: '1.5rem' }}>
-      {loadingTt && (
-        <div className="flex justify-center p-4">
-          <Spinner size="lg" />
-        </div>
-      )}
+      {loadingTt && <ReportSkeleton />}
       {!loadingTt && ttSummary && !ttSummary.account?.last_synced_at && !needsConnect && (
         <div
           className="card"

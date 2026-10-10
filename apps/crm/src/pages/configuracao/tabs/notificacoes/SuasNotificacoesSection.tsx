@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import {
   NOTIFICATION_CATALOG,
   CATEGORY_ORDER,
@@ -117,9 +118,28 @@ export default function SuasNotificacoesSection() {
 
   if (inappLoading || emailLoading) {
     return (
-      <div className="card animate-up flex justify-center p-8">
-        <Spinner />
-      </div>
+      <SkeletonStatus className="card animate-up">
+        <div className="mb-4 flex flex-col gap-2">
+          <Skeleton className="h-5 w-44" />
+          <Skeleton className="h-3.5 w-3/4" />
+        </div>
+        <div className="divide-y divide-[color:var(--border-color)]">
+          {['52%', '64%', '46%', '58%', '50%'].map((w) => (
+            <div key={w} className="grid grid-cols-[1fr_72px_72px] items-center gap-2 py-3">
+              <div className="flex flex-col gap-1.5">
+                <Skeleton className="h-3.5" style={{ width: w }} />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+              <span className="flex justify-center">
+                <Skeleton className="h-5 w-9 rounded-full" />
+              </span>
+              <span className="flex justify-center">
+                <Skeleton className="h-5 w-9 rounded-full" />
+              </span>
+            </div>
+          ))}
+        </div>
+      </SkeletonStatus>
     );
   }
 

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import { getPostContentVersions, type PostApproval, type PostStatusEvent } from '../../../store';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { DiffView } from './DiffView';
 import { computeWordDiff } from '@/utils/textDiff';
@@ -171,7 +172,7 @@ export function PostVersionHistorySheet({
         </SheetHeader>
 
         {isLoading ? (
-          <div className="flex-1 px-5 py-6 text-[13px] text-muted-foreground">Carregando…</div>
+          <ListSkeleton rows={5} className="flex-1 px-5 py-6" />
         ) : versions.length === 0 ? (
           <div className="flex-1 px-5 py-6 text-[13px] text-muted-foreground">
             Sem histórico registrado ainda. Versões passam a ser guardadas a partir da próxima

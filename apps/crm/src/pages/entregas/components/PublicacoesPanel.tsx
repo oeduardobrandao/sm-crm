@@ -1,5 +1,7 @@
 import { ExternalLink, ChevronRight } from 'lucide-react';
 import type { ScheduledPost, WorkflowPost, IgAccountStatus } from '@/store';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { ScheduleButton } from './ScheduleButton';
 import { formatPostDate } from '@/utils/postDate';
 import { TIPO_LABELS } from '../postLabels';
@@ -66,9 +68,7 @@ export function PublicacoesPanel({
       </div>
       <div className="scheduled-list">
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
-            <p>Carregando…</p>
-          </div>
+          <PublicacoesSkeleton />
         ) : posts.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
             <p>{selectedLabel ? 'Nenhuma publicação neste dia.' : 'Selecione um dia.'}</p>
@@ -161,5 +161,25 @@ export function PublicacoesPanel({
         )}
       </div>
     </div>
+  );
+}
+
+/** Two `.scheduled-item` cards: tipo + status chips, cliente, título, divider, data. */
+function PublicacoesSkeleton() {
+  return (
+    <SkeletonStatus>
+      {[0, 1].map((i) => (
+        <div key={i} className="scheduled-item mb-4 last:mb-0">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-5 w-16" />
+            <Skeleton className="h-5 w-20" />
+          </div>
+          <Skeleton className="mt-3 h-4 w-32" />
+          <Skeleton className="mt-2 h-3.5" style={{ width: i === 0 ? '72%' : '58%' }} />
+          <div className="item-divider" />
+          <Skeleton className="h-3 w-28" />
+        </div>
+      ))}
+    </SkeletonStatus>
   );
 }

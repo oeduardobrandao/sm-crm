@@ -19,7 +19,7 @@ import {
   Star,
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Spinner } from '@/components/ui/spinner';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { EmptyStateGuide } from '../../../components/help/EmptyStateGuide';
 import { updateTarefa, type TarefaStatus, type TarefaWithRelations } from '../../../store';
 import { useTodayAgenda } from '../useTodayAgenda';
@@ -202,11 +202,7 @@ export function TodayCard() {
       </div>
       <p className="today-sub">{summary}</p>
 
-      {status === 'loading' && (
-        <div style={{ textAlign: 'center', padding: '1.5rem' }}>
-          <Spinner size="md" />
-        </div>
-      )}
+      {status === 'loading' && <ListSkeleton rows={3} />}
 
       {status === 'role_error' && (
         <p className="today-note">

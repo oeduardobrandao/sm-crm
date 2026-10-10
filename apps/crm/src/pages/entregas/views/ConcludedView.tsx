@@ -20,6 +20,7 @@ import { HistoryDrawer } from '../components/HistoryDrawer';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { ClienteAvatar } from '@/pages/mensagens/components/Avatars';
 import { Input } from '@/components/ui/input';
+import { CardGridSkeleton } from '@/components/ui/skeletons';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -192,7 +193,7 @@ export function ConcludedView({
   };
 
   if (isLoadingCombined) {
-    return <div className="drawer-empty">Carregando...</div>;
+    return <CardGridSkeleton cards={6} />;
   }
 
   if (summaries.length === 0 && concludedProcesses.length === 0 && !isLoadingCombined) {
