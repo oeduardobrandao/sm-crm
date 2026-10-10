@@ -100,15 +100,16 @@ export function createAffiliateConnectGateway(stripe: Stripe): AffiliateConnectG
           capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
           metadata: { affiliate_id: affiliateId },
         };
-        // Dois cliques em sequência devolvem a mesma conta. A chave vale só pela hora corrente
-        // (o Stripe guarda também respostas de erro por 24h, e uma chave fixa repetiria o erro
-        // antigo mesmo depois de corrigida a causa) e leva uma impressão digital dos parâmetros
-        // (o Stripe rejeita reusar uma chave com parâmetros diferentes).
+        // A chave é estável por afiliado e pelos parâmetros: cliques repetidos, retries e
+        // corridas devolvem sempre a mesma conta (nunca uma segunda conta órfã). A impressão
+        // digital dos parâmetros troca a chave quando o pedido muda de verdade (o Stripe rejeita
+        // reusar uma chave com parâmetros diferentes). Limite conhecido: o Stripe guarda também
+        // erros por 24h, então um erro de configuração da plataforma corrigido no painel pode
+        // continuar voltando por até 24h para o mesmo afiliado.
         const fingerprint = await shortHash(JSON.stringify(params));
-        const hour = Math.floor(Date.now() / 3_600_000);
         const account = await stripe.accounts.create(params, {
           ...opts,
-          idempotencyKey: `affiliate-connect:${affiliateId}:${hour}:${fingerprint}`,
+          idempotencyKey: `affiliate-connect:${affiliateId}:${fingerprint}`,
         });
         return account.id;
       }),
