@@ -4,7 +4,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import prettier from "eslint-config-prettier";
 
 export default tseslint.config(
-  { ignores: ["dist/", "node_modules/", "supabase/functions/"] },
+  { ignores: ["dist/", "node_modules/", "supabase/functions/", "apps/mobile/ios/"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
