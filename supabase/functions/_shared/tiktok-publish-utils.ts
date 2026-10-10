@@ -570,8 +570,9 @@ export type ConfirmAndApplyPublishStatusOutcome = "published" | "processing" | "
  * unconditionally clears this column), "processing", and "failed" outcomes all clear this lock as
  * part of their write, same as before extraction. tiktok-webhook (_shared use, Task B6) claims
  * this exact same lock itself immediately before calling this function (handler.ts's
- * claimPublishLock, same claim shape as claim_posts_for_tiktok_publishing) — so a webhook
- * re-confirmation and a concurrently running cron status-fetch on the same post always serialize
+ * claimPublishLock, which takes the same post_targets.processing_at lock as
+ * claim_tiktok_targets_for_publishing) — so a webhook
+ * re-confirmation and a concurrently running cron status-fetch on the same destination always serialize
  * on that claim rather than racing to write this column. Without that claim, a cron status-fetch
  * still in flight against the PRIOR TikTok state could commit its (stale) outcome AFTER this
  * function already applied the fresher one, transiently regressing the row — routine, not a rare
