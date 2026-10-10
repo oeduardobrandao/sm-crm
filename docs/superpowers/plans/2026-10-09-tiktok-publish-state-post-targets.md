@@ -6586,7 +6586,18 @@ The steps follow spec §5. Prod is `skjzpekeqefvlojenfsw` and staging is `wlyzhy
    npx supabase db push --linked
    ```
 
-   The dry runs must list exactly `20261013000001`, `20261013000002` and `20261013000003`. If `db push` refuses because of drift, follow the out-of-band path in that memory. A parity exception aborts the whole migration: read the message, fix the data, retry.
+   The dry runs must list exactly `20261013000001`, `20261013000002` and `20261013000003`. If `db push` refuses because of drift, follow the out-of-band path in that memory. A parity exception aborts the whole migration: read the message, fix the data, retry. A `lock_timeout` abort on a busy DB is retried the same way as a parity abort.
+
+   **Verify the push really applied the DDL**, on each project right after its `db push` (a committed version row with rolled-back DDL has happened before, memory `reference_db_push_batch_rollback_drift`):
+
+   ```bash
+   printf "select proname from pg_proc where proname in ('claim_tiktok_targets_for_publishing','begin_target_publish','mark_target_failed','requeue_target','cancel_target_publish','recompute_post_publish_status');\n" > <scratch>/ddl-check.sql
+   npx supabase db query --linked --file <scratch>/ddl-check.sql
+   ```
+
+   Expect 6 rows. If fewer, stop and re-run the push before anything else.
+
+   **Run the reconcile once now** (step 5 has the command), right after the DDL check passes on prod and before the function deploys. Until the new cron is live, an old publish-now can leave a `pendente` destination with no `publish_ref` that the new cron would re-publish; this first pass closes that window. The reconcile is idempotent, so step 5 runs it again.
 
 4. **Functions, right away, on prod.** Check `verify_jwt` first:
    - `supabase/config.toml` has no `[functions.data-import]` and no `[functions.tiktok-publish]` entry, so both keep gateway JWT verification and deploy without `--no-verify-jwt`.
@@ -6611,18 +6622,20 @@ The steps follow spec §5. Prod is `skjzpekeqefvlojenfsw` and staging is `wlyzhy
 
    Smoke-test each one with an invalid bearer. A healthy function answers 401 (or the webhook's 200 drop); a boot failure answers 5xx.
 
-5. **Reconcile** (prod; staging optional). Copy `scripts/tiktok-p4-reconcile.sql` to a scratch file, replace `DEFINA-O-INSTANTE-DO-PASSO-2` with the time from step 2, then run:
+5. **Reconcile again** (prod; staging optional), after the function deploys of step 4. This is the second run (the first is in step 3); the reconcile is idempotent. Copy `scripts/tiktok-p4-reconcile.sql` to a scratch file, replace `DEFINA-O-INSTANTE-DO-PASSO-2` with the time from step 2, then run:
 
    ```bash
    npx supabase link --project-ref skjzpekeqefvlojenfsw < /dev/null
    npx supabase db query --linked --file <scratch>/reconcile.sql
    ```
 
-   Run it a second time: the second run must return `{"filled": [], "remapped": []}`.
+   Run it once more right after: that run must return `{"filled": [], "remapped": []}`.
 
-6. **Merge the PR.** The frontend deploys with the merge (memory `feedback_merge_deploys_frontend_migrations_first`).
+6. **Check that the CRM's double `post_targets` embed parses on real PostgREST, before merging.** `getActivePosts` in `apps/crm/src/store/posts.ts` selects `targets_state:post_targets(...)` and plain `post_targets(platform, status)` in one select. Verify it either with a Vercel preview of the PR (it only selects P1 columns, so it works against prod before or after the migration) or by running the PR branch's CRM against staging. Open Entregas visão geral, a post drawer and a client's posts tab with the network tab open. Any 400 on `workflow_posts` blocks the merge.
 
-7. **End-to-end check on prod with DK TESTE:**
+7. **Merge the PR.** The frontend deploys with the merge (memory `feedback_merge_deploys_frontend_migrations_first`).
+
+8. **End-to-end check on prod with DK TESTE:**
    - a TikTok-only video post goes through publish-now, then schedule, then a forced failure (for example, media over the creator's duration limit), then Reenviar;
    - one Instagram+TikTok post goes through "Publicar agora";
    - one Instagram+TikTok post is moved back to draft mid-publish (after TikTok lands, before Instagram does), then rescheduled: scheduling succeeds, TikTok is not published again, and the post reaches `postado` when Instagram lands (Deviation 18).
