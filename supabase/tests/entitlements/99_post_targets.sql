@@ -649,6 +649,7 @@ begin
        -- default de propósito (publicação, ids externos, conteúdo por destino)
        'caption','title','settings','scheduled_at','status','external_id',
        'permalink','error','error_code','retry_count','processing_at','published_at',
+       'publish_ref',
        -- geradas pelo banco
        'id','created_at','updated_at');
   assert v_missing is null, format('post_targets tem coluna nao classificada em _clone_post_row: %s', v_missing);
