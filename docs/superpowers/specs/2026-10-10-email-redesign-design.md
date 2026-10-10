@@ -163,10 +163,16 @@ Cada builder mantém nome, assinatura e tipo de retorno; só o corpo passa a
 montar blocos e chamar o shell. Exceção aditiva: `DigestItem` ganha
 `badge?: { tone, label }` **opcional** (ausente = selo neutro "Notificação"),
 para os literais de teste existentes continuarem válidos sob `--no-check`.
-Saem: `layout()` de `lifecycle-emails.ts` (nenhum teste a importa) e os HTML
-inline de `dunning-email.ts`, `invite-email.ts`, `notification-email.ts`,
+Saem: `layout()` de `lifecycle-emails.ts` e os HTML inline de `dunning-email.ts`, `invite-email.ts`, `notification-email.ts`,
 `affiliate-public/email.ts`, `client-event-email.ts`, `agenda-cliente-email.ts`
 e `report-template/email.ts`. `noticeLayout` (aviso interno) fica.
+
+`layout()` tem dois consumidores em produção, migrados no mesmo passo em que
+ela sai: `agenda-email.ts` e `instagram-connect-email.ts` passam a chamar
+`mesaasEmail` de `_shared/email/shell.ts`. Os demais imports deles de
+`lifecycle-emails.ts` ficam onde estão (`sanitizeSubjectValue` nos dois;
+`LIFECYCLE_FROM` e `sendViaResend` em `instagram-connect-email.ts`). Nenhum
+teste importa `layout()`.
 
 **Datas nos blocos de data:**
 - `agenda-cliente-email.ts` exporta `mesDiaAgenda(o)`, ao lado de
@@ -253,7 +259,10 @@ resumo de IA) passa como está, só escapado.
 - **Pendências do cliente:** linhas de post com selo de formato (até
   `RENDERED_POSTS_CAP`, como hoje), eventos com bloco de data na cor da agência
   (cada evento pendente tem o seu, na ordem recebida), mensagens num destaque,
-  botão na cor da agência. Botão some sem `hubUrl`, como hoje. Saudação com o
+  botão na cor da agência. Em produção o e-mail nunca sai sem `hubUrl` (o cron
+  conta `skippedNoHub` e libera o lease antes de chamar o builder, e isso não
+  muda); o builder mantém o caminho defensivo de hoje (sem botão) só para
+  chamada direta. Saudação com o
   primeiro nome (como hoje).
 - **Evento compartilhado:** a **semântica não muda**: mesmas 5 variantes, mesmo
   texto, mesmo anexo `.ics` e mesma regra de quando anexar, mesmo botão e
@@ -277,7 +286,11 @@ resumo de IA) passa como está, só escapado.
 
 Rodapé dos e-mails Mesaas: motivo do envio (texto atual de cada um, quando
 existe) + "Mesaas · Plataforma de gestão para agências de social media".
-Whitelabel: "Enviado por {agência} via Mesaas" + descadastro, como hoje. "gestão
+Whitelabel: "Enviado por {agência} via Mesaas", e o link de descadastro onde ele
+já existe (pendências e evento compartilhado). O relatório mensal **não tem**
+descadastro hoje (`buildReportEmail` não recebe URL e `client-email-unsub` só
+desliga `send_event_email`) e continua sem: um opt-out de relatório é decisão de
+produto à parte, fora deste redesign. "gestão
 inteligente para social media managers" sai de todos.
 
 ## 6. Logo
@@ -303,7 +316,7 @@ bloqueia imagem.
 | Conexão do Instagram | 1 |
 | Instagram conectado | 1 |
 | Afiliado | 1 |
-| Pendências | posts + eventos + mensagens; só eventos; sem `hubUrl` |
+| Pendências | posts + eventos + mensagens; só eventos; sem `hubUrl` (só no teste de contrato, fora da verificação visual: estado inalcançável em produção) |
 | Evento compartilhado | convite (cliente, ocorrência única); convite de série com 12 datas; alteração com datas canceladas; cancelamento; remarcação aceita com mensagem; remarcação recusada; convite para convidado; cancelamento para convidado; dia inteiro |
 | Relatório | 3 KPIs com delta; 1 KPI; sem KPIs; sem `hubUrl` |
 
