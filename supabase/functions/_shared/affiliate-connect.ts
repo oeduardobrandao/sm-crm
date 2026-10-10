@@ -93,8 +93,10 @@ export function createAffiliateConnectGateway(stripe: Stripe): AffiliateConnectG
             capabilities: { transfers: { requested: true } },
             metadata: { affiliate_id: affiliateId },
           },
-          // Dois cliques em sequência dentro de 24h devolvem a mesma conta.
-          { ...opts, idempotencyKey: `affiliate-connect:${affiliateId}` },
+          // Dois cliques em sequência devolvem a mesma conta. A chave vale só pela hora
+          // corrente: o Stripe guarda também respostas de erro por 24h, e uma chave fixa
+          // repetiria o erro antigo mesmo depois de corrigida a causa (ex.: perfil do Connect).
+          { ...opts, idempotencyKey: `affiliate-connect:${affiliateId}:${Math.floor(Date.now() / 3_600_000)}` },
         );
         return account.id;
       }),
