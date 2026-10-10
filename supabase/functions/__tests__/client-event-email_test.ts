@@ -123,7 +123,7 @@ Deno.test("greeting: only messages, greeting is just 'Olá, {nome}!'", () => {
 
 // --- ícone por tipo --------------------------------------------------------------
 
-Deno.test("post row icon: feed, carrossel, reels, stories map to the spec'd emoji", () => {
+Deno.test("post row format pill: feed, carrossel, reels, stories render their format labels", () => {
   const pendingPosts = [
     { titulo: "P feed", tipo: "feed" },
     { titulo: "P carrossel", tipo: "carrossel" },
@@ -131,18 +131,18 @@ Deno.test("post row icon: feed, carrossel, reels, stories map to the spec'd emoj
     { titulo: "P stories", tipo: "stories" },
   ];
   const html = buildClientEventEmail({ ...BASE_PARAMS, pendingPosts });
-  assert(html.includes("🖼"), "expected the feed icon");
-  assert(html.includes("🗂"), "expected the carrossel icon");
-  assert(html.includes("🎬"), "expected the reels icon");
-  assert(html.includes("📱"), "expected the stories icon");
+  assert(html.includes(">Feed<") || html.includes("Feed</span>"), "expected the feed label");
+  assert(html.includes("Reels"), "expected the reels label");
+  assert(html.includes("Carrossel"), "expected the carrossel label");
+  assert(html.includes("Stories"), "expected the stories label");
 });
 
-Deno.test("post row icon: unknown tipo falls back to 🖼", () => {
+Deno.test("post row format pill: unknown tipo falls back to Post", () => {
   const html = buildClientEventEmail({
     ...BASE_PARAMS,
     pendingPosts: [{ titulo: "Post estranho", tipo: "zzz" }],
   });
-  assert(html.includes("🖼"), "expected the fallback icon for an unknown tipo");
+  assert(html.includes("Post</span>"), "unknown tipo falls back to Post");
 });
 
 // --- linha de mensagens ------------------------------------------------------------
@@ -151,7 +151,7 @@ Deno.test("shows unread message count only when greater than zero", () => {
   const withUnread = buildClientEventEmail({ ...BASE_PARAMS, unreadMessages: 3 });
   assert(withUnread.includes("3 mensagens não lidas"), "unread count copy missing");
   assert(withUnread.includes("da equipe esperando você."), "expected the full unread line copy");
-  assert(withUnread.includes("#f8f9fa"), "expected the messages block's neutral background");
+  assert(withUnread.includes("<strong>3 mensagens não lidas</strong>"), "expected the unread copy itself");
 
   const noUnread = buildClientEventEmail({ ...BASE_PARAMS, unreadMessages: 0 });
   assert(!noUnread.includes("mensagens não lidas"), "unread copy rendered with zero messages");
@@ -192,10 +192,10 @@ Deno.test("CTA: only messages -> 'Ver mensagens'", () => {
 
 Deno.test("CTA button background is brandColor and text follows pickHeaderTextColor", () => {
   const escura = buildClientEventEmail({ ...BASE_PARAMS, hubUrl: "https://x.test/hub/tok", brandColor: "#1a3d2b" });
-  assert(escura.includes("background: #1a3d2b; color: #ffffff"), "expected white CTA text on a dark brandColor");
+  assert(escura.includes(`bgcolor="#1a3d2b"`) && escura.includes("color: #ffffff;"), "white CTA text on a dark brandColor");
 
   const palida = buildClientEventEmail({ ...BASE_PARAMS, hubUrl: "https://x.test/hub/tok", brandColor: "#fef3c7" });
-  assert(palida.includes("background: #fef3c7; color: #171717"), "expected dark CTA text on a pale brandColor");
+  assert(palida.includes(`bgcolor="#fef3c7"`) && palida.includes("color: #171717;"), "dark CTA text on a pale brandColor");
 });
 
 Deno.test("Hub button is present with a hubUrl and absent when hubUrl is empty", () => {
@@ -259,18 +259,17 @@ Deno.test("preheader: singular forms for exactly 1 post / 1 message", () => {
 
 // --- shell (faixa / radius / rodapé) --------------------------------------------------
 
-Deno.test("shell: header band carries the real brandColor, card is 16px radius", () => {
+Deno.test("shell: header band carries the real brandColor, card is 12px radius", () => {
   const html = buildClientEventEmail({ ...BASE_PARAMS, brandColor: "#e11d48" });
   assert(html.includes("background: #e11d48"), "expected the brandColor on the header band");
-  assert(html.includes("border-radius: 16px"), "expected the 16px card radius");
+  assert(html.includes("border-radius: 12px"), "expected the 12px card radius");
 });
 
-Deno.test("shell: footer uses the cream palette, link inherits #888780, unsub text kept", () => {
+Deno.test("shell: footer carries the sender line and unsub copy, no cream band", () => {
   const html = buildClientEventEmail(BASE_PARAMS);
-  assert(html.includes("#f5f3ee"), "expected the cream footer background");
-  assert(html.includes("#888780"), "expected the cream footer text/link color");
+  assert(html.includes("Enviado por"), "expected the sender footer line");
   assert(html.includes("Não quero mais receber esses avisos"), "expected the unsub link copy to survive");
-  assert(!html.includes("#9ca3af"), "expected the old grey footer color to be fully gone");
+  assert(!html.includes("#f5f3ee"), "expected the old cream footer background to be gone");
 });
 
 Deno.test("client event email never uses an em-dash", () => {
@@ -466,4 +465,15 @@ Deno.test("reminder in another zone shows the zone name; all-day shows the date 
     }],
   });
   assert(diaInteiro.includes("Sexta, 9 de outubro · dia inteiro"));
+});
+
+Deno.test("pendências: event tiles in brand colour, light brand flips text, no emoji, invalid colour defaulted", () => {
+  const ev = { ocorrencia_id: 7, inicio: "2026-10-15T13:00:00Z", fim: "2026-10-15T14:00:00Z", dia_inteiro: false, data_inicio_local: null, tz: "America/Sao_Paulo", titulo: "Sessão" };
+  const html = buildClientEventEmail({ ...BASE_PARAMS, brandColor: "#facc15", hubUrl: "https://x.test/hub/tok", pendingEvents: [ev] });
+  assert(html.includes(">OUT<") && html.includes(">15<"));
+  assert(html.includes("color: #171717;"));
+  assert(html.includes(`href="https://x.test/hub/tok/agenda?ocorrencia=7"`));
+  assert(!/[🖼🗂🎬📱📅💬]/u.test(html));
+  const bad = buildClientEventEmail({ ...BASE_PARAMS, brandColor: "red;x", hubUrl: "https://x.test/hub/tok" });
+  assert(!bad.includes("red;x") && bad.includes("#eab308"));
 });

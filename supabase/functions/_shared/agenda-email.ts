@@ -1,5 +1,7 @@
-import { escapeHtml } from "./report-template/escape.ts";
-import { layout, sanitizeSubjectValue } from "./lifecycle-emails.ts";
+import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
+import { mesaasEmail } from "./email/shell.ts";
+import { button, eventCard, heading } from "./email/blocks.ts";
+import { EMAIL } from "./email/tokens.ts";
 
 export interface LembreteEmailParams {
   titulo: string;
@@ -58,6 +60,12 @@ function ymd(iso: string, tz: string): string {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
+/** "OUT" / "12" for the date tile, in the event's zone (same basis as whenLine). */
+function tileParts(iso: string, tz: string): { mes: string; dia: string } {
+  const p = timeParts(iso, tz, { day: "numeric", month: "short" });
+  return { mes: (p.month ?? "").replace(".", "").toUpperCase(), dia: p.day ?? "" };
+}
+
 /** "Segunda, 5 de outubro · 14:00 a 16:00" in the event's own timezone. */
 function whenLine(p: LembreteEmailParams): string {
   if (p.diaInteiro) {
@@ -73,7 +81,7 @@ function whenLine(p: LembreteEmailParams): string {
 }
 
 function headingText(p: LembreteEmailParams): string {
-  const t = escapeHtml(p.titulo);
+  const t = p.titulo;
   if (p.diaInteiro) {
     if (p.minutos <= 0) return `Lembrete: ${t} é hoje`;
     if (p.minutos <= DAY_MIN) return `Lembrete: ${t} é amanhã`;
@@ -84,31 +92,24 @@ function headingText(p: LembreteEmailParams): string {
   return `Seu evento começa em ${leadLabel(p.minutos, false).replace(/^Em /, "")}`;
 }
 
-const HTTP_URL = /^https?:\/\//i;
-
 export function buildLembreteEmail(p: LembreteEmailParams): { subject: string; html: string } {
   const subject = sanitizeSubjectValue(`${leadLabel(p.minutos, p.diaInteiro)}: ${p.titulo}`);
-
-  const local = p.local
-    ? `<p style="margin:6px 0 0;font-size:13px;color:#444441">${escapeHtml(p.local)}</p>`
-    : "";
-  const meeting = p.linkReuniao && HTTP_URL.test(p.linkReuniao.trim())
-    ? `<p style="margin:8px 0 0"><a href="${escapeHtml(p.linkReuniao.trim())}" style="color:#1a3d2b;font-weight:700;font-size:13px;text-decoration:underline">Entrar na reunião</a></p>`
-    : "";
-
-  const body = `
-        <p style="margin:0 0 16px;font-size:18px;font-weight:700;color:#1a3d2b;line-height:1.4">${headingText(p)}</p>
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ee;border-radius:12px"><tr><td style="padding:16px 18px">
-          <p style="margin:0;font-size:15px;font-weight:700;color:#1a3d2b">${escapeHtml(p.titulo)}</p>
-          <p style="margin:6px 0 0;font-size:13px;color:#444441">${escapeHtml(whenLine(p))}</p>
-          ${local}${meeting}
-        </td></tr></table>
-        <p style="margin:22px 0 0"><a href="${escapeHtml(p.abrirUrl)}" style="display:inline-block;background:#1a3d2b;color:#ffffff;text-decoration:none;padding:11px 22px;border-radius:8px;font-weight:700;font-size:13px">Abrir na agenda</a></p>`;
-
-  const html = layout(
-    body,
-    "Você recebe este lembrete porque participa deste evento. Para desligar, vá em Configurações, Notificações.",
-    escapeHtml(p.appBaseUrl),
-  );
+  const quando = whenLine(p);
+  const local = p.local?.trim() || null;
+  const { mes, dia } = tileParts(p.inicio, p.tz);
+  const html = mesaasEmail({
+    preheader: local ? `${quando} · ${local}` : quando,
+    eyebrow: "Agenda",
+    sections: [
+      heading(headingText(p)),
+      eventCard({
+        mes, dia, tileColor: EMAIL.ink, titulo: p.titulo,
+        lines: local ? [quando, local] : [quando],
+        meetingUrl: p.linkReuniao,
+      }),
+      button(p.abrirUrl, "Abrir na Agenda"),
+    ],
+    footerLines: ["Você recebe este lembrete porque participa deste evento. Para desligar, vá em Configurações, Notificações."],
+  });
   return { subject, html };
 }
