@@ -150,6 +150,10 @@ export function digestPreheader(items: DigestItem[]): string {
   return `${titles.slice(0, -1).join(", ")} e ${titles[titles.length - 1]}.`;
 }
 
+/** Comment bodies are unbounded; the full text is one click away in the app. */
+const BODY_MAX = 300;
+const clamp = (t: string) => (t.length > BODY_MAX ? `${t.slice(0, BODY_MAX).trimEnd()}…` : t);
+
 function itemRow(it: DigestItem, appBase: string, last: boolean): string {
   const b = it.badge ?? DEFAULT_BADGE;
   const bd = last ? "" : `border-bottom: 1px solid ${EMAIL.divider};`;
@@ -157,7 +161,7 @@ function itemRow(it: DigestItem, appBase: string, last: boolean): string {
     <p style="margin: 0 0 10px;">${badge(b.tone, b.label)}</p>
     <p style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: ${EMAIL.ink}; word-break: break-word;">${escapeHtml(it.heading)}</p>
     ${it.context ? paragraph(it.context, "small", "2px 0 0") : ""}
-    ${it.body ? spacer(10) + callout(escapeHtml(it.body)) : ""}
+    ${it.body ? spacer(10) + callout(escapeHtml(clamp(it.body))) : ""}
     <p style="margin: 12px 0 0; font-size: 14px;">${link(`${appBase}${it.link}`, "Abrir no Mesaas")}</p>
   </td></tr>`;
 }

@@ -326,3 +326,10 @@ Deno.test("buildDigestHtml: caps rendered rows below Gmail's clip and summarises
   const small = buildDigestHtml(items.slice(0, 30), "https://app.test");
   assert(!small.includes("E mais"));
 });
+
+Deno.test("buildDigestHtml: long comment bodies are clamped so 30 rows stay under Gmail's clip", () => {
+  const items = Array.from({ length: 30 }, (_, i) => ({ priority: 2, heading: `Item ${i}`, body: "a".repeat(5000), link: `/x/${i}` }));
+  const html = buildDigestHtml(items, "https://app.test");
+  assert(html.includes(`${"a".repeat(300)}…`) && !html.includes("a".repeat(301)));
+  assert(new TextEncoder().encode(html).length < 102_400, "under Gmail clip");
+});
