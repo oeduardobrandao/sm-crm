@@ -2,6 +2,7 @@ import { assert, assertEquals } from "./assert.ts";
 import {
   buildDigestHtml,
   buildDigestIdempotencyKey,
+  digestPreheader,
   digestSubject,
   resolveDigestItem,
   sendNotificationDigestEmail,
@@ -274,4 +275,42 @@ Deno.test("resolveDigestItem: event_guest_rsvp names the guest by convidado_nome
   assertEquals(vazio.heading, "Convidado respondeu ao evento");
   assertEquals(vazio.link, "/");
   assertEquals(vazio.priority, 4);
+});
+
+Deno.test("resolveDigestItem: every known type gets its badge", () => {
+  const cases: Array<[string, string, string]> = [
+    ["post_publish_failed", "danger", "Falha na publicação"], ["post_correction", "warning", "Correção"],
+    ["post_approved", "success", "Aprovado"], ["post_message", "info", "Mensagem"], ["client_message", "info", "Mensagem"],
+    ["mention", "info", "Menção"], ["deadline_approaching", "warning", "Prazo"], ["task_assigned", "neutral", "Tarefa"],
+    ["post_assigned", "neutral", "Post"], ["event_invited", "neutral", "Agenda"], ["event_updated", "neutral", "Agenda"],
+    ["event_cancelled", "neutral", "Agenda"], ["event_client_rsvp", "info", "Resposta"], ["event_guest_rsvp", "info", "Resposta"],
+    ["event_reschedule_requested", "warning", "Remarcação"], ["algo_novo", "neutral", "Notificação"],
+  ];
+  for (const [type, tone, label] of cases) {
+    const it = resolveDigestItem({ type, metadata: null, link: null });
+    assertEquals(it.badge, { tone, label }, type);
+  }
+});
+
+Deno.test("digestPreheader: 1, 3 and 25 items", () => {
+  const mk = (n: number) => Array.from({ length: n }, (_, i) => ({ priority: 1, heading: `T${i + 1}`, link: "/" }));
+  assertEquals(digestPreheader(mk(1)), "T1.");
+  assertEquals(digestPreheader(mk(3)), "T1, T2 e T3.");
+  assertEquals(digestPreheader(mk(25)), "T1, T2, T3 e mais 22.");
+});
+
+Deno.test("buildDigestHtml: heading, badges, links, item without badge, 25 items all rendered", () => {
+  const items = Array.from({ length: 25 }, (_, i) => ({ priority: 1, heading: `Item ${i + 1}`, link: `/x/${i}` }));
+  const html = buildDigestHtml(items, "https://app.test");
+  assert(html.includes("Você tem 25 novidades"));
+  assertEquals((html.match(/Abrir no Mesaas/g) ?? []).length, 25);
+  assert(html.includes(">Notificação<"), "missing badge falls back to neutral");
+  assert(html.includes(`href="https://app.test/x/24"`));
+  const one = buildDigestHtml([{ priority: 1, heading: "Só um", link: "/a", badge: { tone: "danger", label: "Falha na publicação" } }], "https://app.test");
+  assert(one.includes("Você tem 1 novidade<") && one.includes("Falha na publicação"));
+});
+
+Deno.test("resolveDigestItem: a type that is an Object.prototype key falls back to the neutral badge", () => {
+  const it = resolveDigestItem({ type: "constructor", metadata: null, link: null });
+  assertEquals(it.badge, { tone: "neutral", label: "Notificação" });
 });

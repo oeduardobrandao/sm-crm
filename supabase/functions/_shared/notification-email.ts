@@ -1,6 +1,9 @@
 import { escapeHtml } from "./report-template/escape.ts";
 import { appBaseUrl } from "./app-url.ts";
 import { getPublishErrorDisplay } from "./publish-error-codes.ts";
+import { mesaasEmail } from "./email/shell.ts";
+import { badge, callout, heading, link, paragraph } from "./email/blocks.ts";
+import type { BadgeTone } from "./email/tokens.ts";
 
 export interface DigestItem {
   priority: number;
@@ -8,7 +11,28 @@ export interface DigestItem {
   body?: string;
   context?: string;
   link: string;
+  /** Optional: absent renders the neutral "Notificação" badge. */
+  badge?: { tone: BadgeTone; label: string };
 }
+
+const DIGEST_BADGES: Record<string, { tone: BadgeTone; label: string }> = {
+  post_publish_failed: { tone: "danger", label: "Falha na publicação" },
+  post_correction: { tone: "warning", label: "Correção" },
+  post_approved: { tone: "success", label: "Aprovado" },
+  post_message: { tone: "info", label: "Mensagem" },
+  client_message: { tone: "info", label: "Mensagem" },
+  mention: { tone: "info", label: "Menção" },
+  deadline_approaching: { tone: "warning", label: "Prazo" },
+  task_assigned: { tone: "neutral", label: "Tarefa" },
+  post_assigned: { tone: "neutral", label: "Post" },
+  event_invited: { tone: "neutral", label: "Agenda" },
+  event_updated: { tone: "neutral", label: "Agenda" },
+  event_cancelled: { tone: "neutral", label: "Agenda" },
+  event_client_rsvp: { tone: "info", label: "Resposta" },
+  event_guest_rsvp: { tone: "info", label: "Resposta" },
+  event_reschedule_requested: { tone: "warning", label: "Remarcação" },
+};
+const DEFAULT_BADGE = { tone: "neutral" as const, label: "Notificação" };
 
 const DIGEST_FROM = "Mesaas <notificacoes@mesaas.com.br>";
 
@@ -28,7 +52,7 @@ function eventHeading(prefix: string, titulo?: string): string {
 /** Map a claimed notification row to a rendered digest item. Metadata keys are
  * read defensively (verified against the emitting triggers); anything missing
  * degrades to a generic line rather than throwing. Priority = urgency order. */
-export function resolveDigestItem(
+function resolveDigestItemBase(
   row: { type: string; metadata: Record<string, unknown> | null; link: string | null },
 ): DigestItem {
   const m = row.metadata;
@@ -102,6 +126,14 @@ export function resolveDigestItem(
   }
 }
 
+export function resolveDigestItem(
+  row: { type: string; metadata: Record<string, unknown> | null; link: string | null },
+): DigestItem {
+  // Object.hasOwn: a type like "constructor" must not hit Object.prototype.
+  const b = Object.hasOwn(DIGEST_BADGES, row.type) ? DIGEST_BADGES[row.type] : DEFAULT_BADGE;
+  return { ...resolveDigestItemBase(row), badge: b };
+}
+
 export function digestSubject(items: DigestItem[]): string {
   if (items.length === 1) {
     // Name the single item by its heading (already em-dash-free).
@@ -110,37 +142,38 @@ export function digestSubject(items: DigestItem[]): string {
   return `Você tem ${items.length} novidades no Mesaas`;
 }
 
-function itemRow(it: DigestItem, appBase: string): string {
-  const link = escapeHtml(`${appBase}${it.link}`);
-  const heading = escapeHtml(it.heading);
-  const context = it.context
-    ? `<p style="margin:2px 0 0;font-size:12px;color:#888780">${escapeHtml(it.context)}</p>`
-    : "";
-  const body = it.body
-    ? `<p style="margin:6px 0 0;padding:10px 12px;background:#f5f3ee;border-radius:8px;font-size:13px;color:#444441">${escapeHtml(it.body)}</p>`
-    : "";
-  return `<tr><td style="padding:14px 0;border-bottom:1px solid #ece9e2">
-    <p style="margin:0;font-size:14px;color:#1a3d2b"><strong>${heading}</strong></p>
-    ${context}${body}
-    <p style="margin:8px 0 0"><a href="${link}" style="color:#1a3d2b;font-weight:700;font-size:13px;text-decoration:none">Abrir no Mesaas &rarr;</a></p>
+export function digestPreheader(items: DigestItem[]): string {
+  const titles = items.slice(0, 3).map((i) => i.heading);
+  const rest = items.length - titles.length;
+  if (rest > 0) return `${titles.join(", ")} e mais ${rest}.`;
+  if (titles.length <= 1) return `${titles[0] ?? "Você tem novidades no Mesaas"}.`;
+  return `${titles.slice(0, -1).join(", ")} e ${titles[titles.length - 1]}.`;
+}
+
+function itemRow(it: DigestItem, appBase: string, last: boolean): string {
+  const b = it.badge ?? DEFAULT_BADGE;
+  const bd = last ? "" : "border-bottom: 1px solid #eef0f3;";
+  return `<tr><td style="padding: 20px 0; ${bd}">
+    <p style="margin: 0 0 10px;">${badge(b.tone, b.label)}</p>
+    <p style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;">${escapeHtml(it.heading)}</p>
+    ${it.context ? paragraph(it.context, "small", "2px 0 0") : ""}
+    ${it.body ? `<div style="margin: 10px 0 0;">${callout(escapeHtml(it.body))}</div>` : ""}
+    <p style="margin: 12px 0 0; font-size: 14px;">${link(`${appBase}${it.link}`, "Abrir no Mesaas")}</p>
   </td></tr>`;
 }
 
-/** Same visual family as _shared/mention-email.ts / lifecycle-emails.ts. */
 export function buildDigestHtml(items: DigestItem[], appBase: string): string {
-  const rows = items.map((it) => itemRow(it, appBase)).join("");
-  return `<!DOCTYPE html>
-<html lang="pt-BR"><body style="margin:0;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;color:#1a3d2b">
-  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
-    <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden">
-      <tr><td style="background:#1a3d2b;padding:26px 28px;text-align:center;color:#ffffff;font-size:18px;font-weight:700">Novidades no Mesaas</td></tr>
-      <tr><td style="padding:24px 28px"><table width="100%" cellpadding="0" cellspacing="0">${rows}</table></td></tr>
-      <tr><td style="padding:18px 28px;background:#f5f3ee;text-align:center;font-size:11px;color:#888780;line-height:1.5">
-        Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações.<br>Mesaas · gestão inteligente para social media managers
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
+  const n = items.length;
+  const rows = items.map((it, i) => itemRow(it, appBase, i === n - 1)).join("");
+  return mesaasEmail({
+    preheader: digestPreheader(items),
+    eyebrow: "Resumo de notificações",
+    sections: [
+      heading(n === 1 ? "Você tem 1 novidade" : `Você tem ${n} novidades`),
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`,
+    ],
+    footerLines: ["Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações."],
+  });
 }
 
 /** Stable per (user, exact claimed id set); order-insensitive. Used as the
