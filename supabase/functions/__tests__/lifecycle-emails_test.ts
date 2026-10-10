@@ -51,7 +51,7 @@ Deno.test("both emails carry the logo and never an em-dash", () => {
       buildThankYouEmail({ firstName: "Ana", workspaceName: "X", appBaseUrl: BASE }),
     ]
   ) {
-    assert(html.includes(`src="${BASE}/logo-white-email.png"`), "logo img missing");
+    assert(html.includes(`src="https://www.mesaas.com.br/logo-black-email.png"`), "logo img missing");
     assert(html.includes('alt="Mesaas"'), "logo alt missing");
     assert(!html.includes("—"), "em-dash found in email copy");
   }
@@ -113,7 +113,7 @@ Deno.test("buildThankYouEmail thanks by name, escapes workspace, links plan sett
 });
 
 Deno.test("subjects are the spec'd strings", () => {
-  assert(WELCOME_SUBJECT === "Bem-vindo ao Mesaas 👋");
+  assert(WELCOME_SUBJECT === "Boas-vindas ao Mesaas 👋");
   assert(THANKYOU_SUBJECT === "Obrigado pela confiança 💚");
 });
 
@@ -540,4 +540,15 @@ Deno.test("sendViaResend omits the attachments key when absent or empty", async 
     sendViaResend("a@b.test", "S", "<p>x</p>", "k1", "X <n@mesaas.com.br>", undefined, undefined, [])
   );
   assert(!("attachments" in vazio), "empty list must not be sent");
+});
+
+Deno.test("welcome: new shell, steps then grid, signature, no emoji icons", () => {
+  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.test" });
+  assert(html.includes("Olá, Ana! Que bom ter você aqui."));
+  assert(!html.includes("Que bom ter você por aqui"), "duplicate welcome line must go");
+  assert(html.indexOf("Comece em 3 passos") < html.indexOf("Clientes &amp; CRM"), "steps come before the grid");
+  assert(html.includes(`href="https://app.test/importar"`));
+  assert(html.includes("Fundador do Mesaas"));
+  assert(!/[👥📋✅📈📚]/u.test(html));
+  assert(html.includes("Boas-vindas"), "eyebrow");
 });
