@@ -346,9 +346,9 @@ describe('WorkflowDrawer refresh() query invalidation', () => {
 
     renderDrawer(qc);
 
-    // Post A is expanded via initialPostId; its "Tipo" select shows the current tipo label.
-    const tipoSelect = await screen.findByDisplayValue('Imagem');
-    fireEvent.change(tipoSelect, { target: { value: 'reels' } });
+    // Post A is expanded via initialPostId; its "Tipo" toggle has the current tipo checked.
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
+    fireEvent.click(screen.getByRole('radio', { name: 'Vídeo vertical' }));
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { tipo: 'reels' }));
 
@@ -664,12 +664,12 @@ describe('WorkflowDrawer schedule lock (status agendado)', () => {
     mockUpdate.mockResolvedValue({} as never);
   });
 
-  it('disables the tipo select and the PlatformSelector, and the warning names them', async () => {
+  it('disables the tipo toggle and the PlatformSelector, and the warning names them', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    const tipoSelect = (await screen.findByDisplayValue('Imagem')) as HTMLSelectElement;
-    expect(tipoSelect.disabled).toBe(true);
+    const tipoItem = await screen.findByRole('radio', { name: 'Imagem' });
+    expect(tipoItem).toBeDisabled();
 
     expect(screen.getByTestId('platform-selector-stub').getAttribute('data-disabled')).toBe('true');
 
@@ -696,8 +696,8 @@ describe('WorkflowDrawer schedule lock (status agendado)', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    const tipoSelect = (await screen.findByDisplayValue('Imagem')) as HTMLSelectElement;
-    expect(tipoSelect.disabled).toBe(false);
+    const tipoItem = await screen.findByRole('radio', { name: 'Imagem' });
+    expect(tipoItem).not.toBeDisabled();
     expect(screen.getByTestId('platform-selector-stub').getAttribute('data-disabled')).toBe(
       'false',
     );
@@ -729,7 +729,7 @@ describe('WorkflowDrawer Histórico tab', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     // Exact match: the expanded post row also renders a "Histórico de versões"
     // button (PostVersionHistorySheet's entry point), which a loose /Histórico/i
     // regex would ambiguously match too.

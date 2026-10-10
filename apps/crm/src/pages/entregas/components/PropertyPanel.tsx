@@ -68,11 +68,9 @@ export function PropertyPanel({
       >
         <div
           style={{
-            fontSize: '0.7rem',
-            fontWeight: 700,
+            fontSize: '0.82rem',
+            fontWeight: 600,
             color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
             marginBottom: 6,
           }}
         >

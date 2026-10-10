@@ -13,7 +13,7 @@ const opts = [
 ];
 
 describe('DestinationToggles', () => {
-  it('renders one pressed/unpressed toggle per option inside a Destinos group', () => {
+  it('renders one icon-only pressed/unpressed toggle per option inside a Destinos group', () => {
     render(
       <DestinationToggles options={opts} lockedReason={null} pending={false} onToggle={vi.fn()} />,
     );
@@ -24,6 +24,8 @@ describe('DestinationToggles', () => {
       'true',
     );
     expect(screen.getByRole('button', { name: /Geral/ })).toHaveAttribute('aria-pressed', 'false');
+    // Só ícone: o nome vem do aria-label, sem texto visível no botão.
+    expect(screen.getByRole('button', { name: /Instagram/ })).toHaveTextContent('');
   });
 
   it('turns a destination on and off', () => {
@@ -40,13 +42,16 @@ describe('DestinationToggles', () => {
     expect(onToggle).toHaveBeenCalledWith('geral', false);
   });
 
-  it('disables an option that cannot be turned on, with the reason as title', () => {
+  it('disables an option that cannot be turned on, with the reason in its tooltip', async () => {
     render(
       <DestinationToggles options={opts} lockedReason={null} pending={false} onToggle={vi.fn()} />,
     );
     const tt = screen.getByRole('button', { name: /TikTok/ });
     expect(tt).toBeDisabled();
-    expect(tt.parentElement).toHaveAttribute('title', 'Stories não são suportados no TikTok');
+    fireEvent.pointerMove(tt.parentElement!);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Stories não são suportados no TikTok',
+    );
   });
 
   it('refuses to turn off the last destination', () => {
@@ -76,7 +81,7 @@ describe('DestinationToggles', () => {
     for (const b of screen.getAllByRole('button')) expect(b).toBeDisabled();
   });
 
-  it('a published destination is disabled with its reason (turning off)', () => {
+  it('a published destination is disabled with its reason (turning off)', async () => {
     render(
       <DestinationToggles
         options={[
@@ -90,7 +95,8 @@ describe('DestinationToggles', () => {
     );
     const ig = screen.getByRole('button', { name: /Instagram/ });
     expect(ig).toBeDisabled();
-    expect(ig.parentElement).toHaveAttribute('title', 'Já publicado');
+    fireEvent.pointerMove(ig.parentElement!);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Já publicado');
   });
 
   it('renders nothing for an Express post (no options)', () => {
