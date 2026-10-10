@@ -1,7 +1,10 @@
 // Pure pieces of affiliate-public: validation, code/token generation and the dashboard
 // shaping. No I/O here so everything is unit-testable.
 
-export const ACCESS_TOKEN_TTL_DAYS = 180;
+/** Link mágico do e-mail: uso único, curto. */
+export const LOGIN_TTL_MINUTES = 15;
+/** Sessão do painel, criada ao trocar o link mágico. */
+export const SESSION_TTL_DAYS = 30;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 /** 32 random bytes, base64url without padding = 43 chars. */
@@ -82,8 +85,12 @@ export async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function tokenExpiry(now: Date): Date {
-  return new Date(now.getTime() + ACCESS_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+export function loginExpiry(now: Date): Date {
+  return new Date(now.getTime() + LOGIN_TTL_MINUTES * 60 * 1000);
+}
+
+export function sessionExpiry(now: Date): Date {
+  return new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 }
 
 // ---------------------------------------------------------------------------------------

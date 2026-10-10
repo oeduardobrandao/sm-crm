@@ -5,19 +5,17 @@ export function buildAffiliateLinkEmail(params: { nome: string; link: string }):
   const nome = escapeHtml(params.nome.split(" ")[0] || params.nome);
   const link = escapeHtml(params.link);
   return `<!DOCTYPE html>
-<html lang="pt-BR"><body style="margin:0;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;color:#1a3d2b">
+<html lang="pt-BR"><body style="margin:0;background:#fdfdfd;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif;color:#12151a">
   <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
-    <table width="440" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden">
-      <tr><td style="background:#1a3d2b;padding:28px;text-align:center;color:#fff;font-size:18px;font-weight:600">
-        Programa de afiliados Mesaas
-      </td></tr>
-      <tr><td style="padding:28px;font-size:14px;line-height:1.6;color:#444441">
+    <table width="460" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px">
+      <tr><td style="padding:32px 32px 8px;font-size:20px;font-weight:800;letter-spacing:-0.03em">mesaas</td></tr>
+      <tr><td style="padding:8px 32px 32px;font-size:14px;line-height:1.6;color:#374151">
         <p>Olá, ${nome}!</p>
-        <p>Este é o link do seu painel de afiliado. Lá você encontra seu link de divulgação, acompanha suas indicações e comissões e cadastra sua chave PIX.</p>
-        <p style="text-align:center;margin:28px 0">
-          <a href="${link}" style="display:inline-block;background:#1a3d2b;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600">Abrir meu painel</a>
+        <p>Use o botão abaixo para entrar no seu painel de afiliado. O link vale por 15 minutos e funciona uma vez.</p>
+        <p style="margin:28px 0">
+          <a href="${link}" style="display:inline-block;background:#12151a;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:600">Entrar no painel</a>
         </p>
-        <p style="font-size:12px;color:#888780">O link é pessoal: não compartilhe este e-mail. Se você não pediu este acesso, ignore a mensagem.</p>
+        <p style="font-size:13px;color:#4b5563">Para entrar de novo depois, peça outro link em mesaas.com.br/afiliados. O link é pessoal: não encaminhe este e-mail. Se você não pediu este acesso, ignore a mensagem.</p>
       </td></tr>
     </table>
   </td></tr></table>
@@ -41,7 +39,7 @@ export async function sendAffiliateLinkEmail(
       from: "Mesaas <afiliados@mesaas.com.br>",
       to: [params.to],
       reply_to: "eduardo@mesaas.com.br",
-      subject: "Seu painel de afiliado Mesaas",
+      subject: "Seu link de acesso ao painel de afiliado Mesaas",
       html: buildAffiliateLinkEmail({ nome: params.nome, link: params.link }),
     }),
     signal: AbortSignal.timeout(10_000),

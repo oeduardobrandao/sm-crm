@@ -1,13 +1,15 @@
-import { useEffect } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CircleAlert, CircleCheck, Clock, Copy, ExternalLink } from 'lucide-react';
+import { CircleAlert, CircleCheck, Clock, Copy, ExternalLink, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { buildReferralLink } from '@/lib/referral';
 import {
+  AffiliateApiError,
+  affiliateLogout,
   formatBRL,
   getAffiliateDashboard,
   openAffiliateStripeDashboard,
@@ -17,7 +19,10 @@ import {
   type PayoutStatus,
   type ReferralSituacao,
 } from '@/services/affiliates';
+import AfiliadosLayout from './AfiliadosLayout';
 import CommissionSimulator from './CommissionSimulator';
+import RequestLinkCard from './RequestLinkCard';
+import { clearSession, isSessionPersisted, readSession, saveSession } from './session';
 import CommissionTable from './CommissionTable';
 import { formatRate } from './simulator';
 import { useCommissionTable } from './useCommissionTable';
@@ -47,19 +52,9 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR');
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
-        <Link to="/afiliados" aria-label="Programa de afiliados Mesaas">
-          <img src="/logo-black.svg" alt="Mesaas" className="h-5 w-auto dark:hidden" />
-          <img src="/logo-white.svg" alt="Mesaas" className="hidden h-5 w-auto dark:block" />
-        </Link>
-        <span className="text-sm text-muted-foreground">Painel do afiliado</span>
-      </header>
-      <main className="mx-auto max-w-5xl px-4 pb-16">{children}</main>
-    </div>
-  );
+/** 404 da função = sessão vencida, revogada ou desconhecida. 429 e 5xx não derrubam a sessão. */
+function isSessionGone(err: unknown): boolean {
+  return err instanceof AffiliateApiError && err.status === 404;
 }
 
 function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -73,19 +68,28 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
 }
 
 /** Conta Stripe do afiliado: conectar, continuar o cadastro ou abrir o painel do Stripe. */
-function StripeCard({ token, data }: { token: string; data: AffiliateDashboard }) {
+function StripeCard({
+  token,
+  data,
+  onSessionGone,
+}: {
+  token: string;
+  data: AffiliateDashboard;
+  onSessionGone: () => void;
+}) {
   const { stripe, status } = data.affiliate;
   const redirect = (url: string) => window.location.assign(url);
 
+  const onError = (err: Error) => (isSessionGone(err) ? onSessionGone() : toast.error(err.message));
   const start = useMutation({
     mutationFn: () => startAffiliateStripeConnect(token),
     onSuccess: ({ url }) => redirect(url),
-    onError: (err: Error) => toast.error(err.message),
+    onError,
   });
   const dashboard = useMutation({
     mutationFn: () => openAffiliateStripeDashboard(token),
     onSuccess: ({ url }) => redirect(url),
-    onError: (err: Error) => toast.error(err.message),
+    onError,
   });
 
   const minPayout = formatBRL(data.min_payout_cents);
@@ -139,57 +143,111 @@ function StripeCard({ token, data }: { token: string; data: AffiliateDashboard }
   );
 }
 
+/**
+ * /afiliados/painel: lê a sessão do navegador (ver session.ts). A rota legada
+ * /afiliados/painel/:token (links de 180 dias já enviados) adota o token como sessão, se não
+ * houver uma, e troca a URL pela limpa, preservando ?stripe=.
+ */
 export default function AfiliadoPainelPage() {
-  const { token = '' } = useParams<{ token: string }>();
+  const { token: legacyToken } = useParams<{ token?: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const table = useCommissionTable();
+  const storageBlocked = (location.state as { storageBlocked?: boolean } | null)?.storageBlocked;
+
+  const [token, setToken] = useState<string | null>(() => {
+    const existing = readSession();
+    if (existing) return existing;
+    if (legacyToken) {
+      saveSession(legacyToken);
+      return legacyToken;
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (legacyToken) navigate(`/afiliados/painel${location.search}`, { replace: true });
+  }, [legacyToken, location.search, navigate]);
+
+  const onSessionGone = useCallback(() => {
+    clearSession();
+    setToken(null);
+  }, []);
+
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['affiliate-dashboard', token],
-    queryFn: () => getAffiliateDashboard(token),
-    enabled: token.length > 0,
+    queryFn: () => getAffiliateDashboard(token as string),
+    enabled: !!token && !legacyToken,
     retry: false,
   });
+
+  useEffect(() => {
+    if (isError && isSessionGone(error)) onSessionGone();
+  }, [isError, error, onSessionGone]);
 
   // Volta do onboarding do Stripe: o painel já relê a conta no carregamento.
   const stripeReturn = searchParams.get('stripe');
   useEffect(() => {
+    if (legacyToken || !token) return;
     if (stripeReturn === 'retorno') toast.success('Cadastro no Stripe atualizado');
     if (stripeReturn) setSearchParams({}, { replace: true });
-  }, [stripeReturn, setSearchParams]);
+  }, [legacyToken, token, stripeReturn, setSearchParams]);
 
-  if (isLoading) {
+  const logout = async () => {
+    const current = token;
+    clearSession();
+    setToken(null);
+    if (current) await affiliateLogout(current).catch(() => undefined);
+    navigate('/afiliados', { replace: true });
+  };
+
+  const headerRight = (
+    <div className="flex items-center gap-3">
+      <span className="hidden text-sm text-muted-foreground sm:inline">Painel do afiliado</span>
+      {token && (
+        <Button variant="ghost" size="sm" onClick={logout}>
+          <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
+          Sair
+        </Button>
+      )}
+    </div>
+  );
+
+  if (!token) {
     return (
-      <Shell>
+      <AfiliadosLayout headerRight={headerRight}>
+        <RequestLinkCard
+          title="Entre no painel do afiliado"
+          body="Sua sessão terminou ou este navegador ainda não entrou no painel. Informe o e-mail cadastrado no programa e enviaremos um link de acesso."
+        />
+      </AfiliadosLayout>
+    );
+  }
+
+  if (isLoading || legacyToken) {
+    return (
+      <AfiliadosLayout headerRight={headerRight}>
         <div className="flex justify-center py-24">
           <Spinner size="lg" />
         </div>
-      </Shell>
+      </AfiliadosLayout>
     );
   }
 
   if (isError || !data) {
-    const notFound = (error as { status?: number } | null)?.status === 404 || !token;
     return (
-      <Shell>
-        <div className="mx-auto max-w-md rounded-xl border border-border bg-card p-8 text-center">
-          <CircleAlert className="mx-auto mb-4 h-10 w-10 text-[var(--warning)]" />
-          <h1 className="mb-2 text-xl font-semibold">
-            {notFound ? 'Link inválido ou expirado' : 'Não foi possível carregar o painel'}
-          </h1>
-          <p className="mb-6 text-sm text-muted-foreground">
-            {notFound
-              ? 'Peça um novo link de acesso com o e-mail cadastrado no programa.'
-              : 'Tente de novo em alguns instantes.'}
-          </p>
-          {notFound ? (
-            <Button asChild>
-              <Link to="/afiliados#cadastro">Pedir novo link</Link>
-            </Button>
-          ) : (
-            <Button onClick={() => refetch()}>Tentar novamente</Button>
-          )}
+      <AfiliadosLayout headerRight={headerRight}>
+        <div className="mx-auto mt-10 max-w-md rounded-xl border border-border bg-card p-8 text-center">
+          <CircleAlert
+            className="mx-auto mb-4 h-10 w-10 text-[var(--warning)]"
+            aria-hidden="true"
+          />
+          <h1 className="mb-2 text-xl font-semibold">Não foi possível carregar o painel</h1>
+          <p className="mb-6 text-sm text-muted-foreground">Tente de novo em alguns instantes.</p>
+          <Button onClick={() => refetch()}>Tentar novamente</Button>
         </div>
-      </Shell>
+      </AfiliadosLayout>
     );
   }
 
@@ -208,7 +266,16 @@ export default function AfiliadoPainelPage() {
   };
 
   return (
-    <Shell>
+    <AfiliadosLayout headerRight={headerRight}>
+      {(storageBlocked || !isSessionPersisted()) && (
+        <div
+          className="mb-6 rounded-xl border border-[var(--warning)] bg-card p-4 text-sm"
+          role="status"
+        >
+          Este navegador não deixou o Mesaas guardar o seu acesso. Se você recarregar a página,
+          fechar a aba ou sair para o Stripe, vai precisar pedir um novo link por e-mail.
+        </div>
+      )}
       <h1 className="mb-1 text-2xl font-bold">Olá, {affiliate.nome.split(' ')[0]}!</h1>
       <p className="mb-6 text-sm text-muted-foreground">
         Você recebe comissão pelos primeiros meses pagos de cada indicado, conforme a tabela abaixo.
@@ -264,7 +331,7 @@ export default function AfiliadoPainelPage() {
       </section>
 
       <div className="mb-6">
-        <StripeCard token={token} data={data} />
+        <StripeCard token={token} data={data} onSessionGone={onSessionGone} />
       </div>
 
       <section className="mb-6 grid gap-6 md:grid-cols-2">
@@ -355,6 +422,6 @@ export default function AfiliadoPainelPage() {
           )}
         </div>
       </section>
-    </Shell>
+    </AfiliadosLayout>
   );
 }

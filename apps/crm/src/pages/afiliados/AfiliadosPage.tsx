@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { affiliateSendLink, affiliateSignup } from '@/services/affiliates';
+import AfiliadosLayout from './AfiliadosLayout';
 import CommissionSimulator from './CommissionSimulator';
 import CommissionTable from './CommissionTable';
 import { headlineFor } from './simulator';
@@ -79,179 +80,175 @@ export default function AfiliadosPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
-        <Link to="/" aria-label="Mesaas">
-          <img src="/logo-black.svg" alt="Mesaas" className="h-5 w-auto dark:hidden" />
-          <img src="/logo-white.svg" alt="Mesaas" className="hidden h-5 w-auto dark:block" />
-        </Link>
+    <AfiliadosLayout
+      logoTo="/"
+      headerRight={
         <a
           href="#cadastro"
           className="text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           Quero participar
         </a>
-      </header>
+      }
+    >
+      <section className="py-10 text-center md:py-16">
+        <p className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          Programa de afiliados
+        </p>
+        <h1 className="mx-auto mb-4 max-w-2xl text-3xl font-bold leading-tight md:text-4xl">
+          {headline ?? 'Indique o Mesaas e ganhe comissão por cada assinante'}
+        </h1>
+        <p className="mx-auto max-w-xl text-base text-muted-foreground">
+          Recomende o CRM para outros social medias e agências e receba comissão por cada pessoa que
+          assinar pelo seu link.
+        </p>
+      </section>
 
-      <main className="mx-auto max-w-5xl px-4 pb-16">
-        <section className="py-10 text-center md:py-16">
-          <p className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-            Programa de afiliados
-          </p>
-          <h1 className="mx-auto mb-4 max-w-2xl text-3xl font-bold leading-tight md:text-4xl">
-            {headline ?? 'Indique o Mesaas e ganhe comissão por cada assinante'}
-          </h1>
-          <p className="mx-auto max-w-xl text-base text-muted-foreground">
-            Recomende o CRM para outros social medias e agências e receba comissão por cada pessoa
-            que assinar pelo seu link.
-          </p>
-        </section>
+      <section className="mb-12 grid gap-4 md:grid-cols-3">
+        {STEPS.map(({ icon: Icon, title, body }) => (
+          <div key={title} className="rounded-xl border border-border bg-card p-5">
+            <Icon className="mb-3 h-6 w-6 text-[var(--primary-color)]" aria-hidden="true" />
+            <h2 className="mb-1 text-base font-semibold">{title}</h2>
+            <p className="text-sm text-muted-foreground">{body}</p>
+          </div>
+        ))}
+      </section>
 
-        <section className="mb-12 grid gap-4 md:grid-cols-3">
-          {STEPS.map(({ icon: Icon, title, body }) => (
-            <div key={title} className="rounded-xl border border-border bg-card p-5">
-              <Icon className="mb-3 h-6 w-6 text-[var(--primary-color)]" aria-hidden="true" />
-              <h2 className="mb-1 text-base font-semibold">{title}</h2>
-              <p className="text-sm text-muted-foreground">{body}</p>
+      <section className="mb-6">
+        <CommissionTable rows={table.rows} isLoading={table.isLoading} />
+      </section>
+
+      <section className="mb-12 grid gap-6 md:grid-cols-2" id="cadastro">
+        <CommissionSimulator rows={table.rows} isLoading={table.isLoading} />
+
+        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          {sentTo ? (
+            <div className="py-6 text-center" role="status">
+              <CircleCheck className="mx-auto mb-4 h-10 w-10 text-[var(--success)]" />
+              <h2 className="mb-2 text-lg font-semibold">Confira seu e-mail</h2>
+              <p className="text-sm text-muted-foreground">
+                Se {sentTo} estiver cadastrado no programa, o link de acesso ao painel chega em
+                alguns minutos. Ele vale por 15 minutos e funciona uma vez. Olhe também a caixa de
+                spam.
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-4"
+                onClick={() => {
+                  setSentTo(null);
+                  setMode('link');
+                }}
+              >
+                Não recebi, enviar de novo
+              </Button>
             </div>
-          ))}
-        </section>
+          ) : (
+            <form onSubmit={submit} noValidate>
+              <h2 className="mb-1 text-lg font-semibold">
+                {mode === 'signup' ? 'Quero ser afiliado' : 'Receber link de acesso'}
+              </h2>
+              <p className="mb-5 text-sm text-muted-foreground">
+                {mode === 'signup'
+                  ? 'Grátis e sem precisar de conta no Mesaas.'
+                  : 'Enviamos um link novo para o e-mail cadastrado no programa.'}
+              </p>
 
-        <section className="mb-6">
-          <CommissionTable rows={table.rows} isLoading={table.isLoading} />
-        </section>
-
-        <section className="mb-12 grid gap-6 md:grid-cols-2" id="cadastro">
-          <CommissionSimulator rows={table.rows} isLoading={table.isLoading} />
-
-          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-            {sentTo ? (
-              <div className="py-6 text-center" role="status">
-                <CircleCheck className="mx-auto mb-4 h-10 w-10 text-[var(--success)]" />
-                <h2 className="mb-2 text-lg font-semibold">Confira seu e-mail</h2>
-                <p className="text-sm text-muted-foreground">
-                  Se {sentTo} estiver cadastrado no programa, o link do seu painel chega em alguns
-                  minutos. Olhe também a caixa de spam.
-                </p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => {
-                    setSentTo(null);
-                    setMode('link');
-                  }}
-                >
-                  Não recebi, enviar de novo
-                </Button>
-              </div>
-            ) : (
-              <form onSubmit={submit} noValidate>
-                <h2 className="mb-1 text-lg font-semibold">
-                  {mode === 'signup' ? 'Quero ser afiliado' : 'Receber link de acesso'}
-                </h2>
-                <p className="mb-5 text-sm text-muted-foreground">
-                  {mode === 'signup'
-                    ? 'Grátis e sem precisar de conta no Mesaas.'
-                    : 'Enviamos um link novo para o e-mail cadastrado no programa.'}
-                </p>
-
-                <div className="space-y-4">
-                  {mode === 'signup' && (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="af-nome">Nome</Label>
-                      <Input
-                        id="af-nome"
-                        autoComplete="name"
-                        required
-                        maxLength={120}
-                        value={nome}
-                        onChange={(e) => setNome(e.target.value)}
-                      />
-                    </div>
-                  )}
+              <div className="space-y-4">
+                {mode === 'signup' && (
                   <div className="space-y-1.5">
-                    <Label htmlFor="af-email">E-mail</Label>
+                    <Label htmlFor="af-nome">Nome</Label>
                     <Input
-                      id="af-email"
-                      type="email"
-                      autoComplete="email"
+                      id="af-nome"
+                      autoComplete="name"
                       required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      maxLength={120}
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
                     />
                   </div>
-                  {mode === 'signup' && (
-                    <>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="af-telefone">WhatsApp (opcional)</Label>
-                        <Input
-                          id="af-telefone"
-                          type="tel"
-                          autoComplete="tel"
-                          placeholder="(11) 98888-7777"
-                          value={telefone}
-                          onChange={(e) => setTelefone(e.target.value)}
-                        />
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <Checkbox
-                          id="af-aceite"
-                          checked={aceite}
-                          onCheckedChange={(v) => setAceite(v === true)}
-                          className="mt-0.5"
-                        />
-                        <Label htmlFor="af-aceite" className="text-sm font-normal leading-snug">
-                          Li e aceito as regras do programa abaixo e os{' '}
-                          <Link to="/termos-de-uso" className="underline">
-                            Termos de Uso
-                          </Link>
-                          .
-                        </Label>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {error && (
-                  <p className="mt-4 text-sm text-[var(--danger-text)]" role="alert">
-                    {error}
-                  </p>
                 )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="af-email">E-mail</Label>
+                  <Input
+                    id="af-email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                {mode === 'signup' && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="af-telefone">WhatsApp (opcional)</Label>
+                      <Input
+                        id="af-telefone"
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="(11) 98888-7777"
+                        value={telefone}
+                        onChange={(e) => setTelefone(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        id="af-aceite"
+                        checked={aceite}
+                        onCheckedChange={(v) => setAceite(v === true)}
+                        className="mt-0.5"
+                      />
+                      <Label htmlFor="af-aceite" className="text-sm font-normal leading-snug">
+                        Li e aceito as regras do programa abaixo e os{' '}
+                        <Link to="/termos-de-uso" className="underline">
+                          Termos de Uso
+                        </Link>
+                        .
+                      </Label>
+                    </div>
+                  </>
+                )}
+              </div>
 
-                <Button type="submit" className="mt-5 w-full" disabled={loading}>
-                  {loading
-                    ? 'Enviando…'
-                    : mode === 'signup'
-                      ? 'Cadastrar e receber meu link'
-                      : 'Enviar link de acesso'}
-                </Button>
-                <button
-                  type="button"
-                  className="mt-3 w-full text-center text-sm text-muted-foreground underline-offset-2 hover:underline"
-                  onClick={() => {
-                    setError(null);
-                    setMode(mode === 'signup' ? 'link' : 'signup');
-                  }}
-                >
-                  {mode === 'signup'
-                    ? 'Já sou afiliado: receber link de acesso'
-                    : 'Ainda não sou afiliado: quero me cadastrar'}
-                </button>
-              </form>
-            )}
-          </div>
-        </section>
+              {error && (
+                <p className="mt-4 text-sm text-[var(--danger-text)]" role="alert">
+                  {error}
+                </p>
+              )}
 
-        <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="mb-3 text-lg font-semibold">Regras do programa</h2>
-          <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-            {RULES.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-        </section>
-      </main>
-    </div>
+              <Button type="submit" className="mt-5 w-full" disabled={loading}>
+                {loading
+                  ? 'Enviando…'
+                  : mode === 'signup'
+                    ? 'Cadastrar e receber meu link'
+                    : 'Enviar link de acesso'}
+              </Button>
+              <button
+                type="button"
+                className="mt-3 w-full text-center text-sm text-muted-foreground underline-offset-2 hover:underline"
+                onClick={() => {
+                  setError(null);
+                  setMode(mode === 'signup' ? 'link' : 'signup');
+                }}
+              >
+                {mode === 'signup'
+                  ? 'Já sou afiliado: receber link de acesso'
+                  : 'Ainda não sou afiliado: quero me cadastrar'}
+              </button>
+            </form>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-6">
+        <h2 className="mb-3 text-lg font-semibold">Regras do programa</h2>
+        <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+          {RULES.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      </section>
+    </AfiliadosLayout>
   );
 }

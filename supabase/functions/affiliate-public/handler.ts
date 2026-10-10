@@ -1,15 +1,20 @@
 /**
  * affiliate-public: API pública do programa de afiliados (sem sessão Supabase, deploy com
- * --no-verify-jwt). Qualquer pessoa se cadastra; o acesso ao painel é um link pessoal
- * enviado por e-mail, cujo token (32 bytes base64url) é a única credencial. Só o hash
- * SHA-256 do token fica no banco.
+ * --no-verify-jwt). Qualquer pessoa se cadastra; o acesso ao painel é por link mágico: o
+ * e-mail leva um token de login (15 min, uso único) que o front troca por um token de sessão
+ * (30 dias) guardado no navegador. Tokens são 32 bytes base64url; só o hash SHA-256 fica no
+ * banco (affiliate_access_tokens, kind 'login' | 'session').
  *
  * Ações (POST { action, ... }):
  *   signup            { nome, email, telefone?, aceite_termos } → cria (ou reaproveita) e manda o link
  *   send_link         { email }       → manda um link novo, se o e-mail existir
+ *   exchange          { login_token } → gasta o link (uma vez) e devolve { session_token }
+ *   logout            { token }       → apaga a sessão
  *   dashboard         { token }       → painel do afiliado (relê no Stripe a conta ainda não apta)
  *   connect_start     { token }       → cria a conta Express (uma vez) e devolve o link de onboarding
  *   connect_dashboard { token }       → link de login no painel Express (repasses, dados bancários)
+ *
+ * Nas ações do painel, `token` é o token de SESSÃO; um token de login nunca abre o painel.
  *
  * O repasse em si é do affiliate-payout-cron (transfer mensal por Stripe Connect).
  *
@@ -26,9 +31,10 @@ import {
   commissionSituacao,
   normalizeEmail,
   referralSituacao,
+  loginExpiry,
+  sessionExpiry,
   sha256Hex,
   shapeSummary,
-  tokenExpiry,
   validateSignup,
 } from "./logic.ts";
 import {
@@ -80,6 +86,10 @@ function isUniqueViolation(err: unknown): boolean {
 export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
   const { db } = deps;
 
+  function appBase(): string {
+    return deps.appBaseUrl().replace(/\/+$/, "");
+  }
+
   async function findByEmail(email: string): Promise<AffiliateRow | null> {
     const { data, error } = await db
       .from("affiliates")
@@ -127,11 +137,13 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
       .insert({
         token_hash: await sha256Hex(token),
         affiliate_id: affiliate.id,
-        expires_at: tokenExpiry(deps.now()).toISOString(),
+        expires_at: loginExpiry(deps.now()).toISOString(),
+        kind: "login",
       })
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
     if (error) throw new Error(`token insert failed: ${(error as { message?: string }).message}`);
-    return `${deps.appBaseUrl().replace(/\/+$/, "")}/afiliados/painel/${token}`;
+    // No fragmento: o navegador não manda o "#..." ao servidor nem no Referer.
+    return `${appBase()}/afiliados/entrar#${token}`;
   }
 
   async function resolveToken(token: unknown): Promise<AffiliateRow | null> {
@@ -140,6 +152,7 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
       .from("affiliate_access_tokens")
       .select("affiliate_id")
       .eq("token_hash", await sha256Hex(token))
+      .eq("kind", "session")
       .gt("expires_at", deps.now().toISOString())
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
       .maybeSingle();
@@ -299,6 +312,44 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
     });
   }
 
+  async function exchange(req: Request, body: Record<string, unknown>, json: JsonResponder) {
+    if (!(await deps.rateLimit(`affiliate-exchange:ip:${deps.getClientIP(req)}`, 20, 3600))) {
+      return json({ error: MSG_RATE }, 429);
+    }
+    const loginToken = body.login_token;
+    if (typeof loginToken !== "string" || !ACCESS_TOKEN_RE.test(loginToken)) {
+      return json({ error: MSG_INVALID_LINK }, 404);
+    }
+    const sessionToken = base64Url(deps.randomBytes(32));
+    const { data, error } = await db
+      .rpc("affiliate_exchange_login", {
+        p_login_hash: await sha256Hex(loginToken),
+        p_session_hash: await sha256Hex(sessionToken),
+        p_session_expires_at: sessionExpiry(deps.now()).toISOString(),
+      })
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+    if (error) throw new Error(`login exchange failed: ${(error as { message?: string }).message}`);
+    // Inválido, vencido ou já usado: mesma resposta nos três casos.
+    if (!data) return json({ error: MSG_INVALID_LINK }, 404);
+    return json({ session_token: sessionToken });
+  }
+
+  async function logout(req: Request, body: Record<string, unknown>, json: JsonResponder) {
+    if (!(await deps.rateLimit(`affiliate-dashboard:ip:${deps.getClientIP(req)}`, 60, 60))) {
+      return json({ error: MSG_RATE }, 429);
+    }
+    if (typeof body.token === "string" && ACCESS_TOKEN_RE.test(body.token)) {
+      const { error } = await db
+        .from("affiliate_access_tokens")
+        .delete()
+        .eq("token_hash", await sha256Hex(body.token))
+        .eq("kind", "session")
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+      if (error) throw new Error(`logout failed: ${(error as { message?: string }).message}`);
+    }
+    return json({ ok: true });
+  }
+
   async function connectStart(req: Request, body: Record<string, unknown>, json: JsonResponder) {
     if (!(await deps.rateLimit(`affiliate-dashboard:ip:${deps.getClientIP(req)}`, 60, 60))) {
       return json({ error: MSG_RATE }, 429);
@@ -333,7 +384,8 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
           accountId = fresh?.stripe_account_id ?? created;
         }
       }
-      const base = `${deps.appBaseUrl().replace(/\/+$/, "")}/afiliados/painel/${body.token as string}`;
+      // Sem token na URL: a sessão fica no navegador, e o Stripe guarda estas URLs.
+      const base = `${appBase()}/afiliados/painel`;
       const url = await deps.connect.createOnboardingLink({
         accountId,
         refreshUrl: `${base}?stripe=refresh`,
@@ -391,6 +443,10 @@ export function createAffiliatePublicHandler(deps: AffiliatePublicDeps) {
           return await signup(req, body, json);
         case "send_link":
           return await sendLink(req, body, json);
+        case "exchange":
+          return await exchange(req, body, json);
+        case "logout":
+          return await logout(req, body, json);
         case "dashboard":
           return await dashboard(req, body, json);
         case "connect_start":
