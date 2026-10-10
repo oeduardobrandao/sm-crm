@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { getInstagramPosts, type InstagramPostSummary } from '@/services/instagram';
 import { sanitizeUrl } from '@/utils/security';
 import { InstagramPostCarousel } from './InstagramPostCarousel';
@@ -56,11 +57,29 @@ export function LatestInstagramPosts({ clienteId }: { clienteId: number }): Reac
   );
 
   if (isLoading) {
+    // Shaped like InstagramPostCarousel (header, then a row of 4:5 post cards), not a tile grid.
     return (
-      <div className="card latest-instagram-posts__status" role="status">
-        <Spinner size="lg" />
-        <span className="sr-only">{t('instagram.loadingPosts')}</span>
-      </div>
+      <SkeletonStatus className="card instagram-post-carousel">
+        <div className="dashboard-hub-card-header instagram-post-carousel__header">
+          <Skeleton className="h-5 w-48" />
+          <Skeleton className="h-9 w-32" />
+        </div>
+        <div className="instagram-post-carousel__track" style={{ overflow: 'hidden' }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="instagram-post-carousel__item">
+              <div className="latest-instagram-post-card">
+                <Skeleton className="aspect-[4/5] w-full rounded-none" />
+                <div className="latest-instagram-post-card__body">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-3.5 w-full" />
+                  <Skeleton className="h-3.5 w-2/3" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </SkeletonStatus>
     );
   }
 

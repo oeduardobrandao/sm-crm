@@ -108,7 +108,7 @@ describe('WorkflowCalendarView', () => {
   it('shows loading state', () => {
     mockGetClientePosts.mockReturnValue(new Promise(() => {})); // never resolves
     renderWithQuery(<WorkflowCalendarView {...baseProps} />);
-    expect(screen.getByText('Carregando calendário...')).toBeTruthy();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
   });
 
   it('renders sidebar and calendar grid after data loads', async () => {

@@ -445,12 +445,12 @@ describe('AnalyticsPage', () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-18T12:00:00.000Z'));
   });
 
-  it('shows a loading state while the portfolio summary is hydrating', () => {
+  it('shows a loading skeleton while the portfolio summary is hydrating', () => {
     setQueryFixture(28, makeSummary([]), { isLoading: true });
 
     renderPage();
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading');
+    expect(screen.getByTestId('crm-skeleton')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('shows a friendly error state when the portfolio summary fails', () => {

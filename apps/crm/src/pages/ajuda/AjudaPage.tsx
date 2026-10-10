@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
+import { CardGridSkeleton } from '@/components/ui/skeletons';
 import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
 import { filterArticles } from './filterArticles';
@@ -60,9 +60,7 @@ export default function AjudaPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Spinner size="lg" />
-        </div>
+        <CardGridSkeleton cards={6} />
       ) : isSearching ? (
         filteredArticles.length === 0 && filteredVideos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">

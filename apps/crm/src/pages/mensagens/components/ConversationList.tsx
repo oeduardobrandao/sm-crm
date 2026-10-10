@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowDownUp, Info, Search } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { ClienteAvatar } from './Avatars';
 import { conversaPreview, formatTime, sortConversas, type ConversasSort } from '../mensagensLogic';
 
@@ -79,9 +80,7 @@ export function ConversationList({
       </div>
 
       <div className="flex-1 overflow-y-auto mensagens-list-scroll">
-        {isLoading && (
-          <p className="py-10 text-center text-sm text-[var(--text-muted)]">Carregando…</p>
-        )}
+        {isLoading && <ListSkeleton rows={6} avatar className="px-4 py-3" />}
         {isError && (
           <p className="py-10 text-center text-sm text-[var(--text-muted)]">
             Não foi possível carregar as conversas.

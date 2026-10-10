@@ -80,7 +80,6 @@
     "followerChartEmpty": "Not enough follower data to display the chart.",
     "followerTooltip": "{{count}} Followers",
     "postsTitle": "Recent Posts",
-    "loadingPosts": "Loading publications",
     "noPosts": "No posts found.",
     "colDate": "Date",
     "colCaption": "Caption",

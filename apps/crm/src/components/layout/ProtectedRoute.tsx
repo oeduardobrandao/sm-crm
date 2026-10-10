@@ -2,7 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
-import { Spinner } from '@/components/ui/spinner';
+import { PageSkeleton } from '@/components/ui/skeletons';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { resolveRouteGate } from './routePermissions';
 import { isLayoutGuardedPath } from './AppLayout';
@@ -25,12 +25,15 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { features, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
 
   if (loading || limitsLoading) {
+    // The shell (sidebar, top bar) is not mounted yet and the page is unknown, so this is a
+    // content-only silhouette padded like `.main-content`.
     return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
+      <PageSkeleton
+        style={{
+          minHeight: '100vh',
+          padding: 'clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 3vw, 3rem)',
+        }}
+      />
     );
   }
 

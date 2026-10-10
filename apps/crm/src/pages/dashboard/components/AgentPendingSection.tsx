@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, ClipboardList } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { getTarefas, type TarefaWithRelations } from '../../../store';
 import { useCurrentMembro } from '../../../hooks/useCurrentMembro';
 import { dueBadge, sortTarefas } from '../../tarefas/tarefasLogic';
@@ -143,8 +144,9 @@ export function AgentPendingSection() {
 
   if (membroLoading) {
     return (
-      <div className="card" style={{ padding: '2rem', textAlign: 'center', borderRadius: '12px' }}>
-        <Spinner size="md" />
+      <div className="card" style={{ padding: '1.25rem', borderRadius: '12px' }}>
+        <Skeleton aria-hidden="true" className="h-4 w-40" style={{ marginBottom: '1rem' }} />
+        <ListSkeleton rows={3} />
       </div>
     );
   }
@@ -165,11 +167,7 @@ export function AgentPendingSection() {
         {t('agentPending.title', 'Minhas pendências')}
       </h2>
 
-      {tarefasLoading && (
-        <div style={{ textAlign: 'center', padding: '1.5rem' }}>
-          <Spinner size="md" />
-        </div>
-      )}
+      {tarefasLoading && <ListSkeleton rows={3} />}
 
       {nothingPending && (
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>

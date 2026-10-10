@@ -14,6 +14,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { X } from 'lucide-react';
+import { CalendarSkeleton } from '@/components/ui/skeletons';
 import { getClientePosts, updateWorkflowPost, type ClientePost, type Membro } from '@/store';
 import { CalendarGrid, LOCKED_STATUSES, LOCKED_TOOLTIPS } from './CalendarGrid';
 import { CalendarPostDetailPanel } from './CalendarPostDetailPanel';
@@ -227,7 +228,7 @@ export function WorkflowCalendarView({
   };
 
   if (isLoading) {
-    return <div className="drawer-empty">Carregando calendário...</div>;
+    return <CalendarSkeleton />;
   }
 
   return (

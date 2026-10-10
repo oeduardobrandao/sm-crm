@@ -110,7 +110,7 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
   });
 
-  it('renders a loading spinner while the auth session is hydrating', () => {
+  it('renders a loading skeleton while the auth session is hydrating', () => {
     mockedUseAuth.mockReturnValue({
       user: null,
       profile: null,
@@ -121,13 +121,12 @@ describe('ProtectedRoute', () => {
       signOut: vi.fn(),
     });
 
-    const { container } = renderRoute('/dashboard');
+    renderRoute('/dashboard');
 
     // While loading, neither the protected children nor the login redirect render.
     expect(screen.queryByText(/Área protegida/)).not.toBeInTheDocument();
     expect(screen.queryByText('Tela de login')).not.toBeInTheDocument();
-    // The loading path renders the Spinner wrapper div.
-    expect(container.firstChild).not.toBeNull();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
   });
 
   it.each(['/leads', '/equipe'])('redirects agent away from %s to the dashboard', (blocked) => {

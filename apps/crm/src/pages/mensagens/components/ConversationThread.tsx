@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ArrowLeft, CheckCircle2, FilePen, Send, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import type { useMensagensData } from '../hooks/useMensagensData';
 import { AutorAvatar, ClienteAvatar } from './Avatars';
 import { PostChip } from './PostChip';
@@ -159,9 +161,7 @@ export function ConversationThread({
             </button>
           </div>
         )}
-        {!feed.isError && feed.isLoading && (
-          <p className="self-center py-8 text-sm text-[var(--text-muted)]">Carregando…</p>
-        )}
+        {!feed.isError && feed.isLoading && <ThreadSkeleton />}
         {!feed.isError && !feed.isLoading && itens.length === 0 && (
           <p className="self-center py-8 text-sm text-[var(--text-muted)]">
             Nenhuma mensagem nesta conversa ainda.
@@ -288,5 +288,30 @@ export function ConversationThread({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Alternating bubbles (client left, team right) while the first page of the thread loads. */
+function ThreadSkeleton() {
+  const bubbles: { mine: boolean; w: string; h: string }[] = [
+    { mine: false, w: '52%', h: 'h-12' },
+    { mine: true, w: '40%', h: 'h-9' },
+    { mine: false, w: '64%', h: 'h-16' },
+    { mine: true, w: '46%', h: 'h-12' },
+  ];
+  return (
+    <SkeletonStatus>
+      <div className="flex flex-col gap-3">
+        {bubbles.map((b, i) => (
+          <div
+            key={i}
+            className={`flex w-full items-end gap-2 ${b.mine ? 'flex-row-reverse' : ''}`}
+          >
+            <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+            <Skeleton className={`${b.h} rounded-2xl`} style={{ width: b.w }} />
+          </div>
+        ))}
+      </div>
+    </SkeletonStatus>
   );
 }

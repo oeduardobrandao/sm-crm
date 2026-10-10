@@ -12,7 +12,7 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // puts on the five `hub/*` tabs, so the screen inside can never contradict
 // the route guard that let the member through.
 //  - `false`     -> RoleRestrictionNotice
-//  - `'unknown'` -> Spinner (membership still resolving)
+//  - `'unknown'` -> skeleton (membership still resolving)
 //  - `true`      -> the real content
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
@@ -122,11 +122,11 @@ describe('HubRoleGate', () => {
    * notice at EVERY viewer — owner/admin included — for the first render or
    * two. `setAuth(null)` drives `can()` to 'unknown' for every module.
    */
-  it('shows a loading spinner (no notice, no children) while membership/can() is unresolved', () => {
+  it('shows a loading skeleton (no notice, no children) while membership/can() is unresolved', () => {
     setAuth(null);
-    const { container } = renderGate();
+    renderGate();
 
-    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
     expect(screen.queryByTestId('child')).not.toBeInTheDocument();
     expect(screen.queryByText(RESTRICTION_TEXT)).not.toBeInTheDocument();
   });

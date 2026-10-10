@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, ListChecks } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '../../../context/AuthContext';
 import { useCurrentMembro } from '../../../hooks/useCurrentMembro';
 import { useMinhaFilaData } from '../../entregas/hooks/useMinhaFilaData';
@@ -108,11 +108,7 @@ export function MinhaFilaCard() {
     // isLoading=false with no membro yet, which would otherwise fall through to
     // the no-membro branch below and wrongly show "vincule seu usuário" to a user
     // who IS linked (fix round 1, finding 1).
-    body = (
-      <div style={{ textAlign: 'center', padding: '1.5rem' }}>
-        <Spinner size="md" />
-      </div>
-    );
+    body = <ListSkeleton rows={3} />;
   } else if (membroId == null) {
     body = canManageTeam ? (
       <p className="today-note">

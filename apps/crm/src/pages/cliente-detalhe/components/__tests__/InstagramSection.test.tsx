@@ -101,9 +101,11 @@ afterEach(() => {
 });
 
 describe('InstagramSection', () => {
-  it('shows a loading spinner while loadingIg is true, nothing else', () => {
+  it('shows a skeleton while loadingIg is true, nothing else', () => {
     const { container } = renderSection({ loadingIg: true, igSummary: null });
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
+    // The first-import "sincronizando" spinner is a different state.
+    expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
     expect(screen.queryByTestId('connect-link-row')).not.toBeInTheDocument();
   });
 

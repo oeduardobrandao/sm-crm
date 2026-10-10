@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Calendar, Columns, List, ListChecks, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { PageSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
 import type { TarefaWithRelations } from '../../store';
@@ -106,13 +106,8 @@ export default function TarefasPage() {
   };
 
   if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
-    );
+    // The page always opens on the 'lista' view.
+    return <PageSkeleton body="list" />;
   }
 
   return (

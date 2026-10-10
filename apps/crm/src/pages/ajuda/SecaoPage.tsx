@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { CardGridSkeleton } from '@/components/ui/skeletons';
 import { Button } from '@/components/ui/button';
 import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
@@ -56,9 +56,7 @@ export default function SecaoPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Spinner size="lg" />
-        </div>
+        <CardGridSkeleton cards={6} />
       ) : sectionArticles.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <p className="text-[0.9rem] text-[var(--text-light)]">Nenhum artigo nesta seção ainda.</p>

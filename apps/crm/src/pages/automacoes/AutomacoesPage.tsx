@@ -22,7 +22,12 @@ import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Spinner } from '@/components/ui/spinner';
+import {
+  CardListSkeleton,
+  ListSkeleton,
+  PageSkeleton,
+  TableSkeleton,
+} from '@/components/ui/skeletons';
 import {
   Table,
   TableBody,
@@ -321,11 +326,7 @@ export default function AutomacoesPage() {
     flagOff &&
     (automationsQuery.isPending || (automations.length === 0 && contactsCountQuery.isPending))
   ) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
-        <Spinner size="lg" />
-      </div>
-    );
+    return <PageSkeleton body="table" style={{ padding: '1.5rem' }} />;
   }
   if (flagOff && automationsQuery.isError) {
     return (
@@ -442,9 +443,11 @@ export default function AutomacoesPage() {
           )}
 
           {isLoading ? (
-            <div className="flex justify-center p-8">
-              <Spinner size="lg" />
-            </div>
+            isDesktop ? (
+              <TableSkeleton rows={5} columns={7} />
+            ) : (
+              <CardListSkeleton rows={4} />
+            )
           ) : isDesktop ? (
             <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
               <Table>
@@ -892,11 +895,7 @@ function SendsLog({
 }) {
   const { t, i18n } = useTranslation('automations');
   if (isLoading) {
-    return (
-      <div className="flex justify-center p-4">
-        <Spinner size="sm" />
-      </div>
-    );
+    return <ListSkeleton rows={2} style={{ padding: '0.5rem 0' }} />;
   }
   if (isError) {
     return (

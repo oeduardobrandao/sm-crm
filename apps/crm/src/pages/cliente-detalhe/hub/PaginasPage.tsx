@@ -23,7 +23,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DocSkeleton } from '@/components/ui/skeletons';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -302,8 +303,13 @@ function PagesEditor({
         </Button>
 
         {isLoading ? (
-          <div className="py-6 flex justify-center">
-            <Spinner size="sm" />
+          // Só visual: o skeleton do editor ao lado já anuncia "Carregando…" uma vez.
+          <div className="hub-paginas__list" aria-hidden="true">
+            {['72%', '58%', '66%'].map((w) => (
+              <div key={w} style={{ padding: '0.6rem 0.625rem 0.6rem 1.5rem' }}>
+                <Skeleton className="h-3.5" style={{ width: w }} />
+              </div>
+            ))}
           </div>
         ) : pages.length === 0 ? (
           <p className="hub-paginas__rail-empty">Nenhuma página ainda.</p>
@@ -335,9 +341,7 @@ function PagesEditor({
 
       <div className="hub-paginas__main">
         {isLoading ? (
-          <div className="py-8 flex justify-center">
-            <Spinner size="md" />
-          </div>
+          <DocSkeleton />
         ) : (
           <PageEditorPane
             // `clienteId` entra na key como segunda camada -- `PagesEditor` já é

@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { FolderOpen, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { getFolderContents } from '@/services/fileService';
 import { FileGrid } from '@/pages/arquivos/components/FileGrid';
 import { useAuth } from '@/context/AuthContext';
@@ -76,9 +77,25 @@ export default function ArquivosTab() {
         )}
       </div>
       {isLoading ? (
-        <div className="flex items-center justify-center py-8">
-          <Spinner size="md" />
-        </div>
+        <SkeletonStatus>
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+          >
+            {Array.from({ length: 6 }, (_, i) => (
+              <div
+                key={i}
+                className="flex flex-col rounded-lg border border-[var(--border-color)] overflow-hidden"
+              >
+                <Skeleton className="w-full aspect-square !rounded-none" />
+                <div className="px-3 py-2 flex flex-col gap-1.5">
+                  <Skeleton className="h-3 w-3/4" />
+                  <Skeleton className="h-2.5 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </SkeletonStatus>
       ) : files.length === 0 && subfolders.length === 0 ? (
         <p className="text-sm text-[var(--text-muted)] py-4">{t('detail.noFiles')}</p>
       ) : (

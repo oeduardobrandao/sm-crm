@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Plus } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { getTreeChildren } from '@/services/fileService';
 import type { TreeNode } from '@/services/fileService';
 
@@ -184,9 +186,14 @@ export function FolderTree({
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto py-2 space-y-0.5">
         {isLoading && (
-          <div className="px-3 py-4 text-sm text-[var(--text-muted)] text-center">
-            Carregando...
-          </div>
+          <SkeletonStatus className="px-3 py-1.5 flex flex-col gap-3">
+            {['70%', '55%', '62%', '48%'].map((w) => (
+              <div key={w} className="flex items-center gap-2">
+                <Skeleton className="h-4 w-4 shrink-0" />
+                <Skeleton className="h-3.5" style={{ width: w }} />
+              </div>
+            ))}
+          </SkeletonStatus>
         )}
 
         {rootFolders.map((folder) => (

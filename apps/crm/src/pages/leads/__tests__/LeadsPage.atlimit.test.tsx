@@ -239,7 +239,7 @@ describe('LeadsPage at-limit create button', () => {
 
     // Wait for the leads list itself to finish loading (its query resolves),
     // so any state update triggered by that settles before we assert.
-    await waitFor(() => expect(screen.queryByTestId('spinner')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId('crm-skeleton')).not.toBeInTheDocument());
     expect(screen.queryByText(/de 200 leads/)).not.toBeInTheDocument();
   });
 

@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { FinancialAccess } from '../../lib/financialAccess';
 import type { PermissionCheck } from '../../lib/permissions';
 import FinancialRestrictionScreen from './FinancialRestrictionScreen';
-import { Spinner } from '../ui/spinner';
+import { PageSkeleton } from '../ui/skeletons';
 import { GuideProvider } from '../guide/GuideContext';
 import { GuidePill } from '../guide/GuidePill';
 
@@ -232,12 +232,15 @@ export default function AppLayout() {
 
         <main className="main-content" id="app">
           <ContextHelpLinks />
-          {outcome === 'content' && <Outlet />}
-          {outcome === 'loading' && (
-            <div style={{ padding: '3rem', textAlign: 'center' }}>
-              <Spinner size="lg" />
-            </div>
+          {/* The page chunks are lazy: on a cold load the shell stays up and only the
+              content area waits. In-app navigations run in a transition, so they keep the
+              previous page on screen instead of falling back here. */}
+          {outcome === 'content' && (
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
           )}
+          {outcome === 'loading' && <PageSkeleton />}
           {outcome === 'denied' && <FinancialRestrictionScreen variant={deniedScreen} />}
         </main>
 

@@ -50,7 +50,7 @@ import {
 import { AutoScheduleBadge } from '../components/AutoScheduleBadge';
 import { AwaitingApprovalBadge } from '../components/AwaitingApprovalBadge';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { BoardSkeleton } from '@/components/ui/skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import {
   AlertDialog,
@@ -977,13 +977,7 @@ export function PostsKanbanView({
   };
 
   if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
-    );
+    return <BoardSkeleton columns={registry.options.length || 4} />;
   }
 
   if (posts.length === 0) {

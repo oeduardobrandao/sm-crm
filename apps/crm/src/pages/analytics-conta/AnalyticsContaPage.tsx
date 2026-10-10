@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { PageSkeleton } from '@/components/ui/skeletons';
 import {
   Dialog,
   DialogContent,
@@ -1518,12 +1519,9 @@ function AnalyticsContent({
     ? followersWindow.start.toLocaleString('pt-BR')
     : undefined;
 
-  if (isLoading)
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
-        <Spinner size="lg" />
-      </div>
-    );
+  // The overview returns before the page header renders, so its placeholder carries the header
+  // too: the outer route skeleton hands over to this one without the header blinking out.
+  if (isLoading) return <PageSkeleton body="report" />;
 
   if (!overview) return null;
 
@@ -3187,13 +3185,7 @@ export default function AnalyticsContaPage() {
   }
 
   if (loadingClientes || loadingIg) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
-    );
+    return <PageSkeleton body="report" />;
   }
 
   if (!cliente) {

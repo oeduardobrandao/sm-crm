@@ -14,7 +14,8 @@ import {
   MoreVertical,
   X,
 } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { MeterBar } from '@/components/usage/UsageMeter';
 import { formatBytes } from './FileGrid';
 import { FileContextMenu } from './FileContextMenu';
@@ -665,9 +666,23 @@ export function MobileArquivosView({
 
       <div className="flex-1 overflow-y-auto pt-2.5 pb-28">
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Spinner size="lg" />
-          </div>
+          <SkeletonStatus>
+            <Skeleton className="h-2.5 w-20 mb-2 mx-4" />
+            <div className="grid grid-cols-2 gap-2.5 px-3">
+              {Array.from({ length: 4 }, (_, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col gap-2.5 p-3 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)]"
+                >
+                  <Skeleton className="w-9 h-9 !rounded-sm" />
+                  <div className="flex flex-col gap-1.5">
+                    <Skeleton className="h-3.5 w-3/4" />
+                    <Skeleton className="h-2.5 w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SkeletonStatus>
         ) : !isInsideFolder ? (
           <>
             <p className="font-mono text-[11px] tracking-[.12em] text-[var(--text-muted)] font-semibold mb-2 px-4">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Bell, CheckCheck, Filter } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import type { Notification } from '../../store';
 import NotificationList from './NotificationList';
 
@@ -82,13 +82,7 @@ export default function NotificationPopover({
       </header>
 
       {isLoading ? (
-        <div
-          role="status"
-          aria-label="Carregando notificações"
-          style={{ padding: '2rem 1rem', display: 'flex', justifyContent: 'center' }}
-        >
-          <Spinner />
-        </div>
+        <ListSkeleton rows={4} avatar style={{ padding: '0.75rem 1rem' }} />
       ) : visible.length === 0 ? (
         <EmptyState />
       ) : (

@@ -3,7 +3,8 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { Folder as FolderIcon, FileImage, FileVideo, FileText } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import { getFolderInfo } from '@/services/fileService';
 import { formatBytes } from './FileGrid';
 import type { Folder, FileRecord } from '../types';
@@ -52,9 +53,21 @@ function FolderInfoContent({ folder }: { folder: Folder }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <Spinner size="md" />
-      </div>
+      <SkeletonStatus className="space-y-1">
+        <div className="flex items-center gap-3 mb-4">
+          <Skeleton className="h-8 w-8 shrink-0" />
+          <Skeleton className="h-5 w-40" />
+        </div>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="flex items-center justify-between gap-4 py-2 border-b border-[var(--border-color)] last:border-b-0"
+          >
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3.5 w-16" />
+          </div>
+        ))}
+      </SkeletonStatus>
     );
   }
 

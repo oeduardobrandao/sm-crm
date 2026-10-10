@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
 import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/mcp-oauth';
 import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
@@ -544,7 +545,7 @@ export default function IntegracoesClaudePage() {
           </div>
 
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
+            <ListSkeleton rows={2} />
           ) : keys.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhuma chave ainda. Crie uma para conectar um agente.

@@ -31,7 +31,7 @@ describe('NotificationPopover', () => {
     expect(screen.getByText('Nenhuma notificação')).toBeInTheDocument();
   });
 
-  it('shows a spinner instead of the empty state while loading', () => {
+  it('shows a skeleton instead of the empty state while loading', () => {
     render(
       <NotificationPopover
         notifications={[]}
@@ -43,7 +43,7 @@ describe('NotificationPopover', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByRole('status', { name: 'Carregando notificações' })).toBeInTheDocument();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
     expect(screen.queryByText('Nenhuma notificação')).not.toBeInTheDocument();
   });
 

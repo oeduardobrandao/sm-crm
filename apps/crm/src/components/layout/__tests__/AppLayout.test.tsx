@@ -353,17 +353,17 @@ describe('AppLayout financial guard wiring', () => {
     expect(screen.queryByText('Acesso financeiro restrito')).not.toBeInTheDocument();
   });
 
-  it('shows a loading spinner, not the restriction screen, while capability is unknown', async () => {
+  it('shows a loading skeleton, not the restriction screen, while capability is unknown', async () => {
     setViewport(1280);
     mockMatchMedia(false);
     setCanSeeFinancials('unknown');
 
-    const { container } = renderLayout('/financeiro');
+    renderLayout('/financeiro');
     await screen.findByTestId('global-banner');
 
     expect(screen.queryByText('Financeiro screen')).not.toBeInTheDocument();
     expect(screen.queryByText('Acesso financeiro restrito')).not.toBeInTheDocument();
-    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
   });
 
   it('leaves non-financial routes unaffected when access is denied', async () => {
@@ -433,7 +433,7 @@ describe('AppLayout contract guard wiring', () => {
     expect(screen.queryByText('Contratos screen')).not.toBeInTheDocument();
   });
 
-  it('shows a spinner, not a denial, while the contracts capability is unknown', async () => {
+  it('shows a skeleton, not a denial, while the contracts capability is unknown', async () => {
     setViewport(1280);
     mockMatchMedia(false);
     mockedUseAuth.mockReturnValue({
@@ -449,11 +449,11 @@ describe('AppLayout contract guard wiring', () => {
       signOut: vi.fn(),
     });
 
-    const { container } = renderLayout('/contratos');
+    renderLayout('/contratos');
     await screen.findByTestId('global-banner');
 
     expect(screen.queryByText('Contratos screen')).not.toBeInTheDocument();
     expect(screen.queryByText('Acesso a contratos restrito')).not.toBeInTheDocument();
-    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
   });
 });

@@ -2682,7 +2682,7 @@ describe('EntregasPage: Minha fila', () => {
 
   it('shows loading, not an empty queue, while the entregas data is paused', () => {
     // Offline cold start: workflows/etapas/processos pending but not fetching,
-    // so isLoading (and the page spinner) is false; posts and membros cached.
+    // so isLoading (and the page skeleton) is false; posts and membros cached.
     mockedUseActivePosts.mockReturnValue({
       posts: [{ id: 1, workflow_id: 1, status: 'rascunho', scheduled_at: null }],
       isLoading: false,

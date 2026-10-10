@@ -10,7 +10,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
 import Youtube from '@tiptap/extension-youtube';
 import { ArrowLeft, Clock } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { DocSkeleton } from '@/components/ui/skeletons';
 import { Button } from '@/components/ui/button';
 import { getArticleBySlug, getPublishedArticles } from '@/store/kb';
 import { extractR2Keys, resolveInlineImageUrls, injectSignedUrls } from '@/services/inlineImage';
@@ -126,11 +126,7 @@ export default function ArtigoPage() {
   const coverSrc = coverIsR2 ? resolvedCover || null : rawCover;
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <DocSkeleton className="max-w-5xl mx-auto" />;
   }
 
   if (!article) {

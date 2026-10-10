@@ -210,7 +210,7 @@ describe('MinhaFilaCard', () => {
 
     dataMock.isLoading = true;
     const loading = renderCard();
-    expect(loading.container.querySelector('.animate-spin')).not.toBeNull();
+    expect(loading.container.querySelector('[data-testid="crm-skeleton"]')).not.toBeNull();
     expect(screen.queryByText('Nada na sua fila.')).not.toBeInTheDocument();
     loading.unmount();
 
@@ -230,7 +230,7 @@ describe('MinhaFilaCard', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the spinner (not the vincule card) on a paused/offline cold start for a linked user', () => {
+  it('shows the skeleton (not the vincule card) on a paused/offline cold start for a linked user', () => {
     // isPending=true, isLoading=false, membro=null: mirrors TanStack's own
     // isLoading = isPending && isFetching -- a paused query is pending but not
     // fetching, so isLoading is false even though there is no membro yet. Reading
@@ -244,7 +244,7 @@ describe('MinhaFilaCard', () => {
     expect(
       screen.queryByText('Vincule seu usuário a um membro da equipe para ver sua fila aqui.'),
     ).not.toBeInTheDocument();
-    expect(document.querySelector('.animate-spin')).not.toBeNull();
+    expect(document.querySelector('[data-testid="crm-skeleton"]')).not.toBeNull();
   });
 
   it('shows the rows for a cached membro even after a failed background refetch', () => {
@@ -258,13 +258,13 @@ describe('MinhaFilaCard', () => {
     dataMock.posts = [post(1)];
     renderCard();
     expect(screen.getByRole('link', { name: /Post 1/ })).toBeInTheDocument();
-    expect(document.querySelector('.animate-spin')).toBeNull();
+    expect(document.querySelector('[data-testid="crm-skeleton"]')).toBeNull();
     expect(
       screen.queryByText('Não foi possível carregar a fila. Recarregue a página.'),
     ).not.toBeInTheDocument();
   });
 
-  it('shows the error, not the spinner, when a query failed while a sibling is still loading', () => {
+  it('shows the error, not the skeleton, when a query failed while a sibling is still loading', () => {
     // The loading branch must not win over the error branch, or a failed query
     // with no data alongside a paused sibling would spin the card forever.
     dataMock.isError = true;
@@ -273,7 +273,7 @@ describe('MinhaFilaCard', () => {
     expect(
       screen.getByText('Não foi possível carregar a fila. Recarregue a página.'),
     ).toBeInTheDocument();
-    expect(document.querySelector('.animate-spin')).toBeNull();
+    expect(document.querySelector('[data-testid="crm-skeleton"]')).toBeNull();
   });
 
   it('shows the vincule card, not the error, when no membro is linked but a stale data-level error survives', () => {

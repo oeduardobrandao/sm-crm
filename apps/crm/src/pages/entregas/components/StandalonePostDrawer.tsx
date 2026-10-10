@@ -29,6 +29,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus } from '@/components/ui/skeletons';
 import {
   getStandalonePost,
   getPostApprovals,
@@ -101,6 +103,33 @@ export interface StandalonePostDrawerProps {
   onProcessApplied?: (postId: number) => void;
   /** Depois de "Duplicar post": o toast oferece "Abrir" com o id da cópia. */
   onDuplicated?: (newPostId: number) => void;
+}
+
+/** The editor's shape while the post loads: the meta row of fields, then the content area. */
+function PostEditorSkeleton() {
+  return (
+    <SkeletonStatus>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap gap-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex min-w-0 flex-[1_1_140px] flex-col gap-1.5">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+        <Skeleton className="h-28 w-full" />
+      </div>
+    </SkeletonStatus>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -561,11 +590,13 @@ export function StandalonePostDrawer({
         <div className="drawer-header">
           <div className="drawer-header-info">
             <div className="drawer-header-title">
-              {isLoading
-                ? 'Carregando…'
-                : post
-                  ? post.titulo || 'Post sem título'
-                  : 'Post não encontrado'}
+              {isLoading ? (
+                <Skeleton className="h-5 w-48 max-w-full" aria-hidden="true" />
+              ) : post ? (
+                post.titulo || 'Post sem título'
+              ) : (
+                'Post não encontrado'
+              )}
             </div>
             {post && (
               <div className="drawer-header-subtitle">
@@ -717,7 +748,7 @@ export function StandalonePostDrawer({
 
         <div className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}`}>
           {isLoading ? (
-            <div className="drawer-empty">Carregando...</div>
+            <PostEditorSkeleton />
           ) : !post ? (
             <div className="drawer-empty">Este post não existe mais.</div>
           ) : drawerView === 'calendar' && clienteId != null ? (

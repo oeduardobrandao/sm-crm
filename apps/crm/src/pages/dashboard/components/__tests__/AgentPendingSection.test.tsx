@@ -58,7 +58,7 @@ describe('AgentPendingSection', () => {
 
     const { container } = renderSection();
 
-    // While ['membros'] is in flight the spinner card is rendered; the null
+    // While ['membros'] is in flight the skeleton card is rendered; the null
     // render only lands once the query resolves.
     await waitFor(() => expect(container.firstChild).toBeNull());
     expect(getTarefasMock).not.toHaveBeenCalled();
