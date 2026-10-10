@@ -330,7 +330,8 @@ describe('PostEditorBody, feature_multiplatform ON', () => {
     const ig = await screen.findByRole('button', { name: /Instagram/ });
     await waitFor(() => expect(screen.getByRole('button', { name: /Geral/ })).not.toBeDisabled());
     expect(ig).toBeDisabled();
-    expect(ig.parentElement).toHaveAttribute('title', 'Já publicado');
+    fireEvent.pointerMove(ig.parentElement!);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Já publicado');
   });
 
   it('Post Express: no Destinos row', async () => {

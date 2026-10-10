@@ -322,10 +322,11 @@ function renderDrawer(
 
 /** Locates the native "Status" <select> inline in PostEditorBody -- there is no
  *  htmlFor/aria-labelledby link to its <label>, so getByLabelText can't find
- *  it. DOM order for the expanded post is fixed: Título (input), Tipo
- *  (select #0), Platform (mocked away, not a <select>), Status (select #1). */
+ *  it. DOM order for the expanded post is fixed: Título (input), Tipo (icon
+ *  toggle, not a <select>), Platform (mocked away, not a <select>), Status
+ *  (select #0). */
 function getStatusSelect(container: HTMLElement): HTMLSelectElement {
-  return container.querySelectorAll('select.drawer-select')[1] as HTMLSelectElement;
+  return container.querySelectorAll('select.drawer-select')[0] as HTMLSelectElement;
 }
 
 function resolvedPost(overrides: Record<string, unknown> = {}) {
@@ -386,9 +387,9 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const { container } = renderDrawer(qc);
 
     // Waits for mockGetPosts to resolve and Post A's row to expand -- its
-    // "Tipo" select (index 0) shows the fixture's tipo, same wait-gate
+    // "Tipo" toggle has the fixture's tipo checked, same wait-gate
     // WorkflowDrawer.test.tsx uses before touching any field on this post.
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('1');
@@ -416,7 +417,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByText('Post aprovado')).toBeInTheDocument();
@@ -449,7 +450,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -494,7 +495,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
       } as never,
     });
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -525,7 +526,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc, { card: { allEtapas: TWO_OPEN_APPROVALS } });
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -555,7 +556,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'revisao_interna' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -587,7 +588,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
@@ -617,7 +618,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('1');
@@ -647,7 +648,7 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = renderDrawer(qc);
 
-    await screen.findByDisplayValue('Imagem');
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('1');

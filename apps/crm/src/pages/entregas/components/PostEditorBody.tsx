@@ -51,8 +51,6 @@ import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { computeWordDiff } from '@/utils/textDiff';
 import { computeTipTapDiff } from '@/utils/tiptapDiff';
 import {
-  TIPO_LABELS,
-  TIPO_ORDER,
   getStatusAutomationHint,
   isVisibleToClient,
   buildTipoDayMarkers,
@@ -66,6 +64,7 @@ import { PostVersionHistorySheet } from './PostVersionHistorySheet';
 import { PLATFORM_DEFS, type PlatformId } from '@mesaas/platforms';
 import { usePostDestinations } from '../hooks/usePostDestinations';
 import { DestinationToggles } from './DestinationToggles';
+import { TipoToggle } from './TipoToggle';
 import { DestinationCaptionTabs } from './DestinationCaptionTabs';
 import type { DestinationCaptionFieldHandle } from './DestinationCaptionField';
 import {
@@ -513,31 +512,19 @@ export function PostEditorBody({
             placeholder="Título do post"
           />
         </div>
-        <div className="drawer-post-field">
-          <label>Tipo</label>
-          {/* Locked while agendado: the publish cron builds the Instagram container up
-              to 1h before scheduled_at, so a tipo/platform change after that leaves a
-              container in the old format — the publish phase then posts the wrong thing. */}
-          <select
-            className="drawer-select"
-            value={post.tipo}
-            onChange={(e) => {
-              const v = e.target.value as WorkflowPost['tipo'];
-              onFieldChange('tipo', v);
-              if (v !== 'reels' && post.ig_trial_strategy) {
-                onFieldChange('ig_trial_strategy', null);
-              }
-            }}
-            disabled={isScheduleLocked}
-            title={isScheduleLocked ? 'Cancelar agendamento para editar' : undefined}
-          >
-            {TIPO_ORDER.map((t) => (
-              <option key={t} value={t}>
-                {TIPO_LABELS[t]}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Locked while agendado: the publish cron builds the Instagram container up
+            to 1h before scheduled_at, so a tipo/platform change after that leaves a
+            container in the old format — the publish phase then posts the wrong thing. */}
+        <TipoToggle
+          value={post.tipo}
+          lockedReason={isScheduleLocked ? 'Cancelar agendamento para editar' : null}
+          onChange={(v) => {
+            onFieldChange('tipo', v);
+            if (v !== 'reels' && post.ig_trial_strategy) {
+              onFieldChange('ig_trial_strategy', null);
+            }
+          }}
+        />
         {multiplatform ? (
           <DestinationToggles
             options={destinationToggleOptions({
