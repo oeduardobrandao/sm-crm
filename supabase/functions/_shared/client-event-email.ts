@@ -4,12 +4,12 @@ import { formatarQuandoAgenda, mesDiaAgenda } from "./agenda-cliente-email.ts";
 import { brandedEmail } from "./email/shell.ts";
 import { button, callout, eventCard, heading, link, paragraph, postList, sectionTitle, spacer } from "./email/blocks.ts";
 import { corSegura } from "./email/safe.ts";
+import { EMAIL } from "./email/tokens.ts";
 
 /**
  * Client-facing "you have pending items" email (Fase 2 do Hub: pendências).
- * Visual family mirrors _shared/report-template/email.ts (560px card, brand
- * header band from Task 1's shared module, button pattern) so client-facing
- * transactional mail reads as one system.
+ * Renders through brandedEmail (_shared/email/shell.ts): the agency brand
+ * band, shared blocks and footer, like every other whitelabel e-mail.
  */
 export interface ClientEventEmailParams {
   clienteNome: string;
@@ -156,7 +156,7 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
     sections,
     footerHtml: [
       `Enviado por ${escapeHtml(workspaceName)} via Mesaas`,
-      link(unsubUrl, "Não quero mais receber esses avisos", "#4b5563"),
+      link(unsubUrl, "Não quero mais receber esses avisos", EMAIL.muted),
     ],
   });
 }
