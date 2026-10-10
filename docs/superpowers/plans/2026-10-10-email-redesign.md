@@ -53,7 +53,7 @@
 | `supabase/functions/__tests__/email-matrix_test.ts` | Spec §7 fixture matrix, cross-builder invariants |
 | Modified builders | `_shared/agenda-email.ts`, `_shared/instagram-connect-email.ts`, `_shared/lifecycle-emails.ts`, `_shared/notification-email.ts`, `_shared/dunning-email.ts`, `_shared/invite-email.ts`, `affiliate-public/email.ts`, `_shared/agenda-cliente-email.ts`, `_shared/client-event-email.ts`, `_shared/report-template/email.ts` |
 
-Task order: 1 → 2 → 3 → 4, then 5–11 in any order **except** 6-before-nothing, 5 before 7 (Task 7 deletes `layout()`, which Task 5 stops using) and 9 before 10 (Task 10 imports `mesDiaAgenda`). Tasks 5, 6, 8, 9, 11 touch disjoint files and can run in parallel after Task 4. Task 12 last.
+Task order: 1 → 2 → 3 → 4, then 5–11 in any order **except** 6-before-nothing, 5 before 7 (Task 7 deletes `layout()`, which Task 5 stops using) and 9 before 10 (Task 10 imports `mesDiaAgenda`). Tasks 5, 6, 8, 9, 11 touch disjoint files and can run in parallel after Task 4, **but they share one worktree**: parallel implementers stop before their commit step and the orchestrator commits each task in turn (otherwise `index.lock` races and interleaved `git add`). Task 12 last. Commit trailers: use the attribution line from your own session's system reminder.
 
 ---
 
@@ -447,7 +447,8 @@ export function button(href: string | null | undefined, label: string, variant: 
   } else {
     bg = corSegura(variant.brandColor); fg = pickHeaderTextColor(bg); border = bg;
   }
-  return `<table role="presentation" class="m-btn" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td align="center" bgcolor="${bg}" style="background: ${bg}; border: 1px solid ${border}; border-radius: 10px;"><a href="${escapeHtml(url)}" style="display: inline-block; padding: 12px 24px; font-family: ${FONT_STACK}; font-size: 14px; line-height: 20px; font-weight: 600; color: ${fg}; text-decoration: none;">${escapeHtml(label)}</a></td></tr></table>`;
+  // Padding on the <td>, not the <a>: Outlook's Word engine drops padding on inline elements.
+  return `<table role="presentation" class="m-btn" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td align="center" bgcolor="${bg}" style="background: ${bg}; border: 1px solid ${border}; border-radius: 10px; padding: 12px 24px;"><a href="${escapeHtml(url)}" style="display: inline-block; font-family: ${FONT_STACK}; font-size: 14px; line-height: 20px; font-weight: 600; color: ${fg}; text-decoration: none;">${escapeHtml(label)}</a></td></tr></table>`;
 }
 
 export function link(href: string | null | undefined, text: string, color: string = EMAIL.ink): string {
@@ -663,12 +664,18 @@ import { eyebrow as eyebrowBlock } from "./blocks.ts";
 
 export const MESAAS_TAGLINE = "Mesaas · Plataforma de gestão para agências de social media";
 
-const MOBILE_CSS = `@media (max-width: 600px) {
+// The element rule carries the font into nested cells for Outlook's Word engine,
+// which does not inherit font-family from the wrapper table; other clients
+// inherit it from the wrapper's inline style even if <style> is stripped.
+const MOBILE_CSS = `body, table, td, p, a, li, h1, span, strong { font-family: ${FONT_STACK}; }
+@media (max-width: 600px) {
   .m-px { padding-left: 24px !important; padding-right: 24px !important; }
   .m-h1 { font-size: 22px !important; line-height: 28px !important; }
   .m-btn { width: 100% !important; }
   .m-btn a { display: block !important; }
   .m-stack { display: block !important; width: 100% !important; padding: 0 0 12px 0 !important; }
+  .m-kpi { display: block !important; width: auto !important; margin: 0 0 12px 0 !important; }
+  .m-kpi-gap { display: none !important; }
 }`;
 
 function documentOpen(preheader: string): string {
@@ -791,6 +798,8 @@ Deno.test("lembrete: new shell, date tile, meeting link guarded", () => {
 ```
 
 (Use the file's existing `assert` import; add it to the std import if missing.)
+
+`__tests__/instagram-connect-email_test.ts` line 1 imports only `assertEquals` from `./assert.ts`: change it to `import { assert, assertEquals } from "./assert.ts";` (if `./assert.ts` does not export `assert`, import `assert` from `https://deno.land/std@0.224.0/assert/mod.ts` instead).
 
 In `__tests__/instagram-connect-email_test.ts` append:
 
@@ -1103,7 +1112,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 1: Update the tests first.** In `__tests__/lifecycle-emails_test.ts`:
   - line 54: `src="${BASE}/logo-white-email.png"` → `src="https://www.mesaas.com.br/logo-black-email.png"`;
   - line 116: expected `WELCOME_SUBJECT` → `"Boas-vindas ao Mesaas 👋"`;
-  - lines 245-251: this block loops over the rendered e-mails and pins `background:#f5f3ee` / `background:#ffffff`. For the welcome and thank-you renders change the pins to `bgcolor="#f5f6f8"` and `bgcolor="#ffffff"`. If the loop also covers the founder notices (`noticeLayout`), keep the old pins for those (they are out of scope and unchanged);
+  - lines 245-251: **no change.** That loop covers only the founder notices (`noticeLayout`), which are out of scope and keep `background:#f5f3ee` / `background:#ffffff`;
   - line 37 (`Olá, &lt;b&gt;Ana&lt;/b&gt;!`) and line 43/44 (`Olá!`, no `Olá, `) stay as they are and must still pass.
   Append:
 
@@ -1179,7 +1188,7 @@ export function buildThankYouEmail(
   const base = p.appBaseUrl.replace(/\/+$/, "");
   return mesaasEmail({
     preheader: "Obrigado pela confiança no Mesaas.",
-    eyebrow: "Obrigado",
+    eyebrow: "Assinatura",
     sections: [
       heading(p.firstName ? `Olá, ${p.firstName}!` : "Olá!") +
         paragraphHtml(`Aqui é o Eduardo, do Mesaas. Vi que o <strong>${escapeHtml(p.workspaceName)}</strong> acabou de ativar um plano e queria agradecer pessoalmente.`) +
@@ -1201,7 +1210,7 @@ export function buildThankYouEmail(
 
 Note the URL-ampersand test (line 97) passes because `button`/`link` entity-encode `&` in the href.
 
-- [ ] **Step 4: Prove `layout` is gone everywhere:** `grep -rn "layout(" supabase/functions --include='*.ts' | grep -v noticeLayout` → no output.
+- [ ] **Step 4: Prove nothing imports `layout` any more:** `grep -rnE "import \{[^}]*\blayout\b" supabase/functions --include='*.ts'` → no output. (A plain `grep "layout("` hits `_shared/report-docs/layout.test.ts`, which is unrelated.)
 
 - [ ] **Step 5: Run lifecycle tests + the cron test, expect PASS.**
 
@@ -1258,7 +1267,7 @@ Deno.test("dunning: subjects have no em-dash; final is red-labelled with an aler
 });
 ```
 
-  In `__tests__/invite-email_test.ts` append:
+  In `__tests__/invite-email_test.ts` first add `assert` to the std import on lines 1-4 (it imports only `assertEquals, assertStringIncludes`), then append:
 
 ```ts
 Deno.test("invite: new shell, fallback link, escaped workspace", () => {
@@ -1346,7 +1355,7 @@ export function buildDunningEmail(params: {
     eyebrowTone: final ? "danger" : "brand",
     sections: [
       heading(copy.heading) + paragraph(copy.body, "body", "0"),
-      copy.alerta ? alert(copy.alerta) : detailRows(rows),
+      detailRows(rows) + (copy.alerta ? `<div style="margin: 12px 0 0;">${alert(copy.alerta)}</div>` : ""),
       button(params.billingUrl, copy.cta) +
         paragraph("Se você já atualizou seu pagamento, pode ignorar este e-mail.", "small", "16px 0 0"),
     ],
@@ -1491,7 +1500,7 @@ export function mesDiaAgenda(q: QuandoAgenda): { mes: string; dia: string } {
 }
 ```
 
-- [ ] **Step 4: Replace the HTML helpers.** Delete `paragrafo`, `linha`, `citacao`, `cartaoEvento`, `listaCanceladas`. Add imports:
+- [ ] **Step 4: Replace the HTML helpers.** Delete `paragrafo`, `linha`, `citacao`, `cartaoEvento`, `listaCanceladas`, and `plural` (unused after the rewrite: `dateList` owns "e mais N datas"). Add imports:
 
 ```ts
 import { brandedEmail } from "./email/shell.ts";
@@ -1645,7 +1654,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `supabase/functions/__tests__/client-event-email_test.ts`, `supabase/functions/__tests__/client-event-email-cron_test.ts`
 
 **Interfaces:**
-- Consumes: `brandedEmail`; `heading`, `paragraph`, `paragraphHtml`, `postList`, `eventCard`, `callout`, `button`, `link`, `sectionTitle` from blocks; `mesDiaAgenda`, `formatarQuandoAgenda` from `./agenda-cliente-email.ts` (existing import direction).
+- Consumes: `brandedEmail`; `heading`, `paragraph`, `postList`, `eventCard`, `callout`, `button`, `link`, `sectionTitle` from blocks; `mesDiaAgenda`, `formatarQuandoAgenda` from `./agenda-cliente-email.ts` (existing import direction).
 - Produces: unchanged exports. `POST_TYPE_ICONS` and `postTypeIcon` deleted.
 
 - [ ] **Step 1: Update tests first.** In `__tests__/client-event-email_test.ts`:
@@ -1656,11 +1665,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   assert(html.includes("Reels"), "expected the reels label");
 ```
     and for the unknown-tipo test: `assert(html.includes("Post</span>"), "unknown tipo falls back to Post");`
-  - :154 `#f8f9fa` → `bgcolor="#f5f6f8"` (the unread callout);
+  - :154 `#f8f9fa` → assert the unread copy itself, e.g. `assert(html.includes("<strong>3 mensagens não lidas</strong>"))` using the count that test's fixture passes (a `bgcolor="#f5f6f8"` check would be vacuous: the page background matches it);
   - :194-195 → `assert(escura.includes(\`bgcolor="#1a3d2b"\`) && escura.includes("color: #ffffff;"), "white CTA text on a dark brandColor");`
+  - :197-198 → `assert(palida.includes(\`bgcolor="#fef3c7"\`) && palida.includes("color: #171717;"), "dark CTA text on a pale brandColor");`
   - :262-265 (16px radius) → `border-radius: 12px`;
   - :268-271 (cream footer) → assert the footer text `Enviado por` and the unsubscribe text, and `!html.includes("#f5f3ee")`.
-  In `__tests__/client-event-email-cron_test.ts` :319-320 replace the 🖼/🎬 asserts with `assert(sent.html.includes("Feed"))` and `assert(sent.html.includes("Reels"))` (keep the variable name the test already uses for the sent payload).
+  In `__tests__/client-event-email-cron_test.ts` :319-320 replace the 🖼/🎬 asserts with `assert(sent[0].html.includes("Feed"))` and `assert(sent[0].html.includes("Reels"))`.
   Append to `client-event-email_test.ts`:
 
 ```ts
@@ -1687,7 +1697,7 @@ import { escapeHtml } from "./report-template/escape.ts";
 import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
 import { formatarQuandoAgenda, mesDiaAgenda } from "./agenda-cliente-email.ts";
 import { brandedEmail } from "./email/shell.ts";
-import { button, callout, eventCard, heading, link, paragraph, paragraphHtml, postList, sectionTitle } from "./email/blocks.ts";
+import { button, callout, eventCard, heading, link, paragraph, postList, sectionTitle } from "./email/blocks.ts";
 import { corSegura } from "./email/safe.ts";
 ```
 
@@ -1765,7 +1775,7 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
 }
 ```
 
-Keep `buildPendingTitle`, `buildPendingPreheaderText`, `clientEventSubject`, `RENDERED_POSTS_CAP`, `CLIENT_EVENT_REMINDERS_HEADING` and all unsubscribe-token code unchanged. `paragraphHtml` is unused here; drop it from the import if the linter/type check complains.
+Keep `buildPendingTitle`, `buildPendingPreheaderText`, `clientEventSubject`, `RENDERED_POSTS_CAP`, `CLIENT_EVENT_REMINDERS_HEADING` and all unsubscribe-token code unchanged. Do not import `paragraphHtml` here (unused).
 
 - [ ] **Step 4: Run both files + `client-email-unsub_test.ts`, expect PASS.**
 
@@ -1797,7 +1807,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - :32-34, :45 → `#16a34a` becomes `#15803d` (positive delta now meets AA);
   - :43 → `'color: #6b7280;">0%</p>'` stays valid only if the markup below keeps that exact substring; it does;
   - :55 `"Relatório mensal"` stays;
-  - :56 `#f8f9fa` → `border: 1px solid #e5e7eb` (KPI tiles now bordered).
+  - :49 (`background: #… ; color: #171717` substring on the CTA) → `bgcolor="#…"` plus `color: #171717;` as two separate `includes`, keeping that test's colour;
+  - :56 `#f8f9fa` → `assert(h.includes("Destaque do mês"))` (a border check would be vacuous: the card border matches it).
   Append:
 
 ```ts
@@ -1840,7 +1851,7 @@ function buildKpiRow(kpis: EmailKpis | null | undefined): string {
     .map(({ key, label }) => {
       const entry = kpis[key];
       if (!entry || typeof entry.value !== "number") return "";
-      return `<td class="m-stack" width="33%" align="center" valign="top" style="padding: 14px 6px; border: 1px solid ${EMAIL.border}; border-radius: 10px;">
+      return `<td class="m-kpi" width="33%" align="center" valign="top" style="padding: 14px 6px; border: 1px solid ${EMAIL.border}; border-radius: 10px;">
         <p style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 700; color: ${EMAIL.ink};">${escapeHtml(formatCompactPtBr(entry.value))}</p>
         <p style="margin: 2px 0 0; font-size: 12px; line-height: 18px; color: ${EMAIL.muted};">${escapeHtml(label)}</p>
         ${kpiDeltaLine(entry.pct_change)}
@@ -1848,7 +1859,7 @@ function buildKpiRow(kpis: EmailKpis | null | undefined): string {
     })
     .filter(Boolean);
   if (cells.length === 0) return "";
-  const withGaps = cells.map((c, i) => (i === cells.length - 1 ? c : `${c}<td class="m-stack" width="12"></td>`)).join("");
+  const withGaps = cells.map((c, i) => (i === cells.length - 1 ? c : `${c}<td class="m-kpi-gap" width="12"></td>`)).join("");
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr>${withGaps}</tr></table>`;
 }
 
@@ -2033,7 +2044,7 @@ for (const [k, v] of Object.entries(FIXTURES as Record<string, string>)) {
 }
 ```
 
-Run: `deno run --no-check --allow-read --allow-write --allow-env --allow-net <scratchpad>/render-matrix.ts <scratchpad>/after` (Deno.test calls register but do not run under `deno run`). Then screenshot each `.html` at 640 and 375 wide with the repo's `playwright-core` + system Chrome (`executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'`), `fullPage: true`. Open the PNGs and compare against the mockups: brand band on whitelabel, ink buttons, date tiles, no horizontal scroll at 375 (check `document.documentElement.scrollWidth <= 375` in the page). Fix any defect in the owning task's file and re-run that task's tests.
+Run: `deno run --no-check --allow-read --allow-write --allow-env --allow-net <scratchpad>/render-matrix.ts <scratchpad>/after` (Deno.test calls register but do not run under `deno run`). Then screenshot each `.html` at 640 and 375 wide with the repo's `playwright-core` + system Chrome (`executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'`), `fullPage: true`. Open the PNGs and compare against the mockups: brand band on whitelabel, ink buttons, date tiles, no horizontal scroll at 375 (check `document.documentElement.scrollWidth <= 375` in the page). Also check that the branded card's top corners stay rounded at 640px (the brand band `<td>` can paint square corners over the 12px radius; if it does, give the band row `border-radius: 11px 11px 0 0` via the shell, not by editing `buildBrandHeaderBand`). Fix any defect in the owning task's file and re-run that task's tests.
 
 - [ ] **Step 5: Reset `node_modules` after Deno runs, then the full gates** (CLAUDE.md "Before pushing"):
 
