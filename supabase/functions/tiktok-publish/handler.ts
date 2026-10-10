@@ -30,6 +30,7 @@ import {
   buildPhotoInitPayload,
   buildTikTokPostUrl,
   mapStatusFetch,
+  markTikTokPublishFailed,
   type TikTokValidationResult,
   type ClaimedTikTokPost,
   type StatusFetchResult,
@@ -77,6 +78,34 @@ class TikTokUserFacingError extends Error {}
 
 const PUBLISH_NOW_MAX_POLLS = 12;
 const PUBLISH_NOW_POLL_INTERVAL_MS = 3000;
+
+/** P4 RPC refusals (ERRCODE P0422, MESSAGE = identifier) mapped to curated pt-BR copy. */
+const TARGET_REFUSALS: Record<string, string> = {
+  target_publishing: "Já está publicando no TikTok.",
+  target_published: "Já publicado no TikTok.",
+  post_not_publishable: "Post precisa estar aprovado pelo cliente para publicar.",
+  post_not_scheduled: "Apenas posts agendados podem ser cancelados.",
+  target_not_ready: "O envio anterior para o TikTok falhou. Use Reenviar para tentar de novo.",
+  target_not_found: "Este post não tem destino TikTok.",
+};
+
+function targetRefusal(err: unknown): string | null {
+  const e = err as { code?: unknown; message?: unknown } | null;
+  if (!e || e.code !== "P0422" || typeof e.message !== "string") return null;
+  return TARGET_REFUSALS[e.message] ?? null;
+}
+
+interface TikTokTargetState {
+  id: number;
+  platform: string;
+  status: string;
+  processing_at: string | null;
+}
+
+/** The post's TikTok destination from the `targets_state` embed (P4: the only publish state). */
+function tiktokTarget(post: { targets_state?: TikTokTargetState[] | null }): TikTokTargetState | null {
+  return (post.targets_state ?? []).find((t) => t.platform === "tiktok") ?? null;
+}
 
 export function createPublishHandler(deps: TikTokPublishDeps) {
   const validateTikTok = deps.validateForTikTokScheduling ?? realValidateForTikTokScheduling;
@@ -199,8 +228,8 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     const { data: post } = await userDb
       .from("workflow_posts")
       .select(
-        "id, status, platform, tipo, tiktok_publish_status, tiktok_publish_error, " +
-          "tiktok_publish_retry_count, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at",
+        "id, status, platform, tipo, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at, " +
+          "instagram_media_id, targets_state:post_targets(id, platform, status, processing_at)",
       )
       .eq("id", postId)
       .single();
@@ -226,10 +255,25 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       );
     }
 
+    const target = tiktokTarget(post);
+
     if (action === "schedule") {
       if (post.status !== "aprovado_cliente") {
         return json({ error: "Post precisa estar aprovado pelo cliente para agendar." }, 422);
       }
+
+      // A still-publishing TikTok destination always refuses. A published one is never
+      // re-claimed (init takes only pendente/agendado), so scheduling is refused only when nothing
+      // else is left to publish: a TikTok-only post, or Instagram already published. A `both` post
+      // whose Instagram side is pending (post moved to draft mid-publish after TikTok landed) may
+      // be scheduled: Instagram goes out and the recompute reaches postado when it lands.
+      if (target?.status === "processando") return json({ error: TARGET_REFUSALS.target_publishing }, 422);
+      const tiktokDone = target?.status === "publicado";
+      const instagramPending =
+        (post.platform === "both" ||
+          ((post.targets_state ?? []) as TikTokTargetState[]).some((t) => t.platform === "instagram")) &&
+        !post.instagram_media_id;
+      if (tiktokDone && !instagramPending) return json({ error: TARGET_REFUSALS.target_published }, 422);
 
       let body: { scheduled_at?: string } = {};
       try {
@@ -264,14 +308,17 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         return null;
       };
 
-      let tiktokValidation: TikTokValidationResult;
-      try {
-        tiktokValidation = await validateTikTok(svcDb as never, postId);
-      } catch (e) {
-        console.error("[TIKTOK-PUBLISH] schedule TikTok validation error:", (e as Error)?.message);
-        const restoreFailure = await restoreScheduledAt();
-        if (restoreFailure) return restoreFailure;
-        return json({ error: "Erro ao validar post para agendamento no TikTok." }, 500);
+      // TikTok already published: nothing left to validate on that side.
+      let tiktokValidation: TikTokValidationResult | null = null;
+      if (!tiktokDone) {
+        try {
+          tiktokValidation = await validateTikTok(svcDb as never, postId);
+        } catch (e) {
+          console.error("[TIKTOK-PUBLISH] schedule TikTok validation error:", (e as Error)?.message);
+          const restoreFailure = await restoreScheduledAt();
+          if (restoreFailure) return restoreFailure;
+          return json({ error: "Erro ao validar post para agendamento no TikTok." }, 500);
+        }
       }
 
       let igValidation: ScheduleValidationResult | null = null;
@@ -286,8 +333,8 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         }
       }
 
-      const mergedErrors = [...tiktokValidation.errors, ...(igValidation?.errors ?? [])];
-      const ok = tiktokValidation.ok && (igValidation ? igValidation.ok : true);
+      const mergedErrors = [...(tiktokValidation?.errors ?? []), ...(igValidation?.errors ?? [])];
+      const ok = (tiktokValidation ? tiktokValidation.ok : true) && (igValidation ? igValidation.ok : true);
       if (!ok) {
         const restoreFailure = await restoreScheduledAt();
         if (restoreFailure) return restoreFailure;
@@ -308,61 +355,54 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
 
     if (action === "cancel") {
       if (post.status !== "agendado") {
-        return json({ error: "Apenas posts agendados podem ser cancelados." }, 422);
+        return json({ error: TARGET_REFUSALS.post_not_scheduled }, 422);
       }
 
-      const { error: clearErr } = await svcDb
-        .from("workflow_posts")
-        .update({
-          tiktok_publish_id: null,
-          tiktok_publish_status: null,
-          tiktok_publish_error: null,
-          tiktok_publish_processing_at: null,
-        })
-        .eq("id", postId);
-      if (clearErr) return internalServerError(json, "tiktok-publish:cancel", clearErr);
-
-      const { error: rpcErr } = await svcDb.rpc("record_post_status_change", {
+      // One transaction: destination back to pendente, the Instagram handles cleared for a post
+      // that also goes to Instagram, post back to aprovado_cliente (cancel_target_publish).
+      const { error: rpcErr } = await svcDb.rpc("cancel_target_publish", {
         p_post_id: postId,
-        p_new_status: "aprovado_cliente",
+        p_platform: "tiktok",
         p_source: "workspace_user",
         p_actor: actorId,
-        p_fields: post.platform === "both"
-          ? { instagram_container_id: null, publish_processing_at: null, publish_error: null, publish_error_code: null }
-          : {},
       });
-      if (rpcErr) return internalServerError(json, "tiktok-publish:cancel", rpcErr);
+      if (rpcErr) {
+        const refusal = targetRefusal(rpcErr);
+        if (refusal) return json({ error: refusal }, 422);
+        return internalServerError(json, "tiktok-publish:cancel", rpcErr);
+      }
 
       return json({ ok: true, status: "aprovado_cliente" });
     }
 
     if (action === "retry") {
-      if (post.status !== "falha_publicacao" || post.tiktok_publish_status !== "failed") {
+      // Accepts a post already back at agendado: Instagram's retry may have moved it first (bug 2).
+      if (target?.status !== "falha" || !["agendado", "falha_publicacao"].includes(post.status)) {
         return json({ error: "Apenas posts com falha no TikTok podem ser reenviados." }, 422);
       }
 
-      const { error: clearErr } = await svcDb
-        .from("workflow_posts")
-        .update({ tiktok_publish_status: null, tiktok_publish_error: null })
-        .eq("id", postId);
-      if (clearErr) return internalServerError(json, "tiktok-publish:retry", clearErr);
-
-      const { error: rpcErr } = await svcDb.rpc("record_post_status_change", {
+      const { data: requeued, error: rpcErr } = await svcDb.rpc("requeue_target", {
         p_post_id: postId,
-        p_new_status: "agendado",
+        p_platform: "tiktok",
         p_source: "workspace_user",
         p_actor: actorId,
-        p_fields: {},
       });
       if (rpcErr) return internalServerError(json, "tiktok-publish:retry", rpcErr);
+      if (requeued !== true) {
+        return json({ error: "Apenas posts com falha no TikTok podem ser reenviados." }, 422);
+      }
 
+      // The cron's init phase publishes the re-queued destination.
       return json({ ok: true, status: "agendado" });
     }
 
     if (action === "publish-now") {
-      if (post.status !== "aprovado_cliente") {
-        return json({ error: "Post precisa estar aprovado pelo cliente para publicar." }, 422);
+      // agendado is accepted: Instagram's publish-now may have moved the post first (bug 1).
+      if (post.status !== "aprovado_cliente" && post.status !== "agendado") {
+        return json({ error: TARGET_REFUSALS.post_not_publishable }, 422);
       }
+      if (target?.status === "processando") return json({ error: TARGET_REFUSALS.target_publishing }, 422);
+      if (target?.status === "publicado") return json({ error: TARGET_REFUSALS.target_published }, 422);
 
       let validation: TikTokValidationResult;
       try {
@@ -375,20 +415,19 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         return json({ error: "Validação falhou", details: validation.errors }, 422);
       }
 
-      const { error: statusErr } = await svcDb.rpc("record_post_status_change", {
+      // One transaction: aprovado_cliente -> agendado (if needed) + the destination lock.
+      const { data: began, error: beginErr } = await svcDb.rpc("begin_target_publish", {
         p_post_id: postId,
-        p_new_status: "agendado",
+        p_platform: "tiktok",
         p_source: "workspace_user",
         p_actor: actorId,
-        p_fields: {},
       });
-      if (statusErr) return internalServerError(json, "tiktok-publish:publish-now", statusErr);
-
-      const { error: lockErr } = await svcDb
-        .from("workflow_posts")
-        .update({ tiktok_publish_processing_at: new Date().toISOString() })
-        .eq("id", postId);
-      if (lockErr) return internalServerError(json, "tiktok-publish:publish-now", lockErr);
+      if (beginErr) {
+        const refusal = targetRefusal(beginErr);
+        if (refusal) return json({ error: refusal }, 422);
+        return internalServerError(json, "tiktok-publish:publish-now", beginErr);
+      }
+      if (began !== true) return json({ error: TARGET_REFUSALS.target_publishing }, 409);
 
       let validationFailure: Response | null = null;
       try {
@@ -452,13 +491,15 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         const publishId = initResult?.publish_id;
         if (!publishId) throw new Error("TikTok init did not return a publish_id");
 
+        // Single-statement destination write; the lock stays held while this request polls.
         const { error: initErr } = await svcDb
-          .from("workflow_posts")
-          .update({ tiktok_publish_id: publishId, tiktok_publish_status: "initiated" })
-          .eq("id", postId);
+          .from("post_targets")
+          .update({ status: "processando", publish_ref: publishId, updated_at: new Date().toISOString() })
+          .eq("post_id", postId)
+          .eq("platform", "tiktok");
         if (initErr) {
           throw new Error(
-            `workflow_posts update (init) failed: ${(initErr as { message?: string }).message}`,
+            `post_targets update (init) failed: ${(initErr as { message?: string }).message}`,
           );
         }
 
@@ -481,24 +522,24 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
             .eq("id", account.id)
             .maybeSingle();
           const username = (accountRow as { username?: string } | null)?.username;
-          const tiktokPostUrl = statusResult.publicPostId && username
+          const permalink = statusResult.publicPostId && username
             ? buildTikTokPostUrl(username, statusResult.publicPostId, post.tipo)
             : undefined;
 
-          const { error: markErr } = await svcDb.rpc("mark_platform_published", {
+          const { error: markErr } = await svcDb.rpc("mark_target_published", {
             p_post_id: postId,
             p_platform: "tiktok",
-            p_source: "workspace_user",
-            p_actor: actorId,
             p_fields: {
-              ...(statusResult.publicPostId ? { tiktok_post_id: statusResult.publicPostId } : {}),
-              ...(tiktokPostUrl ? { tiktok_post_url: tiktokPostUrl } : {}),
+              ...(statusResult.publicPostId ? { external_id: statusResult.publicPostId } : {}),
+              ...(permalink ? { permalink } : {}),
               published_at: new Date().toISOString(),
             },
+            p_source: "workspace_user",
+            p_actor: actorId,
           });
           if (markErr) {
             throw new Error(
-              `mark_platform_published failed: ${(markErr as { message?: string }).message}`,
+              `mark_target_published failed: ${(markErr as { message?: string }).message}`,
             );
           }
 
@@ -506,10 +547,12 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         }
 
         if (statusResult.state === "processing") {
+          // Release the lock: the cron's status phase finishes the publish.
           const { error: clearLockErr } = await svcDb
-            .from("workflow_posts")
-            .update({ tiktok_publish_processing_at: null })
-            .eq("id", postId);
+            .from("post_targets")
+            .update({ processing_at: null, updated_at: new Date().toISOString() })
+            .eq("post_id", postId)
+            .eq("platform", "tiktok");
           if (clearLockErr) {
             console.error(
               "[TIKTOK-PUBLISH-NOW] failed to clear processing lock:",
@@ -534,35 +577,12 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         const message = mapped ?? (err as Error)?.message ?? "Unknown error";
         console.error(`[TIKTOK-PUBLISH-NOW] failed for post ${postId}:`, (err as Error)?.message);
 
-        const { error: failErr } = await svcDb
-          .from("workflow_posts")
-          .update({
-            tiktok_publish_status: "failed",
-            tiktok_publish_error: message.slice(0, 500),
-            tiktok_publish_retry_count: mapped ? 3 : (post.tiktok_publish_retry_count ?? 0) + 1,
-            tiktok_publish_processing_at: null,
-          })
-          .eq("id", postId);
-        if (failErr) {
-          console.error(
-            "[TIKTOK-PUBLISH-NOW] failed to persist failure state:",
-            (failErr as { message?: string }).message,
-          );
-        }
-
-        const { error: statusRpcErr } = await svcDb.rpc("record_post_status_change", {
-          p_post_id: postId,
-          p_new_status: "falha_publicacao",
-          p_source: "workspace_user",
-          p_actor: actorId,
-          p_fields: {},
+        // Destination -> falha and post -> falha_publicacao in one transaction (mark_target_failed).
+        await markTikTokPublishFailed(svcDb, postId, message, {
+          nonRetryable: !!mapped,
+          source: "workspace_user",
+          actorId,
         });
-        if (statusRpcErr) {
-          console.error(
-            "[TIKTOK-PUBLISH-NOW] failed to record status change:",
-            (statusRpcErr as { message?: string }).message,
-          );
-        }
 
         if (validationFailure) return validationFailure;
         if (mapped) return json({ error: mapped }, 422);
