@@ -1,5 +1,6 @@
--- P4 reconcile (TikTok publish state em post_targets). Passo 4 do deploy (spec §5):
--- rodar UMA vez, logo depois do deploy das functions, em prod (e staging, por paridade):
+-- P4 reconcile (TikTok publish state em post_targets). Runbook da Task 9, passo 6 do plano:
+-- rodar duas vezes (é idempotente): logo depois do db push verificado e de novo depois do
+-- deploy das functions, em prod (e staging, por paridade):
 --   npx supabase link --project-ref <ref> < /dev/null
 --   npx supabase db query --linked --file <cópia editada deste arquivo>
 -- Plano: docs/superpowers/plans/2026-10-09-tiktok-publish-state-post-targets.md (Task 9).
