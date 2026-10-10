@@ -19,11 +19,28 @@ const config: CapacitorConfig = {
     cleartext: appUrl.startsWith('http://'),
     // Only our own origin renders inside the app. Everything else (Instagram
     // permalinks, help links, Meta/TikTok OAuth) opens outside the web view.
-    allowNavigation: [appHost],
+    // The apex 308-redirects to www; listing it keeps absolute apex links in the app.
+    allowNavigation: [appHost, 'mesaas.com.br'],
   },
   ios: {
     // The CRM already pads itself with env(safe-area-inset-*) (viewport-fit=cover).
     contentInset: 'never',
+  },
+  plugins: {
+    SplashScreen: {
+      // The remote CRM needs a moment on cold start. The CRM hides the splash at
+      // first paint once it ships the native module; this is the fallback for
+      // older web builds that don't call SplashScreen.hide().
+      launchAutoHide: true,
+      launchShowDuration: 1500,
+      launchFadeOutDuration: 200,
+      showSpinner: false,
+    },
+    Keyboard: {
+      // Shrink the web view above the keyboard so composers and inputs stay visible.
+      resize: 'native',
+      resizeOnFullScreen: true,
+    },
   },
 };
 
