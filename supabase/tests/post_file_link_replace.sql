@@ -26,6 +26,7 @@ declare
   old_key text := 'contas/' || ws || '/files/original.jpg';
   new_key text := 'contas/' || ws || '/files/adjusted.jpg';
   status_value text;
+  edited bigint;
   function_oid oid := 'public.post_file_link_replace(uuid,uuid,bigint,bigint,text)'::regprocedure;
 begin
   insert into auth.users (id) values (uid);
@@ -76,9 +77,19 @@ begin
   end loop;
   update workflow_posts set status = 'rascunho', published_at = null, publish_processing_at = now() where id = post_id;
   perform pg_temp.expect_replace_error(ws, uid, link_id, new_file, old_key, 'P0409');
-  update workflow_posts set publish_processing_at = null, tiktok_publish_processing_at = now() where id = post_id;
+  -- P4: a guarda do TikTok lê o destino. 'both' faz o a2 criar o destino TikTok.
+  update workflow_posts set publish_processing_at = null, platform = 'both' where id = post_id;
+  edited := post_id;
+  update post_targets t set processing_at = now() where t.post_id = edited and t.platform = 'tiktok';
   perform pg_temp.expect_replace_error(ws, uid, link_id, new_file, old_key, 'P0409');
-  update workflow_posts set tiktok_publish_processing_at = null, instagram_container_id = 'prepared-container' where id = post_id;
+  update post_targets t set processing_at = null, status = 'processando' where t.post_id = edited and t.platform = 'tiktok';
+  perform pg_temp.expect_replace_error(ws, uid, link_id, new_file, old_key, 'P0409');
+  update post_targets t set status = 'publicado' where t.post_id = edited and t.platform = 'tiktok';
+  perform pg_temp.expect_replace_error(ws, uid, link_id, new_file, old_key, 'P0409');
+  update post_targets t set status = 'pendente' where t.post_id = edited and t.platform = 'tiktok';
+  -- As colunas tiktok_* congeladas não bloqueiam mais: o sucesso abaixo roda com elas setadas.
+  update workflow_posts set tiktok_publish_processing_at = now(), tiktok_publish_status = 'processing' where id = post_id;
+  update workflow_posts set instagram_container_id = 'prepared-container' where id = post_id;
   perform pg_temp.expect_replace_error(ws, uid, link_id, new_file, old_key, 'P0409');
   update workflow_posts set instagram_container_id = null where id = post_id;
 

@@ -748,3 +748,17 @@ begin
   raise notice 'PASS p4.11 reset z9 e ACLs';
 end $$;
 rollback;
+
+-- 12. Claim por destino: fase inválida recusada; claim antigo vazio
+begin;
+do $$
+begin
+  perform pg_temp.p4_expect('select * from claim_tiktok_targets_for_publishing(''bogus'', 5)',
+    '22023', 'invalid_phase');
+  perform pg_temp.p4_expect('select * from claim_tiktok_targets_for_publishing(null, 5)',
+    '22023', 'invalid_phase');
+  assert (select count(*) from claim_posts_for_tiktok_publishing('status', 25)) = 0,
+    'claim antigo devolve zero linhas';
+  raise notice 'PASS p4.12 claim por destino: fase invalida e claim antigo';
+end $$;
+rollback;
