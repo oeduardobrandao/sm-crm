@@ -92,3 +92,33 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
   is Capacitor 8's default).
 - Xcode 27 is at `/Applications/Xcode.app` but `xcode-select` points at the Command Line Tools;
   build commands set `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
+
+## D12. Push transport confirmed for Deno; hosted runtime pending (B1)
+
+- Deno 2.7 `fetch` negotiates HTTP/2 with APNs: an unauthenticated POST to
+  `api.sandbox.push.apple.com` returns APNs' JSON `403 MissingProviderToken` (2026-10-10).
+- Not yet observed from the hosted Supabase edge runtime (deploy needs approval). If it fails
+  there, D10's FCM fallback applies.
+
+## D13. Which notifications push (PR #669)
+
+- **Chosen:** the email digest's types plus `event_reminder`, `post_edit_suggestion`,
+  `post_client_reference`, `idea_submitted`, `briefing_answered`: things a client or teammate did
+  that need this user.
+- **Rejected:** every bell type. Step churn (`step_activated`/`step_completed`), membership and
+  role changes, automation and storage reports would make the phone buzz for things nobody acts on.
+
+## D14. One push per user per minute; no retries
+
+- **Chosen:** several claimed rows for one user in a run become one summary push; a failed send
+  is reported and not retried. Dead tokens (410, BadDeviceToken, DeviceTokenNotForTopic) disable
+  the device.
+- **Rejected:** per-row pushes (a burst of client comments would buzz five times); retrying
+  failures (a push a minute late is worth less than the risk of a duplicate).
+- **Exception:** the soft deadline releases claims for users the run never reached.
+
+## D15. Push prefs in a third table
+
+- **Chosen:** `notification_push_prefs`, same shape as the email and in-app tables.
+- **Rejected:** a `channel` column on an existing prefs table: old CRM bundles still in browsers
+  read and upsert `notification_email_prefs` by `(user_id, type)` with no channel filter.
