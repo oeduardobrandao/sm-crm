@@ -164,7 +164,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     // older published posts come through ?before= (Postagens) and ?from=&to= (calendar).
     let postsQuery = db
       .from("workflow_posts")
-      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
+      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, targets_state:post_targets(platform, permalink), workflows(titulo, created_at)")
       .eq("conta_id", hubToken.conta_id)
       .eq("cliente_id", hubToken.cliente_id);
     if (mode.kind === "shell") {
@@ -233,9 +233,19 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     // A post with no workflow_id is avulso (never attached to a flow): the embed
     // resolves to null and the flattened row carries null, not "", so the Hub
     // frontend can tell "no workflow" apart from "workflow with an empty titulo".
+    // P4: the TikTok URL lives on the TikTok destination (post_targets.permalink); the
+    // response keeps the legacy field name so the Hub frontend does not change.
     const flatPosts = (posts ?? []).map((post: any) => {
-      const { workflows: workflow, ...rest } = post;
-      return { ...rest, workflow_titulo: workflow?.titulo ?? null, workflow_created_at: workflow?.created_at ?? null };
+      const { workflows: workflow, targets_state: targets, ...rest } = post;
+      const tiktokTarget = Array.isArray(targets)
+        ? targets.find((t: { platform?: string }) => t?.platform === "tiktok")
+        : null;
+      return {
+        ...rest,
+        tiktok_post_url: tiktokTarget?.permalink ?? null,
+        workflow_titulo: workflow?.titulo ?? null,
+        workflow_created_at: workflow?.created_at ?? null,
+      };
     });
 
     const workflowIds = [...new Set<number>(flatPosts.map((post: any) => post.workflow_id).filter(Boolean))];

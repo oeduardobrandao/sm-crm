@@ -234,25 +234,36 @@ const PUBLISHED_POST_CASCADE_CHILDREN: Array<{ table: string; column: string; sc
 /**
  * workflow_posts pass. Returns the ids to SKIP — the union of two distinct
  * hazards:
- *   - a post that already carries a platform id was published to
- *     Instagram/TikTok; deleting it would drop the record of live content.
+ *   - a post already published to Instagram (instagram_media_id) or with a
+ *     `publicado` destination (P4: TikTok publish state lives in
+ *     post_targets); deleting it would drop the record of live content.
+ *     PostgREST can't .or() across an embed, so the destination check is a
+ *     second query, unioned here.
  *   - a post with a surviving row in any PUBLISHED_POST_CASCADE_CHILDREN
  *     table carries user-authored data the import never wrote, which undo
  *     must not cascade away.
- * The first is a column check on workflow_posts itself (not a cascade-child
- * probe, so it is not expressed via the declared list); the second is.
  */
 async function guardPublishedPosts(db: DbClient, conta_id: string, ids: string[]): Promise<string[]> {
   const skip = new Set<string>();
   for (const part of chunked(ids)) {
+    const numericPart = part.map(Number);
     const { data, error } = await db
       .from("workflow_posts")
-      .select("id, instagram_media_id, tiktok_post_id")
+      .select("id, instagram_media_id")
       .eq("conta_id", conta_id)
-      .in("id", part.map(Number))
-      .or("instagram_media_id.not.is.null,tiktok_post_id.not.is.null");
+      .in("id", numericPart)
+      .not("instagram_media_id", "is", null);
     if (error) throw error;
     for (const p of (data ?? []) as any[]) skip.add(String(p.id));
+
+    const { data: published, error: targetsError } = await db
+      .from("post_targets")
+      .select("post_id")
+      .eq("conta_id", conta_id)
+      .eq("status", "publicado")
+      .in("post_id", numericPart);
+    if (targetsError) throw targetsError;
+    for (const t of (published ?? []) as any[]) skip.add(String(t.post_id));
   }
   for (const part of chunked(ids)) {
     const numericPart = part.map(Number);
