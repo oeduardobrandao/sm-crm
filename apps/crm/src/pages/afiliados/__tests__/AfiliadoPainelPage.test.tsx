@@ -1,12 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AfiliadoPainelPage from '../AfiliadoPainelPage';
+import { clearSession, readSession, saveSession } from '../session';
 import { listPublicPricingPlans } from '@/services/billing';
 import {
   AffiliateApiError,
+  affiliateLogout,
   getAffiliateDashboard,
   listCommissionRules,
   openAffiliateStripeDashboard,
@@ -17,6 +19,8 @@ import {
 vi.mock('@/services/affiliates', async (orig) => ({
   ...(await orig<typeof import('@/services/affiliates')>()),
   getAffiliateDashboard: vi.fn(),
+  affiliateLogout: vi.fn(),
+  affiliateSendLink: vi.fn(),
   startAffiliateStripeConnect: vi.fn(),
   openAffiliateStripeDashboard: vi.fn(),
   listCommissionRules: vi.fn(),
@@ -63,14 +67,22 @@ const DASHBOARD: AffiliateDashboard = {
 
 const assign = vi.fn();
 
+function CurrentUrl() {
+  const loc = useLocation();
+  return <p data-testid="url">{loc.pathname + loc.search}</p>;
+}
+
 function renderAt(path: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
+          <Route path="/afiliados" element={<CurrentUrl />} />
+          <Route path="/afiliados/painel" element={<AfiliadoPainelPage />} />
           <Route path="/afiliados/painel/:token" element={<AfiliadoPainelPage />} />
         </Routes>
+        <CurrentUrl />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -87,14 +99,20 @@ describe('AfiliadoPainelPage', () => {
     vi.mocked(listCommissionRules).mockResolvedValue([
       { plan_id: 'pro', rate_bps: 2500, months: 3 },
     ]);
+    vi.mocked(affiliateLogout).mockReset().mockResolvedValue({ ok: true });
     assign.mockReset();
     vi.stubGlobal('location', { ...window.location, assign });
+    clearSession();
+    saveSession('tok123');
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearSession();
+  });
 
   it('shows the referral link, totals, commissions and anonymised referrals', async () => {
     vi.mocked(getAffiliateDashboard).mockResolvedValue(DASHBOARD);
-    renderAt('/afiliados/painel/tok123');
+    renderAt('/afiliados/painel');
     expect(await screen.findByText('Olá, Ana!')).toBeInTheDocument();
     expect(getAffiliateDashboard).toHaveBeenCalledWith('tok123');
     expect(screen.getByLabelText('Seu link')).toHaveValue('https://www.mesaas.com.br/?ref=ana7k3f');
@@ -109,7 +127,7 @@ describe('AfiliadoPainelPage', () => {
       url: 'https://connect.stripe.com/x',
     });
     const user = userEvent.setup();
-    renderAt('/afiliados/painel/tok123');
+    renderAt('/afiliados/painel');
     expect(await screen.findByText('Conecte sua conta para receber')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Conectar com Stripe' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://connect.stripe.com/x'));
@@ -128,7 +146,7 @@ describe('AfiliadoPainelPage', () => {
       url: 'https://connect.stripe.com/e',
     });
     const user = userEvent.setup();
-    renderAt('/afiliados/painel/tok123');
+    renderAt('/afiliados/painel');
     expect(await screen.findByText('Pronto para receber')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Abrir painel do Stripe/ }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://connect.stripe.com/e'));
@@ -142,7 +160,7 @@ describe('AfiliadoPainelPage', () => {
         stripe: { connected: true, details_submitted: true, transfers_active: false },
       },
     });
-    renderAt('/afiliados/painel/tok123');
+    renderAt('/afiliados/painel');
     expect(await screen.findByText('Cadastro em análise pelo Stripe')).toBeInTheDocument();
   });
 
@@ -151,17 +169,69 @@ describe('AfiliadoPainelPage', () => {
       ...DASHBOARD,
       affiliate: { ...DASHBOARD.affiliate, status: 'suspended' },
     });
-    renderAt('/afiliados/painel/tok123');
+    renderAt('/afiliados/painel');
     expect(await screen.findByRole('alert')).toHaveTextContent('suspensa');
   });
 
-  it('invalid link offers a new one', async () => {
+  it('an expired session (404) is cleared and the page offers a new link', async () => {
     vi.mocked(getAffiliateDashboard).mockRejectedValue(new AffiliateApiError('x', 404));
-    renderAt('/afiliados/painel/bad');
-    expect(await screen.findByText('Link inválido ou expirado')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Pedir novo link' })).toHaveAttribute(
-      'href',
-      '/afiliados#cadastro',
+    renderAt('/afiliados/painel');
+    expect(await screen.findByText('Entre no painel do afiliado')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar link de acesso' })).toBeInTheDocument();
+    expect(readSession()).toBeNull();
+  });
+
+  it('a server error keeps the session and offers a retry', async () => {
+    vi.mocked(getAffiliateDashboard).mockRejectedValue(new AffiliateApiError('x', 500));
+    renderAt('/afiliados/painel');
+    expect(await screen.findByText('Não foi possível carregar o painel')).toBeInTheDocument();
+    expect(readSession()).toBe('tok123');
+  });
+
+  it('no session: asks for the e-mail without calling the API', async () => {
+    clearSession();
+    renderAt('/afiliados/painel');
+    expect(await screen.findByText('Entre no painel do afiliado')).toBeInTheDocument();
+    expect(getAffiliateDashboard).not.toHaveBeenCalled();
+  });
+
+  it('legacy link: adopts the URL token, cleans the URL and keeps ?stripe=', async () => {
+    clearSession();
+    vi.mocked(getAffiliateDashboard).mockResolvedValue(DASHBOARD);
+    renderAt('/afiliados/painel/legacyTok?stripe=retorno');
+    expect(await screen.findByText('Olá, Ana!')).toBeInTheDocument();
+    expect(getAffiliateDashboard).toHaveBeenCalledWith('legacyTok');
+    expect(readSession()).toBe('legacyTok');
+    await waitFor(() =>
+      expect(screen.getAllByTestId('url').at(-1)).toHaveTextContent(/^\/afiliados\/painel$/),
     );
+  });
+
+  it('legacy link does not replace a session that already exists', async () => {
+    vi.mocked(getAffiliateDashboard).mockResolvedValue(DASHBOARD);
+    renderAt('/afiliados/painel/oldTok');
+    expect(await screen.findByText('Olá, Ana!')).toBeInTheDocument();
+    expect(getAffiliateDashboard).toHaveBeenCalledWith('tok123');
+    expect(readSession()).toBe('tok123');
+  });
+
+  it('Sair ends the session on the server and in the browser', async () => {
+    vi.mocked(getAffiliateDashboard).mockResolvedValue(DASHBOARD);
+    const user = userEvent.setup();
+    renderAt('/afiliados/painel');
+    await screen.findByText('Olá, Ana!');
+    await user.click(screen.getByRole('button', { name: 'Sair' }));
+    await waitFor(() => expect(affiliateLogout).toHaveBeenCalledWith('tok123'));
+    expect(readSession()).toBeNull();
+  });
+
+  it('a 404 from the Stripe button also ends the session', async () => {
+    vi.mocked(getAffiliateDashboard).mockResolvedValue(DASHBOARD);
+    vi.mocked(startAffiliateStripeConnect).mockRejectedValue(new AffiliateApiError('x', 404));
+    const user = userEvent.setup();
+    renderAt('/afiliados/painel');
+    await user.click(await screen.findByRole('button', { name: 'Conectar com Stripe' }));
+    expect(await screen.findByText('Entre no painel do afiliado')).toBeInTheDocument();
+    expect(readSession()).toBeNull();
   });
 });

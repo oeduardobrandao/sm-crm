@@ -5,13 +5,13 @@ import { button, heading, paragraph } from "../_shared/email/blocks.ts";
 export function buildAffiliateLinkEmail(params: { nome: string; link: string }): string {
   const first = params.nome.split(" ")[0] || params.nome;
   return mesaasEmail({
-    preheader: "Seu link de divulgação, indicações e comissões.",
+    preheader: "Seu link de acesso ao painel de afiliado. Vale por 15 minutos.",
     eyebrow: "Programa de afiliados",
     sections: [
       heading(`Olá, ${first}!`) +
-        paragraph("Este é o link do seu painel de afiliado. Lá você encontra seu link de divulgação, acompanha suas indicações e comissões e cadastra sua chave PIX.", "body", "0"),
-      button(params.link, "Abrir meu painel") +
-        paragraph("O link é pessoal: não compartilhe este e-mail. Se você não pediu este acesso, ignore a mensagem.", "small", "16px 0 0"),
+        paragraph("Use o botão abaixo para entrar no seu painel de afiliado. O link vale por 15 minutos e funciona uma vez.", "body", "0"),
+      button(params.link, "Entrar no painel") +
+        paragraph("Para entrar de novo depois, peça outro link em mesaas.com.br/afiliados. O link é pessoal: não encaminhe este e-mail. Se você não pediu este acesso, ignore a mensagem.", "small", "16px 0 0"),
     ],
     footerLines: [],
   });
@@ -34,7 +34,7 @@ export async function sendAffiliateLinkEmail(
       from: "Mesaas <afiliados@mesaas.com.br>",
       to: [params.to],
       reply_to: "eduardo@mesaas.com.br",
-      subject: "Seu painel de afiliado Mesaas",
+      subject: "Seu link de acesso ao painel de afiliado Mesaas",
       html: buildAffiliateLinkEmail({ nome: params.nome, link: params.link }),
     }),
     signal: AbortSignal.timeout(10_000),

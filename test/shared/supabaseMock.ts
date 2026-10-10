@@ -261,14 +261,16 @@ export function createSupabaseQueryMock() {
 
       const resolved = resultPromise.then(cloneResult);
 
-      // Return a thenable with .single() and .maybeSingle() for chaining
-      return {
+      // Return a thenable with .single(), .maybeSingle() and .abortSignal() for chaining
+      const thenable = {
         single: () => resolved,
         maybeSingle: () => resolved,
+        abortSignal: (_signal: AbortSignal) => thenable,
         then: (onfulfilled?: any, onrejected?: any) => resolved.then(onfulfilled, onrejected),
         catch: (onrejected?: any) => resolved.catch(onrejected),
         finally: (onfinally?: any) => resolved.finally(onfinally),
       };
+      return thenable;
     },
     queue(table: string, operation: SupabaseOperation, ...responses: SupabaseResponse[]) {
       const key = `${table}:${operation}`;

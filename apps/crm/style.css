@@ -958,6 +958,13 @@ body {
 }
 
 /* Operate surface: titles orient, they don't sell. Working data outranks chrome. */
+/* Páginas públicas do programa de afiliados: títulos com a fonte e o espaçamento dos do app. */
+.afiliados-page h1,
+.afiliados-page h2 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
 .header-title h1,
 .header-title h2 {
   font-family: var(--font-heading);

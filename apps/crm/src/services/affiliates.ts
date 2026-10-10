@@ -1,6 +1,7 @@
 /**
- * Programa de afiliados: cliente da edge function pública `affiliate-public` (sem sessão; o
- * painel se autentica pelo token do link enviado por e-mail) e leitura da tabela de comissões
+ * Programa de afiliados: cliente da edge function pública `affiliate-public` (sem sessão
+ * Supabase; o painel usa um token de sessão obtido trocando o link mágico do e-mail, ver
+ * pages/afiliados/session.ts) e leitura da tabela de comissões
  * por plano (`affiliate_commission_rules`, leitura pública).
  */
 import { supabase } from '../lib/supabase';
@@ -92,6 +93,15 @@ export function affiliateSignup(input: {
 
 export function affiliateSendLink(email: string) {
   return call<{ ok: true }>({ action: 'send_link', email });
+}
+
+/** Troca o link mágico do e-mail (uso único) por um token de sessão do painel. */
+export function exchangeAffiliateLogin(loginToken: string) {
+  return call<{ session_token: string }>({ action: 'exchange', login_token: loginToken });
+}
+
+export function affiliateLogout(token: string) {
+  return call<{ ok: true }>({ action: 'logout', token });
 }
 
 export function getAffiliateDashboard(token: string) {

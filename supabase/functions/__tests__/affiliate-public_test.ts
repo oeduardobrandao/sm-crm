@@ -139,13 +139,15 @@ Deno.test("signup: new e-mail creates the affiliate, stores only the token hash,
   assertEquals(payload.terms_accepted_at, NOW.toISOString());
 
   assertEquals(emails.length, 1);
-  const token = emails[0].link.split("/afiliados/painel/")[1];
-  assert(emails[0].link.startsWith("https://www.mesaas.com.br/afiliados/painel/"), emails[0].link);
+  // Link mágico: token no fragmento, kind 'login', 15 minutos.
+  const token = emails[0].link.split("/afiliados/entrar#")[1];
+  assert(emails[0].link.startsWith("https://www.mesaas.com.br/afiliados/entrar#"), emails[0].link);
   assertEquals(token.length, 43);
   const tok = db.calls.find((c) => c.table === "affiliate_access_tokens")!.payload as Record<string, unknown>;
   assertEquals(tok.token_hash, await sha256Hex(token));
   assert(tok.token_hash !== token);
-  assertEquals(tok.expires_at, "2027-04-08T12:00:00.000Z");
+  assertEquals(tok.kind, "login");
+  assertEquals(tok.expires_at, "2026-10-10T12:15:00.000Z");
 });
 
 Deno.test("signup: existing e-mail only re-sends the link, same response", async () => {
@@ -222,6 +224,8 @@ Deno.test("dashboard: unknown/expired token is a 404", async () => {
   const read = db.calls[0];
   assert(read.modifiers.some((m) => m.method === "eq" && m.args[0] === "token_hash"));
   assert(read.modifiers.some((m) => m.method === "gt" && m.args[0] === "expires_at"));
+  // Só sessão abre o painel: um token de login (do e-mail) nunca serve aqui.
+  assert(read.modifiers.some((m) => m.method === "eq" && m.args[0] === "kind" && m.args[1] === "session"));
 });
 
 Deno.test("dashboard: shapes summary, anonymised referrals and commission states", async () => {
@@ -300,7 +304,8 @@ Deno.test("connect_start: creates the Express account once (CAS) and returns the
   assertEquals(res.status, 200);
   assertEquals(await readJson(res), { url: "https://connect.stripe.com/setup/x" });
   assertEquals(calls[0], "create:aff-1");
-  assertEquals(calls[1], `link:acct_new:https://www.mesaas.com.br/afiliados/painel/${TOKEN}?stripe=retorno`);
+  // Sem token na URL que o Stripe guarda.
+  assertEquals(calls[1], "link:acct_new:https://www.mesaas.com.br/afiliados/painel?stripe=retorno");
   const upd = db.calls.find((c) => c.table === "affiliates" && c.operation === "update")!;
   assert(upd.modifiers.some((m) => m.method === "is" && m.args[0] === "stripe_account_id" && m.args[1] === null));
 });
@@ -354,6 +359,64 @@ Deno.test("connect_dashboard: needs a submitted account", async () => {
   assertEquals(calls, ["dash:acct_1"]);
 });
 
+Deno.test("exchange: spends the login token atomically and returns a new session token", async () => {
+  const { db, handler, rateKeys } = setup();
+  db.queueRpc("affiliate_exchange_login", { data: "aff-1" });
+  const res = await handler(post({ action: "exchange", login_token: TOKEN }));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(typeof body.session_token, "string");
+  assertEquals(body.session_token.length, 43);
+  assert(body.session_token !== TOKEN);
+  const call = db.calls.find((c) => c.table === "rpc:affiliate_exchange_login")!;
+  const params = call.payload as Record<string, unknown>;
+  assertEquals(params.p_login_hash, await sha256Hex(TOKEN));
+  assertEquals(params.p_session_hash, await sha256Hex(body.session_token));
+  assertEquals(params.p_session_expires_at, "2026-11-09T12:00:00.000Z");
+  assert(rateKeys.includes("affiliate-exchange:ip:1.2.3.4"));
+});
+
+Deno.test("exchange: used, expired or unknown login token is the same 404", async () => {
+  const { db, handler } = setup();
+  db.queueRpc("affiliate_exchange_login", { data: null });
+  const res = await handler(post({ action: "exchange", login_token: TOKEN }));
+  assertEquals(res.status, 404);
+  assertEquals((await readJson(res)).error, "Link inválido ou expirado. Peça um novo link de acesso.");
+});
+
+Deno.test("exchange: malformed token is a 404 without touching the DB", async () => {
+  const { db, handler } = setup();
+  assertEquals((await handler(post({ action: "exchange", login_token: "short" }))).status, 404);
+  assertEquals((await handler(post({ action: "exchange" }))).status, 404);
+  assertEquals(db.calls.length, 0);
+});
+
+Deno.test("exchange: rate limited is a 429", async () => {
+  const { handler } = setup({ rateLimited: true });
+  assertEquals((await handler(post({ action: "exchange", login_token: TOKEN }))).status, 429);
+});
+
+Deno.test("logout: deletes only that session; always 200", async () => {
+  const { db, handler } = setup();
+  db.queue("affiliate_access_tokens", "delete", { data: null });
+  const res = await handler(post({ action: "logout", token: TOKEN }));
+  assertEquals(res.status, 200);
+  const del = db.calls.find((c) => c.table === "affiliate_access_tokens" && c.operation === "delete")!;
+  assert(del.modifiers.some((m) => m.method === "eq" && m.args[0] === "token_hash"));
+  assert(del.modifiers.some((m) => m.method === "eq" && m.args[0] === "kind" && m.args[1] === "session"));
+
+  const bad = setup();
+  assertEquals((await bad.handler(post({ action: "logout", token: "short" }))).status, 200);
+  assertEquals(bad.db.calls.length, 0);
+});
+
+Deno.test("buildAffiliateLinkEmail: says the link is single-use and no longer mentions PIX", () => {
+  const html = buildAffiliateLinkEmail({ nome: "Ana Souza", link: "https://x/afiliados/entrar#t" });
+  assert(html.includes("15 minutos"));
+  assert(!html.includes("PIX"));
+  assert(html.includes("Olá, Ana!"));
+});
+
 Deno.test("unknown action / bad body / wrong method", async () => {
   const { handler } = setup();
   assertEquals((await handler(post({ action: "nope" }))).status, 400);
@@ -372,7 +435,7 @@ Deno.test("a DB failure is a generic 500", async () => {
 });
 
 Deno.test("affiliate e-mail: new shell, first name, button", () => {
-  const html = buildAffiliateLinkEmail({ nome: "Ana <Souza>", link: "https://app.test/afiliados/painel?t=x" });
-  assert(html.includes("Olá, Ana!") && html.includes("Programa de afiliados") && html.includes("Abrir meu painel"));
+  const html = buildAffiliateLinkEmail({ nome: "Ana <Souza>", link: "https://app.test/afiliados/entrar#x" });
+  assert(html.includes("Olá, Ana!") && html.includes("Programa de afiliados") && html.includes("Entrar no painel"));
   assert(html.includes("logo-black-email.png") && !html.includes("#1a3d2b"));
 });
