@@ -6,6 +6,7 @@ import {
   AVISO_CANCELAMENTO,
   base64Utf8,
   formatarQuandoAgenda,
+  mesDiaAgenda,
   montarEmailAgendaCliente,
   SnapshotVazioError,
 } from "../_shared/agenda-cliente-email.ts";
@@ -664,4 +665,37 @@ Deno.test("run: a client item tagged destinatario 'cliente' keeps the Hub path a
   assertEquals(hubCalls(), 1);
   const unsubUrl = `https://x.supabase.co/functions/v1/client-email-unsub/${await signUnsubToken(42, "test-secret")}`;
   assert((sent[0][2] as string).includes(unsubUrl));
+});
+
+Deno.test("mesDiaAgenda: timed event uses its zone; all-day uses data_inicio_local", () => {
+  assertEquals(mesDiaAgenda({ inicio: "2026-10-15T13:00:00Z", fim: "2026-10-15T14:00:00Z", dia_inteiro: false, tz: "America/Sao_Paulo" }), { mes: "OUT", dia: "15" });
+  // 02:30Z on the 16th is still the 15th in Manaus (UTC-4).
+  assertEquals(mesDiaAgenda({ inicio: "2026-10-16T02:30:00Z", fim: "2026-10-16T03:30:00Z", dia_inteiro: false, tz: "America/Manaus" }), { mes: "OUT", dia: "15" });
+  // All-day: the stored local date wins, never inicio converted.
+  assertEquals(mesDiaAgenda({ inicio: "2026-10-16T04:00:00Z", fim: "2026-10-17T04:00:00Z", dia_inteiro: true, data_inicio_local: "2026-10-16", tz: "America/Manaus" }), { mes: "OUT", dia: "16" });
+});
+
+Deno.test("agenda-cliente: tile day equals the 'quando' day for an all-day event in another zone", () => {
+  const feriado = oc({
+    ocorrencia_id: 1,
+    dia_inteiro: true,
+    inicio: "2026-11-02T04:00:00Z",
+    fim: "2026-11-03T04:00:00Z",
+    data_inicio_local: "2026-11-02",
+    data_fim_local: "2026-11-03",
+    tz: "America/Manaus",
+    titulo: "Feriado",
+  });
+  const { html } = montarEmailAgendaCliente(item({ tipo: "convite", ocorrencias: [feriado] }), CTX);
+  assert(html.includes(">NOV<") && html.includes(">2<"), "tile");
+  assert(html.includes("Segunda, 2 de novembro · dia inteiro"), "quando");
+});
+
+Deno.test("agenda-cliente: brand band kept, light brand flips tile/button text, organizer line, no emoji", () => {
+  const { html } = montarEmailAgendaCliente(item({ tipo: "convite", brand_color: "#facc15", organizador_nome: "Ana Souza" }), CTX);
+  assert(html.includes("background: #facc15"), "band");
+  assert(html.split("color: #171717;").length - 1 >= 3, "dark text on light brand: band, tile and button");
+  assert(html.includes("Organizado por Ana Souza"));
+  assert(!/[📅💬]/u.test(html));
+  assert(html.includes(`<meta name="color-scheme" content="light">`));
 });

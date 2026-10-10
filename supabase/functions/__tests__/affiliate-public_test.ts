@@ -433,3 +433,9 @@ Deno.test("a DB failure is a generic 500", async () => {
   const body = await readJson(res);
   assertEquals(body, { error: "Internal server error" });
 });
+
+Deno.test("affiliate e-mail: new shell, first name, button", () => {
+  const html = buildAffiliateLinkEmail({ nome: "Ana <Souza>", link: "https://app.test/afiliados/entrar#x" });
+  assert(html.includes("Olá, Ana!") && html.includes("Programa de afiliados") && html.includes("Entrar no painel"));
+  assert(html.includes("logo-black-email.png") && !html.includes("#1a3d2b"));
+});

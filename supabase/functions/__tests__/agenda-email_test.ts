@@ -70,7 +70,20 @@ Deno.test("buildLembreteEmail: only http(s) meeting links become anchors", () =>
 Deno.test("buildLembreteEmail: CTA and footer", () => {
   const { html } = buildLembreteEmail(base);
   assert(html.includes('href="https://app.example.test/calendario?evento=7"'));
-  assert(html.includes("Abrir na agenda"));
+  assert(html.includes("Abrir na Agenda"));
   assert(html.includes("Você recebe este lembrete porque participa deste evento. Para desligar, vá em Configurações, Notificações."));
   assert(!html.includes("—"));
+});
+
+Deno.test("lembrete: new shell, date tile, meeting link guarded", () => {
+  const { html } = buildLembreteEmail({
+    titulo: "Pauta <Café>", inicio: "2026-10-12T17:00:00Z", fim: "2026-10-12T18:00:00Z", diaInteiro: false,
+    local: "Rua Augusta, 1200", linkReuniao: "javascript:alert(1)", tz: "America/Sao_Paulo", minutos: 60,
+    abrirUrl: "https://app.test/agenda", appBaseUrl: "https://app.test",
+  });
+  assert(html.includes("logo-black-email.png") && html.includes(`<meta name="color-scheme" content="light">`));
+  assert(html.includes(">OUT<") && html.includes(">12<"), "date tile missing");
+  assert(html.includes("Pauta &lt;Café&gt;") && !html.includes("&amp;lt;"), "title escaped once");
+  assert(!html.includes("javascript:") && !html.includes("Entrar na reunião"));
+  assert(html.includes("Segunda, 12 de outubro · 14:00 a 15:00"), "preheader/when line");
 });
