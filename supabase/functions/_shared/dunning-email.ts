@@ -70,7 +70,7 @@ export function buildDunningEmail(params: {
     : "Atualize sua forma de pagamento para manter o acesso.";
   return mesaasEmail({
     preheader,
-    eyebrow: final ? "Último aviso" : "Assinatura",
+    eyebrow: "Assinatura",
     eyebrowTone: final ? "danger" : "brand",
     sections: [
       heading(copy.heading) + paragraph(copy.body, "body", "0"),
