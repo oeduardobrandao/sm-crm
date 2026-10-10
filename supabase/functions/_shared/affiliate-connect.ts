@@ -27,6 +27,8 @@ export class ConnectError extends Error {
   constructor(
     readonly kind: "rejected" | "unknown",
     readonly code: string,
+    // Mensagem crua do Stripe, só para log interno (nunca devolver ao cliente).
+    readonly detail?: string,
   ) {
     super(`stripe connect ${kind}: ${code}`);
     this.name = "ConnectError";
@@ -60,13 +62,14 @@ export function accountStatusFrom(account: {
 
 export function classifyStripeError(err: unknown): ConnectError {
   if (err instanceof ConnectError) return err;
-  const e = err as { statusCode?: number; code?: string; type?: string } | null;
+  const e = err as { statusCode?: number; code?: string; type?: string; message?: string } | null;
   const status = e?.statusCode;
   const code = String(e?.code ?? e?.type ?? "unknown").slice(0, 100);
+  const detail = typeof e?.message === "string" ? e.message.slice(0, 300) : undefined;
   if (typeof status === "number" && status >= 400 && status < 500 && status !== 429) {
-    return new ConnectError("rejected", code);
+    return new ConnectError("rejected", code, detail);
   }
-  return new ConnectError("unknown", code);
+  return new ConnectError("unknown", code, detail);
 }
 
 async function call<T>(fn: () => Promise<T>): Promise<T> {
