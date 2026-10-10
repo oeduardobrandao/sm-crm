@@ -5,11 +5,12 @@
 // this one is split into core.ts/handler.ts/index.ts per tiktok-refresh-cron's convention
 // (Task A6), since it needs the same DI seams for its own network/crypto-touching calls).
 //
-// Three phases via claim_posts_for_tiktok_publishing (init/status/retry). Every claimed post's
-// tiktok_publish_processing_at lock is cleared on EVERY exit path — success, deferred
-// (per-account overflow), or failure — so nothing outlives the RPC's 10-minute
-// stale-reclaim window by leaning on it. markTikTokPublishFailed and the plain workflow_posts
-// updates used elsewhere in this file all clear the lock explicitly as part of their write.
+// Three phases via claim_tiktok_targets_for_publishing (init/status/retry; P4: the claim is per
+// TikTok DESTINATION, post_targets). Every claimed destination's processing_at lock is cleared on
+// every normal exit path: init success (processando + publish_ref), deferral (clearLock), failure
+// (mark_target_failed), status (mark_target_published or a lock release) and retry
+// (requeue_target, or clearLock when it declines). Every transition that moves the post's status
+// runs inside one of those SECURITY DEFINER RPCs, never as a direct workflow_posts write.
 //
 // getFreshTikTokToken (_shared/tiktok.ts) is called ONCE PER ACCOUNT PER RUN — posts are
 // grouped by tiktok_account_id in the init and status phases before any token fetch — never
@@ -68,23 +69,21 @@ const MAX_INIT_PER_ACCOUNT = 5;
 
 const CRON_NAME = "tiktok-publish-cron";
 
+/** Row of claim_tiktok_targets_for_publishing (20261013000003). */
 interface ClaimedTikTokCronPost {
   post_id: number;
-  workflow_id: number | null;
+  conta_id: string;
+  cliente_id: number;
   tipo: string;
-  scheduled_at: string;
+  scheduled_at: string | null;
   caption: string;
   tiktok_title: string | null;
   tiktok_settings: TikTokSettings | null;
-  tiktok_publish_id: string | null;
-  tiktok_publish_retry_count: number;
-  encrypted_access_token: string;
-  encrypted_refresh_token: string;
-  access_token_expires_at: string | null;
-  tiktok_account_id: string;
-  tiktok_open_id: string;
   tiktok_username: string | null;
-  client_id: number;
+  tiktok_account_id: string;
+  target_id: number;
+  publish_ref: string | null;
+  retry_count: number;
 }
 
 interface FetchedMediaFile {
@@ -154,12 +153,12 @@ async function claimPosts(
   phase: "init" | "status" | "retry",
   limit: number,
 ): Promise<ClaimedTikTokCronPost[]> {
-  const { data, error } = await svc.rpc("claim_posts_for_tiktok_publishing", {
+  const { data, error } = await svc.rpc("claim_tiktok_targets_for_publishing", {
     p_phase: phase,
     p_limit: limit,
   });
   if (error) {
-    throw new Error(`claim_posts_for_tiktok_publishing(${phase}) failed: ${error.message}`);
+    throw new Error(`claim_tiktok_targets_for_publishing(${phase}) failed: ${error.message}`);
   }
   return (data ?? []) as ClaimedTikTokCronPost[];
 }
@@ -177,6 +176,7 @@ async function processInitPhase(
   posts: ClaimedTikTokCronPost[],
 ): Promise<PhaseResult> {
   const { svc, getFreshTikTokToken, tiktokFetch, buildTikTokMediaUrl } = deps;
+  const now = deps.now ?? (() => new Date());
   const fetchPostMedia = deps.fetchPostMedia ?? realFetchPostMedia;
   const fetchCreatorCheck = deps.fetchCreatorCheck ?? realFetchCreatorCheck;
   const fetchPrecheckMedia = deps.fetchPrecheckMedia ?? realFetchPrecheckMedia;
@@ -188,10 +188,10 @@ async function processInitPhase(
     const toProcess = accountPosts.slice(0, MAX_INIT_PER_ACCOUNT);
     const overflow = accountPosts.slice(MAX_INIT_PER_ACCOUNT);
 
-    // Overflow beyond the per-account cap: release the lock untouched (tiktok_publish_status
-    // stays NULL) so the next run's init claim picks them straight back up — not a failure.
+    // Overflow beyond the per-account cap: release the destination lock untouched so the next
+    // run's init claim picks it straight back up — not a failure.
     for (const post of overflow) {
-      await clearLock(svc, post.post_id);
+      await clearLock(svc, post.target_id, now);
     }
 
     let accessToken: string;
@@ -201,7 +201,7 @@ async function processInitPhase(
     } catch (err) {
       const message = tokenErrorMessage(err);
       for (const post of toProcess) {
-        await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, message);
+        await markTikTokPublishFailed(svc, post.post_id, message);
         failed++;
       }
       continue;
@@ -216,7 +216,7 @@ async function processInitPhase(
       // getFreshTikTokToken catch above (spec A10): tokenErrorMessage, retryable (+1).
       const message = tokenErrorMessage(err);
       for (const post of toProcess) {
-        await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, message);
+        await markTikTokPublishFailed(svc, post.post_id, message);
         failed++;
       }
       continue;
@@ -232,9 +232,7 @@ async function processInitPhase(
           creator,
         });
         if (precheckFailure) {
-          await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, precheckFailure, {
-            nonRetryable: true,
-          });
+          await markTikTokPublishFailed(svc, post.post_id, precheckFailure, { nonRetryable: true });
           failed++;
           continue;
         }
@@ -270,14 +268,16 @@ async function processInitPhase(
         const publishId = initResult?.publish_id;
         if (!publishId) throw new Error("TikTok não retornou publish_id na inicialização.");
 
+        // Single-statement destination write (spec §2d): the post's status does not change here.
         const { error: updErr } = await svc
-          .from("workflow_posts")
+          .from("post_targets")
           .update({
-            tiktok_publish_id: publishId,
-            tiktok_publish_status: "initiated",
-            tiktok_publish_processing_at: null,
+            status: "processando",
+            publish_ref: publishId,
+            processing_at: null,
+            updated_at: now().toISOString(),
           })
-          .eq("id", post.post_id);
+          .eq("id", post.target_id);
         if (updErr) throw new Error(`Falha ao salvar publish_id do TikTok: ${updErr.message}`);
 
         succeeded++;
@@ -288,7 +288,6 @@ async function processInitPhase(
         await markTikTokPublishFailed(
           svc,
           post.post_id,
-          post.tiktok_publish_retry_count,
           mapped ?? errorMessage(err),
           mapped ? { nonRetryable: true } : undefined,
         );
@@ -302,11 +301,10 @@ async function processInitPhase(
 
 // --- Phase 2: status ---
 //
-// Per-post "confirm via status fetch, then apply" is confirmAndApplyPublishStatus
-// (_shared/tiktok-publish-utils.ts, Task B6) — shared with tiktok-webhook's
-// post.publish.complete/failed handling. This phase still owns getting one fresh access token
-// per account (see the module comment at the top of this file) and passes it into the shared
-// function for every post in that account's batch.
+// Per-destination "confirm via status fetch, then apply" is confirmAndApplyPublishStatus
+// (_shared/tiktok-publish-utils.ts), shared with tiktok-webhook. This phase still owns getting
+// one fresh access token per account and passes it into the shared function. The claim does not
+// filter on the post's status: a publish in flight finishes even after the post was moved.
 
 async function processStatusPhase(
   deps: TikTokPublishCronDeps,
@@ -326,7 +324,7 @@ async function processStatusPhase(
     } catch (err) {
       const message = tokenErrorMessage(err);
       for (const post of accountPosts) {
-        await markTikTokPublishFailed(svc, post.post_id, post.tiktok_publish_retry_count, message);
+        await markTikTokPublishFailed(svc, post.post_id, message);
         failed++;
       }
       continue;
@@ -337,8 +335,8 @@ async function processStatusPhase(
         { svc, tiktokFetch, accessToken, now },
         {
           post_id: post.post_id,
-          tiktok_publish_id: post.tiktok_publish_id,
-          tiktok_publish_retry_count: post.tiktok_publish_retry_count,
+          target_id: post.target_id,
+          publish_ref: post.publish_ref,
           tiktok_username: post.tiktok_username,
           tipo: post.tipo,
         },
@@ -357,48 +355,39 @@ async function processStatusPhase(
 
 // --- Phase 3: retry ---
 //
-// Purely a state reset — no TikTok API calls here. tiktok_publish_status/error are cleared and
-// the card goes back to `agendado`; the NEXT run's init phase (tiktok_publish_status IS NULL)
-// picks it up fresh, with a newly-signed presign. The retry count itself was already
-// incremented by markTikTokPublishFailed at failure time — this phase
-// never touches it.
+// Purely a state reset — no TikTok API calls here. requeue_target moves the destination from
+// `falha` to `agendado` (clearing error and publish_ref, keeping retry_count) and recomputes the
+// post's status in the same transaction; the NEXT run's init phase publishes it with a fresh
+// media URL. It declines (false) when the post left publication meanwhile — the destination lock
+// is then released so it doesn't sit locked for the stale window.
 
 async function processRetryPhase(
   deps: TikTokPublishCronDeps,
   posts: ClaimedTikTokCronPost[],
 ): Promise<PhaseResult> {
   const { svc } = deps;
+  const now = deps.now ?? (() => new Date());
   let succeeded = 0;
   let failed = 0;
 
   for (const post of posts) {
     try {
-      const { error: resetErr } = await svc
-        .from("workflow_posts")
-        .update({
-          tiktok_publish_status: null,
-          tiktok_publish_error: null,
-          tiktok_publish_processing_at: null,
-        })
-        .eq("id", post.post_id);
-      if (resetErr) throw new Error(`Falha ao resetar post para nova tentativa: ${resetErr.message}`);
-
-      const { error: rpcErr } = await svc.rpc("record_post_status_change", {
+      const { data: acted, error: rpcErr } = await svc.rpc("requeue_target", {
         p_post_id: post.post_id,
-        p_new_status: "agendado",
+        p_platform: "tiktok",
         p_source: "system",
         p_actor: null,
-        p_fields: {},
       });
-      if (rpcErr) throw new Error(`record_post_status_change falhou: ${rpcErr.message}`);
-
-      succeeded++;
+      if (rpcErr) throw new Error(`requeue_target falhou: ${rpcErr.message}`);
+      if (acted === true) {
+        succeeded++;
+      } else {
+        console.log(`[${CRON_NAME}] retry: post ${post.post_id} left publication, lock released`);
+        await clearLock(svc, post.target_id, now);
+      }
     } catch (err) {
-      console.error(`[${CRON_NAME}] retry reset failed for post ${post.post_id}:`, errorMessage(err));
-      // Best-effort: the reset update above already clears the lock when it succeeds; if THAT
-      // write itself failed, clear it explicitly so the post doesn't sit locked for the full
-      // 10-minute stale-reclaim window on top of the retry it already lost.
-      await clearLock(svc, post.post_id);
+      console.error(`[${CRON_NAME}] retry failed for post ${post.post_id}:`, errorMessage(err));
+      await clearLock(svc, post.target_id, now);
       failed++;
     }
   }
