@@ -16,6 +16,7 @@ import { escapeHtml } from "./report-template/escape.ts";
 import { type ResendAttachment, sanitizeSubjectValue } from "./lifecycle-emails.ts";
 import { buildBrandHeaderBand, buildPreheader, pickHeaderTextColor } from "./report-template/brand-header.ts";
 import { gerarCalendario, type IcsEvento } from "./ics.ts";
+import { corSegura, linkSeguro } from "./email/safe.ts";
 
 // ─── Contract types (shapes from the plan's "Shared contracts") ─────────────
 
@@ -125,7 +126,6 @@ export class SnapshotVazioError extends Error {
 
 const TZ_PADRAO = "America/Sao_Paulo";
 const DIAS_LISTADOS = 10;
-const COR_PADRAO = "#eab308";
 
 /** An unknown IANA name makes Intl throw; fall back rather than fail the send. */
 function tzSegura(tz: string | null | undefined): string {
@@ -256,18 +256,6 @@ function paraIcs(o: AgendaClienteOcorrencia): IcsEvento {
 }
 
 // ─── HTML pieces ───────────────────────────────────────────────────────────────
-
-// deno-lint-ignore no-control-regex
-const URL_SEGURA = /^https?:\/\/[^\s\x00-\x1f\x7f]+$/i;
-
-function linkSeguro(u: string | null | undefined): string | null {
-  const t = u?.trim();
-  return t && URL_SEGURA.test(t) ? t : null;
-}
-
-function corSegura(c: string | null | undefined): string {
-  return c && /^#[0-9a-fA-F]{6}$/.test(c) ? c : COR_PADRAO;
-}
 
 function plural(n: number, um: string, varios: string): string {
   return `${n} ${n === 1 ? um : varios}`;
