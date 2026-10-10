@@ -90,7 +90,10 @@ export function createAffiliateConnectGateway(stripe: Stripe): AffiliateConnectG
             type: "express",
             country: "BR",
             email,
-            capabilities: { transfers: { requested: true } },
+            // No Brasil o Stripe recusa `transfers` sem `card_payments` ("You cannot request
+            // the transfers capability without the card_payments capability for accounts in BR").
+            // O afiliado não cobra ninguém; card_payments só destrava a conta para receber repasses.
+            capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
             metadata: { affiliate_id: affiliateId },
           },
           // Dois cliques em sequência devolvem a mesma conta. A chave vale só pela hora
