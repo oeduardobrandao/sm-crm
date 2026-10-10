@@ -27,6 +27,8 @@ export class ConnectError extends Error {
   constructor(
     readonly kind: "rejected" | "unknown",
     readonly code: string,
+    // Mensagem crua do Stripe, só para log interno (nunca devolver ao cliente).
+    readonly detail?: string,
   ) {
     super(`stripe connect ${kind}: ${code}`);
     this.name = "ConnectError";
@@ -60,13 +62,14 @@ export function accountStatusFrom(account: {
 
 export function classifyStripeError(err: unknown): ConnectError {
   if (err instanceof ConnectError) return err;
-  const e = err as { statusCode?: number; code?: string; type?: string } | null;
+  const e = err as { statusCode?: number; code?: string; type?: string; message?: string } | null;
   const status = e?.statusCode;
   const code = String(e?.code ?? e?.type ?? "unknown").slice(0, 100);
+  const detail = typeof e?.message === "string" ? e.message.slice(0, 300) : undefined;
   if (typeof status === "number" && status >= 400 && status < 500 && status !== 429) {
-    return new ConnectError("rejected", code);
+    return new ConnectError("rejected", code, detail);
   }
-  return new ConnectError("unknown", code);
+  return new ConnectError("unknown", code, detail);
 }
 
 async function call<T>(fn: () => Promise<T>): Promise<T> {
@@ -77,22 +80,37 @@ async function call<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+async function shortHash(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest).slice(0, 6), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export function createAffiliateConnectGateway(stripe: Stripe): AffiliateConnectGateway {
   const opts = { timeout: STRIPE_TIMEOUT_MS };
   return {
     createExpressAccount: ({ email, affiliateId }) =>
       call(async () => {
-        const account = await stripe.accounts.create(
-          {
-            type: "express",
-            country: "BR",
-            email,
-            capabilities: { transfers: { requested: true } },
-            metadata: { affiliate_id: affiliateId },
-          },
-          // Dois cliques em sequência dentro de 24h devolvem a mesma conta.
-          { ...opts, idempotencyKey: `affiliate-connect:${affiliateId}` },
-        );
+        const params: Stripe.AccountCreateParams = {
+          type: "express",
+          country: "BR",
+          email,
+          // No Brasil o Stripe recusa `transfers` sem `card_payments` ("You cannot request
+          // the transfers capability without the card_payments capability for accounts in BR").
+          // O afiliado não cobra ninguém; card_payments só destrava a conta para receber repasses.
+          capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+          metadata: { affiliate_id: affiliateId },
+        };
+        // A chave é estável por afiliado e pelos parâmetros: cliques repetidos, retries e
+        // corridas devolvem sempre a mesma conta (nunca uma segunda conta órfã). A impressão
+        // digital dos parâmetros troca a chave quando o pedido muda de verdade (o Stripe rejeita
+        // reusar uma chave com parâmetros diferentes). Limite conhecido: o Stripe guarda também
+        // erros por 24h, então um erro de configuração da plataforma corrigido no painel pode
+        // continuar voltando por até 24h para o mesmo afiliado.
+        const fingerprint = await shortHash(JSON.stringify(params));
+        const account = await stripe.accounts.create(params, {
+          ...opts,
+          idempotencyKey: `affiliate-connect:${affiliateId}:${fingerprint}`,
+        });
         return account.id;
       }),
     createOnboardingLink: ({ accountId, refreshUrl, returnUrl }) =>

@@ -33,6 +33,7 @@ export async function sendAffiliateLinkEmail(
     body: JSON.stringify({
       from: "Mesaas <afiliados@mesaas.com.br>",
       to: [params.to],
+      reply_to: "eduardo@mesaas.com.br",
       subject: "Seu painel de afiliado Mesaas",
       html: buildAffiliateLinkEmail({ nome: params.nome, link: params.link }),
     }),
