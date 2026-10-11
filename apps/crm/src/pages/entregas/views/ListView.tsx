@@ -8,6 +8,14 @@ import type { ListGroupBy } from '../viewQuery';
 import { allGroupsCollapsed, groupListRows, toggleKey } from '../listGrouping';
 import { ListGroupHeaderRow } from '../components/ListGroupHeaderRow';
 import { ListGroupsToggle } from '../components/ListGroupsToggle';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
+  PhoneListSections,
+  PhonePostEntityListRow,
+  PhoneRowAside,
+  PhoneWorkflowListRow,
+  type PhoneRowDisplay,
+} from '../phone/PhoneListRows';
 
 interface ListViewProps {
   cards: BoardCard[];
@@ -52,6 +60,8 @@ interface ListRow {
   hasDeadline: boolean;
   individual: boolean;
   open: () => void;
+  /** A linha de origem: a versão de celular abre o menu e avança a etapa por ela. */
+  source: { kind: 'workflow'; card: BoardCard } | { kind: 'post'; entity: PostEntity };
 }
 
 const EMPTY_POST_ENTITIES: PostEntity[] = [];
@@ -104,6 +114,7 @@ export function ListView({
   groupBy = 'nenhum',
 }: ListViewProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const isPhone = !useIsDesktop(768);
 
   if (cards.length === 0 && postEntities.length === 0) {
     return (
@@ -131,6 +142,7 @@ export function ListView({
       hasDeadline: true,
       individual: false,
       open: () => onCardClick(card),
+      source: { kind: 'workflow', card },
     })),
     ...postEntities.map<ListRow>((e) => ({
       key: e.id,
@@ -146,6 +158,7 @@ export function ListView({
       hasDeadline: e.prazoEfetivo != null,
       individual: true,
       open: () => onPostClick?.(e),
+      source: { kind: 'post', entity: e },
     })),
   ];
   const sorted = sortRows(rows, sort.column, sort.direction);
@@ -227,14 +240,71 @@ export function ListView({
         );
   const groupKeys = groups?.map((g) => g.key) ?? [];
   const allCollapsed = allGroupsCollapsed(groupKeys, collapsed);
+  const toggleAll = () => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys));
+
+  if (isPhone) {
+    // Celular (D20): linhas agrupadas com ações de deslizar no lugar da tabela, com o
+    // mesmo agrupamento, a mesma ordenação e o mesmo estado de grupos recolhidos.
+    const renderPhoneRow = (row: ListRow) => {
+      const badge = getStatusBadge(row);
+      const display: PhoneRowDisplay = {
+        title: row.titulo,
+        subtitle: [
+          row.clienteNome || 'Sem cliente',
+          row.etapaNome,
+          row.responsavelNome || 'Sem responsável',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        tag: row.individual ? (
+          <span className="phone-ent-l-tag">
+            <FileText aria-hidden="true" />
+            Individual
+          </span>
+        ) : undefined,
+        aside: (
+          <PhoneRowAside
+            status={badge.label}
+            statusColor={badge.color}
+            deadline={formatPrazo(row)}
+            overdue={row.hasDeadline && row.deadline.estourado}
+          />
+        ),
+      };
+      return row.source.kind === 'workflow' ? (
+        <PhoneWorkflowListRow
+          key={row.key}
+          card={row.source.card}
+          display={display}
+          onOpen={row.open}
+        />
+      ) : (
+        <PhonePostEntityListRow
+          key={row.key}
+          entity={row.source.entity}
+          display={display}
+          onOpen={onPostClick ? row.open : undefined}
+        />
+      );
+    };
+    return (
+      <PhoneListSections
+        label="Entregas"
+        groups={groups}
+        rows={sorted}
+        renderRow={renderPhoneRow}
+        collapsed={collapsed}
+        onToggleGroup={(key) => setCollapsed((prev) => toggleKey(prev, key))}
+        allCollapsed={allCollapsed}
+        onToggleAll={toggleAll}
+      />
+    );
+  }
 
   return (
     <div className="animate-up card" style={{ overflow: 'auto' }}>
       {groups && groups.length > 1 && (
-        <ListGroupsToggle
-          allCollapsed={allCollapsed}
-          onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys))}
-        />
+        <ListGroupsToggle allCollapsed={allCollapsed} onToggle={toggleAll} />
       )}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>

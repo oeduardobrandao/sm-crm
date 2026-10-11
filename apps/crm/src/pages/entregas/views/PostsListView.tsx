@@ -3,7 +3,7 @@ import { ChevronUp, ChevronDown, CircleDashed, Plus, Route } from 'lucide-react'
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
-import { TableSkeleton } from '@/components/ui/skeletons';
+import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { getInitials } from '@/lib/initials';
 import { formatPostDate } from '@/utils/postDate';
@@ -17,6 +17,13 @@ import type { PostEntity } from '../boardEntity';
 import { POST_STATUS_ORDER, TIPO_LABELS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { PostStatusChip } from '../components/PostStatusChip';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
+  PhoneActivePostListRow,
+  PhoneListSections,
+  PhoneRowAside,
+  type PhoneRowDisplay,
+} from '../phone/PhoneListRows';
 
 interface PostsListViewProps {
   posts: ActivePost[];
@@ -106,6 +113,7 @@ export function PostsListView({
   });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const statusRegistry = useStatusRegistry();
+  const isPhone = !useIsDesktop(768);
 
   // A post avulso has no workflow_id to look up -- undefined here means the same
   // "no card" state every caller below already treats as "no fluxo".
@@ -174,7 +182,11 @@ export function PostsListView({
   }, [posts, sort, cardsByWorkflowId, postEntityByPostId, membroNomeById]);
 
   if (isLoading) {
-    return <TableSkeleton rows={8} columns={COLUMNS.length} />;
+    return isPhone ? (
+      <CardListSkeleton rows={6} />
+    ) : (
+      <TableSkeleton rows={8} columns={COLUMNS.length} />
+    );
   }
 
   if (posts.length === 0) {
@@ -351,14 +363,78 @@ export function PostsListView({
         );
   const groupKeys = groups?.map((g) => g.key) ?? [];
   const allCollapsed = allGroupsCollapsed(groupKeys, collapsed);
+  const toggleAll = () => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys));
+
+  if (isPhone) {
+    // Celular (D20): linhas agrupadas com ações de deslizar no lugar da tabela. As
+    // colunas que não cabem na linha (fluxo, tipo, agendado) vão para a terceira linha.
+    const renderPhoneRow = (p: ActivePost) => {
+      const workflowId = p.workflow_id;
+      const openable = workflowId == null || openableWorkflowIds.has(workflowId);
+      const card = cardOf(p);
+      const stage = stageOf(p);
+      const processEtapa =
+        workflowId == null ? postEntityByPostId?.get(p.id)?.etapaNome : undefined;
+      const prazo = stage?.hasPrazo ? formatEtapaPrazo(stage.deadline) : null;
+      const fluxo =
+        workflowId == null
+          ? processEtapa
+            ? 'Individual'
+            : 'Avulso'
+          : p.workflow_titulo || 'Fluxo';
+      const display: PhoneRowDisplay = {
+        title: p.titulo || 'Post sem título',
+        subtitle: [
+          p.cliente_nome || 'Sem cliente',
+          stage?.etapaNome,
+          membroNome(p) || 'Sem responsável',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        meta: [
+          fluxo,
+          TIPO_LABELS[p.tipo],
+          p.ig_trial_strategy ? 'Teste' : null,
+          p.scheduled_at ? `Agendado ${formatPostDate(p.scheduled_at)}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        aside: (
+          <PhoneRowAside
+            status={<PostStatusChip post={p} registry={statusRegistry} />}
+            deadline={prazo?.label}
+            overdue={!!stage?.deadline.estourado}
+          />
+        ),
+      };
+      return (
+        <PhoneActivePostListRow
+          key={p.id}
+          post={p}
+          display={display}
+          onOpen={openable ? () => onPostClick(p) : undefined}
+          onOpenFluxo={workflowId != null && card ? () => onFluxoClick(workflowId) : undefined}
+        />
+      );
+    };
+    return (
+      <PhoneListSections
+        label="Posts"
+        groups={groups}
+        rows={sorted}
+        renderRow={renderPhoneRow}
+        collapsed={collapsed}
+        onToggleGroup={(key) => setCollapsed((prev) => toggleKey(prev, key))}
+        allCollapsed={allCollapsed}
+        onToggleAll={toggleAll}
+      />
+    );
+  }
 
   return (
     <div className="animate-up card" style={{ overflow: 'auto' }}>
       {groups && groups.length > 1 && (
-        <ListGroupsToggle
-          allCollapsed={allCollapsed}
-          onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys))}
-        />
+        <ListGroupsToggle allCollapsed={allCollapsed} onToggle={toggleAll} />
       )}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>

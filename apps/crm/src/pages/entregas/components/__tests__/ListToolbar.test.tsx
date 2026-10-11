@@ -2,6 +2,9 @@ import { createRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// These suites cover the desktop table/toolbar; the phone branch has its own *Phone tests.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Radix Select não abre em jsdom: o mesmo <select> nativo de NovaIdeiaDialog.test.tsx.
 vi.mock('@/components/ui/select', () => ({
   Select: ({

@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// These suites cover the desktop table/toolbar; the phone branch has its own *Phone tests.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Canonical-only registry (what the real hook returns while definitions load),
 // without dragging TanStack Query / the supabase client into this test.
 vi.mock('@/hooks/useStatusRegistry', async () => {
