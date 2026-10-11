@@ -38,6 +38,10 @@ const {
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// Desktop markup (centered dialog with Select / radios). The full-screen phone layout
+// has its own suite, AutomationFormDialog.phone.test.tsx.
+vi.mock('../../../hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Mesmo padrao do AutomacoesPage.test: t devolve a CHAVE (com vars serializadas).
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({

@@ -25,21 +25,22 @@ import { SectionCard, SectionEmpty } from './SectionCard';
 ChartJS.register(CategoryScale, LinearScale, BarController, BarElement, Tooltip);
 
 /** Rows in the "slowest clients" ranking before it stops being a ranking. */
-const TOP_N = 8;
+export const SLOW_CLIENTS_TOP_N = 8;
+const TOP_N = SLOW_CLIENTS_TOP_N;
 
 /**
  * Above this many hours a client's median reads as a problem rather than a
  * number. 72h is the same boundary the histogram's warning bucket opens at, so
  * the two halves of the section agree about what "slow" means.
  */
-const LENTO_HORAS = 72;
+export const LENTO_HORAS = 72;
 
 /**
  * The RPC's bucket keys, rendered for humans. Keyed rather than positional so a
  * future bucket edit surfaces as an unmapped raw key instead of silently
  * mislabelling a bar.
  */
-const FAIXA_LABEL: Record<string, string> = {
+export const FAIXA_LABEL: Record<string, string> = {
   '<4h': '< 4h',
   '4-24h': '4 a 24h',
   '1-3d': '1 a 3d',

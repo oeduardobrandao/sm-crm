@@ -86,6 +86,10 @@ vi.mock('@/components/ui/dropdown-menu', () => {
   return { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem };
 });
 
+// Esta suíte cobre o layout de desktop; o do celular (abaixo de 768px) tem a sua
+// própria em *.phone.test.tsx. jsdom responde false a todo matchMedia.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import RelatorioEditorPage from '../RelatorioEditorPage';
 
 // A suíte global (test/vitest.setup.ts) roda vi.restoreAllMocks() em todo

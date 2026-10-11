@@ -70,6 +70,9 @@ import { sanitizeUrl } from '../../utils/security';
 import { formatRate } from '../../lib/ig-rates';
 import { syncInstagramData } from '../../services/instagram';
 import { HelpTooltip } from '../../components/help/HelpTooltip';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
+import { AnalyticsPhone, type AccountSortCol } from './phone/AnalyticsPhone';
 
 Chart.register(...registerables);
 
@@ -419,6 +422,8 @@ export default function AnalyticsPage() {
   const [drawerFormatFilter, setDrawerFormatFilter] = useState<string>('all');
   const [drawerDateFrom, setDrawerDateFrom] = useState<string>('');
   const [drawerDateTo, setDrawerDateTo] = useState<string>('');
+  // Phones (below 768px) get the FAnalytics layout; tablet and desktop keep this one.
+  const isPhone = !useIsDesktop(768);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['portfolio-summary', days],
@@ -515,6 +520,16 @@ export default function AnalyticsPage() {
     matureViewsRankedPosts,
   ]);
 
+  const resetDrawer = () => {
+    setDrawerSort(null);
+    setDrawerOrderBy('views');
+    setDrawerAsc(false);
+    setDrawerClientFilter('all');
+    setDrawerFormatFilter('all');
+    setDrawerDateFrom('');
+    setDrawerDateTo('');
+  };
+
   const handleSyncAll = async () => {
     if (!data?.accounts.length) return;
     setSyncing(true);
@@ -542,6 +557,17 @@ export default function AnalyticsPage() {
   }
 
   if (error || !data) {
+    if (isPhone) {
+      return (
+        <div className="phone-kit phone-an">
+          <PhonePageHeader title="Analytics" />
+          <p className="phone-an-error" role="alert">
+            Erro ao carregar analytics:{' '}
+            {error instanceof Error ? error.message : 'Erro desconhecido'}
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="card">
         <p style={{ color: 'var(--danger)' }}>
@@ -651,6 +677,161 @@ export default function AnalyticsPage() {
     .sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'))
     .filter((a, i, arr) => arr.findIndex((x) => x.client_id === a.client_id) === i); // dedupe
 
+  const kpiGrid = (
+    <StatCardGrid className="analytics-kpi-scroll animate-up">
+      <StatCard
+        label="Contas conectadas"
+        icon={Instagram}
+        tone="pink"
+        value={
+          <>
+            {summary.connected}{' '}
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+              / {summary.total}
+            </span>
+          </>
+        }
+        sub={`${summary.growing} crescendo`}
+      />
+      <StatCard
+        label="Seguidores totais"
+        icon={Users}
+        tone="blue"
+        value={formatNumber(totalFollowers)}
+        sub={`${summary.declining} em declínio`}
+      />
+      <StatCard
+        label="Visualizações totais (28d)"
+        icon={Eye}
+        tone="violet"
+        value={formatNumber(totalViews)}
+        sub="Soma de todas as contas"
+      />
+      <StatCard
+        label="Engajamento médio"
+        icon={Heart}
+        tone="amber"
+        value={formatPct(avgEngagement)}
+        sub="Média de todas as contas"
+      />
+      <StatCard
+        label="Cliques no link (28d)"
+        icon={MousePointerClick}
+        tone="green"
+        value={formatNumber(avgWebsiteClicks)}
+        sub="Média por conta"
+      />
+      {filteredAccounts.length > 0 && summary.bestByEngagement && (
+        <StatCard
+          label="Melhor engajamento"
+          icon={Heart}
+          tone="green"
+          compactValue
+          value={summary.bestByEngagement.client_name}
+          sub={formatPct(summary.bestByEngagement.engagement_rate_avg)}
+        />
+      )}
+      {filteredAccounts.length > 0 &&
+        summary.mostImproved &&
+        summary.mostImproved.follower_delta > 0 && (
+          <StatCard
+            label="Maior crescimento"
+            icon={TrendingUp}
+            tone="amber"
+            compactValue
+            value={summary.mostImproved.client_name}
+            sub={`+${formatNumber(summary.mostImproved.follower_delta)} seguidores`}
+          />
+        )}
+      {bestByViews && (bestByViews.impressions_28d || 0) > 0 && (
+        <StatCard
+          label="Mais visualizações"
+          icon={Eye}
+          tone="blue"
+          compactValue
+          value={bestByViews.client_name}
+          sub={`${formatNumber(bestByViews.impressions_28d || 0)} visualizações 28d`}
+        />
+      )}
+      {mostFollowers && (
+        <StatCard
+          label="Mais seguidores"
+          icon={Users}
+          tone="violet"
+          compactValue
+          value={mostFollowers.client_name}
+          sub={`${formatNumber(mostFollowers.follower_count)} seguidores`}
+        />
+      )}
+      {mostPosts && mostPosts.posts_last_30d > 0 && (
+        <StatCard
+          label="Mais ativo"
+          icon={Zap}
+          tone="slate"
+          compactValue
+          value={mostPosts.client_name}
+          sub={`${mostPosts.posts_last_30d} posts em 30d`}
+        />
+      )}
+    </StatCardGrid>
+  );
+
+  if (isPhone) {
+    return (
+      <AnalyticsPhone
+        accounts={filteredAccounts}
+        sortedAccounts={sortedAccounts}
+        clientOptions={sortedClientOptions}
+        clienteFilter={clienteFilter}
+        onClienteFilter={setClienteFilter}
+        days={days}
+        onDays={setDays}
+        syncing={syncing}
+        canSync={data.accounts.length > 0}
+        onSync={handleSyncAll}
+        syncResult={syncResult}
+        silentAccounts={silentAccounts}
+        kpis={kpiGrid}
+        bestPosts={viewsRankedPosts}
+        worstPosts={matureViewsRankedPosts}
+        sortColumn={sortColumn as AccountSortCol}
+        sortDirection={sortDirection}
+        onSortColumn={(col) => {
+          setSortColumn(col);
+          setSortDirection('desc');
+        }}
+        onToggleDirection={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
+        specialtyStats={specialtyStats}
+        drawer={{
+          mode: drawerSort,
+          open: (mode) => {
+            setDrawerSort(mode);
+            setDrawerAsc(mode === 'worst');
+          },
+          close: resetDrawer,
+          posts: drawerPosts,
+          total:
+            drawerSort === 'worst'
+              ? matureViewsRankedPosts.length
+              : (data.allRankedPosts?.length ?? 0),
+          orderBy: drawerOrderBy,
+          setOrderBy: setDrawerOrderBy,
+          asc: drawerAsc,
+          setAsc: setDrawerAsc,
+          format: drawerFormatFilter,
+          setFormat: setDrawerFormatFilter,
+          client: drawerClientFilter,
+          setClient: setDrawerClientFilter,
+          clients: drawerClients,
+          dateFrom: drawerDateFrom,
+          setDateFrom: setDrawerDateFrom,
+          dateTo: drawerDateTo,
+          setDateTo: setDrawerDateTo,
+        }}
+      />
+    );
+  }
+
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <header className="header header--flush animate-up">
@@ -755,102 +936,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      <StatCardGrid className="analytics-kpi-scroll animate-up">
-        <StatCard
-          label="Contas conectadas"
-          icon={Instagram}
-          tone="pink"
-          value={
-            <>
-              {summary.connected}{' '}
-              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                / {summary.total}
-              </span>
-            </>
-          }
-          sub={`${summary.growing} crescendo`}
-        />
-        <StatCard
-          label="Seguidores totais"
-          icon={Users}
-          tone="blue"
-          value={formatNumber(totalFollowers)}
-          sub={`${summary.declining} em declínio`}
-        />
-        <StatCard
-          label="Visualizações totais (28d)"
-          icon={Eye}
-          tone="violet"
-          value={formatNumber(totalViews)}
-          sub="Soma de todas as contas"
-        />
-        <StatCard
-          label="Engajamento médio"
-          icon={Heart}
-          tone="amber"
-          value={formatPct(avgEngagement)}
-          sub="Média de todas as contas"
-        />
-        <StatCard
-          label="Cliques no link (28d)"
-          icon={MousePointerClick}
-          tone="green"
-          value={formatNumber(avgWebsiteClicks)}
-          sub="Média por conta"
-        />
-        {filteredAccounts.length > 0 && summary.bestByEngagement && (
-          <StatCard
-            label="Melhor engajamento"
-            icon={Heart}
-            tone="green"
-            compactValue
-            value={summary.bestByEngagement.client_name}
-            sub={formatPct(summary.bestByEngagement.engagement_rate_avg)}
-          />
-        )}
-        {filteredAccounts.length > 0 &&
-          summary.mostImproved &&
-          summary.mostImproved.follower_delta > 0 && (
-            <StatCard
-              label="Maior crescimento"
-              icon={TrendingUp}
-              tone="amber"
-              compactValue
-              value={summary.mostImproved.client_name}
-              sub={`+${formatNumber(summary.mostImproved.follower_delta)} seguidores`}
-            />
-          )}
-        {bestByViews && (bestByViews.impressions_28d || 0) > 0 && (
-          <StatCard
-            label="Mais visualizações"
-            icon={Eye}
-            tone="blue"
-            compactValue
-            value={bestByViews.client_name}
-            sub={`${formatNumber(bestByViews.impressions_28d || 0)} visualizações 28d`}
-          />
-        )}
-        {mostFollowers && (
-          <StatCard
-            label="Mais seguidores"
-            icon={Users}
-            tone="violet"
-            compactValue
-            value={mostFollowers.client_name}
-            sub={`${formatNumber(mostFollowers.follower_count)} seguidores`}
-          />
-        )}
-        {mostPosts && mostPosts.posts_last_30d > 0 && (
-          <StatCard
-            label="Mais ativo"
-            icon={Zap}
-            tone="slate"
-            compactValue
-            value={mostPosts.client_name}
-            sub={`${mostPosts.posts_last_30d} posts em 30d`}
-          />
-        )}
-      </StatCardGrid>
+      {kpiGrid}
 
       {/* Top posts */}
       {viewsRankedPosts.length > 0 && (
@@ -1620,15 +1706,7 @@ export default function AnalyticsPage() {
       <Sheet
         open={drawerSort !== null}
         onOpenChange={(open) => {
-          if (!open) {
-            setDrawerSort(null);
-            setDrawerOrderBy('views');
-            setDrawerAsc(false);
-            setDrawerClientFilter('all');
-            setDrawerFormatFilter('all');
-            setDrawerDateFrom('');
-            setDrawerDateTo('');
-          }
+          if (!open) resetDrawer();
         }}
       >
         <SheetContent side="right" className="!w-full !max-w-xl overflow-y-auto">
