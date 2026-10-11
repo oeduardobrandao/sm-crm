@@ -8,6 +8,9 @@ import {
   Bell,
   Building2,
   MapPin,
+  Download,
+  ExternalLink,
+  MoreHorizontal,
   MoreVertical,
   Pencil,
   Trash2,
@@ -32,6 +35,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
+import { ActionSheet } from '@/components/mobile/ActionSheet';
+import { BottomSheet } from '@/components/mobile/BottomSheet';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { useSheetActions } from '@/components/mobile/sheetActions';
 import { useAuth } from '@/context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { getInitials } from '@/lib/initials';
@@ -58,10 +67,16 @@ import { linkGoogleAgenda } from './googleAgenda';
 
 export interface EventoPopoverProps {
   ocorrencia: AgendaOcorrencia;
-  /** Clicked event chip, or the tab container as a fallback for deep links. */
-  anchor: HTMLElement;
+  /** Clicked event chip, or the tab container as a fallback for deep links. Unused by
+   *  the sheet. */
+  anchor?: HTMLElement | null;
   onClose: () => void;
+  /** In the sheet it runs once the sheet's history entry is gone. */
   onEditar: (o: AgendaOcorrencia) => void;
+  /** `sheet`: the phone face (FAgendaEvento), a bottom sheet the parent opens and closes
+   *  with `open` (kept mounted, so closing pops its history entry). */
+  apresentacao?: 'popover' | 'sheet';
+  open?: boolean;
 }
 
 type Resposta = Exclude<AgendaResposta, 'pendente'>;
@@ -285,12 +300,258 @@ function Linha({
 
 const ICONE = { size: 18, strokeWidth: 1.75 } as const;
 
+// ---- Sheet (phones) -------------------------------------------------------------------
+
+/** Editar, Mais ações and Fechar: the body's first row, so Editar can close the sheet
+ *  before the form opens (the header sits outside the sheet's actions). */
+function AcoesDoSheet({
+  podeEditar,
+  mostrarMais,
+  onEditar,
+  onMais,
+}: {
+  podeEditar: boolean;
+  mostrarMais: boolean;
+  onEditar: () => void;
+  onMais: () => void;
+}) {
+  const { close, closeThen } = useSheetActions();
+  return (
+    <div className="phone-agenda-evento__acoes">
+      {podeEditar && (
+        <button
+          type="button"
+          className="phone-agenda-evento__editar"
+          onClick={() => closeThen(onEditar)}
+        >
+          Editar
+        </button>
+      )}
+      {mostrarMais && (
+        <PhoneIconButton label="Mais ações" aria-haspopup="dialog" onClick={onMais}>
+          <MoreHorizontal aria-hidden="true" />
+        </PhoneIconButton>
+      )}
+      <PhoneIconButton label="Fechar" onClick={close}>
+        <X aria-hidden="true" />
+      </PhoneIconButton>
+    </div>
+  );
+}
+
+interface EventoSheetProps {
+  o: AgendaOcorrencia;
+  open: boolean;
+  onClose: () => void;
+  onEditar: (o: AgendaOcorrencia) => void;
+  podeEditar: boolean;
+  podeResponder: boolean;
+  regra: string | null;
+  href: string | null;
+  textoLembretes: string | null;
+  clienteResposta: string | null;
+  convidados: NonNullable<AgendaOcorrencia['convidados']>;
+  participantes: AgendaOcorrencia['participantes'];
+  porId: Map<string, Pessoa>;
+  meuId: string | null;
+  resumo: { titulo: string; detalhe: string };
+  respostaAtual: AgendaOcorrencia['minha_resposta'];
+  enviando: boolean;
+  blocoRemarcacao: ReactNode;
+  onMais: () => void;
+  onResponder: (r: Resposta) => void;
+  /** Mais ações and the confirms: they stack over the sheet, which stays open. */
+  children: ReactNode;
+}
+
+/** The event detail as a bottom sheet (FAgendaEvento): same content and actions as the
+ *  popover, laid out as grouped rows. */
+function EventoSheet({
+  o,
+  open,
+  onClose,
+  onEditar,
+  podeEditar,
+  podeResponder,
+  regra,
+  href,
+  textoLembretes,
+  clienteResposta,
+  convidados,
+  participantes,
+  porId,
+  meuId,
+  resumo,
+  respostaAtual,
+  enviando,
+  blocoRemarcacao,
+  onMais,
+  onResponder,
+  children,
+}: EventoSheetProps) {
+  const mascarado = o.mascarado;
+  const temDetalhes = !mascarado && (o.local || href || o.cliente_nome || textoLembretes);
+  return (
+    <>
+      <BottomSheet
+        open={open}
+        onOpenChange={(aberto) => !aberto && onClose()}
+        title={o.titulo}
+        hideTitle
+        showClose={false}
+        detents={['medium', 'large']}
+        className="phone-agenda-evento-sheet"
+      >
+        <div className="phone-agenda-evento">
+          <AcoesDoSheet
+            podeEditar={podeEditar}
+            mostrarMais={!mascarado || podeEditar}
+            onEditar={() => onEditar(o)}
+            onMais={onMais}
+          />
+          <div className="phone-agenda-evento__topo">
+            <span
+              className="phone-agenda-evento__cor"
+              style={{ background: corDoEvento(o) }}
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <p className="phone-agenda-evento__titulo" aria-hidden="true">
+                {o.titulo}
+              </p>
+              <p className="phone-agenda-evento__quando">{quando(o)}</p>
+              {regra && <p className="phone-agenda-evento__quando">{regra}</p>}
+            </div>
+          </div>
+
+          {temDetalhes && (
+            <GroupedList aria-label="Detalhes">
+              {o.local && <Cell icon={<MapPin aria-hidden="true" />} label={o.local} />}
+              {href && (
+                <li className="phone-cell">
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="phone-cell__main"
+                  >
+                    <span className="phone-cell__icon" aria-hidden="true">
+                      <Video />
+                    </span>
+                    <span className="phone-cell__body">
+                      <span className="phone-cell__text">
+                        <span className="phone-cell__label">Entrar na reunião</span>
+                      </span>
+                    </span>
+                  </a>
+                </li>
+              )}
+              {o.cliente_nome && (
+                <Cell
+                  icon={<Building2 aria-hidden="true" />}
+                  label={
+                    clienteResposta
+                      ? `Cliente: ${o.cliente_nome} · ${clienteResposta}`
+                      : `Cliente: ${o.cliente_nome}`
+                  }
+                />
+              )}
+              {textoLembretes && <Cell icon={<Bell aria-hidden="true" />} label={textoLembretes} />}
+            </GroupedList>
+          )}
+          {blocoRemarcacao && <div className="phone-agenda-evento__bloco">{blocoRemarcacao}</div>}
+          {!mascarado && o.descricao && (
+            <p className="phone-agenda-evento__descricao">{o.descricao}</p>
+          )}
+
+          {!mascarado && participantes.length > 0 && (
+            <GroupedList header={`${resumo.titulo} · ${resumo.detalhe}`} headerAs="h3">
+              {participantes.map((p) => {
+                const pessoa = porId.get(p.user_id) ?? { id: p.user_id, nome: 'Pessoa da equipe' };
+                const badge = BADGE[p.resposta ?? 'pendente'];
+                const papel = p.user_id === o.organizador_id ? ' · organizador' : '';
+                return (
+                  <Cell
+                    key={p.user_id}
+                    icon={<Avatar pessoa={pessoa} />}
+                    label={`${pessoa.nome}${p.user_id === meuId ? ' (você)' : ''}${papel}`}
+                    accessory={
+                      <Badge variant={badge.variant} size="sm">
+                        {badge.label}
+                      </Badge>
+                    }
+                  />
+                );
+              })}
+            </GroupedList>
+          )}
+
+          {convidados.length > 0 && (
+            <GroupedList header="Convidados" headerAs="h3">
+              {convidados.map((c) => {
+                const badge = badgeConvidado(c.resposta);
+                return (
+                  <Cell
+                    key={c.id}
+                    label={c.nome || c.email}
+                    subtitle={c.nome ? c.email : undefined}
+                    accessory={
+                      <Badge variant={badge.variant} size="sm">
+                        {badge.label}
+                      </Badge>
+                    }
+                  />
+                );
+              })}
+            </GroupedList>
+          )}
+
+          {podeResponder && (
+            <div className="phone-agenda-evento__rsvp">
+              <span>Vai participar?</span>
+              <div
+                role="group"
+                aria-label="Sua resposta"
+                className="phone-agenda-evento__respostas"
+              >
+                {RESPOSTAS.map((r) => {
+                  const ativa = respostaAtual === r.id;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className="phone-agenda-evento__resposta"
+                      aria-pressed={ativa}
+                      disabled={enviando}
+                      onClick={() => onResponder(r.id)}
+                    >
+                      {r.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </BottomSheet>
+      {children}
+    </>
+  );
+}
+
 // ---- Popover ------------------------------------------------------------------------
 
 /** Event detail (spec: EventoPopover). Positioned at the anchor's current rect;
  *  closes on Esc and outside click. Sub-dialogs (RSVP scope, delete) hide the
  *  popover while open and bring it back on cancel. */
-export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: EventoPopoverProps) {
+export function EventoPopover({
+  ocorrencia: o,
+  anchor,
+  onClose,
+  onEditar,
+  apresentacao = 'popover',
+  open = true,
+}: EventoPopoverProps) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const meuId = user?.id ?? null;
@@ -305,7 +566,8 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
     queryFn: getWorkspaceUsers,
   });
 
-  const virtualRef = useMemo(() => ({ current: ancoraVirtual(anchor) }), [anchor]);
+  const virtualRef = useMemo(() => (anchor ? { current: ancoraVirtual(anchor) } : null), [anchor]);
+  const [maisAberto, setMaisAberto] = useState(false);
 
   const porId = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
 
@@ -418,10 +680,182 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
   const convidados = (!mascarado && o.convidados) || [];
   const pedidoRemarcacao = !mascarado && podeEditar ? o.remarcacao_pendente : null;
 
+  const blocoRemarcacao = pedidoRemarcacao && (
+    <div
+      role="group"
+      aria-label="Pedido de remarcação"
+      className="flex flex-col gap-2.5 rounded-[10px] border p-3.5 text-[13px] leading-[18px]"
+      style={{ background: 'var(--surface-1)', borderColor: 'var(--warning)' }}
+    >
+      <div className="font-semibold">
+        {`${o.cliente_nome || 'O cliente'} pediu para remarcar para ${quandoSugerido(pedidoRemarcacao.inicio_sugerido, o)}`}
+      </div>
+      {pedidoRemarcacao.mensagem && (
+        <div className="whitespace-pre-line break-words" style={{ color: 'var(--text-muted)' }}>
+          {pedidoRemarcacao.mensagem}
+        </div>
+      )}
+      {recusando ? (
+        <div className="flex flex-col gap-2">
+          <Textarea
+            aria-label="Mensagem para o cliente"
+            placeholder="Mensagem para o cliente (opcional)"
+            rows={3}
+            maxLength={MAX_MENSAGEM_REMARCACAO}
+            value={mensagemRecusa}
+            onChange={(e) => setMensagemRecusa(e.target.value)}
+            disabled={enviando}
+            className="resize-none"
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mb-0"
+              disabled={enviando}
+              onClick={() => {
+                setRecusando(false);
+                setMensagemRecusa('');
+              }}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="mb-0"
+              disabled={enviando}
+              onClick={() => void resolver(false)}
+            >
+              Enviar
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="mb-0"
+            disabled={enviando}
+            onClick={() => void resolver(true)}
+          >
+            Aceitar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mb-0"
+            disabled={enviando}
+            onClick={() => setRecusando(true)}
+          >
+            Recusar
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
+  if (apresentacao === 'sheet') {
+    return (
+      <EventoSheet
+        o={o}
+        open={open}
+        onClose={onClose}
+        onEditar={onEditar}
+        podeEditar={podeEditar}
+        podeResponder={podeResponder}
+        regra={regra}
+        href={href}
+        textoLembretes={textoLembretes}
+        clienteResposta={clienteResposta}
+        convidados={convidados}
+        participantes={participantes}
+        porId={porId}
+        meuId={meuId}
+        resumo={resumo}
+        respostaAtual={respostaAtual}
+        enviando={enviando}
+        blocoRemarcacao={blocoRemarcacao}
+        onMais={() => setMaisAberto(true)}
+        onResponder={escolherResposta}
+      >
+        <ActionSheet
+          open={maisAberto}
+          onOpenChange={setMaisAberto}
+          title="Mais ações"
+          hideTitle
+          actions={[
+            ...(mascarado
+              ? []
+              : [
+                  {
+                    label: 'Adicionar ao Google Agenda',
+                    icon: <ExternalLink aria-hidden="true" />,
+                    immediate: true,
+                    onSelect: () =>
+                      window.open(linkGoogleAgenda(o), '_blank', 'noopener,noreferrer'),
+                  },
+                  {
+                    label: 'Baixar .ics',
+                    icon: <Download aria-hidden="true" />,
+                    immediate: true,
+                    onSelect: () => void baixarIcsDaOcorrencia(o),
+                  },
+                ]),
+            ...(podeEditar
+              ? [
+                  {
+                    label: 'Excluir',
+                    icon: <Trash2 aria-hidden="true" />,
+                    destructive: true,
+                    onSelect: () => setSub({ tipo: 'excluir' }),
+                  },
+                ]
+              : []),
+          ]}
+        />
+        <PhoneConfirmSheet
+          open={sub?.tipo === 'rsvp'}
+          title="Responder a qual evento?"
+          onCancel={fecharSub}
+          actions={
+            sub?.tipo === 'rsvp'
+              ? (['esta', 'todas'] as const).map((escopo) => ({
+                  label: escopo === 'esta' ? 'Este evento' : 'Todos os eventos',
+                  onSelect: () => void responder(sub.resposta, escopo).then(() => setSub(null)),
+                }))
+              : []
+          }
+        />
+        <PhoneConfirmSheet
+          open={sub?.tipo === 'excluir'}
+          title={o.recorrente ? 'Excluir evento recorrente?' : 'Excluir evento?'}
+          message="Os participantes recebem um aviso de cancelamento."
+          onCancel={fecharSub}
+          actions={(o.recorrente
+            ? ([
+                ['esta', 'Este evento'],
+                ['seguintes', 'Este e os seguintes'],
+                ['todas', 'Todos os eventos'],
+              ] as const)
+            : ([['todas', 'Excluir']] as const)
+          ).map(([escopo, label]) => ({
+            label,
+            destructive: true,
+            onSelect: () => void excluir(escopo).then(() => setSub(null)),
+          }))}
+        />
+      </EventoSheet>
+    );
+  }
+
   return (
     <>
       <Popover open={sub === null} onOpenChange={(aberto) => !aberto && onClose()}>
-        <PopoverAnchor virtualRef={virtualRef} />
+        {virtualRef && <PopoverAnchor virtualRef={virtualRef} />}
         <PopoverContent
           side="bottom"
           align="start"
@@ -556,86 +990,7 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
                     : `Cliente: ${o.cliente_nome}`}
                 </Linha>
               )}
-              {pedidoRemarcacao && (
-                <div
-                  role="group"
-                  aria-label="Pedido de remarcação"
-                  className="flex flex-col gap-2.5 rounded-[10px] border p-3.5 text-[13px] leading-[18px]"
-                  style={{ background: 'var(--surface-1)', borderColor: 'var(--warning)' }}
-                >
-                  <div className="font-semibold">
-                    {`${o.cliente_nome || 'O cliente'} pediu para remarcar para ${quandoSugerido(pedidoRemarcacao.inicio_sugerido, o)}`}
-                  </div>
-                  {pedidoRemarcacao.mensagem && (
-                    <div
-                      className="whitespace-pre-line break-words"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      {pedidoRemarcacao.mensagem}
-                    </div>
-                  )}
-                  {recusando ? (
-                    <div className="flex flex-col gap-2">
-                      <Textarea
-                        aria-label="Mensagem para o cliente"
-                        placeholder="Mensagem para o cliente (opcional)"
-                        rows={3}
-                        maxLength={MAX_MENSAGEM_REMARCACAO}
-                        value={mensagemRecusa}
-                        onChange={(e) => setMensagemRecusa(e.target.value)}
-                        disabled={enviando}
-                        className="resize-none"
-                      />
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="mb-0"
-                          disabled={enviando}
-                          onClick={() => {
-                            setRecusando(false);
-                            setMensagemRecusa('');
-                          }}
-                        >
-                          Voltar
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="mb-0"
-                          disabled={enviando}
-                          onClick={() => void resolver(false)}
-                        >
-                          Enviar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="mb-0"
-                        disabled={enviando}
-                        onClick={() => void resolver(true)}
-                      >
-                        Aceitar
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="mb-0"
-                        disabled={enviando}
-                        onClick={() => setRecusando(true)}
-                      >
-                        Recusar
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
+              {blocoRemarcacao}
               {textoLembretes && <Linha icone={<Bell {...ICONE} />}>{textoLembretes}</Linha>}
               {o.descricao && (
                 <Linha icone={<AlignLeft {...ICONE} />} muted>
