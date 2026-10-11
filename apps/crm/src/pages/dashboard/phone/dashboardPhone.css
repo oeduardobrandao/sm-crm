@@ -271,6 +271,17 @@
   white-space: nowrap;
 }
 
+/* Health status pill: the desktop card's light tones, re-derived from the foreground in
+   dark mode so the pill doesn't glow as a pastel chip on the dark list. */
+.phone-home-badge--health {
+  background: var(--tone-bg);
+  color: var(--tone-fg);
+}
+[data-theme='dark'] .phone-home-badge--health {
+  background: color-mix(in srgb, var(--tone-fg) 22%, transparent);
+  color: color-mix(in srgb, var(--tone-fg) 55%, #fff);
+}
+
 .phone-home-avatar {
   display: inline-flex;
   flex-shrink: 0;
