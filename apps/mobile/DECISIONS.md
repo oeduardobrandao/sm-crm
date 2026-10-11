@@ -259,3 +259,11 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 
 - **Chosen:** the cliente Redes sociais tab keeps the imperative innerHTML renderers and gets a
   kit layout around them. A React rewrite is out of F's scope.
+
+## D32. Minimum iOS 16.2
+
+- **Chosen:** the app target's `IPHONEOS_DEPLOYMENT_TARGET` is 16.2 (was 15.0). The CRM already
+  uses CSS `color-mix()` (status badges, phone pills), which WebKit only ships from iOS 16.2; on
+  older versions those colours silently drop out.
+- `CapApp-SPM/Package.swift` stays at `.v15`: the Capacitor CLI owns that file and rewrites it on
+  every sync, and a package minimum below the app's is fine.
