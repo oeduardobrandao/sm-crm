@@ -4,6 +4,7 @@ import {
   DndContext,
   PointerSensor,
   KeyboardSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -181,7 +182,7 @@ function SortableEtapaRow(props: {
         <div
           {...listeners}
           className="shrink-0"
-          style={{ cursor: 'grab', color: 'var(--text-muted)' }}
+          style={{ cursor: 'grab', color: 'var(--text-muted)', touchAction: 'none' }}
         >
           <GripVertical className="h-4 w-4" />
         </div>
@@ -342,8 +343,12 @@ export function SortableEtapaList({
         : internalHighlight
       : (highlight ?? internalHighlight);
 
+  // TouchSensor arms on a 250ms hold (D20, the WorkflowCalendarView values): on touch
+  // screens a pointer-distance constraint loses to the browser's scroll. Listeners stay
+  // on the grip handle only, which also opts out of touch scrolling.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const handleDragEnd = (event: DragEndEvent) => {
