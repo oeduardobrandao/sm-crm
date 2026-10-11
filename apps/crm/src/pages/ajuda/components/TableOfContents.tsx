@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 
-interface TocItem {
+export interface TocItem {
   id: string;
   text: string;
   level: number;
 }
 
-function extractToc(content: Record<string, unknown> | null): TocItem[] {
+export function extractToc(content: Record<string, unknown> | null): TocItem[] {
   if (!content || !Array.isArray((content as { content?: unknown[] }).content)) return [];
   const items: TocItem[] = [];
   for (const node of (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -17,7 +17,13 @@ import { extractR2Keys, resolveInlineImageUrls, injectSignedUrls } from '@/servi
 import { CalloutExtension } from '../entregas/components/CalloutExtension';
 import { createInlineImageExtension } from '../entregas/components/InlineImageExtension';
 import { IframeExtension } from './components/IframeExtension';
-import { TableOfContents } from './components/TableOfContents';
+import { TableOfContents, extractToc } from './components/TableOfContents';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import { GroupedList } from '@/components/mobile/GroupedList';
+import { ArticleCell } from './phone/AjudaPhone';
+import { ArticleTocButton } from './phone/ArticleTocButton';
+import './phone/ajudaPhone.css';
 import { CATEGORY_LABELS, ALL_CATEGORIES } from './categoryConfig';
 import { ArticleCard } from './components/ArticleCard';
 import { useRecordArticleView } from './useRecordKbView';
@@ -32,6 +38,7 @@ const dummyUpload = async () => ({ r2Key: '', src: '', width: 0, height: 0 });
 export default function ArtigoPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const isPhone = !useIsDesktop(768);
 
   const { data: article, isLoading } = useQuery({
     queryKey: ['kb-article', slug],
@@ -125,11 +132,31 @@ export default function ArtigoPage() {
   });
   const coverSrc = coverIsR2 ? resolvedCover || null : rawCover;
 
+  const phoneNav = (trailing?: ReactNode) => (
+    <PhoneNavBar backLabel="Voltar para Central de Ajuda" fallbackTo="/ajuda" trailing={trailing} />
+  );
+
   if (isLoading) {
+    if (isPhone) {
+      return (
+        <div className="phone-kit">
+          {phoneNav()}
+          <DocSkeleton />
+        </div>
+      );
+    }
     return <DocSkeleton className="max-w-5xl mx-auto" />;
   }
 
   if (!article) {
+    if (isPhone) {
+      return (
+        <div className="phone-kit">
+          {phoneNav()}
+          <p className="phone-ajuda-empty">Artigo não encontrado.</p>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <p className="text-[var(--text-light)]">Artigo não encontrado.</p>
@@ -144,6 +171,48 @@ export default function ArtigoPage() {
 
   const minutes = readingTime(article.content_plain);
   const categoryLabel = CATEGORY_LABELS[article.category] ?? article.category;
+
+  if (isPhone) {
+    return (
+      <div className="phone-kit">
+        {phoneNav(<ArticleTocButton items={extractToc(article.content)} />)}
+        <div className="phone-ajuda-head">
+          <p className="phone-ajuda-meta">
+            {ALL_CATEGORIES.includes(article.category) ? (
+              <Link to={`/ajuda/secao/${encodeURIComponent(article.category)}`}>
+                {categoryLabel}
+              </Link>
+            ) : (
+              <span>{categoryLabel}</span>
+            )}
+            <span aria-hidden="true">·</span>
+            <span className="inline-flex items-center gap-1">
+              <Clock className="h-3 w-3" aria-hidden="true" />
+              {minutes} min de leitura
+            </span>
+            <span aria-hidden="true">·</span>
+            <span>{new Date(article.created_at).toLocaleDateString('pt-BR')}</span>
+          </p>
+          <h1 className="phone-ajuda-title">{article.title}</h1>
+        </div>
+        {coverSrc && <img src={coverSrc} alt={article.title} className="phone-ajuda-cover" />}
+        <article className="phone-ajuda-article min-w-0">
+          <ArticleVideos articleSlug={article.slug} />
+          <EditorContent
+            editor={editor}
+            className="post-editor-content article-reader-content prose-article"
+          />
+        </article>
+        {relatedArticles.length > 0 && (
+          <GroupedList header="Artigos relacionados">
+            {relatedArticles.map((a) => (
+              <ArticleCell key={a.id} article={a} />
+            ))}
+          </GroupedList>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto">
