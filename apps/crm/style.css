@@ -16178,10 +16178,12 @@ div.phone-cell__main:not([role]) {
 }
 
 /* ---- Bottom sheet ---- */
+/* Overlays share their content's z-index (9011): a sheet or menu opened over another
+   sheet or a phone dialog comes later in the DOM, so its overlay dims the layer below. */
 .phone-sheet-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9010;
+  z-index: 9011;
   background: var(--phone-overlay);
 }
 .phone-sheet-overlay[data-state='open'] {
@@ -16398,11 +16400,6 @@ button.phone-sheet__grabber::before {
    className (its own hooks), so every geometry rule here is `.phone-kit.phone-*` (two
    classes) to outrank the single-class utilities callers pass for desktop: max-w-*,
    w-[..], p-*, max-h-*, overflow-*, z-*, grid/gap. */
-/* Same z-index as the content: a sheet or confirm opened over another one dims it, since
-   its overlay comes later in the DOM (the kit's 9010 would leave the lower sheet bright). */
-.phone-kit.phone-dialog-overlay {
-  z-index: 9011;
-}
 .phone-kit.phone-dialog {
   top: auto;
   right: 0;
@@ -16420,7 +16417,8 @@ button.phone-sheet__grabber::before {
   overflow: hidden;
   border: 0;
   border-radius: var(--phone-radius-sheet) var(--phone-radius-sheet) 0 0;
-  background: var(--phone-sheet-bg);
+  /* Grouped grey, so GroupedList / FormRow cards read as on a phone page. */
+  background: var(--phone-bg);
   box-shadow: var(--phone-shadow-menu);
   color: var(--phone-label);
 }
@@ -16469,7 +16467,7 @@ button.phone-sheet__grabber::before {
   gap: 8px;
   margin: 0 calc(-1 * var(--phone-gutter)) calc(-16px - env(safe-area-inset-bottom, 0px));
   padding: 12px var(--phone-gutter) calc(12px + env(safe-area-inset-bottom, 0px));
-  background: var(--phone-sheet-bg);
+  background: var(--phone-bg);
 }
 .phone-kit.phone-dialog [data-dialog-footer] > :not([hidden]) {
   width: 100%;
@@ -16622,7 +16620,7 @@ button.phone-sheet__grabber::before {
 .phone-menu-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9010;
+  z-index: 9011;
   background: color-mix(in srgb, var(--phone-bg) 55%, transparent);
   -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
@@ -16735,6 +16733,16 @@ button.phone-sheet__grabber::before {
   top: 0;
   bottom: 0;
   display: flex;
+}
+/* Closed and idle, the actions are hidden: otherwise their colour bleeds through the
+   antialiased rounded corner of a GroupedList card. They hide only after the content has
+   slid back (0.25s), and show at once when a drag starts, the row opens or one has focus. */
+.phone-swipe-row:not([data-open]):not(:focus-within):not(
+    :has(> .phone-swipe-row__content[data-dragging])
+  )
+  > .phone-swipe-row__actions {
+  opacity: 0;
+  transition: opacity 0s linear 0.25s;
 }
 .phone-swipe-row__actions--leading {
   left: 0;
