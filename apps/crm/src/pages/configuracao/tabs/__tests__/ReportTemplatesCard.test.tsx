@@ -14,6 +14,8 @@ const svc = vi.hoisted(() => ({
   SYSTEM_TEMPLATE_NAME: 'Padrão do sistema',
 }));
 vi.mock('../../../../services/reportTemplates', () => svc);
+// jsdom has no matchMedia match: keep this suite on the desktop layout (phone has its own suite).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
 vi.mock('react-router-dom', async () => ({

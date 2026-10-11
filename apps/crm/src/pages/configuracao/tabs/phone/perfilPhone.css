@@ -1,0 +1,58 @@
+/* Perfil on phones (FConfigPerfil). */
+.phone-kit .phone-perfil-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-perfil-card__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.phone-perfil-card__name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-perfil-card__email {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--phone-text-subhead);
+  color: var(--phone-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-perfil-card__badge {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--phone-success) 16%, transparent);
+  color: var(--phone-success);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-kit .phone-perfil-eye {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+}
+.phone-kit .phone-perfil-eye svg {
+  width: 18px;
+  height: 18px;
+}

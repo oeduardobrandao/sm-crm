@@ -3,6 +3,9 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The tab branches on the viewport; this suite asserts the desktop markup.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const { useAuthMock, storeMock } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
   storeMock: {

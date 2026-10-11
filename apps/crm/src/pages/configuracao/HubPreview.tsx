@@ -57,6 +57,8 @@ interface HubPreviewProps {
   customized: boolean;
   /** Hub look being previewed: 'pauta' when the workspace has feature_hub_pauta. */
   look?: HubLook;
+  /** Device frame shown first. The phone screen opens on 'mobile'; desktop keeps 'desktop'. */
+  initialDevice?: 'desktop' | 'mobile';
 }
 
 const GOOGLE_FONTS_LINK_ID = 'crm-hub-preview-fonts';
@@ -219,10 +221,11 @@ export function HubPreview({
   workspaceLogoUrl,
   customized,
   look = 'classic',
+  initialDevice = 'desktop',
 }: HubPreviewProps) {
   const pauta = look === 'pauta';
   const [dark, setDark] = useState(draft.defaultAppearance === 'dark');
-  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const [device, setDevice] = useState<'desktop' | 'mobile'>(initialDevice);
   const dims = device === 'mobile' ? MOBILE_DIMS : DESKTOP_DIMS;
 
   const fonts = effectiveHubFonts(look, customized, {

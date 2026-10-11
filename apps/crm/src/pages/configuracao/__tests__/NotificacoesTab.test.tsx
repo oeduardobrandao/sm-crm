@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
+// The tab branches on the viewport; this suite asserts the desktop markup.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Real catalog + category constants (Task 3) are pure static data: kept real
 // here so the "6 groups / 31 rows" assertions exercise the actual catalog,
 // not a stand-in. Only the prefs store (network calls) is mocked.

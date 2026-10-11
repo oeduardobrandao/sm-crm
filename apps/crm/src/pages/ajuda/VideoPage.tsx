@@ -8,8 +8,23 @@ import type { KbVideo } from '@/store/kbVideos';
 import { VideoPlaylistBlock } from './videos/VideoPlaylistBlock';
 import { useKbVideoSeries, useVideoProgress } from './videos/useKbVideos';
 import { recordKbViewSafely } from './useRecordKbView';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import './phone/ajudaPhone.css';
 
 function BackToAjuda() {
+  const isPhone = !useIsDesktop(768);
+  if (isPhone) {
+    return (
+      <PhoneNavBar
+        className="phone-ajuda-video-nav"
+        title="Tutoriais em vídeo"
+        titleAs="span"
+        backLabel="Voltar para Central de Ajuda"
+        fallbackTo="/ajuda"
+      />
+    );
+  }
   return (
     <Link
       to="/ajuda"
@@ -24,6 +39,7 @@ function BackToAjuda() {
 export default function VideoPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const isPhone = !useIsDesktop(768);
   const { data: series = [], isLoading, isError } = useKbVideoSeries();
   const { progress, save, isLoading: progressLoading } = useVideoProgress();
 
@@ -80,14 +96,17 @@ export default function VideoPage() {
 
   if (isError || !video) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-20">
-        <p className="text-[var(--text-light)]">Vídeo não encontrado.</p>
-        <Link to="/ajuda">
-          <Button variant="outline" size="sm">
-            Voltar à Central de Ajuda
-          </Button>
-        </Link>
-      </div>
+      <>
+        {isPhone && <BackToAjuda />}
+        <div className="flex flex-col items-center justify-center gap-4 py-20">
+          <p className="text-[var(--text-light)]">Vídeo não encontrado.</p>
+          <Link to="/ajuda">
+            <Button variant="outline" size="sm">
+              Voltar à Central de Ajuda
+            </Button>
+          </Link>
+        </div>
+      </>
     );
   }
 

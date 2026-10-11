@@ -37,6 +37,9 @@ vi.mock('../../../../lib/supabase', () => ({
   },
 }));
 
+// Desktop markup; the phone branch has its own suite (WorkspaceTab.phone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import WorkspaceTab from '../WorkspaceTab';
 
 function renderTab() {
