@@ -122,3 +122,76 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 - **Chosen:** `notification_push_prefs`, same shape as the email and in-app tables.
 - **Rejected:** a `channel` column on an existing prefs table: old CRM bundles still in browsers
   read and upsert `notification_email_prefs` by `(user_id, type)` with no channel filter.
+
+## D16. Native look through the web layout (option C)
+
+- **Chosen:** keep the Capacitor shell (D3) and redesign the CRM's phone layout in the iOS idiom:
+  grouped lists, sheets, segmented controls, long-press menus, swipe actions, a floating tab bar.
+  Every feature of the desktop page stays reachable (Entregas parity table in the mockups canvas).
+- **Rejected:** option A, Expo/React Native screens for the main flows with a web fallback for the
+  rest. More native feel, but two UIs to keep in step, every feature rebuilt, and an app release
+  for each UI change.
+- **Rejected:** shipping the current phone layout. Too much text, sideways tables, drag that
+  doesn't work on touch, no notification list (AUDIT.md).
+- **Why:** one UI, deploys reach the app instantly, and mobile web users get the same fixes.
+- **Supersedes D8's third PR:** the CRM work is now five PRs (C1 kit + navigation, C2 saved views,
+  C3 Entregas, C4 post editor, D native module), see PLAN.md.
+
+## D17. Gate the phone layout by width, not by `isNativeApp()`
+
+- **Chosen:** the iOS-style layout renders at 900px and below, the breakpoint `MobileNav` and
+  `EntregasPage` (`useIsDesktop(901)`) already use. Same look in the app, mobile Safari and Android
+  browsers. Desktop is unchanged.
+- **Rejected:** app-only layout (two phone layouts to maintain; mobile web stays broken); a new
+  breakpoint (a third one would leave 768-900px half converted).
+- **Cost accepted:** Android browsers get an iOS-flavoured look. An Android app later can swap the
+  phone tokens; the components don't change.
+- **Tablets:** 768-900px gets the phone layout with content centred, as it already gets the
+  bottom nav.
+
+## D18. Tab bar: Início, Entregas, Agenda, Mensagens, Mais
+
+- **Chosen:** the phone tab bar becomes Início (dashboard), Entregas, Agenda, Mensagens, Mais.
+  Clientes and Analytics move to the top of Mais. When a tab's feature or permission is off for
+  the user (Agenda needs `feature_agenda`, off on Free; Mensagens needs `feature_mensagens` and
+  `clientes.ver`), Clientes then Analytics take the free slot, so the bar always has five items.
+- **Rejected:** keeping Dashboard / Clientes / Analytics / Entregas / Mais. Agenda and Mensagens
+  are what staff open on a phone between meetings; Analytics is desk work.
+- **Applies to every phone user** (D17), so it ships behind no flag but is called out in the PR.
+
+## D19. Saved views live on the server, per user
+
+- **Chosen:** new table `entregas_saved_views` (per user, per workspace, RLS own rows). The
+  existing `localStorage` views are imported once on first load and then ignored.
+- **Rejected:** keep `localStorage` (views don't follow the user from desktop to the app); a column
+  on `membros` (column-grant allowlist, migration 20260728000002); shared workspace views (a
+  sharing model nobody asked for yet; the table can grow a `shared` flag later).
+
+## D20. Phone patterns for Entregas
+
+- **Lista and posts list** render as grouped rows with swipe actions on phones; the tables stay on
+  desktop.
+- **Drag on touch:** `TouchSensor` with `delay: 250, tolerance: 8` next to `PointerSensor`, the
+  pattern `WorkflowCalendarView` and `PostsKanbanView` already use. Added to `KanbanView`,
+  `WorkflowDrawer`, `SortableEtapaList` and `PostMediaGallery`.
+- **Fluxos board** shows one etapa at a time with chips; moves stay adjacent-only with the same
+  confirmations, shown as action sheets. **Status board** drops onto status chips.
+
+## D21. Post editor: 4 tabs on phones, one page on desktop
+
+- **Chosen:** Conteúdo / Detalhes / Publicar / Comentários with a bottom bar whose primary action
+  follows the post status.
+- **Rejected:** reviving PR #429 (5 tabs on desktop too; closed, 233 commits behind main). Used as
+  reference only.
+
+## D22. Copy for the app's notification settings and plan limits
+
+- Notification prefs columns read **Sino / E-mail / Celular**.
+- Plan limits in the app show the limit and "Entendi", no upgrade link (D5).
+
+## D23. Phone components without a new dependency
+
+- **Chosen:** bottom sheets, action sheets and context menus are built on the Radix primitives
+  already in the CRM (`dialog`, `dropdown-menu`) plus pointer events.
+- **Rejected:** `vaul` or a gesture library: another dependency to age past Deno/npm minimum-age
+  rules, and Radix already handles focus and dismissal.
