@@ -460,3 +460,41 @@ button.phone-cli-hero__photo:focus-visible {
 .phone-cli-amount[data-tone='out'] {
   color: var(--phone-destructive);
 }
+
+/* ---- Entregas: post calendar steps, sections ---- */
+.phone-cli-cal__actions {
+  padding-left: 40px;
+}
+.phone-cli-chip__icon {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 3px;
+  vertical-align: -1px;
+}
+.phone-cli-cal__step {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-cli-cal__step:disabled {
+  opacity: 0.5;
+}
+.phone-cli-ent__section {
+  margin: 0 0 20px;
+}
+.phone-cli-ent__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

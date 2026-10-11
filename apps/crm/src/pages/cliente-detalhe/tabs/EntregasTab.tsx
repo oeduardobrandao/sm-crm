@@ -39,7 +39,17 @@ import {
   ForwardConfirmDialog,
   RevertConfirmDialog,
   ClientApprovalChoiceDialog,
+  RecurringWorkflowDialog,
 } from '@/pages/entregas/components/WorkflowModals';
+import { PostProcessCardMenu, WorkflowCardMenu } from '@/pages/entregas/phone/cardMenus';
+import {
+  PhonePostProcessCard,
+  PhoneWorkflowCard,
+  type WorkflowCardCounts,
+} from '@/pages/entregas/phone/PhoneBoardCards';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useOverlayHistoryEntry } from '@/hooks/useOverlayHistoryEntry';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import type { BoardCard } from '@/pages/entregas/hooks/useEntregasData';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '@/pages/entregas/advanceEtapa';
 import { decideApprovalAdvance } from '@/pages/entregas/approvalAdvance';
@@ -64,6 +74,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ResponsiveCardRail } from '../ResponsiveCardRail';
 import { ClientePostCalendar, type PostCalendarEvent } from '../components/ClientePostCalendar';
+import { ClientePostCalendarPhone } from '../components/ClientePostCalendarPhone';
+import { PhoneEmptyCard } from '../phone/PhoneRows';
+import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 interface WorkflowWithEtapas {
@@ -183,6 +196,7 @@ export default function EntregasTab() {
   const { t: tc } = useTranslation();
   const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
+  const isPhone = !useIsDesktop(768);
   const fluxosRailRef = useRef<HTMLDivElement>(null);
   const postsRailRef = useRef<HTMLDivElement>(null);
 
@@ -445,6 +459,27 @@ export default function EntregasTab() {
 
   const postProcessCommands = usePostProcessCommands({ onRefresh: refreshCards });
 
+  // Phones: the concluded fluxo's history is a pushed screen (in place of the tab, under
+  // its own nav bar) and the two drawers are full-screen; each gets a history entry so
+  // Back (the iOS edge swipe included) closes it instead of leaving the client. Same
+  // single-boolean entry for both drawers as EntregasPage. Desktop is unchanged.
+  const historyFaceOpen = isPhone && historyWorkflow !== null;
+  useOverlayHistoryEntry(historyFaceOpen, () => setHistoryWorkflow(null));
+  useOverlayHistoryEntry(isPhone && (drawerCard !== null || standalonePostId !== null), () => {
+    setDrawerCard(null);
+    setDrawerInitialPostId(undefined);
+    setStandalonePostId(null);
+  });
+  useClientePhoneHeader({ hideNavBar: historyFaceOpen });
+
+  const countsFor = (workflowId: number): WorkflowCardCounts => ({
+    postsCount: postsCounts.get(workflowId) ?? 0,
+    approvedPostsCount: approvedPostsCounts.get(workflowId) ?? 0,
+    clearedClienteCount: clearedClienteCounts.get(workflowId) ?? 0,
+    revisaoInternaCount: revisaoInternaCounts.get(workflowId) ?? 0,
+    awaitingClienteCount: awaitingClienteCounts.get(workflowId) ?? 0,
+  });
+
   useEffect(() => {
     if (drawerCard) {
       const updated = boardCards.find((c) => c.workflow.id === drawerCard.workflow.id);
@@ -616,8 +651,9 @@ export default function EntregasTab() {
 
   // Rendered in both branches below: a client whose only scheduled posts are
   // avulsos without a process has no board cards, and the calendar must still show.
+  const PostCalendar = isPhone ? ClientePostCalendarPhone : ClientePostCalendar;
   const postCalendar = (
-    <ClientePostCalendar
+    <PostCalendar
       events={postCalendarEvents}
       calendarMonth={calendarMonth}
       onMonthChange={(d) => {
@@ -644,9 +680,140 @@ export default function EntregasTab() {
     />
   );
 
+  const openWorkflow = (card: BoardCard) => {
+    setStandalonePostId(null);
+    setDrawerInitialPostId(undefined);
+    setDrawerCard(card);
+  };
+  const forwardPostEntity = (entity: PostEntity) =>
+    canConcluir(entity.process)
+      ? postProcessCommands.concluir(targetOf(entity))
+      : postProcessCommands.avancar(targetOf(entity));
+
+  const phoneContent = historyFaceOpen ? (
+    <HistoryDrawer
+      variant="page"
+      workflow={historyWorkflow!}
+      clienteName={cliente?.nome}
+      onClose={() => setHistoryWorkflow(null)}
+    />
+  ) : (
+    <div id="sec-entregas" className="phone-cli-ent">
+      {boardCards.length === 0 && postEntities.length === 0 && (
+        <section className="phone-cli-ent__section" aria-label={t('detail.activeDeliveries')}>
+          <h2 className="phone-group__header">{t('detail.activeDeliveries')}</h2>
+          <PhoneEmptyCard
+            title={t('detail.noActiveDeliveries')}
+            hint={t('detail.noActiveDeliveriesHint')}
+          />
+        </section>
+      )}
+      {boardCards.length > 0 && (
+        <section className="phone-cli-ent__section" aria-labelledby="cli-ent-fluxos">
+          <h2 id="cli-ent-fluxos" className="phone-group__header">
+            {t('detail.fluxos')}
+          </h2>
+          <ul className="phone-cli-ent__cards">
+            {boardCards.map((card) => (
+              <li key={card.workflow.id}>
+                <WorkflowCardMenu
+                  card={card}
+                  membros={membros}
+                  onRefresh={refreshCards}
+                  onOpenPosts={() => openWorkflow(card)}
+                  onEdit={() => setEditCardModal(card)}
+                  onForward={() => handleForwardClick(card)}
+                  onRevert={() => handleRevertClick(card)}
+                  preview={
+                    <PhoneWorkflowCard card={card} counts={countsFor(card.workflow.id!)} preview />
+                  }
+                >
+                  {({ triggerProps }) => (
+                    <PhoneWorkflowCard
+                      card={card}
+                      counts={countsFor(card.workflow.id!)}
+                      onOpen={() => openWorkflow(card)}
+                      onForward={() => handleForwardClick(card)}
+                      triggerProps={triggerProps}
+                    />
+                  )}
+                </WorkflowCardMenu>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {postEntities.length > 0 && (
+        <section className="phone-cli-ent__section" aria-labelledby="cli-ent-posts">
+          <h2 id="cli-ent-posts" className="phone-group__header">
+            {t('detail.individualPosts')}
+          </h2>
+          <ul className="phone-cli-ent__cards">
+            {postEntities.map((entity) => (
+              <li key={entity.id}>
+                <PostProcessCardMenu
+                  entity={entity}
+                  onOpen={() => handlePostEntityClick(entity)}
+                  onForward={() => forwardPostEntity(entity)}
+                  forwardLabel={forwardLabelFor(entity.process)}
+                  canRevert={previousStepOf(entity.process) != null}
+                  onRevert={() => postProcessCommands.voltar(targetOf(entity))}
+                  onRemoveProcess={() => postProcessCommands.remover(targetOf(entity))}
+                  preview={<PhonePostProcessCard entity={entity} preview />}
+                >
+                  {({ triggerProps }) => (
+                    <PhonePostProcessCard
+                      entity={entity}
+                      onOpen={() => handlePostEntityClick(entity)}
+                      onForward={() => forwardPostEntity(entity)}
+                      forwardLabel={forwardLabelFor(entity.process)}
+                      triggerProps={triggerProps}
+                    />
+                  )}
+                </PostProcessCardMenu>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {postCalendar}
+
+      {concludedSummaries.length > 0 && (
+        <GroupedList
+          header={t('detail.deliveryHistory')}
+          className="phone-cli-wrap"
+          aria-label={t('detail.deliveryHistory')}
+        >
+          {concludedSummaries.map((s) => (
+            <Cell
+              key={s.workflow.id}
+              label={s.workflow.titulo}
+              subtitle={[
+                t('detail.postCount', { count: s.postCount }),
+                s.totalDays !== null ? t('detail.dayCount', { count: s.totalDays }) : null,
+                s.completedAt
+                  ? `${t('detail.concluded')} ${new Date(s.completedAt).toLocaleDateString(
+                      dateLocale,
+                      { day: '2-digit', month: 'short' },
+                    )}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              onClick={() => setHistoryWorkflow(s.workflow)}
+            />
+          ))}
+        </GroupedList>
+      )}
+    </div>
+  );
+
   return (
     <>
-      {boardCards.length === 0 && postEntities.length === 0 ? (
+      {isPhone ? (
+        phoneContent
+      ) : boardCards.length === 0 && postEntities.length === 0 ? (
         <div id="sec-entregas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.activeDeliveries')}
@@ -791,38 +958,50 @@ export default function EntregasTab() {
         </div>
       )}
 
-      {/* Recurring workflow confirm */}
-      <AlertDialog
-        open={recurringWfId !== null}
-        onOpenChange={(open) => {
-          if (!open) {
+      {/* Recurring workflow confirm. Phones: the kit confirm sheet (RecurringWorkflowDialog's
+          phone branch); desktop keeps this dialog and its own copy. */}
+      {isPhone ? (
+        <RecurringWorkflowDialog
+          open={recurringWfId !== null}
+          onConfirm={() => void handleRecurringConfirm()}
+          onCancel={() => {
             setRecurringWfId(null);
             queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('detail.workflowCompleted')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('detail.workflowRecurring')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setRecurringWfId(null);
-                queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
-              }}
-            >
-              {tc('actions.no')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleRecurringConfirm}>
-              {t('detail.createNewCycle')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          }}
+        />
+      ) : (
+        <AlertDialog
+          open={recurringWfId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRecurringWfId(null);
+              queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('detail.workflowCompleted')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('detail.workflowRecurring')}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setRecurringWfId(null);
+                  queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
+                }}
+              >
+                {tc('actions.no')}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleRecurringConfirm}>
+                {t('detail.createNewCycle')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
-      {historyWorkflow && (
+      {historyWorkflow && !isPhone && (
         <HistoryDrawer
           workflow={historyWorkflow}
           clienteName={cliente?.nome}
