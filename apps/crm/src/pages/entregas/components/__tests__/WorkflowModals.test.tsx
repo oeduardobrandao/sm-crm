@@ -256,6 +256,10 @@ import {
 } from '../WorkflowModals';
 import { saveWorkflowTemplate } from '../../../../store';
 
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 describe('WorkflowModals', () => {
   beforeEach(() => {
     toastSuccessMock.mockReset();

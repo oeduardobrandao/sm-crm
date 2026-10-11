@@ -1,0 +1,26 @@
+/* ===== ENTREGAS PHONE LAYOUT (iOS idiom below 768px, PLAN C3) ===========================
+   Loaded only by the Entregas phone components (the Hub never imports this file).
+   Every class is `phone-ent-*` and reads the `--phone-*` tokens the kit defines on
+   `.app-container` (phones) and on `.phone-kit` roots (portaled sheets and menus).
+   Nothing here redefines a shared token or styles a bare element. */
+
+/* ---- Two-line choice inside an action sheet (client approval) ---- */
+.phone-ent-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 0;
+  text-align: left;
+}
+.phone-ent-choice__title {
+  color: inherit;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.phone-ent-choice__desc {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.3;
+}

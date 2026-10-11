@@ -105,6 +105,10 @@ vi.mock('@/components/ui/alert-dialog', () => ({
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
 
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // usePostProcessCommands usa useQueryClient (fase 4): todo render do
 // KanbanView agora precisa de um QueryClientProvider por cima, mesmo em
 // testes que só exercitam fluxos.

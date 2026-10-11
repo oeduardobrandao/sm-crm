@@ -16,6 +16,10 @@ vi.mock('sonner', () => ({ toast }));
 import { usePostProcessCommands } from '../usePostProcessCommands';
 import type { ProcessTarget } from '../../postProcessCommands';
 
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const step = (ordem: number, estado: string, tipo = 'padrao', extra = {}) =>
   ({
     id: ordem + 1,
