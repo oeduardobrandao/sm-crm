@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -69,7 +69,10 @@ function StatusBadge({ c }: { c: ClientHealth }) {
   const { t } = useTranslation('dashboard');
   const tone = HEALTH_TONE[c.status];
   return (
-    <span className="phone-home-badge" style={{ background: tone.bg, color: tone.fg }}>
+    <span
+      className="phone-home-badge phone-home-badge--health"
+      style={{ '--tone-bg': tone.bg, '--tone-fg': tone.fg } as CSSProperties}
+    >
       {t(`health.status.${c.status}`)}
     </span>
   );
