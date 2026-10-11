@@ -277,19 +277,16 @@ button.phone-crud-row__main:active {
 
 /* ---- Selection-mode bar: Cancelar · "3 selecionadas" · Selecionar todas ---- */
 .phone-crud-select-bar {
-  position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   min-height: 44px;
   color: var(--phone-label);
   font-family: var(--font-main);
 }
 .phone-crud-select-bar__title {
-  position: absolute;
-  left: 50%;
-  max-width: calc(100% - 220px);
+  min-width: 0;
   margin: 0;
   overflow: hidden;
   font-size: var(--phone-text-body);
@@ -297,11 +294,18 @@ button.phone-crud-row__main:active {
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transform: translateX(-50%);
-  pointer-events: none;
 }
 .phone-crud-select-bar .phone-text-button {
-  font-size: var(--phone-text-body);
+  font-size: var(--phone-text-subhead);
+  white-space: nowrap;
+}
+
+/* The swipe actions sit under the row and their colour bleeds through the anti-aliased
+   rounded corner of the group while the row is closed. Show them only while the row is
+   open, being dragged, or has focus inside (the keyboard path focuses the buttons). */
+.phone-crud-row:not([data-open]):not(:focus-within):not(:has([data-dragging]))
+  > .phone-swipe-row__actions {
+  opacity: 0;
 }
 
 /* ---- Primary button in a BottomActionBar ("Confirmar 3") ---- */
