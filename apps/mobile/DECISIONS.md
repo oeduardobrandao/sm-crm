@@ -206,3 +206,11 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
   already in the CRM (`dialog`, `dropdown-menu`) plus pointer events.
 - **Rejected:** `vaul` or a gesture library: another dependency to age past Deno/npm minimum-age
   rules, and Radix already handles focus and dismissal.
+
+## D24. Editor bottom bar material; landscape stays on the tablet layout
+
+- **Chosen (2026-10-11, owner):** the post editor's bottom bar uses the kit's iOS glass (78% fill
+  plus blur, like system toolbars) instead of a near-opaque fill. Warnings on it are weight 600,
+  and browsers without `backdrop-filter` get the opaque fill.
+- **Landscape:** keep the 768px gate from D17 for now. A phone in landscape gets the tablet layout,
+  so rotating with the editor open falls back to the inline editor. Revisit in E1 (portrait lock).
