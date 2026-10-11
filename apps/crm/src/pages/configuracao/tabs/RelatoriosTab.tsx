@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '../../../context/AuthContext';
+import { useIsDesktop } from '../../../hooks/useIsDesktop';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { supabase } from '../../../lib/supabase';
 import {
@@ -29,6 +30,7 @@ import {
 import { ReportPreview } from '../ReportPreview';
 import { downscaleImage } from '../reportSplash';
 import { ReportTemplatesCard } from './ReportTemplatesCard';
+import { RelatoriosPhone } from './phone/RelatoriosPhone';
 
 const MAX_SPLASH_BYTES = 4 * 1024 * 1024;
 const SPLASH_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -59,6 +61,7 @@ export default function RelatoriosTab() {
   // toast de sucesso mentia. O backstop de zero linhas fica em
   // store/workspace.ts; esconder o controle é a correção primária.
   const canEditConfig = can('configuracoes', 'editar') === true;
+  const isPhone = !useIsDesktop(768);
 
   // F3 (revisão final): /relatorios/modelos/:id exige feature_analytics_reports
   // (ProtectedRoute) e analytics:ver (routePermissions) -- este card tinha só
@@ -198,6 +201,48 @@ export default function RelatoriosTab() {
   // the shared workspace-branding query, which HubTab's save invalidates too.
   const brandColor = branding?.brand_color ?? '#eab308';
 
+  // Same hidden picker in both layouts (only one branch mounts, so one ref).
+  const splashInput = (
+    <input
+      ref={splashInputRef}
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      hidden
+      disabled={!canEditConfig}
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (file && canEditConfig) handleSplashUpload(file);
+      }}
+    />
+  );
+
+  if (isPhone) {
+    return (
+      <RelatoriosPhone
+        canEdit={canEditConfig}
+        brandColor={brandColor}
+        splashUrl={splashUrl}
+        splashUploading={splashUploading}
+        splashInput={splashInput}
+        onPickSplash={() => splashInputRef.current?.click()}
+        splashRemoveOpen={splashRemoveOpen}
+        onSplashRemoveOpenChange={setSplashRemoveOpen}
+        onRemoveSplash={handleRemoveSplash}
+        sendReportEmail={sendReportEmail}
+        onSendReportEmailChange={setSendReportEmail}
+        emailDisabled={brandingPending || brandingFailed || !canEditConfig}
+        brandingFailed={brandingFailed}
+        saving={brandingMutation.isPending}
+        saveDisabled={brandingPending || brandingFailed || !canEditConfig}
+        onSave={() => brandingMutation.mutate()}
+        logoUrl={workspace?.logo_url ?? null}
+        workspaceName={workspace?.name ?? ''}
+        templates={showTemplatesCard ? <ReportTemplatesCard /> : null}
+      />
+    );
+  }
+
   return (
     <>
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
@@ -299,18 +344,7 @@ export default function RelatoriosTab() {
                 Formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB. Salva assim que você envia. Sem
                 arte, a capa fica apenas tipográfica.
               </p>
-              <input
-                ref={splashInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                hidden
-                disabled={!canEditConfig}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = '';
-                  if (file && canEditConfig) handleSplashUpload(file);
-                }}
-              />
+              {splashInput}
             </div>
 
             {/* Email delivery toggle */}

@@ -11,6 +11,8 @@ const { useAuthMock, listMcpKeysMock, listOAuthGrantsMock } = vi.hoisted(() => (
 }));
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
+// jsdom has no matchMedia match: keep this suite on the desktop layout (phone has its own suite).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('@/services/mcp-keys', () => ({
   listMcpKeys: listMcpKeysMock,
