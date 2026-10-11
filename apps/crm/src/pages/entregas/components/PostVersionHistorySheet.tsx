@@ -4,6 +4,7 @@ import { History } from 'lucide-react';
 import { getPostContentVersions, type PostApproval, type PostStatusEvent } from '../../../store';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ListSkeleton } from '@/components/ui/skeletons';
+import { BottomSheet } from '@/components/mobile';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { DiffView } from './DiffView';
 import { computeWordDiff } from '@/utils/textDiff';
@@ -21,6 +22,9 @@ interface PostVersionHistorySheetProps {
   onOpenChange: (open: boolean) => void;
   statusEvents: PostStatusEvent[];
   approvals: PostApproval[];
+  /** `phone`: a bottom sheet (C0bVersoes mockup); the selected version's diff opens
+   *  under its row instead of in a side pane. Read-only either way. */
+  layout?: 'default' | 'phone';
 }
 
 function actorLabelFor(source: 'workspace_user' | 'client' | 'system', actorName: string | null) {
@@ -59,6 +63,7 @@ export function PostVersionHistorySheet({
   onOpenChange,
   statusEvents,
   approvals,
+  layout = 'default',
 }: PostVersionHistorySheetProps) {
   const { data: versions = [], isLoading } = useQuery({
     queryKey: ['post-content-versions', String(postId)],
@@ -158,6 +163,119 @@ export function PostVersionHistorySheet({
     selectedNode?.version.tiktok_caption || precedingVersion?.tiktok_caption
   );
 
+  const renderNode = (node: VersionTimelineNode) =>
+    node.kind === 'version' ? (
+      <button
+        key={node.key}
+        onClick={() => setSelectedKey(node.key)}
+        className={`block w-full border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
+          node.key === selectedKey ? 'bg-muted' : ''
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-medium">
+            {actorLabelFor(node.version.source, node.version.actor_name)}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{formatVersionAt(node)}</span>
+        </div>
+        {node.version.suggestion_id != null && (
+          <span className="mt-1 inline-block text-[11px] text-muted-foreground">
+            via sugestão aceita
+          </span>
+        )}
+      </button>
+    ) : (
+      <div key={node.key} className="border-b bg-muted/30 px-4 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[12px] font-medium text-muted-foreground">{node.label}</span>
+          <span className="text-[11px] text-muted-foreground">{formatDateTime(node.at)}</span>
+        </div>
+        <span className="text-[11px] text-muted-foreground">{node.actorLabel}</span>
+        {node.comment && (
+          <p className="mt-1 text-[12px] italic text-muted-foreground">“{node.comment}”</p>
+        )}
+      </div>
+    );
+
+  const diffPanel = !selectedNode ? null : (
+    <div className="space-y-4">
+      {!precedingVersion && (
+        <p className="text-[12px] font-medium text-muted-foreground">Versão inicial</p>
+      )}
+      {selectedNode.version.conteudo && resolvedCurrent && (
+        <ReadOnlyTipTap
+          key={resolvedKey}
+          content={
+            precedingVersion && resolvedPrevious
+              ? computeTipTapDiff(resolvedPrevious, resolvedCurrent)
+              : resolvedCurrent
+          }
+        />
+      )}
+      {showIgCaption && (
+        <div className="border-t pt-3">
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+            Legenda do Instagram
+          </p>
+          <DiffView
+            segments={computeWordDiff(
+              (precedingVersion ? precedingVersion.ig_caption : selectedNode.version.ig_caption) ??
+                '',
+              selectedNode.version.ig_caption ?? '',
+            )}
+          />
+        </div>
+      )}
+      {showTiktokCaption && (
+        <div className="border-t pt-3">
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Legenda do TikTok</p>
+          <DiffView
+            segments={computeWordDiff(
+              (precedingVersion
+                ? precedingVersion.tiktok_caption
+                : selectedNode.version.tiktok_caption) ?? '',
+              selectedNode.version.tiktok_caption ?? '',
+            )}
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  if (layout === 'phone') {
+    return (
+      <BottomSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Histórico de versões"
+        detents={['large']}
+      >
+        {isLoading ? (
+          <ListSkeleton rows={5} />
+        ) : versions.length === 0 ? (
+          <p className="phone-sheet-note">
+            Sem histórico registrado ainda. Versões passam a ser guardadas a partir da próxima
+            edição de conteúdo deste post.
+          </p>
+        ) : (
+          <div className="phone-versions">
+            {nodes.map((node) => (
+              <div key={node.key} className="phone-versions__item">
+                {renderNode(node)}
+                {node.kind === 'version' && node.key === selectedKey && diffPanel && (
+                  <div className="phone-versions__diff">{diffPanel}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="phone-sheet-note">
+          Somente leitura. Nenhuma versão pode ser restaurada por aqui.
+        </p>
+      </BottomSheet>
+    );
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -181,99 +299,10 @@ export function PostVersionHistorySheet({
         ) : (
           <div className="flex flex-1 overflow-hidden">
             <div className="w-[288px] shrink-0 overflow-y-auto border-r">
-              {nodes.map((node) =>
-                node.kind === 'version' ? (
-                  <button
-                    key={node.key}
-                    onClick={() => setSelectedKey(node.key)}
-                    className={`block w-full border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
-                      node.key === selectedKey ? 'bg-muted' : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-medium">
-                        {actorLabelFor(node.version.source, node.version.actor_name)}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatVersionAt(node)}
-                      </span>
-                    </div>
-                    {node.version.suggestion_id != null && (
-                      <span className="mt-1 inline-block text-[11px] text-muted-foreground">
-                        via sugestão aceita
-                      </span>
-                    )}
-                  </button>
-                ) : (
-                  <div key={node.key} className="border-b bg-muted/30 px-4 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-medium text-muted-foreground">
-                        {node.label}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatDateTime(node.at)}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">{node.actorLabel}</span>
-                    {node.comment && (
-                      <p className="mt-1 text-[12px] italic text-muted-foreground">
-                        “{node.comment}”
-                      </p>
-                    )}
-                  </div>
-                ),
-              )}
+              {nodes.map(renderNode)}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              {!selectedNode ? null : (
-                <div className="space-y-4">
-                  {!precedingVersion && (
-                    <p className="text-[12px] font-medium text-muted-foreground">Versão inicial</p>
-                  )}
-                  {selectedNode.version.conteudo && resolvedCurrent && (
-                    <ReadOnlyTipTap
-                      key={resolvedKey}
-                      content={
-                        precedingVersion && resolvedPrevious
-                          ? computeTipTapDiff(resolvedPrevious, resolvedCurrent)
-                          : resolvedCurrent
-                      }
-                    />
-                  )}
-                  {showIgCaption && (
-                    <div className="border-t pt-3">
-                      <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
-                        Legenda do Instagram
-                      </p>
-                      <DiffView
-                        segments={computeWordDiff(
-                          (precedingVersion
-                            ? precedingVersion.ig_caption
-                            : selectedNode.version.ig_caption) ?? '',
-                          selectedNode.version.ig_caption ?? '',
-                        )}
-                      />
-                    </div>
-                  )}
-                  {showTiktokCaption && (
-                    <div className="border-t pt-3">
-                      <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
-                        Legenda do TikTok
-                      </p>
-                      <DiffView
-                        segments={computeWordDiff(
-                          (precedingVersion
-                            ? precedingVersion.tiktok_caption
-                            : selectedNode.version.tiktok_caption) ?? '',
-                          selectedNode.version.tiktok_caption ?? '',
-                        )}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">{diffPanel}</div>
           </div>
         )}
 
