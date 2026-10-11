@@ -23,6 +23,8 @@ vi.mock('@dnd-kit/core', () => ({
   },
   DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
   PointerSensor: class {},
+  MouseSensor: class {},
+  TouchSensor: class {},
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
   useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
@@ -118,6 +120,10 @@ vi.mock('../../components/PostProcessCard', () => ({
 import { KanbanView } from '../KanbanView';
 import type { PostEntity } from '../../boardEntity';
 import { rowKeyFor, columnKey } from '../../boardRows';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 // usePostProcessCommands usa useQueryClient (fase 4): todo render do
 // KanbanView precisa de um QueryClientProvider por cima.

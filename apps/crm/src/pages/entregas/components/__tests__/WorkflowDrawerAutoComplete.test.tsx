@@ -46,6 +46,9 @@ const store = vi.hoisted(() => ({
   isFinalClientApprovalCycle: vi.fn(() => true),
   cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
 }));
+// Desktop layout; the phone branch has its own suite (WorkflowDrawerPhone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('../../../../store', () => store);
 
 vi.mock('sonner', () => ({

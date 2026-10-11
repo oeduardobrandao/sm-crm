@@ -10,12 +10,13 @@ import {
   getVigentePostProcesses,
   type ConcludedWorkflowSummary,
   type Workflow,
-  type Cliente,
   type PostProcessWithPost,
 } from '../../../store';
 import { supabase } from '@/lib/supabase';
 import { normalize } from '@/lib/normalizeText';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ConcludedViewPhone, type ConcludedClientGroup } from '../phone/ConcludedViewPhone';
 import { HistoryDrawer } from '../components/HistoryDrawer';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { ClienteAvatar } from '@/pages/mensagens/components/Avatars';
@@ -39,11 +40,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 
-interface ClientGroup {
-  cliente: Cliente;
-  workflows: ConcludedWorkflowSummary[];
-  processes: PostProcessWithPost[];
-}
+type ClientGroup = ConcludedClientGroup;
 
 const EMPTY_PROCESSES: PostProcessWithPost[] = [];
 
@@ -54,12 +51,18 @@ function formatDateShort(iso: string): string {
 export function ConcludedView({
   onOpenPost,
   clientSearch = '',
+  onClientSearchChange,
 }: {
   onOpenPost?: (postId: number) => void;
   /** Controlado pela caixa de busca na mesma linha dos toggles de visualização,
    * em EntregasPage -- este componente só filtra pelo valor recebido. */
   clientSearch?: string;
+  /** Só no celular (abaixo de 768px): a caixa de busca de cliente sai da linha dos
+   * toggles e vem para dentro da vista, que devolve o texto por aqui. Sem ela, o
+   * campo não aparece. */
+  onClientSearchChange?: (value: string) => void;
 } = {}) {
+  const isPhone = !useIsDesktop(768);
   const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<{
     workflow: Workflow;
@@ -203,6 +206,53 @@ export function ConcludedView({
           ? 'Nenhum fluxo ou post individual concluído ainda.'
           : 'Nenhum fluxo concluído ainda.'}
       </div>
+    );
+  }
+
+  if (isPhone) {
+    return (
+      <>
+        <ConcludedViewPhone
+          visibleGroups={visibleGroups}
+          clientSearch={clientSearch}
+          onClientSearchChange={onClientSearchChange}
+          clienteAvatars={clienteAvatars}
+          selectedGroup={selectedGroup}
+          onSelectCliente={setSelectedClienteId}
+          fluxoSearch={fluxoSearch}
+          onFluxoSearchChange={setFluxoSearch}
+          visibleWorkflows={visibleWorkflows}
+          visibleProcesses={visibleProcesses}
+          workflowOpen={selectedWorkflow !== null}
+          onOpenWorkflow={(workflow, clienteName) => setSelectedWorkflow({ workflow, clienteName })}
+          onCloseWorkflow={() => setSelectedWorkflow(null)}
+          onOpenPost={onOpenPost}
+          reopenTarget={reopenTarget}
+          onReopenWorkflow={setReopenTarget}
+          onReopenConfirm={handleReopenConfirm}
+          onReopenCancel={() => setReopenTarget(null)}
+          onReopenProcess={(p) =>
+            commands.reabrir({
+              process: p,
+              post: {
+                id: p.post_id,
+                titulo: p.post.titulo,
+                status: p.post.status,
+                cliente_id: p.post.cliente_id,
+              },
+            })
+          }
+          formatDateShort={formatDateShort}
+        />
+        {commands.dialogs}
+        {selectedWorkflow && (
+          <HistoryDrawer
+            workflow={selectedWorkflow.workflow}
+            clienteName={selectedWorkflow.clienteName}
+            onClose={() => setSelectedWorkflow(null)}
+          />
+        )}
+      </>
     );
   }
 

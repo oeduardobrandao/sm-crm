@@ -1,5 +1,8 @@
-import type { Ref } from 'react';
-import { CheckCheck, Rows3, Users } from 'lucide-react';
+import { useState, type Ref } from 'react';
+import { Check, CheckCheck, ChevronDown, Rows3, Users } from 'lucide-react';
+import { ActionSheet } from '@/components/mobile/ActionSheet';
+import { Chip, ChipRow } from '@/components/mobile/ChipRow';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -9,10 +12,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { ListGroupBy } from '../viewQuery';
+import '../phone/listPhone.css';
 
 const LIST_GROUP_BY_LABELS: Record<ListGroupBy, string> = {
   prazo: 'Prazo da etapa',
   postagem: 'Data de postagem',
+  cliente: 'Cliente',
+  responsavel: 'Responsável',
+  etapa: 'Etapa',
+  nenhum: 'Nenhum',
+};
+
+/** Rótulo curto no chip do celular ("Agrupar: Prazo", mockup EntregasLista). */
+const LIST_GROUP_BY_SHORT: Record<ListGroupBy, string> = {
+  prazo: 'Prazo',
+  postagem: 'Postagem',
   cliente: 'Cliente',
   responsavel: 'Responsável',
   etapa: 'Etapa',
@@ -49,6 +63,76 @@ export function ListToolbar({
    *  atuais. Ausente, o botão não aparece. */
   postados?: { count: number; shown: boolean; onToggle: () => void };
 }) {
+  const isPhone = !useIsDesktop(768);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  if (isPhone) {
+    // Celular: chips numa linha que rola de lado; "Agrupar" abre uma action sheet.
+    return (
+      <>
+        <ChipRow aria-label="Opções da lista" className="phone-ent-l-toolbar">
+          <button
+            type="button"
+            className="phone-chip"
+            data-state="off"
+            aria-haspopup="dialog"
+            aria-expanded={pickerOpen}
+            aria-label={`Agrupar por: ${LIST_GROUP_BY_LABELS[groupBy]}`}
+            onClick={() => setPickerOpen(true)}
+          >
+            <span>
+              Agrupar:{' '}
+              <strong className="phone-ent-l-toolbar__value">{LIST_GROUP_BY_SHORT[groupBy]}</strong>
+            </span>
+            <ChevronDown className="phone-ent-l-toolbar__chevron" aria-hidden="true" />
+          </button>
+          <button
+            ref={responsaveisToggleRef}
+            type="button"
+            className="phone-chip"
+            data-state={responsaveisOpen ? 'on' : 'off'}
+            aria-expanded={responsaveisOpen}
+            onClick={onToggleResponsaveis}
+          >
+            <span>Responsáveis</span>
+            {selectedResponsaveis > 0 && (
+              <span className="phone-ent-l-toolbar__badge">{selectedResponsaveis}</span>
+            )}
+          </button>
+          {postados && (
+            <Chip
+              label="Mostrar postados"
+              count={postados.count > 0 ? postados.count : undefined}
+              selected={postados.shown}
+              onClick={postados.onToggle}
+            />
+          )}
+        </ChipRow>
+        <ActionSheet
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          title="Agrupar por"
+          actions={groupByOptions.map((o) => ({
+            label: (
+              <span className="phone-ent-l-pick">
+                {LIST_GROUP_BY_LABELS[o]}
+                {o === groupBy && (
+                  <>
+                    <Check className="phone-ent-l-pick__check" aria-hidden="true" />
+                    <span className="sr-only">(atual)</span>
+                  </>
+                )}
+              </span>
+            ),
+            onSelect: () => {
+              if (o !== groupBy) onGroupByChange(o);
+            },
+          }))}
+        />
+      </>
+    );
+  }
+
   return (
     // Quebra de linha em vez de passar da largura do celular (o select com a
     // data de postagem mais o selo do botão já passa dos 343px de um 375px).

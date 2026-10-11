@@ -38,6 +38,9 @@ import { toPostEntity } from '../../boardEntity';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import type { ActivePost, Membro, PostProcessWithPost, WorkflowEtapa } from '../../../../store';
 
+// These suites cover the desktop layout; the phone branch has its own *Phone suite.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const NOW = new Date(2026, 8, 23, 10, 0, 0);
 const ME = 7;
 const OTHER = 9;

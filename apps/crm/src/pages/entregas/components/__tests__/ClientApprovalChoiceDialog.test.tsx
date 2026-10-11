@@ -25,6 +25,10 @@ vi.mock('@/components/ui/dialog', () => ({
 
 import { ClientApprovalChoiceDialog } from '../WorkflowModals';
 
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 function setup(extraProps: { willRearm?: boolean } = {}) {
   const onApproveInternally = vi.fn();
   const onSendToPortal = vi.fn();

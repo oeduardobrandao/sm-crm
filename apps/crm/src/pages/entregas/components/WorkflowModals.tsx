@@ -49,6 +49,8 @@ import {
   type TemplatePropertyDefinition,
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ChoiceLabel, PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
 import { MigrateTemplateDialog } from './MigrateTemplateDialog';
 import {
@@ -945,6 +947,19 @@ export function RecurringWorkflowDialog({
   onConfirm,
   onCancel,
 }: RecurringWorkflowDialogProps) {
+  const isPhone = !useIsDesktop(768);
+  if (isPhone) {
+    return (
+      <PhoneConfirmSheet
+        open={open}
+        title="Criar novo ciclo?"
+        message="Este fluxo é recorrente. Deseja criar um novo ciclo?"
+        actions={[{ label: 'Criar novo ciclo', onSelect: onConfirm }]}
+        cancelLabel="Não"
+        onCancel={onCancel}
+      />
+    );
+  }
   return (
     <AlertDialog
       open={open}
@@ -981,6 +996,18 @@ export function RevertConfirmDialog({
   onConfirm,
   onCancel,
 }: RevertConfirmDialogProps) {
+  const isPhone = !useIsDesktop(768);
+  if (isPhone) {
+    return (
+      <PhoneConfirmSheet
+        open={open}
+        title="Reverter etapa?"
+        message={`Isso vai reverter "${entityTitle}" para a etapa anterior. Esta ação pode ser refeita arrastando para frente novamente.`}
+        actions={[{ label: 'Reverter', onSelect: onConfirm }]}
+        onCancel={onCancel}
+      />
+    );
+  }
   return (
     <AlertDialog
       open={open}
@@ -1020,6 +1047,18 @@ export function ForwardConfirmDialog({
   onConfirm,
   onCancel,
 }: ForwardConfirmDialogProps) {
+  const isPhone = !useIsDesktop(768);
+  if (isPhone) {
+    return (
+      <PhoneConfirmSheet
+        open={open}
+        title="Avançar etapa?"
+        message={`Isso vai mover "${entityTitle}" para a etapa "${nextEtapaName}". Deseja continuar?`}
+        actions={[{ label: 'Avançar', onSelect: onConfirm }]}
+        onCancel={onCancel}
+      />
+    );
+  }
   return (
     <AlertDialog
       open={open}
@@ -1076,6 +1115,57 @@ export function ClientApprovalChoiceDialog({
   sendToPortalDisabledReason,
 }: ClientApprovalChoiceDialogProps) {
   const isPost = entityKind === 'post';
+  const isPhone = !useIsDesktop(768);
+  const approveDescription = isPost
+    ? 'O post fica aprovado pela equipe e a etapa é concluída.'
+    : 'Os posts ficam aprovados pela equipe e a etapa é concluída.';
+  const sendDescription =
+    sendToPortalDisabledReason ??
+    (isPost
+      ? 'O status muda para "Enviado ao cliente" e o post aparece no portal para aprovação. A etapa não avança.'
+      : 'Os posts aprovados internamente vão para o portal, aguardando o cliente. A etapa não avança.');
+  const withoutDescription = isPost
+    ? 'A etapa é concluída e o status do post não muda.'
+    : 'A etapa é concluída e o status dos posts não muda.';
+  const rearmNote = isPost
+    ? 'A próxima etapa também é de aprovação: ao aprovar, o post volta para rascunho.'
+    : 'A próxima etapa também é de aprovação: ao aprovar, os posts voltam para rascunho.';
+  const title = isPost
+    ? 'O cliente ainda não aprovou este post'
+    : 'O cliente ainda não aprovou todos os posts';
+  const intro = `"${entityTitle}" está numa etapa que pede a aprovação do cliente. Escolha como seguir:`;
+  if (isPhone) {
+    return (
+      <PhoneConfirmSheet
+        open={open}
+        title={title}
+        message={willRearm ? `${intro} ${rearmNote}` : intro}
+        actions={[
+          {
+            label: <ChoiceLabel title="Aprovar internamente" description={approveDescription} />,
+            onSelect: onApproveInternally,
+          },
+          {
+            label: (
+              <ChoiceLabel title="Enviar para o cliente aprovar" description={sendDescription} />
+            ),
+            onSelect: onSendToPortal,
+            disabled: !!sendToPortalDisabledReason,
+          },
+          {
+            label: (
+              <ChoiceLabel
+                title={withoutChangesLabel ?? 'Avançar sem aprovação'}
+                description={withoutDescription}
+              />
+            ),
+            onSelect: onAdvanceWithoutChanges,
+          },
+        ]}
+        onCancel={onCancel}
+      />
+    );
+  }
   return (
     <Dialog
       open={open}
@@ -1085,53 +1175,28 @@ export function ClientApprovalChoiceDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {isPost
-              ? 'O cliente ainda não aprovou este post'
-              : 'O cliente ainda não aprovou todos os posts'}
-          </DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          "{entityTitle}" está numa etapa que pede a aprovação do cliente. Escolha como seguir:
-        </p>
+        <p className="text-sm text-muted-foreground">{intro}</p>
         <div className="flex flex-col gap-2">
           <ApprovalChoiceOption
             title="Aprovar internamente"
-            description={
-              isPost
-                ? 'O post fica aprovado pela equipe e a etapa é concluída.'
-                : 'Os posts ficam aprovados pela equipe e a etapa é concluída.'
-            }
+            description={approveDescription}
             onClick={onApproveInternally}
           />
           <ApprovalChoiceOption
             title="Enviar para o cliente aprovar"
-            description={
-              sendToPortalDisabledReason ??
-              (isPost
-                ? 'O status muda para "Enviado ao cliente" e o post aparece no portal para aprovação. A etapa não avança.'
-                : 'Os posts aprovados internamente vão para o portal, aguardando o cliente. A etapa não avança.')
-            }
+            description={sendDescription}
             onClick={onSendToPortal}
             disabled={!!sendToPortalDisabledReason}
           />
           <ApprovalChoiceOption
             title={withoutChangesLabel ?? 'Avançar sem aprovação'}
-            description={
-              isPost
-                ? 'A etapa é concluída e o status do post não muda.'
-                : 'A etapa é concluída e o status dos posts não muda.'
-            }
+            description={withoutDescription}
             onClick={onAdvanceWithoutChanges}
           />
         </div>
-        {willRearm && (
-          <p className="text-xs text-muted-foreground">
-            {isPost
-              ? 'A próxima etapa também é de aprovação: ao aprovar, o post volta para rascunho.'
-              : 'A próxima etapa também é de aprovação: ao aprovar, os posts voltam para rascunho.'}
-          </p>
-        )}
+        {willRearm && <p className="text-xs text-muted-foreground">{rearmNote}</p>}
         <DialogFooter>
           <Button variant="ghost" onClick={onCancel}>
             Cancelar

@@ -1,4 +1,4 @@
-import { useCallback, useRef, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cn } from '@/lib/utils';
 import { useSheetHistory } from './useSheetHistory';
@@ -23,6 +23,13 @@ export interface ActionSheetProps {
   message?: ReactNode;
   actions: ActionSheetAction[];
   cancelLabel?: string;
+  /**
+   * Closed without choosing an action: Cancelar, the backdrop, Escape or Back. Not
+   * called when an action was picked, nor when the parent closes the sheet itself.
+   * Lets a confirmation tell "dismissed" from "confirmed", since a chosen action only
+   * runs after `onOpenChange(false)` (see `closeThen`).
+   */
+  onDismiss?: () => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
   className?: string;
 }
@@ -41,16 +48,30 @@ export function ActionSheet({
   message,
   actions,
   cancelLabel = 'Cancelar',
+  onDismiss,
   returnFocusRef,
   className,
 }: ActionSheetProps) {
-  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  // Set when an action is picked, so the close that precedes it isn't a dismissal.
+  const choseRef = useRef(false);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  useEffect(() => {
+    if (open) choseRef.current = false;
+  }, [open]);
+  const close = useCallback(() => {
+    if (!choseRef.current) onDismissRef.current?.();
+    onOpenChange(false);
+  }, [onOpenChange]);
   const { closeThen } = useSheetHistory(open, close);
   const onCloseAutoFocus = useReturnFocus(open, returnFocusRef);
   const contentRef = useRef<HTMLDivElement>(null);
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(next) => (next ? onOpenChange(true) : close())}
+    >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="phone-kit phone-sheet-overlay" />
         <DialogPrimitive.Content
@@ -87,7 +108,10 @@ export function ActionSheet({
                   action.destructive && 'phone-action-sheet__action--destructive',
                 )}
                 disabled={action.disabled}
-                onClick={() => closeThen(action.onSelect)}
+                onClick={() => {
+                  choseRef.current = true;
+                  closeThen(action.onSelect);
+                }}
               >
                 {action.icon && (
                   <span className="phone-action-sheet__icon" aria-hidden="true">

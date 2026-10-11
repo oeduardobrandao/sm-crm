@@ -3,6 +3,8 @@ import type { ActivePost } from '../../../store';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { TIPO_LABELS } from '../postLabels';
 import { PostStatusChip } from './PostStatusChip';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import '../phone/entregasPhone.css';
 
 interface SemProcessoSectionProps {
   /** Já limitados a SEM_PROCESSO_LIMIT pela página. */
@@ -29,7 +31,53 @@ export function SemProcessoSection({
   onVerTodos,
 }: SemProcessoSectionProps) {
   const registry = useStatusRegistry();
+  const isPhone = !useIsDesktop(768);
   if (total === 0) return null;
+  if (isPhone) {
+    // Celular: lista agrupada no idioma do kit, mesma ação por linha.
+    return (
+      <section className="phone-ent-sem" aria-labelledby="sem-processo-title">
+        <div className="phone-ent-board__head">
+          <h2 id="sem-processo-title" className="phone-ent-board__title">
+            Sem processo <span>{total}</span>
+          </h2>
+          <button type="button" className="phone-ent-text-btn" onClick={onVerTodos}>
+            Ver todos
+          </button>
+        </div>
+        {productionFiltersActive && (
+          <p className="phone-ent-board__hint">
+            Filtros de produção não se aplicam aos posts sem processo
+          </p>
+        )}
+        <ul className="phone-ent-sem__list">
+          {posts.map((post) => (
+            <li key={post.id} className="phone-ent-sem__row">
+              <button
+                type="button"
+                className="phone-ent-sem__main"
+                onClick={() => onPostClick(post)}
+              >
+                <span className="phone-ent-sem__title">{post.titulo || 'Post sem título'}</span>
+                <span className="phone-ent-sem__meta">
+                  {post.cliente_nome || 'Sem cliente'} · {TIPO_LABELS[post.tipo]} · Avulso
+                </span>
+                <PostStatusChip post={post} registry={registry} />
+              </button>
+              <button
+                type="button"
+                className="phone-ent-text-btn"
+                aria-label={`Aplicar processo em ${post.titulo || 'Post sem título'}`}
+                onClick={() => onApplyProcess(post)}
+              >
+                Aplicar processo
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
   return (
     <section className="sem-processo animate-up" aria-labelledby="sem-processo-title">
       <div className="sem-processo-head">

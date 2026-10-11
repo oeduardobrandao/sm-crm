@@ -13,6 +13,9 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // only thing actually exercised. Patterns follow WorkflowCalendarView.test.tsx (dnd-kit +
 // store mocking) and LandingPage.test.tsx (AuthContext mocking).
 
+// Desktop layout; the phone branch has its own suite (WorkflowDrawerPhone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
@@ -47,6 +50,8 @@ vi.mock('@dnd-kit/core', () => ({
   DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   closestCenter: () => null,
   PointerSensor: class {},
+  MouseSensor: class {},
+  TouchSensor: class {},
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
 }));

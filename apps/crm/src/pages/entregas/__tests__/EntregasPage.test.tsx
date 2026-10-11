@@ -1,5 +1,5 @@
 import type { Ref } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -156,7 +156,12 @@ vi.mock('../components/ApplyProcessDialog', () => ({
   ),
 }));
 
-vi.mock('../components/EntregasFilters', () => ({
+vi.mock('../components/EntregasFilters', async (importOriginal) => ({
+  // The pure helpers the phone header and filters sheet read.
+  countActiveFilters: (await importOriginal<typeof import('../components/EntregasFilters')>())
+    .countActiveFilters,
+  STATUS_OPTIONS: (await importOriginal<typeof import('../components/EntregasFilters')>())
+    .STATUS_OPTIONS,
   EMPTY_FILTERS: {
     filterClientes: [],
     filterMembros: [],
@@ -331,7 +336,27 @@ vi.mock('@/hooks/useCurrentMembro', () => ({
 // jsdom's matchMedia is a stub; the Lista's Responsáveis panel is an inline
 // aside on desktop and a Sheet below 901px. Each test picks the branch.
 const isDesktopMock = vi.hoisted(() => ({ value: true }));
-vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => isDesktopMock.value }));
+// Width-aware: `value: true` is a desktop width, `false` the 768-900 compact layout
+// (bottom Sheets). The phone layout (< 768) is `phone: true`.
+const viewportMock = vi.hoisted(() => ({ phone: false }));
+vi.mock('@/hooks/useIsDesktop', () => ({
+  useIsDesktop: (min = 768) => (viewportMock.phone ? 390 : isDesktopMock.value ? 1280 : 800) >= min,
+}));
+// Page-level phone card commands: the board's own instances are covered by the
+// Kanban suites; here they only need to exist.
+vi.mock('../hooks/useWorkflowStageCommands', () => ({
+  useWorkflowStageCommands: () => ({ forward: vi.fn(), revert: vi.fn(), dialogs: null }),
+}));
+vi.mock('../hooks/usePostProcessCommands', () => ({
+  usePostProcessCommands: () => ({
+    avancar: vi.fn(),
+    voltar: vi.fn(),
+    concluir: vi.fn(),
+    reabrir: vi.fn(),
+    remover: vi.fn(),
+    dialogs: null,
+  }),
+}));
 
 // Like FilaMembroPicker: the Lista controls (on the tabs line, after the tabs)
 // are unit-tested on their own (ListToolbar.test.tsx / ResponsaveisPanel.test.tsx).
@@ -887,9 +912,10 @@ function isoInDays(n: number): string {
   return `${d.getFullYear()}-${mes}-${dia}`;
 }
 
-// Every describe below starts without saved views.
+// Every describe below starts without saved views, at a desktop width.
 beforeEach(() => {
   savedViewsMock.views = [];
+  viewportMock.phone = false;
 });
 
 describe('EntregasPage', () => {
@@ -3132,5 +3158,76 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
       renderLista('/entregas?view=list');
       expect(screen.queryByText(/Alternar postados/)).toBeNull();
     });
+  });
+});
+
+describe('EntregasPage on phones (< 768px)', () => {
+  beforeEach(() => {
+    viewportMock.phone = true;
+    localStorage.clear();
+    tourMock.startEntregasTour.mockReset();
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+  });
+
+  it('never auto-starts the tour and has no "Ver tour novamente"', () => {
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(tourMock.startEntregasTour).not.toHaveBeenCalled();
+    expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
+  });
+
+  it('replaces the desktop header, tabs and filters with the phone header', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Entregas');
+    expect(screen.getByRole('button', { name: 'Buscar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Filtros' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Modo' })).toBeInTheDocument();
+    // Desktop chrome is gone: the view tablist, the inline pills and the explainer.
+    expect(screen.queryByRole('tablist', { name: 'Modos de visualização' })).toBeNull();
+    expect(screen.queryByText(/^FiltersMode:/)).toBeNull();
+    expect(screen.queryByText('Como funciona esta página')).toBeNull();
+  });
+
+  it('the + button offers Novo fluxo and Post avulso', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: 'Novo' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Novo' });
+    expect(within(sheet).getByRole('button', { name: 'Post avulso' })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Novo fluxo' }));
+    expect(await screen.findByText('WizardMock')).toBeInTheDocument();
+  });
+
+  it('the title menu switches views and reaches Templates and Como funciona', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: /Trocar visualização/ }));
+    const menu = await screen.findByRole('dialog', { name: 'Visualizações' });
+    expect(within(menu).getByText('Visualizações salvas')).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('button', { name: 'Salvar visualização atual' }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole('button', { name: 'Visão geral' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('button', { name: /Exibir como: Visão geral/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Trocar visualização/ }));
+    const again = await screen.findByRole('dialog', { name: 'Visualizações' });
+    fireEvent.click(within(again).getByRole('button', { name: 'Templates' }));
+    expect(await screen.findByText('Templates modal')).toBeInTheDocument();
+  });
+
+  it('filters: the sheet applies, chips show each value, and Limpar clears', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Atrasados' }));
+    expect(within(sheet).getByRole('button', { name: /^Ver \d+$/ })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Ver \d+$/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Filtros, 1 ativos' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remover filtro Status: Atrasados' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
+    expect(screen.queryByRole('button', { name: /Remover filtro/ })).toBeNull();
   });
 });

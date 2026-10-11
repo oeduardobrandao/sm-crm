@@ -18,6 +18,10 @@ vi.mock('../PostStatusChip', () => ({
 import { SemProcessoSection } from '../SemProcessoSection';
 import type { ActivePost } from '../../../../store';
 
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const post = (id: number): ActivePost =>
   ({
     id,

@@ -6,6 +6,9 @@ import { EMPTY_FILTERS, type FilterState } from '../../components/EntregasFilter
 import { matchesEtapaPrazo } from '../../etapaPrazo';
 import type { BoardCard } from '../../hooks/useEntregasData';
 
+// These suites cover the desktop layout; the phone branch has its own *Phone suite.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 /** Element Chart.js would report under the pointer on the next canvas click. */
 const chartMock = vi.hoisted(() => ({
   hit: [] as { index: number; datasetIndex: number }[],

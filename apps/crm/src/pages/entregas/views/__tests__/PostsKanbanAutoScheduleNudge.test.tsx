@@ -70,6 +70,7 @@ vi.mock('@dnd-kit/core', () => ({
   },
   DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
   PointerSensor: class {},
+  MouseSensor: class {},
   TouchSensor: class {},
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
@@ -118,6 +119,10 @@ import type { ActivePost } from '@/store';
 import type { WorkflowEtapa } from '@/store/workflows';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockReorder = vi.mocked(reorderBoardPosts);

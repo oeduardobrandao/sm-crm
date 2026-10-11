@@ -58,6 +58,10 @@ vi.mock('../../components/WorkflowCard', () => ({
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
 
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 function QueryWrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;

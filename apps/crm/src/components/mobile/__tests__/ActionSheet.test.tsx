@@ -4,7 +4,15 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ActionSheet } from '../ActionSheet';
 
-function Harness({ onAdvance, onDelete }: { onAdvance: () => void; onDelete: () => void }) {
+function Harness({
+  onAdvance,
+  onDelete,
+  onDismiss,
+}: {
+  onAdvance: () => void;
+  onDelete: () => void;
+  onDismiss?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <MemoryRouter>
@@ -14,6 +22,7 @@ function Harness({ onAdvance, onDelete }: { onAdvance: () => void; onDelete: () 
       <ActionSheet
         open={open}
         onOpenChange={setOpen}
+        onDismiss={onDismiss}
         title="Concluir Produção?"
         message="O fluxo vai para Aprovação."
         actions={[
@@ -60,5 +69,29 @@ describe('ActionSheet', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(onAdvance).not.toHaveBeenCalled();
     expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('onDismiss fires for Cancelar and Escape, never for a chosen action', async () => {
+    const onAdvance = vi.fn();
+    const onDismiss = vi.fn();
+    render(<Harness onAdvance={onAdvance} onDelete={vi.fn()} onDismiss={onDismiss} />);
+    const opener = screen.getByRole('button', { name: 'Avançar etapa' });
+
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir e avançar' }));
+    expect(onAdvance).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(opener);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(onDismiss).toHaveBeenCalledTimes(2);
+    expect(onAdvance).toHaveBeenCalledTimes(1);
   });
 });

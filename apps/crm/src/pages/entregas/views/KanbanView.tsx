@@ -2,7 +2,9 @@ import { Fragment, useState, useCallback, useEffect, useMemo, useRef } from 'rea
 import {
   DndContext,
   DragOverlay,
+  MouseSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -31,16 +33,7 @@ import {
   type FluxosColumnSort,
 } from '../entregasPrefs';
 import { toast } from 'sonner';
-import {
-  hasLaterApprovalEtapa,
-  revertEtapa,
-  updateWorkflowPositions,
-  reorderFluxosBoard,
-  approvePostsInternally,
-  sendPostsToCliente,
-} from '../../../store';
-import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
-import { decideApprovalAdvance } from '../approvalAdvance';
+import { updateWorkflowPositions, reorderFluxosBoard } from '../../../store';
 import {
   buildBoardRows,
   columnKey,
@@ -72,12 +65,6 @@ import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
 import { PostProcessCard } from '../components/PostProcessCard';
 import { ExampleBoard } from '../components/ExampleBoard';
-import { AutoScheduleBatchDialog } from '../components/AutoScheduleBatchDialog';
-import {
-  RevertConfirmDialog,
-  ForwardConfirmDialog,
-  ClientApprovalChoiceDialog,
-} from '../components/WorkflowModals';
 import {
   previousStepOf,
   nextPendingStepOf,
@@ -86,6 +73,9 @@ import {
   type ProcessTarget,
 } from '../postProcessCommands';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
+import { useWorkflowStageCommands } from '../hooks/useWorkflowStageCommands';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneKanbanBoard } from '../phone/PhoneKanbanBoard';
 
 interface KanbanViewBaseProps {
   /** Persistencia das prefs de ordenacao por coluna; opcional para os testes. */
@@ -545,24 +535,6 @@ export function KanbanView({
     ids: BoardSortableId[];
     optimisticPos: number;
   } | null>(null);
-  const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(
-    null,
-  );
-  const [approvalChoice, setApprovalChoice] = useState<{
-    card: BoardCard;
-    willRearm: boolean;
-  } | null>(null);
-  /** Fluxo cujo resumo de agendamento em lote está aberto (peça 2 da spec), com o
-   *  booleano do gate de segurança (fix B da revisão final) capturado no MOMENTO
-   *  em que `!willRearm` foi checado em handleApproveInternally -- não
-   *  recalculado depois, no render, quando o card já pode não estar mais no
-   *  mesmo estado. AutoScheduleBatchDialog agora exige essa prop e a usa como
-   *  seu próprio gate interno. */
-  const [batchSchedule, setBatchSchedule] = useState<{
-    workflowId: number;
-    isFinalApprovalCycle: boolean;
-  } | null>(null);
-  const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
   // Comandos de um processo individual (Task 7), compartilhados pelos botões
   // Avançar/Voltar do card e pelo drag entre colunas (spec §12.2: o MESMO
@@ -609,6 +581,57 @@ export function KanbanView({
       await reorderFluxosBoard(plan.args);
     }
   }, []);
+
+  // Cadeia de etapas do fluxo (Forward/ClientApprovalChoice/Revert, ciclo
+  // recorrente, agendamento em lote), compartilhada com o celular. Os ganchos
+  // abaixo mantêm os overlays otimistas e a posição capturada por um drag
+  // entre colunas exatamente como antes da extração.
+  const stage = useWorkflowStageCommands<{ insert: typeof pendingInsertRef.current }>({
+    onRefresh,
+    onRecurring,
+    postsCounts,
+    clearedClienteCounts,
+    schedulingEnabled,
+    tiktokEnabled,
+    recurringWfId,
+    resolveCard: (workflowId) => localCards.find((c) => c.workflow.id === workflowId),
+    onBeforeMove: (card, target) => {
+      const wfId = card.workflow.id!;
+      // Slide the card into the target column immediately; the backend persists
+      // in the background.
+      if (target) setPendingEtapas((prev) => new Map(prev).set(wfId, target));
+      const insert =
+        pendingInsertRef.current?.movedId === String(wfId) ? pendingInsertRef.current : null;
+      if (insert && target)
+        setPendingPositions((prev) => new Map(prev).set(wfId, insert.optimisticPos));
+      return { insert };
+    },
+    onMoveSucceeded: async (_card, ctx) => {
+      const insert = ctx?.insert;
+      if (!insert) return;
+      pendingInsertRef.current = null;
+      try {
+        await persistColumnOrder(insert.ids);
+      } catch (err) {
+        // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
+        // (migration não aplicada) isto é o único sinal.
+        console.warn('[entregas] falha ao gravar posição após mover etapa', err);
+      }
+    },
+    onMoveFailed: (card) => {
+      pendingInsertRef.current = null;
+      const wfId = card.workflow.id!;
+      setPendingEtapas((prev) => {
+        if (!prev.has(wfId)) return prev;
+        const next = new Map(prev);
+        next.delete(wfId);
+        return next;
+      });
+    },
+    onAbandon: () => {
+      pendingInsertRef.current = null;
+    },
+  });
 
   // Drop overlay entries the server already reflects. A cross-column insert
   // stores a FRACTIONAL position (e.g. 0.5) that the persisted integer will
@@ -794,6 +817,13 @@ export function KanbanView({
   }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Celular: a pressão longa é do menu do card (ContextMenu); o arrasto só
+  // existe no modo Reordenar, pela alça, com o atraso de toque do kit.
+  const isPhone = !useIsDesktop(768);
+  const phoneSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
 
   const findCard = (id: string) => localCards.find((c) => String(c.workflow.id) === id);
   const findPost = (id: string) => posts.find((p) => p.id === id);
@@ -1028,13 +1058,10 @@ export function KanbanView({
 
         const diff = targetColumn.ordem - draggedCard!.etapa.ordem;
         if (diff === 1) {
-          handleForwardCard(draggedCard!);
+          stage.forward(draggedCard!);
         } else {
           // Backward — show confirm dialog
-          setRevertTarget({
-            workflowId: draggedCard!.workflow.id!,
-            title: draggedCard!.workflow.titulo,
-          });
+          stage.revert(draggedCard!);
         }
       }
     },
@@ -1047,7 +1074,8 @@ export function KanbanView({
       signatureRows,
       dropSlot,
       onRefresh,
-      onRecurring,
+      stage.forward,
+      stage.revert,
       templates,
       displayMixed,
       sortModeFor,
@@ -1059,188 +1087,32 @@ export function KanbanView({
     ],
   );
 
-  const handleForwardCard = useCallback((card: BoardCard) => {
-    setForwardTarget(card);
-  }, []);
-
-  // opts.rearm === false keeps the plain completeEtapa (post statuses untouched) — used by
-  // "Avançar etapa sem alterar posts", whose literal contract is to leave posts alone.
-  const advanceEtapa = useCallback(
-    async (card: BoardCard, successMessage: string, opts?: { rearm?: boolean }) => {
-      const wfId = card.workflow.id!;
-      // Slide the card into the next column immediately; the backend persists
-      // in the background. On the last etapa there is no next column — the
-      // card leaves the board when the refetch lands.
-      const nextEtapa = card.allEtapas.find((e) => e.ordem === card.etapa.ordem + 1);
-      if (nextEtapa) setPendingEtapas((prev) => new Map(prev).set(wfId, nextEtapa));
-      const insert =
-        pendingInsertRef.current?.movedId === String(wfId) ? pendingInsertRef.current : null;
-      if (insert && nextEtapa)
-        setPendingPositions((prev) => new Map(prev).set(wfId, insert.optimisticPos));
-      try {
-        const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!, opts);
-        if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-          // Recurring-completion wins over the batch-schedule nudge (fix round 1's
-          // render-time gate). Fix round 2: also CLEAR batchSchedule here, not
-          // just suppress it -- otherwise, once the user dismisses
-          // RecurringWorkflowDialog (recurringWfId -> null again), the gate flips
-          // back open and the nudge resurfaces for a workflow already dealt with.
-          // The opportunity for this advance is meant to be gone for good.
-          setBatchSchedule((prev) => (prev?.workflowId === wfId ? null : prev));
-          onRecurring(card.workflow.id!);
-        } else {
-          toast.success(successMessage);
-        }
-        notifyRearmOutcome(result);
-        if (insert) {
-          pendingInsertRef.current = null;
-          try {
-            await persistColumnOrder(insert.ids);
-          } catch (err) {
-            // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
-            // (migration não aplicada) isto é o único sinal.
-            console.warn('[entregas] falha ao gravar posição após mover etapa', err);
-          }
-        }
-        onRefresh();
-      } catch (err: unknown) {
-        pendingInsertRef.current = null;
-        if (nextEtapa)
-          setPendingEtapas((prev) => {
-            const next = new Map(prev);
-            next.delete(wfId);
-            return next;
-          });
-        toast.error((err as Error).message || 'Erro ao avançar etapa');
-      }
-    },
-    [onRefresh, onRecurring, persistColumnOrder],
-  );
-
-  const executeForward = useCallback(
-    (card: BoardCard) => {
-      const wfId = card.workflow.id!;
-      const decision = decideApprovalAdvance({
-        tipo: card.etapa.tipo,
-        total: postsCounts.get(wfId) ?? 0,
-        // "Cleared" (approved / scheduled / posted / publish-failed), not just
-        // aprovado_cliente — otherwise a workflow whose approved posts are already
-        // scheduled would wrongly prompt the approval dialog on advance.
-        cleared: clearedClienteCounts.get(wfId) ?? 0,
-        temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, card.etapa.id!),
-      });
-      if (decision.kind === 'choose') setApprovalChoice({ card, willRearm: decision.willRearm });
-      else advanceEtapa(card, 'Etapa concluída!');
-    },
-    [advanceEtapa, postsCounts, clearedClienteCounts],
-  );
-
-  const handleForwardConfirm = () => {
-    if (!forwardTarget) return;
-    const card = forwardTarget;
-    setForwardTarget(null);
-    executeForward(card);
-  };
-
-  const handleApproveInternally = async () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    const { willRearm } = approvalChoice;
-    setApprovalChoice(null);
-    try {
-      await approvePostsInternally(card.workflow.id!);
-    } catch (err: unknown) {
-      // The advance never runs, so the drag's captured drop position must not
-      // survive to reorder a later, unrelated advance of this workflow.
-      pendingInsertRef.current = null;
-      toast.error((err as Error).message || 'Erro ao aprovar internamente');
-      return;
-    }
-    // Aviso de agendamento em lote (spec peça 2), aberto AQUI e não depois de
-    // advanceEtapa: advanceEtapa captura o próprio erro e devolve void, então
-    // não existe sinal de sucesso para esperar (decisão 4). O gate !willRearm já
-    // garante que nenhum rearm vai devolver estes posts para rascunho.
-    //
-    // isFinalApprovalCycle: !willRearm -- capturado AQUI, no mesmo instante em
-    // que willRearm foi checado, e carregado junto com o workflowId (fix B da
-    // revisão final). AutoScheduleBatchDialog agora exige essa prop como seu
-    // próprio gate interno; sem carregá-la junto do id, o valor teria que ser
-    // recalculado no render, quando `card` pode já não refletir mais o mesmo
-    // estado que motivou a decisão.
-    if (
-      !willRearm &&
-      schedulingEnabled === true &&
-      card.cliente?.auto_publish_on_approval === true
-    ) {
-      setBatchSchedule({ workflowId: card.workflow.id!, isFinalApprovalCycle: !willRearm });
-    }
-    await advanceEtapa(card, 'Posts aprovados internamente — etapa concluída!');
-  };
-
-  const handleSendToPortal = async () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    setApprovalChoice(null);
-    // Send-only: the workflow does not move, so the drag's captured drop
-    // position is dead the moment this choice is made.
-    pendingInsertRef.current = null;
-    try {
-      await sendPostsToCliente(card.workflow.id!);
-      toast.success('Posts enviados ao portal do cliente!');
-      onRefresh();
-    } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro ao enviar ao portal');
-    }
-  };
-
-  const handleAdvanceWithoutApproval = () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    setApprovalChoice(null);
-    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.', { rearm: false });
-  };
-
-  const handleRevertConfirm = async () => {
-    if (!revertTarget) return;
-    const card = localCards.find((c) => c.workflow.id === revertTarget.workflowId);
-    const prevEtapa = card?.allEtapas.find((e) => e.ordem === card.etapa.ordem - 1);
-    if (card && prevEtapa)
-      setPendingEtapas((prev) => new Map(prev).set(revertTarget.workflowId, prevEtapa));
-    const insert =
-      pendingInsertRef.current?.movedId === String(revertTarget.workflowId)
-        ? pendingInsertRef.current
-        : null;
-    if (insert && card && prevEtapa)
-      setPendingPositions((prev) =>
-        new Map(prev).set(revertTarget.workflowId, insert.optimisticPos),
-      );
-    try {
-      await revertEtapa(revertTarget.workflowId);
-      toast.success('Etapa revertida!');
-      if (insert) {
-        pendingInsertRef.current = null;
-        try {
-          await persistColumnOrder(insert.ids);
-        } catch (err) {
-          // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
-          // (migration não aplicada) isto é o único sinal.
-          console.warn('[entregas] falha ao gravar posição após mover etapa', err);
-        }
-      }
-      onRefresh();
-    } catch (err: unknown) {
-      pendingInsertRef.current = null;
-      setPendingEtapas((prev) => {
-        const next = new Map(prev);
-        next.delete(revertTarget.workflowId);
-        return next;
-      });
-      toast.error((err as Error).message || 'Erro ao reverter etapa');
-    }
-    setRevertTarget(null);
-  };
-
   if (localCards.length === 0 && posts.length === 0) {
+    if (isPhone) {
+      // Celular: sem a tour (ela ancora colunas do desktop), o quadro de exemplo
+      // não teria quem o explique; um estado vazio com a ação principal no lugar.
+      return (
+        <div className="phone-ent-board__empty phone-ent-board__empty--page">
+          <p>
+            {showExample
+              ? 'Nenhum fluxo ainda. Um fluxo acompanha uma entrega do cliente, etapa por etapa.'
+              : postProcessesEnabled
+                ? 'Nenhum fluxo ou post individual encontrado. Ajuste os filtros ou crie um novo fluxo.'
+                : 'Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.'}
+          </p>
+          {onAddWorkflow && (
+            <button
+              type="button"
+              className="phone-ent-board__add"
+              onClick={() => onAddWorkflow(null)}
+            >
+              <Plus aria-hidden="true" />
+              Novo fluxo
+            </button>
+          )}
+        </div>
+      );
+    }
     if (showExample && onDismissExample) {
       return <ExampleBoard onDismiss={onDismissExample} />;
     }
@@ -1261,6 +1133,71 @@ export function KanbanView({
             : 'Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.'}
         </p>
       </div>
+    );
+  }
+
+  if (isPhone) {
+    const countsFor = (id: number) => ({
+      postsCount: postsCounts.get(id) ?? 0,
+      approvedPostsCount: approvedPostsCounts.get(id) ?? 0,
+      clearedClienteCount: clearedClienteCounts.get(id) ?? 0,
+      revisaoInternaCount: revisaoInternaCounts.get(id) ?? 0,
+      awaitingClienteCount: awaitingClienteCounts.get(id) ?? 0,
+    });
+    return (
+      <>
+        <PhoneKanbanBoard
+          rows={boardRows}
+          activeRowKey={activeRowKey}
+          onActiveRowKeyChange={setActiveRowKey}
+          displayMixed={displayMixed}
+          sortModeFor={sortModeFor}
+          setColumnSort={setColumnSort}
+          sensors={phoneSensors}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => {
+            setActiveEntity(null);
+            setDropSlot(null);
+            pendingInsertRef.current = null;
+          }}
+          activeEntity={activeEntity}
+          membros={membros}
+          onRefresh={onRefresh}
+          countsFor={countsFor}
+          workflow={{
+            open: onCardClick,
+            edit: onEditClick,
+            forward: stage.forward,
+            revert: stage.revert,
+            duplicate: onDuplicateWorkflowClick
+              ? (card) => onDuplicateWorkflowClick(card, postsCounts.get(card.workflow.id!) ?? null)
+              : undefined,
+            remove: onDeleteWorkflowClick,
+          }}
+          post={{
+            open: onPostClick,
+            forward: (entity) =>
+              canConcluir(entity.process)
+                ? commands.concluir(targetOf(entity))
+                : commands.avancar(targetOf(entity)),
+            forwardLabel: (entity) => forwardLabelFor(entity.process),
+            canRevert: (entity) => previousStepOf(entity.process) != null,
+            revert: (entity) => commands.voltar(targetOf(entity)),
+            removeProcess: (entity) => commands.remover(targetOf(entity)),
+            duplicate: onDuplicatePostClick,
+            remove: onDeletePostClick,
+          }}
+          onAddWorkflow={onAddWorkflow}
+          onAddPostIndividual={onAddPostIndividual}
+          onCreateTemplate={onCreateTemplate}
+          createTemplateDisabled={createTemplateDisabled}
+          postProcessesEnabled={postProcessesEnabled}
+        />
+        {stage.dialogs}
+        {commands.dialogs}
+      </>
     );
   }
 
@@ -1419,13 +1356,8 @@ export function KanbanView({
                           onPostsClick={onPostsClick}
                           membros={membros}
                           onRefresh={onRefresh}
-                          onRevertClick={() =>
-                            setRevertTarget({
-                              workflowId: card.workflow.id!,
-                              title: card.workflow.titulo,
-                            })
-                          }
-                          onForwardClick={() => handleForwardCard(card)}
+                          onRevertClick={() => stage.revert(card)}
+                          onForwardClick={() => stage.forward(card)}
                           onDeleteClick={
                             onDeleteWorkflowClick ? () => onDeleteWorkflowClick(card) : undefined
                           }
@@ -1531,58 +1463,7 @@ export function KanbanView({
           {activeEntity?.kind === 'post' && <PostProcessCard entity={activeEntity} isDragOverlay />}
         </DragOverlay>
       </DndContext>
-      <ForwardConfirmDialog
-        open={!!forwardTarget}
-        entityTitle={forwardTarget?.workflow.titulo || ''}
-        nextEtapaName={
-          forwardTarget
-            ? ([...forwardTarget.allEtapas]
-                .sort((a, b) => a.ordem - b.ordem)
-                .find((e) => e.ordem > forwardTarget.etapa.ordem)?.nome ?? '')
-            : ''
-        }
-        onConfirm={handleForwardConfirm}
-        onCancel={() => {
-          pendingInsertRef.current = null;
-          setForwardTarget(null);
-        }}
-      />
-      <RevertConfirmDialog
-        open={!!revertTarget}
-        entityTitle={revertTarget?.title || ''}
-        onConfirm={handleRevertConfirm}
-        onCancel={() => {
-          pendingInsertRef.current = null;
-          setRevertTarget(null);
-        }}
-      />
-      <ClientApprovalChoiceDialog
-        open={!!approvalChoice}
-        entityTitle={approvalChoice?.card.workflow.titulo || ''}
-        willRearm={approvalChoice?.willRearm ?? false}
-        onApproveInternally={handleApproveInternally}
-        onSendToPortal={handleSendToPortal}
-        onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
-        onCancel={() => {
-          pendingInsertRef.current = null;
-          setApprovalChoice(null);
-        }}
-      />
-      <AutoScheduleBatchDialog
-        // Exclusão mútua com RecurringWorkflowDialog (fix pós-review da Task 4):
-        // recurringWfId != null significa que o pai já vai abrir (ou já abriu) o
-        // diálogo de conclusão de ciclo para este mesmo avanço -- ele tem
-        // precedência, então o resumo em lote nem monta com um workflowId
-        // não-nulo neste render.
-        workflowId={recurringWfId == null ? (batchSchedule?.workflowId ?? null) : null}
-        tiktokFeatureEnabled={tiktokEnabled === true}
-        isFinalApprovalCycle={batchSchedule?.isFinalApprovalCycle ?? false}
-        onClose={() => setBatchSchedule(null)}
-        onScheduled={() => {
-          setBatchSchedule(null);
-          onRefresh();
-        }}
-      />
+      {stage.dialogs}
       {commands.dialogs}
     </>
   );

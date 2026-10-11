@@ -12,6 +12,8 @@ import {
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, UserCheck } from 'lucide-react';
 
 import { StatCard } from '@/components/StatCard';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ChartViewPhone } from '../phone/ChartViewPhone';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { getChartTheme, useIsDark, type ChartTheme } from '@/lib/chartTheme';
 import { getInitials } from '@/lib/initials';
@@ -429,6 +431,7 @@ export function ChartView({
   postProcessesEnabled,
   onGoToKanban,
 }: ChartViewProps) {
+  const isPhone = !useIsDesktop(768);
   const isDark = useIsDark();
   const theme = useMemo(() => getChartTheme(isDark), [isDark]);
 
@@ -522,6 +525,80 @@ export function ChartView({
       : stats.atrasado === 1
         ? 'há quanto tempo a entrega atrasada está estourada'
         : `há quanto tempo as ${stats.atrasado} atrasadas estão estouradas`;
+
+  function filterByCliente(row: StackedRow, status: DeadlineStatus) {
+    if (!row.clickable) return;
+    onFiltersChange({
+      ...filters,
+      filterClientes: [Number(row.key)],
+      filterStatus: [status],
+    });
+  }
+
+  function filterByResponsavel(row: StackedRow, status: DeadlineStatus) {
+    if (!row.clickable) return;
+    onFiltersChange({
+      ...filters,
+      filterMembros: [Number(row.key)],
+      filterStatus: [status],
+    });
+  }
+
+  function filterByEtapa(row: StackedRow) {
+    if (!row.clickable) return;
+    onFiltersChange({ ...filters, filterEtapas: [row.key] });
+  }
+
+  function filterByAging(bucket: AgingBucket) {
+    onFiltersChange({
+      ...filters,
+      filterStatus: ['atrasado'],
+      // matchesEtapaPrazo ORs the presets with the custom range, so a
+      // preset still applied from an earlier click (the "Vencem hoje"
+      // KPI, say) would WIDEN this drill-down instead of narrowing it.
+      filterPrazo: [],
+      filterPrazoFrom: bucket.fromDaysAgo == null ? '' : isoDaysAgo(bucket.fromDaysAgo),
+      filterPrazoTo: isoDaysAgo(bucket.toDaysAgo),
+    });
+  }
+
+  if (isPhone) {
+    return (
+      <ChartViewPhone
+        empty={cards.length === 0}
+        emptyText={EMPTY_ROWS}
+        postProcessesEnabled={postProcessesEnabled}
+        onGoToKanban={onGoToKanban}
+        theme={theme}
+        stats={stats}
+        vencemHoje={vencemHoje}
+        aguardandoTotal={aguardandoTotal}
+        statusActive={statusActive}
+        hojeActive={hojeActive}
+        aguardandoActive={aguardandoActive}
+        aguardandoClickable={aguardandoClickable}
+        onToggleStatus={toggleStatus}
+        onToggleVencemHoje={toggleVencemHoje}
+        onToggleAguardando={toggleAguardandoCliente}
+        upcomingTabs={UPCOMING_TABS}
+        upcomingTab={upcomingTab}
+        onUpcomingTabChange={setUpcomingTab}
+        upcomingShown={upcomingShown}
+        upcomingExtra={upcomingExtra}
+        onVerNaLista={verNaLista}
+        onCardClick={onCardClick}
+        clienteRows={clienteRows}
+        responsavelRows={responsavelRows}
+        etapaRows={etapaRows}
+        agingBuckets={agingBuckets}
+        idadeCaption={idadeCaption}
+        onClienteSegment={filterByCliente}
+        onResponsavelSegment={filterByResponsavel}
+        onEtapaRow={filterByEtapa}
+        onAgingBucket={filterByAging}
+      />
+    );
+  }
 
   // Every section below has an empty state written for a healthy board
   // ("Nenhuma entrega atrasada", "Semana livre de vencimentos"). With nothing
@@ -712,14 +789,7 @@ export function ChartView({
             rows={clienteRows}
             theme={theme}
             ariaLabel="Gráfico de barras: situação das entregas por cliente"
-            onSegment={(row, status) => {
-              if (!row.clickable) return;
-              onFiltersChange({
-                ...filters,
-                filterClientes: [Number(row.key)],
-                filterStatus: [status],
-              });
-            }}
+            onSegment={filterByCliente}
           />
         </SectionCard>
 
@@ -736,14 +806,7 @@ export function ChartView({
             rows={responsavelRows}
             theme={theme}
             ariaLabel="Gráfico de barras: situação das entregas por responsável"
-            onSegment={(row, status) => {
-              if (!row.clickable) return;
-              onFiltersChange({
-                ...filters,
-                filterMembros: [Number(row.key)],
-                filterStatus: [status],
-              });
-            }}
+            onSegment={filterByResponsavel}
           />
         </SectionCard>
       </div>
@@ -764,10 +827,7 @@ export function ChartView({
             rows={etapaRows}
             theme={theme}
             ariaLabel="Gráfico de barras: situação das entregas por etapa"
-            onSegment={(row) => {
-              if (!row.clickable) return;
-              onFiltersChange({ ...filters, filterEtapas: [row.key] });
-            }}
+            onSegment={filterByEtapa}
           />
         </SectionCard>
 
@@ -795,22 +855,7 @@ export function ChartView({
               </span>
             </div>
           ) : (
-            <AgingBarChart
-              buckets={agingBuckets}
-              theme={theme}
-              onBucket={(bucket) =>
-                onFiltersChange({
-                  ...filters,
-                  filterStatus: ['atrasado'],
-                  // matchesEtapaPrazo ORs the presets with the custom range, so a
-                  // preset still applied from an earlier click (the "Vencem hoje"
-                  // KPI, say) would WIDEN this drill-down instead of narrowing it.
-                  filterPrazo: [],
-                  filterPrazoFrom: bucket.fromDaysAgo == null ? '' : isoDaysAgo(bucket.fromDaysAgo),
-                  filterPrazoTo: isoDaysAgo(bucket.toDaysAgo),
-                })
-              }
-            />
+            <AgingBarChart buckets={agingBuckets} theme={theme} onBucket={filterByAging} />
           )}
         </SectionCard>
       </div>

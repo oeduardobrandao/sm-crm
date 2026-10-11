@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useId } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -47,6 +47,7 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -141,6 +142,15 @@ import { Badge } from '@/components/ui/badge';
 // By path, not through the '../../../store' barrel: the drawer test harnesses mock '@/store'
 // with explicit factories, so a new barrel export would be missing from every one of them.
 import { getPostReferenceCounts } from '@/store/postReferences';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
+  FluxoPhoneHeader,
+  FluxoPhonePostsToolbar,
+  FluxoPhoneSelectionBar,
+  FluxoPhonePostRow,
+  type FluxoPhoneListMode,
+} from '../phone/FluxoPhone';
+import '../phone/fluxoSheet.css';
 
 // Stable empty array so the fallback in `useQuery({ data: processEvents = ... })` never
 // changes identity across renders when the flag is off or the query hasn't resolved yet.
@@ -261,7 +271,22 @@ export function WorkflowDrawer({
   // Duplicar post: entry point is the per-post kebab; the dialog owns the RPC.
   const [duplicateTarget, setDuplicateTarget] = useState<DuplicateTarget | null>(null);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Phone layout (< 768px): the drawer becomes a full-screen iOS screen. Its history entry is
+  // owned by EntregasPage (one useOverlayHistoryEntry for the drawer), so nothing here pushes one.
+  const isPhone = !useIsDesktop(768);
+  /** Phone only: Selecionar and Reordenar are explicit modes (D20: drag is never a hold). */
+  const [phoneListMode, setPhoneListMode] = useState<FluxoPhoneListMode>('normal');
+  const phonePanelId = `fluxo-${useId().replace(/:/g, '')}`;
+
+  // On phones a TouchSensor arms on a 250ms hold so a swipe still scrolls (the
+  // WorkflowCalendarView pattern); the handle it listens on only exists in Reordenar mode.
+  const touchSensor = useSensor(TouchSensor, {
+    activationConstraint: { delay: 250, tolerance: 8 },
+  });
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    isPhone ? touchSensor : null,
+  );
 
   // ── Data queries ──────────────────────────────────────────────────────────
 
@@ -694,6 +719,12 @@ export function WorkflowDrawer({
 
   const clearSelection = useCallback(() => setSelectedPostIds(new Set()), []);
 
+  /** Phone: switching modes. Leaving Selecionar drops the selection, like Cancelar on iOS. */
+  const changePhoneListMode = useCallback((mode: FluxoPhoneListMode) => {
+    setPhoneListMode(mode);
+    if (mode !== 'select') setSelectedPostIds(new Set());
+  }, []);
+
   const openDetachConfirm = useCallback((ids: number[]) => {
     setDetachTarget(ids);
   }, []);
@@ -914,82 +945,120 @@ export function WorkflowDrawer({
       <div className="drawer-overlay" onClick={onClose} />
 
       {/* Panel */}
-      <div className={`drawer-panel${isFullscreen ? ' fullscreen' : ''}`}>
+      <div
+        className={
+          isPhone
+            ? 'drawer-panel phone-kit phone-ent-fluxo'
+            : `drawer-panel${isFullscreen ? ' fullscreen' : ''}`
+        }
+      >
         {/* Header */}
-        <div className="drawer-header">
-          <div className="drawer-header-info">
-            <div className="drawer-header-title">{card.workflow.titulo}</div>
-            <div className="drawer-header-subtitle">
-              {card.cliente?.nome || '—'} &bull; Etapa: {card.etapa.nome}
+        {isPhone ? (
+          <FluxoPhoneHeader
+            workflowId={workflowId}
+            title={card.workflow.titulo}
+            clienteNome={card.cliente?.nome}
+            etapaNome={card.etapa.nome}
+            readyToSend={readyToSend}
+            isSending={isSending}
+            onSend={handleSendToCliente}
+            onClose={onClose}
+            view={drawerView}
+            onViewChange={setDrawerView}
+            panelId={phonePanelId}
+            tabIdPrefix={phonePanelId}
+          />
+        ) : (
+          <div className="drawer-header">
+            <div className="drawer-header-info">
+              <div className="drawer-header-title">{card.workflow.titulo}</div>
+              <div className="drawer-header-subtitle">
+                {card.cliente?.nome || '—'} &bull; Etapa: {card.etapa.nome}
+              </div>
             </div>
-          </div>
-          <div className="drawer-header-actions">
-            {readyToSend > 0 && (
+            <div className="drawer-header-actions">
+              {readyToSend > 0 && (
+                <button
+                  className="drawer-send-btn"
+                  onClick={handleSendToCliente}
+                  disabled={isSending}
+                  title={`Enviar ${readyToSend} post${readyToSend > 1 ? 's' : ''} aprovados ao cliente`}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Enviar ao cliente ({readyToSend})
+                </button>
+              )}
+              <div className="drawer-view-toggle" role="tablist">
+                <button
+                  className={`drawer-calendar-btn${drawerView === 'posts' ? ' active' : ''}`}
+                  onClick={() => setDrawerView('posts')}
+                  title="Ver posts"
+                >
+                  Posts
+                </button>
+                <button
+                  className={`drawer-calendar-btn${drawerView === 'grid' ? ' active' : ''}`}
+                  onClick={() => setDrawerView('grid')}
+                  title="Ver a grade do Instagram do cliente"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  Grade
+                </button>
+                <button
+                  className={`drawer-calendar-btn${drawerView === 'calendar' ? ' active' : ''}`}
+                  onClick={() => setDrawerView('calendar')}
+                  title="Ver calendário do cliente"
+                >
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  Calendário
+                </button>
+                <button
+                  className={`drawer-calendar-btn${drawerView === 'history' ? ' active' : ''}`}
+                  onClick={() => setDrawerView('history')}
+                  title="Ver histórico do fluxo"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  Histórico
+                </button>
+              </div>
+              <CopyLinkButton
+                path={`/entregas?drawer=${workflowId}`}
+                label="Copiar link do fluxo"
+                className="drawer-close-btn"
+              />
               <button
-                className="drawer-send-btn"
-                onClick={handleSendToCliente}
-                disabled={isSending}
-                title={`Enviar ${readyToSend} post${readyToSend > 1 ? 's' : ''} aprovados ao cliente`}
+                className="drawer-close-btn drawer-fullscreen-btn"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? 'Recolher' : 'Expandir'}
               >
-                <Send className="h-3.5 w-3.5" />
-                Enviar ao cliente ({readyToSend})
-              </button>
-            )}
-            <div className="drawer-view-toggle" role="tablist">
-              <button
-                className={`drawer-calendar-btn${drawerView === 'posts' ? ' active' : ''}`}
-                onClick={() => setDrawerView('posts')}
-                title="Ver posts"
-              >
-                Posts
-              </button>
-              <button
-                className={`drawer-calendar-btn${drawerView === 'grid' ? ' active' : ''}`}
-                onClick={() => setDrawerView('grid')}
-                title="Ver a grade do Instagram do cliente"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Grade
-              </button>
-              <button
-                className={`drawer-calendar-btn${drawerView === 'calendar' ? ' active' : ''}`}
-                onClick={() => setDrawerView('calendar')}
-                title="Ver calendário do cliente"
-              >
-                <CalendarIcon className="h-3.5 w-3.5" />
-                Calendário
-              </button>
-              <button
-                className={`drawer-calendar-btn${drawerView === 'history' ? ' active' : ''}`}
-                onClick={() => setDrawerView('history')}
-                title="Ver histórico do fluxo"
-              >
-                <History className="h-3.5 w-3.5" />
-                Histórico
+                {isFullscreen ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
               </button>
             </div>
-            <CopyLinkButton
-              path={`/entregas?drawer=${workflowId}`}
-              label="Copiar link do fluxo"
-              className="drawer-close-btn"
-            />
             <button
-              className="drawer-close-btn drawer-fullscreen-btn"
-              onClick={toggleFullscreen}
-              title={isFullscreen ? 'Recolher' : 'Expandir'}
+              className="drawer-close-btn drawer-dismiss-btn"
+              onClick={onClose}
+              title="Fechar"
             >
-              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              <X className="h-5 w-5" />
             </button>
           </div>
-          <button className="drawer-close-btn drawer-dismiss-btn" onClick={onClose} title="Fechar">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        )}
 
         {/* Posts section */}
         <div
           ref={bodyRef}
-          className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}`}
+          className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}${isPhone ? ' phone-ent-fluxo__body' : ''}`}
+          {...(isPhone
+            ? {
+                id: phonePanelId,
+                role: 'tabpanel',
+                'aria-labelledby': `${phonePanelId}-${drawerView}`,
+              }
+            : {})}
         >
           {drawerView === 'calendar' ? (
             <WorkflowCalendarView
@@ -1012,32 +1081,46 @@ export function WorkflowDrawer({
             <WorkflowHistoryView workflowId={workflowId} />
           ) : (
             <>
-              <div className="drawer-section-header">
-                <span className="drawer-section-title">
-                  Posts
-                  {clientFacingCount > 0 && (
-                    <span className="drawer-post-count">
-                      {approvedCount} de {clientFacingCount} aprovados pelo cliente
-                    </span>
-                  )}
-                  {awaitingAutoScheduleCount > 0 && (
-                    <button
-                      type="button"
-                      className="auto-schedule-badge auto-schedule-badge--action"
-                      onClick={() => setBatchScheduleWfId(workflowId)}
-                      title="Agendar de uma vez os posts aprovados que ainda têm data válida."
-                    >
-                      <CalendarClock className="h-3 w-3" aria-hidden="true" />
-                      {awaitingAutoScheduleCount} aguardando agendamento automático
-                    </button>
-                  )}
-                </span>
-                <button className="drawer-add-post-btn" onClick={handleAddPost}>
-                  <Plus className="h-3.5 w-3.5" /> Novo Post
-                </button>
-              </div>
+              {isPhone ? (
+                <FluxoPhonePostsToolbar
+                  mode={phoneListMode}
+                  onModeChange={changePhoneListMode}
+                  postsCount={posts.length}
+                  approvedCount={approvedCount}
+                  clientFacingCount={clientFacingCount}
+                  awaitingAutoScheduleCount={awaitingAutoScheduleCount}
+                  onBatchSchedule={() => setBatchScheduleWfId(workflowId)}
+                  onAddPost={handleAddPost}
+                  onSelectAll={selectAllPosts}
+                />
+              ) : (
+                <div className="drawer-section-header">
+                  <span className="drawer-section-title">
+                    Posts
+                    {clientFacingCount > 0 && (
+                      <span className="drawer-post-count">
+                        {approvedCount} de {clientFacingCount} aprovados pelo cliente
+                      </span>
+                    )}
+                    {awaitingAutoScheduleCount > 0 && (
+                      <button
+                        type="button"
+                        className="auto-schedule-badge auto-schedule-badge--action"
+                        onClick={() => setBatchScheduleWfId(workflowId)}
+                        title="Agendar de uma vez os posts aprovados que ainda têm data válida."
+                      >
+                        <CalendarClock className="h-3 w-3" aria-hidden="true" />
+                        {awaitingAutoScheduleCount} aguardando agendamento automático
+                      </button>
+                    )}
+                  </span>
+                  <button className="drawer-add-post-btn" onClick={handleAddPost}>
+                    <Plus className="h-3.5 w-3.5" /> Novo Post
+                  </button>
+                </div>
+              )}
 
-              {selectedPostIds.size > 0 && (
+              {!isPhone && selectedPostIds.size > 0 && (
                 <div className="drawer-selection-bar" data-testid="drawer-selection-bar">
                   <span className="drawer-selection-bar-count">
                     {selectedPostIds.size} selecionado{selectedPostIds.size === 1 ? '' : 's'}
@@ -1092,7 +1175,7 @@ export function WorkflowDrawer({
                     items={orderedPosts.map((p) => p.id!)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div className="drawer-posts-list">
+                    <div className={`drawer-posts-list${isPhone ? ' phone-ent-fluxo__list' : ''}`}>
                       {orderedPosts.map((post) => (
                         <SortablePostItem
                           key={post.id}
@@ -1161,11 +1244,20 @@ export function WorkflowDrawer({
                           onRejectSuggestion={handleRejectSuggestion}
                           showAutoScheduleBadge={offerAutoSchedule(post)}
                           onAutoScheduleClick={() => maybeNudge(post)}
+                          phoneListMode={isPhone ? phoneListMode : undefined}
                         />
                       ))}
                     </div>
                   </SortableContext>
                 </DndContext>
+              )}
+
+              {isPhone && phoneListMode === 'select' && (
+                <FluxoPhoneSelectionBar
+                  count={selectedPostIds.size}
+                  onMove={() => setMoveTarget(Array.from(selectedPostIds))}
+                  onDetach={() => openDetachConfirm(Array.from(selectedPostIds))}
+                />
               )}
             </>
           )}
@@ -1389,6 +1481,8 @@ interface SortablePostItemProps {
   showAutoScheduleBadge: boolean;
   /** Abre o aviso para este post. */
   onAutoScheduleClick: () => void;
+  /** Set only on phones (< 768px): the trigger row becomes FluxoPhonePostRow in this mode. */
+  phoneListMode?: FluxoPhoneListMode;
 }
 
 function SortablePostItem({
@@ -1442,6 +1536,7 @@ function SortablePostItem({
   onRejectSuggestion,
   showAutoScheduleBadge,
   onAutoScheduleClick,
+  phoneListMode,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
@@ -1470,129 +1565,160 @@ function SortablePostItem({
       className={`drawer-post-item${isExpanded ? ' expanded' : ''}`}
     >
       {/* Accordion trigger */}
-      <div className="drawer-post-trigger" onClick={onToggle}>
-        <div className="drawer-post-trigger-left">
-          <Checkbox
-            className="drawer-post-select-checkbox"
-            checked={isSelected}
-            onCheckedChange={(checked) => onSelectChange(checked === true)}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`Selecionar ${post.titulo || 'post sem título'}`}
-          />
-          <span
-            className="drawer-drag-handle"
-            {...attributes}
-            {...listeners}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GripVertical className="h-4 w-4" />
-          </span>
-          {isExpanded ? (
-            <ChevronDown className="h-4 w-4 drawer-post-chevron" />
-          ) : (
-            <ChevronRight className="h-4 w-4 drawer-post-chevron" />
-          )}
-          <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
-          <span
-            className={`drawer-post-visibility${isExternallyVisible ? ' is-visible' : ''}`}
-            title={
-              isExternallyVisible ? VISIBILITY_BADGE_LABEL.visible : VISIBILITY_BADGE_LABEL.internal
-            }
-            aria-label={
-              isExternallyVisible ? VISIBILITY_BADGE_LABEL.visible : VISIBILITY_BADGE_LABEL.internal
-            }
-          >
-            {isExternallyVisible ? (
-              <Eye className="h-3.5 w-3.5" />
-            ) : (
-              <EyeOff className="h-3.5 w-3.5" />
-            )}
-          </span>
-          <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
-          {hasMedia && (
-            <span className="drawer-post-media-badge" title="Mídia anexada">
-              <ImageIcon className="h-3.5 w-3.5" />
-            </span>
-          )}
-          {editSuggestion && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800">
-              Sugestão pendente
-            </span>
-          )}
-          {referenceCount > 0 && (
-            <Badge
-              variant="info"
-              size="sm"
-              className="inline-flex items-center gap-1"
-              title="Referências enviadas pelo cliente no Hub"
-            >
-              <Paperclip className="h-3 w-3" aria-hidden="true" />
-              {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
-            </Badge>
-          )}
-          {commentThreads.length > 0 && (
-            <span
-              className="drawer-post-comment-badge"
-              title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}
-            >
-              <MessageSquare className="h-3 w-3" />
-              {commentThreads.length}
-            </span>
-          )}
-        </div>
-        <div className="drawer-post-trigger-right" onClick={(e) => e.stopPropagation()}>
-          {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
-          <PostTimelinePopover
-            post={post}
-            events={statusEvents}
-            approvals={approvals}
-            processEvents={processEvents}
-          />
-          {publishIso ? (
-            <span
-              className="drawer-post-date"
-              title={`${isPublished ? 'Publicado em' : 'Agendado para'} ${formatPostDateFull(publishIso)}`}
-            >
-              {formatPostDate(publishIso)}
-            </span>
-          ) : (
-            <span className="drawer-post-date drawer-post-date--empty">A definir</span>
-          )}
-          <PostStatusChip post={post} registry={statusRegistry} />
-          {showAutoScheduleBadge && (
-            <AutoScheduleBadge
-              onClick={onAutoScheduleClick}
-              needsDate={!isEligibleToScheduleNow(post.scheduled_at)}
+      {phoneListMode ? (
+        <FluxoPhonePostRow
+          post={post}
+          mode={phoneListMode}
+          hubUrl={hubUrl}
+          isExpanded={isExpanded}
+          isSaving={isSaving}
+          isSelected={isSelected}
+          hasMedia={hasMedia}
+          editSuggestion={editSuggestion}
+          referenceCount={referenceCount}
+          commentCount={commentThreads.length}
+          approvals={approvals}
+          statusEvents={statusEvents}
+          processEvents={processEvents}
+          showAutoScheduleBadge={showAutoScheduleBadge}
+          onAutoScheduleClick={onAutoScheduleClick}
+          dragHandleProps={{ ...attributes, ...listeners }}
+          onToggle={onToggle}
+          onSelectChange={onSelectChange}
+          onDuplicateRequest={onDuplicateRequest}
+          onMoveRequest={onMoveRequest}
+          onDetachRequest={onDetachRequest}
+          onDelete={onDelete}
+        />
+      ) : (
+        <div className="drawer-post-trigger" onClick={onToggle}>
+          <div className="drawer-post-trigger-left">
+            <Checkbox
+              className="drawer-post-select-checkbox"
+              checked={isSelected}
+              onCheckedChange={(checked) => onSelectChange(checked === true)}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Selecionar ${post.titulo || 'post sem título'}`}
             />
-          )}
-          <CopyPostLinkButton hubUrl={hubUrl} postId={post.id!} />
-          <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="drawer-kebab-btn" title="Mais ações">
-                <MoreVertical className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => copyAppLink(`/entregas?post=${post.id}`)}>
-                <Copy className="h-3.5 w-3.5" />
-                Copiar link do post
-              </DropdownMenuItem>
-              {onDuplicateRequest && (
-                // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
-                <DropdownMenuItem onClick={onDuplicateRequest} disabled={isSaving}>
-                  <CopyPlus className="h-3.5 w-3.5" />
-                  Duplicar post
-                </DropdownMenuItem>
+            <span
+              className="drawer-drag-handle"
+              {...attributes}
+              {...listeners}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="h-4 w-4" />
+            </span>
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 drawer-post-chevron" />
+            ) : (
+              <ChevronRight className="h-4 w-4 drawer-post-chevron" />
+            )}
+            <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
+            <span
+              className={`drawer-post-visibility${isExternallyVisible ? ' is-visible' : ''}`}
+              title={
+                isExternallyVisible
+                  ? VISIBILITY_BADGE_LABEL.visible
+                  : VISIBILITY_BADGE_LABEL.internal
+              }
+              aria-label={
+                isExternallyVisible
+                  ? VISIBILITY_BADGE_LABEL.visible
+                  : VISIBILITY_BADGE_LABEL.internal
+              }
+            >
+              {isExternallyVisible ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5" />
               )}
-              <DropdownMenuItem onClick={onMoveRequest}>Mover para outro fluxo</DropdownMenuItem>
-              <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </span>
+            <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+            {hasMedia && (
+              <span className="drawer-post-media-badge" title="Mídia anexada">
+                <ImageIcon className="h-3.5 w-3.5" />
+              </span>
+            )}
+            {editSuggestion && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800">
+                Sugestão pendente
+              </span>
+            )}
+            {referenceCount > 0 && (
+              <Badge
+                variant="info"
+                size="sm"
+                className="inline-flex items-center gap-1"
+                title="Referências enviadas pelo cliente no Hub"
+              >
+                <Paperclip className="h-3 w-3" aria-hidden="true" />
+                {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
+              </Badge>
+            )}
+            {commentThreads.length > 0 && (
+              <span
+                className="drawer-post-comment-badge"
+                title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}
+              >
+                <MessageSquare className="h-3 w-3" />
+                {commentThreads.length}
+              </span>
+            )}
+          </div>
+          <div className="drawer-post-trigger-right" onClick={(e) => e.stopPropagation()}>
+            {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
+            <PostTimelinePopover
+              post={post}
+              events={statusEvents}
+              approvals={approvals}
+              processEvents={processEvents}
+            />
+            {publishIso ? (
+              <span
+                className="drawer-post-date"
+                title={`${isPublished ? 'Publicado em' : 'Agendado para'} ${formatPostDateFull(publishIso)}`}
+              >
+                {formatPostDate(publishIso)}
+              </span>
+            ) : (
+              <span className="drawer-post-date drawer-post-date--empty">A definir</span>
+            )}
+            <PostStatusChip post={post} registry={statusRegistry} />
+            {showAutoScheduleBadge && (
+              <AutoScheduleBadge
+                onClick={onAutoScheduleClick}
+                needsDate={!isEligibleToScheduleNow(post.scheduled_at)}
+              />
+            )}
+            <CopyPostLinkButton hubUrl={hubUrl} postId={post.id!} />
+            <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="drawer-kebab-btn" title="Mais ações">
+                  <MoreVertical className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => copyAppLink(`/entregas?post=${post.id}`)}>
+                  <Copy className="h-3.5 w-3.5" />
+                  Copiar link do post
+                </DropdownMenuItem>
+                {onDuplicateRequest && (
+                  // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+                  <DropdownMenuItem onClick={onDuplicateRequest} disabled={isSaving}>
+                    <CopyPlus className="h-3.5 w-3.5" />
+                    Duplicar post
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={onMoveRequest}>Mover para outro fluxo</DropdownMenuItem>
+                <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Accordion content */}
       <PostEditorBody

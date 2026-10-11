@@ -25,4 +25,9 @@ describe('shouldAutoStartTour', () => {
     expect(shouldAutoStartTour({ ...BASE, tourDone: true })).toBe(false);
     expect(shouldAutoStartTour({ ...BASE, showExample: false })).toBe(false);
   });
+
+  it('não inicia no celular (abaixo de 768px a tour ancora colunas do desktop)', () => {
+    expect(shouldAutoStartTour({ ...BASE, isPhone: true })).toBe(false);
+    expect(shouldAutoStartTour({ ...BASE, isPhone: false })).toBe(true);
+  });
 });

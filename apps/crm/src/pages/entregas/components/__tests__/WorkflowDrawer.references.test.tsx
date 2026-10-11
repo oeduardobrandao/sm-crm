@@ -8,6 +8,9 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // Client references in the WorkflowDrawer: the collapsed-row badge (counts query) and, on an
 // expanded post, the section under the media plus chips on the client's correction bubble.
 
+// Desktop layout; the phone branch has its own suite (WorkflowDrawerPhone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 
@@ -35,6 +38,8 @@ vi.mock('@dnd-kit/core', () => ({
   DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   closestCenter: () => null,
   PointerSensor: class {},
+  MouseSensor: class {},
+  TouchSensor: class {},
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
 }));
