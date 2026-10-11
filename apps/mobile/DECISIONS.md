@@ -137,23 +137,26 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 - **Supersedes D8's third PR:** the CRM work is now five PRs (C1 kit + navigation, C2 saved views,
   C3 Entregas, C4 post editor, D native module), see PLAN.md.
 
-## D17. Gate the phone layout by width, not by `isNativeApp()`
+## D17. Gate the phone layout by width (below 768px), not by `isNativeApp()`
 
-- **Chosen:** the iOS-style layout renders at 900px and below, the breakpoint `MobileNav` and
-  `EntregasPage` (`useIsDesktop(901)`) already use. Same look in the app, mobile Safari and Android
-  browsers. Desktop is unchanged.
-- **Rejected:** app-only layout (two phone layouts to maintain; mobile web stays broken); a new
-  breakpoint (a third one would leave 768-900px half converted).
+- **Chosen:** the iOS-style layout renders below 768px, the breakpoint `MobileNav`
+  (`style.css` `max-width: 767px`) and `AppLayout`'s `useIsMobile` already use. Same look in the
+  app, mobile Safari and Android browsers. Tablet (768-1100px, sidebar drawer) and desktop are
+  unchanged. Every iPhone is under 768px in portrait. In landscape most iPhones are wider and
+  get the tablet layout; the app can lock portrait on iPhone (E1) if that looks wrong.
+- **Rejected:** app-only layout (two phone layouts to maintain; mobile web stays broken); moving
+  the phone breakpoint to 900px to match `EntregasPage`'s `useIsDesktop(901)` (changes the iPad
+  portrait layout for every page, and the plan review found nothing that needs it). Entregas'
+  existing ≤900px sheets (Filtros, Responsáveis) keep working in 768-900.
 - **Cost accepted:** Android browsers get an iOS-flavoured look. An Android app later can swap the
   phone tokens; the components don't change.
-- **Tablets:** 768-900px gets the phone layout with content centred, as it already gets the
-  bottom nav.
 
 ## D18. Tab bar: Início, Entregas, Agenda, Mensagens, Mais
 
 - **Chosen:** the phone tab bar becomes Início (dashboard), Entregas, Agenda, Mensagens, Mais.
   Clientes and Analytics move to the top of Mais. When a tab's feature or permission is off for
-  the user (Agenda needs `feature_agenda`, off on Free; Mensagens needs `feature_mensagens` and
+  the user (Agenda: `nav-data.ts` has no feature key for `calendario` today, so C1.3 adds
+  `calendario: 'feature_agenda'` (off on Free); Mensagens needs `feature_mensagens` and
   `clientes.ver`), Clientes then Analytics take the free slot, so the bar always has five items.
 - **Rejected:** keeping Dashboard / Clientes / Analytics / Entregas / Mais. Agenda and Mensagens
   are what staff open on a phone between meetings; Analytics is desk work.
@@ -163,6 +166,8 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 
 - **Chosen:** new table `entregas_saved_views` (per user, per workspace, RLS own rows). The
   existing `localStorage` views are imported once on first load and then ignored.
+- **RLS:** `user_id = auth.uid() AND conta_id = get_my_conta_id()` on USING and WITH CHECK, so a
+  view can't be written into a workspace the user left.
 - **Rejected:** keep `localStorage` (views don't follow the user from desktop to the app); a column
   on `membros` (column-grant allowlist, migration 20260728000002); shared workspace views (a
   sharing model nobody asked for yet; the table can grow a `shared` flag later).
@@ -171,16 +176,22 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 
 - **Lista and posts list** render as grouped rows with swipe actions on phones; the tables stay on
   desktop.
-- **Drag on touch:** `TouchSensor` with `delay: 250, tolerance: 8` next to `PointerSensor`, the
-  pattern `WorkflowCalendarView` and `PostsKanbanView` already use. Added to `KanbanView`,
-  `WorkflowDrawer`, `SortableEtapaList` and `PostMediaGallery`.
-- **Fluxos board** shows one etapa at a time with chips; moves stay adjacent-only with the same
-  confirmations, shown as action sheets. **Status board** drops onto status chips.
+- **Long-press is the menu; drag is explicit.** On phone cards a hold opens the context menu.
+  Drag starts from a handle or in a "Reordenar" mode, using `TouchSensor` (`delay: 250,
+  tolerance: 8`, the values `WorkflowCalendarView` and `PostsKanbanView` use) on `KanbanView`,
+  `WorkflowDrawer`, `SortableEtapaList` and `PostMediaGallery`. Rejected: long-press-to-drag
+  everywhere, because dnd-kit's 250 ms sensor fires before any long-press menu and the card menu
+  would be unreachable.
+- **Fluxos board** shows one etapa at a time with chips, rendering only that column; moves stay
+  adjacent-only with the same confirmations, shown as action sheets. **Status board** drops onto
+  status targets that expand from the chip row into a grid while dragging.
+- **Guided tour** is off below 768px: its anchors are desktop columns.
 
 ## D21. Post editor: 4 tabs on phones, one page on desktop
 
 - **Chosen:** Conteúdo / Detalhes / Publicar / Comentários with a bottom bar whose primary action
-  follows the post status.
+  follows the post status. On phones the post opens as its own pushed screen with its own history
+  entry; on desktop it stays expanded inline in the Fluxo or standalone drawer.
 - **Rejected:** reviving PR #429 (5 tabs on desktop too; closed, 233 commits behind main). Used as
   reference only.
 
