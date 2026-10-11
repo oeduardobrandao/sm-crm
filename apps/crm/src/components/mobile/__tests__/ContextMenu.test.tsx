@@ -147,13 +147,19 @@ describe('ContextMenu focus return', () => {
 });
 
 describe('ContextMenu immediate actions', () => {
-  it('runs an `immediate` action inside the tap and closes the menu', async () => {
-    const onOpenLink = vi.fn();
+  it('runs an immediate action inside the tap, before closing; others after closing', () => {
+    const calls: string[] = [];
     render(
       <MemoryRouter>
         <ContextMenu
-          label="Ações do cliente"
-          sections={[[{ label: 'Abrir no Notion', onSelect: onOpenLink, immediate: true }]]}
+          label="Ações do arquivo"
+          onOpenChange={(open) => calls.push(open ? 'open' : 'close')}
+          sections={[
+            [
+              { label: 'Download', immediate: true, onSelect: () => calls.push('download') },
+              { label: 'Renomear', onSelect: () => calls.push('rename') },
+            ],
+          ]}
         >
           {({ triggerProps }) => (
             <button {...triggerProps} aria-label="Mais ações">
@@ -164,8 +170,12 @@ describe('ContextMenu immediate actions', () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir no Notion' }));
-    expect(onOpenLink).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Download' }));
+    expect(calls).toEqual(['open', 'download', 'close']);
+
+    calls.length = 0;
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Renomear' }));
+    expect(calls).toEqual(['open', 'close', 'rename']);
   });
 });

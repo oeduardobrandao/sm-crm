@@ -1,0 +1,148 @@
+/* ===== IDEIAS LIST ON PHONES (PLAN F2c, mockup FIdeias) ====================================
+   Rendered only by IdeiasPage's phone branch (below 768px). Every class is `phone-ideias*`
+   and reads the kit's `--phone-*` tokens; nothing here redefines a shared token. */
+
+.phone-ideias {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-ideias__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin: 0 0 12px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-ideias__search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-ideias__search input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  /* 16px keeps iOS Safari from zooming into the field. */
+  font-size: 16px;
+  outline: none;
+}
+.phone-ideias__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  min-width: 0;
+}
+.phone-ideias__summary .phone-chip-row {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.phone-ideias__count {
+  flex-shrink: 0;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+  white-space: nowrap;
+}
+
+/* ---- Rows ---- */
+.phone-ideias__list {
+  margin: 0 0 20px;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-ideias__row:not(:last-child) {
+  border-bottom: 1px solid var(--phone-separator);
+}
+.phone-ideias__row-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 16px;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-ideias__row-button:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-ideias__row-button:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.phone-ideias__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.phone-ideias__title {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-ideias__line {
+  overflow: hidden;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-ideias__aside {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.phone-ideias__date {
+  font-size: var(--phone-text-footnote);
+  font-variant-numeric: tabular-nums;
+  color: var(--phone-label-secondary);
+}
+
+/* ---- Empty / loading ---- */
+.phone-ideias__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+.phone-ideias__empty svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* ---- Período (filters sheet) ---- */
+.phone-ideias__period {
+  margin-top: 12px;
+}
+.phone-ideias__period .phone-group {
+  margin: 0;
+}

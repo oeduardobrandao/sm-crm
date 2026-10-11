@@ -53,7 +53,7 @@ interface FileGridProps {
   canEdit: boolean;
 }
 
-function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
+export function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
   return [...folders].sort((a, b) => {
     switch (sortBy) {
       case 'size':
@@ -67,7 +67,7 @@ function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
   });
 }
 
-function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
+export function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
   return [...files].sort((a, b) => {
     switch (sortBy) {
       case 'size':
