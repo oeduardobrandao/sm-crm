@@ -18,6 +18,11 @@ import { useWorkspaceUsage } from '../../../hooks/useWorkspaceUsage';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { UsageMeter } from '../../../components/usage/UsageMeter';
 import { formatStorageBytes } from '../../../components/usage/usage-meter-state';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { GroupedList, Cell } from '@/components/mobile/GroupedList';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { BottomActionBar } from '@/components/mobile/BottomActionBar';
+import { ConfigPhoneScreen } from '../phone/ConfigPhoneScreen';
 
 const HINT: CSSProperties = {
   fontSize: '0.8rem',
@@ -114,6 +119,7 @@ const thresholdToStr = (v: number | null) => (v === null ? 'null' : String(v));
 
 export default function ArmazenamentoTab() {
   const isOwner = useIsWorkspaceOwner();
+  const isPhone = !useIsDesktop(768);
   const queryClient = useQueryClient();
 
   const {
@@ -173,6 +179,17 @@ export default function ArmazenamentoTab() {
 
   // configTabs `roles` only hides the tab from the nav; this is the real gate.
   if (!isOwner) {
+    if (isPhone) {
+      return (
+        <ConfigPhoneScreen title="Armazenamento">
+          <GroupedList aria-label="Armazenamento">
+            <li className="phone-cell phone-config-block">
+              Somente o dono do workspace pode ver e alterar estas configurações.
+            </li>
+          </GroupedList>
+        </ConfigPhoneScreen>
+      );
+    }
     return (
       <div>
         <h3 className="config-title">Armazenamento</h3>
@@ -203,6 +220,135 @@ export default function ArmazenamentoTab() {
   const previewCount = preview?.files_count ?? 0;
 
   const lastRun = settings?.storage_autoclean_last_run_at;
+
+  const estimate = previewLoading ? (
+    'Calculando estimativa...'
+  ) : (
+    <>
+      Com essas regras, hoje {previewCount === 1 ? 'seria liberado' : 'seriam liberados'} ~
+      {formatStorageBytes(previewBytes)} ({previewCount}{' '}
+      {previewCount === 1 ? 'arquivo' : 'arquivos'}).
+    </>
+  );
+  const lastRunText = lastRun
+    ? `Última limpeza: ${new Date(lastRun).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })} · ${settings?.storage_autoclean_last_files ?? 0} ${
+        (settings?.storage_autoclean_last_files ?? 0) === 1 ? 'arquivo' : 'arquivos'
+      } · ${formatStorageBytes(settings?.storage_autoclean_last_bytes ?? 0)} liberados`
+    : 'Nunca executada';
+
+  if (isPhone) {
+    return (
+      <ConfigPhoneScreen
+        title="Armazenamento"
+        subtitle="Acompanhe o uso do workspace e libere espaço automaticamente."
+      >
+        <GroupedList
+          header="Uso de armazenamento"
+          footer="Espaço ocupado por imagens, vídeos e documentos do workspace."
+        >
+          <li className="phone-cell phone-config-block">
+            <UsageMeter
+              label="Armazenamento"
+              used={usedBytes}
+              limit={limitsLoading ? usedBytes || 1 : quota}
+              format={formatStorageBytes}
+              showUpgradeCta={isOwner}
+              subText={
+                planName && quota !== null
+                  ? `Seu plano ${planName} inclui ${formatStorageBytes(quota)}.`
+                  : undefined
+              }
+            />
+          </li>
+        </GroupedList>
+
+        <GroupedList
+          header="Limpeza automática"
+          footer="Remove as mídias de posts já publicados no Instagram e no TikTok. O post continua no histórico, com o link da publicação. Arquivos da página Arquivos, documentos e mídias de posts não publicados nunca são removidos."
+        >
+          <Cell
+            label="Ativar limpeza automática"
+            disabled={controlsDisabled}
+            switch={{ checked: enabled, onCheckedChange: setEnabled }}
+          />
+        </GroupedList>
+
+        <GroupedList
+          aria-label="Regras da limpeza"
+          footer={
+            storageUnlimited
+              ? 'Contado a partir da publicação do post.'
+              : 'Contado a partir da publicação do post. A limpeza roda uma vez por dia, de madrugada.'
+          }
+        >
+          <PickerCell<number>
+            label="Quando remover"
+            sheetTitle="Quando remover a mídia após a publicação"
+            options={delayOptions.map((o) => ({ value: o.value, label: o.label }))}
+            value={delayDays}
+            onChange={(v) => {
+              if (v !== null) setDelayDays(v);
+            }}
+            disabled={controlsDisabled || !enabled}
+          />
+          {!storageUnlimited && (
+            <PickerCell<number>
+              label="Somente acima de"
+              sheetTitle="Somente quando o uso passar de"
+              options={thresholdOptions
+                .filter((o): o is { value: number; label: string } => o.value !== null)
+                .map((o) => ({ value: o.value, label: o.label }))}
+              emptyOption={{ label: 'Sempre' }}
+              value={thresholdPct}
+              onChange={setThresholdPct}
+              disabled={controlsDisabled || !enabled}
+            />
+          )}
+        </GroupedList>
+
+        <GroupedList
+          header="Estimativa"
+          footer="Estimativa ao vivo. Arquivos usados em ideias ou em posts ainda não publicados ficam de fora."
+        >
+          <li className="phone-cell phone-config-block" aria-live="polite">
+            {estimate}
+          </li>
+          <li className="phone-cell phone-config-block">
+            <span style={{ color: 'var(--phone-label-secondary)' }}>{lastRunText}</span>
+          </li>
+        </GroupedList>
+
+        {settingsFailed && (
+          <p
+            role="alert"
+            className="phone-group__footer"
+            style={{ color: 'var(--phone-destructive)' }}
+          >
+            Não foi possível carregar as configurações de armazenamento. Recarregue a página. Salvar
+            agora sobrescreveria a sua configuração com os valores padrão.
+          </p>
+        )}
+
+        <BottomActionBar aboveTabBar>
+          <button
+            type="button"
+            className="phone-config-primary"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || controlsDisabled}
+            aria-busy={saveMutation.isPending || undefined}
+          >
+            Salvar alterações
+          </button>
+        </BottomActionBar>
+      </ConfigPhoneScreen>
+    );
+  }
 
   return (
     <div>

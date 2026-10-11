@@ -22,6 +22,9 @@ vi.mock('../../../../lib/supabase', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// Desktop markup; the phone branch has its own suite (PerfilTab.phone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import PerfilTab from '../PerfilTab';
 
 function renderTab() {

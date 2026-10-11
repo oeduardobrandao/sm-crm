@@ -105,3 +105,69 @@
   min-height: var(--phone-row-min);
   padding: 0 16px;
 }
+
+/* Primary action of a phone screen (in a BottomActionBar or a sheet's footer). */
+.phone-kit .phone-config-primary,
+.phone-config-primary {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 50px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-config-primary--block {
+  width: 100%;
+}
+.phone-config-primary--destructive {
+  background: var(--phone-destructive);
+  color: #ffffff;
+}
+.phone-config-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Search field above a list (same look as the kit's CheckList search). */
+.phone-config-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin: 0 0 16px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-config-search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-config-search input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+
+/* A segmented control placed above a list, with the gap the groups use. */
+.phone-config-segmented {
+  margin: 0 0 12px;
+}
