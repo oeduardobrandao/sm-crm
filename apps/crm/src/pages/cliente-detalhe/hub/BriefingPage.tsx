@@ -20,12 +20,17 @@ import {
   ChevronDown,
   ChevronRight,
   LayoutTemplate,
+  Check,
+  MoreHorizontal,
+  ArrowUpDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DndContext,
   PointerSensor,
   KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCenter,
@@ -71,6 +76,14 @@ import {
 } from '@/lib/briefingReorder';
 import { HubRoleGate } from './HubRoleGate';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
+import { SegmentedControl } from '@/components/mobile/SegmentedControl';
+import { PhoneEmptyCard, PhoneRow, editRemoveActions } from '../phone/PhoneRows';
+import { PhoneInlineEdit, PhoneSortableRow } from '../phone/PhoneEditing';
+import { ClientePhoneNavActions, useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 
 type BriefingFilter = 'todas' | 'sem-resposta' | 'respondidas';
 
@@ -134,12 +147,13 @@ function downloadTextFile(filename: string, mime: string, text: string) {
 export default function BriefingPage() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const qc = useQueryClient();
+  const isPhone = !useIsDesktop(768);
 
   if (!cliente.conta_id) return null;
 
   return (
     <div className="hub-page">
-      <header className="hub-page__head">
+      <header className="hub-page__head" hidden={isPhone}>
         <div>
           <h2 className="hub-page__title">Briefing</h2>
           <p className="hub-page__sub">
@@ -158,6 +172,7 @@ export default function BriefingPage() {
           key={clienteId}
           clienteId={clienteId}
           contaId={cliente.conta_id}
+          clienteNome={cliente.nome}
           onSaved={() => qc.invalidateQueries({ queryKey: ['hub-briefing-questions', clienteId] })}
         />
       </HubRoleGate>
@@ -168,10 +183,12 @@ export default function BriefingPage() {
 function BriefingEditor({
   clienteId,
   contaId,
+  clienteNome,
   onSaved,
 }: {
   clienteId: number;
   contaId: string;
+  clienteNome?: string;
   onSaved: () => void;
 }) {
   const qc = useQueryClient();
@@ -213,6 +230,23 @@ function BriefingEditor({
   // briefing com dezenas de respostas em áudio não pode disparar todas essas
   // chamadas só porque a página abriu -- só a seção que o usuário expandir.
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
+  // Phones (below 768px): the briefing's title is the picker, so the section shell's
+  // large title steps aside; the rest of the desktop toolbar lives in a "…" sheet.
+  const isPhone = !useIsDesktop(768);
+  useClientePhoneHeader({ hideTitle: isPhone });
+  const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
+  const [phonePickerOpen, setPhonePickerOpen] = useState(false);
+  const [phoneTemplatesOpen, setPhoneTemplatesOpen] = useState(false);
+  const [phoneRemoveOpen, setPhoneRemoveOpen] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  // Reordenar on phones: a drag starts only from a grip, and only after a short hold, so
+  // a swipe over the list keeps scrolling (MouseSensor keeps it usable with a mouse).
+  const phoneSensors = useSensors(
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Default selection: first briefing once loaded (or when the selected one is deleted).
   useEffect(() => {
@@ -290,6 +324,7 @@ function BriefingEditor({
     setEditingSectionName(null);
     setFilter('todas');
     setExpandedSections(new Set());
+    setReordering(false);
   }
 
   async function handleCreateBriefing() {
@@ -320,9 +355,10 @@ function BriefingEditor({
     }
   }
 
-  async function handleDeleteBriefing() {
+  async function handleDeleteBriefing(confirmed = false) {
     if (!selectedId) return;
     if (
+      !confirmed &&
       !window.confirm(
         'Remover este briefing e todas as suas perguntas? Essa ação não pode ser desfeita.',
       )
@@ -712,6 +748,459 @@ function BriefingEditor({
     });
   }
 
+  if (isPhone) {
+    const questionRow = (q: HubBriefingQuestionRow) =>
+      editingId === q.id ? (
+        <PhoneInlineEdit
+          key={q.id}
+          label="Editar pergunta"
+          value={editText}
+          onChange={setEditText}
+          onSave={() => void handleSaveEdit(q.id)}
+          onCancel={() => setEditingId(null)}
+        />
+      ) : (
+        <PhoneRow
+          key={q.id}
+          title={q.question}
+          subtitle={
+            isAnswered(q) ? (
+              <span className="phone-cli-brief__answer">{q.answer}</span>
+            ) : (
+              <span className="phone-cli-brief__answer--empty">Sem resposta ainda</span>
+            )
+          }
+          meta={<BriefingAudioPlayer question={q} />}
+          menuLabel={`Ações da pergunta ${q.question}`}
+          actions={editRemoveActions(
+            () => {
+              setEditingId(q.id);
+              setEditText(q.question);
+            },
+            () => void handleDelete(q.id),
+          )}
+        />
+      );
+
+    const addRow = (sectionKey: string | null) => (
+      <PhoneInlineEdit
+        key="__add"
+        label="Nova pergunta"
+        placeholder="Nova pergunta..."
+        saveLabel="Adicionar"
+        autoFocus={false}
+        value={newQuestions[sectionKey ?? ''] ?? ''}
+        onChange={(v) => setNewQuestions((prev) => ({ ...prev, [sectionKey ?? '']: v }))}
+        onSave={() => void handleAddQuestion(sectionKey)}
+        saving={addingFor === (sectionKey ?? '')}
+      />
+    );
+
+    const menuActions: ActionSheetAction[] = selectedBriefing
+      ? [
+          {
+            label: 'Renomear',
+            icon: <Pencil aria-hidden="true" />,
+            onSelect: () => {
+              setRenaming(true);
+              setRenameText(selectedBriefing.title);
+            },
+          },
+          {
+            label: 'Importar CSV',
+            icon: <Upload aria-hidden="true" />,
+            disabled: importingCsv,
+            // The file picker only opens inside the tap on iOS Safari.
+            immediate: true,
+            onSelect: handleCSVImport,
+          },
+          {
+            label: 'Salvar como template',
+            icon: <LayoutTemplate aria-hidden="true" />,
+            disabled: !canExport,
+            onSelect: handleSaveAsTemplate,
+          },
+          {
+            label: 'Copiar como Markdown',
+            icon: <Copy aria-hidden="true" />,
+            disabled: !canExport,
+            immediate: true,
+            onSelect: () => void handleCopyMarkdown(),
+          },
+          {
+            label: 'Copiar como CSV',
+            icon: <Copy aria-hidden="true" />,
+            disabled: !canExport,
+            immediate: true,
+            onSelect: () => void handleCopyCSV(),
+          },
+          {
+            label: 'Baixar CSV',
+            icon: <Download aria-hidden="true" />,
+            disabled: !canExport,
+            immediate: true,
+            onSelect: handleDownloadCSV,
+          },
+          {
+            label: 'Reordenar',
+            icon: <ArrowUpDown aria-hidden="true" />,
+            disabled: briefingQuestions.length < 2,
+            onSelect: () => {
+              setEditingId(null);
+              setReordering(true);
+            },
+          },
+          {
+            label: 'Remover briefing',
+            icon: <Trash2 aria-hidden="true" />,
+            destructive: true,
+            onSelect: () => setPhoneRemoveOpen(true),
+          },
+        ]
+      : [];
+
+    const pickerActions: ActionSheetAction[] = [
+      ...briefings.map((b) => ({
+        label: (
+          <span className="phone-cli-brief__picker">
+            {b.title || 'Sem título'}
+            {b.id === selectedId && <Check aria-label="selecionado" />}
+          </span>
+        ),
+        onSelect: () => {
+          setSelectedId(b.id);
+          resetBriefingViewState();
+        },
+      })),
+      {
+        label: 'Novo briefing',
+        icon: <Plus aria-hidden="true" />,
+        onSelect: () => void handleCreateBriefing(),
+      },
+      {
+        label: 'Usar template',
+        icon: <LayoutTemplate aria-hidden="true" />,
+        disabled: applying || templates.length === 0,
+        onSelect: () => setPhoneTemplatesOpen(true),
+      },
+      { label: 'Templates', onSelect: () => setTemplatesOpen(true) },
+    ];
+
+    const titleText = selectedBriefing ? selectedBriefing.title || 'Sem título' : 'Briefing';
+
+    return (
+      <div className="phone-cli-brief">
+        {selectedBriefing && (
+          <ClientePhoneNavActions>
+            <PhoneIconButton
+              label="Mais ações do briefing"
+              aria-haspopup="dialog"
+              onClick={() => setPhoneMenuOpen(true)}
+            >
+              <MoreHorizontal aria-hidden="true" />
+            </PhoneIconButton>
+          </ClientePhoneNavActions>
+        )}
+
+        <header className="phone-kit phone-large-title phone-cli-brief__title">
+          <h1 className="phone-large-title__title">
+            <button
+              type="button"
+              className="phone-cli-brief__picker"
+              aria-haspopup="dialog"
+              aria-label={`Trocar briefing: ${titleText}`}
+              onClick={() => setPhonePickerOpen(true)}
+            >
+              {titleText}
+              <ChevronDown aria-hidden="true" />
+            </button>
+          </h1>
+          <p className="phone-large-title__subtitle">
+            {clienteNome ? `Briefing de ${clienteNome}` : 'Briefing'}
+          </p>
+        </header>
+
+        {renaming && selectedBriefing && (
+          <PhoneInlineEdit
+            as="div"
+            label="Nome do briefing"
+            value={renameText}
+            onChange={setRenameText}
+            onSave={() => void handleRenameBriefing()}
+            onCancel={() => setRenaming(false)}
+          />
+        )}
+
+        {importingCsv && (
+          <div className="csv-progress mb-3" role="progressbar" aria-label="Importando CSV" />
+        )}
+
+        {!selectedBriefing ? (
+          <PhoneEmptyCard
+            title="Nenhum briefing ainda."
+            hint="Toque no título para criar um briefing ou usar um template."
+          />
+        ) : reordering ? (
+          <>
+            <div className="phone-cli-reorder-bar">
+              <span>Segure e arraste pelas alças para reordenar.</span>
+              <button
+                type="button"
+                className="phone-cli-cal__step"
+                onClick={() => setReordering(false)}
+              >
+                Concluir
+              </button>
+            </div>
+            {allNamedSections.length > 1 && (
+              <section className="phone-kit phone-group">
+                <h2 className="phone-group__header">Seções</h2>
+                <DndContext
+                  sensors={phoneSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSectionDragEnd}
+                >
+                  <SortableContext
+                    items={allNamedSections.map((sec) => SECTION_PREFIX + sec.name)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <ul className="phone-group__list">
+                      {allNamedSections.map((sec) => (
+                        <PhoneSortableRow
+                          key={sec.name}
+                          id={SECTION_PREFIX + sec.name}
+                          handleLabel={`Reordenar seção ${sec.name}`}
+                        >
+                          {sec.name}
+                        </PhoneSortableRow>
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              </section>
+            )}
+            {allSections.map((sec) => (
+              <section key={sec.name || '__none'} className="phone-kit phone-group">
+                <h2 className="phone-group__header">{sec.name || 'Sem seção'}</h2>
+                <DndContext
+                  sensors={phoneSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => handleQuestionDragEnd(sec.name, e)}
+                >
+                  <SortableContext
+                    items={sec.questions.map((q) => q.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <ul className="phone-group__list">
+                      {sec.questions.map((q) => (
+                        <PhoneSortableRow
+                          key={q.id}
+                          id={q.id}
+                          handleLabel={`Reordenar pergunta ${q.question}`}
+                        >
+                          {q.question}
+                        </PhoneSortableRow>
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              </section>
+            ))}
+          </>
+        ) : (
+          <>
+            <SegmentedControl
+              aria-label="Filtrar perguntas"
+              className="phone-cli-brief__filters"
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: 'todas', label: `Todas ${totalCount}` },
+                { value: 'sem-resposta', label: `Sem resposta ${unansweredCount}` },
+                { value: 'respondidas', label: `Respondidas ${answeredCount}` },
+              ]}
+            />
+            <div
+              className="phone-cli-brief__progress"
+              role="progressbar"
+              aria-label="Progresso do briefing"
+              aria-valuenow={answeredCount}
+              aria-valuemin={0}
+              aria-valuemax={totalCount}
+            >
+              <div
+                className="phone-cli-brief__progress-bar"
+                style={{ width: `${totalCount > 0 ? (answeredCount / totalCount) * 100 : 0}%` }}
+              />
+            </div>
+            <p className="phone-cli-brief__progress-label">
+              {answeredCount} de {totalCount} respondidas
+            </p>
+
+            {filteredQuestions.length === 0 && briefingQuestions.length > 0 && (
+              <PhoneEmptyCard title="Nenhuma pergunta corresponde a este filtro." />
+            )}
+
+            {(unsectioned || allNamedSections.length === 0) && (
+              <section className="phone-kit phone-group">
+                <ul className="phone-group__list" aria-label="Perguntas sem seção">
+                  {(unsectioned?.questions ?? []).map(questionRow)}
+                  {addRow(null)}
+                </ul>
+              </section>
+            )}
+
+            {filter === 'todas' && namedSections.length > 1 && (
+              <div className="phone-cli-brief__expand">
+                <button type="button" className="phone-cli-link-button" onClick={toggleAllSections}>
+                  {namedSections.every((sec) => expandedSections.has(sec.name))
+                    ? 'Recolher tudo'
+                    : 'Expandir tudo'}
+                </button>
+              </div>
+            )}
+
+            {namedSections.map((sec) => {
+              const isCollapsed = filter === 'todas' && !expandedSections.has(sec.name);
+              const answered = sec.questions.filter(isAnswered).length;
+              return (
+                <section key={sec.name} className="phone-kit phone-cli-brief__section">
+                  {editingSectionName === sec.name ? (
+                    <PhoneInlineEdit
+                      as="div"
+                      label="Nome da seção"
+                      value={sectionNameText}
+                      onChange={setSectionNameText}
+                      saving={savingSectionName}
+                      onSave={() => void handleRenameSection(sec)}
+                      onCancel={() => setEditingSectionName(null)}
+                    />
+                  ) : (
+                    <div className="phone-cli-brief__section-head">
+                      <button
+                        type="button"
+                        className="phone-cli-brief__toggle"
+                        aria-expanded={!isCollapsed}
+                        disabled={filter !== 'todas'}
+                        data-testid={`secao-toggle-${sec.name}`}
+                        onClick={() => toggleSection(sec.name)}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight aria-hidden="true" />
+                        ) : (
+                          <ChevronDown aria-hidden="true" />
+                        )}
+                        <span className="phone-cli-brief__toggle-name">{sec.name}</span>
+                        <span className="phone-cli-brief__toggle-count">
+                          {answered}/{sec.questions.length}
+                        </span>
+                      </button>
+                      <PhoneIconButton
+                        label={`Renomear seção ${sec.name}`}
+                        onClick={() => {
+                          setEditingSectionName(sec.name);
+                          setSectionNameText(sec.name);
+                        }}
+                      >
+                        <Pencil aria-hidden="true" />
+                      </PhoneIconButton>
+                    </div>
+                  )}
+                  {!isCollapsed && (
+                    <div className="phone-group">
+                      <ul className="phone-group__list" aria-label={`Perguntas de ${sec.name}`}>
+                        {sec.questions.map(questionRow)}
+                        {addRow(sec.name)}
+                      </ul>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+
+            {pendingSections.map((name) => (
+              <section key={name} className="phone-kit phone-group">
+                <h2 className="phone-group__header">{name}</h2>
+                <ul className="phone-group__list">{addRow(name)}</ul>
+              </section>
+            ))}
+
+            {addingSectionInput ? (
+              <PhoneInlineEdit
+                as="div"
+                label="Nome da seção"
+                placeholder="Nome da seção..."
+                saveLabel="Criar seção"
+                value={newSectionName}
+                onChange={setNewSectionName}
+                onSave={handleAddSection}
+                onCancel={() => {
+                  setAddingSectionInput(false);
+                  setNewSectionName('');
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="phone-cli-button phone-cli-button--secondary phone-cli-button--block"
+                onClick={() => setAddingSectionInput(true)}
+              >
+                <Plus aria-hidden="true" /> Nova seção
+              </button>
+            )}
+          </>
+        )}
+
+        <ActionSheet
+          open={phonePickerOpen}
+          onOpenChange={setPhonePickerOpen}
+          title="Briefings"
+          actions={pickerActions}
+        />
+        <ActionSheet
+          open={phoneTemplatesOpen}
+          onOpenChange={setPhoneTemplatesOpen}
+          title="Usar template"
+          actions={templates.map((tpl) => ({
+            label: `${tpl.title} (${(tpl.questions ?? []).length})`,
+            onSelect: () => void handleApplyTemplate(tpl.id),
+          }))}
+        />
+        <ActionSheet
+          open={phoneMenuOpen}
+          onOpenChange={setPhoneMenuOpen}
+          title={titleText}
+          hideTitle
+          actions={menuActions}
+        />
+        <PhoneConfirmSheet
+          open={phoneRemoveOpen}
+          title="Remover este briefing?"
+          message="Remove o briefing e todas as suas perguntas. Essa ação não pode ser desfeita."
+          actions={[
+            {
+              label: 'Remover briefing',
+              destructive: true,
+              onSelect: () => {
+                setPhoneRemoveOpen(false);
+                void handleDeleteBriefing(true);
+              },
+            },
+          ]}
+          onCancel={() => setPhoneRemoveOpen(false)}
+        />
+        <BriefingTemplatesModal
+          open={templatesOpen}
+          onOpenChange={(v) => {
+            setTemplatesOpen(v);
+            if (!v) setTemplateDraft(null);
+          }}
+          initialDraft={templateDraft}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="hub-briefing__shell">
       <aside className="hub-briefing__rail">
@@ -866,7 +1355,7 @@ function BriefingEditor({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={handleDeleteBriefing}
+                        onClick={() => void handleDeleteBriefing()}
                         aria-label="Remover briefing"
                       >
                         <Trash2 size={14} />
