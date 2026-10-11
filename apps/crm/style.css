@@ -3743,6 +3743,12 @@ select.form-input option {
     background: var(--phone-bg);
   }
 
+  /* .main-content already gives ported screens their 16px gutter; the legacy
+     .page-content wrapper some pages keep around both layouts would add 12px more. */
+  .app-container[data-phone-page-header] .page-content {
+    padding: 0;
+  }
+
   /* data-phone-tab-bar="hidden": a screen with its own bottom (a composer, a bottom
      action bar) hides the floating tab bar and the 104px reserved for it. */
   .app-container[data-phone-tab-bar='hidden'] .mobile-nav-glass {
@@ -16429,6 +16435,9 @@ button.phone-sheet__grabber::before {
   flex: 1;
   /* Rows never shrink to fit the sheet: the body scrolls instead. */
   grid-auto-rows: max-content;
+  /* One column capped at the sheet's width: an implicit auto column grows to the widest
+     row's min-content (a long select value), pushing every card past the right edge. */
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 16px;
   min-height: 0;
@@ -17035,6 +17044,12 @@ button.phone-sheet__grabber::before {
   color: var(--phone-label);
   font-size: var(--phone-text-body);
   font-weight: 400;
+}
+/* The control beside an inline label takes the rest of the line and may shrink: a select
+   trigger is nowrap, so a long value would otherwise push the row past the card. */
+.phone-form-row--inline .phone-form-row__line > :not(.phone-form-row__label) {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .phone-form-row__input {
   flex: 1;
