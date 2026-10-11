@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Check, ChevronLeft } from 'lucide-react';
-import { BottomSheet } from '@/components/mobile/BottomSheet';
-import { Chip, ChipRow } from '@/components/mobile/ChipRow';
-import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import {
+  PhoneFiltersSheet as FiltersSheetShell,
+  type FilterList,
+  type FilterSection,
+} from '@/components/mobile/PhoneFiltersSheet';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { Cliente, Membro, WorkflowTemplate } from '../../../store';
 import {
@@ -16,8 +17,6 @@ import { PRAZO_PRESET_LABELS, PRAZO_PRESET_ORDER } from '../etapaPrazo';
 import { TIPO_LABELS, TIPO_ORDER } from '../postLabels';
 import type { StatusRegistry } from '../statusRegistry';
 import './entregasPhone.css';
-
-type ListKey = 'clientes' | 'membros' | 'postResponsaveis' | 'etapas' | 'templates' | 'postStatus';
 
 interface Lookups {
   clientes: Cliente[];
@@ -132,82 +131,37 @@ export interface PhoneFiltersSheetProps extends Lookups {
 }
 
 /**
- * Filters on phones (EntregasFiltros mockup): a sheet with Limpar / Ver N, chip
- * groups for the short lists (situação, prazo, tipo) and drill-in lists for the
- * long ones (cliente, responsáveis, etapa, template, status do post). Changes
- * apply as they're made, like the desktop pills, so "Ver N" is the real count.
+ * Entregas' filters on phones (EntregasFiltros mockup), on the kit's filters sheet:
+ * chip groups for the short lists (situação, prazo, tipo) and drill-in lists for the
+ * long ones (cliente, responsáveis, etapa, template, status do post). Changes apply as
+ * they're made, like the desktop pills, so "Ver N" is the real count.
  */
 export function PhoneFiltersSheet({
   open,
   onOpenChange,
-  returnFocusRef,
-  ...rest
-}: PhoneFiltersSheetProps) {
-  const [page, setPage] = useState<ListKey | null>(null);
-  const handleOpenChange = (next: boolean) => {
-    if (!next) setPage(null);
-    onOpenChange(next);
-  };
-  const active = countActiveFilters(rest.filters, rest.mode);
-  return (
-    <BottomSheet
-      open={open}
-      onOpenChange={handleOpenChange}
-      title="Filtros"
-      description={rest.mode === 'posts' ? 'Filtre os posts' : 'Filtre os fluxos'}
-      detents={['large']}
-      returnFocusRef={returnFocusRef}
-      headerLeading={
-        page ? (
-          <button type="button" className="phone-ent-text-btn" onClick={() => setPage(null)}>
-            <ChevronLeft aria-hidden="true" />
-            Filtros
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="phone-ent-text-btn"
-            disabled={active === 0}
-            onClick={() => rest.onChange(clearedFilters(rest.filters))}
-          >
-            Limpar
-          </button>
-        )
-      }
-      headerTrailing={
-        <button
-          type="button"
-          className="phone-ent-text-btn phone-ent-text-btn--strong"
-          onClick={() => handleOpenChange(false)}
-        >
-          Ver {rest.resultCount}
-        </button>
-      }
-    >
-      <FiltersBody {...rest} page={page} onPage={setPage} />
-    </BottomSheet>
-  );
-}
-
-function FiltersBody({
   filters,
   onChange,
   mode,
+  resultCount,
   clientes,
   membros,
   templates,
   etapaNames,
-  page,
-  onPage,
-}: Omit<PhoneFiltersSheetProps, 'open' | 'onOpenChange' | 'resultCount' | 'returnFocusRef'> & {
-  page: ListKey | null;
-  onPage: (page: ListKey | null) => void;
-}) {
+  returnFocusRef,
+}: PhoneFiltersSheetProps) {
   const registry = useStatusRegistry();
-  const [customRange, setCustomRange] = useState(
-    () => !!filters.filterPrazoFrom || !!filters.filterPrazoTo,
-  );
+  const hasRange = !!filters.filterPrazoFrom || !!filters.filterPrazoTo;
+  // "Personalizado" is open while the sheet is, starting from whether a range is set
+  // each time it opens (the sheet's content used to remount on open).
+  const [customRange, setCustomRange] = useState(hasRange);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setCustomRange(hasRange);
+  }
   const isPosts = mode === 'posts';
+  const toggle = <T,>(list: T[], value: T) =>
+    list.includes(value) ? without(list, value) : [...list, value];
 
   const clienteOptions = clientes
     .filter((c) => c.status === 'ativo' && c.id != null)
@@ -217,47 +171,44 @@ function FiltersBody({
     .filter((m) => m.id != null)
     .sort((a, b) => a.nome.localeCompare(b.nome))
     .map((m) => ({ value: m.id!, label: m.nome }));
-  const lists: Record<
-    ListKey,
-    {
-      title: string;
-      allLabel: string;
-      options: { value: string | number; label: string }[];
-      selected: (string | number)[];
-      set: (next: (string | number)[]) => void;
-    }
-  > = {
+
+  const lists = {
     clientes: {
+      key: 'clientes',
       title: 'Cliente',
       allLabel: 'Todos',
       options: clienteOptions,
       selected: filters.filterClientes,
-      set: (v) => onChange({ ...filters, filterClientes: v as number[] }),
+      onChange: (v) => onChange({ ...filters, filterClientes: v as number[] }),
     },
     membros: {
+      key: 'membros',
       title: 'Responsável',
       allLabel: 'Todos',
       options: membroOptions,
       selected: filters.filterMembros,
-      set: (v) => onChange({ ...filters, filterMembros: v as number[] }),
+      onChange: (v) => onChange({ ...filters, filterMembros: v as number[] }),
     },
     postResponsaveis: {
+      key: 'postResponsaveis',
       title: 'Responsável do post',
       allLabel: 'Todos',
       options: membroOptions,
       selected: filters.filterPostResponsaveis,
-      set: (v) => onChange({ ...filters, filterPostResponsaveis: v as number[] }),
+      onChange: (v) => onChange({ ...filters, filterPostResponsaveis: v as number[] }),
     },
     etapas: {
+      key: 'etapas',
       title: 'Etapa',
       allLabel: 'Todas',
       options: [...etapaNames]
         .sort((a, b) => a.localeCompare(b))
         .map((n) => ({ value: n, label: n })),
       selected: filters.filterEtapas,
-      set: (v) => onChange({ ...filters, filterEtapas: v as string[] }),
+      onChange: (v) => onChange({ ...filters, filterEtapas: v as string[] }),
     },
     templates: {
+      key: 'templates',
       title: 'Template',
       allLabel: 'Todos',
       options: [...templates]
@@ -265,171 +216,106 @@ function FiltersBody({
         .sort((a, b) => a.nome.localeCompare(b.nome))
         .map((t) => ({ value: t.id!, label: t.nome })),
       selected: filters.filterTemplates,
-      set: (v) => onChange({ ...filters, filterTemplates: v as number[] }),
+      onChange: (v) => onChange({ ...filters, filterTemplates: v as number[] }),
     },
     postStatus: {
+      key: 'postStatus',
       title: 'Status do post',
       allLabel: 'Todos',
       options: registry.options.map((o) => ({ value: o.key, label: o.label })),
       selected: filters.filterPostStatus,
-      set: (v) => onChange({ ...filters, filterPostStatus: v as FilterState['filterPostStatus'] }),
+      onChange: (v) =>
+        onChange({ ...filters, filterPostStatus: v as FilterState['filterPostStatus'] }),
     },
-  };
+  } satisfies Record<string, FilterList>;
 
-  if (page) {
-    const list = lists[page];
-    const toggle = (value: string | number) =>
-      list.set(
-        list.selected.includes(value)
-          ? list.selected.filter((v) => v !== value)
-          : [...list.selected, value],
-      );
-    return (
-      <div className="phone-ent-filters">
-        <GroupedList header={list.title}>
-          <Cell
-            label={list.allLabel}
-            current={list.selected.length === 0}
-            accessory={
-              list.selected.length === 0 ? (
-                <Check className="phone-ent-check" aria-hidden />
-              ) : undefined
-            }
-            onClick={() => list.set([])}
-          />
-          {list.options.map((o) => {
-            const on = list.selected.includes(o.value);
-            return (
-              <Cell
-                key={String(o.value)}
-                label={o.label}
-                aria-pressed={on}
-                accessory={on ? <Check className="phone-ent-check" aria-hidden /> : undefined}
-                onClick={() => toggle(o.value)}
-              />
-            );
-          })}
-        </GroupedList>
-      </div>
-    );
-  }
-
-  const summary = (key: ListKey) => {
-    const list = lists[key];
-    const picked = list.options.filter((o) => list.selected.includes(o.value));
-    if (picked.length === 0) return list.allLabel;
-    return picked.length === 1 ? picked[0].label : `${picked[0].label} +${picked.length - 1}`;
-  };
-  const drill = (key: ListKey) => (
-    <Cell
-      key={key}
-      label={lists[key].title}
-      value={summary(key)}
-      chevron
-      onClick={() => onPage(key)}
-    />
-  );
-  const togglePrazo = (p: (typeof PRAZO_PRESET_ORDER)[number]) =>
-    onChange({
-      ...filters,
-      filterPrazo: filters.filterPrazo.includes(p)
-        ? without(filters.filterPrazo, p)
-        : [...filters.filterPrazo, p],
+  const sections: FilterSection[] = [];
+  if (!isPosts)
+    sections.push({
+      type: 'chips',
+      key: 'situacao',
+      label: 'Situação',
+      chips: STATUS_OPTIONS.map((o) => ({
+        key: o.value,
+        label: o.label,
+        selected: filters.filterStatus.includes(o.value),
+        onToggle: () =>
+          onChange({ ...filters, filterStatus: toggle(filters.filterStatus, o.value) }),
+      })),
     });
+  sections.push({
+    type: 'chips',
+    key: 'prazo',
+    label: 'Prazo da etapa',
+    chips: [
+      ...PRAZO_PRESET_ORDER.map((p) => ({
+        key: p,
+        label: PRAZO_PRESET_LABELS[p],
+        selected: filters.filterPrazo.includes(p),
+        onToggle: () => onChange({ ...filters, filterPrazo: toggle(filters.filterPrazo, p) }),
+      })),
+      {
+        key: 'personalizado',
+        label: 'Personalizado',
+        selected: customRange,
+        onToggle: () => {
+          if (customRange) onChange({ ...filters, filterPrazoFrom: '', filterPrazoTo: '' });
+          setCustomRange(!customRange);
+        },
+      },
+    ],
+    after: customRange && (
+      <div className="phone-ent-filters__range">
+        <label>
+          De
+          <input
+            type="date"
+            value={filters.filterPrazoFrom}
+            onChange={(e) => onChange({ ...filters, filterPrazoFrom: e.target.value })}
+          />
+        </label>
+        <label>
+          Até
+          <input
+            type="date"
+            value={filters.filterPrazoTo}
+            onChange={(e) => onChange({ ...filters, filterPrazoTo: e.target.value })}
+          />
+        </label>
+      </div>
+    ),
+  });
+  if (isPosts)
+    sections.push({
+      type: 'chips',
+      key: 'tipo',
+      label: 'Tipo',
+      chips: TIPO_ORDER.map((t) => ({
+        key: t,
+        label: TIPO_LABELS[t],
+        selected: filters.filterTipos.includes(t),
+        onToggle: () => onChange({ ...filters, filterTipos: toggle(filters.filterTipos, t) }),
+      })),
+    });
+  sections.push({
+    type: 'lists',
+    key: 'listas',
+    lists: isPosts
+      ? [lists.clientes, lists.postStatus, lists.membros, lists.etapas]
+      : [lists.clientes, lists.membros, lists.postResponsaveis, lists.etapas, lists.templates],
+  });
 
   return (
-    <div className="phone-ent-filters">
-      {!isPosts && (
-        <section className="phone-ent-filters__group">
-          <h3 className="phone-ent-filters__label">Situação</h3>
-          <ChipRow aria-label="Situação" className="phone-ent-filters__chips">
-            {STATUS_OPTIONS.map((o) => (
-              <Chip
-                key={o.value}
-                label={o.label}
-                selected={filters.filterStatus.includes(o.value)}
-                onClick={() =>
-                  onChange({
-                    ...filters,
-                    filterStatus: filters.filterStatus.includes(o.value)
-                      ? without(filters.filterStatus, o.value)
-                      : [...filters.filterStatus, o.value],
-                  })
-                }
-              />
-            ))}
-          </ChipRow>
-        </section>
-      )}
-      <section className="phone-ent-filters__group">
-        <h3 className="phone-ent-filters__label">Prazo da etapa</h3>
-        <ChipRow aria-label="Prazo da etapa" className="phone-ent-filters__chips">
-          {PRAZO_PRESET_ORDER.map((p) => (
-            <Chip
-              key={p}
-              label={PRAZO_PRESET_LABELS[p]}
-              selected={filters.filterPrazo.includes(p)}
-              onClick={() => togglePrazo(p)}
-            />
-          ))}
-          <Chip
-            label="Personalizado"
-            selected={customRange}
-            onClick={() => {
-              if (customRange) onChange({ ...filters, filterPrazoFrom: '', filterPrazoTo: '' });
-              setCustomRange(!customRange);
-            }}
-          />
-        </ChipRow>
-        {customRange && (
-          <div className="phone-ent-filters__range">
-            <label>
-              De
-              <input
-                type="date"
-                value={filters.filterPrazoFrom}
-                onChange={(e) => onChange({ ...filters, filterPrazoFrom: e.target.value })}
-              />
-            </label>
-            <label>
-              Até
-              <input
-                type="date"
-                value={filters.filterPrazoTo}
-                onChange={(e) => onChange({ ...filters, filterPrazoTo: e.target.value })}
-              />
-            </label>
-          </div>
-        )}
-      </section>
-      {isPosts && (
-        <section className="phone-ent-filters__group">
-          <h3 className="phone-ent-filters__label">Tipo</h3>
-          <ChipRow aria-label="Tipo" className="phone-ent-filters__chips">
-            {TIPO_ORDER.map((t) => (
-              <Chip
-                key={t}
-                label={TIPO_LABELS[t]}
-                selected={filters.filterTipos.includes(t)}
-                onClick={() =>
-                  onChange({
-                    ...filters,
-                    filterTipos: filters.filterTipos.includes(t)
-                      ? without(filters.filterTipos, t)
-                      : [...filters.filterTipos, t],
-                  })
-                }
-              />
-            ))}
-          </ChipRow>
-        </section>
-      )}
-      <GroupedList>
-        {(isPosts
-          ? (['clientes', 'postStatus', 'membros', 'etapas'] as ListKey[])
-          : (['clientes', 'membros', 'postResponsaveis', 'etapas', 'templates'] as ListKey[])
-        ).map(drill)}
-      </GroupedList>
-    </div>
+    <FiltersSheetShell
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Filtros"
+      description={isPosts ? 'Filtre os posts' : 'Filtre os fluxos'}
+      sections={sections}
+      activeCount={countActiveFilters(filters, mode)}
+      onClear={() => onChange(clearedFilters(filters))}
+      resultCount={resultCount}
+      returnFocusRef={returnFocusRef}
+    />
   );
 }

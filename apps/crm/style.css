@@ -16564,6 +16564,59 @@ button.phone-sheet__grabber::before {
   height: auto;
 }
 
+/* ---- Text buttons in sheet headers ("Limpar", "Ver 6", "‹ Filtros") ---- */
+.phone-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  font-size: var(--phone-text-subhead);
+  font-weight: 500;
+  cursor: pointer;
+}
+.phone-text-button svg {
+  width: 14px;
+  height: 14px;
+}
+.phone-text-button--strong {
+  font-weight: 600;
+}
+.phone-text-button:disabled {
+  color: var(--phone-label-secondary);
+  cursor: default;
+}
+.phone-text-button:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+
+/* ---- Filters sheet (chip groups + drill-in lists) ---- */
+.phone-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+.phone-filters__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.phone-filters__label {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 /* ---- Checkmark list (PickerSheet, filters drill-in) ---- */
 .phone-check {
   flex-shrink: 0;
