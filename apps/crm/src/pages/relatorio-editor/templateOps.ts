@@ -30,3 +30,23 @@ export function applyTemplateLayout(template: ReportLayout, current: ReportLayou
   }
   return { ...template, blocks };
 }
+
+const AI_SAMPLE_TEXT = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [{ type: 'text', text: 'Texto gerado pela IA em cada relatório.' }],
+    },
+  ],
+};
+
+/** Prévia de um modelo (padrão do sistema, modelo no celular): blocos de IA não
+ * guardam texto no modelo e o TextBlock renderiza null sem texto, então ganham
+ * um parágrafo de exemplo para não sumirem. Só para exibir; nunca persistir. */
+export function withAiSampleText(layout: ReportLayout): ReportLayout {
+  return {
+    ...layout,
+    blocks: layout.blocks.map((b) => (AI_TYPES.has(b.type) ? { ...b, text: AI_SAMPLE_TEXT } : b)),
+  };
+}

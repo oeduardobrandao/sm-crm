@@ -8,37 +8,22 @@ import { toast } from 'sonner';
 import { ArrowLeft, Copy, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
-import type { ReportLayout } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import {
   buildSystemDefaultLayout,
   createReportTemplate,
   SYSTEM_TEMPLATE_NAME,
 } from '../../services/reportTemplates';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useSampleSnapshot } from './useSampleSnapshot';
+import { withAiSampleText } from './templateOps';
+import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
-const AI_TYPES = new Set(['ai_summary', 'ai_recommendations', 'ai_goals']);
-const AI_SAMPLE_TEXT = {
-  type: 'doc',
-  content: [
-    {
-      type: 'paragraph',
-      content: [{ type: 'text', text: 'Texto gerado pela IA em cada relatório.' }],
-    },
-  ],
-};
-
-// Blocos de IA não guardam texto no modelo e o TextBlock renderiza null sem
-// texto: na prévia eles ganham um parágrafo de exemplo para não sumirem.
-function withAiSampleText(layout: ReportLayout): ReportLayout {
-  return {
-    ...layout,
-    blocks: layout.blocks.map((b) => (AI_TYPES.has(b.type) ? { ...b, text: AI_SAMPLE_TEXT } : b)),
-  };
-}
+const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
 
 export default function ModeloPadraoPage() {
+  const isPhone = !useIsDesktop(768);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const snapshot = useSampleSnapshot();
@@ -53,6 +38,29 @@ export default function ModeloPadraoPage() {
     },
     onError: () => toast.error('Não foi possível criar o modelo.'),
   });
+
+  // Celular (D27): só a prévia; "Duplicar para editar" continua no "…".
+  if (isPhone) {
+    return (
+      <ReportPhoneView
+        title={SYSTEM_TEMPLATE_NAME}
+        subtitle="Modelo embutido. Somente visualização."
+        fallbackTo={SETTINGS_PATH}
+        backLabel="Voltar para Modelos"
+        sampleNote={SAMPLE_NOTE}
+        layout={previewLayout}
+        snapshot={snapshot}
+        actionsLabel="Ações do modelo"
+        actions={[
+          {
+            label: 'Duplicar para editar',
+            disabled: duplicate.isPending,
+            onSelect: () => duplicate.mutate(),
+          },
+        ]}
+      />
+    );
+  }
 
   return (
     <div>
@@ -108,7 +116,7 @@ export default function ModeloPadraoPage() {
         }}
       >
         <Info className="h-4 w-4" aria-hidden="true" />
-        Dados de exemplo. Os números reais entram quando o relatório é gerado.
+        {SAMPLE_NOTE}
       </p>
 
       <div style={{ maxWidth: 880, margin: '0 auto' }}>

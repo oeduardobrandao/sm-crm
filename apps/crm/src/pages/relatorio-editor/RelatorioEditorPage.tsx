@@ -1,6 +1,6 @@
 // PR 2: o editor do relatório de blocos. Canvas dnd + drawer + TipTap +
 // autosave. View/print continuam no BlockRenderer do pacote (Hub, PR 3).
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, MoreHorizontal, Plus } from 'lucide-react';
@@ -38,6 +38,9 @@ import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import { AppearancePopover } from './AppearancePopover';
 import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
 import { applyTemplateLayout, layoutHasFilledImage } from './templateOps';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import { ReportExportBar, ReportPhoneView } from './phone/ReportPhoneView';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
@@ -73,6 +76,16 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const [applyTplOpen, setApplyTplOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Celular (D27): só leitura e exportação. Os hooks acima continuam montados (a
+  // ordem não muda quando a largura cruza 768px) e "Aplicar template" grava pelo
+  // mesmo autosave do desktop.
+  const isPhone = !useIsDesktop(768);
+  // URL do PDF gerado no celular: vira o link "Abrir PDF" que a pessoa toca.
+  const [phonePdfUrl, setPhonePdfUrl] = useState<string | null>(null);
+  // O PDF reflete o layout e os dados do momento em que foi gerado.
+  useEffect(() => {
+    setPhonePdfUrl(null);
+  }, [layout, snapshot]);
 
   // Link "Ver como cliente": só existe quando o Hub tem um token ativo, não
   // expirado, e o workspace tem slug. Mesma checagem de validade que o
@@ -120,6 +133,24 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     }
   }
 
+  // Celular: a mesma exportação, sem abrir aba por código. Depois do await o
+  // toque original já expirou e o iOS Safari bloqueia a aba nova; a barra passa
+  // a mostrar um link "Abrir PDF" (ReportExportBar) para um toque novo.
+  async function handleExportPdfPhone() {
+    setExporting(true);
+    setPhonePdfUrl(null);
+    const toastId = toast.loading('Gerando PDF... isso pode levar até um minuto.');
+    try {
+      const { url } = await exportReportPdf(doc.id);
+      setPhonePdfUrl(url);
+      toast.success('PDF gerado. Toque em Abrir PDF.', { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF', { id: toastId });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleRefreshData() {
     setRefreshing(true);
     try {
@@ -131,6 +162,59 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     } finally {
       setRefreshing(false);
     }
+  }
+
+  const applyTemplateDialog = (
+    <ApplyTemplateDialog
+      open={applyTplOpen}
+      onOpenChange={setApplyTplOpen}
+      warnImagesRemoved={layoutHasFilledImage(layout)}
+      onApply={(tpl) => {
+        commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
+        toast.success('Template aplicado.');
+      }}
+    />
+  );
+
+  if (isPhone) {
+    const clientName = snapshot.account.client_name;
+    return (
+      <>
+        <ReportPhoneView
+          title={title}
+          subtitle={clientName ? `${clientName} · ${snapshot.period.label}` : snapshot.period.label}
+          fallbackTo={`/analytics/${doc.client_id}`}
+          layout={layout}
+          snapshot={snapshot}
+          actions={[
+            {
+              label: refreshing ? 'Atualizando…' : 'Atualizar dados',
+              disabled: refreshing,
+              onSelect: handleRefreshData,
+            },
+            ...(hubViewLink
+              ? [
+                  {
+                    label: 'Ver como cliente',
+                    // Dentro do toque: window.open fora do gesto é bloqueado no iOS.
+                    immediate: true,
+                    onSelect: () => window.open(hubViewLink.url, '_blank', 'noopener'),
+                  },
+                ]
+              : []),
+            { label: 'Aplicar template', onSelect: () => setApplyTplOpen(true) },
+          ]}
+          bottomBar={
+            <ReportExportBar
+              exporting={exporting}
+              pdfUrl={phonePdfUrl}
+              onExport={handleExportPdfPhone}
+            />
+          }
+        />
+        {applyTemplateDialog}
+      </>
+    );
   }
 
   // Padding vive em .rb-editor-with-rail (style.css): inline aqui
@@ -246,15 +330,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         onOpenChange={setSaveTplOpen}
         getLayout={() => layoutRef.current}
       />
-      <ApplyTemplateDialog
-        open={applyTplOpen}
-        onOpenChange={setApplyTplOpen}
-        warnImagesRemoved={layoutHasFilledImage(layout)}
-        onApply={(tpl) => {
-          commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
-          toast.success('Template aplicado.');
-        }}
-      />
+      {applyTemplateDialog}
     </div>
   );
 }
@@ -262,6 +338,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
 export default function RelatorioEditorPage() {
   // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
   usePreventStrayFileDrop();
+  const isPhone = !useIsDesktop(768);
   const { id } = useParams<{ id: string }>();
   const { data: doc, isLoading } = useQuery({
     queryKey: ['report-doc', id],
@@ -279,7 +356,8 @@ export default function RelatorioEditorPage() {
 
   if (!doc || !doc.data_snapshot) {
     return (
-      <div style={{ padding: '2rem' }}>
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar fallbackTo="/analytics" />}
         <p style={{ color: 'var(--text-muted)' }}>Relatório não encontrado.</p>
       </div>
     );
