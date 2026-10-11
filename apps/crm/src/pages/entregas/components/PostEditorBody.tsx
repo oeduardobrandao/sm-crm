@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { Expand } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { MessageSquare, Send, History, Loader2 } from 'lucide-react';
@@ -40,7 +41,12 @@ import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import type { TikTokReadiness } from '../tiktokComposerRules';
 import { TrialReelPanel } from './TrialReelPanel';
-import { ScheduleButton } from './ScheduleButton';
+import {
+  ScheduleButton,
+  PlatformStatusRow,
+  PublishNowConfirmDialog,
+  useScheduleActions,
+} from './ScheduleButton';
 import { PostAutomationSection } from './PostAutomationSection';
 import { PublishErrorBlock } from './PublishErrorBlock';
 import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
@@ -72,6 +78,16 @@ import {
   resolveDestinationState,
   seedCaptionFor,
 } from '../postDestinations';
+import { BottomSheet, Cell, GroupedList } from '@/components/mobile';
+import { DestinationStatusPill } from './DestinationStatusPill';
+import { PhoneEditorHeader } from './postEditorPhone/PhoneEditorHeader';
+import { PhoneEditorTabs, type PhoneEditorTab } from './postEditorPhone/PhoneEditorTabs';
+import { PhoneBottomBar, formatPhoneDateTime } from './postEditorPhone/PhoneBottomBar';
+import { PhonePublishChecklist } from './postEditorPhone/PhonePublishChecklist';
+import { PhoneTextScreen } from './postEditorPhone/PhoneTextScreen';
+import { PhoneComments } from './postEditorPhone/PhoneComments';
+import { PhoneSuggestionSheet, PhoneTimelineSheet } from './postEditorPhone/PhoneSheets';
+import type { PhoneEditorChrome, PhoneMenuAction } from './postEditorPhone/types';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 //
@@ -159,6 +175,14 @@ export interface PostEditorBodyProps {
   onRejectSuggestion: (id: number) => void;
   /** Avançar etapa do processo individual, para a dica da seção de produção. */
   onProcessAvancar?: () => void;
+  /**
+   * `phone` (below 768px): the pushed full-screen editor with Conteúdo / Detalhes /
+   * Publicar / Comentários tabs (D21), laid out over the same components and callbacks.
+   * Requires `phone`. Default: the inline desktop body, unchanged.
+   */
+  layout?: 'desktop' | 'phone';
+  /** Header, host menu actions and host-level commands for the phone layout. */
+  phone?: PhoneEditorChrome;
 }
 
 export function PostEditorBody({
@@ -200,7 +224,10 @@ export function PostEditorBody({
   onAcceptSuggestion,
   onRejectSuggestion,
   onProcessAvancar,
+  layout = 'desktop',
+  phone,
 }: PostEditorBodyProps) {
+  const isPhone = layout === 'phone' && phone != null;
   // Per-row scheduled-day dots for this post's date picker: same client-wide post list for
   // every row (stable identity from the TanStack cache), each row excludes only its own post
   // so it never warns about itself.
@@ -277,6 +304,21 @@ export function PostEditorBody({
     }, 400);
     return () => clearTimeout(t);
   }, [tituloLocal]);
+  // Phone: Back unmounts this body (the pushed editor closes). A título typed in the last
+  // 400ms would otherwise be dropped with the debounce timer.
+  const tituloLocalRef = useRef(tituloLocal);
+  tituloLocalRef.current = tituloLocal;
+  const isPhoneRef = useRef(isPhone);
+  isPhoneRef.current = isPhone;
+  useEffect(
+    () => () => {
+      if (isPhoneRef.current && tituloDirty.current) {
+        tituloDirty.current = false;
+        onFieldChangeRef.current('titulo', tituloLocalRef.current);
+      }
+    },
+    [],
+  );
 
   // `resolvedContent` must track post.conteudo synchronously (same render, not one tick
   // later via an effect): when a client's edit suggestion is accepted, the diff card swaps
@@ -363,6 +405,29 @@ export function PostEditorBody({
       cancelled = true;
     };
   }, [editSuggestion?.suggested_conteudo]);
+
+  // ── Phone layout state (hooks run on every layout; only the phone branch reads them) ──
+  const [phoneTab, setPhoneTab] = useState<PhoneEditorTab>('conteudo');
+  const [roteiroOpen, setRoteiroOpen] = useState(false);
+  const [captionScreenOpen, setCaptionScreenOpen] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [suggestionOpen, setSuggestionOpen] = useState(false);
+  const [referencesOpen, setReferencesOpen] = useState(false);
+  const [statusSheetOpen, setStatusSheetOpen] = useState(false);
+  // One schedule/publish state per phone editor, shared by the bottom bar and the
+  // "Antes de agendar" checklist (desktop keeps its own inside ScheduleButton).
+  const scheduleActions = useScheduleActions({
+    post,
+    media: postMedia,
+    hasInstagramAccount,
+    igAccountStatus,
+    ttAccountStatus,
+    tiktokSettingsComplete: tiktokReadiness.complete,
+    tiktokIncompleteReason: tiktokReadiness.reason,
+    onTikTokUnaudited: () => setTiktokTestModeBanner(true),
+    onStatusChange: onRefresh,
+    explainMissingInstagramAccount: multiplatform,
+  });
 
   if (!isExpanded) return null;
 
@@ -490,6 +555,569 @@ export function PostEditorBody({
       hideCaption={hideCaption}
     />
   );
+
+  // ── Phone layout (below 768px): same pieces, four tabs, its own screen ──────────
+  if (isPhone && phone) {
+    const statusOption = statusRegistry.resolve(post);
+    const activeThreads = commentThreads.filter((t) => t.status === 'active');
+    const captionThreadCount = activeThreads.filter((t) => t.field === 'ig_caption').length;
+    const commentCount = approvals.length + activeThreads.length;
+    const paragraphs = (post.conteudo_plain ?? '').split(/\n+/).filter((l) => l.trim()).length;
+    const roteiroSummary = editSuggestion
+      ? 'Sugestão pendente'
+      : paragraphs === 0
+        ? 'Vazio'
+        : paragraphs === 1
+          ? '1 parágrafo'
+          : `${paragraphs} parágrafos`;
+    const postsToTikTok = multiplatform
+      ? currentPlatforms.includes('tiktok')
+      : post.platform === 'tiktok' || post.platform === 'both';
+
+    // Host actions first, the editor's own before the destructive ones (Excluir last).
+    const editorActions: PhoneMenuAction[] = [
+      ...(post.id != null
+        ? [{ label: 'Histórico de versões', onSelect: () => setVersionHistoryOpen(true) }]
+        : []),
+      { label: 'Histórico do post', onSelect: () => setTimelineOpen(true) },
+    ];
+    const firstDestructive = phone.menuActions.findIndex((a) => a.destructive);
+    const menuActions =
+      firstDestructive < 0
+        ? [...phone.menuActions, ...editorActions]
+        : [
+            ...phone.menuActions.slice(0, firstDestructive),
+            ...editorActions,
+            ...phone.menuActions.slice(firstDestructive),
+          ];
+
+    const openThreadFromList = (threadId: number) => {
+      const thread = commentThreads.find((t) => t.id === threadId);
+      if (thread?.field !== 'ig_caption') return;
+      if (multiplatform && !currentPlatforms.includes('instagram')) {
+        toast.info('Ative o Instagram em Destinos para ver este comentário.');
+        return;
+      }
+      setPhoneTab('conteudo');
+      if (multiplatform) setCaptionTab('instagram');
+      // The pane and the caption tab are revealed this frame; the popover places itself
+      // from the text's rects, so focus after they're visible.
+      requestAnimationFrame(() => captionRef.current?.focusThread(threadId));
+    };
+
+    const captionBlock = multiplatform ? (
+      <DestinationCaptionTabs
+        post={post}
+        targets={targets}
+        loading={destinations.isLoading}
+        error={destinations.isError}
+        onRetry={destinations.refetch}
+        activeTab={captionTab}
+        onActiveTabChange={setCaptionTab}
+        locked={isScheduleLocked}
+        instagramCaption={isStoryPost ? storiesNote : instagramCaptionField(true)}
+        // TikTok settings live in Publicar on phones; the caption stays here.
+        tiktokSettings={null}
+        tiktokFieldRef={tiktokCaptionRef}
+        geralFieldRef={geralCaptionRef}
+        onSaveCaption={destinations.saveCaption}
+      />
+    ) : isStoryPost ? (
+      storiesNote
+    ) : hasInstagramAccount ? (
+      instagramCaptionField(false)
+    ) : null;
+
+    const phoneEditor = editSuggestion ? null : !canMountEditor ? (
+      <div className="phone-editor-loading">
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        Carregando conteúdo…
+      </div>
+    ) : (
+      <PostEditor
+        key={editorKey}
+        variant="phone"
+        initialContent={resolvedContent}
+        onUpdate={(json, plain) => onContentUpdate(stripSignedUrls(json), plain)}
+        onUploadInlineImage={
+          post.id
+            ? async (file) => {
+                try {
+                  return await uploadInlineImage(file);
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error && err.message === 'quota_exceeded'
+                      ? 'Limite de armazenamento atingido'
+                      : 'Falha ao enviar imagem',
+                  );
+                  throw err;
+                }
+              }
+            : undefined
+        }
+        threads={commentThreads}
+        membros={membros}
+        workspaceUsers={workspaceUsers}
+        currentUserId={currentUserId}
+        currentUserRole={currentUserRole}
+        onCreateComment={(qt, c) => onCreateComment(post.id!, qt, c)}
+        onReplyToComment={onReplyToComment}
+        onResolveThread={onResolveThread}
+        onReopenThread={onReopenThread}
+        onEditComment={onEditComment}
+        onDeleteComment={onDeleteComment}
+      />
+    );
+
+    const conteudoPane = (
+      <>
+        {isExternallyVisible && (
+          <p className="phone-editor-notice">
+            {isScheduleLocked
+              ? 'Este post está agendado para publicação. Data, tipo, plataforma e legenda do Instagram estão travados: cancele o agendamento para editá-los.'
+              : 'Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'}
+          </p>
+        )}
+        <div className="phone-editor-card">
+          <PostMediaGallery
+            variant="phone"
+            postId={post.id!}
+            forStories={isStoryPost}
+            targetsInstagram={isInstagramPost(post.platform)}
+            adjustmentDisabled={
+              post.status === 'agendado' ||
+              post.status === 'postado' ||
+              !!post.published_at ||
+              !!post.instagram_media_id ||
+              !!post.instagram_container_id ||
+              ['initiated', 'processing', 'published'].includes(post.tiktok_publish_status ?? '')
+            }
+            mediaAutocleanedAt={post.media_autocleaned_at}
+            instagramPermalink={post.instagram_permalink}
+            tiktokPostUrl={post.tiktok_post_url}
+          />
+        </div>
+
+        {captionBlock && (
+          <section className="phone-editor-section" aria-label="Legenda">
+            <div className="phone-editor-section__head">
+              <h2 className="phone-editor-section__title">Legenda</h2>
+              {post.id != null && (
+                <button
+                  type="button"
+                  className="phone-editor-link"
+                  onClick={() => setVersionHistoryOpen(true)}
+                >
+                  Versões
+                </button>
+              )}
+              <button
+                type="button"
+                className="phone-editor-link"
+                aria-label="Editar legenda em tela cheia"
+                onClick={() => setCaptionScreenOpen(true)}
+              >
+                <Expand aria-hidden="true" />
+              </button>
+            </div>
+            <PhoneTextScreen
+              open={captionScreenOpen}
+              onOpenChange={setCaptionScreenOpen}
+              title="Legenda"
+            >
+              <div className="phone-editor-card phone-editor-card--caption">{captionBlock}</div>
+            </PhoneTextScreen>
+            {captionThreadCount > 0 && (
+              <p className="phone-editor-footnote">
+                {captionThreadCount === 1
+                  ? '1 comentário no texto'
+                  : `${captionThreadCount} comentários no texto`}
+              </p>
+            )}
+          </section>
+        )}
+
+        <GroupedList aria-label="Roteiro e referências">
+          <Cell
+            label="Roteiro e briefing"
+            value={roteiroSummary}
+            chevron
+            onClick={() => (editSuggestion ? setSuggestionOpen(true) : setRoteiroOpen(true))}
+          />
+          {references.length > 0 && (
+            <Cell
+              label="Referências do cliente"
+              value={String(references.length)}
+              chevron
+              onClick={() => setReferencesOpen(true)}
+            />
+          )}
+        </GroupedList>
+        <PhoneTextScreen
+          open={roteiroOpen}
+          onOpenChange={setRoteiroOpen}
+          title="Roteiro e briefing"
+          hiddenWhenClosed
+        >
+          {phoneEditor}
+        </PhoneTextScreen>
+      </>
+    );
+
+    const detalhesPane = (
+      <>
+        {statusAutomationHint && <p className="phone-editor-notice">{statusAutomationHint}</p>}
+        <GroupedList aria-label="Detalhes do post">
+          <li className="phone-cell phone-field">
+            <label className="phone-field__label" htmlFor={`phone-titulo-${post.id}`}>
+              Título
+            </label>
+            <input
+              id={`phone-titulo-${post.id}`}
+              className="phone-field__input"
+              value={tituloLocal}
+              onChange={(e) => {
+                tituloDirty.current = true;
+                setTituloLocal(e.target.value);
+              }}
+              onBlur={() => {
+                if (tituloDirty.current) {
+                  onFieldChange('titulo', tituloLocal);
+                  tituloDirty.current = false;
+                }
+              }}
+              placeholder="Título do post"
+            />
+          </li>
+          <li className="phone-cell phone-field">
+            <TipoToggle
+              value={post.tipo}
+              lockedReason={isScheduleLocked ? 'Cancelar agendamento para editar' : null}
+              onChange={(v) => {
+                onFieldChange('tipo', v);
+                if (v !== 'reels' && post.ig_trial_strategy) {
+                  onFieldChange('ig_trial_strategy', null);
+                }
+              }}
+            />
+          </li>
+          <li className="phone-cell phone-field">
+            {multiplatform ? (
+              <DestinationToggles
+                options={destinationToggleOptions({
+                  boardPlatforms: destinations.boardPlatforms ?? [],
+                  current: currentPlatforms,
+                  published: publishedPlatforms,
+                  tipo: post.tipo,
+                  tiktokFeatureEnabled: features?.feature_tiktok === true,
+                  hasActiveTikTokAccount,
+                  isExpress: post.is_express === true,
+                })}
+                lockedReason={destinationLockReason}
+                pending={destinations.toggle.isPending || destinations.isLoading}
+                onToggle={handleDestinationToggle}
+              />
+            ) : (
+              <PlatformSelector
+                value={post.platform ?? 'instagram'}
+                tipo={post.tipo}
+                tiktokFeatureEnabled={features?.feature_tiktok === true}
+                hasActiveTikTokAccount={hasActiveTikTokAccount}
+                disabled={isScheduleLocked}
+                isExpress={post.is_express === true}
+                onChange={(platform) => {
+                  onFieldChange('platform', platform);
+                  if (platform === 'tiktok' && post.ig_trial_strategy) {
+                    onFieldChange('ig_trial_strategy', null);
+                  }
+                }}
+              />
+            )}
+          </li>
+          <Cell
+            label="Status"
+            value={statusOption.label}
+            subtitle={
+              isVisibleToClient(statusOption.canonical)
+                ? VISIBILITY_OPTION_SUFFIX.visible
+                : VISIBILITY_OPTION_SUFFIX.internal
+            }
+            chevron
+            onClick={() => setStatusSheetOpen(true)}
+          />
+          {membros.length > 0 && (
+            <li className="phone-cell phone-field phone-field--inline">
+              <label className="phone-field__label" htmlFor={`phone-resp-${post.id}`}>
+                Responsável do post
+              </label>
+              <select
+                id={`phone-resp-${post.id}`}
+                className="phone-field__select"
+                value={post.responsavel_id ?? ''}
+                onChange={(e) =>
+                  onFieldChange('responsavel_id', e.target.value ? Number(e.target.value) : null)
+                }
+              >
+                <option value="">Sem responsável</option>
+                {membros.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nome}
+                  </option>
+                ))}
+              </select>
+            </li>
+          )}
+          <li className="phone-cell phone-field">
+            <div className="phone-field__head">
+              <span className="phone-field__label">Data de postagem</span>
+              {hasInstagramAccount && (
+                <SuggestTimeButton
+                  clientId={clienteId}
+                  value={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
+                  onPick={(date) => onFieldChange('scheduled_at', date.toISOString())}
+                  disabled={isScheduleLocked}
+                />
+              )}
+            </div>
+            <DateTimePicker
+              value={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
+              onChange={(date) => onFieldChange('scheduled_at', date?.toISOString() ?? null)}
+              disabled={isScheduleLocked}
+              futureOnly
+              className="w-full"
+              dayMarkers={dayMarkers}
+              dayMarkerLegend={TIPO_LEGEND}
+            />
+          </li>
+        </GroupedList>
+
+        {templateId != null && templateId !== 0 && workflowId != null && (
+          <div className="phone-editor-card">
+            <PropertyPanel
+              templateId={templateId}
+              postId={post.id!}
+              workflowId={workflowId}
+              propertyValues={post.property_values ?? []}
+              membros={membros}
+            />
+          </div>
+        )}
+
+        {postProcess && workflowId == null && (
+          <div className="phone-editor-card">
+            <PostProductionSection
+              process={postProcess}
+              postId={post.id!}
+              membros={membros}
+              postStatus={post.status}
+              onAvancar={onProcessAvancar}
+            />
+          </div>
+        )}
+
+        <GroupedList aria-label="Histórico">
+          <Cell label="Histórico do post" chevron onClick={() => setTimelineOpen(true)} />
+          {post.id != null && (
+            <Cell
+              label="Histórico de versões"
+              chevron
+              onClick={() => setVersionHistoryOpen(true)}
+            />
+          )}
+          {phone.autoSchedule && (
+            <Cell
+              label="Aguardando agendamento automático"
+              subtitle={
+                phone.autoSchedule.needsDate
+                  ? 'Defina uma data futura para agendar.'
+                  : 'Agendar agora o post aprovado.'
+              }
+              chevron
+              onClick={phone.autoSchedule.onClick}
+            />
+          )}
+        </GroupedList>
+      </>
+    );
+
+    const publicarPane = (
+      <>
+        {shouldShowPublishErrorBlock(post) && (
+          <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
+        )}
+        {post.status === 'falha_publicacao' &&
+          (post.platform === 'tiktok' || post.platform === 'both') &&
+          post.tiktok_publish_error && (
+            <p className="phone-editor-notice phone-editor-notice--danger">
+              {post.tiktok_publish_error}
+            </p>
+          )}
+
+        <PhonePublishChecklist post={post} media={postMedia} actions={scheduleActions} />
+
+        {postsToTikTok && (
+          <section className="phone-editor-section" aria-label="TikTok">
+            <h2 className="phone-group__header">TikTok</h2>
+            <div className="phone-editor-card">{tiktokSettingsPanel(multiplatform)}</div>
+          </section>
+        )}
+
+        {hasInstagramAccount && post.tipo === 'reels' && isInstagramPost(post.platform) && (
+          <section className="phone-editor-section" aria-label="Reel de teste">
+            <h2 className="phone-group__header">Instagram</h2>
+            <div className="phone-editor-card">
+              <TrialReelPanel
+                post={post}
+                media={postMedia ?? []}
+                disabled={isScheduleLocked}
+                onFieldChange={onFieldChange}
+              />
+            </div>
+          </section>
+        )}
+
+        <div className="phone-editor-automation">
+          <PostAutomationSection
+            post={post}
+            clienteId={clienteId}
+            canManage={canManageAutomations}
+            hasInstagramAccount={hasInstagramAccount}
+          />
+        </div>
+
+        {multiplatform && targets.length > 0 && (
+          <GroupedList header="Destinos" headerAs="h3">
+            {targets.map((t) => (
+              <Cell
+                key={t.platform}
+                label={PLATFORM_DEFS[t.platform].label}
+                accessory={
+                  <DestinationStatusPill
+                    platform={t.platform}
+                    state={resolveDestinationState(post, t)}
+                    showIcon={false}
+                  />
+                }
+              />
+            ))}
+          </GroupedList>
+        )}
+        {!multiplatform && <PlatformStatusRow post={post} />}
+
+        {post.status === 'agendado' && post.scheduled_at && (
+          <GroupedList header="Publicação" headerAs="h3">
+            <Cell label="Data e hora" value={formatPhoneDateTime(post.scheduled_at)} />
+          </GroupedList>
+        )}
+      </>
+    );
+
+    const comentariosPane = (
+      <PhoneComments
+        approvals={approvals}
+        references={references}
+        onOpenReference={setViewingReference}
+        clientName={phone.clientName}
+        replyText={replyText}
+        sendingReply={sendingReply}
+        onReplyChange={onReplyChange}
+        onReplySend={onReplySend}
+        threads={commentThreads}
+        membros={membros}
+        workspaceUsers={workspaceUsers}
+        onThreadClick={openThreadFromList}
+        suggestion={
+          editSuggestion
+            ? { when: editSuggestion.updated_at, onOpen: () => setSuggestionOpen(true) }
+            : null
+        }
+        active={phoneTab === 'comentarios'}
+      />
+    );
+
+    return (
+      <div className="phone-editor">
+        <div className="phone-editor__scroll">
+          <PhoneEditorHeader
+            post={post}
+            registry={statusRegistry}
+            subtitle={phone.subtitle}
+            saving={phone.saving}
+            menuActions={menuActions}
+            onBack={phone.onBack}
+            onStatusChange={(key) => onFieldChange('status', key)}
+            statusOpen={statusSheetOpen}
+            onStatusOpenChange={setStatusSheetOpen}
+          />
+          <PhoneEditorTabs
+            value={phoneTab}
+            onChange={setPhoneTab}
+            commentCount={commentCount}
+            panes={{
+              conteudo: conteudoPane,
+              detalhes: detalhesPane,
+              publicar: publicarPane,
+              comentarios: comentariosPane,
+            }}
+          />
+          {phoneTab !== 'comentarios' && (
+            <PhoneBottomBar
+              post={post}
+              actions={scheduleActions}
+              sendToClient={phone.sendToClient}
+            />
+          )}
+        </div>
+
+        <PublishNowConfirmDialog actions={scheduleActions} />
+
+        {post.id != null && (
+          <PostVersionHistorySheet
+            layout="phone"
+            postId={post.id}
+            open={versionHistoryOpen}
+            onOpenChange={setVersionHistoryOpen}
+            statusEvents={statusEvents}
+            approvals={approvals}
+          />
+        )}
+        <PhoneTimelineSheet
+          open={timelineOpen}
+          onOpenChange={setTimelineOpen}
+          post={post}
+          statusEvents={statusEvents}
+          approvals={approvals}
+          processEvents={phone.processEvents}
+        />
+        <PhoneSuggestionSheet
+          open={suggestionOpen}
+          onOpenChange={setSuggestionOpen}
+          suggestion={editSuggestion}
+          post={post}
+          clientName={phone.clientName}
+          resolvedContent={resolvedContent}
+          resolvedSuggestion={resolvedSuggestion}
+          onAccept={onAcceptSuggestion}
+          onReject={onRejectSuggestion}
+        />
+        {post.id != null && (
+          <BottomSheet
+            open={referencesOpen && references.length > 0}
+            onOpenChange={setReferencesOpen}
+            title="Referências do cliente"
+            detents={['medium', 'large']}
+          >
+            <PostClientReferences
+              postId={post.id}
+              references={references}
+              onOpen={setViewingReference}
+            />
+          </BottomSheet>
+        )}
+        <ReferenceViewerDialog item={viewingReference} onClose={() => setViewingReference(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className="drawer-post-content">

@@ -14,6 +14,7 @@ import { captureFrameFromElement } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { updateVideoThumbnail } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';
+import { BottomSheet } from '@/components/mobile';
 
 interface ThumbnailPickerDialogProps {
   /** Video link to edit, or null when closed. Pass the freshest object you
@@ -24,9 +25,16 @@ interface ThumbnailPickerDialogProps {
   /** Called after a successful save, before closing. The gallery uses this to
    * invalidate ['post-media', postId] and ['workflow-covers']. */
   onUpdated: () => void;
+  /** `phone`: a bottom sheet (C0bMiniatura mockup) with Cancelar / Salvar in its header. */
+  layout?: 'default' | 'phone';
 }
 
-export function ThumbnailPickerDialog({ media, onClose, onUpdated }: ThumbnailPickerDialogProps) {
+export function ThumbnailPickerDialog({
+  media,
+  onClose,
+  onUpdated,
+  layout = 'default',
+}: ThumbnailPickerDialogProps) {
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -78,6 +86,141 @@ export function ThumbnailPickerDialog({ media, onClose, onUpdated }: ThumbnailPi
     }
   }
 
+  const body = (
+    <>
+      {media && (
+        <div className="space-y-3">
+          {media.media_lost_at ? (
+            <MediaUnavailable size="full" className="w-full aspect-video rounded-xl" />
+          ) : (
+            <video
+              ref={videoRef}
+              src={media.url ?? undefined}
+              poster={media.thumbnail_url ?? undefined}
+              crossOrigin="anonymous"
+              controls
+              muted
+              playsInline
+              className="w-full max-h-64 rounded-xl bg-black"
+            />
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCapture}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-700"
+            >
+              {t('thumbnailEditor.useFrame')}
+            </button>
+            <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 text-[11px] font-semibold cursor-pointer hover:bg-stone-200">
+              {t('thumbnailEditor.uploadImage')}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  try {
+                    choosePending(await encodeImageAsJpeg(f));
+                  } catch {
+                    toast.error(t('thumbnailEditor.imageError'));
+                  }
+                }}
+              />
+            </label>
+          </div>
+          <div className="flex gap-3">
+            {media.thumbnail_url && (
+              <figure className="flex-1 min-w-0">
+                <img
+                  src={media.thumbnail_url}
+                  alt={t('thumbnailEditor.current')}
+                  className="w-full aspect-video object-cover rounded-lg ring-1 ring-stone-200/80"
+                />
+                <figcaption className="mt-1 text-[11px] text-stone-500">
+                  {t('thumbnailEditor.current')}
+                </figcaption>
+              </figure>
+            )}
+            {pendingUrl && (
+              <figure className="flex-1 min-w-0">
+                <img
+                  src={pendingUrl}
+                  alt={t('thumbnailEditor.preview')}
+                  className="w-full aspect-video object-cover rounded-lg ring-2 ring-[#eab308]"
+                />
+                <figcaption className="mt-1 text-[11px] font-semibold text-stone-700">
+                  {t('thumbnailEditor.preview')}
+                </figcaption>
+              </figure>
+            )}
+          </div>
+        </div>
+      )}
+      {media && (pendingUrl || media.thumbnail_url) && (
+        <div className="rounded-lg border p-3">
+          <p className="mb-2 text-xs font-semibold">Prévia da capa no Instagram</p>
+          <div className="flex items-start gap-4">
+            <figure className="w-20">
+              <img
+                src={pendingUrl ?? media.thumbnail_url ?? undefined}
+                alt="Capa do Reel em 9:16"
+                className="aspect-[9/16] w-full rounded-md object-cover"
+              />
+              <figcaption className="mt-1 text-[11px] text-muted-foreground">
+                Reel · 9:16
+              </figcaption>
+            </figure>
+            <figure className="w-20">
+              <img
+                src={pendingUrl ?? media.thumbnail_url ?? undefined}
+                alt="Recorte central da capa no feed"
+                className="aspect-square w-full rounded-md object-cover"
+              />
+              <figcaption className="mt-1 text-[11px] text-muted-foreground">Feed · 1:1</figcaption>
+            </figure>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            O Instagram usa o recorte central da imagem.
+          </p>
+        </div>
+      )}
+    </>
+  );
+
+  if (layout === 'phone') {
+    return (
+      <BottomSheet
+        open={media !== null}
+        onOpenChange={(o) => {
+          if (!o) onClose();
+        }}
+        title={t('thumbnailEditor.title')}
+        description={t('thumbnailEditor.disclaimer')}
+        headerLeading={
+          <button type="button" className="phone-sheet-text-button" onClick={onClose}>
+            {tc('actions.cancel')}
+          </button>
+        }
+        headerTrailing={
+          <button
+            type="button"
+            className="phone-sheet-text-button phone-sheet-text-button--primary"
+            disabled={!pending || saving}
+            onClick={handleSave}
+          >
+            {saving ? t('thumbnailEditor.saving') : 'Salvar'}
+          </button>
+        }
+      >
+        <p className="phone-sheet-note">{t('thumbnailEditor.disclaimer')}</p>
+        <div className="phone-thumbnail-body">{body}</div>
+      </BottomSheet>
+    );
+  }
+
   return (
     <Dialog
       open={media !== null}
@@ -92,107 +235,7 @@ export function ThumbnailPickerDialog({ media, onClose, onUpdated }: ThumbnailPi
           <DialogTitle>{t('thumbnailEditor.title')}</DialogTitle>
           <DialogDescription>{t('thumbnailEditor.disclaimer')}</DialogDescription>
         </DialogHeader>
-        {media && (
-          <div className="space-y-3">
-            {media.media_lost_at ? (
-              <MediaUnavailable size="full" className="w-full aspect-video rounded-xl" />
-            ) : (
-              <video
-                ref={videoRef}
-                src={media.url ?? undefined}
-                poster={media.thumbnail_url ?? undefined}
-                crossOrigin="anonymous"
-                controls
-                muted
-                playsInline
-                className="w-full max-h-64 rounded-xl bg-black"
-              />
-            )}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleCapture}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-700"
-              >
-                {t('thumbnailEditor.useFrame')}
-              </button>
-              <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 text-[11px] font-semibold cursor-pointer hover:bg-stone-200">
-                {t('thumbnailEditor.uploadImage')}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  hidden
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    e.target.value = '';
-                    if (!f) return;
-                    try {
-                      choosePending(await encodeImageAsJpeg(f));
-                    } catch {
-                      toast.error(t('thumbnailEditor.imageError'));
-                    }
-                  }}
-                />
-              </label>
-            </div>
-            <div className="flex gap-3">
-              {media.thumbnail_url && (
-                <figure className="flex-1 min-w-0">
-                  <img
-                    src={media.thumbnail_url}
-                    alt={t('thumbnailEditor.current')}
-                    className="w-full aspect-video object-cover rounded-lg ring-1 ring-stone-200/80"
-                  />
-                  <figcaption className="mt-1 text-[11px] text-stone-500">
-                    {t('thumbnailEditor.current')}
-                  </figcaption>
-                </figure>
-              )}
-              {pendingUrl && (
-                <figure className="flex-1 min-w-0">
-                  <img
-                    src={pendingUrl}
-                    alt={t('thumbnailEditor.preview')}
-                    className="w-full aspect-video object-cover rounded-lg ring-2 ring-[#eab308]"
-                  />
-                  <figcaption className="mt-1 text-[11px] font-semibold text-stone-700">
-                    {t('thumbnailEditor.preview')}
-                  </figcaption>
-                </figure>
-              )}
-            </div>
-          </div>
-        )}
-        {media && (pendingUrl || media.thumbnail_url) && (
-          <div className="rounded-lg border p-3">
-            <p className="mb-2 text-xs font-semibold">Prévia da capa no Instagram</p>
-            <div className="flex items-start gap-4">
-              <figure className="w-20">
-                <img
-                  src={pendingUrl ?? media.thumbnail_url ?? undefined}
-                  alt="Capa do Reel em 9:16"
-                  className="aspect-[9/16] w-full rounded-md object-cover"
-                />
-                <figcaption className="mt-1 text-[11px] text-muted-foreground">
-                  Reel · 9:16
-                </figcaption>
-              </figure>
-              <figure className="w-20">
-                <img
-                  src={pendingUrl ?? media.thumbnail_url ?? undefined}
-                  alt="Recorte central da capa no feed"
-                  className="aspect-square w-full rounded-md object-cover"
-                />
-                <figcaption className="mt-1 text-[11px] text-muted-foreground">
-                  Feed · 1:1
-                </figcaption>
-              </figure>
-            </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              O Instagram usa o recorte central da imagem.
-            </p>
-          </div>
-        )}
+        {body}
         <DialogFooter>
           <button
             type="button"

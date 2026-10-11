@@ -40,6 +40,7 @@ import PostCommentPopover from './PostCommentPopover';
 import { MAX_CAPTION_CHARS } from './useCaptionDraft';
 import { AddCommentPopover } from './AddCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
+import { PhoneFormatBar } from './postEditorPhone/PhoneFormatBar';
 
 // Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
 // (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
@@ -151,6 +152,9 @@ interface PostEditorProps {
   ariaLabel?: string;
   showCharacterCount?: boolean;
   onUploadStateChange?: (uploading: boolean) => void;
+  /** `phone`: no desktop toolbar or bubble menu; the phone format bar and selection menu
+   *  (shown inside the full-screen text editor) carry the same commands instead. */
+  variant?: 'default' | 'phone';
 }
 
 export function PostEditor({
@@ -173,7 +177,9 @@ export function PostEditor({
   ariaLabel,
   showCharacterCount = true,
   onUploadStateChange,
+  variant = 'default',
 }: PostEditorProps) {
+  const phone = variant === 'phone';
   const navigate = useNavigate();
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkInputValue, setLinkInputValue] = useState('');
@@ -464,8 +470,10 @@ export function PostEditor({
   const currentHighlight = editor?.getAttributes('highlight').color ?? null;
 
   return (
-    <div className={`post-editor${disabled ? ' post-editor--readonly' : ''}`}>
-      {!disabled && (
+    <div
+      className={`post-editor${disabled ? ' post-editor--readonly' : ''}${phone ? ' post-editor--phone' : ''}`}
+    >
+      {!disabled && !phone && (
         <div className="post-editor-toolbar">
           <button
             type="button"
@@ -538,7 +546,7 @@ export function PostEditor({
         </div>
       )}
 
-      {editor && !disabled && (
+      {editor && !disabled && !phone && (
         <BubbleMenu editor={editor} className="bubble-menu">
           <button
             type="button"
@@ -751,12 +759,85 @@ export function PostEditor({
 
       <EditorContent editor={editor} className="post-editor-content" />
 
+      {phone && editor && !disabled && (
+        <>
+          {onUploadInlineImage && (
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              aria-hidden="true"
+              tabIndex={-1}
+              onChange={(event) => void handleImageSelection(event.target.files?.[0])}
+            />
+          )}
+          <PhoneFormatBar
+            editor={editor}
+            onLink={openLinkPopover}
+            onComment={
+              onCreateComment
+                ? () => {
+                    // Top of the visible area: with the keyboard up, anything lower is
+                    // under it.
+                    const top = (window.visualViewport?.offsetTop ?? 0) + 8;
+                    setCommentAddPos({ top, left: 8 });
+                    setCommentAddOpen(true);
+                    setLinkPopoverOpen(false);
+                  }
+                : undefined
+            }
+            onPickImage={onUploadInlineImage ? () => imageInputRef.current?.click() : undefined}
+            imageUploading={imageUploading}
+            textColors={TEXT_COLORS}
+            highlightColors={HIGHLIGHT_COLORS}
+            onTextColor={applyTextColor}
+            onHighlight={applyHighlight}
+            linkRow={
+              linkPopoverOpen ? (
+                <div className="phone-format-bar__link" onMouseDown={(e) => e.stopPropagation()}>
+                  <input
+                    ref={linkInputRef}
+                    className="phone-format-bar__link-input"
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://..."
+                    aria-label="Endereço do link"
+                    value={linkInputValue}
+                    onChange={(e) => setLinkInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        applyLink();
+                      }
+                      if (e.key === 'Escape') setLinkPopoverOpen(false);
+                    }}
+                  />
+                  {editor.isActive('link') && (
+                    <button type="button" onClick={removeLink}>
+                      Remover
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setLinkPopoverOpen(false)}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="phone-format-bar__link-ok" onClick={applyLink}>
+                    OK
+                  </button>
+                </div>
+              ) : undefined
+            }
+          />
+        </>
+      )}
+
       {commentAddOpen && commentAddPos && (
         <AddCommentPopover
           position={commentAddPos}
           onSubmit={handleAddComment}
           onClose={() => setCommentAddOpen(false)}
           ignoreRefs={[commentAddWrapperRef]}
+          className={phone ? 'phone-comment-add' : undefined}
         />
       )}
 

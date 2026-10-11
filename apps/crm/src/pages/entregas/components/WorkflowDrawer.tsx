@@ -122,6 +122,7 @@ import { WorkflowHistoryView } from './WorkflowHistoryView';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { copyAppLink } from '@/lib/copyAppLink';
+import { buildHubPostLink } from '@/lib/hubLinks';
 import {
   TIPO_LABELS,
   getPostPublishState,
@@ -151,6 +152,9 @@ import {
   type FluxoPhoneListMode,
 } from '../phone/FluxoPhone';
 import '../phone/fluxoSheet.css';
+import { useIsPhoneEditor } from './postEditorPhone/useIsPhoneEditor';
+import { PhoneEditorScreen, type PhoneEditorScreenApi } from './postEditorPhone/PhoneEditorScreen';
+import type { PhoneMenuAction } from './postEditorPhone/types';
 
 // Stable empty array so the fallback in `useQuery({ data: processEvents = ... })` never
 // changes identity across renders when the flag is off or the query hasn't resolved yet.
@@ -287,6 +291,12 @@ export function WorkflowDrawer({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     isPhone ? touchSensor : null,
   );
+
+  // Phone (C4): the expanded post opens as its own pushed screen instead of inline.
+  // Contract for the phone list: setting `expandedId` (the row's onToggle, a deep link's
+  // initialPostId, "Novo Post", Duplicar) opens it; clearing it closes it.
+  const isPhoneEditor = useIsPhoneEditor();
+  const phoneScreenRef = useRef<PhoneEditorScreenApi | null>(null);
 
   // ── Data queries ──────────────────────────────────────────────────────────
 
@@ -933,6 +943,58 @@ export function WorkflowDrawer({
    *  vai acontecer sozinho (spec peça 3, resumo do cabeçalho). */
   const awaitingAutoScheduleCount = orderedPosts.filter((p) => offerAutoSchedule(p)).length;
 
+  // ── Phone editor (C4) ─────────────────────────────────────────────────────
+  const phoneExpandedPost =
+    isPhoneEditor && expandedId != null
+      ? (orderedPosts.find((p) => p.id === expandedId) ?? null)
+      : null;
+  /** Everything the desktop row's buttons and kebab offer for one post. Mover and
+   *  Desmembrar can close this drawer when they finish, so they run over the drawer
+   *  after the editor screen has closed (its history entry popped first). */
+  const phoneMenuActions = (post: WorkflowPost): PhoneMenuAction[] => {
+    const id = post.id!;
+    const actions: PhoneMenuAction[] = [
+      {
+        label: 'Copiar link',
+        immediate: true,
+        onSelect: () => void copyAppLink(`/entregas?post=${id}`),
+      },
+    ];
+    if (card.hubUrl) {
+      const hubUrl = card.hubUrl;
+      actions.push({
+        label: 'Copiar link da postagem',
+        immediate: true,
+        onSelect: () => {
+          navigator.clipboard.writeText(buildHubPostLink(hubUrl, id)).then(
+            () => toast.success('Link copiado!'),
+            () => toast.error('Não foi possível copiar o link.'),
+          );
+        },
+      });
+    }
+    if (canDuplicate) {
+      actions.push({
+        label: 'Duplicar',
+        // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+        disabled: savingIds.has(id),
+        onSelect: () => setDuplicateTarget({ kind: 'post', postId: id, status: post.status }),
+      });
+    }
+    actions.push(
+      {
+        label: 'Mover para outro fluxo',
+        onSelect: () => phoneScreenRef.current?.closeThen(() => setMoveTarget([id])),
+      },
+      {
+        label: 'Desmembrar do fluxo',
+        onSelect: () => phoneScreenRef.current?.closeThen(() => openDetachConfirm([id])),
+      },
+      { label: 'Excluir post', destructive: true, onSelect: () => handleDeletePost(id) },
+    );
+    return actions;
+  };
+
   // The archive-empty-flow checkbox in the detach confirm dialog only shows when the
   // pending batch covers every post currently in this workflow.
   const isTotalDetachSelection = !!detachTarget && detachTarget.length === posts.length;
@@ -1185,7 +1247,7 @@ export function WorkflowDrawer({
                           workflowId={workflowId}
                           clienteId={clienteId}
                           clientePosts={clientePosts}
-                          isExpanded={expandedId === post.id}
+                          isExpanded={!isPhoneEditor && expandedId === post.id}
                           isSaving={savingIds.has(post.id!)}
                           approvals={approvals.filter((a) => a.post_id === post.id)}
                           statusEvents={statusEvents.filter((e) => e.post_id === post.id)}
@@ -1263,6 +1325,85 @@ export function WorkflowDrawer({
           )}
         </div>
       </div>
+
+      {/* ── Phone only (C4): the expanded post as its own pushed screen, with its own
+          history entry on top of the drawer's. Desktop never opens it. ── */}
+      {isPhoneEditor && (
+        <PhoneEditorScreen
+          open={phoneExpandedPost != null}
+          onClose={() => setExpandedId(null)}
+          label="Editor do post"
+          apiRef={phoneScreenRef}
+        >
+          {phoneExpandedPost && (
+            <PostEditorBody
+              key={phoneExpandedPost.id}
+              layout="phone"
+              phone={{
+                onBack: () => setExpandedId(null),
+                subtitle: `${card.cliente?.nome || '—'} · ${card.workflow.titulo}`,
+                clientName: card.cliente?.nome,
+                saving: savingIds.has(phoneExpandedPost.id!),
+                menuActions: phoneMenuActions(phoneExpandedPost),
+                sendToClient: {
+                  count: readyToSend,
+                  sending: isSending,
+                  onSend: handleSendToCliente,
+                },
+                autoSchedule: offerAutoSchedule(phoneExpandedPost)
+                  ? {
+                      needsDate: !isEligibleToScheduleNow(phoneExpandedPost.scheduled_at),
+                      onClick: () => maybeNudge(phoneExpandedPost),
+                    }
+                  : null,
+                processEvents: processEvents.filter((e) => e.post_id === phoneExpandedPost.id),
+              }}
+              post={phoneExpandedPost}
+              templateId={card.workflow.template_id}
+              workflowId={workflowId}
+              clienteId={clienteId}
+              clientePosts={clientePosts}
+              isExpanded
+              approvals={approvals.filter((a) => a.post_id === phoneExpandedPost.id)}
+              statusEvents={statusEvents.filter((e) => e.post_id === phoneExpandedPost.id)}
+              editSuggestion={
+                editSuggestions.find((s) => s.post_id === phoneExpandedPost.id) ?? null
+              }
+              membros={membros}
+              replyText={replyText[phoneExpandedPost.id!] || ''}
+              sendingReply={sendingReply === phoneExpandedPost.id}
+              commentThreads={commentThreads.filter((t) => t.post_id === phoneExpandedPost.id)}
+              currentUserId={user?.id}
+              currentUserRole={role}
+              canManageAutomations={canManageAutomations}
+              workspaceUsers={workspaceUsers}
+              hasInstagramAccount={hasInstagramAccount}
+              igAccountStatus={igAccountStatus}
+              hasActiveTikTokAccount={hasActiveTikTokAccount}
+              ttAccountStatus={ttAccountStatus}
+              onFieldChange={(field, value) =>
+                handleFieldChange(phoneExpandedPost.id!, field, value)
+              }
+              onContentUpdate={(json, plain) => scheduleContentSave(phoneExpandedPost, json, plain)}
+              onReplyChange={(text) =>
+                setReplyText((prev) => ({ ...prev, [phoneExpandedPost.id!]: text }))
+              }
+              onReplySend={() => handleReply(phoneExpandedPost.id!)}
+              onRefresh={refresh}
+              onCreateComment={handleCreateComment}
+              onSaveCaption={handleSaveCaption}
+              onReplyToComment={handleReplyToComment}
+              onResolveThread={handleResolveThread}
+              onReopenThread={handleReopenThread}
+              onEditComment={handleEditComment}
+              onDeleteComment={handleDeleteComment}
+              editorVersion={editorVersions[phoneExpandedPost.id!] ?? 0}
+              onAcceptSuggestion={handleAcceptSuggestion}
+              onRejectSuggestion={handleRejectSuggestion}
+            />
+          )}
+        </PhoneEditorScreen>
+      )}
 
       <AlertDialog
         open={!!pendingDeleteId}

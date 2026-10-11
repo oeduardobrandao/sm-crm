@@ -11,6 +11,12 @@ export interface ActionSheetAction {
   destructive?: boolean;
   disabled?: boolean;
   icon?: ReactNode;
+  /**
+   * Run `onSelect` inside the tap, then close, instead of after the sheet's history
+   * entry is popped. For actions that need the user gesture itself (clipboard writes on
+   * iOS Safari) and never navigate.
+   */
+  immediate?: boolean;
 }
 
 export interface ActionSheetProps {
@@ -110,7 +116,12 @@ export function ActionSheet({
                 disabled={action.disabled}
                 onClick={() => {
                   choseRef.current = true;
-                  closeThen(action.onSelect);
+                  if (action.immediate) {
+                    action.onSelect();
+                    close();
+                  } else {
+                    closeThen(action.onSelect);
+                  }
                 }}
               >
                 {action.icon && (

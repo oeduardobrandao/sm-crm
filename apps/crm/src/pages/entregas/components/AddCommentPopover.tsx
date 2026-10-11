@@ -8,6 +8,8 @@ export interface AddCommentPopoverProps {
   onClose: () => void;
   /** Elements whose mousedown must not count as "outside" (e.g. the trigger button). */
   ignoreRefs?: React.RefObject<HTMLElement | null>[];
+  /** Extra class on the popover (the phone layout widens it to the screen). */
+  className?: string;
 }
 
 /** "Adicionar comentário" popover shared by the content editor and the caption field. */
@@ -16,6 +18,7 @@ export function AddCommentPopover({
   onSubmit,
   onClose,
   ignoreRefs = [],
+  className,
 }: AddCommentPopoverProps) {
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -50,7 +53,7 @@ export function AddCommentPopover({
   return createPortal(
     <div
       ref={rootRef}
-      className="comment-add-popover"
+      className={className ? `comment-add-popover ${className}` : 'comment-add-popover'}
       style={{ position: 'fixed', top: position.top, left: position.left, zIndex: 9999 }}
       onMouseDown={(e) => e.stopPropagation()}
     >

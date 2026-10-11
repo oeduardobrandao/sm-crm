@@ -16679,6 +16679,1062 @@ button.phone-sheet__grabber::before {
   text-align: center;
 }
 
+/* ---- Phone post editor (C4): pushed screen, tabs, bottom bar, text screens ----
+   Rendered only below 768px (useIsPhoneEditor). Every class is phone-*, and the roots
+   carry .phone-kit for the tokens (they are portaled outside .app-container). */
+.phone-editor-screen {
+  position: fixed;
+  inset: 0;
+  /* Above .drawer-panel (9001), below the kit sheets / menus and dialogs (9010+). */
+  z-index: 9003;
+  display: flex;
+  flex-direction: column;
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  outline: none;
+  /* No fill-mode: a lingering transform would trap the fixed text screen inside it. */
+  animation: phone-push-in 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes phone-push-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+.phone-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.phone-editor__scroll {
+  flex: 1;
+  min-height: 0;
+  padding: env(safe-area-inset-top, 0px) max(var(--phone-gutter), env(safe-area-inset-right, 0px))
+    calc(96px + env(safe-area-inset-bottom, 0px))
+    max(var(--phone-gutter), env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-editor-header__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+.phone-editor-header__trailing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.phone-editor-header__save {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-editor-header__title {
+  margin: 4px 0 0;
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.phone-editor-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 12px;
+}
+.phone-editor-header__subtitle {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-editor-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  cursor: pointer;
+}
+.phone-editor-status .post-status-chip {
+  font-size: var(--phone-text-footnote);
+}
+.phone-editor-status__chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--phone-label-secondary);
+}
+.phone-editor-status:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+.phone-editor-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0 calc(-1 * var(--phone-gutter)) 16px;
+  padding: 8px var(--phone-gutter);
+  background: var(--phone-bg);
+}
+/* Four sections in ~340px: each tab sizes to its label so "Comentários" isn't cut. */
+.phone-editor-tabs .phone-segmented__item {
+  flex: 1 1 auto;
+  padding: 0 6px;
+}
+.phone-editor-tabs__count {
+  color: var(--phone-label-secondary);
+  font-weight: 500;
+}
+.phone-editor-card {
+  margin: 0 0 20px;
+  padding: 14px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-editor-section {
+  margin: 0 0 20px;
+}
+.phone-editor-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 8px 16px;
+}
+.phone-editor-section__title {
+  flex: 1;
+  margin: 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.phone-editor-section .phone-editor-card {
+  margin-bottom: 0;
+}
+.phone-editor-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-editor-link svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-editor-footnote {
+  margin: 6px 16px 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-editor-notice {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--phone-cell);
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.4;
+}
+.phone-editor-notice--danger {
+  color: var(--danger-text);
+}
+.phone-editor-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.phone-editor-check {
+  width: 18px;
+  height: 18px;
+  color: var(--phone-label);
+}
+.phone-editor-check--ok {
+  color: var(--phone-success);
+}
+.phone-editor-missing {
+  color: #b45309;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+[data-theme='dark'] .phone-editor-missing {
+  color: #f5a342;
+}
+/* A field row whose control renders nothing (PlatformSelector without TikTok). */
+.phone-editor .phone-field:empty {
+  display: none;
+}
+.phone-editor .phone-cell__subtitle {
+  white-space: normal;
+}
+.phone-editor-automation:empty {
+  display: none;
+}
+/* Inputs under 16px make iOS zoom the page on focus. The caption mirror must keep the
+   textarea's exact metrics or the comment highlights drift, so both move together. */
+.phone-editor textarea,
+.phone-editor input,
+.phone-editor select,
+.phone-editor .caption-mirror {
+  font-size: 16px !important;
+}
+
+/* Form rows inside a grouped list (Título, Tipo, Destinos, Responsável, Data). */
+.phone-editor .phone-group__list > li + li {
+  border-top: 1px solid var(--phone-separator);
+}
+.phone-editor .phone-cell + .phone-cell .phone-cell__body {
+  border-top: 0;
+}
+.phone-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px;
+}
+.phone-field--inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--phone-row-min);
+}
+.phone-field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.phone-field__label,
+.phone-field .drawer-post-field > label {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-field .drawer-post-field {
+  margin: 0;
+  min-width: 0;
+}
+.phone-field__input {
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  outline: none;
+}
+.phone-field__select {
+  max-width: 60%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  font: inherit;
+  text-align: right;
+  text-align-last: right;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ---- Bottom bar ---- */
+.phone-editor-bar {
+  flex-wrap: wrap;
+  /* Warnings sit on the bar: near-opaque instead of the kit's lighter glass. */
+  background: var(--phone-menu-bg);
+}
+.phone-editor-bar__column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.phone-editor-bar__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+/* Agendado: the date on its own line, Cancelar agendamento full width under it. */
+.phone-editor-bar__row--stacked {
+  flex-wrap: wrap;
+}
+.phone-editor-bar__row--stacked .phone-editor-bar__state {
+  flex-basis: 100%;
+}
+.phone-editor-bar__row--stacked .phone-editor-bar__destructive {
+  flex: 1;
+}
+.phone-editor-bar__primary,
+.phone-editor-bar__secondary,
+.phone-editor-bar__destructive {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-editor-bar__primary {
+  flex: 1;
+  min-width: 0;
+  height: 50px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font-size: var(--phone-text-body);
+  white-space: nowrap;
+}
+/* In the column (Tentar novamente) flex: 1 would size the height, not the width. */
+.phone-editor-bar__column > .phone-editor-bar__primary {
+  flex: none;
+  width: 100%;
+}
+.phone-editor-bar__row .phone-editor-bar__primary,
+.phone-editor-bar__row .phone-editor-bar__secondary {
+  font-size: var(--phone-text-subhead);
+}
+.phone-editor-bar__primary--danger {
+  background: #d70015;
+  color: #ffffff;
+}
+.phone-editor-bar__primary--success {
+  background: var(--phone-success);
+  color: #ffffff;
+}
+.phone-editor-bar__secondary {
+  flex-shrink: 0;
+  height: 50px;
+  padding: 0 14px;
+  white-space: nowrap;
+  border-radius: 14px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font-size: var(--phone-text-subhead);
+}
+.phone-editor-bar__destructive {
+  flex-shrink: 0;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--phone-destructive) 35%, transparent);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--phone-destructive);
+  font-size: var(--phone-text-subhead);
+}
+.phone-editor-bar__primary svg,
+.phone-editor-bar__secondary svg,
+.phone-editor-bar__destructive svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-editor-bar__primary:disabled,
+.phone-editor-bar__secondary:disabled,
+.phone-editor-bar__destructive:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-editor-bar__state {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.phone-editor-bar__state svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+.phone-editor-bar__warning,
+.phone-editor-bar__missing,
+.phone-editor-bar__note {
+  margin: 0;
+  font-size: var(--phone-text-footnote);
+}
+.phone-editor-bar__warning {
+  color: var(--danger-text);
+}
+.phone-editor-bar__missing {
+  color: #b45309;
+}
+[data-theme='dark'] .phone-editor-bar__missing {
+  color: #f5a342;
+}
+.phone-editor-bar__note {
+  color: var(--phone-label-secondary);
+}
+.phone-editor-bar__declaration {
+  margin: 0;
+}
+
+/* ---- Full-screen text editing ---- */
+.phone-text-screen--hidden {
+  display: none;
+}
+.phone-text-screen--open {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--phone-cell);
+}
+.phone-text-screen__header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: calc(env(safe-area-inset-top, 0px) + 4px) var(--phone-gutter) 4px;
+  border-bottom: 1px solid var(--phone-separator);
+}
+.phone-text-screen__title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+}
+.phone-text-screen__extra {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-text-screen__done {
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-text-screen--open .phone-text-screen__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px var(--phone-gutter) 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-text-screen--open .phone-editor-card {
+  padding: 0;
+  background: transparent;
+}
+.post-editor--phone {
+  position: relative;
+  /* .post-editor clips; the sticky format bar needs to see the text screen's scroller. */
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+/* Open text screen: the editor fills the screen so the format bar rests at its bottom
+   (right above the keyboard) even when the text is short; sticky keeps it there once
+   the text scrolls. */
+.phone-text-screen--open .post-editor--phone {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.phone-text-screen--open .post-editor--phone .post-editor-content {
+  flex: 1 0 auto;
+}
+.post-editor--phone .post-editor-content .ProseMirror {
+  min-height: 30vh;
+  font-size: 17px;
+  line-height: 1.5;
+}
+.phone-format-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  gap: 2px;
+  margin: 16px calc(-1 * var(--phone-gutter)) 0;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  overflow-x: auto;
+  border-top: 1px solid var(--phone-separator);
+  background: var(--phone-menu-bg);
+  scrollbar-width: none;
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+.phone-format-bar::-webkit-scrollbar {
+  display: none;
+}
+.phone-format-bar__button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--phone-label);
+  cursor: pointer;
+}
+.phone-format-bar__button svg {
+  width: 20px;
+  height: 20px;
+}
+.phone-format-bar__button[data-active] {
+  background: var(--phone-fill-pressed);
+}
+.phone-format-bar__button:disabled {
+  opacity: 0.35;
+}
+.phone-format-bar__link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.phone-format-bar__link-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--phone-separator);
+  border-radius: 10px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+}
+.phone-format-bar__link button {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+}
+.phone-format-bar__link .phone-format-bar__link-ok {
+  color: var(--phone-label);
+  font-weight: 600;
+}
+.phone-selection-menu {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #1c1c1e;
+  box-shadow: var(--phone-shadow-menu);
+}
+.phone-selection-menu button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  white-space: nowrap;
+}
+.phone-selection-menu button + button {
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+}
+.phone-selection-menu svg {
+  width: 15px;
+  height: 15px;
+}
+.phone-color-grid {
+  margin: 0 0 18px;
+}
+.phone-color-grid__label {
+  margin: 0 0 8px 4px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-color-grid__swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 44px);
+  gap: 10px;
+}
+.phone-color-grid__swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--phone-separator);
+  border-radius: 999px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font-weight: 600;
+}
+.phone-color-grid__swatch svg {
+  width: 18px;
+  height: 18px;
+}
+.comment-add-popover.phone-comment-add {
+  width: calc(100vw - 16px);
+  max-width: none;
+  box-sizing: border-box;
+}
+
+/* ---- Media strip ---- */
+.phone-media__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.phone-media__title {
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+}
+.phone-media__count {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-media__actions {
+  margin-left: auto;
+}
+.phone-media__link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-media__link:disabled {
+  opacity: 0.4;
+}
+.phone-media__hint {
+  margin: -4px 0 8px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-media__strip {
+  display: flex;
+  gap: 8px;
+  margin: 0 -14px;
+  padding: 0 14px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-media__strip::-webkit-scrollbar {
+  display: none;
+}
+.phone-media__hold {
+  flex-shrink: 0;
+}
+.phone-media__tile {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: 92px;
+  height: 92px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 12px;
+  background: var(--phone-fill);
+  cursor: pointer;
+}
+.phone-media__tile--sortable {
+  box-shadow: 0 0 0 2px var(--phone-accent);
+  cursor: grab;
+  touch-action: manipulation;
+}
+.phone-media__tile:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-media__visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--phone-label-secondary);
+}
+.phone-media__visual img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.phone-media__visual--large {
+  position: relative;
+  width: min(72vw, 300px);
+  height: min(72vw, 300px);
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--phone-cell);
+}
+.phone-media__video,
+.phone-media__badge {
+  position: absolute;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.phone-media__video {
+  bottom: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+}
+.phone-media__badge {
+  top: 6px;
+  left: 6px;
+  background: var(--phone-accent);
+  color: var(--phone-on-accent);
+}
+.phone-media__warn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  padding: 3px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+}
+.phone-media__add {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 92px;
+  height: 92px;
+  padding: 0;
+  border: 1.5px dashed var(--phone-fill-pressed);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  cursor: pointer;
+}
+.phone-media__add svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---- Comentários ---- */
+.phone-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.phone-comments__thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.phone-comments__row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.phone-comments__row--team {
+  align-items: flex-end;
+}
+.phone-comments__meta {
+  color: var(--phone-label-secondary);
+  font-size: 12px;
+}
+.phone-comments__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  color: #b45309;
+}
+.phone-comments__tag svg {
+  width: 12px;
+  height: 12px;
+}
+.phone-bubble {
+  max-width: 82%;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: var(--phone-text-subhead);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.phone-bubble--client {
+  border-bottom-left-radius: 6px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+}
+.phone-bubble--team {
+  border-bottom-right-radius: 6px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+.phone-comments__event {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+.phone-comments__event-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--phone-success);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-comments__event-label svg {
+  width: 16px;
+  height: 16px;
+}
+.phone-comments__suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: #fffbeb;
+  color: var(--phone-label);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+[data-theme='dark'] .phone-comments__suggestion {
+  background: rgba(245, 163, 66, 0.12);
+}
+.phone-comments__suggestion strong {
+  display: block;
+  font-size: var(--phone-text-subhead);
+}
+.phone-comments__suggestion-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f59e0b;
+}
+.phone-comments__suggestion-cta {
+  margin-left: auto;
+  color: #b45309;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+}
+.phone-comments__empty {
+  margin: 0;
+  padding: 24px 8px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+.phone-comments__composer {
+  gap: 8px;
+}
+.phone-comments__input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--phone-separator);
+  border-radius: 20px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+}
+.phone-comments__send {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  cursor: pointer;
+}
+.phone-comments__send svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-comments__send:disabled {
+  opacity: 0.4;
+}
+
+/* ---- Editor sheets ---- */
+.phone-sheet-text-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  cursor: pointer;
+}
+.phone-sheet-text-button--primary {
+  font-weight: 600;
+}
+.phone-sheet-text-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-sheet-note {
+  margin: 4px 4px 14px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.4;
+}
+.phone-versions__item {
+  margin: 0 0 8px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--phone-cell);
+}
+.phone-versions__diff {
+  padding: 12px 16px;
+  border-top: 1px solid var(--phone-separator);
+}
+.phone-suggestion__meta {
+  margin: 0 4px 12px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-suggestion__block {
+  margin: 0 0 16px;
+}
+.phone-suggestion__card {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--phone-cell);
+}
+.phone-suggestion__legend {
+  display: flex;
+  gap: 14px;
+  margin: 0 4px 16px;
+  font-size: var(--phone-text-footnote);
+}
+.phone-suggestion__legend-out {
+  color: var(--danger-text);
+  text-decoration: line-through;
+}
+.phone-suggestion__legend-in {
+  color: var(--phone-success);
+  text-decoration: underline;
+}
+.phone-suggestion__actions {
+  display: flex;
+  gap: 10px;
+}
+.phone-suggestion__actions > button {
+  flex: 1;
+}
+
+/* ---- Crop editor (MediaAdjustmentDialog, phone layout) ---- */
+.phone-kit.phone-crop {
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: #000000;
+  color: #ffffff;
+}
+.phone-crop__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 12px;
+  background: #000000;
+}
+.phone-crop__header-button {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  font-size: var(--phone-text-body);
+  cursor: pointer;
+}
+.phone-crop__header-button--primary {
+  justify-self: end;
+  color: var(--phone-accent);
+  font-weight: 600;
+}
+.phone-crop__header-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-crop__title {
+  margin: 0;
+  color: #ffffff;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+}
+.phone-crop__footer {
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-editor-screen {
+    animation: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .phone-sheet,
   .phone-sheet-overlay,
