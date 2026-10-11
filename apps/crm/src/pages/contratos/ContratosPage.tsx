@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { holdUnsavedWork, useUnsavedWork } from '@mesaas/app-lifecycle';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search, UserRound } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,6 +75,12 @@ import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { captureEvent } from '@/lib/analytics';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { GroupedList, Cell } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { ContratosPhone } from './phone/ContratosPhone';
 
 const contratoSchema = z.object({
   titulo: z.string().min(1, 'Título obrigatório'),
@@ -117,6 +123,10 @@ export default function ContratosPage() {
   const canSeeContracts = can('contratos', 'ver');
   const qc = useQueryClient();
   const navigate = useNavigate();
+  // Below 768px the page is the phone list (PLAN F2d). The form body follows the dialog
+  // primitive, which becomes a sheet only inside the phone shell (PhoneLayoutContext).
+  const isPhone = !useIsDesktop(768);
+  const { isPhone: phoneForm } = usePhoneLayout();
   const [filter, setFilter] = useState<FilterStatus>('todos');
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -273,6 +283,279 @@ export default function ContratosPage() {
     );
   };
 
+  const clienteIdValue = useWatch({ control: form.control, name: 'clienteId' });
+  const statusValue = useWatch({ control: form.control, name: 'status' });
+  const { errors } = form.formState;
+  const setField = (name: 'clienteId' | 'status', value: string) =>
+    form.setValue(name, value as never, {
+      shouldDirty: true,
+      shouldValidate: form.formState.isSubmitted,
+    });
+  // Grouped rows on phones: dates stacked as native date controls, pickers as checkmark
+  // lists, and the linked client one tap away while editing.
+  const phoneFields = (
+    <>
+      <GroupedList aria-label="Contrato">
+        <FormRow
+          label="Título"
+          error={errors.titulo?.message}
+          input={{ ...form.register('titulo'), autoComplete: 'off' }}
+        />
+        <FormRow label="Data início" error={errors.dataInicio?.message}>
+          {(field) => (
+            <input
+              {...field}
+              {...form.register('dataInicio')}
+              type="date"
+              className="phone-form-row__input"
+            />
+          )}
+        </FormRow>
+        <FormRow label="Data fim" error={errors.dataFim?.message}>
+          {(field) => (
+            <input
+              {...field}
+              {...form.register('dataFim')}
+              type="date"
+              className="phone-form-row__input"
+            />
+          )}
+        </FormRow>
+        <FormRow
+          label="Valor Total (R$)"
+          error={errors.valor?.message}
+          input={{
+            ...form.register('valor'),
+            type: 'number',
+            inputMode: 'decimal',
+            min: 0,
+            step: 0.01,
+            placeholder: '0,00',
+          }}
+        />
+      </GroupedList>
+      <GroupedList>
+        <PickerCell
+          label="Cliente (opcional)"
+          sheetTitle="Cliente"
+          searchable
+          emptyOption={{ label: 'Nenhum' }}
+          options={sortClientesByNome(clientes).map((c) => ({
+            value: String(c.id),
+            label: c.nome,
+          }))}
+          value={clienteIdValue || null}
+          onChange={(v) => setField('clienteId', v ?? '')}
+        />
+        <PickerCell
+          label="Status"
+          options={[
+            { value: 'a_assinar', label: 'A Assinar' },
+            { value: 'vigente', label: 'Vigente' },
+            { value: 'encerrado', label: 'Encerrado' },
+          ]}
+          value={statusValue}
+          onChange={(v) => v && setField('status', v)}
+        />
+      </GroupedList>
+      {editing?.cliente_id && (
+        <GroupedList>
+          <Cell
+            icon={<UserRound aria-hidden="true" />}
+            label="Abrir cliente"
+            value={editing.cliente_nome}
+            chevron
+            onClick={() => {
+              setModalOpen(false);
+              navigate(`/clientes/${editing.cliente_id}`);
+            }}
+          />
+        </GroupedList>
+      )}
+    </>
+  );
+
+  const dialogs = (
+    <>
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Editar Contrato' : 'Novo Contrato'}</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {phoneForm ? (
+                phoneFields
+              ) : (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="titulo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Título</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="clienteId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cliente (opcional)</FormLabel>
+                        <Select
+                          value={field.value || '__none__'}
+                          onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhum</SelectItem>
+                            {sortClientesByNome(clientes).map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="dataInicio"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Data Início</FormLabel>
+                          <FormControl>
+                            <DatePicker
+                              value={isoToDate(field.value)}
+                              onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
+                              className="w-full"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="dataFim"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Data Fim</FormLabel>
+                          <FormControl>
+                            <DatePicker
+                              value={isoToDate(field.value)}
+                              onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
+                              className="w-full"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="valor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Valor Total (R$)</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={0} step={0.01} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Status</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="a_assinar">A Assinar</SelectItem>
+                            <SelectItem value="vigente">Vigente</SelectItem>
+                            <SelectItem value="encerrado">Encerrado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" />} Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover este contrato?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <ContratosPhone
+          isLoading={isLoading}
+          contratos={filtered}
+          canSeeValues={canSeeContracts}
+          filter={filter}
+          onFilterChange={setFilter}
+          search={search}
+          onSearchChange={setSearch}
+          onAdd={openAdd}
+          onImport={handleCSVImport}
+          onEdit={openEdit}
+          onDelete={setDeleteId}
+          onOpenCliente={(clienteId) => navigate(`/clientes/${clienteId}`)}
+        />
+        {dialogs}
+      </>
+    );
+  }
+
   return (
     <div style={{ padding: '1.5rem' }}>
       <div className="header">
@@ -428,154 +711,7 @@ export default function ContratosPage() {
         </div>
       )}
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent onConfirmClose={() => setModalOpen(false)}>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Editar Contrato' : 'Novo Contrato'}</DialogTitle>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="titulo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Título</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="clienteId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cliente (opcional)</FormLabel>
-                    <Select
-                      value={field.value || '__none__'}
-                      onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione..." />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">Nenhum</SelectItem>
-                        {sortClientesByNome(clientes).map((c) => (
-                          <SelectItem key={c.id} value={String(c.id)}>
-                            {c.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="dataInicio"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Data Início</FormLabel>
-                      <FormControl>
-                        <DatePicker
-                          value={isoToDate(field.value)}
-                          onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
-                          className="w-full"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="dataFim"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Data Fim</FormLabel>
-                      <FormControl>
-                        <DatePicker
-                          value={isoToDate(field.value)}
-                          onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
-                          className="w-full"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={form.control}
-                name="valor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Valor Total (R$)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} step={0.01} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="a_assinar">A Assinar</SelectItem>
-                        <SelectItem value="vigente">Vigente</SelectItem>
-                        <SelectItem value="encerrado">Encerrado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving && <Spinner size="sm" />} Salvar
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog
-        open={deleteId != null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover este contrato?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogs}
     </div>
   );
 }

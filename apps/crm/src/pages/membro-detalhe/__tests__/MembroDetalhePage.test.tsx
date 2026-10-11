@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
@@ -21,7 +21,11 @@ const {
   useWorkspaceLimitsMock,
   toastSuccessMock,
   toastErrorMock,
+  viewport,
 } = vi.hoisted(() => ({
+  // jsdom's matchMedia reports false, so the page renders its phone branch unless a
+  // test flips this to the desktop layout.
+  viewport: { desktop: false },
   paramsState: { id: '1' },
   navigateMock: vi.fn(),
   queryClientMock: { invalidateQueries: vi.fn() },
@@ -77,6 +81,8 @@ vi.mock('../../../services/invite', () => ({
   inviteUser: vi.fn(),
 }));
 
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => viewport.desktop }));
+
 vi.mock('../../../lib/supabase', () => ({
   supabase: { from: vi.fn() },
 }));
@@ -99,6 +105,8 @@ const membro = {
   crm_user_id: null,
 };
 
+let transacoes: unknown[] = [];
+
 function setup(
   canSeeFinancials: boolean | 'unknown',
   can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck = makeCan(
@@ -117,7 +125,7 @@ function setup(
     isUnlimited: false,
   });
   queryState.membros = { data: [membro], isLoading: false };
-  queryState.transacoes = { data: [], isLoading: false };
+  queryState.transacoes = { data: transacoes, isLoading: false };
   queryState['workspace-users'] = { data: [], isLoading: false };
   queryState.invites = { data: [], isLoading: false };
   render(<MembroDetalhePage />);
@@ -126,6 +134,8 @@ function setup(
 describe('MembroDetalhePage financial query gate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    viewport.desktop = false;
+    transacoes = [];
   });
 
   it('disables the transacoes fetch when the caller cannot see financials', () => {
@@ -149,11 +159,72 @@ describe('MembroDetalhePage financial query gate', () => {
     expect(screen.queryByText('Descrição')).toBeNull();
   });
 
-  it('shows the transactions table when the caller can see financials', () => {
+  it('shows the transactions table when the caller can see financials (desktop)', () => {
+    viewport.desktop = true;
     setup(true);
 
     expect(screen.getByText('Descrição')).toBeTruthy();
     expect(screen.queryByText(/apenas para quem tem acesso financeiro liberado/i)).toBeNull();
+  });
+
+  it('lists the transactions as grouped rows on phones', () => {
+    transacoes = [
+      {
+        id: 9,
+        descricao: 'Ana Editora',
+        valor: 1000,
+        data: '2026-10-05',
+        categoria: 'Salário',
+        tipo: 'saida',
+        status: 'agendado',
+      },
+    ];
+    setup(true);
+
+    const list = screen.getByRole('list', { name: 'Transações' });
+    expect(within(list).getByText('2026-10-05 · Salário')).toBeInTheDocument();
+    expect(within(list).getByText('Agendado')).toBeInTheDocument();
+    expect(screen.queryByText(/apenas para quem tem acesso financeiro liberado/i)).toBeNull();
+  });
+});
+
+describe('MembroDetalhePage on phones', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = false;
+    transacoes = [];
+  });
+
+  it('renders a pushed screen: back to Equipe, the member header and Informações rows', () => {
+    setup(true);
+
+    expect(screen.getByRole('button', { name: 'Voltar para Equipe' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Ana Editora' })).toBeInTheDocument();
+    const info = screen.getByRole('list', { name: 'Informações' });
+    expect(within(info).getByText('Dia de pagamento')).toBeInTheDocument();
+    expect(within(info).getByText('5')).toBeInTheDocument();
+    // No desktop header, no outline "Voltar" button.
+    expect(document.querySelector('.header')).toBeNull();
+  });
+
+  it('goes back to Equipe when opened directly (no in-app history)', () => {
+    setup(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar para Equipe' }));
+    expect(navigateMock).toHaveBeenCalledWith('/equipe', { replace: true });
+  });
+
+  it('shows the not-found state with the nav bar', () => {
+    setup(true);
+    cleanup();
+    paramsState.id = '999';
+    try {
+      render(<MembroDetalhePage />);
+      expect(screen.getByText('Membro não encontrado.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Voltar para Equipe' })).toBeInTheDocument();
+    } finally {
+      paramsState.id = '1';
+    }
   });
 });
 
@@ -201,6 +272,7 @@ describe('MembroDetalhePage — Editar button gated on equipe:editar', () => {
 describe('MembroDetalhePage member editing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    viewport.desktop = false;
   });
 
   it('lets a workspace admin save the member and invite them to the CRM', async () => {
