@@ -214,3 +214,48 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
   and browsers without `backdrop-filter` get the opaque fill.
 - **Landscape:** keep the 768px gate from D17 for now. A phone in landscape gets the tablet layout,
   so rotating with the editor open falls back to the inline editor. Revisit in E1 (portrait lock).
+
+## D25. Every in-shell screen gets the phone layout before phase D
+
+- **Chosen (2026-10-11, owner):** port every route inside `AppLayout` to the iOS idiom below 768px
+  (phase F) before starting the native module. Public marketing pages are out of scope.
+- **Breakpoint:** phone = `!useIsDesktop(768)`, matching the shell. Page-level 900/901 branches stay
+  only as the 768-900 tablet fallback.
+
+## D26. One header row on phones
+
+- **Chosen:** root screens show one 44px row with the page's actions and the shell's bell and help
+  links, above the large title. Pushed screens show a nav bar (back, title, actions).
+- **Rejected:** keeping `PhoneShellHeader` as its own bar above each page header: two stacked bars
+  is the main reason unported screens read as desktop.
+- **Rollout:** routes opt in as their PR lands, so unported routes keep today's bar meanwhile.
+
+## D27. Report editor is view and export only on phones
+
+- **Chosen:** on phones `/relatorios/:id` and the template pages render the report read-only with
+  Exportar PDF, Atualizar dados, Ver como cliente and Aplicar template.
+- **Why:** editing is built for an 880px/A4 layout: block toolbars are hover-gated, the layers
+  rail is hidden below 1280px, and widths collapse below 720px so the layout can't be previewed.
+
+## D28. Dialogs become sheets on phones, in the primitive
+
+- **Chosen:** `DialogContent` renders as a large bottom sheet below 768px and `AlertDialogContent`
+  as an action-sheet confirm, with an opt-out for dialogs that must stay fullscreen
+  (EventoFormDialog, the automation form). One change converts ~40 dialogs.
+- **Must keep:** `confirmClose`, `useUnsavedWork`, `trackUnsavedWork` and focus return.
+
+## D29. Help is tappable
+
+- **Chosen:** `HelpTooltip`, `[data-tooltip]` and `title=`-only information get a tap path on
+  touch (info button opening a small sheet) or move into visible subtitles and footers.
+
+## D30. Drag only in Reordenar mode, everywhere
+
+- Extends D20 to Tarefas boards and calendar, Briefing, Páginas, statuses and Arquivos: long-press
+  opens the menu; drag starts from a handle in Reordenar mode; every move also exists as a menu
+  action. The Agenda turns drag off on phones and moves events through the form.
+
+## D31. Instagram and TikTok cards are restyled, not rewritten
+
+- **Chosen:** the cliente Redes sociais tab keeps the imperative innerHTML renderers and gets a
+  kit layout around them. A React rewrite is out of F's scope.

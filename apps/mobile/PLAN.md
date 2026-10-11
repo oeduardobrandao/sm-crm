@@ -27,14 +27,15 @@ completo (opção C)" and "Editor de post (opção C)".
 Effort levels: **low** routine, **medium** standard, **high** many edge cases or auth,
 **max** security review.
 
-## Status (2026-10-10)
+## Status (2026-10-11)
 
 | Phase | State |
 |---|---|
 | A. Shell | Built, PR #668 open |
-| B. Push backend | B1-B5 built, PR #669 open. B6 (deploy) waits for the user's OK |
-| C. Phone UI | Mockups for Entregas (8 screens) and the post editor (7) approved as direction |
-| D. Native module | Not started; its mockups (push pre-prompt, Face ID, prefs, plan limit) are drawn |
+| B. Push backend | B1-B5 built, PR #669 open. B6 deployed dark on staging and prod |
+| C. Phone UI: Entregas + editor | Merged: C2 #670, C1 #671, C3 #672, C4 #673 |
+| F. Phone UI: every other screen | Audited (3 audits, ~30 screens); mockups on the canvas page "Todas as telas (F)"; this plan |
+| D. Native module | Not started; waits for F (the user wants the whole app consistent first) |
 | E. Release | Apple enrollment is user-owned |
 
 ## PR map and order
@@ -162,6 +163,114 @@ is reference only; its UI is not reused.
 | C4.6 | Comentários: Com o cliente / Equipe, bubbles, approval events, reply composer; suggestion sheet with diff and Rejeitar / Aceitar | medium | Reuses `DiffView` and comment hooks |
 | C4.7 | Sheets: crop editor (`MediaAdjustmentDialog` full-screen dark layout), thumbnail picker, version history | medium | Layout over existing logic |
 | C4.8 | Update editor tests for the mobile branch | medium | `PostEditor` suites are large |
+
+## Phase F: the rest of the CRM in the iOS idiom
+
+**Why.** After C, Entregas and the post editor look native but every other screen is still the
+desktop layout stacked into one column: a separate help/bell bar above a desktop `h1`, button rows
+that wrap, tables turned into labelled cards, hover-only help, centered Radix dialogs, and drag that
+fights scrolling. The user asked for the whole app to be consistent before D (2026-10-11).
+
+**Scope.** Every route inside `AppLayout` below 768px (D25). Tablet and desktop unchanged. Public
+pages (landing, blog, `/portal-do-cliente`, `/afiliados/*`) are out: they're already responsive
+marketing pages outside the shell. Inputs: three code audits (scratchpad `f-audit/core.md`,
+`analytics.md`, `admin.md`) and the mockups on the canvas page "Todas as telas (F)".
+
+Rules for every F PR, on top of C's cross-cutting rules:
+
+- **Same breakpoint everywhere.** A page's phone branch is `!useIsDesktop(768)`. Existing 900/901
+  branches stay as the tablet fallback (768-900) unless they only existed to approximate phones.
+- **One page header.** Root screens render the F0 page header (large title, page actions, bell);
+  pushed screens render the F0 nav bar (back, title, actions). No page keeps `.header` on phones.
+- **No hover-only information.** Anything in `title=`, `data-tooltip` or `HelpTooltip` is either
+  visible (subtitle, footer) or behind the F0 info button.
+- **Dialogs become sheets, confirms become action sheets** through the F0 primitives, keeping
+  `confirmClose`, `useUnsavedWork` and `trackUnsavedWork` semantics.
+- **Drag only in Reordenar mode** (D20, extended by D30); every move also exists as a menu action.
+- **CSS per feature.** New phone styles go in a feature-level `.css` file imported by the phone
+  component (as `pages/entregas/phone/*.css` do), not in `style.css`, so parallel lanes don't
+  conflict. Shared kit styles stay in `style.css` and only F0 edits them.
+- **Fictional data in mockups and tests; real copy from the code.** No invented metrics or actions.
+- **Tests:** each PR updates the suites that render its phone branch and adds desktop mocks
+  (`useIsDesktop` true) where a suite asserts desktop markup.
+
+### F0. Foundations (one PR, blocks F1-F5)
+
+| # | Step | Effort | Why this level |
+|---|---|---|---|
+| F0.1 | Page header: `PhonePageHeader` = `LargeTitleHeader` + page actions + the shell's bell and help-links in one 44px row; `PhoneShellHeader` stops rendering its own bar on routes that render a page header (route opt-in, so unported routes keep today's bar until their PR lands). `PhoneNavBar` for pushed screens (back, title, trailing actions), extracted from `PhoneEditorHeader` | medium | Touches the shell on every route; opt-in avoids a flag day |
+| F0.2 | Kit additions with tests: `FormRow` (from the `.phone-field` CSS), `PickerCell` + `PickerSheet` (checkmark list replacing Select/DropdownMenu/native select), `InfoButton` (tap-to-open sheet), `KpiTiles` (phone variant of `StatCardGrid`, from ChartViewPhone's Tile), `BarList` (CSS bar rows replacing small charts), `PhoneConfirmSheet` and a generic `PhoneFiltersSheet` moved from `pages/entregas/phone` into the kit | high | Each replaces many call sites; API mistakes multiply |
+| F0.3 | Phone variants of the primitives: `DialogContent` renders as a large bottom sheet below 768 (opt-out prop for dialogs that must stay fullscreen); `AlertDialogContent` renders as an action-sheet-style confirm; `HelpTooltip` and `[data-tooltip]` get a tap path (InfoButton) on touch | high | Every dialog in the app changes on phones; unsaved-work and focus-return semantics must hold |
+| F0.4 | Global chrome: Sonner `mobileOffset` above the tab bar; global search full-screen on phones; Mais rows with `newTab` open outside the shell correctly (Novidades, Privacidade); `ContextHelpLinks` and other `Sheet side="bottom"` uses move to the kit `BottomSheet`; banner dismiss target 44px with a Portuguese label; `GuideDialog` as a sheet; safe-area + `dvh` on `/workspace-setup` and `/comecar` | medium | Many small, independent fixes |
+| F0.5 | Tests for F0 and the desktop mocks the primitives' phone branches require in existing suites | medium | DialogContent change flips many suites |
+
+### F1. Primary tabs (PR)
+
+| # | Step | Effort | Why this level |
+|---|---|---|---|
+| F1.1 | Início: page header; Hoje and Minha fila as grouped sections (check accessory, bucket chips); health monitor as grouped rows with filter chips, search and sort in the header; KPIs as `KpiTiles` | medium | Small files, many links |
+| F1.2 | Mensagens: list with page header (info text as subtitle), search and sort; thread as a pushed screen with the type segmented control, PostChip long-press preview with Abrir post / Responder, composer pinned at the bottom with the tab bar hidden on `/mensagens/:id` (shell hook) | medium | Shell hook for hiding the tab bar |
+| F1.3 | Agenda: page header with period subtitle, filters sheet (Mostrar, Pessoas, Camadas, Sincronizar), Mês/Dia/Lista segmented, event and layer details as bottom sheets reusing the popover bodies, "Mais ações" as action sheet, drag off on phones (edit via form) | high | Large popovers, FullCalendar touch defaults, deep links |
+| F1.4 | Tests | medium | |
+
+### F2. Mais lists (one PR per lane, parallel)
+
+| # | Step | Effort | Why this level |
+|---|---|---|---|
+| F2a | Clientes + Leads: page header with usage subtitle, `+` action sheet (Novo / Importar CSV), grouped rows, long-press + swipe menus (Leads: Status ▸, Converter, Editar, Excluir), filters sheet, forms as sheets, empty states | medium | Same shell for both lists |
+| F2b | Tarefas: views (Lista/Por membro/Kanban/Calendário) + Minhas/Todas; Lista grouped by bucket with completion; boards one column at a time with Mover/Atribuir menus; calendar as CalendarViewPhone; detail as a pushed screen; `TarefaFormDialog` as a sheet (shared with Ideias and Entregas) | high | ~3.7k lines, recurrence series |
+| F2c | Ideias + Arquivos: Ideias list, `IdeiaDrawer` as a pushed screen (also fixes the cliente Hub ideias tab), `NovaIdeiaDialog` sheet; Arquivos rebuilt on the kit: long-press file menu (today Renomear/Informações/Download are unreachable on iPhone), Selecionar mode with bulk bar, `+` action sheet that works at root and in folders, folder picker sheet, remove the dead search button | medium | Arquivos has real phone bugs today |
+| F2d | Financeiro + Contratos + Equipe + Membro detalhe: grouped rows with swipe actions, Financeiro selection mode (bulk confirm is unreachable on phones today), KPI tiles, forms and confirms through F0 | medium | Four similar CRUD lists |
+
+### F3. Cliente detalhe (PR)
+
+| # | Step | Effort | Why this level |
+|---|---|---|---|
+| F3.1 | Shell: `/clientes/:id` on phones is a sections index (4 groups, 11 sections) instead of the pill strip; sections stay real routes with the nav bar; Editar / foto in "…" | medium | Index route behaves differently by layout |
+| F3.2 | Visão geral, Relatórios, Acesso, Marca, Financeiro, Arquivos tabs as grouped lists | medium | Mostly presentational |
+| F3.3 | Entregas tab with the C3 phone cards, CalendarViewPhone and the phone-aware dialogs; `EditWorkflowModal` and `HistoryDrawer` phone layouts | medium | Reuses C3 |
+| F3.4 | Briefing (picker, "…" actions, filter, collapsible sections, Reordenar mode, templates sheet) and Páginas (list + pushed editor with `PhoneFormatBar`) | high | Two editors with reorder |
+| F3.5 | Redes sociais: kit layout around the existing IG/TikTok innerHTML cards (restyled, not rewritten, D31) | low | |
+
+### F4. Analytics, automations, publishing (PR, can split)
+
+| # | Step | Effort | Why this level |
+|---|---|---|---|
+| F4.1 | Shared: ranked-post card, "Todos os posts" sheet with filters, AI analysis renderer, period control (segmented presets + custom sheet) used by both analytics pages | medium | Removes three duplicates |
+| F4.2 | Analytics (portfolio) and Analytics de fluxos: page headers, chips, `KpiTiles`, `BarList` instead of small charts, grouped lists | medium | |
+| F4.3 | Analytics da conta: tiles, posts list with post-detail sheet (tags, insights), demographics and heatmap with tap-visible values, reports list with action sheet | high | 3.2k-line page |
+| F4.4 | Relatórios: view/export only on phones (D27): rendered blocks, "…" (Atualizar dados, Ver como cliente, Aplicar template), `BottomActionBar` Exportar PDF; models view-only | low | Uses `BlockRenderer mode="view"` |
+| F4.5 | Post express: grouped steps, `PostMediaGallery variant="phone"`, bottom action bar, confirm sheet with progress | low-medium | |
+| F4.6 | Automações: list with switch, swipe and long-press menus, detail sheet; form as a full-screen pushed screen; Contatos with a filters sheet (single-month date picker) | high | 1.5k-line form |
+
+### F5. Configurações, Ajuda, Importar (PR)
+
+| # | Step | Effort | Why this level |
+|---|---|---|---|
+| F5.1 | Settings index on phones at `/configuracao` (profile cell + Conta/Workspace/Avançado from `visibleConfigTabs()`); each tab keeps its route under a nav bar; the perfil redirect becomes desktop-only | medium | Route behaviour differs by layout |
+| F5.2 | Perfil, Workspace, Armazenamento, Relatórios, MCP as grouped forms | medium | |
+| F5.3 | Notificações (channel segmented: No app / E-mail), Membros (rows push a member sheet), Papéis (per-module segmented), Status de posts (fixes today's overflow; reorder via menu), Hub (sections pushed, preview sheet defaulting to Celular, Salvar bar; fixes the 340px grid overflow) | high | Four of the heaviest tabs |
+| F5.4 | Cobrança: plan list, interval segmented, `PagarmeCheckoutDialog` as a full-screen sheet (shared with `/comecar`) | medium | Billing form on a keyboard |
+| F5.5 | Ajuda (index, seção, artigo with TOC sheet, vídeo) and Importar (wizard with bottom action bar, drill-in mappings) | medium | |
+
+### F6. Consistency sweep (no PR of its own)
+
+Walk every route in the Simulator in light and dark, compare against the canvas, file the gaps,
+fix them in the lane that owns the screen. Done when no in-shell route shows `.header`, a wrapped
+button row, a sideways table, a centered dialog or hover-only help below 768px.
+
+### F order and parallelism
+
+```
+F0 foundations ──┬── F1 primary tabs ───────┐
+                 ├── F2a / F2b / F2c / F2d ─┤
+                 ├── F3 cliente detalhe ────┤── F6 sweep ── D
+                 ├── F4 analytics etc. ─────┤
+                 └── F5 configurações ──────┘
+```
+
+F1-F5 start once F0 is merged (or stacked on its branch while it's in review) and run as parallel
+lanes in separate worktrees. They're frontend only: no migrations, no edge functions.
 
 ## Phase D: CRM native module (PR, parallel with C3/C4)
 
