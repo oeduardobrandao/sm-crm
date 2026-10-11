@@ -19,6 +19,20 @@ const {
   toastErrorMock: vi.fn(),
 }));
 
+// The desktop layout unless a test flips it (jsdom's matchMedia reports false = phone).
+const layout = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => layout.desktop }));
+
+// The phone screen owns its sections' queries; tested in DashboardPhone.test.tsx.
+vi.mock('../phone/DashboardPhone', () => ({
+  DashboardPhone: (p: { isAgent: boolean; cards: React.ReactNode; footer: React.ReactNode }) => (
+    <div data-testid="dashboard-phone" data-agent={String(p.isAgent)}>
+      <div data-testid="phone-cards">{p.cards}</div>
+      <div data-testid="phone-footer">{p.footer}</div>
+    </div>
+  ),
+}));
+
 vi.mock('sonner', () => ({
   toast: { success: toastSuccessMock, error: toastErrorMock },
 }));
@@ -105,6 +119,7 @@ describe('DashboardPage', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(frozenNow);
+    layout.desktop = true;
 
     mockedUseAuth.mockReset();
     mockedUseQueries.mockReset();
@@ -367,5 +382,44 @@ describe('DashboardPage', () => {
     renderDashboardPage();
     expect(screen.getAllByTestId('minha-fila-card')).toHaveLength(2);
     expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
+  });
+
+  describe('phone (below 768px)', () => {
+    beforeEach(() => {
+      layout.desktop = false;
+    });
+
+    it('renders the phone screen instead of the desktop cards, with the finance tiles in its footer', () => {
+      mockedUseQueries.mockReturnValue(
+        makeDefaultUseQueries({
+          0: makeQueryResult({
+            transacoes: [
+              { id: 'tx-1', tipo: 'entrada', status: 'agendado', valor: 1200, descricao: 'A' },
+            ],
+            receitaMensal: 0,
+            despesaTotal: 0,
+            saldo: 0,
+            clientesAtivos: [],
+            clientes: [],
+          }),
+        }) as never,
+      );
+      renderDashboardPage();
+      expect(screen.getByTestId('dashboard-phone')).toHaveAttribute('data-agent', 'false');
+      expect(screen.queryByTestId('today-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('client-health-monitor')).not.toBeInTheDocument();
+      expect(screen.getByTestId('phone-footer')).toHaveTextContent('A receber');
+    });
+
+    it('tells the phone screen when the active workspace role is agent, with no finance tiles', () => {
+      mockedUseAuth.mockReturnValue({
+        role: 'owner',
+        workspaceRole: 'agent',
+        canSeeFinancials: false,
+      } as never);
+      renderDashboardPage();
+      expect(screen.getByTestId('dashboard-phone')).toHaveAttribute('data-agent', 'true');
+      expect(screen.getByTestId('phone-footer')).not.toHaveTextContent('A receber');
+    });
   });
 });

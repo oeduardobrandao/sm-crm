@@ -30,7 +30,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
+import { TableSkeleton } from '@/components/ui/skeletons';
 import {
   Table,
   TableBody,
@@ -96,6 +96,8 @@ import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../context/AuthContext';
 import { assertNoFinancialColumns, stripFinancialFields } from '@/lib/financialAccess';
+import { ClientesPhone } from './phone/ClientesPhone';
+import { ClienteFormPhoneFields } from './phone/ClienteFormPhoneFields';
 
 type ClienteFormValues = z.infer<ReturnType<typeof createClienteSchema>>;
 
@@ -151,7 +153,9 @@ export default function ClientesPage() {
   const canEditClients = can('clientes', 'editar') === true;
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
-  const isDesktop = useIsDesktop();
+  // Phone branch below 768px (iOS plan F2a); 768-900 keeps the table with the
+  // "Status" filter sheet as the tablet layout.
+  const isDesktop = useIsDesktop(768);
   const [filter, setFilter] = useState<FilterStatus>('todos');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'nome' | 'valor_mensal' | 'data_pagamento'>('nome');
@@ -351,184 +355,117 @@ export default function ClientesPage() {
 
   return (
     <div className="page-content">
-      <div className="header">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-          <div
-            className="header-title"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <h1>{t('title')}</h1>
-            <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
-              <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-            </span>
+      {isDesktop ? (
+        <>
+          <div className="header">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+              <div
+                className="header-title"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <h1>{t('title')}</h1>
+                <span
+                  data-tooltip={t('tooltip')}
+                  data-tooltip-dir="right"
+                  style={{ display: 'flex' }}
+                >
+                  <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+                </span>
+              </div>
+              {!isLoading && limits && limits.max_clients !== null && (
+                <div style={{ marginTop: 6 }}>
+                  <UsageMeter
+                    size="compact"
+                    label="clientes"
+                    used={clientes.length}
+                    limit={limits.max_clients}
+                    showUpgradeCta={isOwner}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="header-actions">
+              <span
+                data-tooltip={t('csvTooltip')}
+                data-tooltip-dir="bottom"
+                style={{ display: 'flex' }}
+              >
+                <HelpCircle
+                  className="h-4 w-4"
+                  style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+                />
+              </span>
+              {canEditClients && (
+                <FeatureGate flag="feature_csv_import" label="Importação CSV">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleCSVImport}
+                    className="header-actions-icon-only"
+                  >
+                    <Upload className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleCSVImport}
+                    className="header-actions-full-only"
+                  >
+                    <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+                    {tc('actions.importCsv')}
+                  </Button>
+                </FeatureGate>
+              )}
+              {canEditClients && (
+                <Button
+                  onClick={openAdd}
+                  disabled={clientsAtLimit}
+                  title={clientsAtLimit ? 'Limite do plano atingido' : undefined}
+                >
+                  <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newClient')}
+                </Button>
+              )}
+            </div>
           </div>
-          {!isLoading && limits && limits.max_clients !== null && (
-            <div style={{ marginTop: 6 }}>
-              <UsageMeter
-                size="compact"
-                label="clientes"
-                used={clientes.length}
-                limit={limits.max_clients}
-                showUpgradeCta={isOwner}
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.75rem',
+              marginBottom: '1rem',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ position: 'relative', width: '100%', maxWidth: '260px' }}>
+              <Search
+                className="h-4 w-4"
+                style={{
+                  position: 'absolute',
+                  left: '0.625rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <Input
+                className="h-9"
+                placeholder={t('searchPlaceholder')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ paddingLeft: '2rem' }}
               />
             </div>
-          )}
-        </div>
-        <div className="header-actions">
-          <span
-            data-tooltip={t('csvTooltip')}
-            data-tooltip-dir="bottom"
-            style={{ display: 'flex' }}
-          >
-            <HelpCircle
-              className="h-4 w-4"
-              style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-            />
-          </span>
-          {canEditClients && (
-            <FeatureGate flag="feature_csv_import" label="Importação CSV">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleCSVImport}
-                className="header-actions-icon-only"
-              >
-                <Upload className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleCSVImport}
-                className="header-actions-full-only"
-              >
-                <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
-                {tc('actions.importCsv')}
-              </Button>
-            </FeatureGate>
-          )}
-          {canEditClients && (
-            <Button
-              onClick={openAdd}
-              disabled={clientsAtLimit}
-              title={clientsAtLimit ? 'Limite do plano atingido' : undefined}
-            >
-              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newClient')}
-            </Button>
-          )}
-        </div>
-      </div>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.75rem',
-          marginBottom: '1rem',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ position: 'relative', width: '100%', maxWidth: '260px' }}>
-          <Search
-            className="h-4 w-4"
-            style={{
-              position: 'absolute',
-              left: '0.625rem',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-muted)',
-              pointerEvents: 'none',
-            }}
-          />
-          <Input
-            className="h-9"
-            placeholder={t('searchPlaceholder')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: '2rem' }}
-          />
-        </div>
-
-        {/* Desktop: status + sort inline. Below 901px they'd otherwise wrap
-            into 1-2 extra rows below the search box -- collapsed into the
-            single "Filtros" button/sheet next to it instead. */}
-        <div className="hidden min-[901px]:flex items-center gap-1.5">
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {tc('filter.status')}
-          </span>
-          <Select value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
-            <SelectTrigger className="h-9 w-auto min-w-[120px] text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(['todos', 'ativo', 'pausado', 'encerrado'] as FilterStatus[]).map((f) => (
-                <SelectItem key={f} value={f}>
-                  {tc(`status.${f}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="hidden min-[901px]:flex items-center gap-1.5">
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {tc('filter.sortBy')}
-          </span>
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
-            <SelectTrigger className="h-9 w-auto min-w-[140px] text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="nome">{tc('sort.name')}</SelectItem>
-              {canSeeFinancials === true && (
-                <SelectItem value="valor_mensal">{t('sort.monthlyValue')}</SelectItem>
-              )}
-              <SelectItem value="data_pagamento">{t('sort.paymentDay')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 shrink-0 mb-0"
-            onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-            title={sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
-          >
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <Button
-          variant="outline"
-          className="flex min-[901px]:hidden h-9 rounded-full px-3 text-xs gap-1.5 font-normal shrink-0"
-          onClick={() => setFilterSheetOpen(true)}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          {tc('filter.status')}
-          {filter !== 'todos' && (
-            <span
-              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
-              style={{
-                background: 'var(--primary-color)',
-                color: '#000',
-                width: '1.1rem',
-                height: '1.1rem',
-              }}
-            >
-              1
-            </span>
-          )}
-        </Button>
-      </div>
-
-      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
-        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
-          <SheetHeader className="mb-4">
-            <SheetTitle className="text-base">Filtros</SheetTitle>
-            <SheetDescription className="sr-only">Filtre e ordene os clientes</SheetDescription>
-          </SheetHeader>
-          <div className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {tc('filter.status')}
+            {/* Desktop: status + sort inline. Below 901px they'd otherwise wrap
+                into 1-2 extra rows below the search box -- collapsed into the
+                single "Filtros" button/sheet next to it instead. */}
+            <div className="hidden min-[901px]:flex items-center gap-1.5">
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tc('filter.status')}
+              </span>
               <Select value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
-                <SelectTrigger className="h-9 w-full text-sm">
+                <SelectTrigger className="h-9 w-auto min-w-[120px] text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -539,324 +476,304 @@ export default function ClientesPage() {
                   ))}
                 </SelectContent>
               </Select>
-            </label>
+            </div>
 
-            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {tc('filter.sortBy')}
-              <div className="flex items-center gap-1.5">
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
-                  <SelectTrigger className="h-9 w-full text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nome">{tc('sort.name')}</SelectItem>
-                    {canSeeFinancials === true && (
-                      <SelectItem value="valor_mensal">{t('sort.monthlyValue')}</SelectItem>
-                    )}
-                    <SelectItem value="data_pagamento">{t('sort.paymentDay')}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 shrink-0 mb-0"
-                  onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-                  title={sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
+            <div className="hidden min-[901px]:flex items-center gap-1.5">
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {tc('filter.sortBy')}
+              </span>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                <SelectTrigger className="h-9 w-auto min-w-[140px] text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nome">{tc('sort.name')}</SelectItem>
+                  {canSeeFinancials === true && (
+                    <SelectItem value="valor_mensal">{t('sort.monthlyValue')}</SelectItem>
+                  )}
+                  <SelectItem value="data_pagamento">{t('sort.paymentDay')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0 mb-0"
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                title={sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
+              >
+                <ArrowUpDown className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <Button
+              variant="outline"
+              className="flex min-[901px]:hidden h-9 rounded-full px-3 text-xs gap-1.5 font-normal shrink-0"
+              onClick={() => setFilterSheetOpen(true)}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {tc('filter.status')}
+              {filter !== 'todos' && (
+                <span
+                  className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
+                  style={{
+                    background: 'var(--primary-color)',
+                    color: '#000',
+                    width: '1.1rem',
+                    height: '1.1rem',
+                  }}
                 >
-                  <ArrowUpDown className="h-4 w-4" />
-                </Button>
-              </div>
-            </label>
+                  1
+                </span>
+              )}
+            </Button>
           </div>
-        </SheetContent>
-      </Sheet>
 
-      {isLoading ? (
-        isDesktop ? (
-          <TableSkeleton columns={4} />
-        ) : (
-          <CardListSkeleton />
-        )
-      ) : isDesktop ? (
-        <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead style={{ paddingLeft: '1rem' }}>
-                  {t('table.client', 'Cliente')}
-                </TableHead>
-                <TableHead>{t('table.contact', 'Contato')}</TableHead>
-                <TableHead>{t('form.plan')}</TableHead>
-                <TableHead>{t('table.status', 'Status')}</TableHead>
-                {canEditClients && <TableHead style={{ width: 56 }} />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((c) => {
-                const avatarUrl = c.id ? avatarMap[c.id] : undefined;
-                const initials = getInitials(c.nome);
-                const notionUrl = c.notion_page_url ? sanitizeUrl(c.notion_page_url) : '';
-                return (
-                  <TableRow
-                    key={c.id ?? c.nome}
-                    onClick={() => c.id && navigate(`/clientes/${c.id}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <TableCell style={{ paddingLeft: '1rem' }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.6rem',
-                          minWidth: 0,
-                        }}
+          <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
+            <SheetContent
+              side="bottom"
+              className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24"
+            >
+              <SheetHeader className="mb-4">
+                <SheetTitle className="text-base">Filtros</SheetTitle>
+                <SheetDescription className="sr-only">Filtre e ordene os clientes</SheetDescription>
+              </SheetHeader>
+              <div className="flex flex-col gap-3">
+                <label
+                  className="flex flex-col gap-1 text-xs"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {tc('filter.status')}
+                  <Select value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
+                    <SelectTrigger className="h-9 w-full text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(['todos', 'ativo', 'pausado', 'encerrado'] as FilterStatus[]).map((f) => (
+                        <SelectItem key={f} value={f}>
+                          {tc(`status.${f}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <label
+                  className="flex flex-col gap-1 text-xs"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {tc('filter.sortBy')}
+                  <div className="flex items-center gap-1.5">
+                    <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                      <SelectTrigger className="h-9 w-full text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nome">{tc('sort.name')}</SelectItem>
+                        {canSeeFinancials === true && (
+                          <SelectItem value="valor_mensal">{t('sort.monthlyValue')}</SelectItem>
+                        )}
+                        <SelectItem value="data_pagamento">{t('sort.paymentDay')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 mb-0"
+                      onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                      title={sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
+                    >
+                      <ArrowUpDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </label>
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          {isLoading ? (
+            <TableSkeleton columns={4} />
+          ) : (
+            <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead style={{ paddingLeft: '1rem' }}>
+                      {t('table.client', 'Cliente')}
+                    </TableHead>
+                    <TableHead>{t('table.contact', 'Contato')}</TableHead>
+                    <TableHead>{t('form.plan')}</TableHead>
+                    <TableHead>{t('table.status', 'Status')}</TableHead>
+                    {canEditClients && <TableHead style={{ width: 56 }} />}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((c) => {
+                    const avatarUrl = c.id ? avatarMap[c.id] : undefined;
+                    const initials = getInitials(c.nome);
+                    const notionUrl = c.notion_page_url ? sanitizeUrl(c.notion_page_url) : '';
+                    return (
+                      <TableRow
+                        key={c.id ?? c.nome}
+                        onClick={() => c.id && navigate(`/clientes/${c.id}`)}
+                        style={{ cursor: 'pointer' }}
                       >
-                        {avatarUrl ? (
-                          <img
-                            src={avatarUrl}
-                            alt={initials}
-                            className="avatar"
-                            style={{ width: 28, height: 28, objectFit: 'cover', flexShrink: 0 }}
-                          />
-                        ) : (
+                        <TableCell style={{ paddingLeft: '1rem' }}>
                           <div
-                            className="avatar"
                             style={{
-                              width: 28,
-                              height: 28,
-                              fontSize: '0.7rem',
-                              background: c.cor,
-                              color: '#fff',
-                              fontWeight: 700,
-                              flexShrink: 0,
                               display: 'flex',
                               alignItems: 'center',
-                              justifyContent: 'center',
+                              gap: '0.6rem',
+                              minWidth: 0,
                             }}
                           >
-                            {initials}
-                          </div>
-                        )}
-                        <button
-                          className="client-link"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/clientes/${c.id}`);
-                          }}
-                          style={{ fontWeight: 600, textAlign: 'left' }}
-                        >
-                          {c.nome}
-                        </button>
-                        {notionUrl && (
-                          <a
-                            href={notionUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              color: 'var(--text-muted)',
-                            }}
-                            title={t('openNotion')}
-                          >
-                            <NotionIcon />
-                          </a>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="contato-item">{c.email || '—'}</span>
-                      {c.telefone && <span className="contato-phone">{c.telefone}</span>}
-                    </TableCell>
-                    <TableCell>{c.plano || '—'}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          c.status === 'ativo'
-                            ? 'success'
-                            : c.status === 'pausado'
-                              ? 'warning'
-                              : 'neutral'
-                        }
-                        size="sm"
-                        style={{ pointerEvents: 'none' }}
-                      >
-                        {tc(`status.${c.status}`)}
-                      </Badge>
-                    </TableCell>
-                    {canEditClients && (
-                      <TableCell
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ paddingRight: '0.75rem', textAlign: 'right' }}
-                      >
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
-                              <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEdit(c)}>
-                              <Edit2 className="h-4 w-4 mr-2" />
-                              {tc('actions.edit')}
-                            </DropdownMenuItem>
-                            {c.id && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => setDeleteId(c.id!)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  {tc('actions.delete')}
-                                </DropdownMenuItem>
-                              </>
+                            {avatarUrl ? (
+                              <img
+                                src={avatarUrl}
+                                alt={initials}
+                                className="avatar"
+                                style={{ width: 28, height: 28, objectFit: 'cover', flexShrink: 0 }}
+                              />
+                            ) : (
+                              <div
+                                className="avatar"
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  fontSize: '0.7rem',
+                                  background: c.cor,
+                                  color: '#fff',
+                                  fontWeight: 700,
+                                  flexShrink: 0,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                {initials}
+                              </div>
                             )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={canEditClients ? 5 : 4}
-                    style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
-                  >
-                    {t('emptyList', 'Nenhum cliente encontrado.')}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      ) : (
-        <div className="team-grid">
-          {filtered.map((c) => {
-            const avatarUrl = c.id ? avatarMap[c.id] : undefined;
-            const initials = getInitials(c.nome);
-            return (
-              <div key={c.id ?? c.nome} className="team-card card animate-up">
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt={initials}
-                      className="avatar client-avatar"
-                      style={{ objectFit: 'cover', flexShrink: 0 }}
-                    />
-                  ) : (
-                    <div
-                      className="avatar client-avatar"
-                      style={{
-                        background: c.cor,
-                        color: '#fff',
-                        fontWeight: 700,
-                        flexShrink: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      {initials}
-                    </div>
-                  )}
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.15rem',
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <button
-                        className="client-link"
-                        onClick={() => navigate(`/clientes/${c.id}`)}
-                        style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}
-                      >
-                        {c.nome}
-                      </button>
-                      <Badge
-                        variant={
-                          c.status === 'ativo'
-                            ? 'success'
-                            : c.status === 'pausado'
-                              ? 'warning'
-                              : 'neutral'
-                        }
-                        size="sm"
-                        style={{ pointerEvents: 'none' }}
-                      >
-                        {tc(`status.${c.status}`)}
-                      </Badge>
-                      {c.notion_page_url && sanitizeUrl(c.notion_page_url) && (
-                        <a
-                          href={sanitizeUrl(c.notion_page_url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            color: 'var(--text-muted)',
-                          }}
-                          title={t('openNotion')}
-                        >
-                          <NotionIcon />
-                        </a>
-                      )}
-                    </div>
-                    {c.plano && <div style={{ fontSize: '0.75rem', color: '#888' }}>{c.plano}</div>}
-                  </div>
-
-                  {canEditClients && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 shrink-0"
-                          style={{ marginLeft: 'auto' }}
-                        >
-                          <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(c)}>
-                          <Edit2 className="h-4 w-4 mr-2" />
-                          {tc('actions.edit')}
-                        </DropdownMenuItem>
-                        {c.id && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => setDeleteId(c.id!)}
+                            <button
+                              className="client-link"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/clientes/${c.id}`);
+                              }}
+                              style={{ fontWeight: 600, textAlign: 'left' }}
                             >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              {tc('actions.delete')}
-                            </DropdownMenuItem>
-                          </>
+                              {c.nome}
+                            </button>
+                            {notionUrl && (
+                              <a
+                                href={notionUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  color: 'var(--text-muted)',
+                                }}
+                                title={t('openNotion')}
+                              >
+                                <NotionIcon />
+                              </a>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="contato-item">{c.email || '—'}</span>
+                          {c.telefone && <span className="contato-phone">{c.telefone}</span>}
+                        </TableCell>
+                        <TableCell>{c.plano || '—'}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              c.status === 'ativo'
+                                ? 'success'
+                                : c.status === 'pausado'
+                                  ? 'warning'
+                                  : 'neutral'
+                            }
+                            size="sm"
+                            style={{ pointerEvents: 'none' }}
+                          >
+                            {tc(`status.${c.status}`)}
+                          </Badge>
+                        </TableCell>
+                        {canEditClients && (
+                          <TableCell
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ paddingRight: '0.75rem', textAlign: 'right' }}
+                          >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
+                                  <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openEdit(c)}>
+                                  <Edit2 className="h-4 w-4 mr-2" />
+                                  {tc('actions.edit')}
+                                </DropdownMenuItem>
+                                {c.id && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() => setDeleteId(c.id!)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      {tc('actions.delete')}
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
                         )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </TableRow>
+                    );
+                  })}
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={canEditClients ? 5 : 4}
+                        style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
+                      >
+                        {t('emptyList', 'Nenhum cliente encontrado.')}
+                      </TableCell>
+                    </TableRow>
                   )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </>
+      ) : (
+        <ClientesPhone
+          clientes={clientes}
+          filtered={filtered}
+          isLoading={isLoading}
+          avatarMap={avatarMap}
+          search={search}
+          onSearchChange={setSearch}
+          filter={filter}
+          onFilterChange={setFilter}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          sortDir={sortDir}
+          onSortDirChange={setSortDir}
+          canEdit={canEditClients}
+          canSeeFinancials={canSeeFinancials}
+          atLimit={clientsAtLimit}
+          usageLimit={!isLoading && limits ? limits.max_clients : undefined}
+          isOwner={isOwner}
+          onNew={openAdd}
+          onImport={handleCSVImport}
+          onEdit={openEdit}
+          onDelete={setDeleteId}
+        />
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -866,108 +783,118 @@ export default function ClientesPage() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
-              <FormField
-                control={form.control}
-                name="nome"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.name')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.email')}</FormLabel>
-                    <FormControl>
-                      <Input type="email" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="telefone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.phone')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="plano"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.plan')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {canSeeFinancials === true && (
-                <FormField
-                  control={form.control}
-                  name="valor"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('form.monthlyValue')}</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={0} step={0.01} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-              <FormField
-                control={form.control}
-                name="diaPag"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.paymentDay')}</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={1} max={31} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {editing && (
-                <FormField
-                  control={form.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('form.status')}</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
+              {isDesktop ? (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="nome"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.name')}</FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
+                          <Input {...field} />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="ativo">{tc('status.ativo')}</SelectItem>
-                          <SelectItem value="pausado">{tc('status.pausado')}</SelectItem>
-                          <SelectItem value="encerrado">{tc('status.encerrado')}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.email')}</FormLabel>
+                        <FormControl>
+                          <Input type="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="telefone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.phone')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="plano"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.plan')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {canSeeFinancials === true && (
+                    <FormField
+                      control={form.control}
+                      name="valor"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('form.monthlyValue')}</FormLabel>
+                          <FormControl>
+                            <Input type="number" min={0} step={0.01} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   )}
+                  <FormField
+                    control={form.control}
+                    name="diaPag"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.paymentDay')}</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={1} max={31} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {editing && (
+                    <FormField
+                      control={form.control}
+                      name="status"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('form.status')}</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="ativo">{tc('status.ativo')}</SelectItem>
+                              <SelectItem value="pausado">{tc('status.pausado')}</SelectItem>
+                              <SelectItem value="encerrado">{tc('status.encerrado')}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </>
+              ) : (
+                <ClienteFormPhoneFields
+                  form={form}
+                  showValor={canSeeFinancials === true}
+                  showStatus={!!editing}
                 />
               )}
               <DialogFooter>

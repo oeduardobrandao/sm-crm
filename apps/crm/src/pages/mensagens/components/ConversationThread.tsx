@@ -1,5 +1,3 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import { ArrowLeft, CheckCircle2, FilePen, Send, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -7,15 +5,8 @@ import { SkeletonStatus } from '@/components/ui/skeletons';
 import type { useMensagensData } from '../hooks/useMensagensData';
 import { AutorAvatar, ClienteAvatar } from './Avatars';
 import { PostChip } from './PostChip';
-import {
-  eventLabel,
-  feedItemKey,
-  formatTime,
-  isEventRow,
-  matchesTipo,
-  TIPO_FILTERS,
-  type MensagensTipoFilter,
-} from '../mensagensLogic';
+import { useConversationThread } from '../hooks/useConversationThread';
+import { eventLabel, feedItemKey, formatTime, isEventRow, TIPO_FILTERS } from '../mensagensLogic';
 
 type MensagensData = ReturnType<typeof useMensagensData>;
 
@@ -37,60 +28,8 @@ export function ConversationThread({
   clientesById,
   onBack,
 }: ConversationThreadProps) {
-  const [tipo, setTipo] = useState<MensagensTipoFilter>('todas');
-  const [draft, setDraft] = useState('');
-  const [replyTo, setReplyTo] = useState<{
-    postId: number;
-    /** NULL = post avulso (fora de fluxo); replyToPostApproval keys on
-     *  postId alone, so a null workflowId still supports the reply. */
-    workflowId: number | null;
-    titulo: string;
-  } | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  // Starts true so the very first settled render (including a cold deep
-  // link) snaps to the newest message; sending sets it again. "Carregar
-  // mensagens anteriores" never sets it, so that fetch doesn't force a
-  // snap-to-bottom — it does NOT compensate scrollTop for the newly
-  // prepended content's height either, so on a large older batch the
-  // previously-topmost message can still end up below the fold. Same gap
-  // as the pre-refactor code; real compensation is a follow-up, not part
-  // of this task.
-  const scrollPending = useRef(true);
-
-  const itens = useMemo(() => {
-    const all = (feed.data?.pages ?? []).flat().filter((i) => matchesTipo(i, tipo));
-    return [...all].sort((a, b) => a.created_at.localeCompare(b.created_at));
-  }, [feed.data, tipo]);
-
-  useEffect(() => {
-    if (!scrollPending.current || feed.isLoading) return;
-    const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-      scrollPending.current = false;
-    }
-  }, [feed.isLoading, itens.length]);
-
-  async function enviar() {
-    const text = draft.trim();
-    if (!text || sendGeneral.isPending || replyToPost.isPending) return;
-    try {
-      if (replyTo) {
-        await replyToPost.mutateAsync({
-          postId: replyTo.postId,
-          workflowId: replyTo.workflowId,
-          content: text,
-        });
-      } else {
-        await sendGeneral.mutateAsync({ cliente: conversa.cliente_id, content: text });
-      }
-      setDraft('');
-      setReplyTo(null);
-      scrollPending.current = true;
-    } catch {
-      toast.error('Não foi possível enviar a mensagem.');
-    }
-  }
+  const { tipo, setTipo, draft, setDraft, replyTo, setReplyTo, itens, scrollRef, enviar } =
+    useConversationThread({ conversa, feed, sendGeneral, replyToPost });
 
   return (
     <div className="flex-1 min-w-0 flex flex-col overflow-hidden mensagens-thread-root">
@@ -292,7 +231,7 @@ export function ConversationThread({
 }
 
 /** Alternating bubbles (client left, team right) while the first page of the thread loads. */
-function ThreadSkeleton() {
+export function ThreadSkeleton() {
   const bubbles: { mine: boolean; w: string; h: string }[] = [
     { mine: false, w: '52%', h: 'h-12' },
     { mine: true, w: '40%', h: 'h-9' },
