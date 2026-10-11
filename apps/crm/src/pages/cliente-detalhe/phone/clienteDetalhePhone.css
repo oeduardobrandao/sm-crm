@@ -1,0 +1,176 @@
+/* ===== CLIENTE DETALHE ON PHONES (PLAN F3, mockups FCliente*) ===========================
+   Rendered only by the phone branches (below 768px) of /clientes/:id/*. Every class is
+   `phone-cli-*` and reads the kit's `--phone-*` tokens; nothing here redefines a shared
+   token or styles a bare element, since the Hub imports the CRM stylesheet tree. */
+
+.phone-cli-page,
+.phone-cli-section,
+.phone-cli-index {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+/* ---- Shell: nav bar actions + section title ---- */
+.phone-cli-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.phone-cli-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.phone-cli-title {
+  margin: 4px 0 4px;
+}
+.phone-cli-title .phone-large-title__subtitle {
+  margin-bottom: 16px;
+}
+
+/* ---- Index: hero, quick facts, groups ---- */
+.phone-cli-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 16px;
+}
+.phone-cli-hero__photo {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+button.phone-cli-hero__photo {
+  cursor: pointer;
+}
+button.phone-cli-hero__photo:disabled {
+  opacity: 0.6;
+}
+button.phone-cli-hero__photo:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-cli-hero__avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+.phone-cli-hero__avatar--initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 700;
+}
+.phone-cli-hero__camera {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  box-shadow: var(--phone-shadow-thumb);
+}
+.phone-cli-hero__camera svg {
+  width: 12px;
+  height: 12px;
+}
+.phone-cli-hero__text {
+  min-width: 0;
+}
+.phone-cli-hero__name {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--phone-label);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.phone-cli-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: var(--phone-text-subhead);
+  color: var(--phone-label-secondary);
+}
+.phone-cli-hero__plan {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.phone-cli-chip {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.phone-cli-chip[data-tone='success'] {
+  background: rgba(21, 128, 61, 0.14);
+  color: var(--phone-success);
+}
+.phone-cli-chip[data-tone='warning'] {
+  background: rgba(245, 163, 66, 0.18);
+  color: #b45309;
+}
+.phone-cli-chip[data-tone='danger'] {
+  background: rgba(215, 0, 21, 0.12);
+  color: var(--phone-destructive);
+}
+.phone-cli-facts {
+  display: flex;
+  margin: 0 0 20px;
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-cli-facts__item {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+}
+.phone-cli-facts__item + .phone-cli-facts__item {
+  border-left: 1px solid var(--phone-separator);
+}
+.phone-cli-facts__label {
+  display: block;
+  font-size: 12px;
+  color: var(--phone-label-secondary);
+}
+.phone-cli-facts__value {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Grey icon tiles with dark glyphs (the mockup), not the kit's white-on-colour tile. */
+.phone-cli-index__group .phone-cell__icon--tile {
+  color: var(--phone-label);
+}

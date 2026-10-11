@@ -35,6 +35,8 @@ export type ClienteTabGroup = 'cliente' | 'canais' | 'portal' | 'gestao';
 export interface ClienteDetalheOutletContext {
   clienteId: number;
   cliente: Cliente;
+  /** Opens ClienteEditDialog. Set by ClienteDetalhePage; the phone index's "…" uses it. */
+  onEditCliente?: () => void;
 }
 
 export interface ClienteTab {
