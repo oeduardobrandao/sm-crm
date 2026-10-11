@@ -1,0 +1,280 @@
+/* ===== IMPORTAR ON PHONES (PLAN F2c / F5.5, mockup FImportar) ============================
+   Rendered only by ImportarPage's phone branch (below 768px). Every class is `phone-imp*`
+   and reads the kit's `--phone-*` tokens; nothing here redefines a shared token. */
+
+.phone-imp {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+/* Step progress under the large title: five 4px bars, done and current in ink. */
+.phone-imp-steps {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.phone-imp-steps li {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+}
+.phone-imp-steps li[data-done] {
+  background: var(--phone-ink);
+}
+
+.phone-imp-lead,
+.phone-imp-foot {
+  margin: 0 0 18px;
+  font-size: var(--phone-text-footnote);
+  line-height: 1.4;
+  color: var(--phone-label-secondary);
+}
+.phone-imp-foot {
+  margin: 0 4px 20px;
+}
+
+.phone-imp-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 16px;
+  font-size: var(--phone-text-subhead);
+  color: var(--phone-label-secondary);
+}
+
+.phone-imp-card {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  font-size: var(--phone-text-subhead);
+  line-height: 1.45;
+  color: var(--phone-label-secondary);
+}
+.phone-imp-card p {
+  margin: 0;
+}
+
+/* MCP callout (Origem). */
+.phone-imp-mcp {
+  margin-bottom: 8px;
+}
+.phone-imp-mcp__title {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--phone-label);
+}
+.phone-imp-mcp__title svg {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+}
+
+/* Source export guide. */
+.phone-imp-guide__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  color: var(--phone-label);
+  cursor: default;
+}
+summary.phone-imp-guide__title {
+  cursor: pointer;
+}
+.phone-imp-guide__title svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+.phone-imp-guide__steps {
+  margin: 0;
+  padding-left: 20px;
+}
+.phone-imp-guide__steps li + li {
+  margin-top: 6px;
+}
+.phone-imp-guide__notes {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.phone-imp-guide__notes li {
+  display: flex;
+  gap: 8px;
+}
+.phone-imp-guide__notes li + li {
+  margin-top: 6px;
+}
+.phone-imp-guide__notes svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+}
+.phone-imp-link {
+  display: inline-block;
+  margin-top: 12px;
+  font-weight: 600;
+  color: var(--phone-label);
+  text-decoration: underline;
+}
+
+/* The real file input stays in the DOM (the cell opens it); visually hidden. */
+.phone-imp-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Notices: errors, warnings, the ignored-rows note. */
+.phone-imp-notice {
+  display: flex;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  font-size: var(--phone-text-subhead);
+  line-height: 1.4;
+}
+.phone-imp-notice p {
+  margin: 0;
+}
+.phone-imp-notice > svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+.phone-imp-notice--danger {
+  color: var(--phone-destructive);
+}
+.phone-imp-notice--warning > svg {
+  color: #b45309;
+}
+[data-theme='dark'] .phone-imp-notice--warning > svg {
+  color: #fbbf24;
+}
+.phone-imp-notice--muted {
+  color: var(--phone-label-secondary);
+}
+.phone-imp-notice__list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.phone-imp-notice__list li + li {
+  margin-top: 4px;
+}
+
+/* One mapping section per collection. */
+.phone-imp-collection__head {
+  display: flex;
+  flex-direction: column;
+  margin: 0 16px 8px;
+}
+.phone-imp-collection__head h2 {
+  margin: 0;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  color: var(--phone-label);
+}
+.phone-imp-collection__head span {
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+
+/* Commit step. */
+.phone-imp-progress__track {
+  height: 6px;
+  margin: 0 0 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--phone-fill);
+}
+.phone-imp-progress__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  transition: width 0.3s;
+}
+.phone-imp-progress .phone-imp-status,
+.phone-imp-progress .phone-imp-foot {
+  margin: 0 0 10px;
+}
+.phone-imp-progress .phone-imp-foot {
+  margin: 0;
+}
+.phone-imp-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 14px;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+}
+.phone-imp-done svg {
+  width: 20px;
+  height: 20px;
+  color: #16a34a;
+}
+.phone-imp-undo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.phone-imp-undo__title {
+  font-weight: 600;
+  color: var(--phone-label);
+}
+.phone-imp-undo .phone-imp-foot {
+  margin: 0;
+}
+
+/* Bottom bar: Voltar (fill) and Continuar / Importar (ink). */
+.phone-imp-bar__button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  height: 50px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  box-shadow: var(--phone-shadow-float);
+  cursor: pointer;
+}
+.phone-imp-bar__button--back {
+  flex: 0 0 auto;
+  background: var(--phone-cell);
+}
+.phone-imp-bar__button--primary {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+.phone-imp-bar__button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-imp-bar__button:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}

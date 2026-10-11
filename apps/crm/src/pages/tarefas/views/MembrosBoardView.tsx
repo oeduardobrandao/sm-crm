@@ -1,8 +1,7 @@
-import { toast } from 'sonner';
 import type { Membro, TarefaWithRelations } from '../../../store';
-import { updateTarefa } from '../../../store';
 import { buildDropId, parseDropId, sortTarefas } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
+import { assignTarefa } from '../tarefaCommands';
 import { TarefaBoard, type BoardColumn } from './boardShared';
 
 interface MembrosBoardViewProps {
@@ -51,16 +50,10 @@ export function MembrosBoardView({
   const handleDrop = async (tarefa: TarefaWithRelations, dropId: string) => {
     const target = parseDropId(dropId);
     if (!target || target.kind !== 'membro') return;
-    if (tarefa.responsavel_id === target.membroId) return;
-    applyOverride(tarefa.id!, { responsavel_id: target.membroId });
-    try {
-      await updateTarefa(tarefa.id!, { responsavel_id: target.membroId });
-      toast.success('Responsável atualizado!');
-      onRefresh();
-    } catch {
-      clearOverride(tarefa.id!);
-      toast.error('Erro ao atualizar responsável');
-    }
+    await assignTarefa(tarefa, target.membroId, onRefresh, {
+      apply: applyOverride,
+      clear: clearOverride,
+    });
   };
 
   return (
@@ -71,6 +64,7 @@ export function MembrosBoardView({
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
       onRefresh={onRefresh}
+      phoneChipsLabel="Membros"
     />
   );
 }

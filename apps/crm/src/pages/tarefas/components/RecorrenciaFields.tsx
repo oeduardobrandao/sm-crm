@@ -1,5 +1,5 @@
 import type { UseFormReturn } from 'react-hook-form';
-import { Repeat } from 'lucide-react';
+import { Check, Repeat } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -11,6 +11,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { PhoneDateRow } from '../phone/PhoneDateRow';
 import {
   describeRecorrencia,
   modoLabel,
@@ -30,6 +34,8 @@ export interface RecorrenciaFieldsProps {
   disabled?: boolean;
   /** Shown under the select when disabled. */
   disabledHint?: string;
+  /** `phone`: grouped rows (picker row, native date, day chips) inside the phone form. */
+  layout?: 'default' | 'phone';
 }
 
 const REPETIR_ORDER: RepetirValor[] = ['never', 'daily', 'weekly', 'monthly', 'yearly'];
@@ -41,6 +47,7 @@ export function RecorrenciaFields({
   landing,
   disabled,
   disabledHint,
+  layout = 'default',
 }: RecorrenciaFieldsProps) {
   const repetir = form.watch('repetir');
   const intervalo = form.watch('intervalo');
@@ -64,6 +71,161 @@ export function RecorrenciaFields({
   // The summary only renders for a complete rule: an emptied interval would read
   // "A cada NaN dias" and a weekly rule with no chip selected "Toda " (dangling).
   const regraCompleta = !!regra && nValido && (repetir !== 'weekly' || diasSemana.length > 0);
+
+  if (layout === 'phone') {
+    const errors = form.formState.errors;
+    return (
+      <>
+        <GroupedList header="Repetição">
+          <FormField
+            control={form.control}
+            name="repetir"
+            render={({ field }) => (
+              <PickerCell<RepetirValor>
+                label="Repetir"
+                icon={<Repeat aria-hidden="true" />}
+                options={REPETIR_ORDER.map((v) => ({ value: v, label: REPETIR_LABELS[v] }))}
+                value={field.value}
+                onChange={(v) => {
+                  if (v) field.onChange(v);
+                }}
+                disabled={disabled}
+                subtitle={disabled ? disabledHint : undefined}
+              />
+            )}
+          />
+          {repetir !== 'never' && (
+            <>
+              <FormRow
+                label="A cada"
+                error={errors.intervalo?.message}
+                accessory={
+                  <span className="phone-tar-form__unit">
+                    {unidadeIntervalo(repetir, nValido ? n : 2)}
+                  </span>
+                }
+              >
+                {(fieldProps) => (
+                  <input
+                    {...fieldProps}
+                    {...form.register('intervalo')}
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={99}
+                    aria-label="Intervalo"
+                    className="phone-tar-form__interval"
+                  />
+                )}
+              </FormRow>
+              {repetir === 'weekly' && (
+                <FormField
+                  control={form.control}
+                  name="dias_semana"
+                  render={({ field }) => (
+                    <li className="phone-cell phone-form-row">
+                      <div
+                        role="group"
+                        aria-label="Dias da semana"
+                        className="phone-tar-form__weekdays"
+                      >
+                        {WEEKDAY_CHIPS.map((letter, day) => {
+                          const on = field.value.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              aria-label={WEEKDAY_NAMES[day]}
+                              aria-pressed={on}
+                              className="phone-tar-form__weekday"
+                              onClick={() =>
+                                field.onChange(
+                                  on ? field.value.filter((d) => d !== day) : [...field.value, day],
+                                )
+                              }
+                            >
+                              {letter}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {errors.dias_semana?.message && (
+                        <p className="phone-form-row__foot" role="alert">
+                          {errors.dias_semana.message}
+                        </p>
+                      )}
+                    </li>
+                  )}
+                />
+              )}
+              {(repetir === 'monthly' || repetir === 'yearly') && regra && (
+                <Cell
+                  label={
+                    repetir === 'monthly'
+                      ? `Todo dia ${regra.dia_mes}${(regra.dia_mes ?? 0) > 28 ? ' (ou último dia)' : ''}`
+                      : `Todo ano em ${String(regra.dia_mes).padStart(2, '0')}/${String(regra.mes).padStart(2, '0')}`
+                  }
+                />
+              )}
+              <FormField
+                control={form.control}
+                name="fim"
+                render={({ field }) => (
+                  <PhoneDateRow
+                    label="Termina em"
+                    value={field.value}
+                    onChange={field.onChange}
+                    emptyLabel="Nunca"
+                    error={errors.fim?.message}
+                  />
+                )}
+              />
+            </>
+          )}
+        </GroupedList>
+
+        {repetir !== 'never' && (
+          <FormField
+            control={form.control}
+            name="modo"
+            render={({ field }) => (
+              <GroupedList
+                header="Modo de geração"
+                footer="Ao concluir: a próxima tarefa só aparece quando esta for concluída. Toda data: a tarefa aparece na data, mesmo com a anterior aberta."
+              >
+                {(
+                  [
+                    ['ao_concluir', 'Criar a próxima ao concluir'],
+                    ['calendario', 'Criar em toda data da regra'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Cell
+                    key={value}
+                    label={label}
+                    aria-pressed={field.value === value}
+                    accessory={
+                      field.value === value ? (
+                        <Check className="phone-check" aria-hidden="true" />
+                      ) : undefined
+                    }
+                    onClick={() => field.onChange(value)}
+                  />
+                ))}
+              </GroupedList>
+            )}
+          />
+        )}
+
+        {repetir !== 'never' && regra && regraCompleta && (
+          <p className="phone-tar-form__summary" data-testid="recorrencia-resumo">
+            {describeRecorrencia(regra)}
+            {' · '}
+            {modoLabel(modo)}
+          </p>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">

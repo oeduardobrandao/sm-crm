@@ -1,15 +1,13 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import type { ClientHealth } from '../../../services/clientHealth';
 import type { HealthStatus } from '../../../lib/health/score';
-import { getInstagramAuthUrl, syncInstagramData } from '../../../services/instagram';
+import { useClientHealthActions } from '../useClientHealthActions';
 import { Sparkline } from './Sparkline';
 import { PipelineRow } from './PipelineRow';
 
 // status → badge background/text tone (uses project CSS vars)
-const TONE: Record<HealthStatus, { bg: string; fg: string }> = {
+export const HEALTH_TONE: Record<HealthStatus, { bg: string; fg: string }> = {
   em_alta: { bg: '#dff7ea', fg: '#0f7a4d' },
   saudavel: { bg: '#e9f9f1', fg: '#1a8f5e' },
   estavel: { bg: '#eef1f5', fg: '#5b6472' },
@@ -28,36 +26,13 @@ const nfmt = (n: number, locale: string) => n.toLocaleString(locale);
 export function ClientHealthCard({ client: c }: { client: ClientHealth }) {
   const { t, i18n } = useTranslation('dashboard');
   const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-  const [busy, setBusy] = useState(false);
-  const tone = TONE[c.status];
+  const { busy, handleConnect, handleSync } = useClientHealthActions(c);
+  const tone = HEALTH_TONE[c.status];
 
   const lastPostLabel =
     c.days_since_last_post === null
       ? t('health.lastPost.never')
       : t('health.lastPost.days', { count: c.days_since_last_post });
-
-  async function handleConnect() {
-    setBusy(true);
-    try {
-      const url = await getInstagramAuthUrl(c.client_id);
-      window.location.href = url;
-    } catch {
-      toast.error(t('health.error'));
-      setBusy(false);
-    }
-  }
-
-  async function handleSync() {
-    setBusy(true);
-    try {
-      await syncInstagramData(c.client_id);
-      toast.success(t('health.success.sincronizar'));
-    } catch {
-      toast.error(t('health.error'));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const isConnectState = c.status === 'desconectado';
   const isReconnectState = c.status === 'reconectar';

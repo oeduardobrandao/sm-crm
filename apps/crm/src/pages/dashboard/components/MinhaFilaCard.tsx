@@ -1,32 +1,17 @@
-import { useMemo, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, ListChecks } from 'lucide-react';
 import { ListSkeleton } from '@/components/ui/skeletons';
-import { useAuth } from '../../../context/AuthContext';
-import { useCurrentMembro } from '../../../hooks/useCurrentMembro';
-import { useMinhaFilaData } from '../../entregas/hooks/useMinhaFilaData';
-import { buildMinhaFila, EMPTY_FILA, type FilaItem } from '../../entregas/minhaFila';
-import { formatEtapaPrazo, type DeadlineInfo } from '../../entregas/etapaPrazo';
+import { formatEtapaPrazo } from '../../entregas/etapaPrazo';
 import { formatPostDate } from '@/utils/postDate';
 import { captureEvent } from '@/lib/analytics';
-
-const MAX_ROWS = 3;
-
-function prazoClass(deadline: DeadlineInfo): string {
-  if (deadline.estourado) return 'deadline-overdue';
-  if (deadline.urgente) return 'deadline-warning';
-  return 'deadline-ok';
-}
-
-/** Mesmo deep link de todayAgenda.postHref, mais `view=fila` para cair na
- *  fila (consumeParams em EntregasPage só remove drawer/post). */
-function itemHref(item: FilaItem): string {
-  const p = item.post;
-  return p.workflow_id != null
-    ? `/entregas?view=fila&drawer=${p.workflow_id}&post=${p.id}`
-    : `/entregas?view=fila&post=${p.id}`;
-}
+import {
+  MINHA_FILA_MAX_ROWS as MAX_ROWS,
+  minhaFilaItemHref as itemHref,
+  prazoClass,
+  useMinhaFilaTeaser,
+} from '../useMinhaFilaTeaser';
 
 /**
  * Teaser "Minha fila" do Dashboard (spec 2026-09-23 § Teaser): os três
@@ -35,28 +20,7 @@ function itemHref(item: FilaItem): string {
  */
 export function MinhaFilaCard() {
   const { t } = useTranslation('dashboard');
-  const { workspaceRole, membershipResolved } = useAuth();
-  // Só decide com o papel do workspace já resolvido: `workspaceRole` cai para
-  // `null` até a consulta de membership terminar, e um agente ainda não
-  // vinculado não pode ver o link para /equipe por um instante com base no
-  // fallback do `role` do profile (achado do review: falso-positivo de acesso).
-  const canManageTeam =
-    membershipResolved === true && (workspaceRole === 'owner' || workspaceRole === 'admin');
-  const { membro, isPending: membroPending, isError: membroError } = useCurrentMembro();
-  const membroId = membro?.id ?? null;
-  const data = useMinhaFilaData({ enabled: membroId != null });
-
-  const fila = useMemo(
-    () =>
-      membroId != null
-        ? buildMinhaFila(
-            { cards: data.cards, posts: data.posts, postEntities: data.postEntities },
-            membroId,
-            new Date(),
-          )
-        : EMPTY_FILA,
-    [membroId, data.cards, data.posts, data.postEntities],
-  );
+  const { canManageTeam, membroId, state, fila } = useMinhaFilaTeaser();
 
   const title = (
     <div className="today-head" style={{ marginBottom: '0.75rem' }}>
@@ -84,32 +48,15 @@ export function MinhaFilaCard() {
   );
 
   let body: ReactNode;
-  if (membroError || (membroId != null && data.isError)) {
-    // `data.isError` is gated by `membroId != null`, same as `data.isLoading`
-    // below (fix round 2): the six queries are `enabled: membroId != null`, but
-    // they read a SHARED cache keyed by e.g. ['active-posts'] -- a disabled
-    // observer still reflects an error left over on that key from an earlier
-    // load (Entregas, or a previous linked session). Without this gate, an
-    // unlinked user would see "couldn't load" instead of "vincule seu usuário".
-    // `membroError` is NOT gated: without the membros list we can't tell if the
-    // user is linked at all, so it always wins.
-    //
-    // Checked before loading: a failed query with no cached data must win over a
-    // sibling query that is merely paused (e.g. offline), or the card would spin
-    // forever instead of surfacing the error (fix round 1, finding 2).
+  if (state === 'error') {
     body = (
       <p className="today-note">
         {t('minhaFila.erro', 'Não foi possível carregar a fila. Recarregue a página.')}
       </p>
     );
-  } else if (membroPending || (membroId != null && data.isLoading)) {
-    // `membroPending` (isPending: no data, no error yet), NOT the derived
-    // `isLoading` (isPending && isFetching): a paused/offline cold start has
-    // isLoading=false with no membro yet, which would otherwise fall through to
-    // the no-membro branch below and wrongly show "vincule seu usuário" to a user
-    // who IS linked (fix round 1, finding 1).
+  } else if (state === 'loading') {
     body = <ListSkeleton rows={3} />;
-  } else if (membroId == null) {
+  } else if (state === 'no-membro') {
     body = canManageTeam ? (
       <p className="today-note">
         {t(
@@ -128,7 +75,7 @@ export function MinhaFilaCard() {
         )}
       </p>
     );
-  } else if (fila.items.length === 0) {
+  } else if (state === 'empty') {
     body = <p className="today-note">{t('minhaFila.vazio', 'Nada na sua fila.')}</p>;
   } else {
     const rows = fila.items.slice(0, MAX_ROWS);

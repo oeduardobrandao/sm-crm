@@ -12,8 +12,10 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Plus } from 'lucide-react';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import type { Membro, TarefaWithRelations } from '../../../store';
 import { TarefaCard } from '../components/TarefaCard';
+import { TarefaPhoneBoard } from '../phone/TarefaPhoneBoard';
 
 /** Solid text/count color plus a matching translucent header wash -- same
  *  rgba-tint-over-solid-text language as the `.deadline-*` badge classes. */
@@ -50,6 +52,8 @@ interface TarefaBoardProps {
    * drops resolve to the hovered card's column). */
   onDropCard: (tarefa: TarefaWithRelations, dropId: string) => void;
   onRefresh: () => void;
+  /** Phones: accessible name of the column chips ("Status", "Membros", "Prazos"). */
+  phoneChipsLabel?: string;
 }
 
 function DraggableTarefaCard({
@@ -147,9 +151,26 @@ export function TarefaBoard({
   onCardClick,
   onDropCard,
   onRefresh,
+  phoneChipsLabel,
 }: TarefaBoardProps) {
+  const isDesktop = useIsDesktop(768);
   const [activeTarefa, setActiveTarefa] = useState<TarefaWithRelations | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Phones: one column at a time, moves through the card menu (D30), no drag.
+  if (!isDesktop) {
+    return (
+      <TarefaPhoneBoard
+        columns={columns}
+        membros={membros}
+        now={now}
+        onCardClick={onCardClick}
+        onDropCard={onDropCard}
+        onRefresh={onRefresh}
+        chipsLabel={phoneChipsLabel}
+      />
+    );
+  }
 
   const allTarefas = columns.flatMap((c) => c.tarefas);
   const findTarefa = (id: string) => allTarefas.find((t) => String(t.id) === id);
