@@ -60,7 +60,7 @@ export function SemProcessoSection({
               >
                 <span className="phone-ent-sem__title">{post.titulo || 'Post sem título'}</span>
                 <span className="phone-ent-sem__meta">
-                  {post.cliente_nome || '—'} · {TIPO_LABELS[post.tipo]} · Avulso
+                  {post.cliente_nome || 'Sem cliente'} · {TIPO_LABELS[post.tipo]} · Avulso
                 </span>
                 <PostStatusChip post={post} registry={registry} />
               </button>

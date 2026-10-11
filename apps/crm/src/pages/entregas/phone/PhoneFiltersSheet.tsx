@@ -50,7 +50,7 @@ export function activeFilterChips(
 ): FilterChip[] {
   const chips: FilterChip[] = [];
   const nameOf = <T extends { id?: number; nome: string }>(list: T[], id: number) =>
-    list.find((x) => x.id === id)?.nome ?? '—';
+    list.find((x) => x.id === id)?.nome ?? 'Sem nome';
   const push = (group: string, key: string, label: string, next: FilterState) =>
     chips.push({
       key: `${group}:${key}`,

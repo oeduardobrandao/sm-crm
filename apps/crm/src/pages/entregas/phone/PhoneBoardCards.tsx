@@ -210,7 +210,7 @@ export function PhonePostProcessCard({
   const TipoIcon = TIPO_ICONS[post.tipo];
   const etapaIdx = entity.steps.findIndex((s) => s.ordem === entity.etapaOrdem);
   const title = entity.titulo || 'Post sem título';
-  const clienteNome = entity.cliente?.nome ?? post.cliente_nome ?? '—';
+  const clienteNome = entity.cliente?.nome ?? post.cliente_nome ?? 'Sem cliente';
   return (
     <article
       className="phone-ent-card phone-ent-card--post"
