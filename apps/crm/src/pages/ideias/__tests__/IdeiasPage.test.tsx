@@ -16,6 +16,8 @@ vi.mock('@/store', () => ({
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ can: () => true }),
 }));
+// Desktop layout: the phone branch (below 768px) has its own suite, IdeiasPage.phone.test.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 // NovaIdeiaDialog's real form is exercised in its own test suite; here we only
 // need to trigger the same onSaved(id) contract it calls after a successful
 // create/save, and expose `editing` so tests can see which mode IdeiasPage

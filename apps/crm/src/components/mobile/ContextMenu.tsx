@@ -23,8 +23,9 @@ export interface ContextMenuAction {
   disabled?: boolean;
   /**
    * Run `onSelect` inside the tap, then close, instead of after the menu's history entry
-   * is popped. For actions that need the user gesture itself (`window.open` for an
-   * external link on iOS Safari) and never navigate in-app. Same as ActionSheet's.
+   * is popped. For actions that need the user gesture itself (opening a file in a new
+   * tab, a file picker, `window.open` for an external link) and never navigate in-app. Same
+   * as `ActionSheetAction.immediate`.
    */
   immediate?: boolean;
 }
