@@ -3709,6 +3709,18 @@ select.form-input option {
   .mensagens-thread-root {
     padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
   }
+
+  /* Thread event rows (approval, correction): on a phone the three flex items squeezed
+     each other and the time wrapped onto 3-4 lines (AUDIT #4). Let the row wrap and keep
+     the time on one line. */
+  .mensagens-event-row {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .mensagens-event-row__time {
+    white-space: nowrap;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

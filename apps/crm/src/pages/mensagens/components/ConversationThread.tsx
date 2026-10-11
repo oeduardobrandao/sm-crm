@@ -173,7 +173,7 @@ export function ConversationThread({
             return (
               <div
                 key={feedItemKey(m)}
-                className="flex items-center gap-2 self-start text-xs text-[var(--text-muted)]"
+                className="mensagens-event-row flex items-center gap-2 self-start text-xs text-[var(--text-muted)]"
               >
                 {m.source === 'edit_suggestion' ? (
                   <FilePen size={13} />
@@ -184,7 +184,7 @@ export function ConversationThread({
                 {m.post_id != null && (
                   <PostChip postId={m.post_id} workflowId={m.workflow_id} titulo={m.post_titulo} />
                 )}
-                <span>· {formatTime(m.created_at)}</span>
+                <span className="mensagens-event-row__time">· {formatTime(m.created_at)}</span>
               </div>
             );
           }
