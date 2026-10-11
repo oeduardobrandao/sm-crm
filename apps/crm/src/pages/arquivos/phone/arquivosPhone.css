@@ -1,0 +1,444 @@
+/* ===== ARQUIVOS ON PHONES (PLAN F2c, mockups FArquivos, FArquivoMenu, FArquivosSelecao) ====
+   Rendered only by ArquivosPage's phone branch (below 768px) and the phone variant of
+   FileContextMenu. Every class is `phone-arq*` and reads the kit's `--phone-*` tokens;
+   nothing here redefines a shared token or styles a bare element. */
+
+.phone-arq {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+/* Header text pills ("Selecionar", "Cancelar"). */
+.phone-arq-pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 500;
+  cursor: pointer;
+}
+.phone-arq-pill--ink {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font-weight: 600;
+}
+.phone-arq-pill:focus-visible,
+.phone-arq-row__main:focus-visible,
+.phone-arq-row__more:focus-visible,
+.phone-arq-tile__main:focus-visible,
+.phone-arq-sort:focus-visible,
+.phone-arq-bulk__button:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+.phone-arq__chips {
+  margin: 4px 0 18px;
+}
+
+/* Section header with the sort shortcut on the right. */
+.phone-arq-section {
+  margin: 0 0 20px;
+}
+.phone-arq-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 0 6px 16px;
+}
+.phone-arq-section__title {
+  margin: 0;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--phone-label-secondary);
+}
+.phone-arq-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-arq-sort svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ---- List rows ---- */
+.phone-arq-list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-arq-row:not(:last-child) {
+  border-bottom: 1px solid var(--phone-separator);
+}
+.phone-arq-row__inner {
+  display: flex;
+  align-items: center;
+}
+.phone-arq-row__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 8px 4px 8px 16px;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-arq-row__main:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-arq-row[data-selected] .phone-arq-row__main {
+  background: rgba(18, 21, 26, 0.04);
+}
+[data-theme='dark'] .phone-arq-row[data-selected] .phone-arq-row__main {
+  background: rgba(232, 234, 240, 0.06);
+}
+.phone-arq-thumb {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-arq-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.phone-arq-thumb svg {
+  width: 20px;
+  height: 20px;
+}
+.phone-arq-thumb--folder {
+  background: #fef3c7;
+  color: #b45309;
+}
+[data-theme='dark'] .phone-arq-thumb--folder {
+  background: rgba(245, 163, 66, 0.18);
+  color: #fbbf24;
+}
+.phone-arq-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.phone-arq-row__name {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-arq-row__meta {
+  overflow: hidden;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-arq-row__chevron {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-right: 12px;
+  color: var(--phone-label-secondary);
+  opacity: 0.6;
+}
+.phone-arq-row__more {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-right: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  cursor: pointer;
+}
+.phone-arq-row__more svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Selection check (FArquivosSelecao). */
+.phone-arq-check {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--phone-separator);
+  border-radius: 999px;
+  background: var(--phone-cell);
+  color: var(--phone-on-ink);
+}
+.phone-arq-check[data-checked] {
+  border-color: var(--phone-ink);
+  background: var(--phone-ink);
+}
+.phone-arq-check svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- Grid tiles ---- */
+.phone-arq-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.phone-arq-tile__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-arq-tile__thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--phone-cell);
+  color: var(--phone-label-secondary);
+}
+.phone-arq-tile__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.phone-arq-tile__thumb svg {
+  width: 26px;
+  height: 26px;
+}
+.phone-arq-tile__thumb .phone-arq-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+.phone-arq-tile[data-selected] .phone-arq-tile__thumb {
+  outline: 3px solid var(--phone-ink);
+  outline-offset: -3px;
+}
+.phone-arq-tile__name {
+  overflow: hidden;
+  font-size: var(--phone-text-footnote);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Empty state, storage card ---- */
+.phone-arq-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 20px;
+  padding: 36px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+.phone-arq-empty svg {
+  width: 26px;
+  height: 26px;
+}
+.phone-arq-empty strong {
+  color: var(--phone-label);
+  font-weight: 600;
+}
+.phone-arq-storage {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+
+/* ---- Context menu preview (lifted card) ---- */
+.phone-arq-preview {
+  overflow: hidden;
+  width: min(300px, 80vw);
+  border-radius: 14px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-arq-preview__media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-arq-preview__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.phone-arq-preview__media svg {
+  width: 40px;
+  height: 40px;
+}
+.phone-arq-preview__media--folder {
+  height: 120px;
+  background: #fef3c7;
+  color: #b45309;
+}
+.phone-arq-preview__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px 12px;
+}
+.phone-arq-preview__name {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-arq-preview__meta {
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+
+/* ---- Bulk bar (Selecionar mode) ---- */
+.phone-arq-bulk {
+  justify-content: center;
+}
+.phone-arq-bulk__group {
+  display: flex;
+  flex: 1;
+  max-width: 420px;
+  padding: 4px;
+  border: 1px solid var(--phone-glass-border);
+  border-radius: 20px;
+  background: var(--phone-glass);
+  box-shadow: var(--phone-shadow-float);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+.phone-arq-bulk__button {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 52px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.phone-arq-bulk__button svg {
+  width: 20px;
+  height: 20px;
+}
+.phone-arq-bulk__button--destructive {
+  color: var(--phone-destructive);
+}
+.phone-arq-bulk__button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---- Sheets: name, folder picker ---- */
+.phone-arq-name {
+  padding-bottom: 16px;
+}
+.phone-arq-picker {
+  padding-bottom: 24px;
+}
+.phone-arq-picker__where {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px 4px;
+  font-size: var(--phone-text-subhead);
+  color: var(--phone-label-secondary);
+}
+.phone-arq-picker__where svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-arq-picker__where strong {
+  color: var(--phone-label);
+}
+.phone-arq-picker__hint {
+  margin: 0 0 16px 4px;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+
+/* Upload progress (FileUploader): above the tab bar, full width, instead of a 320px
+   card pinned bottom-right under the floating tab bar. */
+@media (max-width: 767px) {
+  .app-container .phone-arq-upload-queue {
+    right: 16px;
+    bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 84px);
+    left: 16px;
+    width: auto !important;
+  }
+}
