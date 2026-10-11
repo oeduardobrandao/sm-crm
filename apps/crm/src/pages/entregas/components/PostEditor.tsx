@@ -49,7 +49,7 @@ import { PhoneFormatBar } from './postEditorPhone/PhoneFormatBar';
 const LINK_REJECTED_MESSAGE =
   'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).';
 
-const TEXT_COLORS = [
+export const TEXT_COLORS = [
   { name: 'Padrão', color: null },
   { name: 'Cinza', color: '#787774' },
   { name: 'Marrom', color: '#9F6B53' },
@@ -120,7 +120,7 @@ export function postEditorExtensions({
   ];
 }
 
-const HIGHLIGHT_COLORS = [
+export const HIGHLIGHT_COLORS = [
   { name: 'Nenhum', color: null, cssColor: 'transparent' },
   { name: 'Cinza', color: 'gray', cssColor: '#E3E2E0' },
   { name: 'Marrom', color: 'brown', cssColor: '#EEE0DA' },

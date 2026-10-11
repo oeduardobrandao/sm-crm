@@ -39,9 +39,12 @@ interface PhoneFormatBarProps {
   onHighlight: (color: string | null) => void;
   /** The link input row, shown in place of the buttons while open. */
   linkRow?: ReactNode;
+  /** More `PhoneFormatBarButton`s after the list buttons (headings and quote on Páginas). */
+  extraButtons?: ReactNode;
 }
 
-function BarButton({
+/** One button of the bar, for `extraButtons`: keeps the editor's focus on press. */
+export function PhoneFormatBarButton({
   label,
   active,
   disabled,
@@ -91,6 +94,7 @@ export function PhoneFormatBar({
   onTextColor,
   onHighlight,
   linkRow,
+  extraButtons,
 }: PhoneFormatBarProps) {
   const screenOpen = usePhoneTextScreenOpen();
   const [, rerender] = useReducer((n: number) => n + 1, 0);
@@ -171,75 +175,84 @@ export function PhoneFormatBar({
       <div className="phone-format-bar" role="toolbar" aria-label="Formatação">
         {linkRow ?? (
           <>
-            <BarButton
+            <PhoneFormatBarButton
               label="Negrito"
               active={editor.isActive('bold')}
               onPress={() => editor.chain().focus().toggleBold().run()}
             >
               <Bold aria-hidden="true" />
-            </BarButton>
-            <BarButton
+            </PhoneFormatBarButton>
+            <PhoneFormatBarButton
               label="Itálico"
               active={editor.isActive('italic')}
               onPress={() => editor.chain().focus().toggleItalic().run()}
             >
               <Italic aria-hidden="true" />
-            </BarButton>
-            <BarButton
+            </PhoneFormatBarButton>
+            <PhoneFormatBarButton
               label="Sublinhado"
               active={editor.isActive('underline')}
               onPress={() => editor.chain().focus().toggleUnderline().run()}
             >
               <UnderlineIcon aria-hidden="true" />
-            </BarButton>
-            <BarButton
+            </PhoneFormatBarButton>
+            <PhoneFormatBarButton
               label="Lista"
               active={editor.isActive('bulletList')}
               onPress={() => editor.chain().focus().toggleBulletList().run()}
             >
               <List aria-hidden="true" />
-            </BarButton>
-            <BarButton
+            </PhoneFormatBarButton>
+            <PhoneFormatBarButton
               label="Lista numerada"
               active={editor.isActive('orderedList')}
               onPress={() => editor.chain().focus().toggleOrderedList().run()}
             >
               <ListOrdered aria-hidden="true" />
-            </BarButton>
-            <BarButton label="Inserir link" active={editor.isActive('link')} onPress={onLink}>
+            </PhoneFormatBarButton>
+            {extraButtons}
+            <PhoneFormatBarButton
+              label="Inserir link"
+              active={editor.isActive('link')}
+              onPress={onLink}
+            >
               <LinkIcon aria-hidden="true" />
-            </BarButton>
-            <BarButton
+            </PhoneFormatBarButton>
+            <PhoneFormatBarButton
               label="Cores"
               active={!!currentTextColor || !!currentHighlight}
               onPress={() => setColorsOpen(true)}
             >
               <Palette aria-hidden="true" />
-            </BarButton>
-            <BarButton
+            </PhoneFormatBarButton>
+            <PhoneFormatBarButton
               label="Callout"
               active={editor.isActive('callout')}
               onPress={() => editor.chain().focus().insertCallout().run()}
             >
               <Lightbulb aria-hidden="true" />
-            </BarButton>
+            </PhoneFormatBarButton>
             {onPickImage && (
-              <BarButton label="Inserir imagem" disabled={imageUploading} onPress={onPickImage}>
+              <PhoneFormatBarButton
+                label="Inserir imagem"
+                disabled={imageUploading}
+                onPress={onPickImage}
+              >
                 {imageUploading ? (
                   <Loader2 aria-hidden="true" className="animate-spin" />
                 ) : (
                   <ImagePlus aria-hidden="true" />
                 )}
-              </BarButton>
+              </PhoneFormatBarButton>
             )}
             {onComment && (
-              <BarButton
+              <PhoneFormatBarButton
                 label="Comentar"
                 disabled={editor.state.selection.empty}
                 onPress={onComment}
               >
                 <MessageSquare aria-hidden="true" />
-              </BarButton>
+              </PhoneFormatBarButton>
             )}
           </>
         )}

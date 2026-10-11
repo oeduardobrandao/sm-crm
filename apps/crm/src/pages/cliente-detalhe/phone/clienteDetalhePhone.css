@@ -712,3 +712,14 @@ div.phone-cli-edit {
   justify-content: flex-end;
   margin: -6px 0 6px;
 }
+
+/* ---- Páginas editor screen ---- */
+.phone-cli-pagina__editor {
+  min-height: 160px;
+  margin: 0 0 20px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-cli-pagina__danger {
+  margin-top: 4px;
+}
