@@ -31,7 +31,7 @@ export function InfoButton({ title, content, label, icon, className }: InfoButto
       <PhoneIconButton
         label={name}
         aria-haspopup="dialog"
-        className={cn('phone-info-button', className)}
+        className={cn('phone-kit phone-info-button', className)}
         onClick={(e) => {
           // Rows and cards often carry their own click: the "i" only opens the help.
           e.stopPropagation();
