@@ -1,0 +1,208 @@
+/* Configurações > Status de posts on phones (FConfigStatus mockup). Only phone-*
+   classes and --phone-* tokens: the Hub imports the CRM stylesheet. */
+
+/* Rows inside a SwipeRow (a Cell would nest an <li> in the row's <li>). */
+.phone-kit .phone-status-row {
+  position: relative;
+}
+.phone-kit .phone-status-row + .phone-status-row::before,
+.phone-kit .phone-status-row + .phone-cell::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  left: 16px;
+  height: 1px;
+  background: var(--phone-separator);
+  pointer-events: none;
+}
+.phone-kit .phone-status-row + .phone-cell {
+  position: relative;
+}
+
+.phone-kit .phone-status-row__inner {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+}
+.phone-kit .phone-status-row__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 6px 4px 6px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-kit .phone-status-row__main:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-kit .phone-status-row__main:focus-visible,
+.phone-kit .phone-status-row__more:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+.phone-kit .phone-status-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.phone-kit .phone-status-row__title {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-kit .phone-status-row__subtitle {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-kit .phone-status-row__more {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  cursor: pointer;
+}
+.phone-kit .phone-status-row__more svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Status icon tile: the status colour on a tint of itself. */
+.phone-kit .phone-status-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.phone-kit .phone-status-icon__dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+/* Automation row: two lines of text and the switch. */
+.phone-kit .phone-status-auto {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 16px;
+  box-sizing: border-box;
+}
+.phone-kit .phone-status-auto__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.phone-kit .phone-status-auto__text[data-inactive] {
+  opacity: 0.55;
+}
+.phone-kit .phone-status-auto__title {
+  font-size: var(--phone-text-body);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.phone-kit .phone-status-auto__title strong {
+  font-weight: 600;
+}
+
+/* "Nova automação": a small ink circle with a plus, bold label. */
+.phone-kit .phone-status-new .phone-cell__icon {
+  width: 22px;
+  height: 22px;
+  margin: 0 4px;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+.phone-kit .phone-status-new .phone-cell__icon svg {
+  width: 14px;
+  height: 14px;
+}
+.phone-kit .phone-status-new .phone-cell__label {
+  font-weight: 600;
+}
+
+.phone-kit .phone-status-empty {
+  margin: 0;
+  color: var(--phone-label-secondary);
+}
+
+/* Create sheets. */
+.phone-kit .phone-status-sheet {
+  padding-bottom: 8px;
+}
+.phone-kit .phone-status-sheet__actions {
+  padding: 4px 0 12px;
+}
+
+/* Icon and colour pickers: 44px targets in a wrapping grid. */
+.phone-kit .phone-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+.phone-kit .phone-status-grid__item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  cursor: pointer;
+}
+.phone-kit .phone-status-grid__item[aria-pressed='true'] {
+  border-color: var(--phone-label);
+}
+.phone-kit .phone-status-grid__item:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-kit .phone-status-grid__item .phone-status-icon__dot {
+  width: 12px;
+  height: 12px;
+}
+.phone-kit .phone-status-swatch {
+  background: transparent;
+}
+.phone-kit .phone-status-swatch__fill {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}

@@ -1,0 +1,77 @@
+/* Configurações > Papéis on phones (FConfigPapel mockup). Only phone-* classes and
+   --phone-* tokens: the Hub imports the CRM stylesheet. */
+
+/* "Excluir papel" in the nav bar: the grey round button with a red glyph. */
+.phone-kit .phone-icon-button.phone-papeis-delete {
+  color: var(--phone-destructive);
+}
+
+/* "servidor" tag after a module name. */
+.phone-kit .phone-papeis-server-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--phone-separator);
+  border-radius: 5px;
+  color: var(--phone-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+/* "Começar de" presets: a full-width segmented control in its own card. */
+.phone-kit .phone-papeis-preset {
+  padding: 8px 12px;
+}
+
+/* Members-affected note under the Nome card. */
+.phone-kit .phone-papeis-warning {
+  margin: -8px 16px 18px;
+  color: #b45309;
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+}
+[data-theme='dark'] .phone-kit .phone-papeis-warning {
+  color: #f5a342;
+}
+
+/* One module: name on the left, Sem acesso / Ver / Editar on the right. The name
+   wraps onto more lines before the control gives up its width; on a very narrow
+   screen the control drops under the name instead of overflowing. */
+.phone-kit .phone-papeis-module {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-height: 48px;
+  padding: 6px 12px 6px 16px;
+  box-sizing: border-box;
+}
+.phone-kit .phone-papeis-module + .phone-papeis-module::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 16px;
+  height: 1px;
+  background: var(--phone-separator);
+}
+.phone-kit .phone-papeis-module__label {
+  flex: 1 1 100px;
+  min-width: 0;
+  color: var(--phone-label);
+  font-size: 16px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.phone-kit .phone-segmented.phone-papeis-level {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.phone-kit .phone-papeis-level .phone-segmented__item {
+  flex: 0 0 auto;
+  padding: 0 10px;
+}
