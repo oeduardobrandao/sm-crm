@@ -1,0 +1,349 @@
+/* ===== PHONE CRUD LISTS (PLAN F2d: Financeiro, Contratos, Equipe, Membro detalhe) ======
+   Rows, pills, search field and summary cards shared by the phone branches of those
+   pages. Rendered only below 768px. Every class is `phone-crud-*` and reads the kit's
+   `--phone-*` tokens (carried by `.phone-kit` roots such as GroupedList); nothing here
+   redefines a shared token or styles a bare element. */
+
+/* ---- Search field under the large title ---- */
+.phone-crud-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-crud-search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-crud-search input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+
+/* ---- Rows ---- */
+.phone-crud-row {
+  position: relative;
+  list-style: none;
+}
+.phone-crud-row + .phone-crud-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 16px;
+  z-index: 1;
+  border-top: 1px solid var(--phone-separator);
+  pointer-events: none;
+}
+.phone-crud-row__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  box-sizing: border-box;
+  padding: 8px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+button.phone-crud-row__main {
+  cursor: pointer;
+}
+button.phone-crud-row__main:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-crud-row__main:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+.phone-crud-row__main--inert {
+  opacity: 0.55;
+}
+.phone-crud-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.phone-crud-row__title {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-crud-row__subtitle {
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-crud-row__aside {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  max-width: 50%;
+}
+.phone-crud-row__check {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border: 2px solid var(--phone-separator);
+  border-radius: 999px;
+  color: var(--phone-on-ink);
+}
+.phone-crud-row__check--on {
+  border-color: var(--phone-ink);
+  background: var(--phone-ink);
+}
+.phone-crud-row__check--none {
+  border-color: transparent;
+}
+.phone-crud-row__check svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+
+/* Leading 30px tile (entrada / saída arrow). */
+.phone-crud-tile {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+}
+.phone-crud-tile svg {
+  width: 16px;
+  height: 16px;
+}
+.phone-crud-tile--in {
+  background: #dcfce7;
+  color: #15803d;
+}
+.phone-crud-tile--out {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+[data-theme='dark'] .phone-crud-tile--in {
+  background: rgba(62, 207, 142, 0.16);
+  color: #3ecf8e;
+}
+[data-theme='dark'] .phone-crud-tile--out {
+  background: rgba(245, 90, 66, 0.16);
+  color: #f87171;
+}
+
+.phone-crud-amount {
+  color: var(--phone-label);
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.phone-crud-amount--in {
+  color: #15803d;
+}
+.phone-crud-amount--out {
+  color: #b91c1c;
+}
+[data-theme='dark'] .phone-crud-amount--in {
+  color: #3ecf8e;
+}
+[data-theme='dark'] .phone-crud-amount--out {
+  color: #f87171;
+}
+
+/* ---- Status pill ---- */
+.phone-crud-pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.phone-crud-pill--success {
+  background: #dcfce7;
+  color: #15803d;
+}
+.phone-crud-pill--warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+.phone-crud-pill--outline {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--phone-separator);
+}
+[data-theme='dark'] .phone-crud-pill--success {
+  background: rgba(62, 207, 142, 0.16);
+  color: #3ecf8e;
+}
+[data-theme='dark'] .phone-crud-pill--warning {
+  background: rgba(245, 163, 66, 0.16);
+  color: #f5a342;
+}
+
+/* ---- Avatar (Equipe, Membro detalhe): sized over the shared `.avatar` colours ---- */
+.avatar.phone-crud-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.avatar.phone-crud-avatar--large {
+  width: 60px;
+  height: 60px;
+  font-size: 22px;
+}
+
+/* ---- Empty state + notices ---- */
+.phone-crud-empty {
+  margin: 8px 16px 24px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+.phone-crud-notice {
+  margin: 0 0 16px;
+}
+.phone-crud-help {
+  margin: -8px 16px 24px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.4;
+}
+
+/* ---- Header text pill ("Selecionar", "Editar") next to the round buttons ---- */
+.phone-crud-pill-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-crud-pill-button:active {
+  background: var(--phone-fill-pressed);
+}
+.phone-crud-pill-button:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+
+/* ---- Selection-mode bar: Cancelar · "3 selecionadas" · Selecionar todas ---- */
+.phone-crud-select-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-crud-select-bar__title {
+  position: absolute;
+  left: 50%;
+  max-width: calc(100% - 220px);
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.phone-crud-select-bar .phone-text-button {
+  font-size: var(--phone-text-body);
+}
+
+/* ---- Primary button in a BottomActionBar ("Confirmar 3") ---- */
+.phone-crud-primary {
+  flex: 1;
+  height: 50px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font-family: var(--font-main);
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-crud-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-crud-primary:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+
+/* ---- Spacing for kit controls placed directly on the page ---- */
+.phone-crud-block {
+  margin: 0 0 16px;
+}
+.phone-crud-row__title--strong {
+  font-weight: 600;
+}
+.phone-crud-row__chevron {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-right: -4px;
+  color: var(--phone-label-secondary);
+  opacity: 0.6;
+}
+
+/* ---- Page root of a phone CRUD branch ---- */
+.phone-crud-page {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
