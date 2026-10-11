@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
@@ -15,6 +15,25 @@ import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/store/ideias');
+
+// Desktop layout by default; the phone describe flips it (jsdom's matchMedia is false).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
+
+// IdeiaDrawer has suites of its own; this page only opens it.
+vi.mock('@/components/ideias/IdeiaDrawer', () => ({
+  IdeiaDrawer: ({
+    ideia,
+    initialAction,
+  }: {
+    ideia: { titulo: string };
+    initialAction?: string;
+  }) => (
+    <div data-testid="ideia-drawer">
+      {ideia.titulo}:{initialAction ?? 'none'}
+    </div>
+  ),
+}));
 
 import { useAuth } from '@/context/AuthContext';
 import { makeCan, fakeMembership } from '@/test/makeCan';
@@ -174,5 +193,62 @@ describe('IdeiasPage', () => {
     // The chip a user didn't click keeps reading its own full count, unaffected by the
     // now-filtered list below it.
     expect(screen.getByTestId('chip-nova')).toHaveTextContent(/^Nova\s*2$/);
+  });
+});
+
+describe('IdeiasPage no celular', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    desktop.value = false;
+    setAuth('owner');
+    vi.mocked(ideiasStore.getIdeias).mockResolvedValue([]);
+  });
+  afterEach(() => {
+    desktop.value = true;
+    cleanup();
+  });
+
+  const IDEIAS = [
+    {
+      id: 1,
+      status: 'nova',
+      tipo: 'solicitacao',
+      titulo: 'Reels de bastidores',
+      descricao: 'd',
+      ideia_reactions: [],
+      created_at: NOW,
+    },
+    {
+      id: 3,
+      status: 'aprovada',
+      tipo: 'ideia',
+      titulo: 'Carrossel de dicas',
+      descricao: 'd',
+      ideia_reactions: [],
+      created_at: NOW,
+    },
+  ];
+
+  it('filters with chips and lists ideias as rows', () => {
+    renderIdeias(IDEIAS);
+    expect(screen.queryByRole('heading', { level: 2, name: 'Ideias' })).not.toBeInTheDocument();
+    const chips = screen.getByRole('group', { name: 'Filtrar por status' });
+    fireEvent.click(within(chips).getByRole('button', { name: /Aprovada/ }));
+    expect(screen.getByText('Carrossel de dicas')).toBeInTheDocument();
+    expect(screen.queryByText('Reels de bastidores')).not.toBeInTheDocument();
+  });
+
+  it('a row opens the ideia; swipe actions open it on Responder / Virar tarefa', () => {
+    renderIdeias(IDEIAS);
+    fireEvent.click(screen.getByRole('button', { name: /Reels de bastidores/ }));
+    expect(screen.getByTestId('ideia-drawer')).toHaveTextContent('Reels de bastidores:none');
+
+    cleanup();
+    renderIdeias(IDEIAS);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Virar tarefa' })[0]);
+    expect(screen.getByTestId('ideia-drawer')).toHaveTextContent('Reels de bastidores:converter');
+    // Only a solicitação in a convertible status offers Virar tarefa.
+    expect(screen.getAllByRole('button', { name: 'Virar tarefa' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Responder' })).toHaveLength(2);
   });
 });

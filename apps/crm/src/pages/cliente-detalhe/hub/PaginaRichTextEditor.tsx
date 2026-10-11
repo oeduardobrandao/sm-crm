@@ -29,6 +29,12 @@ import {
 } from 'lucide-react';
 import { normalizeRichTextLinkUrl } from '@mesaas/link-policy';
 import { pageEditorExtensions } from './pageEditorSchema';
+import {
+  PhoneFormatBar,
+  PhoneFormatBarButton,
+} from '@/pages/entregas/components/postEditorPhone/PhoneFormatBar';
+import { PhoneTextScreen } from '@/pages/entregas/components/postEditorPhone/PhoneTextScreen';
+import { TEXT_COLORS, HIGHLIGHT_COLORS } from '@/pages/entregas/components/PostEditor';
 
 // Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
 // (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
@@ -311,9 +317,132 @@ function SelectionMenu({ editor }: { editor: Editor }) {
 export interface PaginaRichTextEditorProps {
   doc: Record<string, unknown>;
   onChange: (doc: Record<string, unknown>) => void;
+  /**
+   * `phone`: the field opens a full-screen text editor (PhoneTextScreen, its own history
+   * entry) with the phone format bar over the keyboard, instead of the desktop toolbar and
+   * bubble menu. Same editor instance, same schema, same commands.
+   */
+  variant?: 'desktop' | 'phone';
 }
 
-export function PaginaRichTextEditor({ doc, onChange }: PaginaRichTextEditorProps) {
+/** The phone format bar plus what the desktop toolbar has that it lacks (H2, H3, quote),
+ *  and the link row with the same URL policy as the desktop popover. */
+function PhoneToolbar({ editor }: { editor: Editor }) {
+  const st = useFormattingState(editor);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkValue, setLinkValue] = useState('');
+
+  const openLink = () => {
+    setLinkValue((editor.getAttributes('link').href as string | undefined) ?? '');
+    setLinkOpen(true);
+  };
+  const applyLink = () => {
+    const url = linkValue.trim();
+    if (!url) {
+      editor.chain().focus().unsetLink().run();
+      setLinkOpen(false);
+      return;
+    }
+    const normalized = normalizeRichTextLinkUrl(url);
+    if (!normalized) {
+      toast.error(LINK_REJECTED_MESSAGE);
+      return;
+    }
+    editor.chain().focus().setLink({ href: normalized }).run();
+    setLinkOpen(false);
+  };
+
+  return (
+    <PhoneFormatBar
+      editor={editor}
+      onLink={openLink}
+      textColors={TEXT_COLORS}
+      highlightColors={HIGHLIGHT_COLORS}
+      onTextColor={(color) =>
+        color
+          ? editor.chain().focus().setColor(color).run()
+          : editor.chain().focus().unsetColor().run()
+      }
+      onHighlight={(color) =>
+        color
+          ? editor.chain().focus().setHighlight({ color }).run()
+          : editor.chain().focus().unsetHighlight().run()
+      }
+      extraButtons={
+        <>
+          <PhoneFormatBarButton
+            label="Título 2"
+            active={st.h2}
+            onPress={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          >
+            <Heading2 aria-hidden="true" />
+          </PhoneFormatBarButton>
+          <PhoneFormatBarButton
+            label="Título 3"
+            active={st.h3}
+            onPress={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+          >
+            <Heading3 aria-hidden="true" />
+          </PhoneFormatBarButton>
+          <PhoneFormatBarButton
+            label="Citação"
+            active={st.blockquote}
+            onPress={() => editor.chain().focus().toggleBlockquote().run()}
+          >
+            <Quote aria-hidden="true" />
+          </PhoneFormatBarButton>
+        </>
+      }
+      linkRow={
+        linkOpen ? (
+          <div className="phone-format-bar__link" onMouseDown={(e) => e.stopPropagation()}>
+            <input
+              className="phone-format-bar__link-input"
+              type="url"
+              inputMode="url"
+              placeholder="https://..."
+              aria-label="Endereço do link"
+              autoFocus
+              value={linkValue}
+              onChange={(e) => setLinkValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  applyLink();
+                }
+                if (e.key === 'Escape') setLinkOpen(false);
+              }}
+            />
+            {st.link && (
+              <button
+                type="button"
+                onClick={() => {
+                  editor.chain().focus().unsetLink().run();
+                  setLinkOpen(false);
+                }}
+              >
+                Remover
+              </button>
+            )}
+            <button type="button" onClick={() => setLinkOpen(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="phone-format-bar__link-ok" onClick={applyLink}>
+              OK
+            </button>
+          </div>
+        ) : undefined
+      }
+    />
+  );
+}
+
+export function PaginaRichTextEditor({
+  doc,
+  onChange,
+  variant = 'desktop',
+}: PaginaRichTextEditorProps) {
+  const [screenOpen, setScreenOpen] = useState(false);
   // onChange por ref: extensões/conteúdo ficam congelados no 1º render
   // (useEditor sem deps, padrão da casa -- PostEditor.tsx), então uma
   // identidade nova de onChange a cada render do pai não pode recriar o
@@ -333,6 +462,28 @@ export function PaginaRichTextEditor({ doc, onChange }: PaginaRichTextEditorProp
       onChangeRef.current(ed.getJSON() as Record<string, unknown>);
     },
   });
+
+  // Phone: tapping into the field opens the full-screen editor (the format bar only
+  // shows there). Same instance either way, so the doc and focus survive the switch.
+  useEffect(() => {
+    if (variant !== 'phone' || !editor) return;
+    const open = () => setScreenOpen(true);
+    editor.on('focus', open);
+    return () => {
+      editor.off('focus', open);
+    };
+  }, [editor, variant]);
+
+  if (variant === 'phone') {
+    return (
+      <PhoneTextScreen open={screenOpen} onOpenChange={setScreenOpen} title="Conteúdo da página">
+        <div className="post-editor post-editor--pagina phone-cli-pagina__editor">
+          {editor && <PhoneToolbar editor={editor} />}
+          <EditorContent editor={editor} className="post-editor-content" />
+        </div>
+      </PhoneTextScreen>
+    );
+  }
 
   return (
     <div className="post-editor post-editor--pagina">

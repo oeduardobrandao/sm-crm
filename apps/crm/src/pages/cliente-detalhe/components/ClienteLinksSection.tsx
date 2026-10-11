@@ -36,7 +36,10 @@ import {
   type ClienteLink,
 } from '@/store';
 import { sanitizeUrl } from '@/utils/security';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { normalizeLinkUrl, linkDomain } from '../linkUrl';
+import { PhoneEmptyCard, PhoneRow, PhoneSectionList, editRemoveActions } from '../phone/PhoneRows';
 
 interface ClienteLinksSectionProps {
   clienteId: number;
@@ -74,6 +77,7 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
   const { t: tc } = useTranslation();
   const queryClient = useQueryClient();
   const fieldId = useId();
+  const isPhone = !useIsDesktop(768);
 
   const { data: links, isLoading } = useQuery({
     queryKey: ['clienteLinks', clienteId],
@@ -136,114 +140,145 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
     setDeleteId(null);
   };
 
+  const phoneList = (
+    <PhoneSectionList
+      title={t('detail.usefulLinks')}
+      addLabel={t('detail.addLink')}
+      onAdd={() => openDialog()}
+      empty={
+        isLoading ? null : (
+          <PhoneEmptyCard title={t('detail.noUsefulLinks')} hint={t('detail.addLinkHint')} />
+        )
+      }
+    >
+      {links?.map((l) => (
+        <PhoneRow
+          key={l.id}
+          title={l.titulo}
+          subtitle={[l.descricao, linkDomain(l.url)].filter(Boolean).join(' · ')}
+          href={l.url}
+          menuLabel={`Ações do link ${l.titulo}`}
+          actions={editRemoveActions(
+            () => openDialog(l),
+            () => setDeleteId(l.id!),
+          )}
+        />
+      ))}
+    </PhoneSectionList>
+  );
+
   return (
     <>
-      <div id="sec-links" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-          }}
-        >
-          <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
-            <Link2 className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
-            {t('detail.usefulLinks')}
-          </h3>
-          <Button size="sm" onClick={() => openDialog()}>
-            <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> {t('detail.addLink')}
-          </Button>
-        </div>
-
-        {isLoading && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '1.5rem' }}>
-            <Spinner size="sm" />
-          </div>
-        )}
-
-        {!isLoading && (!links || links.length === 0) && (
+      {isPhone ? (
+        phoneList
+      ) : (
+        <div id="sec-links" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <div
             style={{
-              textAlign: 'center',
-              padding: '2rem 1rem',
-              color: 'var(--text-muted)',
-              border: '1px dashed var(--border-color)',
-              borderRadius: '12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1rem',
             }}
           >
-            <Link2 className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.9rem' }}>{t('detail.noUsefulLinks')}</p>
-            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('detail.addLinkHint')}</p>
+            <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
+              <Link2 className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
+              {t('detail.usefulLinks')}
+            </h3>
+            <Button size="sm" onClick={() => openDialog()}>
+              <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> {t('detail.addLink')}
+            </Button>
           </div>
-        )}
 
-        {!isLoading && links && links.length > 0 && (
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
-            {links.map((l) => (
-              <div key={l.id} className="cliente-date-card">
-                <a
-                  href={sanitizeUrl(l.url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ flex: 1, minWidth: 0, color: 'inherit', textDecoration: 'none' }}
-                >
-                  <p
-                    style={{
-                      fontSize: '0.9rem',
-                      fontWeight: 600,
-                      marginBottom: '0.1rem',
-                      overflowWrap: 'anywhere',
-                    }}
+          {isLoading && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '1.5rem' }}>
+              <Spinner size="sm" />
+            </div>
+          )}
+
+          {!isLoading && (!links || links.length === 0) && (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '2rem 1rem',
+                color: 'var(--text-muted)',
+                border: '1px dashed var(--border-color)',
+                borderRadius: '12px',
+              }}
+            >
+              <Link2 className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+              <p style={{ fontSize: '0.9rem' }}>{t('detail.noUsefulLinks')}</p>
+              <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('detail.addLinkHint')}</p>
+            </div>
+          )}
+
+          {!isLoading && links && links.length > 0 && (
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {links.map((l) => (
+                <div key={l.id} className="cliente-date-card">
+                  <a
+                    href={sanitizeUrl(l.url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ flex: 1, minWidth: 0, color: 'inherit', textDecoration: 'none' }}
                   >
-                    {l.titulo}
-                  </p>
-                  {l.descricao && (
                     <p
                       style={{
-                        fontSize: '0.8rem',
-                        color: 'var(--text-muted)',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        marginBottom: '0.1rem',
                         overflowWrap: 'anywhere',
                       }}
                     >
-                      {l.descricao}
+                      {l.titulo}
                     </p>
-                  )}
-                  <p
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--text-light)',
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
-                    {linkDomain(l.url)}
-                  </p>
-                </a>
-                <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    style={{ width: 28, height: 28 }}
-                    onClick={() => openDialog(l)}
-                    aria-label={`${t('detail.editLink')}: ${l.titulo}`}
-                  >
-                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    style={{ width: 28, height: 28, color: 'var(--danger)' }}
-                    onClick={() => setDeleteId(l.id!)}
-                    aria-label={`${t('detail.removeLink')}: ${l.titulo}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Button>
+                    {l.descricao && (
+                      <p
+                        style={{
+                          fontSize: '0.8rem',
+                          color: 'var(--text-muted)',
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {l.descricao}
+                      </p>
+                    )}
+                    <p
+                      style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--text-light)',
+                        overflowWrap: 'anywhere',
+                      }}
+                    >
+                      {linkDomain(l.url)}
+                    </p>
+                  </a>
+                  <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      style={{ width: 28, height: 28 }}
+                      onClick={() => openDialog(l)}
+                      aria-label={`${t('detail.editLink')}: ${l.titulo}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      style={{ width: 28, height: 28, color: 'var(--danger)' }}
+                      onClick={() => setDeleteId(l.id!)}
+                      aria-label={`${t('detail.removeLink')}: ${l.titulo}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add/Edit dialog */}
       <Dialog
@@ -326,23 +361,33 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
       </Dialog>
 
       {/* Delete confirm */}
-      <AlertDialog
-        open={deleteId !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('detail.removeLink')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('detail.removeLinkConfirm')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc('actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>{tc('actions.delete')}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {isPhone ? (
+        <PhoneConfirmSheet
+          open={deleteId !== null}
+          title={t('detail.removeLink')}
+          message={t('detail.removeLinkConfirm')}
+          actions={[{ label: tc('actions.delete'), destructive: true, onSelect: handleDelete }]}
+          onCancel={() => setDeleteId(null)}
+        />
+      ) : (
+        <AlertDialog
+          open={deleteId !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteId(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('detail.removeLink')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('detail.removeLinkConfirm')}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{tc('actions.cancel')}</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete}>{tc('actions.delete')}</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </>
   );
 }

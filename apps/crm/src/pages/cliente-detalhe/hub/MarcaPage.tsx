@@ -14,6 +14,10 @@ import { uploadFile } from '@/services/fileService';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { HubRoleGate, useHubPortalDataEnabled } from './HubRoleGate';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import '../phone/clienteDetalhePhone.css';
 
 export default function MarcaPage() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
@@ -29,16 +33,20 @@ export default function MarcaPage() {
     enabled: canLoadPortalData,
   });
 
+  const isPhone = !useIsDesktop(768);
+
   if (!cliente.conta_id) return null;
 
   return (
     <div className="hub-page">
-      <header className="hub-page__head">
-        <div>
-          <h2 className="hub-page__title">Marca</h2>
-          <p className="hub-page__sub">Cores, fontes e referências da marca do cliente.</p>
-        </div>
-      </header>
+      {!isPhone && (
+        <header className="hub-page__head">
+          <div>
+            <h2 className="hub-page__title">Marca</h2>
+            <p className="hub-page__sub">Cores, fontes e referências da marca do cliente.</p>
+          </div>
+        </header>
+      )}
       <HubRoleGate>
         {/* `key={clienteId}` força um remount inteiro ao trocar de cliente (Finding 3):
             sem ele, navegar de um cliente com `hub_brand` para um sem faz `brand` virar
@@ -79,6 +87,7 @@ function BrandEditor({
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const logoPreview = useFileUrl(brand?.logo_file_id ?? null);
+  const isPhone = !useIsDesktop(768);
 
   // Sincroniza SEMPRE com `brand`, mesmo quando ele resolve para `null` (Finding 3):
   // o guard antigo (`if (brand) setForm(brand)`) nunca limpava o formulário ao trocar
@@ -128,6 +137,116 @@ function BrandEditor({
     }
   }
 
+  const logoInput = (
+    <input
+      ref={logoInputRef}
+      type="file"
+      accept="image/*"
+      className="hidden"
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (file) void uploadLogo(file);
+      }}
+    />
+  );
+
+  if (isPhone) {
+    const colorRow = (label: string, key: 'primary_color' | 'secondary_color') => (
+      <FormRow label={label}>
+        {(field) => (
+          <span className="phone-cli-marca__color">
+            {form[key] && (
+              <button
+                type="button"
+                className="phone-cli-link-button"
+                onClick={() => setForm((f) => ({ ...f, [key]: null }))}
+              >
+                Limpar
+              </button>
+            )}
+            <span id={field.id}>
+              <ColorPicker
+                value={form[key] ?? ''}
+                label={label}
+                onChange={(hex) => setForm((f) => ({ ...f, [key]: hex }))}
+              />
+            </span>
+          </span>
+        )}
+      </FormRow>
+    );
+    return (
+      <div className="phone-cli-marca">
+        <GroupedList header="Logo">
+          <FormRow
+            label="URL do Logo"
+            layout="stacked"
+            input={{
+              value: form.logo_url ?? '',
+              onChange: (e) => setForm((f) => ({ ...f, logo_url: e.target.value })),
+              placeholder: 'https://...',
+              inputMode: 'url',
+              autoCapitalize: 'none',
+            }}
+          />
+          <Cell
+            label={
+              uploadingLogo ? 'Enviando…' : brand?.logo_file_id ? 'Trocar logo' : 'Enviar logo'
+            }
+            icon={
+              logoPreview.data ? (
+                <img src={logoPreview.data} alt="Logo da marca" className="phone-cli-marca__logo" />
+              ) : (
+                <Upload />
+              )
+            }
+            disabled={uploadingLogo}
+            onClick={() => logoInputRef.current?.click()}
+          />
+        </GroupedList>
+        {logoInput}
+        <GroupedList header="Cores">
+          {colorRow('Cor primária', 'primary_color')}
+          {colorRow('Cor secundária', 'secondary_color')}
+        </GroupedList>
+        <GroupedList header="Fontes">
+          <FormRow
+            label="Fonte principal"
+            input={{
+              value: form.font_primary ?? '',
+              onChange: (e) => setForm((f) => ({ ...f, font_primary: e.target.value })),
+              placeholder: 'Inter',
+            }}
+          />
+          <FormRow
+            label="Fonte secundária"
+            input={{
+              value: form.font_secondary ?? '',
+              onChange: (e) => setForm((f) => ({ ...f, font_secondary: e.target.value })),
+              placeholder: 'Playfair Display',
+            }}
+          />
+        </GroupedList>
+        {files.length > 0 && (
+          <GroupedList header="Arquivos" className="phone-cli-wrap">
+            {files.map((f) => (
+              <Cell key={f.id} label={f.name} />
+            ))}
+          </GroupedList>
+        )}
+        <button
+          type="button"
+          className="phone-cli-button phone-cli-button--block"
+          onClick={save}
+          disabled={saving}
+        >
+          <Save aria-hidden="true" /> Salvar marca
+        </button>
+      </div>
+    );
+  }
+
   return (
     <section>
       <h3 className="font-semibold mb-3">Marca</h3>
@@ -159,17 +278,7 @@ function BrandEditor({
               <Upload size={14} className="mr-1.5" />
               {uploadingLogo ? 'Enviando…' : brand?.logo_file_id ? 'Trocar logo' : 'Enviar logo'}
             </Button>
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) void uploadLogo(file);
-              }}
-            />
+            {logoInput}
           </div>
         </div>
         <div>

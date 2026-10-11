@@ -43,6 +43,11 @@ import { useEntitlements } from '@/hooks/useEntitlements';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { HubRoleGate, useHubPortalDataEnabled } from './HubRoleGate';
 import { usePortalFill } from './usePortalFill';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
+import '../phone/clienteDetalhePhone.css';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 // Raw Postgres error text must never reach the user.
@@ -120,6 +125,11 @@ export default function AcessoPage() {
 
   const [extending, setExtending] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const isPhone = !useIsDesktop(768);
+  const [confirm, setConfirm] = useState<'rotate' | 'deactivate' | null>(null);
+  useClientePhoneHeader({
+    subtitle: 'Gerencie o link permanente de acesso do cliente ao portal.',
+  });
 
   async function toggleActive() {
     if (!tokenData) return;
@@ -174,6 +184,216 @@ export default function AcessoPage() {
   // must render its header and everything that doesn't depend on the slug, rather than
   // staying blank forever. See Finding 1 in task-9's fix round.
   if (canLoadPortalData && workspaceSlugQuery.isPending) return null;
+
+  async function handleCreate() {
+    try {
+      await createHubToken(clienteId, contaId!);
+      invalidateHubTokenQueries(qc, clienteId);
+      toast.success('Link gerado!');
+    } catch (e: any) {
+      // Entitlements can go stale between load and click — fall back to the
+      // upgrade toast rather than leaking the raw Postgres message.
+      if (!handleEntitlementMutationError(e, contaId ?? null)) toast.error(mapTokenError(e));
+    }
+  }
+
+  if (isPhone) {
+    const fill = fillQuery.data;
+    const fillValue = (text: string) => (fillQuery.isSuccess ? text : '–');
+    const fillTo = (segment: string) =>
+      fillQuery.isSuccess ? `/clientes/${clienteId}/hub/${segment}` : undefined;
+    const expiryText = expiresAt
+      ? isExpired
+        ? `Expirou em ${format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}`
+        : isNearExpiry
+          ? `Expira em ${daysLeft} dias (${format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })})`
+          : `Expira em ${format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}`
+      : null;
+    const newIdeas = fill?.newIdeasWithoutReply ?? 0;
+    return (
+      <div className="phone-cli-acesso">
+        <HubRoleGate>
+          {tokenData ? (
+            <>
+              <section className="phone-cli-card" aria-label="Acesso do Cliente">
+                <p className="phone-cli-acesso__status">
+                  <span
+                    className="phone-cli-chip"
+                    data-tone={tokenData.is_active && !isExpired ? 'success' : 'danger'}
+                  >
+                    {isExpired ? 'Expirado' : tokenData.is_active ? 'Ativo' : 'Inativo'}
+                  </span>
+                  {expiryText && (
+                    <span
+                      className="phone-cli-acesso__expiry"
+                      data-tone={isExpired ? 'danger' : isNearExpiry ? 'warning' : undefined}
+                    >
+                      <CalendarClock aria-hidden="true" />
+                      {expiryText}
+                    </span>
+                  )}
+                </p>
+                {workspaceSlug ? (
+                  <code className="phone-cli-acesso__url">{hubUrl}</code>
+                ) : (
+                  <p className="phone-cli-acesso__error" data-testid="hub-slug-missing">
+                    Não foi possível montar o link do portal: identificador do workspace ausente.
+                    Fale com o suporte.
+                  </p>
+                )}
+              </section>
+              {workspaceSlug && (
+                <GroupedList aria-label="Link do portal">
+                  <Cell label="Copiar" icon={<Copy />} onClick={() => void copyLink()} />
+                  <Cell label="Preview" icon={<Eye />} onClick={() => openExternalUrl(hubUrl)} />
+                </GroupedList>
+              )}
+              <GroupedList aria-label="Ações do link">
+                {showRescue && (
+                  <Cell
+                    label="Estender +1 ano"
+                    icon={<CalendarClock />}
+                    disabled={extending}
+                    onClick={() => void handleExtend()}
+                  />
+                )}
+                {tokenData.is_active ? (
+                  <Cell
+                    label="Desativar"
+                    icon={<ToggleRight />}
+                    destructive
+                    onClick={() => setConfirm('deactivate')}
+                  />
+                ) : (
+                  <Cell label="Ativar" icon={<ToggleLeft />} onClick={() => void toggleActive()} />
+                )}
+                <Cell
+                  label="Gerar novo link"
+                  icon={<RefreshCw />}
+                  destructive
+                  disabled={rotating}
+                  onClick={() => setConfirm('rotate')}
+                />
+              </GroupedList>
+            </>
+          ) : !hubPortalEnabled ? (
+            <section className="phone-cli-card phone-cli-acesso__upgrade">
+              <Lock aria-hidden="true" />
+              <p className="phone-cli-acesso__upgrade-title">
+                O Portal do Cliente faz parte dos planos pagos.
+              </p>
+              <p className="phone-cli-acesso__upgrade-text">
+                Faça upgrade para gerar um link de acesso e entregar aprovações, briefing, postagens
+                e ideias em um portal com a sua marca.
+              </p>
+              <button
+                type="button"
+                className="phone-cli-button"
+                onClick={() => {
+                  captureEvent('hub_upgrade_prompt_clicked', { cliente_id: clienteId });
+                  window.location.href = '/configuracao/cobranca';
+                }}
+              >
+                Ver planos
+              </button>
+            </section>
+          ) : (
+            <GroupedList footer="Nenhum link gerado ainda." aria-label="Acesso do Cliente">
+              <Cell label="Gerar link" icon={<Plus />} onClick={() => void handleCreate()} />
+            </GroupedList>
+          )}
+
+          {fillQuery.isLoading || fillQuery.isError ? (
+            <GroupedList aria-label="Ideias novas sem resposta">
+              <Cell label="Ideias novas sem resposta" value="–" />
+            </GroupedList>
+          ) : newIdeas > 0 ? (
+            <GroupedList aria-label="Ideias novas sem resposta">
+              <Cell
+                label={`${newIdeas} ${newIdeas === 1 ? 'ideia nova' : 'ideias novas'} sem resposta`}
+                icon={<Lightbulb />}
+                to={`/clientes/${clienteId}/hub/ideias`}
+              />
+            </GroupedList>
+          ) : null}
+
+          <GroupedList header="O que o cliente vê">
+            <Cell
+              data-testid="fill-briefing"
+              label="Briefing"
+              value={fillValue(
+                fill
+                  ? fill.briefingTotal === 0
+                    ? 'vazia'
+                    : `${fill.briefingAnswered} de ${fill.briefingTotal} respondidas`
+                  : '',
+              )}
+              to={fillTo('briefing')}
+            />
+            <Cell
+              data-testid="fill-marca"
+              label="Marca"
+              value={fillValue(
+                fill
+                  ? !fill.hasBrand && fill.brandFiles === 0
+                    ? 'vazia'
+                    : fill.brandFiles > 0
+                      ? `${fill.brandFiles} ${fill.brandFiles === 1 ? 'arquivo' : 'arquivos'}`
+                      : 'Marca configurada'
+                  : '',
+              )}
+              to={fillTo('marca')}
+            />
+            <Cell
+              data-testid="fill-paginas"
+              label="Páginas"
+              value={fillValue(
+                fill
+                  ? fill.pages === 0
+                    ? 'vazia'
+                    : `${fill.pages} ${fill.pages === 1 ? 'página' : 'páginas'}`
+                  : '',
+              )}
+              to={fillTo('paginas')}
+            />
+          </GroupedList>
+        </HubRoleGate>
+
+        <PhoneConfirmSheet
+          open={confirm === 'rotate'}
+          title="Gerar um novo link?"
+          message="O link atual para de funcionar imediatamente. O cliente perde o acesso até você enviar o novo link. Esta ação não pode ser desfeita."
+          actions={[
+            {
+              label: 'Confirmar',
+              destructive: true,
+              onSelect: () => {
+                setConfirm(null);
+                void handleRotate();
+              },
+            },
+          ]}
+          onCancel={() => setConfirm(null)}
+        />
+        <PhoneConfirmSheet
+          open={confirm === 'deactivate'}
+          title="Desativar o acesso?"
+          message="O link para de funcionar até você ativar de novo. O cliente perde o acesso ao portal enquanto isso."
+          actions={[
+            {
+              label: 'Desativar',
+              destructive: true,
+              onSelect: () => {
+                setConfirm(null);
+                void toggleActive();
+              },
+            },
+          ]}
+          onCancel={() => setConfirm(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="hub-page">
@@ -341,21 +561,7 @@ export default function AcessoPage() {
               ) : (
                 <div className="flex items-center gap-3">
                   <p className="text-sm text-muted-foreground">Nenhum link gerado ainda.</p>
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        await createHubToken(clienteId, contaId);
-                        invalidateHubTokenQueries(qc, clienteId);
-                        toast.success('Link gerado!');
-                      } catch (e: any) {
-                        // Entitlements can go stale between load and click — fall back to the
-                        // upgrade toast rather than leaking the raw Postgres message.
-                        if (!handleEntitlementMutationError(e, contaId ?? null))
-                          toast.error(mapTokenError(e));
-                      }
-                    }}
-                  >
+                  <Button size="sm" onClick={handleCreate}>
                     <Plus size={14} className="mr-1.5" /> Gerar link
                   </Button>
                 </div>

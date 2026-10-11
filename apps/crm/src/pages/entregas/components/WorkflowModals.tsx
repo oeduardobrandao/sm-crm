@@ -52,6 +52,10 @@ import type { BoardCard } from '../hooks/useEntregasData';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { ChoiceLabel, PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import './editWorkflowPhone.css';
 import { MigrateTemplateDialog } from './MigrateTemplateDialog';
 import {
   SortableEtapaList,
@@ -108,6 +112,7 @@ export function EditWorkflowModal({
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const isPhone = !useIsDesktop(768);
 
   const markDirty = () => setIsDirty(true);
 
@@ -167,225 +172,264 @@ export function EditWorkflowModal({
           <DialogHeader>
             <DialogTitle>Editar Fluxo</DialogTitle>
           </DialogHeader>
-          <div className="edit-modal-toolbar">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setMigrateOpen(true)}
-              disabled={isDirty}
-            >
-              <ArrowRightLeft className="h-4 w-4" /> Migrar template
-            </Button>
-            {onOpenPosts && (
-              <Button variant="outline" size="sm" onClick={onOpenPosts}>
-                <FileText className="h-4 w-4" /> Posts
-              </Button>
-            )}
-            {isDirty && (
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                Salve as alterações antes de migrar.
-              </span>
-            )}
-          </div>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Título *</Label>
-              <Input
-                value={fTitulo}
-                onChange={(e) => {
-                  setFTitulo(e.target.value);
-                  markDirty();
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Cliente *</Label>
-              <Select
-                value={fClienteId}
-                onValueChange={(v) => {
-                  setFClienteId(v);
-                  markDirty();
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeClientes.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="recorrente-edit"
-                checked={fRecorrente}
-                onCheckedChange={(v) => {
-                  setFRecorrente(!!v);
-                  markDirty();
-                }}
-              />
-              <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
-            </div>
-            {showPlataformas && (
-              <div className="space-y-1">
-                <Label>Plataformas</Label>
-                <PlatformChips
-                  value={fPlataformas}
-                  onChange={(v) => {
-                    setFPlataformas(v);
-                    markDirty();
-                  }}
-                />
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-                  Vale para os próximos posts. Posts já criados mantêm os destinos.
-                </p>
-              </div>
-            )}
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '0.75rem',
-                }}
-              >
-                <h4>Etapa Atual: {e.nome}</h4>
-                {modoPrazo !== 'padrao' && (
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      padding: '2px 8px',
-                      borderRadius: 10,
-                      background: modoPrazo === 'data_entrega' ? '#dbeafe' : '#f3e8ff',
-                      color: modoPrazo === 'data_entrega' ? '#1d4ed8' : '#7e22ce',
-                    }}
-                  >
-                    {modoPrazo === 'data_entrega' ? 'Data de entrega' : 'Data fixa'}
+          {isPhone ? (
+            <EditWorkflowPhoneBody
+              {...{
+                card,
+                membros,
+                activeClientes,
+                modoPrazo,
+                isDirty,
+                saving,
+                showPlataformas,
+                fTitulo,
+                fClienteId,
+                fRecorrente,
+                fPlataformas,
+                fResponsavelId,
+                fPrazoDias,
+                fTipoPrazo,
+                fDataLimite,
+              }}
+              onChange={(patch) => {
+                if (patch.fTitulo !== undefined) setFTitulo(patch.fTitulo);
+                if (patch.fClienteId !== undefined) setFClienteId(patch.fClienteId);
+                if (patch.fRecorrente !== undefined) setFRecorrente(patch.fRecorrente);
+                if (patch.fPlataformas !== undefined) setFPlataformas(patch.fPlataformas);
+                if (patch.fResponsavelId !== undefined) setFResponsavelId(patch.fResponsavelId);
+                if (patch.fPrazoDias !== undefined) setFPrazoDias(patch.fPrazoDias);
+                if (patch.fTipoPrazo !== undefined) setFTipoPrazo(patch.fTipoPrazo);
+                if (patch.fDataLimite !== undefined) setFDataLimite(patch.fDataLimite);
+                markDirty();
+              }}
+              onMigrate={() => setMigrateOpen(true)}
+              onOpenPosts={onOpenPosts}
+              onSave={handleSave}
+              onDelete={() => setDeleteOpen(true)}
+            />
+          ) : (
+            <>
+              <div className="edit-modal-toolbar">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMigrateOpen(true)}
+                  disabled={isDirty}
+                >
+                  <ArrowRightLeft className="h-4 w-4" /> Migrar template
+                </Button>
+                {onOpenPosts && (
+                  <Button variant="outline" size="sm" onClick={onOpenPosts}>
+                    <FileText className="h-4 w-4" /> Posts
+                  </Button>
+                )}
+                {isDirty && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Salve as alterações antes de migrar.
                   </span>
                 )}
               </div>
-              <div className="space-y-1">
-                <Label>Responsável</Label>
-                <Select
-                  value={fResponsavelId || '__none__'}
-                  onValueChange={(val) => {
-                    setFResponsavelId(val === '__none__' ? '' : val);
-                    markDirty();
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sem responsável" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Sem responsável</SelectItem>
-                    {[...membros]
-                      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-                      .map((m) => (
-                        <SelectItem key={m.id} value={String(m.id)}>
-                          {m.nome}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {modoPrazo === 'padrao' && (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '1rem',
-                    marginTop: '0.75rem',
-                  }}
-                >
-                  <div className="space-y-1">
-                    <Label>Prazo (dias)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={fPrazoDias}
-                      onChange={(e) => {
-                        setFPrazoDias(e.target.value);
-                        markDirty();
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Tipo de prazo</Label>
-                    <Select
-                      value={fTipoPrazo}
-                      onValueChange={(v) => {
-                        setFTipoPrazo(v as 'corridos' | 'uteis');
-                        markDirty();
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="corridos">Dias corridos</SelectItem>
-                        <SelectItem value="uteis">Dias úteis</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-              {modoPrazo === 'data_fixa' && (
-                <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
-                  <Label>Data limite</Label>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label>Título *</Label>
                   <Input
-                    type="date"
-                    value={fDataLimite}
-                    onChange={(ev) => {
-                      setFDataLimite(ev.target.value);
+                    value={fTitulo}
+                    onChange={(e) => {
+                      setFTitulo(e.target.value);
                       markDirty();
                     }}
                   />
                 </div>
-              )}
-              {modoPrazo === 'data_entrega' && e.data_limite && (
-                <div
-                  style={{
-                    marginTop: '0.75rem',
-                    padding: '0.5rem 0.75rem',
-                    background: '#eff6ff',
-                    borderRadius: 6,
-                    fontSize: '0.82rem',
-                    color: '#1d4ed8',
-                  }}
-                >
-                  Data limite calculada:{' '}
-                  <strong>
-                    {new Date(e.data_limite + 'T00:00:00').toLocaleDateString('pt-BR')}
-                  </strong>
+                <div className="space-y-1">
+                  <Label>Cliente *</Label>
+                  <Select
+                    value={fClienteId}
+                    onValueChange={(v) => {
+                      setFClienteId(v);
+                      markDirty();
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeClientes.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-            </div>
-          </div>
-          <div className="edit-modal-footer">
-            <div className="edit-modal-footer-secondary">
-              <Button
-                variant="outline"
-                className="text-destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="h-4 w-4" /> Excluir
-              </Button>
-            </div>
-            <div className="edit-modal-footer-primary">
-              <Button variant="outline" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving && <Spinner size="sm" />} Salvar
-              </Button>
-            </div>
-          </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="recorrente-edit"
+                    checked={fRecorrente}
+                    onCheckedChange={(v) => {
+                      setFRecorrente(!!v);
+                      markDirty();
+                    }}
+                  />
+                  <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
+                </div>
+                {showPlataformas && (
+                  <div className="space-y-1">
+                    <Label>Plataformas</Label>
+                    <PlatformChips
+                      value={fPlataformas}
+                      onChange={(v) => {
+                        setFPlataformas(v);
+                        markDirty();
+                      }}
+                    />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+                      Vale para os próximos posts. Posts já criados mantêm os destinos.
+                    </p>
+                  </div>
+                )}
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '0.75rem',
+                    }}
+                  >
+                    <h4>Etapa Atual: {e.nome}</h4>
+                    {modoPrazo !== 'padrao' && (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: 10,
+                          background: modoPrazo === 'data_entrega' ? '#dbeafe' : '#f3e8ff',
+                          color: modoPrazo === 'data_entrega' ? '#1d4ed8' : '#7e22ce',
+                        }}
+                      >
+                        {modoPrazo === 'data_entrega' ? 'Data de entrega' : 'Data fixa'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Responsável</Label>
+                    <Select
+                      value={fResponsavelId || '__none__'}
+                      onValueChange={(val) => {
+                        setFResponsavelId(val === '__none__' ? '' : val);
+                        markDirty();
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sem responsável" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sem responsável</SelectItem>
+                        {[...membros]
+                          .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+                          .map((m) => (
+                            <SelectItem key={m.id} value={String(m.id)}>
+                              {m.nome}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {modoPrazo === 'padrao' && (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '1rem',
+                        marginTop: '0.75rem',
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label>Prazo (dias)</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={fPrazoDias}
+                          onChange={(e) => {
+                            setFPrazoDias(e.target.value);
+                            markDirty();
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Tipo de prazo</Label>
+                        <Select
+                          value={fTipoPrazo}
+                          onValueChange={(v) => {
+                            setFTipoPrazo(v as 'corridos' | 'uteis');
+                            markDirty();
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="corridos">Dias corridos</SelectItem>
+                            <SelectItem value="uteis">Dias úteis</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                  {modoPrazo === 'data_fixa' && (
+                    <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
+                      <Label>Data limite</Label>
+                      <Input
+                        type="date"
+                        value={fDataLimite}
+                        onChange={(ev) => {
+                          setFDataLimite(ev.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {modoPrazo === 'data_entrega' && e.data_limite && (
+                    <div
+                      style={{
+                        marginTop: '0.75rem',
+                        padding: '0.5rem 0.75rem',
+                        background: '#eff6ff',
+                        borderRadius: 6,
+                        fontSize: '0.82rem',
+                        color: '#1d4ed8',
+                      }}
+                    >
+                      Data limite calculada:{' '}
+                      <strong>
+                        {new Date(e.data_limite + 'T00:00:00').toLocaleDateString('pt-BR')}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="edit-modal-footer">
+                <div className="edit-modal-footer-secondary">
+                  <Button
+                    variant="outline"
+                    className="text-destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4" /> Excluir
+                  </Button>
+                </div>
+                <div className="edit-modal-footer-primary">
+                  <Button variant="outline" onClick={onClose}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving && <Spinner size="sm" />} Salvar
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -413,6 +457,168 @@ export function EditWorkflowModal({
         />
       )}
     </>
+  );
+}
+
+interface EditWorkflowFields {
+  fTitulo: string;
+  fClienteId: string;
+  fRecorrente: boolean;
+  fPlataformas: PlatformId[];
+  fResponsavelId: string;
+  fPrazoDias: string;
+  fTipoPrazo: 'corridos' | 'uteis';
+  fDataLimite: string;
+}
+
+/**
+ * EditWorkflowModal's form below 768px: the same fields and actions as the desktop
+ * body, as grouped rows (pickers open sheets instead of popover selects). The dialog
+ * around it, its unsaved-changes guard and the delete confirm stay EditWorkflowModal's.
+ */
+function EditWorkflowPhoneBody({
+  card,
+  membros,
+  activeClientes,
+  modoPrazo,
+  isDirty,
+  saving,
+  showPlataformas,
+  onChange,
+  onMigrate,
+  onOpenPosts,
+  onSave,
+  onDelete,
+  ...f
+}: EditWorkflowFields & {
+  card: BoardCard;
+  membros: Membro[];
+  activeClientes: Cliente[];
+  modoPrazo: ModoPrazo;
+  isDirty: boolean;
+  saving: boolean;
+  showPlataformas: boolean;
+  onChange: (patch: Partial<EditWorkflowFields>) => void;
+  onMigrate: () => void;
+  onOpenPosts?: () => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  const e = card.etapa;
+  const memberOptions = [...membros]
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((m) => ({ value: String(m.id), label: m.nome }));
+  const deadlineNote =
+    modoPrazo === 'data_entrega' && e.data_limite
+      ? `Data de entrega. Data limite calculada: ${new Date(
+          e.data_limite + 'T00:00:00',
+        ).toLocaleDateString('pt-BR')}`
+      : modoPrazo === 'data_fixa'
+        ? 'Data fixa'
+        : undefined;
+
+  return (
+    <div className="phone-edit-wf">
+      <GroupedList
+        aria-label="Ações do fluxo"
+        footer={isDirty ? 'Salve as alterações antes de migrar.' : undefined}
+      >
+        {onOpenPosts && <Cell label="Posts" icon={<FileText />} onClick={onOpenPosts} />}
+        <Cell
+          label="Migrar template"
+          icon={<ArrowRightLeft />}
+          disabled={isDirty}
+          onClick={onMigrate}
+        />
+      </GroupedList>
+
+      <GroupedList header="Fluxo" headerAs="h3">
+        <FormRow
+          label="Título *"
+          input={{ value: f.fTitulo, onChange: (ev) => onChange({ fTitulo: ev.target.value }) }}
+        />
+        <PickerCell
+          label="Cliente *"
+          searchable
+          options={activeClientes.map((c) => ({ value: String(c.id), label: c.nome }))}
+          value={f.fClienteId || null}
+          onChange={(v) => {
+            if (v) onChange({ fClienteId: v });
+          }}
+        />
+        <Cell
+          label="Fluxo recorrente"
+          switch={{
+            checked: f.fRecorrente,
+            onCheckedChange: (v) => onChange({ fRecorrente: v }),
+          }}
+        />
+      </GroupedList>
+
+      {showPlataformas && (
+        <GroupedList
+          header="Plataformas"
+          headerAs="h3"
+          footer="Vale para os próximos posts. Posts já criados mantêm os destinos."
+        >
+          <li className="phone-cell phone-edit-wf__chips">
+            <PlatformChips value={f.fPlataformas} onChange={(v) => onChange({ fPlataformas: v })} />
+          </li>
+        </GroupedList>
+      )}
+
+      <GroupedList header={`Etapa atual: ${e.nome}`} headerAs="h3" footer={deadlineNote}>
+        <PickerCell
+          label="Responsável"
+          options={memberOptions}
+          emptyOption={{ label: 'Sem responsável' }}
+          value={f.fResponsavelId || null}
+          onChange={(v) => onChange({ fResponsavelId: v ?? '' })}
+        />
+        {modoPrazo === 'padrao' && (
+          <>
+            <FormRow
+              label="Prazo (dias)"
+              input={{
+                type: 'number',
+                min: 1,
+                inputMode: 'numeric',
+                value: f.fPrazoDias,
+                onChange: (ev) => onChange({ fPrazoDias: ev.target.value }),
+              }}
+            />
+            <PickerCell
+              label="Tipo de prazo"
+              options={[
+                { value: 'corridos', label: 'Dias corridos' },
+                { value: 'uteis', label: 'Dias úteis' },
+              ]}
+              value={f.fTipoPrazo}
+              onChange={(v) => {
+                if (v) onChange({ fTipoPrazo: v });
+              }}
+            />
+          </>
+        )}
+        {modoPrazo === 'data_fixa' && (
+          <FormRow
+            label="Data limite"
+            input={{
+              type: 'date',
+              value: f.fDataLimite,
+              onChange: (ev) => onChange({ fDataLimite: ev.target.value }),
+            }}
+          />
+        )}
+      </GroupedList>
+
+      <Button className="phone-edit-wf__save" onClick={onSave} disabled={saving}>
+        {saving && <Spinner size="sm" />} Salvar
+      </Button>
+      <GroupedList aria-label="Excluir fluxo">
+        <Cell label="Excluir fluxo" icon={<Trash2 />} destructive onClick={onDelete} />
+      </GroupedList>
+    </div>
   );
 }
 
