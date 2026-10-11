@@ -18,7 +18,12 @@ vi.mock('@/components/layout/PhoneShellHeader', () => ({
 }));
 
 vi.mock('sonner', () => ({
-  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }),
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    loading: vi.fn(() => 'toast-1'),
+  }),
 }));
 
 vi.mock('../../../store', () => ({ getClientes: vi.fn() }));
@@ -86,6 +91,8 @@ import {
   type PostAnalytics,
 } from '../../../services/analytics';
 import { deleteReportDoc, listReportDocs } from '../../../services/reportDocs';
+import { getReportDownloadUrl } from '../../../services/analytics';
+import { toast } from 'sonner';
 
 const kpi = (current: number, previous: number) => ({
   current,
@@ -319,6 +326,44 @@ describe('AnalyticsContaPage (phone)', () => {
     renderPage();
     await ready();
     expect(await screen.findByText('Falha: Conta sem permissão de insights')).toBeInTheDocument();
+  });
+
+  it('downloads a legacy PDF through a toast tap (no window.open after the await)', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.mocked(getClientReports).mockResolvedValue([
+      {
+        id: 6,
+        report_month: '2026-07',
+        status: 'ready',
+        generation_error: null,
+        include_ai: false,
+        generated_at: '2026-08-01T10:00:00Z',
+        storage_path: 'reports/6.pdf',
+      } as never,
+    ]);
+    vi.mocked(getReportDownloadUrl).mockResolvedValue('https://files.example.com/6.pdf');
+    renderPage();
+    await ready();
+    fireEvent.click(await screen.findByRole('button', { name: /Jul 2026/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Baixar PDF' }));
+    await waitFor(() => expect(toast.loading).toHaveBeenCalledWith('Preparando PDF…'));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'PDF pronto.',
+        expect.objectContaining({ id: 'toast-1', action: expect.any(Object) }),
+      ),
+    );
+    expect(openSpy).not.toHaveBeenCalled();
+    const { action } = vi.mocked(toast.success).mock.calls.at(-1)![1] as {
+      action: { onClick: () => void };
+    };
+    action.onClick();
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://files.example.com/6.pdf',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    openSpy.mockRestore();
   });
 
   it('applies a custom period from a sheet with an explicit Aplicar', async () => {

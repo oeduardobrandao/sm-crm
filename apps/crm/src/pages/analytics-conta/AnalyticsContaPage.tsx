@@ -1460,16 +1460,19 @@ function AnalyticsContent({
     // active row is the only thing that looks clickable.
     if (downloadingReportId !== null) return;
     setDownloadingReportId(reportId);
+    // The phone's action sheet closes on tap, so the toast is the in-flight feedback.
+    const toastId = viaTap ? toast.loading('Preparando PDF…') : undefined;
     try {
       const url = await getReportDownloadUrl(reportId);
       if (viaTap) {
         toast.success('PDF pronto.', {
+          id: toastId,
           action: { label: 'Abrir PDF', onClick: () => openExternalUrl(url) },
           duration: 15000,
         });
       } else openExternalUrl(url);
     } catch {
-      toast.error('Erro ao baixar relatório');
+      toast.error('Erro ao baixar relatório', { id: toastId });
     } finally {
       setDownloadingReportId(null);
     }
