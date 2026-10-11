@@ -2,6 +2,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import type { AgendaOcorrencia } from '../../../../store/agenda';
 import { descreverRegra, emFuso } from '../agendaLogic';
 import { EventoPopover } from '../EventoPopover';
@@ -765,5 +766,146 @@ describe('EventoPopover: convidados externos', () => {
     );
     await screen.findByRole('dialog', { name: 'Ocupado' });
     expect(screen.queryByRole('list', { name: 'Convidados' })).not.toBeInTheDocument();
+  });
+});
+
+describe('EventoPopover as a phone sheet', () => {
+  function abrirSheet(o: AgendaOcorrencia) {
+    const onClose = vi.fn();
+    const onEditar = vi.fn();
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <EventoPopover
+            apresentacao="sheet"
+            open
+            ocorrencia={o}
+            onClose={onClose}
+            onEditar={onEditar}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return { onClose, onEditar };
+  }
+
+  it('shows the details, participants and guests as grouped rows', async () => {
+    abrirSheet(
+      ocorrencia({
+        convidados: [{ id: 1, nome: 'Paula', email: 'paula@exemplo.com', resposta: 'sim' }],
+      } as Partial<AgendaOcorrencia>),
+    );
+    const sheet = screen.getByRole('dialog', { name: 'Gravação: Clínica Sorriso' });
+    expect(within(sheet).getByText('Estúdio 2, Av. Paulista, 900')).toBeInTheDocument();
+    expect(within(sheet).getByRole('link', { name: 'Entrar na reunião' })).toHaveAttribute(
+      'href',
+      'https://meet.google.com/abc-defg-hij',
+    );
+    expect(within(sheet).getByText('Cliente: Clínica Sorriso')).toBeInTheDocument();
+    expect(await within(sheet).findByText('Bruno Costa · organizador')).toBeInTheDocument();
+    expect(within(sheet).getByText('Ana Lima (você)')).toBeInTheDocument();
+    expect(within(sheet).getByText('Paula')).toBeInTheDocument();
+    expect(within(sheet).getByText('Confirmou')).toBeInTheDocument();
+  });
+
+  it('Editar closes the sheet, then hands the occurrence to the form', () => {
+    const o = ocorrencia();
+    const { onClose, onEditar } = abrirSheet(o);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(onEditar).toHaveBeenCalledWith(o);
+  });
+
+  it('answers a single event at once, a recurring one after choosing the scope', async () => {
+    abrirSheet(ocorrencia());
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Sua resposta' })).getByRole('button', {
+        name: 'Sim',
+      }),
+    );
+    await waitFor(() => expect(responderEventoMock).toHaveBeenCalledWith(7, 'sim', 'todas'));
+  });
+
+  it('a recurring event asks "Responder a qual evento?" in an action sheet', async () => {
+    abrirSheet(ocorrencia({ recorrente: true, regra: REGRA }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Sua resposta' })).getByRole('button', {
+        name: 'Talvez',
+      }),
+    );
+    const escolha = await screen.findByRole('dialog', { name: 'Responder a qual evento?' });
+    fireEvent.click(within(escolha).getByRole('button', { name: 'Este evento' }));
+    await waitFor(() => expect(responderEventoMock).toHaveBeenCalledWith(7, 'talvez', 'esta'));
+  });
+
+  it('Mais ações: Google Agenda, .ics and Excluir with its confirm', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const { onClose } = abrirSheet(ocorrencia());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
+    let menu = await screen.findByRole('dialog', { name: 'Mais ações' });
+    fireEvent.click(within(menu).getByRole('button', { name: 'Adicionar ao Google Agenda' }));
+    expect(open).toHaveBeenCalledWith(
+      'https://calendar.google.com/calendar/render?x=1',
+      '_blank',
+      'noopener,noreferrer',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
+    menu = await screen.findByRole('dialog', { name: 'Mais ações' });
+    fireEvent.click(within(menu).getByRole('button', { name: 'Baixar .ics' }));
+    expect(baixarIcsMock).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
+    menu = await screen.findByRole('dialog', { name: 'Mais ações' });
+    fireEvent.click(within(menu).getByRole('button', { name: 'Excluir' }));
+    const confirmar = await screen.findByRole('dialog', { name: 'Excluir evento?' });
+    expect(confirmar).toHaveTextContent('Os participantes recebem um aviso de cancelamento.');
+    fireEvent.click(within(confirmar).getByRole('button', { name: 'Excluir' }));
+    await waitFor(() => expect(excluirEventoMock).toHaveBeenCalledWith(7, 'todas'));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    open.mockRestore();
+  });
+
+  it('a recurring event offers the three delete scopes', async () => {
+    abrirSheet(ocorrencia({ recorrente: true, regra: REGRA }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog', { name: 'Mais ações' })).getByRole('button', {
+        name: 'Excluir',
+      }),
+    );
+    const confirmar = await screen.findByRole('dialog', { name: 'Excluir evento recorrente?' });
+    fireEvent.click(within(confirmar).getByRole('button', { name: 'Este e os seguintes' }));
+    await waitFor(() => expect(excluirEventoMock).toHaveBeenCalledWith(7, 'seguintes'));
+  });
+
+  it('keeps the reschedule request with Aceitar and Recusar', async () => {
+    const { onClose } = abrirSheet(
+      ocorrencia({
+        compartilhado_cliente: true,
+        cliente_resposta: 'sim',
+        remarcacao_pendente: {
+          id: 41,
+          inicio_sugerido: new Date(2026, 9, 9, 14, 0).toISOString(),
+          fim_sugerido: new Date(2026, 9, 9, 16, 0).toISOString(),
+          mensagem: null,
+          criado_em: new Date(2026, 9, 3, 10, 0).toISOString(),
+        },
+      } as Partial<AgendaOcorrencia>),
+    );
+    const bloco = screen.getByRole('group', { name: 'Pedido de remarcação' });
+    expect(within(bloco).getByRole('button', { name: 'Recusar' })).toBeInTheDocument();
+    fireEvent.click(within(bloco).getByRole('button', { name: 'Aceitar' }));
+    await waitFor(() => expect(resolverRemarcacaoMock).toHaveBeenCalledWith(41, true, undefined));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('a masked event shows only when it is, without actions', () => {
+    abrirSheet(ocorrencia({ mascarado: true, pode_editar: false, titulo: 'Ocupado' }));
+    expect(screen.getByRole('dialog', { name: 'Ocupado' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mais ações' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Estúdio 2, Av. Paulista, 900')).not.toBeInTheDocument();
   });
 });

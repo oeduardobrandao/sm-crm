@@ -1,10 +1,5 @@
-import { useState, type MouseEvent } from 'react';
+import type { MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import {
   ArrowDownLeft,
   ArrowRight,
@@ -21,19 +16,14 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { EmptyStateGuide } from '../../../components/help/EmptyStateGuide';
-import { updateTarefa, type TarefaStatus, type TarefaWithRelations } from '../../../store';
-import { useTodayAgenda } from '../useTodayAgenda';
 import {
-  AGENDA_BUCKETS,
-  type AgendaBucket,
-  type AgendaItem,
-  type AgendaKind,
-} from '../todayAgenda';
+  useTodayCard,
+  TODAY_MAX_ROWS as MAX_ROWS,
+  TODAY_PAGE_ROWS as PAGE_ROWS,
+} from '../useTodayCard';
+import { AGENDA_BUCKETS, type AgendaItem, type AgendaKind } from '../todayAgenda';
 
-const MAX_ROWS = 8;
-const PAGE_ROWS = 20;
-
-const KIND_ICON: Record<AgendaKind, { Icon: typeof Flag; color?: string }> = {
+export const KIND_ICON: Record<AgendaKind, { Icon: typeof Flag; color?: string }> = {
   tarefa: { Icon: ClipboardList },
   etapa: { Icon: Flag, color: 'var(--warning)' },
   post_agendado: { Icon: Send },
@@ -45,20 +35,15 @@ const KIND_ICON: Record<AgendaKind, { Icon: typeof Flag; color?: string }> = {
   data: { Icon: Star, color: 'var(--info, #6366f1)' },
 };
 
-function initials(nome: string): string {
+export function initials(nome: string): string {
   const parts = nome.trim().split(/\s+/);
   const first = parts[0]?.[0] ?? '';
   const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? '') : '';
   return (first + last).toUpperCase();
 }
 
-function firstName(nome: string): string {
+export function firstName(nome: string): string {
   return nome.trim().split(/\s+/)[0] ?? nome;
-}
-
-interface CompleteVars {
-  id: number;
-  previousStatus: TarefaStatus;
 }
 
 /**
@@ -69,80 +54,21 @@ interface CompleteVars {
  * "concluir tarefa" mutation.
  */
 export function TodayCard() {
-  const { t } = useTranslation('dashboard');
-  const queryClient = useQueryClient();
-  const { status, scope, buckets, now } = useTodayAgenda();
-  const [visible, setVisible] = useState<Set<AgendaBucket>>(
-    () => new Set<AgendaBucket>(['atrasado', 'hoje']),
-  );
-  // Rows shown per bucket beyond the initial cap; expands in place, never navigates.
-  const [limits, setLimits] = useState<Record<AgendaBucket, number>>({
-    atrasado: MAX_ROWS,
-    hoje: MAX_ROWS,
-    proximos: MAX_ROWS,
-  });
-  const showMore = (b: AgendaBucket) =>
-    setLimits((prev) => ({ ...prev, [b]: prev[b] + PAGE_ROWS }));
-  const showLess = (b: AgendaBucket) => setLimits((prev) => ({ ...prev, [b]: MAX_ROWS }));
-
-  const complete = useMutation({
-    mutationFn: ({ id }: CompleteVars) => updateTarefa(id, { status: 'concluida' }),
-    onMutate: async ({ id }) => {
-      await queryClient.cancelQueries({ queryKey: ['tarefas'] });
-      const previous = queryClient.getQueryData<TarefaWithRelations[]>(['tarefas']);
-      queryClient.setQueryData<TarefaWithRelations[]>(['tarefas'], (old) =>
-        (old ?? []).map((task) => (task.id === id ? { ...task, status: 'concluida' } : task)),
-      );
-      return { previous };
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(['tarefas'], ctx.previous);
-      toast.error(t('today.taskDoneError', 'Não foi possível concluir a tarefa.'));
-    },
-    onSuccess: (_data, { id, previousStatus }) => {
-      toast.success(t('today.taskDone', 'Tarefa concluída'), {
-        action: {
-          label: t('today.taskDoneUndo', 'Desfazer'),
-          onClick: () => undo.mutate({ id, status: previousStatus }),
-        },
-      });
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tarefas'] });
-    },
-  });
-
-  const undo = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: TarefaStatus }) =>
-      updateTarefa(id, { status }),
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tarefas'] });
-    },
-  });
-
-  const toggle = (b: AgendaBucket) =>
-    setVisible((prev) => {
-      const next = new Set(prev);
-      if (next.has(b)) next.delete(b);
-      else next.add(b);
-      return next;
-    });
-
-  const counts = {
-    atrasado: buckets.atrasado.length,
-    hoje: buckets.hoje.length,
-    proximos: buckets.proximos.length,
-  };
-  const total = counts.atrasado + counts.hoje + counts.proximos;
-
-  const dateLabel = format(now, "EEEE, d 'de' MMMM", { locale: ptBR });
-  const summary = [
-    dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1),
-    t('today.summary', { overdue: counts.atrasado, today: counts.hoje }),
-    scope === 'mine' ? t('today.mine', 'atribuídos a você') : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const {
+    t,
+    status,
+    scope,
+    buckets,
+    counts,
+    total,
+    summary,
+    visible,
+    toggle,
+    limits,
+    showMore,
+    showLess,
+    complete,
+  } = useTodayCard();
 
   const stopNav = (e: MouseEvent) => {
     e.preventDefault();

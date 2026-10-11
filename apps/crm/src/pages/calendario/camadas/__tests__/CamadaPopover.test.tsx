@@ -21,14 +21,23 @@ function LocationProbe() {
 }
 
 /** The popover plus the confirm hook, wired the way AgendaTab wires them. */
-function Harness({ item, onClose }: { item: CamadaItem; onClose: () => void }) {
+function Harness({
+  item,
+  onClose,
+  sheet = false,
+}: {
+  item: CamadaItem;
+  onClose: () => void;
+  sheet?: boolean;
+}) {
   const { pedirConfirmacao, dialog } = useConfirmarPagamento(true);
   const anchor = document.getElementById('ancora')!;
   return (
     <>
       <CamadaPopover
         item={item}
-        anchor={anchor}
+        anchor={sheet ? undefined : anchor}
+        apresentacao={sheet ? 'sheet' : 'popover'}
         onClose={onClose}
         onConfirmar={pedirConfirmacao}
         canSeeFinancials={true}
@@ -38,7 +47,7 @@ function Harness({ item, onClose }: { item: CamadaItem; onClose: () => void }) {
   );
 }
 
-function renderPopover(item: CamadaItem) {
+function renderPopover(item: CamadaItem, sheet = false) {
   document.getElementById('ancora')?.remove();
   const ancora = document.createElement('div');
   ancora.id = 'ancora';
@@ -48,7 +57,7 @@ function renderPopover(item: CamadaItem) {
   render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/calendario']}>
-        <Harness item={item} onClose={onClose} />
+        <Harness item={item} onClose={onClose} sheet={sheet} />
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -280,4 +289,31 @@ describe('CamadaPopover', () => {
       await waitFor(() => expect(invalidar).toHaveBeenCalledWith({ queryKey: ['transacoes'] }));
     },
   );
+});
+
+describe('CamadaPopover as a phone sheet', () => {
+  beforeEach(() => {
+    vi.mocked(store.addTransacao).mockReset();
+  });
+
+  it('is a dialog named after the item; "Abrir post" closes it, then navigates', () => {
+    const { onClose } = renderPopover(post(), true);
+    const sheet = screen.getByRole('dialog', { name: 'Carrossel de dicas' });
+    expect(sheet).toHaveTextContent('Posts agendados');
+    expect(sheet).toHaveTextContent('Quarta, 7 de outubro de 2026 · 10:30');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir post' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.getByTestId('location')).toHaveTextContent('/entregas?drawer=3&post=55');
+  });
+
+  it('Confirmar closes the sheet and opens the same confirm dialog', async () => {
+    const { onClose } = renderPopover(
+      { camada: 'recebimentos', id: 'x', dia: '2026-10-10', itens: [pagamento({})] },
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar Clínica Sorriso' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(await screen.findByText('Confirmar Agendamento')).toBeInTheDocument();
+  });
 });

@@ -59,6 +59,19 @@
     "paymentDay": "Dia de Pagamento (1-31)"
   },
   "deleteConfirm": "Remover este lead?",
+  "phone": {
+    "count_one": "{{count}} lead",
+    "count_other": "{{count}} leads",
+    "addMenu": "Novo lead ou importar CSV",
+    "menuLabel": "Ações do lead",
+    "sortedBy": "Ordenado por {{field}}",
+    "holdHint": "Toque em um lead para editar. Toque e segure para mudar o status, converter ou remover.",
+    "emptyTitle": "Nenhum lead ainda",
+    "emptyText": "Cadastre o primeiro lead ou importe uma planilha CSV.",
+    "emptyFilteredText": "Nenhum lead com esses filtros ou essa busca.",
+    "clearFilters": "Limpar filtros",
+    "convert": "Converter"
+  },
   "toast": {
     "updated": "Lead atualizado",
     "created": "Lead criado",

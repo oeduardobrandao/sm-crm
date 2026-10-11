@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { PageSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import type { TarefaWithRelations } from '../../store';
 import { useTarefasData } from './hooks/useTarefasData';
 import {
@@ -22,6 +23,8 @@ import { ListView } from './views/ListView';
 import { MembrosBoardView } from './views/MembrosBoardView';
 import { StatusKanbanView } from './views/StatusKanbanView';
 import { CalendarView } from './views/CalendarView';
+import { TarefasPhoneContext, type TarefasPhoneActions } from './phone/parts';
+import { TarefasPhoneHeader } from './phone/TarefasPhoneHeader';
 
 type ActiveView = 'lista' | 'membros' | 'kanban' | 'calendario';
 
@@ -33,6 +36,7 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function TarefasPage() {
+  const isDesktop = useIsDesktop(768);
   const [activeView, setActiveView] = useState<ActiveView>('lista');
   const [filters, setFilters] = useState<TarefaFilterState>(EMPTY_TAREFA_FILTERS);
   const [formOpen, setFormOpen] = useState(false);
@@ -92,6 +96,11 @@ export default function TarefasPage() {
   );
   const stats = useMemo(() => computeHeaderStats(scopedTarefas, new Date()), [scopedTarefas]);
   const selected = selectedId != null ? (tarefas.find((t) => t.id === selectedId) ?? null) : null;
+  // Phones: the detail screen stays mounted after it closes (last task shown), so its
+  // history entry is popped by the screen itself, not stranded by an unmount.
+  const lastDetailRef = useRef<TarefaWithRelations | null>(null);
+  if (selected) lastDetailRef.current = selected;
+  const detailTarefa = selected ?? lastDetailRef.current;
 
   const openForm = (tarefa: TarefaWithRelations | null) => {
     setEditing(tarefa);
@@ -105,9 +114,122 @@ export default function TarefasPage() {
     setFormOpen(true);
   };
 
+  const phoneActions = useMemo<TarefasPhoneActions>(
+    () => ({
+      membros,
+      onRefresh: refresh,
+      openDetail: (t) => setSelectedId(t.id!),
+      edit: (t) => {
+        setEditing(t);
+        setCreateDataLimite(undefined);
+        setFormOpen(true);
+      },
+    }),
+    [membros, refresh],
+  );
+
   if (isLoading) {
     // The page always opens on the 'lista' view.
     return <PageSkeleton body="list" />;
+  }
+
+  const views = (
+    <>
+      {activeView === 'lista' && (
+        <ListView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+        />
+      )}
+      {activeView === 'membros' && (
+        <MembrosBoardView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+          onlyMembroId={escopo === 'minhas' ? currentMembroId : null}
+        />
+      )}
+      {activeView === 'kanban' && (
+        <StatusKanbanView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+        />
+      )}
+      {activeView === 'calendario' && (
+        <CalendarView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+          onCreateTask={handleCreateForDate}
+        />
+      )}
+    </>
+  );
+
+  const formDialog = (
+    <TarefaFormDialog
+      open={formOpen}
+      onClose={() => setFormOpen(false)}
+      editing={editing}
+      membros={membros}
+      clientes={clientes}
+      tags={tags}
+      onSaved={refresh}
+      onTagCreated={refresh}
+      initialValues={{ data_limite: createDataLimite }}
+    />
+  );
+
+  if (!isDesktop) {
+    return (
+      <TarefasPhoneContext.Provider value={phoneActions}>
+        <div className="phone-tar-page">
+          <TarefasPhoneHeader
+            stats={stats}
+            view={activeView}
+            onViewChange={setActiveView}
+            escopo={currentMembroId != null ? escopo : null}
+            onEscopoChange={handleEscopoChange}
+            filters={filters}
+            onFiltersChange={setFilters}
+            clientes={clientes}
+            membros={membros}
+            tags={tags}
+            resultCount={filteredTarefas.length}
+            onNew={() => openForm(null)}
+          />
+          {tarefas.length === 0 && activeView === 'lista' ? (
+            <div className="phone-tar-empty">
+              <ListChecks aria-hidden="true" />
+              <p>Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.</p>
+              <button type="button" className="phone-tar-ink-btn" onClick={() => openForm(null)}>
+                <Plus aria-hidden="true" /> Nova tarefa
+              </button>
+            </div>
+          ) : (
+            views
+          )}
+        </div>
+        {formDialog}
+        {detailTarefa && (
+          <TarefaDetailSheet
+            open={selected != null}
+            tarefa={detailTarefa}
+            membros={membros}
+            onClose={() => setSelectedId(null)}
+            // The form opens over the detail screen, which stays put underneath.
+            onEdit={() => openForm(detailTarefa)}
+            onRefresh={refresh}
+          />
+        )}
+      </TarefasPhoneContext.Provider>
+    );
   }
 
   return (
@@ -248,55 +370,10 @@ export default function TarefasPage() {
           </Button>
         </div>
       ) : (
-        <>
-          {activeView === 'lista' && (
-            <ListView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-            />
-          )}
-          {activeView === 'membros' && (
-            <MembrosBoardView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-              onlyMembroId={escopo === 'minhas' ? currentMembroId : null}
-            />
-          )}
-          {activeView === 'kanban' && (
-            <StatusKanbanView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-            />
-          )}
-          {activeView === 'calendario' && (
-            <CalendarView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-              onCreateTask={handleCreateForDate}
-            />
-          )}
-        </>
+        views
       )}
 
-      <TarefaFormDialog
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        editing={editing}
-        membros={membros}
-        clientes={clientes}
-        tags={tags}
-        onSaved={refresh}
-        onTagCreated={refresh}
-        initialValues={{ data_limite: createDataLimite }}
-      />
+      {formDialog}
 
       {selected && (
         <TarefaDetailSheet
