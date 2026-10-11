@@ -124,9 +124,17 @@ test('no horizontal overflow at 390px: /clientes/:id tabs', async ({ page }) => 
   const id = href?.match(/^\/clientes\/(\d+)/)?.[1];
   test.skip(!id, 'the E2E account has no client to open');
 
+  // A cold load of the CRM takes 6-17s on the deployed site, so eleven page.goto calls
+  // overrun the test budget. Switch tabs inside the running app instead: the data router
+  // follows pushState + popstate like a link tap.
+  test.setTimeout(90_000);
   for (const tab of CLIENTE_TABS) {
     const route = `/clientes/${id}/${tab}`;
-    await page.goto(route);
+    await page.evaluate((path) => {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, route);
+    await expect(page).toHaveURL(new RegExp(`${route}$`));
     await settle(page);
     await expectNoHorizontalOverflow(page, route);
   }
