@@ -1088,6 +1088,31 @@ export function KanbanView({
   );
 
   if (localCards.length === 0 && posts.length === 0) {
+    if (isPhone) {
+      // Celular: sem a tour (ela ancora colunas do desktop), o quadro de exemplo
+      // não teria quem o explique; um estado vazio com a ação principal no lugar.
+      return (
+        <div className="phone-ent-board__empty phone-ent-board__empty--page">
+          <p>
+            {showExample
+              ? 'Nenhum fluxo ainda. Um fluxo acompanha uma entrega do cliente, etapa por etapa.'
+              : postProcessesEnabled
+                ? 'Nenhum fluxo ou post individual encontrado. Ajuste os filtros ou crie um novo fluxo.'
+                : 'Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.'}
+          </p>
+          {onAddWorkflow && (
+            <button
+              type="button"
+              className="phone-ent-board__add"
+              onClick={() => onAddWorkflow(null)}
+            >
+              <Plus aria-hidden="true" />
+              Novo fluxo
+            </button>
+          )}
+        </div>
+      );
+    }
     if (showExample && onDismissExample) {
       return <ExampleBoard onDismiss={onDismissExample} />;
     }

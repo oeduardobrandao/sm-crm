@@ -90,13 +90,13 @@ interface EntregasFiltersProps {
   mode?: FiltersMode;
 }
 
-const STATUS_OPTIONS: { value: StatusFilter; label: string; color: string }[] = [
+export const STATUS_OPTIONS: { value: StatusFilter; label: string; color: string }[] = [
   { value: 'atrasado', label: 'Atrasados', color: 'var(--danger)' },
   { value: 'urgente', label: 'Urgentes', color: 'var(--warning)' },
   { value: 'em_dia', label: 'Em dia', color: 'var(--success)' },
 ];
 
-function countActiveFilters(filters: FilterState, mode: FiltersMode): number {
+export function countActiveFilters(filters: FilterState, mode: FiltersMode): number {
   const counted =
     mode === 'posts'
       ? [

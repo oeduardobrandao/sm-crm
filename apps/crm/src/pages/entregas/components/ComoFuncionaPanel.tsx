@@ -27,24 +27,32 @@ export const explainerStorageKey = (contaId: string) => `entregas_explainer_dism
 export function ComoFuncionaPanel({
   onDismiss,
   postProcessesEnabled = false,
+  embedded = false,
 }: {
   onDismiss: () => void;
   postProcessesEnabled?: boolean;
+  /** Inside a phone sheet: the sheet carries the title and the close button. */
+  embedded?: boolean;
 }) {
   return (
-    <section className="ex-panel" aria-labelledby="entregas-explainer-title">
-      <div className="ex-head">
-        <h2 id="entregas-explainer-title">Como funciona esta página</h2>
-        <button
-          type="button"
-          className="ex-close"
-          onClick={onDismiss}
-          aria-label="Fechar explicação"
-          title="Fechar — você pode reabrir em “Como funciona”"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+    <section
+      className={embedded ? 'ex-panel ex-panel--embedded' : 'ex-panel'}
+      aria-labelledby={embedded ? undefined : 'entregas-explainer-title'}
+    >
+      {!embedded && (
+        <div className="ex-head">
+          <h2 id="entregas-explainer-title">Como funciona esta página</h2>
+          <button
+            type="button"
+            className="ex-close"
+            onClick={onDismiss}
+            aria-label="Fechar explicação"
+            title="Fechar — você pode reabrir em “Como funciona”"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <div className="ex-grid">
         {/* ── Os objetos ─ containment shown by indentation, not described in prose */}

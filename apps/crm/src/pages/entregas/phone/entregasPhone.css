@@ -448,3 +448,264 @@
 .phone-ent-drop[data-over='true'][data-locked='true'] {
   border-color: var(--phone-destructive);
 }
+
+/* ---- Filters sheet (EntregasFiltros mockup) ---- */
+.phone-ent-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+.phone-ent-filters__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.phone-ent-filters__label {
+  margin: 0;
+  padding: 0 var(--phone-gutter, 16px);
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.phone-ent-filters__range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 var(--phone-gutter, 16px);
+}
+.phone-ent-filters__range label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-ent-filters__range input {
+  min-height: 44px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+}
+
+/* ---- Page (phones only) ---- */
+@media (max-width: 767px) {
+  .app-container .main-content:has(.phone-ent-page) {
+    background: var(--phone-bg);
+  }
+}
+.phone-ent-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  color: var(--phone-label);
+}
+
+/* ---- Header (EntregasKanban / EntregasVistas mockups) ---- */
+.phone-ent-header__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.phone-ent-header__title svg {
+  width: 22px;
+  height: 22px;
+  color: var(--phone-label-secondary);
+}
+.phone-ent-header__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.phone-ent-header__view {
+  display: inline-flex;
+  flex-shrink: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font-family: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.phone-ent-header__view svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-ent-header__vista {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+.phone-ent-header__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--phone-accent);
+}
+.phone-ent-header__mode {
+  flex-shrink: 0;
+  width: 160px;
+}
+.phone-ent-header__chips {
+  margin-top: 10px;
+}
+.phone-ent-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-ent-search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-ent-search input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+.phone-ent-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 24px;
+}
+.phone-ent-name-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 4px 8px 4px 16px;
+}
+.phone-ent-name-form input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+.phone-ent-explainer {
+  padding: 0 var(--phone-gutter, 16px) 24px;
+}
+.phone-ent-explainer .ex-panel--embedded {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.phone-ent-header__overdue {
+  color: var(--danger-text, #b91c1c);
+  font-weight: 600;
+}
+.phone-ent-responsaveis {
+  padding: 0 var(--phone-gutter, 16px) 24px;
+}
+.phone-ent-board__empty--page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: stretch;
+}
+.phone-ent-board__empty--page p {
+  margin: 0;
+}
+
+/* ---- Sem processo (Fluxos board, phones) ---- */
+.phone-ent-sem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+.phone-ent-sem__list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  list-style: none;
+}
+.phone-ent-sem__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 8px;
+  border-bottom: 0.5px solid var(--phone-separator);
+}
+.phone-ent-sem__row:last-child {
+  border-bottom: 0;
+}
+.phone-ent-sem__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 0 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-ent-sem__title {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-ent-sem__meta {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}

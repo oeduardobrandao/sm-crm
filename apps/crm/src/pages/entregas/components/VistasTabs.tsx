@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { useRef, useState } from 'react';
 import {
   Archive,
   BarChart2,
@@ -22,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SAVED_VIEW_NAME_MAX, type EntregasSavedView } from '@/store/savedViews';
-import { useSavedViews } from '../hooks/useSavedViews';
+import { useSavedViewSelection } from '../hooks/useSavedViewSelection';
 import { parseEntregasQuery, type ActiveView } from '../viewQuery';
 
 const VIEW_ICONS: Record<ActiveView, React.ReactNode> = {
@@ -54,9 +53,17 @@ interface VistasTabsProps {
  * (useSavedViews), with this browser's old localStorage list imported once.
  */
 export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasTabsProps) {
-  const { views, isLoading, isError, save, updateQuery, rename, remove } = useSavedViews(contaId);
-  // The vista the user last applied (or that the shared URL matched on load).
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const {
+    views,
+    isLoading,
+    activeId,
+    modified,
+    choose,
+    saveNew: saveVista,
+    updateWithCurrent,
+    removeVista,
+    renameVista,
+  } = useSavedViewSelection(contaId, currentQuery);
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -66,64 +73,17 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
   // Enter commits and unmounts the input, which can also fire its blur: the ref
   // makes the second commit a no-op instead of a second rename request.
   const renamingRef = useRef<string | null>(null);
-  // The shared-URL match runs once, when the list first arrives (it used to run
-  // at mount, when the list was read synchronously from localStorage). A click
-  // on a tab before that also counts, so a late list never overrides the user.
-  const matchedRef = useRef(false);
-
-  useEffect(() => {
-    if (matchedRef.current || isLoading) return;
-    matchedRef.current = true;
-    const match = views.find((v) => v.query === currentQuery);
-    if (match) setActiveId(match.id);
-  }, [isLoading, views, currentQuery]);
-
-  useEffect(() => {
-    if (isError) toast.error('Não foi possível carregar as visualizações salvas.');
-  }, [isError]);
-
-  const activeVista = activeId != null ? views.find((v) => v.id === activeId) : undefined;
-  // The applied vista no longer matches the screen: the user tweaked something.
-  const modified = activeVista != null && activeVista.query !== currentQuery;
-
-  const choose = (id: string | null) => {
-    matchedRef.current = true;
-    setActiveId(id);
-  };
 
   const saveNew = async () => {
-    const trimmed = newName.trim();
-    if (!trimmed || isLoading || saving) return;
+    if (!newName.trim() || isLoading || saving) return;
     setSaving(true);
     try {
-      const row = await save({ name: trimmed, query: currentQuery });
-      choose(row.id);
-      setNewName('');
-      setAddOpen(false);
-      toast.success(`Visualização "${trimmed}" salva!`);
-    } catch {
-      toast.error('Não foi possível salvar a visualização. Tente novamente.');
+      if (await saveVista(newName)) {
+        setNewName('');
+        setAddOpen(false);
+      }
     } finally {
       setSaving(false);
-    }
-  };
-
-  const updateWithCurrent = async (v: EntregasSavedView) => {
-    choose(v.id);
-    try {
-      await updateQuery({ id: v.id, query: currentQuery });
-      toast.success(`Visualização "${v.name}" atualizada!`);
-    } catch {
-      toast.error('Não foi possível atualizar a visualização. Tente novamente.');
-    }
-  };
-
-  const removeVista = async (v: EntregasSavedView) => {
-    if (activeId === v.id) setActiveId(null);
-    try {
-      await remove(v.id);
-    } catch {
-      toast.error('Não foi possível excluir a visualização. Tente novamente.');
     }
   };
 
@@ -142,18 +102,7 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
     const fromId = renamingRef.current;
     renamingRef.current = null;
     setRenaming(null);
-    const from = fromId != null ? views.find((v) => v.id === fromId) : undefined;
-    const to = renameDraft.trim();
-    if (!from || !to || to === from.name) return;
-    // Renaming onto an existing name replaces that vista (same semantics as
-    // saveNew); the unique name per user + workspace would reject a duplicate.
-    const replaced = views.find((v) => v.name === to && v.id !== from.id);
-    if (replaced && activeId === replaced.id) setActiveId(from.id);
-    try {
-      await rename({ id: from.id, name: to, replaceId: replaced?.id ?? null });
-    } catch {
-      toast.error('Não foi possível renomear a visualização. Tente novamente.');
-    }
+    if (fromId != null) await renameVista(fromId, renameDraft);
   };
 
   return (

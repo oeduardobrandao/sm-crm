@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import type { ActivePost, Membro } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { PostEntity } from '../boardEntity';
+import type { ProcessTarget } from '../postProcessCommands';
 import type { WorkflowCardCounts } from './PhoneBoardCards';
 
 /**
@@ -44,4 +45,18 @@ export const PhoneBoardActionsContext = createContext<PhoneBoardActions | null>(
 /** Null outside the phone layout (and in unit tests that don't provide it). */
 export function usePhoneBoardActions(): PhoneBoardActions | null {
   return useContext(PhoneBoardActionsContext);
+}
+
+/** The ProcessTarget usePostProcessCommands expects, from a board PostEntity
+ *  (same shape KanbanView builds for its buttons and drag). */
+export function processTargetOf(p: PostEntity): ProcessTarget {
+  return {
+    process: p.process,
+    post: {
+      id: p.process.post_id,
+      titulo: p.titulo,
+      status: p.process.post.status,
+      cliente_id: p.process.post.cliente_id,
+    },
+  };
 }

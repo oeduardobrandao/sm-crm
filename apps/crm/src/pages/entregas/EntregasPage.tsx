@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   Plus,
@@ -75,6 +75,19 @@ import { EntidadeToggle } from './components/EntidadeToggle';
 import { ListToolbar } from './components/ListToolbar';
 import { ResponsaveisPanel } from './components/ResponsaveisPanel';
 import { VistasTabs } from './components/VistasTabs';
+import { BottomSheet } from '@/components/mobile/BottomSheet';
+import { useWorkflowStageCommands } from './hooks/useWorkflowStageCommands';
+import { usePostProcessCommands } from './hooks/usePostProcessCommands';
+import { canConcluir } from './postProcessCommands';
+import {
+  PhoneBoardActionsContext,
+  processTargetOf,
+  type PhoneBoardActions,
+} from './phone/boardActions';
+import { EntregasPhoneHeader } from './phone/EntregasPhoneHeader';
+import { PhoneFiltersSheet, activeFilterChips, clearedFilters } from './phone/PhoneFiltersSheet';
+import { countActiveFilters } from './components/EntregasFilters';
+import './phone/entregasPhone.css';
 import { FilaMembroPicker } from './components/FilaMembroPicker';
 import { FilaOrdemPicker } from './components/FilaOrdemPicker';
 import { useActivePosts } from './hooks/useActivePosts';
@@ -139,6 +152,8 @@ const EMPTY_COUNTS: ReadonlyMap<number, number> = new Map();
 
 export default function EntregasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigationType = useNavigationType();
   // Frozen at mount, same as initialQuery below: the sync effect eventually writes
   // `mode` back into the URL for a non-default mode, so reading this as a plain
   // (non-ref) value would flip once that happens and re-seed from the URL forever.
@@ -226,11 +241,17 @@ export default function EntregasPage() {
   // aside fecha o painel (closeResponsaveisAside).
   const responsaveisToggleRef = useRef<HTMLButtonElement>(null);
   const isDesktop = useIsDesktop(901);
+  // Layout de celular (abaixo de 768px, PLAN C3): cabeçalho, filtros e painéis
+  // próprios. 768-900 segue com os Sheets de baixo do layout compacto.
+  const isPhone = !useIsDesktop(768);
+  const [phoneFiltersOpen, setPhoneFiltersOpen] = useState(false);
+  const [phoneExplainerOpen, setPhoneExplainerOpen] = useState(false);
+  const phoneFiltersButtonRef = useRef<HTMLButtonElement>(null);
   // Cruzar o breakpoint com o painel aberto montaria o Sheet já aberto (ou
   // sumiria com o aside): fecha e deixa o usuário reabrir no layout novo.
   useEffect(() => {
     setResponsaveisOpen(false);
-  }, [isDesktop]);
+  }, [isDesktop, isPhone]);
   // Minha fila (spec 2026-09-23): membro escolhido EXPLICITAMENTE no seletor
   // ou vindo de `?membro=`. null = "o próprio usuário", que é o que uma URL ou
   // vista salva sem `membro=` significa para quem a abre. O id efetivo é
@@ -388,10 +409,11 @@ export default function EntregasPage() {
   // One impression per mount that actually renders the panel.
   const explainerSeen = useRef(false);
   useEffect(() => {
-    if (!explainerOpen || explainerSeen.current) return;
+    // No celular o painel não abre sozinho (vira uma folha sob demanda).
+    if (!explainerOpen || isPhone || explainerSeen.current) return;
     explainerSeen.current = true;
     captureEvent('entregas_explainer_shown');
-  }, [explainerOpen]);
+  }, [explainerOpen, isPhone]);
 
   // The example board stands in for a real board on an empty first visit, and comes back
   // temporarily during a replay. A board emptied by filters (but with real cards) shows the
@@ -439,12 +461,13 @@ export default function EntregasPage() {
         tourDone,
         showExample,
         wizardOpen: wizardOpenForTour,
+        isPhone,
       })
     )
       return;
     autoStarted.current = true;
     launchTour();
-  }, [isLoading, tourDone, showExample, wizardOpenForTour, launchTour]);
+  }, [isLoading, tourDone, showExample, wizardOpenForTour, launchTour, isPhone]);
 
   const handleReplay = () => {
     setReplayActive(true); // forces the example board back if the board is empty
@@ -543,6 +566,18 @@ export default function EntregasPage() {
     // bookmarked link re-opened the drawer. The refs above already hold what was consumed.
     setSearchParams(new URLSearchParams(currentQuery), { replace: true });
   }, [currentQuery, setSearchParams]);
+  // A phone sheet (filters, views menu) pushes a history entry, so a filter changed
+  // while it is open replaces THAT entry's URL; closing it pops back to the entry
+  // underneath, which still has the old query. Re-sync after a pop only, and only
+  // when the URL really differs (a replace gets a new location.key too).
+  const currentQueryRef = useRef(currentQuery);
+  currentQueryRef.current = currentQuery;
+  useEffect(() => {
+    if (navigationType !== 'POP') return;
+    const want = new URLSearchParams(currentQueryRef.current).toString();
+    if (new URLSearchParams(location.search).toString() === want) return;
+    setSearchParams(new URLSearchParams(want), { replace: true });
+  }, [location.key, location.search, navigationType, setSearchParams]);
 
   // Both drawers share one history entry, so Back (the iOS edge swipe included) closes
   // the open drawer instead of leaving Entregas. One boolean on purpose: swapping one
@@ -1187,6 +1222,77 @@ export default function EntregasPage() {
     setPendingReveal(null);
   }, [pendingReveal, postEntities, isLoading, isFetching, filters]);
 
+  // Ações de card para as linhas do celular (Lista, Publicações, Minha fila):
+  // uma instância da cadeia de etapas do fluxo e dos comandos do processo
+  // individual, com as mesmas confirmações e RPCs do quadro. O Kanban mantém as
+  // suas (overlays otimistas e posição do drag).
+  const phoneStage = useWorkflowStageCommands({
+    onRefresh: refresh,
+    onRecurring: setRecurringWfId,
+    postsCounts,
+    clearedClienteCounts,
+    schedulingEnabled,
+    tiktokEnabled,
+    recurringWfId,
+    resolveCard: (workflowId) => cardsByWorkflowId.get(workflowId),
+  });
+  const phonePostCommands = usePostProcessCommands({ onRefresh: refresh });
+  const duplicateWorkflowCard = canDuplicate
+    ? (card: BoardCard, postsCount: number | null) =>
+        setDuplicateTarget({
+          kind: 'workflow',
+          workflowId: card.workflow.id!,
+          postsCount,
+          active: card.workflow.status === 'ativo',
+        })
+    : undefined;
+  const duplicatePostEntity = canDuplicate
+    ? (entity: PostEntity) =>
+        setDuplicateTarget({
+          kind: 'post',
+          postId: entity.process.post_id,
+          status: entity.process.post.status,
+        })
+    : undefined;
+  const phoneBoardActions: PhoneBoardActions | null = isPhone
+    ? {
+        membros,
+        onRefresh: refresh,
+        countsFor: (id) => ({
+          postsCount: postsCounts.get(id) ?? 0,
+          approvedPostsCount: approvedPostsCounts.get(id) ?? 0,
+          clearedClienteCount: clearedClienteCounts.get(id) ?? 0,
+          revisaoInternaCount: revisaoInternaCounts.get(id) ?? 0,
+          awaitingClienteCount: awaitingClienteCounts.get(id) ?? 0,
+        }),
+        workflow: {
+          open: handleCardClick,
+          edit: setEditCard,
+          forward: phoneStage.forward,
+          revert: phoneStage.revert,
+          duplicate: duplicateWorkflowCard
+            ? (card) => duplicateWorkflowCard(card, postsCounts.get(card.workflow.id!) ?? null)
+            : undefined,
+          remove: setDeleteWorkflowTarget,
+        },
+        post: {
+          open: handlePostEntityClick,
+          forward: (entity) =>
+            canConcluir(entity.process)
+              ? phonePostCommands.concluir(processTargetOf(entity))
+              : phonePostCommands.avancar(processTargetOf(entity)),
+          revert: (entity) => phonePostCommands.voltar(processTargetOf(entity)),
+          removeProcess: (entity) => phonePostCommands.remover(processTargetOf(entity)),
+          duplicate: duplicatePostEntity,
+          remove: setDeletePostTarget,
+        },
+        openPost: handlePostClick,
+        cardOfPost: (post) =>
+          post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined,
+        entityOfPost: (post) => postEntityByPostId.get(post.id),
+      }
+    : null;
+
   const overdue = cards.filter((c) => c.deadline.estourado).length;
   const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
 
@@ -1215,706 +1321,847 @@ export default function EntregasPage() {
     return <PageSkeleton body={body} />;
   }
 
+  const filtersMode = postsMode ? 'posts' : 'entregas';
+  const phoneResultCount =
+    activeView === 'list' && mode === 'publicacoes'
+      ? listPosts.length
+      : postsMode
+        ? filteredPosts.length
+        : (activeView === 'kanban' || activeView === 'list') && mode === 'entregas'
+          ? visibleCards.length + visiblePostEntities.length
+          : filteredCards.length;
+  const phoneChips = isPhone
+    ? activeFilterChips(filters, filtersMode, { clientes, membros, templates }, registry)
+    : [];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header header--flush animate-up">
-        <div className="header-title">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <h1>Entregas</h1>
-            <span
-              data-tooltip="Acompanhe o andamento das entregas e fluxos ativos."
-              data-tooltip-dir="right"
-              style={{ display: 'flex' }}
+    <PhoneBoardActionsContext.Provider value={phoneBoardActions}>
+      <div
+        className={isPhone ? 'phone-ent-page' : undefined}
+        style={isPhone ? undefined : { display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
+      >
+        {isPhone ? (
+          <>
+            <EntregasPhoneHeader
+              contaId={contaId}
+              currentQuery={currentQuery}
+              onApplyView={applySavedView}
+              activeView={activeView}
+              onViewChange={setActiveView}
+              mode={mode}
+              onModeChange={setMode}
+              showMode={
+                activeView === 'kanban' || activeView === 'list' || activeView === 'calendar'
+              }
+              entidade={effectiveEntidade}
+              onEntidadeChange={setEntidade}
+              showEntidade={
+                postProcessesVisible &&
+                (activeView === 'kanban' || activeView === 'list') &&
+                mode === 'entregas'
+              }
+              subtitle={
+                <>
+                  {activeWorkflows.length} fluxo{activeWorkflows.length === 1 ? '' : 's'} ativo
+                  {activeWorkflows.length === 1 ? '' : 's'}
+                  {postProcessesVisible && <> · {activePostProcessCount} individuais</>}
+                  {overdue > 0 && (
+                    <span className="phone-ent-header__overdue">
+                      {' '}
+                      · {overdue} atrasado{overdue > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {urgent > 0 && (
+                    <>
+                      {' '}
+                      · {urgent} urgente{urgent > 1 ? 's' : ''}
+                    </>
+                  )}
+                </>
+              }
+              showFilters={showFilters}
+              search={filters.filterSearch}
+              onSearchChange={(filterSearch) => setFilters({ ...filters, filterSearch })}
+              searchPlaceholder={postsMode ? 'Buscar post' : 'Buscar fluxo'}
+              activeFilterCount={countActiveFilters(filters, filtersMode)}
+              onOpenFilters={() => setPhoneFiltersOpen(true)}
+              filtersButtonRef={phoneFiltersButtonRef}
+              chips={phoneChips}
+              onApplyChip={(chip) => setFilters(chip.next)}
+              onClearFilters={() => setFilters(clearedFilters(filters))}
+              onNewWorkflow={() => setNewWorkflowOpen(true)}
+              onNewAvulso={() => {
+                setAvulsoTemplateId(null);
+                setNewAvulsoOpen(true);
+              }}
+              onTemplates={() => setTemplatesOpen(true)}
+              onComoFunciona={() => {
+                setPhoneExplainerOpen(true);
+                captureEvent('entregas_explainer_reopened');
+              }}
+            />
+            {activeView === 'list' && listToolbar}
+            <PhoneFiltersSheet
+              open={phoneFiltersOpen}
+              onOpenChange={setPhoneFiltersOpen}
+              returnFocusRef={phoneFiltersButtonRef}
+              filters={filters}
+              onChange={setFilters}
+              mode={filtersMode}
+              resultCount={phoneResultCount}
+              clientes={clientes}
+              membros={membros}
+              templates={templates}
+              etapaNames={etapaNames}
+            />
+            <BottomSheet
+              open={phoneExplainerOpen}
+              onOpenChange={setPhoneExplainerOpen}
+              title="Como funciona esta página"
+              detents={['large']}
             >
-              <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-            </span>
-            {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
+              <div className="phone-ent-explainer">
+                <ComoFuncionaPanel
+                  embedded
+                  onDismiss={() => setPhoneExplainerOpen(false)}
+                  postProcessesEnabled={postProcessesVisible}
+                />
+              </div>
+            </BottomSheet>
+          </>
+        ) : (
+          <>
+            <header className="header header--flush animate-up">
+              <div className="header-title">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <h1>Entregas</h1>
+                  <span
+                    data-tooltip="Acompanhe o andamento das entregas e fluxos ativos."
+                    data-tooltip-dir="right"
+                    style={{ display: 'flex' }}
+                  >
+                    <Info
+                      className="h-5 w-5 cursor-pointer"
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                  </span>
+                  {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
                 there, so a click elsewhere (other views, or the Publicações board) would fire
                 a "started" event and hit startEntregasTour's zero-anchor early return with no
                 visible tour. */}
-            {!explainerOpen && (
-              <button type="button" onClick={reopenExplainer} className="entregas-explainer-reopen">
-                <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
-                Como funciona
-              </button>
-            )}
-            {activeView === 'kanban' && mode === 'entregas' && (
-              <button
-                type="button"
-                onClick={handleReplay}
-                style={{
-                  fontSize: '0.72rem',
-                  color: 'var(--text-muted)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                }}
-              >
-                Ver tour novamente
-              </button>
-            )}
-          </div>
-          {/* Deliberately unfiltered: the Visão geral's KPIs are the filtered
+                  {!explainerOpen && (
+                    <button
+                      type="button"
+                      onClick={reopenExplainer}
+                      className="entregas-explainer-reopen"
+                    >
+                      <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                      Como funciona
+                    </button>
+                  )}
+                  {activeView === 'kanban' && mode === 'entregas' && (
+                    <button
+                      type="button"
+                      onClick={handleReplay}
+                      style={{
+                        fontSize: '0.72rem',
+                        color: 'var(--text-muted)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Ver tour novamente
+                    </button>
+                  )}
+                </div>
+                {/* Deliberately unfiltered: the Visão geral's KPIs are the filtered
               read of the same numbers, and the two disagreeing looks like a bug
               unless the header says which one it is. */}
-          <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
-            fluxos ativos: {activeWorkflows.length}
-            {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
-            {overdue > 0 && (
-              <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                {' '}
-                • {overdue} atrasado{overdue > 1 ? 's' : ''}
-              </span>
-            )}
-            {urgent > 0 && (
-              <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
-                {' '}
-                • {urgent} urgente{urgent > 1 ? 's' : ''}
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="header-actions">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setTemplatesOpen(true)}
-            className="header-actions-icon-only"
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setTemplatesOpen(true)}
-            className="header-actions-full-only"
-          >
-            <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button data-tour="novo-fluxo-btn">
-                <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
-                <Route aria-hidden="true" /> Novo fluxo
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  setAvulsoTemplateId(null);
-                  setNewAvulsoOpen(true);
-                }}
-              >
-                <CircleDashed aria-hidden="true" /> Post avulso
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
+                <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
+                  fluxos ativos: {activeWorkflows.length}
+                  {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
+                  {overdue > 0 && (
+                    <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+                      {' '}
+                      • {overdue} atrasado{overdue > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {urgent > 0 && (
+                    <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
+                      {' '}
+                      • {urgent} urgente{urgent > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="header-actions">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setTemplatesOpen(true)}
+                  className="header-actions-icon-only"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setTemplatesOpen(true)}
+                  className="header-actions-full-only"
+                >
+                  <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button data-tour="novo-fluxo-btn">
+                      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
+                      <Route aria-hidden="true" /> Novo fluxo
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setAvulsoTemplateId(null);
+                        setNewAvulsoOpen(true);
+                      }}
+                    >
+                      <CircleDashed aria-hidden="true" /> Post avulso
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </header>
 
-      {explainerOpen && (
-        <ComoFuncionaPanel
-          onDismiss={dismissExplainer}
-          postProcessesEnabled={postProcessesVisible}
-        />
-      )}
-
-      <VistasTabs
-        contaId={contaId}
-        currentQuery={currentQuery}
-        onApply={applySavedView}
-        trailing={
-          activeView === 'fila' ? (
-            // Sempre lado a lado: a linha das abas rola na horizontal no celular,
-            // então quebrar só a deixaria mais alta.
-            <div className="flex items-center gap-2">
-              <FilaOrdemPicker ordem={filaOrdem} onChange={setFilaOrdem} />
-              <FilaMembroPicker
-                membros={membros}
-                membroId={filaMembroId}
-                currentMembroId={currentMembroId}
-                onChange={setFilaMembro}
+            {explainerOpen && (
+              <ComoFuncionaPanel
+                onDismiss={dismissExplainer}
+                postProcessesEnabled={postProcessesVisible}
               />
-            </div>
-          ) : showFilters ? (
-            <div className="relative w-[220px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-              <Input
-                placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
-                value={filters.filterSearch}
-                onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
-                className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
-              />
-            </div>
-          ) : undefined
-        }
-      />
+            )}
 
-      {/* Below 901px the compact "Filtros" button and the view/mode/entity
+            <VistasTabs
+              contaId={contaId}
+              currentQuery={currentQuery}
+              onApply={applySavedView}
+              trailing={
+                activeView === 'fila' ? (
+                  // Sempre lado a lado: a linha das abas rola na horizontal no celular,
+                  // então quebrar só a deixaria mais alta.
+                  <div className="flex items-center gap-2">
+                    <FilaOrdemPicker ordem={filaOrdem} onChange={setFilaOrdem} />
+                    <FilaMembroPicker
+                      membros={membros}
+                      membroId={filaMembroId}
+                      currentMembroId={currentMembroId}
+                      onChange={setFilaMembro}
+                    />
+                  </div>
+                ) : showFilters ? (
+                  <div className="relative w-[220px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+                    <Input
+                      placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
+                      value={filters.filterSearch}
+                      onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
+                      className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+                    />
+                  </div>
+                ) : undefined
+              }
+            />
+
+            {/* Below 901px the compact "Filtros" button and the view/mode/entity
           toggles share one row. From 901px up the full pill set takes its own
           row (EntregasFilters is basis-full there) and the toggles wrap onto
           the next one -- without that they split the row 50/50 and the
           toggles get clipped. */}
-      <div className="flex flex-wrap items-center gap-3 min-[901px]:gap-y-6">
-        {showFilters && (
-          <EntregasFilters
-            filters={filters}
-            onChange={setFilters}
-            clientes={clientes}
-            membros={membros}
-            templates={templates}
-            etapaNames={etapaNames}
-            mode={postsMode ? 'posts' : 'entregas'}
-          />
-        )}
+            <div className="flex flex-wrap items-center gap-3 min-[901px]:gap-y-6">
+              {showFilters && (
+                <EntregasFilters
+                  filters={filters}
+                  onChange={setFilters}
+                  clientes={clientes}
+                  membros={membros}
+                  templates={templates}
+                  etapaNames={etapaNames}
+                  mode={postsMode ? 'posts' : 'entregas'}
+                />
+              )}
 
-        {/* View tabs + mode + entity toggles. Scrolls horizontally within its
+              {/* View tabs + mode + entity toggles. Scrolls horizontally within its
             own space instead of wrapping into several stacked control rows,
             which was eating the first fold on phones. */}
-        <div
-          // Below 901px, flex-basis 0% (flex-1, not 'auto') so the outer row's
-          // line-wrapping decision -- made from each item's hypothetical size
-          // BEFORE shrinking is applied -- doesn't see this item's full content
-          // width and wrap it onto its own line. minWidth:0 then lets it
-          // actually shrink to fit next to the Filtros button, and this
-          // element's own overflow-x:auto scrolls whatever doesn't fit. From
-          // 901px up the filters take a line of their own and the basis goes
-          // back to auto, so the Lista toolbar after this row wraps onto the
-          // next line when it doesn't fit beside the tabs, instead of
-          // squeezing them into a scroll.
-          className="no-scrollbar flex-1 min-[901px]:basis-auto"
-          style={{
-            display: 'flex',
-            flexWrap: 'nowrap',
-            overflowX: 'auto',
-            alignItems: 'center',
-            gap: '0.5rem',
-            minWidth: 0,
-          }}
-        >
-          <div
-            role="tablist"
-            aria-label="Modos de visualização"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.25rem',
-              background: 'var(--card-bg)',
-              border: '1px solid var(--border-color)',
-              padding: '0.25rem',
-              borderRadius: '8px',
-              overflowX: 'auto',
-              width: 'fit-content',
-              maxWidth: '100%',
-              flexShrink: 0,
-            }}
-            className="animate-up no-scrollbar"
-          >
-            {VIEW_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={activeView === tab.id}
-                onClick={() => setActiveView(tab.id)}
+              <div
+                // Below 901px, flex-basis 0% (flex-1, not 'auto') so the outer row's
+                // line-wrapping decision -- made from each item's hypothetical size
+                // BEFORE shrinking is applied -- doesn't see this item's full content
+                // width and wrap it onto its own line. minWidth:0 then lets it
+                // actually shrink to fit next to the Filtros button, and this
+                // element's own overflow-x:auto scrolls whatever doesn't fit. From
+                // 901px up the filters take a line of their own and the basis goes
+                // back to auto, so the Lista toolbar after this row wraps onto the
+                // next line when it doesn't fit beside the tabs, instead of
+                // squeezing them into a scroll.
+                className="no-scrollbar flex-1 min-[901px]:basis-auto"
                 style={{
                   display: 'flex',
+                  flexWrap: 'nowrap',
+                  overflowX: 'auto',
                   alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.3rem 0.65rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
-                  color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
-                  fontSize: '0.8rem',
-                  fontWeight: activeView === tab.id ? 600 : 400,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  gap: '0.5rem',
+                  minWidth: 0,
                 }}
               >
-                {tab.icon} {tab.label}
-              </button>
-            ))}
-          </div>
+                <div
+                  role="tablist"
+                  aria-label="Modos de visualização"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    background: 'var(--card-bg)',
+                    border: '1px solid var(--border-color)',
+                    padding: '0.25rem',
+                    borderRadius: '8px',
+                    overflowX: 'auto',
+                    width: 'fit-content',
+                    maxWidth: '100%',
+                    flexShrink: 0,
+                  }}
+                  className="animate-up no-scrollbar"
+                >
+                  {VIEW_TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeView === tab.id}
+                      onClick={() => setActiveView(tab.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.3rem 0.65rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
+                        color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
+                        fontSize: '0.8rem',
+                        fontWeight: activeView === tab.id ? 600 : 400,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {tab.icon} {tab.label}
+                    </button>
+                  ))}
+                </div>
 
-          {(activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') && (
-            <div style={{ flexShrink: 0 }}>
-              <ModeToggle mode={mode} onModeChange={setMode} />
-            </div>
-          )}
+                {(activeView === 'kanban' ||
+                  activeView === 'list' ||
+                  activeView === 'calendar') && (
+                  <div style={{ flexShrink: 0 }}>
+                    <ModeToggle mode={mode} onModeChange={setMode} />
+                  </div>
+                )}
 
-          {postProcessesVisible &&
-            (activeView === 'kanban' || activeView === 'list') &&
-            mode === 'entregas' && (
-              <div style={{ flexShrink: 0 }}>
-                <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+                {postProcessesVisible &&
+                  (activeView === 'kanban' || activeView === 'list') &&
+                  mode === 'entregas' && (
+                    <div style={{ flexShrink: 0 }}>
+                      <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+                    </div>
+                  )}
+
+                {activeView === 'concluded' && (
+                  <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+                    <Input
+                      placeholder="Buscar cliente..."
+                      value={concludedClientSearch}
+                      onChange={(e) => setConcludedClientSearch(e.target.value)}
+                      className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+                    />
+                  </div>
+                )}
               </div>
-            )}
 
-          {activeView === 'concluded' && (
-            <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-              <Input
-                placeholder="Buscar cliente..."
-                value={concludedClientSearch}
-                onChange={(e) => setConcludedClientSearch(e.target.value)}
-                className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Barra da Lista (Agrupar por, Mostrar postados, Responsáveis) na linha
+              {/* Barra da Lista (Agrupar por, Mostrar postados, Responsáveis) na linha
             das abas quando cabe, alinhada à direita, sobre onde o painel lateral
             abre. Fica fora da rolagem das abas, que a escondia no fim da
             rolagem: abaixo de 901px tem linha própria, e a partir daí quebra
             para a linha de baixo quando não cabe ao lado das abas. */}
-        {activeView === 'list' && (
-          <div className="basis-full min-[901px]:basis-auto min-[901px]:ml-auto">{listToolbar}</div>
+              {activeView === 'list' && (
+                <div className="basis-full min-[901px]:basis-auto min-[901px]:ml-auto">
+                  {listToolbar}
+                </div>
+              )}
+            </div>
+          </>
         )}
-      </div>
 
-      {activeView === 'kanban' &&
-        (mode === 'entregas' ? (
-          <>
-            <KanbanView
-              contaId={contaId}
-              cards={visibleCards}
-              allCards={cards}
-              postEntities={visiblePostEntities}
-              allPostEntities={postEntities}
-              postProcessesEnabled={postProcessesVisible}
-              onPostClick={handlePostEntityClick}
-              onCardClick={handleCardClick}
-              onEditClick={setEditCard}
-              onPostsClick={handleCardClick}
-              onRefresh={refresh}
-              onRecurring={setRecurringWfId}
-              onDeleteWorkflowClick={setDeleteWorkflowTarget}
-              onDeletePostClick={setDeletePostTarget}
-              onDuplicateWorkflowClick={
-                canDuplicate
-                  ? (card, postsCount) =>
-                      setDuplicateTarget({
-                        kind: 'workflow',
-                        workflowId: card.workflow.id!,
-                        postsCount,
-                        active: card.workflow.status === 'ativo',
-                      })
-                  : undefined
-              }
-              onDuplicatePostClick={
-                canDuplicate
-                  ? (entity) =>
-                      setDuplicateTarget({
-                        kind: 'post',
-                        postId: entity.process.post_id,
-                        status: entity.process.post.status,
-                      })
-                  : undefined
-              }
-              onAddWorkflow={(templateId) => {
-                setQuickAddTemplateId(templateId);
-                setNewWorkflowOpen(true);
+        {activeView === 'kanban' &&
+          (mode === 'entregas' ? (
+            <>
+              <KanbanView
+                contaId={contaId}
+                cards={visibleCards}
+                allCards={cards}
+                postEntities={visiblePostEntities}
+                allPostEntities={postEntities}
+                postProcessesEnabled={postProcessesVisible}
+                onPostClick={handlePostEntityClick}
+                onCardClick={handleCardClick}
+                onEditClick={setEditCard}
+                onPostsClick={handleCardClick}
+                onRefresh={refresh}
+                onRecurring={setRecurringWfId}
+                onDeleteWorkflowClick={setDeleteWorkflowTarget}
+                onDeletePostClick={setDeletePostTarget}
+                onDuplicateWorkflowClick={
+                  canDuplicate
+                    ? (card, postsCount) =>
+                        setDuplicateTarget({
+                          kind: 'workflow',
+                          workflowId: card.workflow.id!,
+                          postsCount,
+                          active: card.workflow.status === 'ativo',
+                        })
+                    : undefined
+                }
+                onDuplicatePostClick={
+                  canDuplicate
+                    ? (entity) =>
+                        setDuplicateTarget({
+                          kind: 'post',
+                          postId: entity.process.post_id,
+                          status: entity.process.post.status,
+                        })
+                    : undefined
+                }
+                onAddWorkflow={(templateId) => {
+                  setQuickAddTemplateId(templateId);
+                  setNewWorkflowOpen(true);
+                }}
+                onCreateTemplate={() => setTemplatesOpen(true)}
+                createTemplateDisabled={templatesAtLimit}
+                // Criar processo individual é CRIAÇÃO: gate na flag do plano
+                // (`postProcessesEnabled`), não em `postProcessesVisible` — ver o
+                // comentário das "duas verdades" no topo. Sem a flag o próprio
+                // apply_post_process levanta feature_disabled.
+                onAddPostIndividual={
+                  postProcessesEnabled
+                    ? (templateId) => {
+                        setAvulsoTemplateId(templateId);
+                        setNewAvulsoOpen(true);
+                      }
+                    : undefined
+                }
+                membros={membros}
+                templates={templates}
+                postsCounts={postsCounts}
+                approvedPostsCounts={approvedPostsCounts}
+                clearedClienteCounts={clearedClienteCounts}
+                revisaoInternaCounts={revisaoInternaCounts}
+                awaitingClienteCounts={awaitingClienteCounts}
+                showExample={showExample}
+                onDismissExample={() => {
+                  captureEvent('entregas_tour_dismissed', { step: -1 });
+                  markTourDone();
+                }}
+                schedulingEnabled={schedulingEnabled}
+                tiktokEnabled={tiktokEnabled}
+                recurringWfId={recurringWfId}
+              />
+              {semProcessoMode && (
+                <SemProcessoSection
+                  posts={semProcessoPosts.slice(0, SEM_PROCESSO_LIMIT)}
+                  total={semProcessoPosts.length}
+                  productionFiltersActive={productionFiltersActive(filters)}
+                  onPostClick={handlePostClick}
+                  onApplyProcess={setApplyTarget}
+                  onVerTodos={() => setMode('publicacoes')}
+                />
+              )}
+            </>
+          ) : (
+            <PostsKanbanView
+              posts={filteredPosts}
+              isLoading={activePostsLoading}
+              openableWorkflowIds={openableWorkflowIds}
+              onPostClick={handlePostClick}
+              cardsByWorkflowId={cardsByWorkflowId}
+              filtersActive={postsFiltersActive}
+              onCreateAvulso={() => {
+                setAvulsoTemplateId(null);
+                setNewAvulsoOpen(true);
               }}
-              onCreateTemplate={() => setTemplatesOpen(true)}
-              createTemplateDisabled={templatesAtLimit}
-              // Criar processo individual é CRIAÇÃO: gate na flag do plano
-              // (`postProcessesEnabled`), não em `postProcessesVisible` — ver o
-              // comentário das "duas verdades" no topo. Sem a flag o próprio
-              // apply_post_process levanta feature_disabled.
-              onAddPostIndividual={
-                postProcessesEnabled
-                  ? (templateId) => {
-                      setAvulsoTemplateId(templateId);
-                      setNewAvulsoOpen(true);
-                    }
-                  : undefined
-              }
-              membros={membros}
-              templates={templates}
-              postsCounts={postsCounts}
-              approvedPostsCounts={approvedPostsCounts}
-              clearedClienteCounts={clearedClienteCounts}
-              revisaoInternaCounts={revisaoInternaCounts}
-              awaitingClienteCounts={awaitingClienteCounts}
-              showExample={showExample}
-              onDismissExample={() => {
-                captureEvent('entregas_tour_dismissed', { step: -1 });
-                markTourDone();
-              }}
+              columnSorts={boardColumnSorts}
+              onColumnSortChange={handleBoardColumnSortChange}
+              processEtapaByPostId={processEtapaByPostId}
+              awaitedApprovalByPostId={awaitedApprovalByPostId}
               schedulingEnabled={schedulingEnabled}
               tiktokEnabled={tiktokEnabled}
-              recurringWfId={recurringWfId}
+              multiplatformEnabled={multiplatformEnabled}
             />
-            {semProcessoMode && (
-              <SemProcessoSection
-                posts={semProcessoPosts.slice(0, SEM_PROCESSO_LIMIT)}
-                total={semProcessoPosts.length}
-                productionFiltersActive={productionFiltersActive(filters)}
-                onPostClick={handlePostClick}
-                onApplyProcess={setApplyTarget}
-                onVerTodos={() => setMode('publicacoes')}
-              />
-            )}
-          </>
-        ) : (
-          <PostsKanbanView
-            posts={filteredPosts}
-            isLoading={activePostsLoading}
+          ))}
+        {activeView === 'chart' && (
+          <ChartView
+            cards={filteredCards}
+            totalCards={cards.length}
+            filters={filters}
+            onFiltersChange={setFilters}
+            onCardClick={handleCardClick}
+            onGoToView={setActiveView}
+            postProcessesEnabled={postProcessesVisible}
+            onGoToKanban={() => {
+              setActiveView('kanban');
+              setEntidade('todos');
+              setMode('entregas');
+            }}
+          />
+        )}
+        {activeView === 'calendar' && (
+          <CalendarView
+            cards={filteredCards}
+            onCardClick={handleCardClick}
+            mode={mode}
             openableWorkflowIds={openableWorkflowIds}
             onPostClick={handlePostClick}
-            cardsByWorkflowId={cardsByWorkflowId}
-            filtersActive={postsFiltersActive}
-            onCreateAvulso={() => {
-              setAvulsoTemplateId(null);
-              setNewAvulsoOpen(true);
+            postProcessesEnabled={postProcessesVisible}
+            onGoToKanban={() => {
+              setActiveView('kanban');
+              setEntidade('todos');
+              setMode('entregas');
             }}
-            columnSorts={boardColumnSorts}
-            onColumnSortChange={handleBoardColumnSortChange}
-            processEtapaByPostId={processEtapaByPostId}
-            awaitedApprovalByPostId={awaitedApprovalByPostId}
-            schedulingEnabled={schedulingEnabled}
-            tiktokEnabled={tiktokEnabled}
-            multiplatformEnabled={multiplatformEnabled}
           />
-        ))}
-      {activeView === 'chart' && (
-        <ChartView
-          cards={filteredCards}
-          totalCards={cards.length}
-          filters={filters}
-          onFiltersChange={setFilters}
-          onCardClick={handleCardClick}
-          onGoToView={setActiveView}
-          postProcessesEnabled={postProcessesVisible}
-          onGoToKanban={() => {
-            setActiveView('kanban');
-            setEntidade('todos');
-            setMode('entregas');
-          }}
-        />
-      )}
-      {activeView === 'calendar' && (
-        <CalendarView
-          cards={filteredCards}
-          onCardClick={handleCardClick}
-          mode={mode}
-          openableWorkflowIds={openableWorkflowIds}
-          onPostClick={handlePostClick}
-          postProcessesEnabled={postProcessesVisible}
-          onGoToKanban={() => {
-            setActiveView('kanban');
-            setEntidade('todos');
-            setMode('entregas');
-          }}
-        />
-      )}
-      {activeView === 'list' && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-          <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-            {mode === 'entregas' ? (
-              <ListView
-                cards={visibleCards}
-                postEntities={visiblePostEntities}
-                onPostClick={handlePostEntityClick}
-                sort={listSort}
-                onSortChange={setListSort}
-                onCardClick={handleCardClick}
-                groupBy={effectiveListGroupBy}
-              />
-            ) : (
-              <PostsListView
-                posts={listPosts}
-                hiddenPostados={hiddenPostados}
-                isLoading={activePostsLoading}
-                openableWorkflowIds={openableWorkflowIds}
-                onPostClick={handlePostClick}
-                onFluxoClick={handleFluxoClick}
-                cardsByWorkflowId={cardsByWorkflowId}
-                filtersActive={postsFiltersActive}
-                onCreateAvulso={() => {
-                  setAvulsoTemplateId(null);
-                  setNewAvulsoOpen(true);
-                }}
-                postEntityByPostId={postEntityByPostId}
-                groupBy={effectiveListGroupBy}
-                membroNomeById={membroNomeById}
-              />
+        )}
+        {activeView === 'list' && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+            <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+              {mode === 'entregas' ? (
+                <ListView
+                  cards={visibleCards}
+                  postEntities={visiblePostEntities}
+                  onPostClick={handlePostEntityClick}
+                  sort={listSort}
+                  onSortChange={setListSort}
+                  onCardClick={handleCardClick}
+                  groupBy={effectiveListGroupBy}
+                />
+              ) : (
+                <PostsListView
+                  posts={listPosts}
+                  hiddenPostados={hiddenPostados}
+                  isLoading={activePostsLoading}
+                  openableWorkflowIds={openableWorkflowIds}
+                  onPostClick={handlePostClick}
+                  onFluxoClick={handleFluxoClick}
+                  cardsByWorkflowId={cardsByWorkflowId}
+                  filtersActive={postsFiltersActive}
+                  onCreateAvulso={() => {
+                    setAvulsoTemplateId(null);
+                    setNewAvulsoOpen(true);
+                  }}
+                  postEntityByPostId={postEntityByPostId}
+                  groupBy={effectiveListGroupBy}
+                  membroNomeById={membroNomeById}
+                />
+              )}
+            </div>
+            {isDesktop && responsaveisOpen && (
+              <aside
+                className="card animate-up"
+                aria-label="Responsáveis"
+                style={{ width: 260, flexShrink: 0, padding: '1rem' }}
+              >
+                {renderResponsaveisPanel(closeResponsaveisAside)}
+              </aside>
             )}
           </div>
-          {isDesktop && responsaveisOpen && (
-            <aside
-              className="card animate-up"
-              aria-label="Responsáveis"
-              style={{ width: 260, flexShrink: 0, padding: '1rem' }}
-            >
-              {renderResponsaveisPanel(closeResponsaveisAside)}
-            </aside>
-          )}
-        </div>
-      )}
-      {activeView === 'list' && !isDesktop && (
-        <Sheet open={responsaveisOpen} onOpenChange={setResponsaveisOpen}>
-          <SheetContent
-            side="bottom"
-            className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24"
-            // Sem SheetTrigger o Radix não sabe a quem devolver o foco e ele cairia
-            // no <body>: devolve ao botão Responsáveis da barra.
-            onCloseAutoFocus={(e) => {
-              e.preventDefault();
-              responsaveisToggleRef.current?.focus();
-            }}
+        )}
+        {activeView === 'list' && isPhone && (
+          <BottomSheet
+            open={responsaveisOpen}
+            onOpenChange={setResponsaveisOpen}
+            title="Responsáveis"
+            description="Filtre a lista por responsável"
+            detents={['medium', 'large']}
+            returnFocusRef={responsaveisToggleRef}
           >
-            <SheetTitle className="sr-only">Responsáveis</SheetTitle>
-            <SheetDescription className="sr-only">Filtre a lista por responsável</SheetDescription>
-            {renderResponsaveisPanel()}
-          </SheetContent>
-        </Sheet>
-      )}
-      {activeView === 'concluded' && (
-        <ConcludedView
-          clientSearch={concludedClientSearch}
-          onOpenPost={(postId) => {
-            setDrawerCard(null);
-            setDrawerInitialPostId(null);
-            setStandalonePostId(postId);
-          }}
-        />
-      )}
-      {activeView === 'fila' && (
-        <MinhaFilaView
-          // Trocar de membro ou de ordem remonta a vista: expandido/recolhido
-          // não vaza da fila de uma pessoa para a de outra, nem de um eixo de
-          // seções para o outro.
-          key={`${filaMembroId ?? 'none'}:${filaOrdem}`}
-          fila={fila}
-          membros={membros}
-          membroId={filaMembroId}
-          currentMembroId={currentMembroId}
-          ordem={filaOrdem}
-          registry={registry}
-          isLoading={filaLoading}
-          isError={filaError}
-          onPostClick={handlePostClick}
-          onFluxoClick={handleFluxoClick}
-        />
-      )}
+            <div className="phone-ent-responsaveis">{renderResponsaveisPanel()}</div>
+          </BottomSheet>
+        )}
+        {activeView === 'list' && !isDesktop && !isPhone && (
+          <Sheet open={responsaveisOpen} onOpenChange={setResponsaveisOpen}>
+            <SheetContent
+              side="bottom"
+              className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24"
+              // Sem SheetTrigger o Radix não sabe a quem devolver o foco e ele cairia
+              // no <body>: devolve ao botão Responsáveis da barra.
+              onCloseAutoFocus={(e) => {
+                e.preventDefault();
+                responsaveisToggleRef.current?.focus();
+              }}
+            >
+              <SheetTitle className="sr-only">Responsáveis</SheetTitle>
+              <SheetDescription className="sr-only">
+                Filtre a lista por responsável
+              </SheetDescription>
+              {renderResponsaveisPanel()}
+            </SheetContent>
+          </Sheet>
+        )}
+        {activeView === 'concluded' && (
+          <ConcludedView
+            clientSearch={concludedClientSearch}
+            onClientSearchChange={setConcludedClientSearch}
+            onOpenPost={(postId) => {
+              setDrawerCard(null);
+              setDrawerInitialPostId(null);
+              setStandalonePostId(postId);
+            }}
+          />
+        )}
+        {activeView === 'fila' && (
+          <MinhaFilaView
+            // Trocar de membro ou de ordem remonta a vista: expandido/recolhido
+            // não vaza da fila de uma pessoa para a de outra, nem de um eixo de
+            // seções para o outro.
+            key={`${filaMembroId ?? 'none'}:${filaOrdem}`}
+            fila={fila}
+            membros={membros}
+            membroId={filaMembroId}
+            currentMembroId={currentMembroId}
+            ordem={filaOrdem}
+            registry={registry}
+            isLoading={filaLoading}
+            isError={filaError}
+            onPostClick={handlePostClick}
+            onFluxoClick={handleFluxoClick}
+            onMembroChange={setFilaMembro}
+            onOrdemChange={setFilaOrdem}
+          />
+        )}
 
-      {newWorkflowOpen && (
-        <NewWorkflowWizard
-          open={newWorkflowOpen}
-          onClose={() => {
-            setNewWorkflowOpen(false);
-            setQuickAddTemplateId(null);
-          }}
-          initialTemplateId={quickAddTemplateId ?? undefined}
-          clientes={clientes}
-          membros={membros}
-          templates={templates}
-          onCreated={() => {
-            captureEvent('workflow_created');
-            refresh();
-          }}
+        {newWorkflowOpen && (
+          <NewWorkflowWizard
+            open={newWorkflowOpen}
+            onClose={() => {
+              setNewWorkflowOpen(false);
+              setQuickAddTemplateId(null);
+            }}
+            initialTemplateId={quickAddTemplateId ?? undefined}
+            clientes={clientes}
+            membros={membros}
+            templates={templates}
+            onCreated={() => {
+              captureEvent('workflow_created');
+              refresh();
+            }}
+          />
+        )}
+        {newAvulsoOpen && (
+          <NewAvulsoDialog
+            open={newAvulsoOpen}
+            onClose={() => {
+              setNewAvulsoOpen(false);
+              setAvulsoTemplateId(null);
+            }}
+            clientes={clientes}
+            templates={templates}
+            templateId={avulsoTemplateId ?? undefined}
+            onCreated={(post) => handleAvulsoCreated(post.id!)}
+            onProcessApplied={(post) => revealPostProcesses([post.id!])}
+            onNeedsManualApply={(post, template) => {
+              setManualApplyPost({
+                id: post.id!,
+                titulo: post.titulo,
+                cliente_id: post.cliente_id,
+                templateId: template.id!,
+              });
+            }}
+          />
+        )}
+        <AlertDialog
+          open={!!deleteWorkflowTarget}
+          onOpenChange={(open) => !open && setDeleteWorkflowTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir fluxo?</AlertDialogTitle>
+              <AlertDialogDescription>
+                &quot;{deleteWorkflowTarget?.workflow.titulo}&quot; e suas etapas serão excluídos
+                permanentemente. Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setDeleteWorkflowTarget(null)}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteWorkflow}>Excluir</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog
+          open={!!deletePostTarget}
+          onOpenChange={(open) => !open && setDeletePostTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir post?</AlertDialogTitle>
+              <AlertDialogDescription>
+                &quot;{deletePostTarget?.titulo}&quot; será excluído permanentemente. Esta ação não
+                pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setDeletePostTarget(null)}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeletePost}>Excluir</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <DuplicateDialog
+          target={duplicateTarget}
+          onClose={() => setDuplicateTarget(null)}
+          onDuplicated={handleDuplicated}
         />
-      )}
-      {newAvulsoOpen && (
-        <NewAvulsoDialog
-          open={newAvulsoOpen}
-          onClose={() => {
-            setNewAvulsoOpen(false);
-            setAvulsoTemplateId(null);
-          }}
-          clientes={clientes}
-          templates={templates}
-          templateId={avulsoTemplateId ?? undefined}
-          onCreated={(post) => handleAvulsoCreated(post.id!)}
-          onProcessApplied={(post) => revealPostProcesses([post.id!])}
-          onNeedsManualApply={(post, template) => {
-            setManualApplyPost({
-              id: post.id!,
-              titulo: post.titulo,
-              cliente_id: post.cliente_id,
-              templateId: template.id!,
-            });
-          }}
+        {editCard && (
+          <EditWorkflowModal
+            card={editCard}
+            membros={membros}
+            clientes={clientes}
+            templates={templates}
+            onClose={() => setEditCard(null)}
+            onSaved={refresh}
+            onDeleted={refresh}
+            onOpenPosts={() => {
+              handleCardClick(editCard);
+              setEditCard(null);
+            }}
+          />
+        )}
+        {templatesOpen && (
+          <TemplatesModal
+            open={templatesOpen}
+            onClose={() => setTemplatesOpen(false)}
+            templates={templates}
+            membros={membros}
+            onRefresh={refresh}
+          />
+        )}
+        {drawerCard && (
+          <WorkflowDrawer
+            key={`${drawerCard.workflow.id}:${drawerInitialPostId ?? ''}`}
+            card={drawerCard}
+            initialPostId={drawerInitialPostId ?? undefined}
+            membros={membros}
+            onClose={() => {
+              setDrawerCard(null);
+              setDrawerInitialPostId(null);
+            }}
+            onRefresh={refresh}
+            onDetachedKeepingProcess={revealPostProcesses}
+            onOpenWorkflow={(workflowId, seed) => {
+              // Posts just moved to another flow: land the user there NOW when
+              // possible. An existing target already has a board card; a freshly
+              // created flow rides in via `seed` (the RPC returns its row +
+              // etapas), from which a provisional card opens the drawer without
+              // waiting for the workflows + all-active-etapas refetch cascade
+              // (the latter re-keys on the active-id list, refetching etapas for
+              // EVERY active flow). Covers/hubUrl arrive with the background
+              // refresh, same as any card. Fallback: the pending-deep-link
+              // resolver, which holds the target until its card exists. Not a
+              // URL navigation: the query-sync effect would fight over ?drawer=.
+              setDrawerCard(null);
+              setDrawerInitialPostId(null);
+              setStandalonePostId(null);
+              const existing = cardsByWorkflowId.get(workflowId);
+              if (existing) {
+                setDrawerCard(existing);
+                return;
+              }
+              const seededCard = seed ? buildProvisionalCard(seed) : null;
+              if (seededCard) {
+                setDrawerCard(seededCard);
+                return;
+              }
+              setPendingDeepLink({ workflowId, postId: null });
+            }}
+          />
+        )}
+        {standalonePostId != null && (
+          <StandalonePostDrawer
+            key={standalonePostId}
+            postId={standalonePostId}
+            membros={membros}
+            onClose={() => setStandalonePostId(null)}
+            onRefresh={refresh}
+            onAttached={handlePostAttached}
+            onProcessApplied={(id) => revealPostProcesses([id])}
+            onDuplicated={(id) => setStandalonePostId(id)}
+          />
+        )}
+        {applyTarget && (
+          <ApplyProcessDialog
+            open
+            onClose={() => setApplyTarget(null)}
+            post={{
+              id: applyTarget.id,
+              titulo: applyTarget.titulo,
+              cliente_id: applyTarget.cliente_id,
+            }}
+            membros={membros}
+            onApplied={(r) => {
+              setApplyTarget(null);
+              revealPostProcesses([r.post_id]);
+            }}
+          />
+        )}
+        {manualApplyPost && (
+          // Post individual criado via "+ Novo ▾" da coluna, mas o template
+          // pré-vinculado tem modo_prazo != 'padrao' (spec §3): NewAvulsoDialog
+          // já criou o post e repassa aqui em vez de tentar aplicar sozinho.
+          <ApplyProcessDialog
+            open
+            onClose={() => {
+              // onApplied já rodou (sucesso): não sobrescrever o
+              // revealPostProcesses com o fallback de cancelamento abaixo.
+              if (manualApplyAppliedRef.current) {
+                manualApplyAppliedRef.current = false;
+                return;
+              }
+              // Cancelou sem aplicar: o post avulso já existe sem processo --
+              // fechar só o estado o faria sumir do quadro de Fluxos (não tem
+              // processo nem card). Mesmo fallback do fluxo normal do
+              // NewAvulsoDialog (handleAvulsoCreated).
+              const postId = manualApplyPost.id;
+              setManualApplyPost(null);
+              handleAvulsoCreated(postId);
+            }}
+            post={manualApplyPost}
+            initialTemplateId={manualApplyPost.templateId}
+            membros={membros}
+            onApplied={(r) => {
+              manualApplyAppliedRef.current = true;
+              setManualApplyPost(null);
+              revealPostProcesses([r.post_id]);
+            }}
+          />
+        )}
+        <RecurringWorkflowDialog
+          open={!!recurringWfId}
+          onConfirm={handleRecurringConfirm}
+          onCancel={() => setRecurringWfId(null)}
         />
-      )}
-      <AlertDialog
-        open={!!deleteWorkflowTarget}
-        onOpenChange={(open) => !open && setDeleteWorkflowTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir fluxo?</AlertDialogTitle>
-            <AlertDialogDescription>
-              &quot;{deleteWorkflowTarget?.workflow.titulo}&quot; e suas etapas serão excluídos
-              permanentemente. Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteWorkflowTarget(null)}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteWorkflow}>Excluir</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog
-        open={!!deletePostTarget}
-        onOpenChange={(open) => !open && setDeletePostTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir post?</AlertDialogTitle>
-            <AlertDialogDescription>
-              &quot;{deletePostTarget?.titulo}&quot; será excluído permanentemente. Esta ação não
-              pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeletePostTarget(null)}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeletePost}>Excluir</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <DuplicateDialog
-        target={duplicateTarget}
-        onClose={() => setDuplicateTarget(null)}
-        onDuplicated={handleDuplicated}
-      />
-      {editCard && (
-        <EditWorkflowModal
-          card={editCard}
-          membros={membros}
-          clientes={clientes}
-          templates={templates}
-          onClose={() => setEditCard(null)}
-          onSaved={refresh}
-          onDeleted={refresh}
-          onOpenPosts={() => {
-            handleCardClick(editCard);
-            setEditCard(null);
-          }}
-        />
-      )}
-      {templatesOpen && (
-        <TemplatesModal
-          open={templatesOpen}
-          onClose={() => setTemplatesOpen(false)}
-          templates={templates}
-          membros={membros}
-          onRefresh={refresh}
-        />
-      )}
-      {drawerCard && (
-        <WorkflowDrawer
-          key={`${drawerCard.workflow.id}:${drawerInitialPostId ?? ''}`}
-          card={drawerCard}
-          initialPostId={drawerInitialPostId ?? undefined}
-          membros={membros}
-          onClose={() => {
-            setDrawerCard(null);
-            setDrawerInitialPostId(null);
-          }}
-          onRefresh={refresh}
-          onDetachedKeepingProcess={revealPostProcesses}
-          onOpenWorkflow={(workflowId, seed) => {
-            // Posts just moved to another flow: land the user there NOW when
-            // possible. An existing target already has a board card; a freshly
-            // created flow rides in via `seed` (the RPC returns its row +
-            // etapas), from which a provisional card opens the drawer without
-            // waiting for the workflows + all-active-etapas refetch cascade
-            // (the latter re-keys on the active-id list, refetching etapas for
-            // EVERY active flow). Covers/hubUrl arrive with the background
-            // refresh, same as any card. Fallback: the pending-deep-link
-            // resolver, which holds the target until its card exists. Not a
-            // URL navigation: the query-sync effect would fight over ?drawer=.
-            setDrawerCard(null);
-            setDrawerInitialPostId(null);
-            setStandalonePostId(null);
-            const existing = cardsByWorkflowId.get(workflowId);
-            if (existing) {
-              setDrawerCard(existing);
-              return;
-            }
-            const seededCard = seed ? buildProvisionalCard(seed) : null;
-            if (seededCard) {
-              setDrawerCard(seededCard);
-              return;
-            }
-            setPendingDeepLink({ workflowId, postId: null });
-          }}
-        />
-      )}
-      {standalonePostId != null && (
-        <StandalonePostDrawer
-          key={standalonePostId}
-          postId={standalonePostId}
-          membros={membros}
-          onClose={() => setStandalonePostId(null)}
-          onRefresh={refresh}
-          onAttached={handlePostAttached}
-          onProcessApplied={(id) => revealPostProcesses([id])}
-          onDuplicated={(id) => setStandalonePostId(id)}
-        />
-      )}
-      {applyTarget && (
-        <ApplyProcessDialog
-          open
-          onClose={() => setApplyTarget(null)}
-          post={{
-            id: applyTarget.id,
-            titulo: applyTarget.titulo,
-            cliente_id: applyTarget.cliente_id,
-          }}
-          membros={membros}
-          onApplied={(r) => {
-            setApplyTarget(null);
-            revealPostProcesses([r.post_id]);
-          }}
-        />
-      )}
-      {manualApplyPost && (
-        // Post individual criado via "+ Novo ▾" da coluna, mas o template
-        // pré-vinculado tem modo_prazo != 'padrao' (spec §3): NewAvulsoDialog
-        // já criou o post e repassa aqui em vez de tentar aplicar sozinho.
-        <ApplyProcessDialog
-          open
-          onClose={() => {
-            // onApplied já rodou (sucesso): não sobrescrever o
-            // revealPostProcesses com o fallback de cancelamento abaixo.
-            if (manualApplyAppliedRef.current) {
-              manualApplyAppliedRef.current = false;
-              return;
-            }
-            // Cancelou sem aplicar: o post avulso já existe sem processo --
-            // fechar só o estado o faria sumir do quadro de Fluxos (não tem
-            // processo nem card). Mesmo fallback do fluxo normal do
-            // NewAvulsoDialog (handleAvulsoCreated).
-            const postId = manualApplyPost.id;
-            setManualApplyPost(null);
-            handleAvulsoCreated(postId);
-          }}
-          post={manualApplyPost}
-          initialTemplateId={manualApplyPost.templateId}
-          membros={membros}
-          onApplied={(r) => {
-            manualApplyAppliedRef.current = true;
-            setManualApplyPost(null);
-            revealPostProcesses([r.post_id]);
-          }}
-        />
-      )}
-      <RecurringWorkflowDialog
-        open={!!recurringWfId}
-        onConfirm={handleRecurringConfirm}
-        onCancel={() => setRecurringWfId(null)}
-      />
-    </div>
+        {isPhone && phoneStage.dialogs}
+        {isPhone && phonePostCommands.dialogs}
+      </div>
+    </PhoneBoardActionsContext.Provider>
   );
 }
