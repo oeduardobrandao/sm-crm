@@ -9,6 +9,10 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // WorkflowDrawer.test.tsx: folhas pesadas viram stubs e o DropdownMenu renderiza o
 // conteúdo direto (Radix precisa de pointer events que o jsdom não entrega bem).
 
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 
@@ -180,6 +184,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
 }));
 vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
   ScheduleButton: () => <div data-testid="schedule-button-stub" />,
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({

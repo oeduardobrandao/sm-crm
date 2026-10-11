@@ -13,6 +13,10 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // only thing actually exercised. Patterns follow WorkflowCalendarView.test.tsx (dnd-kit +
 // store mocking) and LandingPage.test.tsx (AuthContext mocking).
 
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
@@ -200,6 +204,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
 }));
 vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
   ScheduleButton: () => <div data-testid="schedule-button-stub" />,
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({

@@ -10,6 +10,10 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // delete flows) is actually exercised. AttachToFluxoDialog is stubbed away entirely --
 // its own behavior is covered by AttachToFluxoDialog.test.tsx.
 
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 // `can` e um vi.fn() para cada teste poder negar uma permissao especifica.
@@ -152,6 +156,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
 }));
 vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
   ScheduleButton: () => <div data-testid="schedule-button-stub" />,
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({

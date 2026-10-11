@@ -46,6 +46,10 @@ const store = vi.hoisted(() => ({
   isFinalClientApprovalCycle: vi.fn(() => true),
   cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
 }));
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
+}));
 vi.mock('../../../../store', () => store);
 
 vi.mock('sonner', () => ({
@@ -86,7 +90,10 @@ vi.mock('../PostMediaGallery', () => ({
   hasVideoMissingThumbnail: () => false,
 }));
 vi.mock('../InstagramCaptionField', () => ({ InstagramCaptionField: () => <div /> }));
-vi.mock('../ScheduleButton', () => ({ ScheduleButton: () => <div /> }));
+vi.mock('../ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
+  ScheduleButton: () => <div />,
+}));
 vi.mock('../WorkflowCalendarView', () => ({ WorkflowCalendarView: () => <div /> }));
 vi.mock('../DiffView', () => ({ DiffView: () => <div /> }));
 vi.mock('../ReadOnlyTipTap', () => ({ ReadOnlyTipTap: () => <div /> }));
