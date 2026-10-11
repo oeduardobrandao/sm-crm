@@ -220,7 +220,7 @@ const DialogContent = React.forwardRef<
       return (
         <>
           <DialogPortal>
-            <DialogPrimitive.Overlay className="phone-kit phone-sheet-overlay" />
+            <DialogPrimitive.Overlay className="phone-kit phone-sheet-overlay phone-dialog-overlay" />
             <DialogPrimitive.Content
               ref={composeRefs(ref, contentRef)}
               className={cn('phone-kit phone-sheet phone-dialog', className)}

@@ -85,7 +85,7 @@ const AlertDialogContent = React.forwardRef<
     return (
       <>
         <AlertDialogPortal>
-          <AlertDialogPrimitive.Overlay className="phone-kit phone-sheet-overlay" />
+          <AlertDialogPrimitive.Overlay className="phone-kit phone-sheet-overlay phone-dialog-overlay" />
           <AlertDialogPrimitive.Content
             ref={composeRefs(ref, contentRef)}
             className={cn('phone-kit phone-alert', className)}

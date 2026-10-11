@@ -16398,6 +16398,11 @@ button.phone-sheet__grabber::before {
    className (its own hooks), so every geometry rule here is `.phone-kit.phone-*` (two
    classes) to outrank the single-class utilities callers pass for desktop: max-w-*,
    w-[..], p-*, max-h-*, overflow-*, z-*, grid/gap. */
+/* Same z-index as the content: a sheet or confirm opened over another one dims it, since
+   its overlay comes later in the DOM (the kit's 9010 would leave the lower sheet bright). */
+.phone-kit.phone-dialog-overlay {
+  z-index: 9011;
+}
 .phone-kit.phone-dialog {
   top: auto;
   right: 0;
@@ -16439,6 +16444,8 @@ button.phone-sheet__grabber::before {
   position: relative;
   display: grid;
   flex: 1;
+  /* Rows never shrink to fit the sheet: the body scrolls instead. */
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 16px;
   min-height: 0;
@@ -16448,7 +16455,6 @@ button.phone-sheet__grabber::before {
   -webkit-overflow-scrolling: touch;
 }
 .phone-kit.phone-dialog [data-dialog-header] {
-  min-height: 30px;
   padding-right: 40px;
   text-align: left;
 }

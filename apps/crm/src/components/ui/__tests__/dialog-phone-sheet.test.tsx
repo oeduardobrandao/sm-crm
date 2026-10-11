@@ -247,6 +247,12 @@ describe('DialogContent phone sheet', () => {
     const dialog = screen.getByRole('dialog', { hidden: true });
     expect(dialog.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(confirm.className).toContain('phone-alert');
+    // Overlays sit at the content's z-index so the confirm's dims the sheet under it.
+    const overlays = document.querySelectorAll('.phone-dialog-overlay');
+    expect(overlays).toHaveLength(2);
+    expect(
+      dialog.compareDocumentPosition(overlays[1]) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 
