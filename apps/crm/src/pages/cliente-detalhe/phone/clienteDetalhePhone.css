@@ -498,3 +498,25 @@ button.phone-cli-hero__photo:focus-visible {
   padding: 0;
   list-style: none;
 }
+
+/* ---- Redes sociais: kit spacing around the imperative IG/TikTok cards ---- */
+.phone-cli-social {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 8px;
+}
+.phone-cli-social .card {
+  margin-bottom: 20px;
+  border: 0;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  box-shadow: none;
+}
+.phone-cli-social__syncing {
+  text-align: center;
+}
+.phone-cli-social__syncing p {
+  margin: 8px 0 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
