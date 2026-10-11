@@ -1,6 +1,4 @@
-import { toast } from 'sonner';
 import type { Membro, TarefaWithRelations } from '../../../store';
-import { updateTarefa } from '../../../store';
 import {
   buildDropId,
   parseDropId,
@@ -9,6 +7,7 @@ import {
   STATUS_ORDER,
 } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
+import { setTarefaStatus } from '../tarefaCommands';
 import { TarefaBoard, type BoardColumn } from './boardShared';
 
 interface StatusKanbanViewProps {
@@ -38,16 +37,10 @@ export function StatusKanbanView({
   const handleDrop = async (tarefa: TarefaWithRelations, dropId: string) => {
     const target = parseDropId(dropId);
     if (!target || target.kind !== 'status') return;
-    if (tarefa.status === target.status) return;
-    applyOverride(tarefa.id!, { status: target.status });
-    try {
-      await updateTarefa(tarefa.id!, { status: target.status });
-      toast.success(target.status === 'concluida' ? 'Tarefa concluída!' : 'Status atualizado!');
-      onRefresh();
-    } catch {
-      clearOverride(tarefa.id!);
-      toast.error('Erro ao atualizar status');
-    }
+    await setTarefaStatus(tarefa, target.status, onRefresh, {
+      apply: applyOverride,
+      clear: clearOverride,
+    });
   };
 
   return (
@@ -58,6 +51,7 @@ export function StatusKanbanView({
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
       onRefresh={onRefresh}
+      phoneChipsLabel="Status"
     />
   );
 }

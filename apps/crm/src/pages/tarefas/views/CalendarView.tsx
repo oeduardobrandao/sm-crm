@@ -11,15 +11,18 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { toast } from 'sonner';
 import { MonthGrid } from '@/components/ui/month-grid';
-import { isSerieDateConflict, updateTarefa, type TarefaWithRelations } from '../../../store';
+import { SegmentedControl } from '@/components/mobile/SegmentedControl';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import type { TarefaWithRelations } from '../../../store';
 import { buildDropId, parseDropId, sortTarefas, toDateOnlyString } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
 import { useAuth } from '@/context/AuthContext';
 import type { Membro } from '../../../store';
 import { loadTarefasCalendarioModo, persistTarefasCalendarioModo } from '../tarefasPrefs';
 import { BoardView } from './BoardView';
+import { rescheduleTarefa } from '../tarefaCommands';
+import { TarefasPhoneCalendar } from '../phone/TarefasPhoneCalendar';
 
 interface CalendarViewProps {
   tarefas: TarefaWithRelations[];
@@ -199,6 +202,7 @@ export function CalendarView({
   onRefresh,
   onCreateTask,
 }: CalendarViewProps) {
+  const isDesktop = useIsDesktop(768);
   const { profile } = useAuth();
   const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
   const [modo, setModo] = useState<'mes' | 'board'>(() => loadTarefasCalendarioModo(contaId));
@@ -239,24 +243,10 @@ export function CalendarView({
     if (!tarefa) return;
     const target = parseDropId(String(over.id));
     if (!target || target.kind !== 'day') return;
-    if (tarefa.data_limite === target.date || (!tarefa.data_limite && target.date === null)) return;
-    if (target.date === null && tarefa.serie) {
-      toast.error('Tarefas de uma série precisam de prazo.');
-      return;
-    }
-    applyOverride(tarefa.id!, { data_limite: target.date });
-    try {
-      await updateTarefa(tarefa.id!, { data_limite: target.date });
-      toast.success(target.date ? 'Prazo atualizado!' : 'Prazo removido!');
-      onRefresh();
-    } catch (e) {
-      clearOverride(tarefa.id!);
-      toast.error(
-        isSerieDateConflict(e)
-          ? 'Já existe uma ocorrência desta série nesse dia.'
-          : 'Erro ao atualizar prazo',
-      );
-    }
+    await rescheduleTarefa(tarefa, target.date, onRefresh, {
+      apply: applyOverride,
+      clear: clearOverride,
+    });
   };
 
   const toggle = (
@@ -291,6 +281,45 @@ export function CalendarView({
       ))}
     </div>
   );
+
+  // Phones: Board/Mês as a segmented control; the board is TarefaBoard's one-column
+  // phone board, the month the CalendarViewPhone pattern. No drag (D30).
+  if (!isDesktop) {
+    return (
+      <div className="phone-tar-calendario">
+        <div className="phone-tar-cal-bar">
+          <SegmentedControl
+            aria-label="Modo do calendário"
+            value={modo}
+            onChange={handleModoChange}
+            options={[
+              { value: 'board', label: 'Board' },
+              { value: 'mes', label: 'Mês' },
+            ]}
+          />
+        </div>
+        {modo === 'board' ? (
+          <BoardView
+            tarefas={tarefas}
+            membros={membros}
+            onTarefaClick={onTarefaClick}
+            onRefresh={onRefresh}
+            onCreateTask={onCreateTask}
+          />
+        ) : (
+          <TarefasPhoneCalendar
+            tarefas={merged}
+            membros={membros}
+            currentMonth={currentMonth}
+            onMonthChange={setCurrentMonth}
+            onTarefaClick={onTarefaClick}
+            onRefresh={onRefresh}
+            onCreateTask={onCreateTask}
+          />
+        )}
+      </div>
+    );
+  }
 
   if (modo === 'board') {
     return (
