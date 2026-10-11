@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const { mockList, mockCounts, mockCan, mockExport } = vi.hoisted(() => ({
+const { mockList, mockCounts, mockCan, mockExport, desktop } = vi.hoisted(() => ({
+  desktop: { value: true },
   mockExport: vi.fn(),
   mockList: vi.fn(),
   mockCounts: vi.fn(),
@@ -19,7 +20,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ can: mockCan }) }));
-vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 vi.mock('@/store', async () => {
   const actual = await vi.importActual<typeof import('@/store')>('@/store');
   return { ...actual, listInstagramContacts: mockList, getContactCounts: mockCounts };
@@ -143,5 +144,39 @@ describe('AutomationContactsSection', () => {
     expect(busy).toBeDisabled();
     await act(async () => finish(1));
     expect(await screen.findByRole('button', { name: 'contacts.export' })).toBeEnabled();
+  });
+});
+
+describe('AutomationContactsSection no celular', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    desktop.value = false;
+    mockCan.mockReturnValue(true);
+    mockList.mockResolvedValue({ rows: [ROW], total: 1 });
+    mockCounts.mockResolvedValue([COUNT_14]);
+  });
+  afterEach(() => {
+    desktop.value = true;
+  });
+
+  it('is a row into the full contacts list (filtered by client), with the reached count', async () => {
+    renderSection();
+    const row = await screen.findByRole('link', { name: /contacts\.viewAll/ });
+    expect(row).toHaveAttribute('href', '/automacoes?aba=contatos&cliente=14');
+    expect(row).toHaveTextContent('1');
+    // No 10-row preview on phones.
+    expect(mockList).not.toHaveBeenCalled();
+  });
+
+  it('exports from the Exportar CSV row', async () => {
+    mockExport.mockResolvedValue(1);
+    renderSection();
+    const btn = await screen.findByRole('button', { name: /contacts\.export/ });
+    await userEvent.click(btn);
+    expect(mockExport).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: 14, reachedOnly: true }),
+      expect.any(Map),
+      'ACME',
+    );
   });
 });

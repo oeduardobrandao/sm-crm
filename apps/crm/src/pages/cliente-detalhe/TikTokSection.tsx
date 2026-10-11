@@ -9,6 +9,8 @@ import { renderTikTokConnectButton } from '../../components/tiktok/TikTokConnect
 import { renderTikTokOverviewCard } from '../../components/tiktok/TikTokOverviewCard';
 import { renderTikTokFollowerChart } from '../../components/tiktok/TikTokFollowerChart';
 import { renderTikTokPostsTable } from '../../components/tiktok/TikTokPostsTable';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import './phone/clienteDetalhePhone.css';
 
 // Isolated component for imperative TikTok widgets, mirroring InstagramSection
 // (ClienteDetalhePage.tsx). Extracted to its own file — unlike InstagramSection —
@@ -22,6 +24,7 @@ export function TikTokSection({ clienteId }: { clienteId: number }) {
   const { t, i18n } = useTranslation('clients');
   const { features } = useWorkspaceLimits();
   const enabled = !!features?.feature_tiktok;
+  const isPhone = !useIsDesktop(768);
 
   const {
     data: ttSummary,
@@ -71,7 +74,11 @@ export function TikTokSection({ clienteId }: { clienteId: number }) {
   if (!enabled) return null;
 
   return (
-    <div id="tiktok-container" style={{ marginBottom: '1.5rem' }}>
+    <div
+      id="tiktok-container"
+      className={isPhone ? 'phone-cli-social' : undefined}
+      style={isPhone ? undefined : { marginBottom: '1.5rem' }}
+    >
       {loadingTt && <ReportSkeleton />}
       {!loadingTt && ttSummary && !ttSummary.account?.last_synced_at && !needsConnect && (
         <div

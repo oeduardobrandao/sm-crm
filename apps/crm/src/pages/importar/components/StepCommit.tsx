@@ -7,12 +7,12 @@ import { Spinner } from '@/components/ui/spinner';
 import { LIMIT_LABELS } from '@/lib/entitlement-errors';
 import type { CommitRowResult, UndoResult } from '@/services/dataImport';
 
-function plural(n: number, one: string, many: string) {
+export function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
 /** A failure reason as the user should read it. */
-function reasonLabel(reason: string | undefined): string {
+export function reasonLabel(reason: string | undefined): string {
   if (reason?.startsWith('plan_limit:')) {
     const key = reason.slice('plan_limit:'.length);
     return `Limite do plano atingido: ${LIMIT_LABELS[key] ?? key}`;
@@ -36,7 +36,7 @@ export function csvCell(value: string): string {
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
-function downloadFailures(failed: CommitRowResult[]) {
+export function downloadFailures(failed: CommitRowResult[]) {
   const csv = [
     'linha_origem;motivo',
     ...failed.map((r) => `${csvCell(r.sourceKey)};${csvCell(reasonLabel(r.reason))}`),

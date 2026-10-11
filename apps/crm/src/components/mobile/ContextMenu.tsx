@@ -21,6 +21,13 @@ export interface ContextMenuAction {
   icon?: ReactNode;
   destructive?: boolean;
   disabled?: boolean;
+  /**
+   * Run `onSelect` inside the tap, then close, instead of after the menu's history entry
+   * is popped. For actions that need the user gesture itself (opening a file in a new
+   * tab, a file picker, `window.open` for an external link) and never navigate in-app. Same
+   * as `ActionSheetAction.immediate`.
+   */
+  immediate?: boolean;
 }
 
 export interface ContextMenuTriggerProps {
@@ -182,7 +189,14 @@ export function ContextMenu({
                           'phone-context-menu__item',
                           action.destructive && 'phone-context-menu__item--destructive',
                         )}
-                        onClick={() => closeThen(action.onSelect)}
+                        onClick={() => {
+                          if (action.immediate) {
+                            action.onSelect();
+                            close();
+                          } else {
+                            closeThen(action.onSelect);
+                          }
+                        }}
                       >
                         <span>{action.label}</span>
                         {action.icon && (

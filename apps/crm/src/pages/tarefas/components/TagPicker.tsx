@@ -10,6 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { BottomSheet } from '@/components/mobile/BottomSheet';
+import { CheckList } from '@/components/mobile/CheckList';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { addTarefaTag, type TarefaTag } from '../../../store';
 
 // Same preset palette as the entregas property system (PropertyDefinitionPanel).
@@ -51,10 +54,19 @@ interface TagPickerProps {
   onSelectedChange: (ids: number[]) => void;
   /** Called after a new tag is created so the parent can refresh the tag list. */
   onTagCreated?: () => void;
+  /** `phone`: a grouped row that opens a sheet (checkmark list + new tag), for the phone form. */
+  layout?: 'default' | 'phone';
 }
 
 /** Multi-select tag dropdown with inline "new tag" creation. */
-export function TagPicker({ tags, selectedIds, onSelectedChange, onTagCreated }: TagPickerProps) {
+export function TagPicker({
+  tags,
+  selectedIds,
+  onSelectedChange,
+  onTagCreated,
+  layout = 'default',
+}: TagPickerProps) {
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(TAG_PRESET_COLORS[5]);
   const [creating, setCreating] = useState(false);
@@ -82,6 +94,93 @@ export function TagPicker({ tags, selectedIds, onSelectedChange, onTagCreated }:
       setCreating(false);
     }
   };
+
+  if (layout === 'phone') {
+    const summary =
+      selectedTags.length === 0
+        ? 'Nenhuma'
+        : selectedTags.length === 1
+          ? selectedTags[0].nome
+          : `${selectedTags[0].nome} +${selectedTags.length - 1}`;
+    return (
+      <>
+        <Cell
+          label="Tags"
+          icon={<Tag aria-hidden="true" />}
+          value={summary}
+          chevron
+          aria-haspopup="dialog"
+          onClick={() => setSheetOpen(true)}
+        />
+        <BottomSheet open={sheetOpen} onOpenChange={setSheetOpen} title="Tags" detents={['large']}>
+          <div className="phone-tar-sheet-body">
+            {tags.length === 0 ? (
+              <p className="phone-tar-footnote">Nenhuma tag ainda. Crie a primeira abaixo.</p>
+            ) : (
+              <CheckList<number>
+                multiple
+                aria-label="Tags"
+                options={tags
+                  .filter((t) => t.id != null)
+                  .map((t) => ({
+                    value: t.id!,
+                    label: t.nome,
+                    icon: (
+                      <span
+                        className="phone-tar-card__dot"
+                        style={{ background: t.cor }}
+                        aria-hidden="true"
+                      />
+                    ),
+                  }))}
+                value={selectedIds}
+                onChange={onSelectedChange}
+              />
+            )}
+            <GroupedList header="Nova tag">
+              <li className="phone-cell">
+                <div className="phone-tar-form__tag-create">
+                  <input
+                    aria-label="Nova tag"
+                    placeholder="Nova tag..."
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleCreate();
+                      }
+                    }}
+                  />
+                  <div className="phone-tar-form__colors" role="group" aria-label="Cor da tag">
+                    {TAG_PRESET_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        aria-label={`Cor ${c}`}
+                        aria-pressed={newColor === c}
+                        className="phone-tar-form__color"
+                        style={{ background: c }}
+                        onClick={() => setNewColor(c)}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="phone-tar-ink-btn"
+                    disabled={!newName.trim() || creating}
+                    onClick={handleCreate}
+                  >
+                    <Plus aria-hidden="true" /> Criar
+                  </button>
+                </div>
+              </li>
+            </GroupedList>
+          </div>
+        </BottomSheet>
+      </>
+    );
+  }
 
   return (
     <DropdownMenu>

@@ -5,6 +5,8 @@ import { ptBR } from 'date-fns/locale';
 import { Building2, Clock, Flag, Layers, Tag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { BottomSheet } from '@/components/mobile/BottomSheet';
+import { useSheetActions } from '@/components/mobile/sheetActions';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { parseDateOnly } from '../../tarefas/tarefasLogic';
 import {
@@ -21,12 +23,27 @@ import { CAMADA_ROTULO, type CamadaItem } from './tipos';
 
 export interface CamadaPopoverProps {
   item: CamadaItem;
-  /** Clicked chip, or the tab container as a fallback. */
-  anchor: HTMLElement;
+  /** Clicked chip, or the tab container as a fallback. Unused by the sheet. */
+  anchor?: HTMLElement | null;
   onClose: () => void;
   /** Hands a receivable/payment to useConfirmarPagamento (its AlertDialog). */
   onConfirmar: (p: PagamentoAConfirmar) => void;
   canSeeFinancials: FinancialAccess | undefined;
+  /** `sheet`: the phone face, a bottom sheet the parent opens and closes with `open`
+   *  (kept mounted, so closing pops its history entry). */
+  apresentacao?: 'popover' | 'sheet';
+  open?: boolean;
+}
+
+/** Sheet body: builds the content with the sheet's closeThen, so "Abrir …" navigates and
+ *  "Confirmar" opens its dialog only once the sheet's history entry is gone. */
+function CorpoDoSheet({
+  montar,
+}: {
+  montar: (fecharEntao: (fn: () => void) => void) => ReactNode;
+}) {
+  const { closeThen } = useSheetActions();
+  return <>{montar(closeThen)}</>;
 }
 
 // ---- Formatting ---------------------------------------------------------------------
@@ -109,16 +126,13 @@ export function CamadaPopover({
   onClose,
   onConfirmar,
   canSeeFinancials,
+  apresentacao = 'popover',
+  open = true,
 }: CamadaPopoverProps) {
   const tituloId = useId();
   const navigate = useNavigate();
-  const virtualRef = useMemo(() => ({ current: ancoraVirtual(anchor) }), [anchor]);
+  const virtualRef = useMemo(() => (anchor ? { current: ancoraVirtual(anchor) } : null), [anchor]);
   const cor = corDaCamada(item);
-
-  function ir(destino: string) {
-    onClose();
-    navigate(destino);
-  }
 
   const titulo =
     item.camada === 'recebimentos' || item.camada === 'pagamentos'
@@ -131,161 +145,235 @@ export function CamadaPopover({
             ? item.nome
             : tituloDaCamada(item);
 
-  let corpo: ReactNode = null;
-  let acao: ReactNode = null;
+  /** Body and action, given how to close before leaving (popover: at once; sheet: after
+   *  its history entry pops). */
+  function conteudo(fecharEntao: (fn: () => void) => void): { corpo: ReactNode; acao: ReactNode } {
+    const ir = (destino: string) => fecharEntao(() => navigate(destino));
+    let corpo: ReactNode = null;
+    let acao: ReactNode = null;
 
-  switch (item.camada) {
-    case 'posts': {
-      const p = item.post;
-      corpo = (
-        <>
-          {p.cliente_nome && <Linha icone={<Building2 {...ICONE} />}>{p.cliente_nome}</Linha>}
-          <Linha icone={<Layers {...ICONE} />}>{PLATFORM_LABELS[p.platform] ?? p.platform}</Linha>
-          <div>
-            <span className={`post-status-chip ${PUBLISH_STATE_CLASS[item.estado]}`}>
-              {PUBLISH_STATE_LABELS[item.estado]}
-            </span>
-          </div>
-        </>
-      );
-      acao = (
-        <Button
-          type="button"
-          size="sm"
-          className="mb-0"
-          onClick={() =>
-            ir(
-              p.workflow_id != null
-                ? `/entregas?drawer=${p.workflow_id}&post=${p.id}`
-                : `/entregas?post=${p.id}`,
-            )
-          }
-        >
-          Abrir post
-        </Button>
-      );
-      break;
-    }
-    case 'prazos': {
-      const pz = item.prazo;
-      corpo = (
-        <>
-          <Linha icone={<Layers {...ICONE} />}>{`Entrega: ${pz.workflowTitle}`}</Linha>
-          {pz.clienteId !== null && (
-            <Linha icone={<Building2 {...ICONE} />}>{`Cliente: ${pz.clienteNome}`}</Linha>
-          )}
-          <Linha icone={<Clock {...ICONE} />}>
-            <span
-              className="font-semibold"
-              style={{ color: pz.estourado ? 'var(--danger-text)' : 'var(--text-main)' }}
-            >
-              {situacaoDoPrazo(pz.diasRestantes, pz.estourado)}
-            </span>
-          </Linha>
-        </>
-      );
-      acao = (
-        <Button
-          type="button"
-          size="sm"
-          className="mb-0"
-          onClick={() => ir(`/entregas?drawer=${pz.workflowId}`)}
-        >
-          Abrir entrega
-        </Button>
-      );
-      break;
-    }
-    case 'recebimentos':
-    case 'pagamentos':
-      corpo = (
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {item.itens.map((i) => (
-            <li
-              key={i.referencia}
-              className="flex items-center gap-3 rounded-[10px] border px-3 py-2 text-[13px]"
-              style={{ borderColor: 'var(--border-color)' }}
-            >
-              <div className="min-w-0 flex-1">
-                <div
-                  className="truncate font-medium"
-                  style={
-                    i.pago ? { textDecoration: 'line-through', color: 'var(--text-muted)' } : {}
-                  }
-                >
-                  {i.nome}
-                </div>
-                <div style={{ color: 'var(--text-muted)' }}>
-                  {formatFinancialBRL(i.valor, canSeeFinancials ?? 'unknown')}
-                </div>
-                {i.ajustado && (
-                  <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                    {`Dia ${i.diaConfigurado}, ajustado para o último dia do mês`}
-                  </div>
-                )}
-              </div>
-              {i.pago ? (
-                <span className="badge badge-success badge--sm">Pago</span>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="mb-0"
-                  aria-label={`Confirmar ${i.nome}`}
-                  onClick={() => {
-                    onClose();
-                    onConfirmar(pagamentoDoItem(i));
-                  }}
-                >
-                  Confirmar
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      );
-      break;
-    case 'datas':
-      corpo = item.cliente.nome ? (
-        <Linha icone={<Building2 {...ICONE} />}>{item.cliente.nome}</Linha>
-      ) : null;
-      acao = (
-        <Button
-          type="button"
-          size="sm"
-          className="mb-0"
-          onClick={() => ir(`/clientes/${item.cliente.id}`)}
-        >
-          Abrir cliente
-        </Button>
-      );
-      break;
-    case 'comemorativas': {
-      const tags = item.tags.filter((t) => t !== item.tipo);
-      corpo = (
-        <>
-          <Linha icone={<Flag {...ICONE} />}>{ROTULO_COMEMORATIVA[item.tipo] ?? item.tipo}</Linha>
-          {tags.length > 0 && (
-            <Linha icone={<Tag {...ICONE} />}>
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map((t) => (
-                  <span key={t} className="badge badge-neutral badge--sm">
-                    {ROTULO_COMEMORATIVA[t] ?? t}
-                  </span>
-                ))}
-              </div>
+    switch (item.camada) {
+      case 'posts': {
+        const p = item.post;
+        corpo = (
+          <>
+            {p.cliente_nome && <Linha icone={<Building2 {...ICONE} />}>{p.cliente_nome}</Linha>}
+            <Linha icone={<Layers {...ICONE} />}>{PLATFORM_LABELS[p.platform] ?? p.platform}</Linha>
+            <div>
+              <span className={`post-status-chip ${PUBLISH_STATE_CLASS[item.estado]}`}>
+                {PUBLISH_STATE_LABELS[item.estado]}
+              </span>
+            </div>
+          </>
+        );
+        acao = (
+          <Button
+            type="button"
+            size="sm"
+            className="mb-0"
+            onClick={() =>
+              ir(
+                p.workflow_id != null
+                  ? `/entregas?drawer=${p.workflow_id}&post=${p.id}`
+                  : `/entregas?post=${p.id}`,
+              )
+            }
+          >
+            Abrir post
+          </Button>
+        );
+        break;
+      }
+      case 'prazos': {
+        const pz = item.prazo;
+        corpo = (
+          <>
+            <Linha icone={<Layers {...ICONE} />}>{`Entrega: ${pz.workflowTitle}`}</Linha>
+            {pz.clienteId !== null && (
+              <Linha icone={<Building2 {...ICONE} />}>{`Cliente: ${pz.clienteNome}`}</Linha>
+            )}
+            <Linha icone={<Clock {...ICONE} />}>
+              <span
+                className="font-semibold"
+                style={{ color: pz.estourado ? 'var(--danger-text)' : 'var(--text-main)' }}
+              >
+                {situacaoDoPrazo(pz.diasRestantes, pz.estourado)}
+              </span>
             </Linha>
-          )}
-        </>
-      );
-      break;
+          </>
+        );
+        acao = (
+          <Button
+            type="button"
+            size="sm"
+            className="mb-0"
+            onClick={() => ir(`/entregas?drawer=${pz.workflowId}`)}
+          >
+            Abrir entrega
+          </Button>
+        );
+        break;
+      }
+      case 'recebimentos':
+      case 'pagamentos':
+        corpo = (
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {item.itens.map((i) => (
+              <li
+                key={i.referencia}
+                className="flex items-center gap-3 rounded-[10px] border px-3 py-2 text-[13px]"
+                style={{ borderColor: 'var(--border-color)' }}
+              >
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="truncate font-medium"
+                    style={
+                      i.pago ? { textDecoration: 'line-through', color: 'var(--text-muted)' } : {}
+                    }
+                  >
+                    {i.nome}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)' }}>
+                    {formatFinancialBRL(i.valor, canSeeFinancials ?? 'unknown')}
+                  </div>
+                  {i.ajustado && (
+                    <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                      {`Dia ${i.diaConfigurado}, ajustado para o último dia do mês`}
+                    </div>
+                  )}
+                </div>
+                {i.pago ? (
+                  <span className="badge badge-success badge--sm">Pago</span>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mb-0"
+                    aria-label={`Confirmar ${i.nome}`}
+                    onClick={() => fecharEntao(() => onConfirmar(pagamentoDoItem(i)))}
+                  >
+                    Confirmar
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        );
+        break;
+      case 'datas':
+        corpo = item.cliente.nome ? (
+          <Linha icone={<Building2 {...ICONE} />}>{item.cliente.nome}</Linha>
+        ) : null;
+        acao = (
+          <Button
+            type="button"
+            size="sm"
+            className="mb-0"
+            onClick={() => ir(`/clientes/${item.cliente.id}`)}
+          >
+            Abrir cliente
+          </Button>
+        );
+        break;
+      case 'comemorativas': {
+        const tags = item.tags.filter((t) => t !== item.tipo);
+        corpo = (
+          <>
+            <Linha icone={<Flag {...ICONE} />}>{ROTULO_COMEMORATIVA[item.tipo] ?? item.tipo}</Linha>
+            {tags.length > 0 && (
+              <Linha icone={<Tag {...ICONE} />}>
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((t) => (
+                    <span key={t} className="badge badge-neutral badge--sm">
+                      {ROTULO_COMEMORATIVA[t] ?? t}
+                    </span>
+                  ))}
+                </div>
+              </Linha>
+            )}
+          </>
+        );
+        break;
+      }
     }
+
+    return { corpo, acao };
   }
+
+  const cabecalho = (
+    <>
+      <span
+        className="agenda-camada-swatch agenda-camada-swatch--lg mt-1"
+        style={{ borderColor: cor, color: cor }}
+        aria-hidden="true"
+      >
+        <IconeDaCamada item={item} size={14} strokeWidth={2} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div
+          className="text-[11px] font-semibold uppercase tracking-[0.06em]"
+          style={{ color: 'var(--text-light)' }}
+        >
+          {CAMADA_ROTULO[item.camada]}
+        </div>
+        {apresentacao === 'sheet' ? (
+          <p
+            className="m-0 break-words text-[18px] font-semibold leading-tight"
+            style={{ fontFamily: 'var(--font-heading)' }}
+            aria-hidden="true"
+          >
+            {titulo}
+          </p>
+        ) : (
+          <h2
+            id={tituloId}
+            className="m-0 break-words text-[18px] font-semibold leading-tight"
+            style={{ fontFamily: 'var(--font-heading)' }}
+          >
+            {titulo}
+          </h2>
+        )}
+        <div className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+          {quando(item)}
+        </div>
+      </div>
+    </>
+  );
+
+  if (apresentacao === 'sheet') {
+    return (
+      <BottomSheet
+        open={open}
+        onOpenChange={(aberto) => !aberto && onClose()}
+        title={titulo}
+        hideTitle
+        detents={['fit']}
+      >
+        <CorpoDoSheet
+          montar={(fecharEntao) => {
+            const { corpo, acao } = conteudo(fecharEntao);
+            return (
+              <div className="phone-agenda-camada">
+                <div className="flex items-start gap-3">{cabecalho}</div>
+                {corpo}
+                {acao && <div className="phone-agenda-camada__acao">{acao}</div>}
+              </div>
+            );
+          }}
+        />
+      </BottomSheet>
+    );
+  }
+
+  const { corpo, acao } = conteudo((fn) => {
+    onClose();
+    fn();
+  });
 
   return (
     <Popover open onOpenChange={(aberto) => !aberto && onClose()}>
-      <PopoverAnchor virtualRef={virtualRef} />
+      {virtualRef && <PopoverAnchor virtualRef={virtualRef} />}
       <PopoverContent
         side="bottom"
         align="start"
@@ -303,31 +391,7 @@ export function CamadaPopover({
         }}
       >
         <div className="-mr-1.5 -mt-1.5 flex items-start gap-3">
-          <span
-            className="agenda-camada-swatch agenda-camada-swatch--lg mt-1"
-            style={{ borderColor: cor, color: cor }}
-            aria-hidden="true"
-          >
-            <IconeDaCamada item={item} size={14} strokeWidth={2} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div
-              className="text-[11px] font-semibold uppercase tracking-[0.06em]"
-              style={{ color: 'var(--text-light)' }}
-            >
-              {CAMADA_ROTULO[item.camada]}
-            </div>
-            <h2
-              id={tituloId}
-              className="m-0 break-words text-[18px] font-semibold leading-tight"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
-              {titulo}
-            </h2>
-            <div className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-              {quando(item)}
-            </div>
-          </div>
+          {cabecalho}
           <Button
             type="button"
             variant="ghost"

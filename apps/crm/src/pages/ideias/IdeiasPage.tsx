@@ -42,7 +42,9 @@ import {
 } from '@/components/ui/table';
 import { TableSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { IDEIA_STATUS_LABELS } from './ideiaLabels';
+import { IdeiasPhoneView } from './IdeiasPhoneView';
 
 const ALL_STATUSES = [
   'nova',
@@ -68,6 +70,7 @@ function endOfDayIso(d: Date): string {
 
 export default function IdeiasPage() {
   const { can } = useAuth();
+  const isPhone = !useIsDesktop(768);
   const qc = useQueryClient();
   const canEdit = can('ideias', 'editar') === true;
   const queryKey = ['hub-ideias-all'];
@@ -127,6 +130,90 @@ export default function IdeiasPage() {
     }
     return true;
   });
+
+  const clearFilters = () => {
+    setClienteFilter('all');
+    setTipoFilter('all');
+    setStatusFilters([]);
+    setDateRange(undefined);
+  };
+
+  // The dialog and the drawer are shared by both layouts (on phones the drawer is a
+  // pushed screen of its own).
+  const overlays = (
+    <>
+      <NovaIdeiaDialog
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        editing={editingIdeia}
+        onSaved={async (id) => {
+          setFormOpen(false);
+          setEditingIdeia(null);
+          // NovaIdeiaDialog already invalidates `queryKey` before calling us, but
+          // that refetch is fire-and-forget from its side -- `ideias` here is still
+          // the pre-save snapshot this closure was built from. Await our own
+          // invalidation so the cache is guaranteed fresh before we look the row up.
+          await qc.invalidateQueries({ queryKey });
+          const fresh = qc.getQueryData<Ideia[]>(queryKey)?.find((i) => i.id === id);
+          if (fresh) setSelectedIdeia(fresh);
+        }}
+      />
+
+      {selectedIdeia &&
+        (() => {
+          // The drawer keeps a prop snapshot; once a conversion refetches the list, resolve
+          // the fresh row so the drawer's derived-state UI (locked status, "Ver tarefa") updates
+          // without the user having to close and reopen the drawer.
+          const current = ideias.find((i) => i.id === selectedIdeia.id) ?? selectedIdeia;
+          return (
+            <IdeiaDrawer
+              ideia={current}
+              queryKey={queryKey}
+              onClose={() => setSelectedIdeia(null)}
+              onEdit={() => {
+                setSelectedIdeia(null);
+                setEditingIdeia(current);
+                setFormOpen(true);
+              }}
+            />
+          );
+        })()}
+    </>
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <IdeiasPhoneView
+          ideias={filtered}
+          isLoading={isLoading}
+          canEdit={canEdit}
+          onNew={() => {
+            setEditingIdeia(null);
+            setFormOpen(true);
+          }}
+          onOpen={setSelectedIdeia}
+          search={search}
+          onSearchChange={setSearch}
+          clientes={clientes
+            .filter((c: any) => typeof c.id === 'number')
+            .map((c: any) => ({ id: c.id as number, nome: c.nome as string }))}
+          statuses={ALL_STATUSES}
+          clienteFilter={clienteFilter}
+          onClienteFilterChange={setClienteFilter}
+          tipoFilter={tipoFilter}
+          onTipoFilterChange={setTipoFilter}
+          statusFilters={statusFilters}
+          onStatusFiltersChange={setStatusFilters}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          activeFilterCount={ideiasActiveFilterCount}
+          onClearFilters={clearFilters}
+        />
+        {overlays}
+      </>
+    );
+  }
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -341,16 +428,7 @@ export default function IdeiasPage() {
             <DateRangePicker value={dateRange} onChange={setDateRange} className="text-xs w-full" />
           </div>
           {ideiasActiveFilterCount > 0 && (
-            <Button
-              variant="ghost"
-              className="w-full mt-4 text-xs"
-              onClick={() => {
-                setClienteFilter('all');
-                setTipoFilter('all');
-                setStatusFilters([]);
-                setDateRange(undefined);
-              }}
-            >
+            <Button variant="ghost" className="w-full mt-4 text-xs" onClick={clearFilters}>
               Limpar filtros
             </Button>
           )}
@@ -423,42 +501,7 @@ export default function IdeiasPage() {
         </div>
       )}
 
-      <NovaIdeiaDialog
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        editing={editingIdeia}
-        onSaved={async (id) => {
-          setFormOpen(false);
-          setEditingIdeia(null);
-          // NovaIdeiaDialog already invalidates `queryKey` before calling us, but
-          // that refetch is fire-and-forget from its side -- `ideias` here is still
-          // the pre-save snapshot this closure was built from. Await our own
-          // invalidation so the cache is guaranteed fresh before we look the row up.
-          await qc.invalidateQueries({ queryKey });
-          const fresh = qc.getQueryData<Ideia[]>(queryKey)?.find((i) => i.id === id);
-          if (fresh) setSelectedIdeia(fresh);
-        }}
-      />
-
-      {selectedIdeia &&
-        (() => {
-          // The drawer keeps a prop snapshot; once a conversion refetches the list, resolve
-          // the fresh row so the drawer's derived-state UI (locked status, "Ver tarefa") updates
-          // without the user having to close and reopen the drawer.
-          const current = ideias.find((i) => i.id === selectedIdeia.id) ?? selectedIdeia;
-          return (
-            <IdeiaDrawer
-              ideia={current}
-              queryKey={queryKey}
-              onClose={() => setSelectedIdeia(null)}
-              onEdit={() => {
-                setSelectedIdeia(null);
-                setEditingIdeia(current);
-                setFormOpen(true);
-              }}
-            />
-          );
-        })()}
+      {overlays}
     </div>
   );
 }

@@ -17,6 +17,28 @@ import { getContratos, getTransacoes, formatDate, type Contrato, type Transacao 
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { ClienteFinanceEmptyState } from '../ClienteFinanceEmptyState';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import '../phone/clienteDetalhePhone.css';
+
+const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
+  ativo: 'success',
+  vigente: 'success',
+  pago: 'success',
+  pausado: 'warning',
+  a_assinar: 'warning',
+  encerrado: 'danger',
+  agendado: 'neutral',
+};
+
+function PhoneStatusChip({ status }: { status: string }) {
+  const { t: tc } = useTranslation();
+  return (
+    <span className="phone-cli-chip" data-tone={STATUS_TONE[status] ?? 'neutral'}>
+      {tc(`status.${status}`, { defaultValue: status })}
+    </span>
+  );
+}
 
 function StatusBadge({ status }: { status: string }) {
   const { t: tc } = useTranslation();
@@ -83,6 +105,7 @@ export default function FinanceiroTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const { canSeeFinancials } = useAuth();
   const { t } = useTranslation('clients');
+  const isPhone = !useIsDesktop(768);
 
   const { data: transacoes } = useQuery({
     queryKey: ['transacoes'],
@@ -110,36 +133,103 @@ export default function FinanceiroTab() {
     .filter((t) => t.tipo === 'entrada' && t.status === 'agendado')
     .reduce((s, t) => s + Number(t.valor), 0);
 
+  const kpis = (
+    <StatCardGrid
+      id="sec-financeiro"
+      className="cliente-finance-kpis"
+      style={{ marginBottom: '1.5rem' }}
+    >
+      <StatCard
+        label={t('detail.monthlyValue')}
+        value={formatFinancialBRL(cliente.valor_mensal, canSeeFinancials)}
+        icon={Wallet}
+        tone="blue"
+        compactValue
+      />
+      <StatCard
+        label={t('detail.totalReceived')}
+        value={formatFinancialBRL(receitaTotal, canSeeFinancials)}
+        icon={CheckCircle2}
+        tone="green"
+        compactValue
+      />
+      <StatCard
+        label={t('detail.pending')}
+        value={formatFinancialBRL(pendente, canSeeFinancials)}
+        valueColor="var(--warning)"
+        icon={Clock}
+        tone="amber"
+        compactValue
+      />
+    </StatCardGrid>
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        {kpis}
+        {contratosCliente.length === 0 ? (
+          <section className="phone-cli-finance-empty" aria-label={t('detail.contracts')}>
+            <h2 className="phone-group__header">{t('detail.contracts')}</h2>
+            <ClienteFinanceEmptyState
+              icon={FileText}
+              title={t('detail.noContracts')}
+              description={t('detail.noContractsDescription')}
+              actionLabel={t('detail.manageContracts')}
+              actionHref="/contratos"
+            />
+          </section>
+        ) : (
+          <GroupedList header={t('detail.contracts')} className="phone-cli-wrap">
+            {contratosCliente.map((r) => (
+              <Cell
+                key={r.id ?? `${r.titulo}-${r.data_inicio}`}
+                label={r.titulo}
+                subtitle={`${formatDate(r.data_inicio)} a ${formatDate(r.data_fim)} · ${formatFinancialBRL(r.valor_total, canSeeFinancials)}`}
+                accessory={<PhoneStatusChip status={r.status} />}
+              />
+            ))}
+          </GroupedList>
+        )}
+        {transacoesCliente.length === 0 ? (
+          <section className="phone-cli-finance-empty" aria-label={t('detail.transactions')}>
+            <h2 className="phone-group__header">{t('detail.transactions')}</h2>
+            <ClienteFinanceEmptyState
+              icon={ReceiptText}
+              title={t('detail.noTransactions')}
+              description={t('detail.noTransactionsDescription')}
+              actionLabel={t('detail.viewFinancial')}
+              actionHref="/financeiro"
+            />
+          </section>
+        ) : (
+          <GroupedList header={t('detail.transactions')} className="phone-cli-wrap">
+            {transacoesCliente.map((r) => (
+              <Cell
+                key={r.id ?? `${r.descricao}-${r.data}`}
+                label={r.descricao}
+                subtitle={formatDate(r.data)}
+                value={
+                  <span
+                    className="phone-cli-amount"
+                    data-tone={r.tipo === 'entrada' ? 'in' : 'out'}
+                  >
+                    {r.tipo === 'entrada' ? '+' : '-'}
+                    {formatFinancialBRL(r.valor, canSeeFinancials)}
+                  </span>
+                }
+                accessory={<PhoneStatusChip status={r.status ?? 'pago'} />}
+              />
+            ))}
+          </GroupedList>
+        )}
+      </>
+    );
+  }
+
   return (
     <>
-      <StatCardGrid
-        id="sec-financeiro"
-        className="cliente-finance-kpis"
-        style={{ marginBottom: '1.5rem' }}
-      >
-        <StatCard
-          label={t('detail.monthlyValue')}
-          value={formatFinancialBRL(cliente.valor_mensal, canSeeFinancials)}
-          icon={Wallet}
-          tone="blue"
-          compactValue
-        />
-        <StatCard
-          label={t('detail.totalReceived')}
-          value={formatFinancialBRL(receitaTotal, canSeeFinancials)}
-          icon={CheckCircle2}
-          tone="green"
-          compactValue
-        />
-        <StatCard
-          label={t('detail.pending')}
-          value={formatFinancialBRL(pendente, canSeeFinancials)}
-          valueColor="var(--warning)"
-          icon={Clock}
-          tone="amber"
-          compactValue
-        />
-      </StatCardGrid>
+      {kpis}
 
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">

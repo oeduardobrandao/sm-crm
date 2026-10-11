@@ -48,6 +48,12 @@ const STATIC_ROUTES = [
   '/ajuda',
 ];
 
+/**
+ * Routes whose phone layout has landed (phase F): they render a PhonePageHeader, so the
+ * desktop `.header` must not show. Each lane adds its routes here.
+ */
+const PORTED_ROUTES = new Set(['/clientes', '/leads']);
+
 const CLIENTE_TABS = [
   'visao-geral',
   'entregas',
@@ -98,6 +104,12 @@ for (const route of STATIC_ROUTES) {
     await page.goto(route);
     await settle(page);
     await expectNoHorizontalOverflow(page, route);
+    if (PORTED_ROUTES.has(route)) {
+      await expect(
+        page.locator('.main-content .header'),
+        `${route}: .header on a phone`,
+      ).toHaveCount(0);
+    }
   });
 }
 

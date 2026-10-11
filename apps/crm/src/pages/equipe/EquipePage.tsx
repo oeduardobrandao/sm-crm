@@ -12,15 +12,7 @@ import {
   Search,
   UsersRound,
   Wallet,
-  SlidersHorizontal,
 } from 'lucide-react';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { openCSVSelector } from '../../lib/csv';
@@ -29,7 +21,7 @@ import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
+import { TableSkeleton } from '@/components/ui/skeletons';
 import {
   Table,
   TableBody,
@@ -75,15 +67,12 @@ import { derivePendingInvites } from './inviteSupport';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { supabase } from '../../lib/supabase';
 import { MembroFormDialog } from './MembroFormDialog';
-
-type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
-type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
-
-const TIPO_LABEL: Record<string, string> = {
-  clt: 'CLT',
-  freelancer_mensal: 'Freelancer Mensal',
-  freelancer_demanda: 'Freelancer Demanda',
-};
+import {
+  EquipePhone,
+  TIPO_LABEL,
+  type EquipeFilter as FilterTipo,
+  type EquipeSort as SortKey,
+} from './phone/EquipePhone';
 
 export default function EquipePage() {
   const qc = useQueryClient();
@@ -102,7 +91,6 @@ export default function EquipePage() {
   const [filter, setFilter] = useState<FilterTipo>('todos');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('nome');
-  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Membro | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -217,6 +205,64 @@ export default function EquipePage() {
     );
   };
 
+  const dialogs = (
+    <>
+      <MembroFormDialog
+        open={modalOpen}
+        membro={editing}
+        membros={membros}
+        onOpenChange={setModalOpen}
+      />
+
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover este membro?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
+  // Below 768px: the phone list (PLAN F2d). It replaces the old team-grid cards and the
+  // shadcn filter sheet; 768px and up keep the table with Tipo and Ordenar inline.
+  if (!isDesktop) {
+    return (
+      <>
+        <EquipePhone
+          isLoading={isLoading}
+          membros={filtered}
+          totalMembros={membros.length}
+          totalCost={totalCost}
+          canSeeFinancials={canSeeFinancials}
+          canEditTeam={canEditTeam}
+          pendingInviteIds={new Set(pendingByMembroId.keys())}
+          filter={filter}
+          onFilterChange={setFilter}
+          sort={sort}
+          onSortChange={setSort}
+          search={search}
+          onSearchChange={setSearch}
+          onAdd={openAdd}
+          onImport={handleCSVImport}
+          onOpen={(m) => m.id && navigate(`/equipe/${m.id}`)}
+          onEdit={openEdit}
+          onDelete={setDeleteId}
+        />
+        {dialogs}
+      </>
+    );
+  }
+
   return (
     <div style={{ padding: '1.5rem' }}>
       <div className="header">
@@ -328,10 +374,7 @@ export default function EquipePage() {
             style={{ paddingLeft: '2rem' }}
           />
         </div>
-        {/* Desktop: tipo + ordenar inline. Below 901px they collapse into a
-            single "Filtros" button/sheet -- otherwise they wrap below the
-            search box and eat the first fold on a phone. */}
-        <div className="hidden min-[901px]:contents">
+        <div className="contents">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -372,94 +415,11 @@ export default function EquipePage() {
             </SelectContent>
           </Select>
         </div>
-
-        <Button
-          variant="outline"
-          className="flex min-[901px]:hidden h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm mb-0 shrink-0"
-          onClick={() => setFilterSheetOpen(true)}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filtros
-          {filter !== 'todos' && (
-            <span
-              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
-              style={{
-                background: 'var(--primary-color)',
-                color: '#000',
-                width: '1.1rem',
-                height: '1.1rem',
-              }}
-            >
-              1
-            </span>
-          )}
-        </Button>
       </div>
 
-      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
-        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
-          <SheetHeader className="mb-4">
-            <SheetTitle className="text-base">Filtros</SheetTitle>
-            <SheetDescription className="sr-only">Filtre e ordene a equipe</SheetDescription>
-          </SheetHeader>
-          <div className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              Tipo
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="h-9 w-full justify-between text-xs font-normal"
-                  >
-                    {filter === 'todos' ? 'Todos' : TIPO_LABEL[filter]}
-                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-[calc(100vw-3rem)]">
-                  <DropdownMenuRadioGroup
-                    value={filter}
-                    onValueChange={(v) => setFilter(v as FilterTipo)}
-                  >
-                    {(
-                      ['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]
-                    ).map((f) => (
-                      <DropdownMenuRadioItem key={f} value={f}>
-                        {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </label>
-
-            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              Ordenar por
-              <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-                <SelectTrigger className="!text-xs h-9 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nome">Nome</SelectItem>
-                  {canSeeFinancials === true && (
-                    <>
-                      <SelectItem value="custo_maior">Custo (maior)</SelectItem>
-                      <SelectItem value="custo_menor">Custo (menor)</SelectItem>
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-        </SheetContent>
-      </Sheet>
-
       {isLoading ? (
-        isDesktop ? (
-          <TableSkeleton columns={4} />
-        ) : (
-          <CardListSkeleton />
-        )
-      ) : isDesktop ? (
+        <TableSkeleton columns={4} />
+      ) : (
         <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
           <Table>
             <TableHeader>
@@ -562,120 +522,9 @@ export default function EquipePage() {
             </TableBody>
           </Table>
         </div>
-      ) : (
-        <div className="team-grid">
-          {filtered.map((m) => {
-            const avatarClass = avatarColorClass(m.id ?? m.nome);
-            return (
-              <div
-                key={m.id}
-                className="team-card card animate-up"
-                style={{ padding: '1.25rem 1rem' }}
-              >
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <div
-                    className={`avatar ${avatarClass}`}
-                    style={{ fontWeight: 700, width: 44, height: 44, fontSize: '1rem' }}
-                  >
-                    {getInitials(m.nome)}
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.15rem',
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    <button
-                      className="client-link"
-                      onClick={() => navigate(`/equipe/${m.id}`)}
-                      style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}
-                    >
-                      {m.nome}
-                    </button>
-                    <div style={{ fontSize: '0.75rem', color: '#888' }}>{m.cargo}</div>
-                    <div
-                      style={{
-                        marginTop: 2,
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '0.25rem',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
-                        {TIPO_LABEL[m.tipo]}
-                      </Badge>
-                      {canEditTeam &&
-                        !m.crm_user_id &&
-                        (pendingByMembroId.has(m.id!) ? (
-                          <Badge variant="warning" size="sm">
-                            convite pendente
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" size="sm">
-                            sem conta vinculada
-                          </Badge>
-                        ))}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-1" style={{ marginLeft: 'auto' }}>
-                    {canEditTeam && (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          onClick={() => openEdit(m)}
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
-                        {m.id && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => setDeleteId(m.id!)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       )}
 
-      <MembroFormDialog
-        open={modalOpen}
-        membro={editing}
-        membros={membros}
-        onOpenChange={setModalOpen}
-      />
-
-      <AlertDialog
-        open={deleteId != null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover este membro?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogs}
     </div>
   );
 }

@@ -1,6 +1,11 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
+
+// Desktop layout by default; the phone describe below flips it (jsdom's matchMedia is
+// false, so without a mock every suite would render the phone branch).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
+import { render, screen, waitFor, fireEvent, cleanup, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
@@ -473,6 +478,52 @@ describe('AcessoPage', () => {
       await waitFor(() => screen.getByText(/Expira em/));
 
       expect(screen.getByTestId('fill-paginas').querySelector('a')).toBeNull();
+    });
+  });
+
+  describe('no celular', () => {
+    beforeEach(() => {
+      desktop.value = false;
+    });
+    afterEach(() => {
+      desktop.value = true;
+    });
+
+    it('asks before generating a new link', async () => {
+      vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+      vi.mocked(hubStore.rotateHubToken).mockResolvedValue({
+        token: 'tok-2',
+        expires_at: new Date(Date.now() + 365 * DAY).toISOString(),
+      });
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Gerar novo link' }));
+      expect(hubStore.rotateHubToken).not.toHaveBeenCalled();
+      const sheet = await screen.findByRole('dialog', { name: 'Gerar um novo link?' });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Confirmar' }));
+      await waitFor(() => expect(hubStore.rotateHubToken).toHaveBeenCalledWith('t1'));
+    });
+
+    it('asks before deactivating the link', async () => {
+      vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+      vi.mocked(hubStore.setHubTokenActive).mockResolvedValue(undefined as never);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Desativar' }));
+      expect(hubStore.setHubTokenActive).not.toHaveBeenCalled();
+      const sheet = await screen.findByRole('dialog', { name: 'Desativar o acesso?' });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Desativar' }));
+      await waitFor(() => expect(hubStore.setHubTokenActive).toHaveBeenCalledWith('t1', false));
+    });
+
+    it('shows the portal URL and the "O que o cliente vê" rows', async () => {
+      vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+      renderPage();
+
+      expect(await screen.findByText(/dk-marketing-medico\/hub\/tok-1/)).toBeInTheDocument();
+      expect(screen.getByTestId('fill-briefing')).toBeInTheDocument();
+      expect(screen.getByTestId('fill-marca')).toBeInTheDocument();
+      expect(screen.getByTestId('fill-paginas')).toBeInTheDocument();
     });
   });
 });

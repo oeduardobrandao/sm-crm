@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
 import {
   addSubtarefa,
   definirEstadoSerie,
@@ -57,8 +58,12 @@ import { dueBadge, parseDateOnly, STATUS_LABELS, STATUS_ORDER } from '../tarefas
 import { describeRecorrencia, modoLabel, serieEstado, serieEstadoLabel } from '../recorrenciaLogic';
 import { TagPill } from './TagPicker';
 import { TarefaDescriptionContent } from './TarefaDescriptionContent';
+import { TarefaDetailPhone } from '../phone/TarefaDetailPhone';
 
 interface TarefaDetailSheetProps {
+  /** Defaults to true. On phones the page keeps the sheet mounted and toggles this, so
+   *  the pushed screen can pop its own history entry when it closes. */
+  open?: boolean;
   tarefa: TarefaWithRelations;
   membros: Membro[];
   onClose: () => void;
@@ -67,12 +72,16 @@ interface TarefaDetailSheetProps {
 }
 
 export function TarefaDetailSheet({
+  open = true,
   tarefa,
   membros,
   onClose,
   onEdit,
   onRefresh,
 }: TarefaDetailSheetProps) {
+  // Same gate as the dialog primitives (F0c): the phone layout only inside the phone
+  // shell, so suites that render the sheet alone keep the desktop markup.
+  const { isPhone } = usePhoneLayout();
   const queryClient = useQueryClient();
   const [newSubtarefa, setNewSubtarefa] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -212,8 +221,34 @@ export function TarefaDetailSheet({
     }
   };
 
+  if (isPhone) {
+    return (
+      <TarefaDetailPhone
+        open={open}
+        tarefa={tarefa}
+        membros={membros}
+        subtarefas={subtarefas}
+        serie={serie}
+        estado={estado}
+        estadoLabel={estadoLabel}
+        serieBusy={serieBusy}
+        newSubtarefa={newSubtarefa}
+        onNewSubtarefaChange={setNewSubtarefa}
+        onAddSubtarefa={handleAddSubtarefa}
+        onToggleSubtarefa={handleToggleSubtarefa}
+        onDeleteSubtarefa={handleDeleteSubtarefa}
+        onStatusChange={handleStatusChange}
+        onAssign={handleAssign}
+        onSerieEstado={handleSerieEstado}
+        onClose={onClose}
+        onEdit={onEdit}
+        onRefresh={onRefresh}
+      />
+    );
+  }
+
   return (
-    <Sheet open onOpenChange={(o) => !o && onClose()}>
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full sm:max-w-[440px] overflow-y-auto">
         <SheetHeader className="mb-4 pr-8">
           <SheetTitle className="text-left leading-snug">{tarefa.titulo}</SheetTitle>

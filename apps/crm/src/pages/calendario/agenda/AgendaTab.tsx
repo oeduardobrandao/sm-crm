@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type FullCalendar from '@fullcalendar/react';
 import type { DatesSetArg, EventInput } from '@fullcalendar/core';
-import { addHours, format, startOfHour } from 'date-fns';
+import { addHours, addMonths, addWeeks, format, startOfHour } from 'date-fns';
 import { Plus, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/context/AuthContext';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   AGENDA_QUERY_KEY,
   getAgendaOcorrencia,
@@ -44,6 +44,10 @@ import {
 import { toCamadaEventInput } from '../camadas/toCamadaEventInput';
 import { useCamadas } from '../camadas/useCamadas';
 import { useConfirmarPagamento } from '../camadas/useConfirmarPagamento';
+import { AgendaFiltrosSheet, contarFiltrosAtivos } from './phone/AgendaFiltrosSheet';
+import { AgendaListaPhone, AgendaMesPhone, type AbrirItem } from './phone/AgendaListasPhone';
+import { AgendaTopoPhone, type VistaPhone } from './phone/AgendaTopoPhone';
+import { periodoDaSemana, periodoDoMes } from './phone/itensAgenda';
 import {
   DEFAULT_NICHE_KEY,
   NICHE_CALENDARS,
@@ -57,7 +61,7 @@ const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** Event id of the quick-create draft chip (also its data-ocorrencia-id). */
 const RASCUNHO_ID = 'rascunho';
 
-/** max-width queries on purpose: the test setup stubs matchMedia with
+/** max-width query on purpose: the test setup stubs matchMedia with
  *  `matches: false`, which then means "desktop". */
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(
@@ -157,16 +161,37 @@ export default function AgendaTab() {
   const meuId = user?.id ?? null;
   // View-only roles never see the create entry points ('unknown' = still resolving).
   const podeCriar = can('calendario', 'editar') === true;
-  const isMobile = useMediaQuery('(max-width: 767px)');
+  // Phone layout below 768px (iOS plan F1.3): page header, Mês / Dia / Lista, sheets.
+  const isPhone = !useIsDesktop(768);
+  const isMobile = isPhone;
   const sidebarEmSheet = useMediaQuery('(max-width: 1100px)');
   const [searchParams, setSearchParams] = useSearchParams();
 
   const calRef = useRef<FullCalendar | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Desktop: the Agenda fills the screen; sidebar and calendar scroll on their own.
-  const alturaTela = useAlturaAteOFim(containerRef, !sidebarEmSheet);
+  const alturaTela = useAlturaAteOFim(containerRef, !sidebarEmSheet && !isPhone);
   const [periodo, setPeriodo] = useState<Periodo | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState(() => new Date());
+  // Phones: Mês and Lista are the phone's own lists over a period computed here from
+  // `ancora`; FullCalendar is mounted for Dia only.
+  const [vistaPhone, setVistaPhone] = useState<VistaPhone>('listWeek');
+  const [ancora, setAncora] = useState(() => new Date());
+  const usaFullCalendar = !isPhone || vistaPhone === 'timeGridDay';
+  const periodoPhone = useMemo<Periodo | null>(() => {
+    if (!isPhone || vistaPhone === 'timeGridDay') return null;
+    const r = vistaPhone === 'dayGridMonth' ? periodoDoMes(ancora) : periodoDaSemana(ancora);
+    return {
+      ...r,
+      view: vistaPhone,
+      titulo: tituloDoPeriodo(vistaPhone, r.currentStart, r.currentEnd),
+    };
+  }, [isPhone, vistaPhone, ancora]);
+  const periodoAtual = usaFullCalendar ? periodo : periodoPhone;
+  // The phone sheets stay mounted after closing (their history entry pops on close):
+  // these say whether they are open; `popover` / `camadaPopover` keep the last item.
+  const [popoverAberto, setPopoverAberto] = useState(false);
+  const [camadaAberta, setCamadaAberta] = useState(false);
   const [filtro, setFiltro] = useState<AgendaFiltro>(lerFiltro);
   // Only the id is the source of truth: the occurrence is re-read from the
   // current query data (the snapshot covers rows outside the loaded range) and
@@ -205,12 +230,16 @@ export default function AgendaTab() {
   const { pedirConfirmacao, dialog: confirmarPagamentoDialog } = useConfirmarPagamento(
     canSeeFinancials ?? 'unknown',
   );
-  const itensCamadas = useCamadas(periodo, camadasAtivas, canSeeFinancials, nichoKey);
+  const itensCamadas = useCamadas(periodoAtual, camadasAtivas, canSeeFinancials, nichoKey);
 
   const { data: ocorrencias = [], isFetching } = useQuery({
-    queryKey: [AGENDA_QUERY_KEY, periodo?.start.toISOString(), periodo?.end.toISOString()],
-    queryFn: () => listAgenda(periodo!.start, periodo!.end),
-    enabled: periodo !== null,
+    queryKey: [
+      AGENDA_QUERY_KEY,
+      periodoAtual?.start.toISOString(),
+      periodoAtual?.end.toISOString(),
+    ],
+    queryFn: () => listAgenda(periodoAtual!.start, periodoAtual!.end),
+    enabled: periodoAtual !== null,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
@@ -233,10 +262,16 @@ export default function AgendaTab() {
     () =>
       filtrarPorPessoas(ocorrencias, idsDoFiltro(filtro, meuId, pessoas)).map((o) => {
         const ev = toEventInput(o, meuId ?? '');
-        // `ordem` leads eventOrder: Agenda events before every layer item.
-        return { ...ev, extendedProps: { ...ev.extendedProps, ordem: ORDEM_AGENDA } };
+        // `ordem` leads eventOrder: Agenda events before every layer item. Phones are
+        // read-only on the grid (no drag or resize): the per-event flag would override
+        // the calendar's.
+        return {
+          ...ev,
+          editable: !isPhone && ev.editable,
+          extendedProps: { ...ev.extendedProps, ordem: ORDEM_AGENDA },
+        };
       }),
-    [ocorrencias, filtro, meuId, pessoas],
+    [ocorrencias, filtro, meuId, pessoas, isPhone],
   );
   // The people filter applies to Agenda events only (spec §1.5).
   const eventosDasCamadas = useMemo<EventInput[]>(
@@ -267,6 +302,48 @@ export default function AgendaTab() {
     writeStoredNicheKey(key);
   }
 
+  /** Today when it falls in [inicio, fim), else the period's first day. */
+  const diaDoPeriodo = (inicio: Date, fim: Date) => {
+    const hoje = new Date();
+    return hoje >= inicio && hoje < fim ? hoje : inicio;
+  };
+
+  /** Jump to a date: the phone lists move their own period, FullCalendar its own. */
+  function irParaData(d: Date) {
+    if (usaFullCalendar) {
+      calRef.current?.getApi().gotoDate(d);
+      return;
+    }
+    setAncora(d);
+    setDataSelecionada(d);
+  }
+  const irParaDataRef = useRef(irParaData);
+  irParaDataRef.current = irParaData;
+
+  function mudarVistaPhone(v: VistaPhone) {
+    // Mês and Lista land on the selected day's month / week; Dia mounts on that day.
+    setAncora(dataSelecionada);
+    setVistaPhone(v);
+  }
+
+  function andarPhone(passo: 1 | -1) {
+    if (usaFullCalendar) {
+      const api = calRef.current?.getApi();
+      if (passo === 1) api?.next();
+      else api?.prev();
+      return;
+    }
+    const nova = vistaPhone === 'dayGridMonth' ? addMonths(ancora, passo) : addWeeks(ancora, passo);
+    const r = vistaPhone === 'dayGridMonth' ? periodoDoMes(nova) : periodoDaSemana(nova);
+    setAncora(nova);
+    setDataSelecionada(diaDoPeriodo(r.currentStart, r.currentEnd));
+  }
+
+  function hojePhone() {
+    if (usaFullCalendar) calRef.current?.getApi().today();
+    else irParaData(new Date());
+  }
+
   const onDatesSet = useCallback((arg: DatesSetArg) => {
     const view = arg.view.type as AgendaViewType;
     const { currentStart, currentEnd } = arg.view;
@@ -295,8 +372,11 @@ export default function AgendaTab() {
   function abrirCriar(inicio?: Date, fim?: Date, diaInteiro = false) {
     const i = inicio ?? addHours(startOfHour(new Date()), 1);
     const f = fim ?? addHours(i, 1);
-    setPopover(null);
-    setCamadaPopover(null);
+    // Phones: only reachable with every sheet closed, and a closed sheet may keep its item.
+    if (!isPhone) {
+      setPopover(null);
+      setCamadaPopover(null);
+    }
     setSheetAberto(false);
     descartarRascunho();
     setForm({ modo: 'criar', inicial: { inicio: i, fim: f, diaInteiro } });
@@ -367,6 +447,7 @@ export default function AgendaTab() {
     setAnchorRascunho(null);
     setCamadaPopover(null);
     setPopover({ id: o.ocorrencia_id, snapshot: o, anchorEl });
+    setPopoverAberto(true);
   }, []);
 
   const abrirCamada = useCallback((item: CamadaItem, anchorEl: HTMLElement) => {
@@ -375,6 +456,7 @@ export default function AgendaTab() {
     setAnchorRascunho(null);
     setPopover(null);
     setCamadaPopover({ id: item.id, snapshot: item, anchorEl });
+    setCamadaAberta(true);
   }, []);
 
   /** The chip FullCalendar currently shows for an event id, if mounted. */
@@ -447,10 +529,19 @@ export default function AgendaTab() {
   }, [camadaPopover, eventos, chipDoEvento]);
 
   // Losing financial access mid-session closes an open receivables/payments popover.
+  // Phones close the sheet instead (`camadaSheetAberta`): unmounting it would leave its
+  // history entry behind.
   useEffect(() => {
-    if (canSeeFinancials === true) return;
+    if (canSeeFinancials === true || isPhone) return;
     setCamadaPopover((p) => (p && CAMADAS_FINANCEIRAS.has(p.snapshot.camada) ? null : p));
-  }, [canSeeFinancials]);
+  }, [canSeeFinancials, isPhone]);
+  const camadaSheetAberta =
+    camadaAberta &&
+    !(
+      camadaPopover &&
+      CAMADAS_FINANCEIRAS.has(camadaPopover.snapshot.camada) &&
+      canSeeFinancials !== true
+    );
 
   const ocorrenciaDoPopover = popover
     ? (ocorrencias.find((o) => o.ocorrencia_id === popover.id) ?? popover.snapshot)
@@ -513,7 +604,7 @@ export default function AgendaTab() {
           removerParam();
           return;
         }
-        calRef.current?.getApi().gotoDate(inicioDaOcorrencia(o));
+        irParaDataRef.current(inicioDaOcorrencia(o));
         setPendente(o);
       });
     return () => {
@@ -524,7 +615,7 @@ export default function AgendaTab() {
   useEffect(() => {
     if (!dataParam || !DATA_RE.test(dataParam)) return;
     const d = parseDateOnly(dataParam);
-    if (!isNaN(d.getTime())) calRef.current?.getApi().gotoDate(d);
+    if (!isNaN(d.getTime())) irParaDataRef.current(d);
   }, [dataParam]);
 
   // Anchor the deep-linked popover to its chip once the grid has moved to it and
@@ -540,21 +631,15 @@ export default function AgendaTab() {
       removerEventoParam();
     };
     const alvo = inicioDaOcorrencia(pendente);
-    const pronto = periodo !== null && alvo >= periodo.start && alvo < periodo.end && !isFetching;
+    const pronto =
+      periodoAtual !== null && alvo >= periodoAtual.start && alvo < periodoAtual.end && !isFetching;
     if (pronto) {
       const raf = requestAnimationFrame(abrir);
       return () => cancelAnimationFrame(raf);
     }
     const t = setTimeout(abrir, 1500);
     return () => clearTimeout(t);
-  }, [pendente, periodo, isFetching, resolverAnchor, abrirPopover, removerEventoParam]);
-
-  // Desktop -> phone resize: the phone toggle has no "Semana", so leave that view.
-  useEffect(() => {
-    if (isMobile && periodo?.view === 'timeGridWeek') {
-      calRef.current?.getApi().changeView('listWeek');
-    }
-  }, [isMobile, periodo?.view]);
+  }, [pendente, periodoAtual, isFetching, resolverAnchor, abrirPopover, removerEventoParam]);
 
   // Phones have no quick card: a desktop -> phone resize drops the draft.
   useEffect(() => {
@@ -593,6 +678,137 @@ export default function AgendaTab() {
     />
   );
 
+  const formularios = (
+    <>
+      <FeedAgendaDialog open={feedAberto} onOpenChange={setFeedAberto} />
+
+      {form?.modo === 'criar' && (
+        <EventoFormDialog
+          open
+          onOpenChange={(o) => !o && fecharForm()}
+          modo="criar"
+          inicial={form.inicial}
+          rascunho={form.rascunho}
+        />
+      )}
+      {form?.modo === 'editar' && (
+        <EventoFormDialog
+          open
+          onOpenChange={(o) => !o && fecharForm()}
+          modo="editar"
+          ocorrencia={form.ocorrencia}
+        />
+      )}
+    </>
+  );
+
+  if (isPhone) {
+    const abrirItem: AbrirItem = {
+      onEvento: (o) => abrirPopover(o, containerRef.current ?? document.body),
+      onCamada: (item) => abrirCamada(item, containerRef.current ?? document.body),
+    };
+    return (
+      <div className="phone-agenda" ref={containerRef}>
+        <AgendaTopoPhone
+          titulo={periodoAtual?.titulo ?? ''}
+          vista={vistaPhone}
+          onVista={mudarVistaPhone}
+          onHoje={hojePhone}
+          onAnterior={() => andarPhone(-1)}
+          onProximo={() => andarPhone(1)}
+          filtrosAtivos={contarFiltrosAtivos(filtro, meuId, pessoas, {
+            ativas: camadasAtivas,
+            canSeeFinancials,
+          })}
+          onFiltros={() => setSheetAberto(true)}
+          onCriar={podeCriar ? () => abrirCriar() : undefined}
+          dataSelecionada={dataSelecionada}
+          onIrPara={irParaData}
+        />
+
+        {vistaPhone === 'dayGridMonth' && (
+          <AgendaMesPhone
+            mes={ancora}
+            selecionado={dataSelecionada}
+            onSelect={setDataSelecionada}
+            eventos={eventos}
+            meuId={meuId}
+            abrir={abrirItem}
+          />
+        )}
+        {vistaPhone === 'listWeek' && periodoAtual && (
+          <AgendaListaPhone
+            inicio={periodoAtual.currentStart}
+            fim={periodoAtual.currentEnd}
+            eventos={eventos}
+            meuId={meuId}
+            abrir={abrirItem}
+          />
+        )}
+        {vistaPhone === 'timeGridDay' && (
+          <div className="phone-agenda-dia-fc">
+            <AgendaView
+              calRef={calRef}
+              isMobile
+              semToolbar
+              initialView="timeGridDay"
+              initialDate={dataSelecionada}
+              view="timeGridDay"
+              titulo={periodoAtual?.titulo ?? ''}
+              eventos={eventos}
+              onDatesSet={onDatesSet}
+              onEventClick={abrirPopover}
+              onCamadaClick={abrirCamada}
+              onMover={mover}
+            />
+          </div>
+        )}
+
+        <AgendaFiltrosSheet
+          open={sheetAberto}
+          onOpenChange={setSheetAberto}
+          meuId={meuId}
+          pessoas={pessoas}
+          filtro={filtro}
+          onFiltroChange={mudarFiltro}
+          camadas={{
+            ativas: camadasAtivas,
+            onChange: mudarCamadas,
+            canSeeFinancials,
+            nichoKey,
+            onNichoChange: mudarNicho,
+          }}
+          onSincronizar={() => setFeedAberto(true)}
+        />
+
+        {ocorrenciaDoPopover && (
+          <EventoPopover
+            apresentacao="sheet"
+            open={popoverAberto}
+            ocorrencia={ocorrenciaDoPopover}
+            onClose={() => setPopoverAberto(false)}
+            onEditar={(o) => setForm({ modo: 'editar', ocorrencia: o })}
+          />
+        )}
+        {dialog}
+
+        {itemDoCamadaPopover && (
+          <CamadaPopover
+            apresentacao="sheet"
+            open={camadaSheetAberta}
+            item={itemDoCamadaPopover}
+            onClose={() => setCamadaAberta(false)}
+            onConfirmar={pedirConfirmacao}
+            canSeeFinancials={canSeeFinancials}
+          />
+        )}
+        {confirmarPagamentoDialog}
+
+        {formularios}
+      </div>
+    );
+  }
+
   return (
     <div
       className={alturaTela !== null ? 'agenda agenda--tela' : 'agenda'}
@@ -602,7 +818,7 @@ export default function AgendaTab() {
       {sidebarEmSheet ? (
         <>
           <div className="agenda-barra">
-            {!isMobile && podeCriar && (
+            {podeCriar && (
               <Button type="button" onClick={() => abrirCriar()}>
                 <Plus aria-hidden="true" />
                 Criar evento
@@ -631,18 +847,16 @@ export default function AgendaTab() {
       <div className="agenda-main">
         <AgendaView
           calRef={calRef}
-          isMobile={isMobile}
-          view={periodo?.view ?? (isMobile ? 'listWeek' : 'timeGridWeek')}
+          isMobile={false}
+          view={periodo?.view ?? 'timeGridWeek'}
           titulo={periodo?.titulo ?? ''}
           eventos={eventos}
           onDatesSet={onDatesSet}
+          initialDate={dataSelecionada}
           onSelect={
             podeCriar
-              ? (inicio, fim, diaInteiro) => {
-                  const f = fimDoClique(inicio, fim, diaInteiro);
-                  if (isMobile) abrirCriar(inicio, f, diaInteiro);
-                  else abrirRascunho(inicio, f, diaInteiro);
-                }
+              ? (inicio, fim, diaInteiro) =>
+                  abrirRascunho(inicio, fimDoClique(inicio, fim, diaInteiro), diaInteiro)
               : undefined
           }
           onEventClick={abrirPopover}
@@ -651,22 +865,6 @@ export default function AgendaTab() {
           preencher={alturaTela !== null}
         />
       </div>
-
-      {/* Portaled: CalendarioPage wraps the tab in .animate-up, whose transform
-          would make it the containing block of a position: fixed child. */}
-      {isMobile &&
-        podeCriar &&
-        createPortal(
-          <button
-            type="button"
-            className="agenda-fab"
-            aria-label="Criar evento"
-            onClick={() => abrirCriar()}
-          >
-            <Plus size={26} aria-hidden="true" />
-          </button>,
-          document.body,
-        )}
 
       {ocorrenciaDoPopover && anchorDoPopover && (
         <EventoPopover
@@ -703,25 +901,7 @@ export default function AgendaTab() {
         />
       )}
 
-      <FeedAgendaDialog open={feedAberto} onOpenChange={setFeedAberto} />
-
-      {form?.modo === 'criar' && (
-        <EventoFormDialog
-          open
-          onOpenChange={(o) => !o && fecharForm()}
-          modo="criar"
-          inicial={form.inicial}
-          rascunho={form.rascunho}
-        />
-      )}
-      {form?.modo === 'editar' && (
-        <EventoFormDialog
-          open
-          onOpenChange={(o) => !o && fecharForm()}
-          modo="editar"
-          ocorrencia={form.ocorrencia}
-        />
-      )}
+      {formularios}
     </div>
   );
 }

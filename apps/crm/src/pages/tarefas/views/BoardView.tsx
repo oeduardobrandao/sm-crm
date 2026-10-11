@@ -1,8 +1,7 @@
-import { toast } from 'sonner';
 import type { Membro, TarefaWithRelations } from '../../../store';
-import { isSerieDateConflict, updateTarefa } from '../../../store';
 import { buildDropId, groupByBoardColumn, parseDropId } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
+import { rescheduleTarefa } from '../tarefaCommands';
 import { TarefaBoard, type BoardColumn, type BoardColumnAccent } from './boardShared';
 
 /** Em atraso reads danger-red, Hoje reads blue -- same rgba-tint-over-solid-text
@@ -51,24 +50,10 @@ export function BoardView({
   const handleDrop = async (tarefa: TarefaWithRelations, dropId: string) => {
     const target = parseDropId(dropId);
     if (!target || target.kind !== 'day') return;
-    if (tarefa.data_limite === target.date) return;
-    if (target.date === null && tarefa.serie) {
-      toast.error('Tarefas de uma série precisam de prazo.');
-      return;
-    }
-    applyOverride(tarefa.id!, { data_limite: target.date });
-    try {
-      await updateTarefa(tarefa.id!, { data_limite: target.date });
-      toast.success(target.date ? 'Prazo atualizado!' : 'Prazo removido!');
-      onRefresh();
-    } catch (e) {
-      clearOverride(tarefa.id!);
-      toast.error(
-        isSerieDateConflict(e)
-          ? 'Já existe uma ocorrência desta série nesse dia.'
-          : 'Erro ao atualizar prazo',
-      );
-    }
+    await rescheduleTarefa(tarefa, target.date, onRefresh, {
+      apply: applyOverride,
+      clear: clearOverride,
+    });
   };
 
   return (
@@ -79,6 +64,7 @@ export function BoardView({
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
       onRefresh={onRefresh}
+      phoneChipsLabel="Prazos"
     />
   );
 }
