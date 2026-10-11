@@ -20,6 +20,10 @@ vi.mock('../../../lib/csv', () => ({ openCSVSelector: vi.fn() }));
 
 vi.mock('../../../lib/supabase');
 
+// These suites cover the desktop markup (table, header buttons); the phone branch below
+// 768px has its own suite. jsdom's matchMedia would otherwise render the phone branch.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('../../../store', async () => {
   const actual = await vi.importActual<typeof import('../../../store')>('../../../store');
   return {

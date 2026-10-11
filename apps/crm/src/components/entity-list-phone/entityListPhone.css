@@ -1,0 +1,330 @@
+/* ===== PHONE ENTITY LISTS (iOS plan F2a: Clientes, Leads) ===============================
+   Rows, usage line, search field and empty state of the phone list screens (mockups
+   FClientes, FLeads). Rendered only by the pages' phone branches (below 768px). Every
+   class is `phone-el-*` and reads the kit's `--phone-*` tokens; nothing here redefines
+   a shared token or styles a bare element (the Hub imports the CRM stylesheet). */
+
+/* ---- Rows (inside GroupedList's white card) ---- */
+/* On the <li>, so the separator stays put while the content slides. */
+.phone-el-row:not(:last-child) {
+  border-bottom: 1px solid var(--phone-separator);
+}
+.phone-el-row__inner {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.phone-el-row__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  /* A hold opens the menu; iOS must not show its link callout or select text. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+a.phone-el-row__main,
+button.phone-el-row__main {
+  cursor: pointer;
+}
+a.phone-el-row__main:active,
+button.phone-el-row__main:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-el-row__main:focus-visible,
+.phone-el-row__more:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.phone-el-row__content {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.phone-el-row__chevron {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--phone-label-secondary);
+  opacity: 0.7;
+}
+/* The menu trigger stays reachable by keyboard and screen readers without taking room
+   in the row: the long-press (and the swipe "Mais", where there is one) open the same
+   menu by touch. */
+.phone-el-row__more {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.phone-el-row__more:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.phone-el-row__more svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* The swipe actions sit exactly under the content; at rest their colours bled through
+   the content's anti-aliased edges as thin grey/red lines. Hide them (opacity, so a
+   Tab onto one still slides the row open) until the row is open or being dragged. */
+.phone-el-row:not([data-open]):not(:has([data-dragging])) .phone-swipe-row__actions {
+  opacity: 0;
+}
+
+/* ---- Row content pieces ---- */
+.phone-el-avatar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  object-fit: cover;
+}
+.phone-el-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.phone-el-title {
+  overflow: hidden;
+  color: var(--phone-label);
+  font-size: var(--phone-text-body);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-el-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.phone-el-subtitle__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phone-el-badge {
+  flex-shrink: 0;
+}
+
+/* The lifted copy above the long-press menu: a single white row. */
+.phone-el-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+/* ---- Plan usage line (subtitle of the large title) ---- */
+.phone-el-usage {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  row-gap: 2px;
+}
+.phone-el-usage__bar {
+  display: block;
+  flex-shrink: 0;
+  width: 64px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--phone-fill);
+}
+.phone-el-usage__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.phone-el-usage__text--danger {
+  color: var(--danger-text, #b91c1c);
+}
+.phone-el-usage__cta {
+  color: var(--phone-label);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---- Search field under the title ---- */
+.phone-el-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin: 0 0 12px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-el-search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-el-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  /* 16px+ keeps iOS from zooming into the field. */
+  font-size: var(--phone-text-body);
+  outline: none;
+}
+.phone-el-search input::placeholder {
+  color: var(--phone-label-secondary);
+}
+
+/* ---- Status chips under the header (Leads) ---- */
+.phone-el-chips {
+  margin: 0 0 16px;
+}
+
+/* ---- Empty state ---- */
+.phone-el-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 20px;
+  padding: 28px 20px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  text-align: center;
+}
+.phone-el-empty__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-el-empty__icon svg {
+  width: 22px;
+  height: 22px;
+}
+.phone-el-empty__title {
+  margin: 0;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+}
+.phone-el-empty__text {
+  margin: 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  line-height: 1.4;
+}
+.phone-el-empty__action {
+  height: 36px;
+  margin-top: 10px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-el-empty__action:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+
+/* ---- Forms inside the Add / Edit / Convert dialogs ---- */
+/* The shadcn Select sits in an inline FormRow as its control: no box, right-aligned. */
+.phone-el-form .phone-el-form-select {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--phone-label);
+  font-size: var(--phone-text-body);
+}
+.phone-el-form .phone-el-form-select:focus,
+.phone-el-form .phone-el-form-select:focus-visible {
+  box-shadow: none;
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-el-form-note {
+  margin: 0 16px 12px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.4;
+}
+
+/* ---- Two-line "Status ▸ Qualificado" item in the long-press menu (Leads) ---- */
+.phone-el-menu-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 0;
+  line-height: 1.25;
+}
+.phone-el-menu-status__value {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
