@@ -145,3 +145,27 @@ describe('ContextMenu focus return', () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 });
+
+describe('ContextMenu immediate actions', () => {
+  it('runs an `immediate` action inside the tap and closes the menu', async () => {
+    const onOpenLink = vi.fn();
+    render(
+      <MemoryRouter>
+        <ContextMenu
+          label="Ações do cliente"
+          sections={[[{ label: 'Abrir no Notion', onSelect: onOpenLink, immediate: true }]]}
+        >
+          {({ triggerProps }) => (
+            <button {...triggerProps} aria-label="Mais ações">
+              …
+            </button>
+          )}
+        </ContextMenu>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir no Notion' }));
+    expect(onOpenLink).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  });
+});
