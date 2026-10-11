@@ -305,6 +305,8 @@
   outline-offset: 2px;
 }
 .phone-msg-chip__title {
+  /* Without it the nowrap title keeps the chip at its full width past max-width. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
