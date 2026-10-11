@@ -1,7 +1,7 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgendaOcorrencia } from '../../../../store/agenda';
 
 // ---- FullCalendar mock ---------------------------------------------------------
@@ -65,6 +65,27 @@ vi.mock('@fullcalendar/react', async () => {
   });
   return { default: FullCalendar };
 });
+// The phone layout follows useIsDesktop(768). Here it reads the same matchMedia stub as
+// the rest of the suite, through a max-width query, so `matches: false` stays desktop
+// and stubMatchMedia / resizeTo with 'max-width: 767px' make it a phone.
+vi.mock('@/hooks/useIsDesktop', async () => {
+  const React = await vi.importActual<typeof import('react')>('react');
+  return {
+    useIsDesktop: (minWidth = 768) => {
+      const query = `(max-width: ${minWidth - 1}px)`;
+      const [phone, setPhone] = React.useState(() => window.matchMedia(query).matches);
+      React.useEffect(() => {
+        const mq = window.matchMedia(query);
+        setPhone(mq.matches);
+        const onChange = (e: { matches: boolean }) => setPhone(e.matches);
+        mq.addEventListener?.('change', onChange);
+        return () => mq.removeEventListener?.('change', onChange);
+      }, [query]);
+      return !phone;
+    },
+  };
+});
+vi.mock('@/components/layout/PhoneShellHeader', () => ({ PhoneShellActions: () => null }));
 vi.mock('@fullcalendar/daygrid', () => ({ default: {} }));
 vi.mock('@fullcalendar/timegrid', () => ({ default: {} }));
 vi.mock('@fullcalendar/list', () => ({ default: {} }));
@@ -159,20 +180,28 @@ vi.mock('../EventoRapidoCard', async () => {
 vi.mock('../EventoPopover', () => ({
   EventoPopover: (p: {
     ocorrencia: AgendaOcorrencia;
-    anchor: HTMLElement;
+    anchor?: HTMLElement;
     onEditar: (o: AgendaOcorrencia) => void;
-  }) => (
-    <div
-      data-testid="evento-popover"
-      data-anchor-connected={String(p.anchor.isConnected)}
-      data-anchor-id={p.anchor.dataset.ocorrenciaId ?? 'container'}
-    >
-      {p.ocorrencia.titulo}
-      <button type="button" onClick={() => p.onEditar(p.ocorrencia)}>
-        editar-stub
-      </button>
-    </div>
-  ),
+    onClose: () => void;
+    apresentacao?: string;
+    open?: boolean;
+  }) =>
+    p.apresentacao === 'sheet' && !p.open ? null : (
+      <div
+        data-testid="evento-popover"
+        data-apresentacao={p.apresentacao ?? 'popover'}
+        data-anchor-connected={String(p.anchor?.isConnected)}
+        data-anchor-id={p.anchor ? (p.anchor.dataset.ocorrenciaId ?? 'container') : 'none'}
+      >
+        {p.ocorrencia.titulo}
+        <button type="button" onClick={() => p.onEditar(p.ocorrencia)}>
+          editar-stub
+        </button>
+        <button type="button" onClick={p.onClose}>
+          fechar-evento-stub
+        </button>
+      </div>
+    ),
 }));
 vi.mock('../useAgendaMutations', () => ({
   useAgendaMutations: () => ({ mover: moverMock, dialog: null }),
@@ -192,18 +221,26 @@ vi.mock('../../camadas/useCamadas', () => ({
   },
 }));
 vi.mock('../../camadas/CamadaPopover', () => ({
-  CamadaPopover: (p: { item: { id: string }; anchor: HTMLElement; onClose: () => void }) => (
-    <div
-      data-testid="camada-popover"
-      data-anchor-id={p.anchor.dataset.ocorrenciaId ?? 'container'}
-      data-anchor-connected={String(p.anchor.isConnected)}
-    >
-      {p.item.id}
-      <button type="button" onClick={p.onClose}>
-        fechar-camada-stub
-      </button>
-    </div>
-  ),
+  CamadaPopover: (p: {
+    item: { id: string };
+    anchor?: HTMLElement;
+    onClose: () => void;
+    apresentacao?: string;
+    open?: boolean;
+  }) =>
+    p.apresentacao === 'sheet' && !p.open ? null : (
+      <div
+        data-testid="camada-popover"
+        data-apresentacao={p.apresentacao ?? 'popover'}
+        data-anchor-id={p.anchor ? (p.anchor.dataset.ocorrenciaId ?? 'container') : 'none'}
+        data-anchor-connected={String(p.anchor?.isConnected)}
+      >
+        {p.item.id}
+        <button type="button" onClick={p.onClose}>
+          fechar-camada-stub
+        </button>
+      </div>
+    ),
 }));
 
 // ---- App modules ------------------------------------------------------------------
@@ -531,18 +568,6 @@ describe('AgendaTab', () => {
     expect(screen.queryByTestId('evento-popover')).not.toBeInTheDocument();
   });
 
-  it('starts in listWeek on a phone, with the floating create button', async () => {
-    stubMatchMedia((q) => q.includes('max-width: 767px') || q.includes('max-width: 1100px'));
-    renderTab();
-
-    await screen.findByText('Reunião de pauta');
-    expect(fc.props?.initialView).toBe('listWeek');
-    expect(screen.getByRole('button', { name: 'Criar evento' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Lista' })).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: 'Semana' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Pessoas e filtros' })).toBeInTheDocument();
-  });
-
   it('switching the view toggle calls changeView on the calendar', async () => {
     renderTab();
     await screen.findByText('Reunião de pauta');
@@ -688,18 +713,6 @@ describe('AgendaTab', () => {
       selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
       await waitFor(() => expect(rapido.montagens).toBe(2));
       expect(await screen.findByText('(Sem título)')).toBeInTheDocument();
-    });
-
-    it('a phone select opens the full editor directly', async () => {
-      stubMatchMedia((q) => q.includes('max-width: 767px') || q.includes('max-width: 1100px'));
-      renderTab();
-      await screen.findByText('Reunião de pauta');
-
-      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
-
-      expect(await screen.findByTestId('evento-form')).toHaveTextContent('criar dia-inteiro:false');
-      expect(screen.queryByTestId('evento-rapido')).not.toBeInTheDocument();
-      expect(screen.queryByText('(Sem título)')).not.toBeInTheDocument();
     });
 
     it('"Mais opções" swaps the card for the full editor, carrying the draft', async () => {
@@ -994,23 +1007,199 @@ describe('AgendaTab layers', () => {
   });
 });
 
-describe('AgendaTab resize', () => {
+describe('AgendaTab phone (below 768px)', () => {
+  const PHONE = (q: string) => q.includes('max-width: 767px') || q.includes('max-width: 1100px');
+
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 7, 10));
+    podeEditar = true;
+    localStorage.clear();
     fc.props = null;
     Object.values(fc.api).forEach((f) => f.mockReset());
-    stubMatchMedia(() => false);
-    vi.mocked(agendaStore.listAgenda).mockResolvedValue([MEU]);
+    stubMatchMedia(PHONE);
+    vi.mocked(agendaStore.listAgenda).mockReset();
+    vi.mocked(agendaStore.listAgenda).mockResolvedValue([MEU, CONVIDADO, DE_OUTRO]);
+    vi.mocked(agendaStore.getAgendaOcorrencia).mockResolvedValue(null);
     vi.mocked(workspaceStore.getWorkspaceUsers).mockResolvedValue(ROSTER);
   });
+  afterEach(() => {
+    vi.useRealTimers();
+    stubMatchMedia(() => false);
+  });
 
-  it('leaves the week view when the window shrinks to a phone', async () => {
+  it('opens on Lista: page header, the week as grouped rows, no FullCalendar and no FAB', async () => {
     renderTab();
-    await screen.findByText('Reunião de pauta');
-    expect(fc.api.changeView).not.toHaveBeenCalled();
 
-    resizeTo((q) => q.includes('max-width: 767px') || q.includes('max-width: 1100px'));
+    expect(screen.getByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Lista' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('radio', { name: 'Semana' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /5 a 11 de outubro de 2026/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Reunião de pauta/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Segunda, 5 de outubro' })).toBeInTheDocument();
+    // The invitation still waiting for my answer says so in the row, not in a hover.
+    expect(screen.getByRole('button', { name: /Gravação: Clínica Sorriso/ })).toHaveTextContent(
+      'Aguardando sua resposta',
+    );
+    expect(screen.queryByTestId('fullcalendar')).not.toBeInTheDocument();
+    expect(document.querySelector('.agenda-fab')).toBeNull();
+    expect(agendaStore.listAgenda).toHaveBeenCalledWith(
+      new Date(2026, 9, 5),
+      new Date(2026, 9, 12),
+    );
+  });
 
-    await waitFor(() => expect(fc.api.changeView).toHaveBeenCalledWith('listWeek'));
+  it('a row opens the event sheet; closing keeps the item mounted for the sheet to pop', async () => {
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: /Reunião de pauta/ }));
+
+    const sheet = screen.getByTestId('evento-popover');
+    expect(sheet).toHaveAttribute('data-apresentacao', 'sheet');
+    expect(sheet).toHaveTextContent('Reunião de pauta');
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'editar-stub' }));
+    expect(await screen.findByTestId('evento-form')).toHaveTextContent('editar');
+
+    fireEvent.click(screen.getByRole('button', { name: 'fechar-evento-stub' }));
+    expect(screen.queryByTestId('evento-popover')).not.toBeInTheDocument();
+  });
+
+  it('a layer row opens the layer sheet', async () => {
+    camadasMock.itens = [
+      {
+        camada: 'posts',
+        id: 'posts:9',
+        inicio: '2026-10-06T13:00:00.000Z',
+        post: { id: 9, titulo: 'Carrossel', cliente_nome: 'Clínica', platform: 'instagram' },
+        estado: 'agendado',
+      },
+    ];
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: /Posts agendados/ }));
+    expect(screen.getByTestId('camada-popover')).toHaveAttribute('data-apresentacao', 'sheet');
+  });
+
+  it('the arrows move the week and Hoje comes back', async () => {
+    renderTab();
+    await screen.findByRole('button', { name: /Reunião de pauta/ });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima semana' }));
+    await waitFor(() =>
+      expect(agendaStore.listAgenda).toHaveBeenLastCalledWith(
+        new Date(2026, 9, 12),
+        new Date(2026, 9, 19),
+      ),
+    );
+    expect(screen.getByText('Nenhum evento neste período.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hoje' }));
+    expect(await screen.findByRole('button', { name: /Reunião de pauta/ })).toBeInTheDocument();
+  });
+
+  it('Mês: compact grid of the month (6-week range), the selected day listed under it', async () => {
+    renderTab();
+    await screen.findByRole('button', { name: /Reunião de pauta/ });
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Mês' }));
+    expect(screen.queryByTestId('fullcalendar')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Outubro de 2026/ })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(agendaStore.listAgenda).toHaveBeenLastCalledWith(
+        new Date(2026, 8, 28),
+        new Date(2026, 10, 9),
+      ),
+    );
+    // Today (the 7th) is selected and has nothing.
+    expect(screen.getByRole('button', { name: /^7 de outubro/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByText('Nenhum evento neste dia.')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: '5 de outubro, 3 itens' }));
+    expect(screen.getByRole('button', { name: /Reunião de pauta/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Segunda, 5 de outubro' })).toBeInTheDocument();
+  });
+
+  it('Dia mounts FullCalendar on the selected day, read-only: no select, no drag', async () => {
+    renderTab();
+    await screen.findByRole('button', { name: /Reunião de pauta/ });
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Dia' }));
+    await screen.findByTestId('fullcalendar');
+    expect(fc.props!.initialView).toBe('timeGridDay');
+    expect(fc.props!.initialDate).toEqual(new Date(2026, 9, 7, 10));
+    expect(fc.props!.selectable).toBe(false);
+    const eventos = fc.props!.events as Array<{ editable?: boolean }>;
+    expect(eventos.length).toBeGreaterThan(0);
+    expect(eventos.every((e) => e.editable === false)).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo dia' }));
+    expect(fc.api.next).toHaveBeenCalled();
+  });
+
+  it('"+" opens the full editor; without calendario:editar there is no "+"', async () => {
+    const { unmount } = renderTab();
+    fireEvent.click(screen.getByRole('button', { name: 'Criar evento' }));
+    expect(await screen.findByTestId('evento-form')).toHaveTextContent('criar');
+    unmount();
+
+    podeEditar = false;
+    renderTab();
+    expect(screen.queryByRole('button', { name: 'Criar evento' })).not.toBeInTheDocument();
+  });
+
+  it('filters sheet: people and layers as switches, the badge counts what is hidden, Sincronizar opens the feed', async () => {
+    renderTab();
+    await screen.findByRole('button', { name: /1:1 Bruno e Carla/ });
+    // Defaults (everyone, commemorative dates off) are not "filtered".
+    expect(document.querySelector('.phone-icon-button__badge')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pessoas e filtros' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Pessoas e filtros' });
+    expect(within(sheet).getByRole('radio', { name: 'Toda a equipe' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    // The sheet is modal: the page under it is aria-hidden, so query it by text / hidden.
+    expect(screen.getByText('1:1 Bruno e Carla')).toBeInTheDocument();
+    // Hidden only once nobody it involves is shown (organizer Bruno, participant Carla).
+    fireEvent.click(within(sheet).getByRole('switch', { name: 'Bruno Costa' }));
+    fireEvent.click(within(sheet).getByRole('switch', { name: 'Carla Mendes' }));
+    await waitFor(() => expect(screen.queryByText('1:1 Bruno e Carla')).not.toBeInTheDocument());
+    expect(screen.getByText('Reunião de pauta')).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole('button', { name: 'Pessoas e filtros', hidden: true })
+        .querySelector('.phone-icon-button__badge'),
+    ).toHaveTextContent('2');
+    expect(within(sheet).getByRole('switch', { name: 'Posts agendados' })).toBeInTheDocument();
+    expect(within(sheet).getByText(/aguardando sua resposta/)).toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Sincronizar com seu calendário' }));
+    expect(await screen.findByTestId('feed-dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Pessoas e filtros' })).not.toBeInTheDocument();
+  });
+
+  it('?evento= opens the event sheet on the week it is in', async () => {
+    vi.mocked(agendaStore.getAgendaOcorrencia).mockResolvedValue(CONVIDADO);
+    renderTab('/calendario?evento=2');
+
+    const sheet = await screen.findByTestId('evento-popover', {}, { timeout: 3000 });
+    expect(sheet).toHaveAttribute('data-apresentacao', 'sheet');
+    expect(sheet).toHaveTextContent('Gravação: Clínica Sorriso');
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(''));
+  });
+
+  it('shrinking from desktop drops FullCalendar for the phone Lista', async () => {
+    stubMatchMedia(() => false);
+    renderTab();
+    await screen.findByTestId('fullcalendar');
+
+    resizeTo(PHONE);
+
+    await waitFor(() => expect(screen.queryByTestId('fullcalendar')).not.toBeInTheDocument());
+    expect(screen.getByRole('radio', { name: 'Lista' })).toHaveAttribute('aria-checked', 'true');
   });
 });
 
