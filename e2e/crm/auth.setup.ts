@@ -8,6 +8,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const authDir = path.join(__dirname, '..', '.auth');
 const authFile = path.join(authDir, 'crm-user.json');
 
+// Without the E2E secrets there is nobody to log in as: skip (the dependent crm and
+// crm-phone specs skip on the same condition) instead of failing on fill(undefined).
+setup.skip(!process.env.E2E_CRM_EMAIL || !process.env.E2E_CRM_PASSWORD, 'E2E_CRM_* not set');
+
 setup('authenticate crm user', async ({ page }) => {
   mkdirSync(authDir, { recursive: true });
 

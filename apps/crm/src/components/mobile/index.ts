@@ -40,3 +40,7 @@ export type {
   FilterCustomSection,
   FilterList,
 } from './PhoneFiltersSheet';
+export { PhonePageHeader } from './PhonePageHeader';
+export type { PhonePageHeaderProps } from './PhonePageHeader';
+export { PhoneNavBar } from './PhoneNavBar';
+export type { PhoneNavBarProps } from './PhoneNavBar';

@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
 
+// Same guard as auth.setup.ts: without the E2E secrets there is no saved session.
+test.skip(!process.env.E2E_CRM_EMAIL || !process.env.E2E_CRM_PASSWORD, 'E2E_CRM_* not set');
+
 test('dashboard loads after auth', async ({ page }) => {
   await page.goto('/dashboard');
 

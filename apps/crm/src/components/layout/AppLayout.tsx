@@ -14,6 +14,7 @@ import FinancialRestrictionScreen from './FinancialRestrictionScreen';
 import { PageSkeleton } from '../ui/skeletons';
 import { GuideProvider } from '../guide/GuideContext';
 import { GuidePill } from '../guide/GuidePill';
+import { PhoneLayoutContext, usePhoneChromeController } from './PhoneLayoutContext';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 const GuideDialog = lazy(() => import('../guide/GuideDialog'));
@@ -169,6 +170,9 @@ export default function AppLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarPinned, toggleSidebarPinned] = useSidebarPinned();
   const sidebarCollapsible = !isTablet && !isMobile;
+  // Pages opt into phone chrome changes (own page header, hidden tab bar) through
+  // usePhoneChrome; the attributes on .app-container drive the CSS (phone only).
+  const phoneChrome = usePhoneChromeController(isMobile);
   const financialOutcome = financialGuardOutcome(location.pathname, canSeeFinancials);
   const contractOutcome = contractGuardOutcome(location.pathname, can('contratos', 'ver'));
   // The two guards cover disjoint path sets, so at most one is ever not
@@ -199,64 +203,68 @@ export default function AppLayout() {
 
   return (
     <GuideProvider>
-      <div
-        className="app-container"
-        data-sidebar-collapsed={(sidebarCollapsible && !sidebarPinned) || undefined}
-      >
-        {isMobile ? (
-          <PhoneShellHeader />
-        ) : (
-          <TopBar
-            showHamburger={isTablet}
-            isDrawerOpen={drawerOpen}
-            onHamburgerClick={() => setDrawerOpen((v) => !v)}
+      <PhoneLayoutContext.Provider value={phoneChrome.contextValue}>
+        <div
+          className="app-container"
+          data-sidebar-collapsed={(sidebarCollapsible && !sidebarPinned) || undefined}
+          {...phoneChrome.attributes}
+        >
+          {isMobile ? (
+            // A page with its own PhonePageHeader carries the bell and help links itself.
+            !phoneChrome.chrome.pageHeader && <PhoneShellHeader />
+          ) : (
+            <TopBar
+              showHamburger={isTablet}
+              isDrawerOpen={drawerOpen}
+              onHamburgerClick={() => setDrawerOpen((v) => !v)}
+            />
+          )}
+
+          <Suspense fallback={null}>
+            <GlobalBannerContainer>
+              <DunningBanner />
+              <IncidentBanner />
+            </GlobalBannerContainer>
+          </Suspense>
+
+          <Sidebar
+            isDrawer={isTablet}
+            isOpen={drawerOpen}
+            onClose={closeDrawer}
+            collapsible={sidebarCollapsible}
+            pinned={sidebarPinned}
+            onTogglePinned={toggleSidebarPinned}
           />
-        )}
 
-        <Suspense fallback={null}>
-          <GlobalBannerContainer>
-            <DunningBanner />
-            <IncidentBanner />
-          </GlobalBannerContainer>
-        </Suspense>
+          {isTablet && drawerOpen && (
+            <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
+          )}
 
-        <Sidebar
-          isDrawer={isTablet}
-          isOpen={drawerOpen}
-          onClose={closeDrawer}
-          collapsible={sidebarCollapsible}
-          pinned={sidebarPinned}
-          onTogglePinned={toggleSidebarPinned}
-        />
-
-        {isTablet && drawerOpen && (
-          <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
-        )}
-
-        <main className="main-content" id="app">
-          {/* On phones the related-articles button lives in PhoneShellHeader. */}
-          {!isMobile && <ContextHelpLinks />}
-          {/* The page chunks are lazy: on a cold load the shell stays up and only the
+          <main className="main-content" id="app">
+            {/* On phones the related-articles button lives in PhoneShellHeader. */}
+            {!isMobile && <ContextHelpLinks />}
+            {/* The page chunks are lazy: on a cold load the shell stays up and only the
               content area waits. In-app navigations run in a transition, so they keep the
               previous page on screen instead of falling back here. */}
-          {outcome === 'content' && (
-            <Suspense fallback={<PageSkeleton />}>
-              <Outlet />
-            </Suspense>
-          )}
-          {outcome === 'loading' && <PageSkeleton />}
-          {outcome === 'denied' && <FinancialRestrictionScreen variant={deniedScreen} />}
-        </main>
+            {outcome === 'content' && (
+              <Suspense fallback={<PageSkeleton />}>
+                <Outlet />
+              </Suspense>
+            )}
+            {outcome === 'loading' && <PageSkeleton />}
+            {outcome === 'denied' && <FinancialRestrictionScreen variant={deniedScreen} />}
+          </main>
 
-        <MobileNav />
-        <GuidePill />
-        <Suspense fallback={null}>
-          <GuideDialog />
-        </Suspense>
-        <Suspense fallback={null}>
-          <GlobalPopupHost />
-        </Suspense>
-      </div>
+          <MobileNav />
+          <GuidePill />
+          <Suspense fallback={null}>
+            <GuideDialog />
+          </Suspense>
+          <Suspense fallback={null}>
+            <GlobalPopupHost />
+          </Suspense>
+        </div>
+      </PhoneLayoutContext.Provider>
     </GuideProvider>
   );
 }
