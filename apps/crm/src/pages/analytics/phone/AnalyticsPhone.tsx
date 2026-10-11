@@ -436,7 +436,6 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
       {accounts.length >= 2 && (
         <BarList
           header="Benchmarking de engajamento"
-          aria-label="Benchmarking de engajamento"
           footer={`Média do portfólio: ${formatPct(benchmarkAvg)}. Verde está acima da média.`}
           items={[...accounts]
             .sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg)
@@ -456,7 +455,6 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
       {accounts.length >= 2 && specialtyStats.length >= 2 && (
         <BarList
           header="Por especialidade"
-          aria-label="Por especialidade"
           items={specialtyStats.map((s) => ({
             key: s.specialty,
             label: s.specialty,

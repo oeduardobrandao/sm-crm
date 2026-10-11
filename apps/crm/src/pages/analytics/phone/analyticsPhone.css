@@ -226,6 +226,11 @@
   cursor: pointer;
 }
 
+/* "Mostrar todas as etapas" right under a list. */
+.phone-an-more-button {
+  margin: -14px 0 12px 16px;
+}
+
 /* ---- Callout card (Contas silenciosas) ---- */
 .phone-an-callout {
   margin: 0 0 14px;
