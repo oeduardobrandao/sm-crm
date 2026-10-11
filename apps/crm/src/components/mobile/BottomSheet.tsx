@@ -15,7 +15,11 @@ import { useSheetHistory } from './useSheetHistory';
 import { useReturnFocus } from './useReturnFocus';
 import { SheetActionsContext } from './sheetActions';
 
-export type SheetDetent = 'medium' | 'large';
+/**
+ * `medium` is 55% of the screen, `large` nearly full height, `fit` the content's own height
+ * (capped at `large`): for short sheets such as a help text.
+ */
+export type SheetDetent = 'medium' | 'large' | 'fit';
 
 /** Drag distance (px) past which releasing steps down a detent or dismisses. */
 const DISMISS_DISTANCE = 110;
