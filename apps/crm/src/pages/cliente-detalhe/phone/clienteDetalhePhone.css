@@ -520,3 +520,14 @@ button.phone-cli-hero__photo:focus-visible {
   color: var(--phone-label-secondary);
   font-size: var(--phone-text-subhead);
 }
+
+/* ---- Filter chips above a list (Ideias, Briefing) ---- */
+.phone-cli-chips {
+  margin: 0 0 14px;
+}
+.phone-cli-row__meta {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
