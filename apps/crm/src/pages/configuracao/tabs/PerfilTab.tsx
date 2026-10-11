@@ -13,10 +13,13 @@ import { openConsentPreferences } from '@/lib/consent';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { getInitials } from '../../../store';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PerfilPhone } from './phone/PerfilPhone';
 
 /** Personal settings: profile, password, account details and sign-out. */
 export default function PerfilTab() {
   const { user, profile, can, signOut, refetchProfile } = useAuth();
+  const isPhone = !useIsDesktop(768);
   // The `configuracoes` tab itself is already gated on `configuracoes:ver`
   // at the tab layer (configTabs.ts, Task 12) -- mirrors that here. Was
   // `role === 'owner' || role === 'admin'`, which a custom role with the
@@ -100,6 +103,30 @@ export default function PerfilTab() {
   if (!user) return null;
 
   const initials = profile?.nome ? getInitials(profile.nome) : '??';
+
+  if (isPhone) {
+    return (
+      <PerfilPhone
+        user={user}
+        displayName={profile?.nome ?? user.email ?? ''}
+        initials={initials}
+        nome={{ value: pNome, onChange: setPNome }}
+        empresa={{ value: pEmpresa, onChange: setPEmpresa }}
+        telefone={{ value: pTelefone, onChange: setPTelefone }}
+        whatsapp={{ value: pWhatsapp, onChange: setPWhatsapp }}
+        marketingOptIn={pMarketingOptIn}
+        onMarketingOptInChange={setPMarketingOptIn}
+        profileSaving={profileLoading}
+        onSaveProfile={handleProfileSave}
+        senha={{ value: senha, onChange: setSenha }}
+        confirmar={{ value: confirmar, onChange: setConfirmar }}
+        passwordSaving={pwLoading}
+        onSavePassword={handlePasswordSave}
+        showRestriction={!canViewConfig}
+        onSignOut={signOut}
+      />
+    );
+  }
 
   return (
     <>

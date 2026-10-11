@@ -45,7 +45,9 @@ import {
   type PagarmeCheckoutResult,
 } from '@/services/billing';
 import { ceilPeriodEndToUtcDate } from '@/pages/configuracao/cobranca/plan-display';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { PagarmeLogo } from './PagarmeLogo';
+import './pagarmeCheckoutPhone.css';
 
 export interface PagarmeCheckoutDialogProps {
   open: boolean;
@@ -252,6 +254,9 @@ export function PagarmeCheckoutDialog({
   const [successResult, setSuccessResult] = useState<PagarmeCheckoutResult | null>(null);
   // Fires 'card_form_abandoned' at most once per open.
   const abandonedFiredRef = useRef(false);
+  // Phones (below 768px) get the full-screen layout. Not usePhoneLayout(): /comecar renders
+  // this outside AppLayout, where that context reports desktop.
+  const isPhone = !useIsDesktop(768);
 
   const schema = useMemo(() => buildSchema(mode), [mode]);
   const form = useForm<FormValues>({
@@ -401,6 +406,415 @@ export function PagarmeCheckoutDialog({
         ? `Seu teste grátis termina em ${formatUtcDateBR(successResult.trial_ends_at)}. Depois disso a cobrança de 12x começa automaticamente.`
         : 'Sua assinatura está ativa.';
 
+  const formTitle =
+    mode === 'checkout'
+      ? `Assinar o plano ${plan?.name}`
+      : mode === 'switch'
+        ? 'Trocar para o anual em 12x'
+        : 'Atualizar cartão';
+
+  const formDescription =
+    mode === 'checkout' || mode === 'switch'
+      ? 'Anual no cartão de crédito'
+      : 'A próxima cobrança usa o novo cartão.';
+
+  const planSummary = (
+    <>
+      {(mode === 'checkout' || mode === 'switch') && plan && (
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-2xl bg-muted px-4 py-2">
+          <p className="whitespace-nowrap">
+            <span className="text-xl font-bold tracking-tight">{`12x de ${formatBRL(plan.pagarme_installment_cents)}`}</span>{' '}
+            <span className="text-sm">sem juros</span>
+          </p>
+          <p className="text-sm text-muted-foreground">{`total ${formatBRL(plan.pagarme_installment_cents * 12)}/ano`}</p>
+        </div>
+      )}
+    </>
+  );
+
+  const payUpfront = (
+    <>
+      {mode === 'checkout' && plan && onPayUpfront && (
+        <p className="text-xs text-muted-foreground">
+          {`À vista sai por ${formatBRL(plan.price_brl_annual)}. `}
+          <button
+            type="button"
+            className="underline underline-offset-2 disabled:no-underline disabled:opacity-50"
+            onClick={onPayUpfront}
+            disabled={saving}
+          >
+            Pagar à vista
+          </button>
+        </p>
+      )}
+    </>
+  );
+
+  const cardFields = (
+    <>
+      <FormField
+        control={form.control}
+        name="cardNumber"
+        render={({ field }) => (
+          <FormItem className={ITEM_CLASS}>
+            <FormLabel className="text-xs">Número do cartão</FormLabel>
+            {/* O wrapper do ícone fica FORA do FormControl: o Slot precisa do Input
+              como filho direto para o id/aria cair no input (senão o label quebra). */}
+            <div className="relative">
+              <CreditCard
+                aria-hidden="true"
+                className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
+              />
+              <FormControl>
+                <Input
+                  {...field}
+                  onChange={(e) => field.onChange(maskCardNumber(e.target.value))}
+                  placeholder="0000 0000 0000 0000"
+                  autoComplete="cc-number"
+                  inputMode="numeric"
+                  className={`${FIELD_CLASS} pl-11 ph-no-capture`}
+                />
+              </FormControl>
+            </div>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name="holderName"
+        render={({ field }) => (
+          <FormItem className={ITEM_CLASS}>
+            <FormLabel className="text-xs">Nome impresso no cartão</FormLabel>
+            <FormControl>
+              <Input
+                {...field}
+                placeholder="Como aparece no cartão"
+                autoComplete="cc-name"
+                className={`${FIELD_CLASS} ph-no-capture`}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <FormField
+          control={form.control}
+          name="expiry"
+          render={({ field }) => (
+            <FormItem className={ITEM_CLASS}>
+              <FormLabel className="text-xs">Validade</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onChange={(e) => field.onChange(maskExpiry(e.target.value))}
+                  placeholder="MM/AA"
+                  autoComplete="cc-exp"
+                  inputMode="numeric"
+                  className={`${FIELD_CLASS} ph-no-capture`}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="cvv"
+          render={({ field }) => (
+            <FormItem className={ITEM_CLASS}>
+              <FormLabel className="text-xs">CVV</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onChange={(e) => field.onChange(onlyDigits(e.target.value).slice(0, 4))}
+                  placeholder="123"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="cc-csc"
+                  className={`${FIELD_CLASS} ph-no-capture`}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+      {(mode === 'checkout' || mode === 'switch') && (
+        <div className="grid grid-cols-2 gap-3">
+          <FormField
+            control={form.control}
+            name="document"
+            render={({ field }) => (
+              <FormItem className={ITEM_CLASS}>
+                <FormLabel className="text-xs">CPF ou CNPJ</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    onChange={(e) => field.onChange(maskDocument(e.target.value))}
+                    placeholder="000.000.000-00"
+                    inputMode="numeric"
+                    className={`${FIELD_CLASS} ph-no-capture`}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="phone"
+            render={({ field }) => (
+              <FormItem className={ITEM_CLASS}>
+                <FormLabel className="text-xs">Celular</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    onChange={(e) => field.onChange(maskPhone(e.target.value))}
+                    placeholder="(11) 99999-0000"
+                    autoComplete="tel"
+                    inputMode="numeric"
+                    className={FIELD_CLASS}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+      )}
+      <div className="grid grid-cols-[2fr_3fr] gap-3">
+        <FormField
+          control={form.control}
+          name="cep"
+          render={({ field }) => (
+            <FormItem className={ITEM_CLASS}>
+              <FormLabel className="text-xs">CEP</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onChange={(e) => field.onChange(maskCep(e.target.value))}
+                  placeholder="00000-000"
+                  autoComplete="postal-code"
+                  inputMode="numeric"
+                  className={FIELD_CLASS}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="line1"
+          render={({ field }) => (
+            <FormItem className={ITEM_CLASS}>
+              <FormLabel className="text-xs">Endereço de cobrança</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  placeholder="Rua, número"
+                  autoComplete="address-line1"
+                  className={FIELD_CLASS}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+      <div className="grid grid-cols-[2fr_1fr] gap-3">
+        <FormField
+          control={form.control}
+          name="city"
+          render={({ field }) => (
+            <FormItem className={ITEM_CLASS}>
+              <FormLabel className="text-xs">Cidade</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  placeholder="São Paulo"
+                  autoComplete="address-level2"
+                  className={FIELD_CLASS}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="state"
+          render={({ field }) => (
+            <FormItem className={ITEM_CLASS}>
+              <FormLabel className="text-xs">UF</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onChange={(e) =>
+                    field.onChange(
+                      e.target.value
+                        .toUpperCase()
+                        .replace(/[^A-Z]/g, '')
+                        .slice(0, 2),
+                    )
+                  }
+                  placeholder="SP"
+                  autoComplete="address-level1"
+                  className={FIELD_CLASS}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    </>
+  );
+
+  const formNotes = (
+    <>
+      {mode === 'checkout' && trialEligible && (
+        <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+          <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            {trialEndPreview
+              ? `30 dias grátis. A primeira parcela só é cobrada em ${formatUtcDateBR(trialEndPreview)} e você pode cancelar antes disso.`
+              : '30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes disso.'}
+          </p>
+        </div>
+      )}
+
+      {mode === 'switch' && (
+        <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+          <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            {firstChargeAt
+              ? `Sem cobrança agora. A primeira parcela está prevista para ${formatUtcDateBR(firstChargeAt)}, quando termina o período que você já pagou.`
+              : 'Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.'}
+          </p>
+        </div>
+      )}
+    </>
+  );
+
+  const securityNote = (
+    <>
+      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <div className="flex items-start gap-2">
+          <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+          <p>
+            Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o número do seu
+            cartão.
+          </p>
+        </div>
+        <PagarmeLogo className="h-6 w-auto shrink-0" />
+      </div>
+    </>
+  );
+
+  const submitButton = (
+    <Button
+      type="submit"
+      disabled={saving}
+      className="mb-0 h-10 w-full rounded-2xl text-[15px] font-semibold"
+    >
+      {saving ? 'Processando...' : ctaLabel}
+    </Button>
+  );
+  const guardDismiss = {
+    onEscapeKeyDown: (e: KeyboardEvent) => {
+      // Belt-and-suspenders with the `saving` check inside handleClose: block Radix's
+      // internal dismiss at the source too, so a request in flight never even reaches
+      // onOpenChange(false) via Escape.
+      if (saving) e.preventDefault();
+    },
+    onInteractOutside: (e: Event) => {
+      // Same guard for overlay clicks and any other outside interaction (covers pointerdown
+      // and focus-outside dismissal alike — see the house DialogContent's own onConfirmClose
+      // feature, which relies on this same event for its own close guard).
+      if (saving) e.preventDefault();
+    },
+  };
+
+  if (isPhone) {
+    // Phones: full screen, a nav bar with Fechar, the fields in one column and the primary
+    // action in a bar pinned to the bottom. Same form, fields, validation and submit.
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          if (!o) handleClose();
+        }}
+      >
+        <DialogContent
+          layout="fullscreen"
+          className="pagarme-checkout-dialog phone-kit phone-pagarme-checkout"
+          {...guardDismiss}
+        >
+          {step === 'success' ? (
+            <>
+              <header className="phone-pagarme-checkout__nav">
+                <span />
+                <DialogTitle className="phone-pagarme-checkout__nav-title">
+                  {successTitle}
+                </DialogTitle>
+                <span />
+              </header>
+              <div className="phone-pagarme-checkout__body">
+                <DialogDescription className="phone-pagarme-checkout__lead">
+                  {successDescription}
+                </DialogDescription>
+              </div>
+              <div className="phone-pagarme-checkout__bar">
+                <Button
+                  onClick={handleClose}
+                  className="phone-pagarme-checkout__submit h-[50px] w-full rounded-2xl text-[17px] font-semibold"
+                >
+                  {source === 'onboarding' ? 'Ir para o painel' : 'Fechar'}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <header className="phone-pagarme-checkout__nav">
+                <button
+                  type="button"
+                  className="phone-pagarme-checkout__close"
+                  onClick={handleClose}
+                  disabled={saving}
+                >
+                  Fechar
+                </button>
+                <DialogTitle className="phone-pagarme-checkout__nav-title">{formTitle}</DialogTitle>
+                <span />
+              </header>
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="phone-pagarme-checkout__form"
+                >
+                  <div className="phone-pagarme-checkout__body">
+                    <DialogDescription className="phone-pagarme-checkout__lead">
+                      {formDescription}
+                    </DialogDescription>
+                    {planSummary}
+                    {payUpfront}
+                    <div className="phone-pagarme-checkout__fields">{cardFields}</div>
+                    {formNotes}
+                    {securityNote}
+                  </div>
+                  <div className="phone-pagarme-checkout__bar">{submitButton}</div>
+                </form>
+              </Form>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog
       open={open}
@@ -410,18 +824,7 @@ export function PagarmeCheckoutDialog({
     >
       <DialogContent
         className="pagarme-checkout-dialog sm:max-w-[540px] sm:rounded-3xl"
-        onEscapeKeyDown={(e) => {
-          // Belt-and-suspenders with the `saving` check inside handleClose: block Radix's
-          // internal dismiss at the source too, so a request in flight never even reaches
-          // onOpenChange(false) via Escape.
-          if (saving) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          // Same guard for overlay clicks and any other outside interaction (covers pointerdown
-          // and focus-outside dismissal alike — see the house DialogContent's own onConfirmClose
-          // feature, which relies on this same event for its own close guard).
-          if (saving) e.preventDefault();
-        }}
+        {...guardDismiss}
       >
         {step === 'success' ? (
           <>
@@ -444,305 +847,23 @@ export function PagarmeCheckoutDialog({
              caber num fold de notebook sem scroll interno. */
           <div className="-my-3 flex flex-col gap-2">
             <DialogHeader className="space-y-1">
-              <DialogTitle className="text-xl font-bold tracking-tight">
-                {mode === 'checkout'
-                  ? `Assinar o plano ${plan?.name}`
-                  : mode === 'switch'
-                    ? 'Trocar para o anual em 12x'
-                    : 'Atualizar cartão'}
-              </DialogTitle>
-              <DialogDescription>
-                {mode === 'checkout' || mode === 'switch'
-                  ? 'Anual no cartão de crédito'
-                  : 'A próxima cobrança usa o novo cartão.'}
-              </DialogDescription>
+              <DialogTitle className="text-xl font-bold tracking-tight">{formTitle}</DialogTitle>
+              <DialogDescription>{formDescription}</DialogDescription>
             </DialogHeader>
 
-            {(mode === 'checkout' || mode === 'switch') && plan && (
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-2xl bg-muted px-4 py-2">
-                <p className="whitespace-nowrap">
-                  <span className="text-xl font-bold tracking-tight">{`12x de ${formatBRL(plan.pagarme_installment_cents)}`}</span>{' '}
-                  <span className="text-sm">sem juros</span>
-                </p>
-                <p className="text-sm text-muted-foreground">{`total ${formatBRL(plan.pagarme_installment_cents * 12)}/ano`}</p>
-              </div>
-            )}
+            {planSummary}
 
-            {mode === 'checkout' && plan && onPayUpfront && (
-              <p className="text-xs text-muted-foreground">
-                {`À vista sai por ${formatBRL(plan.price_brl_annual)}. `}
-                <button
-                  type="button"
-                  className="underline underline-offset-2 disabled:no-underline disabled:opacity-50"
-                  onClick={onPayUpfront}
-                  disabled={saving}
-                >
-                  Pagar à vista
-                </button>
-              </p>
-            )}
+            {payUpfront}
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-2">
-                <FormField
-                  control={form.control}
-                  name="cardNumber"
-                  render={({ field }) => (
-                    <FormItem className={ITEM_CLASS}>
-                      <FormLabel className="text-xs">Número do cartão</FormLabel>
-                      {/* O wrapper do ícone fica FORA do FormControl: o Slot precisa do Input
-                          como filho direto para o id/aria cair no input (senão o label quebra). */}
-                      <div className="relative">
-                        <CreditCard
-                          aria-hidden="true"
-                          className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
-                        />
-                        <FormControl>
-                          <Input
-                            {...field}
-                            onChange={(e) => field.onChange(maskCardNumber(e.target.value))}
-                            placeholder="0000 0000 0000 0000"
-                            autoComplete="cc-number"
-                            inputMode="numeric"
-                            className={`${FIELD_CLASS} pl-11 ph-no-capture`}
-                          />
-                        </FormControl>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="holderName"
-                  render={({ field }) => (
-                    <FormItem className={ITEM_CLASS}>
-                      <FormLabel className="text-xs">Nome impresso no cartão</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          placeholder="Como aparece no cartão"
-                          autoComplete="cc-name"
-                          className={`${FIELD_CLASS} ph-no-capture`}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField
-                    control={form.control}
-                    name="expiry"
-                    render={({ field }) => (
-                      <FormItem className={ITEM_CLASS}>
-                        <FormLabel className="text-xs">Validade</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            onChange={(e) => field.onChange(maskExpiry(e.target.value))}
-                            placeholder="MM/AA"
-                            autoComplete="cc-exp"
-                            inputMode="numeric"
-                            className={`${FIELD_CLASS} ph-no-capture`}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="cvv"
-                    render={({ field }) => (
-                      <FormItem className={ITEM_CLASS}>
-                        <FormLabel className="text-xs">CVV</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            onChange={(e) => field.onChange(onlyDigits(e.target.value).slice(0, 4))}
-                            placeholder="123"
-                            type="password"
-                            inputMode="numeric"
-                            autoComplete="cc-csc"
-                            className={`${FIELD_CLASS} ph-no-capture`}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                {(mode === 'checkout' || mode === 'switch') && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      control={form.control}
-                      name="document"
-                      render={({ field }) => (
-                        <FormItem className={ITEM_CLASS}>
-                          <FormLabel className="text-xs">CPF ou CNPJ</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              onChange={(e) => field.onChange(maskDocument(e.target.value))}
-                              placeholder="000.000.000-00"
-                              inputMode="numeric"
-                              className={`${FIELD_CLASS} ph-no-capture`}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem className={ITEM_CLASS}>
-                          <FormLabel className="text-xs">Celular</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              onChange={(e) => field.onChange(maskPhone(e.target.value))}
-                              placeholder="(11) 99999-0000"
-                              autoComplete="tel"
-                              inputMode="numeric"
-                              className={FIELD_CLASS}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
-                <div className="grid grid-cols-[2fr_3fr] gap-3">
-                  <FormField
-                    control={form.control}
-                    name="cep"
-                    render={({ field }) => (
-                      <FormItem className={ITEM_CLASS}>
-                        <FormLabel className="text-xs">CEP</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            onChange={(e) => field.onChange(maskCep(e.target.value))}
-                            placeholder="00000-000"
-                            autoComplete="postal-code"
-                            inputMode="numeric"
-                            className={FIELD_CLASS}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="line1"
-                    render={({ field }) => (
-                      <FormItem className={ITEM_CLASS}>
-                        <FormLabel className="text-xs">Endereço de cobrança</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="Rua, número"
-                            autoComplete="address-line1"
-                            className={FIELD_CLASS}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="grid grid-cols-[2fr_1fr] gap-3">
-                  <FormField
-                    control={form.control}
-                    name="city"
-                    render={({ field }) => (
-                      <FormItem className={ITEM_CLASS}>
-                        <FormLabel className="text-xs">Cidade</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="São Paulo"
-                            autoComplete="address-level2"
-                            className={FIELD_CLASS}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="state"
-                    render={({ field }) => (
-                      <FormItem className={ITEM_CLASS}>
-                        <FormLabel className="text-xs">UF</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            onChange={(e) =>
-                              field.onChange(
-                                e.target.value
-                                  .toUpperCase()
-                                  .replace(/[^A-Z]/g, '')
-                                  .slice(0, 2),
-                              )
-                            }
-                            placeholder="SP"
-                            autoComplete="address-level1"
-                            className={FIELD_CLASS}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                {cardFields}
 
-                {mode === 'checkout' && trialEligible && (
-                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                    <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-                    <p>
-                      {trialEndPreview
-                        ? `30 dias grátis. A primeira parcela só é cobrada em ${formatUtcDateBR(trialEndPreview)} e você pode cancelar antes disso.`
-                        : '30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes disso.'}
-                    </p>
-                  </div>
-                )}
+                {formNotes}
 
-                {mode === 'switch' && (
-                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                    <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-                    <p>
-                      {firstChargeAt
-                        ? `Sem cobrança agora. A primeira parcela está prevista para ${formatUtcDateBR(firstChargeAt)}, quando termina o período que você já pagou.`
-                        : 'Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.'}
-                    </p>
-                  </div>
-                )}
+                {submitButton}
 
-                <Button
-                  type="submit"
-                  disabled={saving}
-                  className="mb-0 h-10 w-full rounded-2xl text-[15px] font-semibold"
-                >
-                  {saving ? 'Processando...' : ctaLabel}
-                </Button>
-
-                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <div className="flex items-start gap-2">
-                    <Lock aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
-                    <p>
-                      Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o
-                      número do seu cartão.
-                    </p>
-                  </div>
-                  <PagarmeLogo className="h-6 w-auto shrink-0" />
-                </div>
+                {securityNote}
               </form>
             </Form>
           </div>

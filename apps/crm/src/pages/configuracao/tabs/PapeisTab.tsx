@@ -31,6 +31,7 @@ import {
   type PermissionLevel,
   type PermissionModule,
 } from '@/lib/permissions';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useAuth } from '../../../context/AuthContext';
 import {
   createWorkspaceRole,
@@ -40,126 +41,27 @@ import {
   updateWorkspaceRole,
   type WorkspaceRole,
 } from '../../../store';
-
-const MODULE_LABELS: Record<PermissionModule, string> = {
-  clientes: 'Clientes',
-  entregas: 'Entregas',
-  calendario: 'Calendário',
-  aprovacoes: 'Aprovações',
-  arquivos: 'Arquivos',
-  ideias: 'Ideias',
-  tarefas: 'Tarefas',
-  leads: 'Leads',
-  financeiro: 'Financeiro',
-  contratos: 'Contratos',
-  equipe: 'Equipe',
-  analytics: 'Analytics e Relatórios',
-  automacoes: 'Automações',
-  configuracoes: 'Configurações do workspace',
-};
-
-/** Group headers reused as-is for the list's expanded chip rows (Pode editar /
- * Pode ver / Sem acesso, in that order — see PermissionChipGroups). */
-const LEVEL_LABELS: Record<PermissionLevel, string> = {
-  none: 'Sem acesso',
-  ver: 'Pode ver',
-  editar: 'Pode editar',
-};
-
-/** Short labels for the form's 3-state segmented control (variant 1 of the
- * approved mockup drops the "Pode" prefix on Ver/Editar to fit the pill). */
-const LEVEL_SEGMENT_LABELS: Record<PermissionLevel, string> = {
-  none: 'Sem acesso',
-  ver: 'Ver',
-  editar: 'Editar',
-};
-
-/** Grouped single-column sections for the edit/create form (papeis-form-edicao,
- * variant 1 — "Lista única, agrupada por área"). Order matches the mockup. */
-const MODULE_GROUPS: { label: string; modules: PermissionModule[] }[] = [
-  {
-    label: 'Trabalho',
-    modules: ['entregas', 'calendario', 'aprovacoes', 'ideias', 'tarefas', 'arquivos'],
-  },
-  { label: 'Clientes e análise', modules: ['clientes', 'analytics', 'leads'] },
-  {
-    label: 'Gestão',
-    modules: ['financeiro', 'contratos', 'equipe', 'automacoes', 'configuracoes'],
-  },
-];
-
-/** Modules whose permission is enforced server-side (RLS / RPC), shown with the
- * "servidor" tag in the form per the mockup — the rest are CRM-UI-only gates. */
-const SERVER_ENFORCED_MODULES = new Set<PermissionModule>([
-  'leads',
-  'financeiro',
-  'contratos',
-  'equipe',
-  'automacoes',
-  'configuracoes',
-]);
-
-type RolePermissions = Record<PermissionModule, PermissionLevel>;
-
-function buildPermissions(level: PermissionLevel): RolePermissions {
-  return PERMISSION_MODULES.reduce((acc, mod) => {
-    acc[mod] = level;
-    return acc;
-  }, {} as RolePermissions);
-}
-
-const ADMIN_PERMISSIONS: RolePermissions = buildPermissions('editar');
-const BLANK_PERMISSIONS: RolePermissions = buildPermissions('none');
-
-type PresetChoice = 'administrador' | 'agente' | 'em_branco';
-
-const PRESET_ORDER: PresetChoice[] = ['agente', 'administrador', 'em_branco'];
-const PRESET_LABELS: Record<PresetChoice, string> = {
-  agente: 'Agente',
-  administrador: 'Administrador',
-  em_branco: 'Em branco',
-};
-
-function presetPermissions(preset: PresetChoice): RolePermissions {
-  if (preset === 'administrador') return { ...ADMIN_PERMISSIONS };
-  if (preset === 'agente') return { ...AGENT_ROLE_PRESET };
-  return { ...BLANK_PERMISSIONS };
-}
-
-/** Merges a stored (possibly partial/legacy-shaped) permissions jsonb onto the full module set. */
-function normalizePermissions(raw: Record<string, string> | null | undefined): RolePermissions {
-  const merged = { ...BLANK_PERMISSIONS };
-  for (const mod of PERMISSION_MODULES) {
-    const value = raw?.[mod];
-    if (value === 'none' || value === 'ver' || value === 'editar') merged[mod] = value;
-  }
-  return merged;
-}
-
-/** "N editar · N ver · N sem acesso", omitting any segment with a zero count
- * (a role with no "ver" modules never shows "0 ver"). Used for every role's
- * one-line summary except Administrador, which has a fixed override string. */
-function summarizePermissions(permissions: RolePermissions): string {
-  let editar = 0;
-  let ver = 0;
-  let none = 0;
-  for (const mod of PERMISSION_MODULES) {
-    const level = permissions[mod];
-    if (level === 'editar') editar += 1;
-    else if (level === 'ver') ver += 1;
-    else none += 1;
-  }
-  const parts: string[] = [];
-  if (editar > 0) parts.push(`${editar} editar`);
-  if (ver > 0) parts.push(`${ver} ver`);
-  if (none > 0) parts.push(`${none} sem acesso`);
-  return parts.join(' · ');
-}
-
-/** Fixed summary for Administrador — real Financeiro access varies per admin
- * (their own "Ver financeiro" switch on the Equipe tab), so a computed count
- * would be misleading; the mockup calls this out explicitly instead. */
-const ADMIN_SUMMARY = 'Edita tudo · Financeiro conforme o acesso de cada admin';
+import {
+  ADMIN_PERMISSION_OVERRIDES,
+  ADMIN_PERMISSIONS,
+  ADMIN_SUMMARY,
+  LEVEL_LABELS,
+  LEVEL_ORDER,
+  LEVEL_SEGMENT_LABELS,
+  MODULE_GROUPS,
+  MODULE_LABELS,
+  normalizePermissions,
+  PRESET_LABELS,
+  PRESET_ORDER,
+  presetPermissions,
+  SERVER_ENFORCED_MODULES,
+  summarizePermissions,
+  type PermissionOverrides,
+  type PresetChoice,
+  type RoleFormState,
+  type RolePermissions,
+} from './phone/papeisModel';
+import { PapeisPhone } from './phone/PapeisPhone';
 
 /**
  * Maps manage-workspace-roles error codes to user-facing copy.
@@ -187,24 +89,6 @@ function roleErrorMessage(err: unknown): string {
       return 'Algo deu errado. Tente novamente.';
   }
 }
-
-interface RoleFormState {
-  roleId: string | null;
-  nome: string;
-  permissions: RolePermissions;
-  preset: PresetChoice;
-}
-
-/** Text override for one module's chip, e.g. the Administrador card's
- * Financeiro chip (real access varies per admin, not a fixed level). */
-type PermissionOverrides = Partial<Record<PermissionModule, string>>;
-
-/** Financeiro access for a restricted admin depends on that member's own "Ver
- * financeiro" switch (Equipe tab) — never a fixed level, so the read-only
- * Administrador card must not claim one. */
-const ADMIN_PERMISSION_OVERRIDES: PermissionOverrides = {
-  financeiro: 'Conforme o acesso financeiro de cada admin',
-};
 
 interface ChipEntry {
   mod: PermissionModule;
@@ -502,7 +386,7 @@ function LevelSegmented({
   value: PermissionLevel;
   onChange: (level: PermissionLevel) => void;
 }) {
-  const levels: PermissionLevel[] = ['none', 'ver', 'editar'];
+  const levels = LEVEL_ORDER;
   const handleChange = (next: string) => {
     if (!next || next === value) return;
     onChange(next as PermissionLevel);
@@ -540,8 +424,9 @@ export default function PapeisTab() {
   const { workspaceRole } = useAuth();
   const isOwner = workspaceRole === 'owner';
   const queryClient = useQueryClient();
+  const isPhone = !useIsDesktop(768);
 
-  const { data: roles } = useQuery({
+  const { data: roles, isLoading: rolesLoading } = useQuery({
     queryKey: ['workspace-roles'],
     queryFn: getWorkspaceRoles,
     enabled: isOwner,
@@ -646,6 +531,31 @@ export default function PapeisTab() {
 
   const saving = createMutation.isPending || updateMutation.isPending;
   const editingMemberCount = form?.roleId ? (memberCounts?.[form.roleId] ?? 0) : 0;
+
+  if (isPhone) {
+    return (
+      <PapeisPhone
+        roles={customRoles}
+        rolesLoading={rolesLoading}
+        memberCounts={memberCounts}
+        form={form}
+        saving={saving}
+        onOpenCreate={openCreateDialog}
+        onOpenEdit={openEditDialog}
+        onCloseForm={closeDialog}
+        onNomeChange={(nome) => setForm((f) => (f ? { ...f, nome } : f))}
+        onPresetChange={handlePresetChange}
+        onLevelChange={handleLevelChange}
+        onSave={handleSave}
+        deleteTarget={deleteTarget}
+        onRequestDelete={setDeleteTarget}
+        onCancelDelete={() => setDeleteTarget(null)}
+        onConfirmDelete={(role, onDeleted) =>
+          deleteMutation.mutate(role.id, { onSuccess: onDeleted })
+        }
+      />
+    );
+  }
 
   return (
     <>

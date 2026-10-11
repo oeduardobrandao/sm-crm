@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,6 +59,13 @@ vi.mock('../../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ ...mockLimits, features: null }),
 }));
 
+// jsdom's matchMedia reports a phone; the first suite is desktop, the last one phone.
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => viewport.desktop }));
+vi.mock('@/components/layout/PhoneShellHeader', () => ({
+  PhoneShellActions: () => <div data-testid="shell-actions" />,
+}));
+
 import ArmazenamentoTab from '../ArmazenamentoTab';
 
 function renderTab() {
@@ -74,6 +81,7 @@ function renderTab() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  viewport.desktop = true;
   mockIsOwner = true;
   mockUsage = { usage: { storage_used_bytes: 2.1 * 1024 ** 3 } };
   mockLimits = {
@@ -139,5 +147,52 @@ describe('ArmazenamentoTab', () => {
 
     expect(screen.getByText(/Somente o dono do workspace/)).toBeInTheDocument();
     expect(workspaceStoreMock.getStorageAutoclean).not.toHaveBeenCalled();
+  });
+});
+
+describe('ArmazenamentoTab on phones', () => {
+  beforeEach(() => {
+    viewport.desktop = false;
+  });
+
+  it('renders the grouped screen and saves the policy picked in the sheets', async () => {
+    renderTab();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Armazenamento' }),
+    ).toBeInTheDocument();
+    const toggle = await screen.findByRole('switch', { name: 'Ativar limpeza automática' });
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
+
+    fireEvent.click(screen.getByRole('button', { name: /Quando remover/ }));
+    const sheet = await screen.findByRole('dialog', {
+      name: 'Quando remover a mídia após a publicação',
+    });
+    fireEvent.click(within(sheet).getByRole('button', { name: '7 dias' }));
+    await waitFor(() =>
+      expect(rpcMock).toHaveBeenCalledWith('storage_autoclean_preview', { p_delay_days: 7 }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Somente acima de/ }));
+    const threshold = await screen.findByRole('dialog', {
+      name: 'Somente quando o uso passar de',
+    });
+    fireEvent.click(within(threshold).getByRole('button', { name: 'Sempre' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }));
+    await waitFor(() =>
+      expect(workspaceStoreMock.updateStorageAutoclean).toHaveBeenCalledWith({
+        storage_autoclean_enabled: true,
+        storage_autoclean_delay_days: 7,
+        storage_autoclean_threshold_pct: null,
+      }),
+    );
+    expect(screen.getByText(/Última limpeza/)).toBeInTheDocument();
+  });
+
+  it('keeps the owner-only gate', () => {
+    mockIsOwner = false;
+    renderTab();
+    expect(screen.getByText(/Somente o dono do workspace/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Armazenamento' })).toBeInTheDocument();
   });
 });

@@ -4,7 +4,6 @@ import { useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { CardGridSkeleton } from '@/components/ui/skeletons';
-import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
@@ -15,6 +14,7 @@ import { VideoPlaylistHero } from './videos/VideoPlaylistHero';
 import { VideoResultCard } from './videos/VideoResultCard';
 import { useKbVideoSeries } from './videos/useKbVideos';
 import { filterVideos } from './videos/playlist';
+import { AjudaPhone } from './phone/AjudaPhone';
 
 export default function AjudaPage() {
   // `?q=` vem do item "Ver todos em Ajuda" da busca global (⌘K).
@@ -42,17 +42,28 @@ export default function AjudaPage() {
 
   const isSearching = search.trim().length > 0;
 
+  if (!isDesktop) {
+    return (
+      <AjudaPhone
+        search={search}
+        onSearchChange={setSearch}
+        requestedVideoSlug={searchParams.get('video')}
+        isLoading={isLoading}
+        isSearching={isSearching}
+        sections={sections}
+        articles={filteredArticles}
+        videos={filteredVideos}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {isDesktop ? (
-        <div className="header">
-          <div className="header-title">
-            <h1>Central de Ajuda</h1>
-          </div>
+      <div className="header">
+        <div className="header-title">
+          <h1>Central de Ajuda</h1>
         </div>
-      ) : (
-        <PhonePageHeader title="Central de Ajuda" />
-      )}
+      </div>
 
       <VideoPlaylistHero requestedSlug={searchParams.get('video')} />
 

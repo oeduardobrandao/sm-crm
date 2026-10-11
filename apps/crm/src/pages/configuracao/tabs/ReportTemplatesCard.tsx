@@ -44,6 +44,8 @@ import {
   updateReportTemplate,
   type ReportTemplateRow,
 } from '../../../services/reportTemplates';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ReportTemplatesPhone } from './phone/ReportTemplatesPhone';
 
 const LIST_KEY = ['report-templates'] as const;
 const detailKey = (id: string) => ['report-template', id] as const;
@@ -67,6 +69,7 @@ const META_STYLE = { fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft
 export function ReportTemplatesCard() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const isPhone = !useIsDesktop(768);
   const { data: templates = [], isLoading } = useQuery({
     queryKey: LIST_KEY,
     queryFn: listReportTemplates,
@@ -125,6 +128,55 @@ export function ReportTemplatesCard() {
   });
 
   const busy = create.isPending;
+
+  if (isPhone) {
+    // Phone: the same mutations behind a grouped list, a hold menu, a rename sheet and
+    // an action-sheet confirm. The desktop Dialog/AlertDialog/DropdownMenu never mount.
+    return (
+      <ReportTemplatesPhone
+        templates={templates}
+        isLoading={isLoading}
+        systemName={SYSTEM_TEMPLATE_NAME}
+        busy={busy}
+        onCreate={() => create.mutate({ name: 'Novo modelo', layout: buildSystemDefaultLayout() })}
+        onViewSystem={() => navigate('/relatorios/modelos/padrao')}
+        onDuplicateSystem={() =>
+          create.mutate({
+            name: `${SYSTEM_TEMPLATE_NAME} (cópia)`,
+            layout: buildSystemDefaultLayout(),
+          })
+        }
+        onEdit={(t) => navigate(`/relatorios/modelos/${t.id}`)}
+        onMakeDefault={(t) => makeDefault.mutate(t.id)}
+        makeDefaultPending={makeDefault.isPending}
+        onRename={setRenaming}
+        onDuplicate={(t) => create.mutate({ name: `Cópia de ${t.name}`, layout: t.layout })}
+        onDelete={setDeleting}
+        renaming={renaming}
+        renameValue={renameValue}
+        onRenameValueChange={setRenameValue}
+        onCloseRename={() => {
+          if (!rename.isPending) setRenaming(null);
+        }}
+        onSubmitRename={() =>
+          renaming && rename.mutate({ id: renaming.id, name: renameValue.trim() })
+        }
+        renamePending={rename.isPending}
+        deleting={deleting}
+        onConfirmDelete={() => {
+          // Clear the target right away (the sheet already closed): a failed delete
+          // must let the same row be confirmed again.
+          if (deleting) remove.mutate(deleting.id);
+          setDeleting(null);
+        }}
+        onCancelDelete={() => {
+          if (!remove.isPending) setDeleting(null);
+        }}
+        removePending={remove.isPending}
+        blockCount={blockCount}
+      />
+    );
+  }
 
   return (
     <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>

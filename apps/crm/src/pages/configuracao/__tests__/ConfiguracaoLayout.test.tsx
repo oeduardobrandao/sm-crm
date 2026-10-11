@@ -6,8 +6,19 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+// jsdom's matchMedia reports false (phone). The tab-strip suites below are desktop;
+// the phone suite at the end flips this.
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => viewport.desktop }));
+
+// The real actions need the KB query and notifications; their own suites cover them.
+vi.mock('@/components/layout/PhoneShellHeader', () => ({
+  PhoneShellActions: () => <div data-testid="shell-actions" />,
+}));
+
 import { useAuth } from '../../../context/AuthContext';
 import ConfiguracaoLayout from '../ConfiguracaoLayout';
+import ConfiguracaoIndex from '../ConfiguracaoIndex';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseAuth = vi.mocked(useAuth);
@@ -74,6 +85,7 @@ function renderAt(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/configuracao" element={<ConfiguracaoLayout />}>
+          <Route index element={<ConfiguracaoIndex />} />
           <Route path="perfil" element={<div>conteudo perfil</div>} />
           <Route path="membros" element={<div>conteudo membros</div>} />
           <Route path="cobranca" element={<div>conteudo cobranca</div>} />
@@ -89,7 +101,17 @@ function tabLabels() {
 }
 
 describe('ConfiguracaoLayout', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = true;
+  });
+
+  it('sends /configuracao to Perfil on desktop', () => {
+    setAuth('owner');
+    renderAt('/configuracao');
+    expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/perfil');
+    expect(screen.getByText('conteudo perfil')).toBeInTheDocument();
+  });
 
   it('renders one tab per section an owner may see', () => {
     setAuth('owner');
@@ -244,5 +266,75 @@ describe('ConfiguracaoLayout', () => {
     expect(tabLabels()).toEqual(['Perfil', 'Notificações']);
     expect(screen.queryByText('conteudo membros')).not.toBeInTheDocument();
     expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/perfil');
+  });
+});
+
+describe('ConfiguracaoLayout on phones', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = false;
+  });
+
+  function groupNames() {
+    return screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+  }
+
+  it('renders the Settings list at /configuracao instead of redirecting', () => {
+    setAuth('owner');
+    renderAt('/configuracao');
+    expect(screen.getByTestId('path')).toHaveTextContent(/^\/configuracao$/);
+    expect(screen.getByRole('heading', { level: 1, name: 'Configurações' })).toBeInTheDocument();
+    expect(groupNames()).toEqual(['Conta', 'Workspace', 'Avançado']);
+    // The profile row stands in for Perfil, named after the person.
+    expect(screen.getByRole('link', { name: 'Perfil: Débora Kristin' })).toHaveAttribute(
+      'href',
+      '/configuracao/perfil',
+    );
+    expect(screen.getByRole('link', { name: /Plano & Cobrança/ })).toHaveAttribute(
+      'href',
+      '/configuracao/cobranca',
+    );
+    // No desktop strip.
+    expect(screen.queryByRole('navigation', { name: 'Seções de configurações' })).toBeNull();
+  });
+
+  it('lists only the sections the role may open', () => {
+    setAuth('agent');
+    renderAt('/configuracao');
+    expect(groupNames()).toEqual(['Conta']);
+    expect(screen.getAllByRole('link').map((el) => el.getAttribute('href'))).toEqual([
+      '/configuracao/perfil',
+      '/configuracao/notificacoes',
+    ]);
+  });
+
+  it('renders a tab without the strip or the card shell', () => {
+    setAuth('owner');
+    const { container } = renderAt('/configuracao/membros');
+    expect(screen.getByText('conteudo membros')).toBeInTheDocument();
+    expect(container.querySelector('.config-shell')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Seções de configurações' })).toBeNull();
+  });
+
+  it('still bounces a role off a tab it may not open', () => {
+    setAuth('agent');
+    renderAt('/configuracao/membros');
+    expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/perfil');
+    expect(screen.queryByText('conteudo membros')).not.toBeInTheDocument();
+  });
+
+  it('draws the tab screen silhouette with its title while auth loads', () => {
+    setAuth(null, { loading: true, membershipResolved: false });
+    const { container } = renderAt('/configuracao/membros');
+    expect(screen.getByRole('heading', { level: 1, name: 'Membros' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar para Configurações' })).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="crm-skeleton"]')).toBeInTheDocument();
+    expect(container.querySelector('.config-shell')).toBeNull();
+  });
+
+  it('keeps the removed and could-not-confirm cards', () => {
+    setAuth(null, { loading: false, membershipResolved: true });
+    renderAt('/configuracao/membros');
+    expect(screen.getByText('Sem acesso a este workspace')).toBeInTheDocument();
   });
 });

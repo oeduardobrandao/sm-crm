@@ -3991,7 +3991,7 @@ select.form-input option {
    grid entirely, as a large full-width block (see HubTab.tsx). */
 .config-hub-sections-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
   gap: 1.25rem;
   align-items: stretch;
 }

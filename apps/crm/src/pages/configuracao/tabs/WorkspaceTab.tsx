@@ -20,10 +20,13 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { getCurrentWorkspace, updateWorkspace } from '../../../store';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { WorkspacePhone } from './phone/WorkspacePhone';
 
 /** Workspace identity (name + logo) and the Instagram auto-sync switch. */
 export default function WorkspaceTab() {
   const { profile, can } = useAuth();
+  const isPhone = !useIsDesktop(768);
   const queryClient = useQueryClient();
   // The `configuracoes` tab itself is already gated on `configuracoes:ver`
   // at the route/tab layer (configTabs.ts, Task 12) -- this mirrors that
@@ -160,6 +163,45 @@ export default function WorkspaceTab() {
     }
   };
 
+  const logoInput = (
+    <input
+      ref={logoInputRef}
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      style={{ display: 'none' }}
+      disabled={!canEditConfig}
+      onChange={(e) => {
+        const f = e.target.files?.[0];
+        if (f && canEditConfig) handleLogoUpload(f);
+        e.target.value = '';
+      }}
+    />
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <WorkspacePhone
+          loaded={Boolean(workspace)}
+          canEdit={canEditConfig}
+          name={wsName}
+          onNameChange={setWsName}
+          onSaveName={handleWsSave}
+          logoUrl={wsLogoUrl}
+          logoBusy={wsLogoLoading}
+          onPickLogo={() => logoInputRef.current?.click()}
+          onRemoveLogo={handleRemoveLogo}
+          autoSync={
+            (igAccounts ?? []).length > 0
+              ? { enabled: autoSyncEnabled, onChange: handleAutoSyncToggle }
+              : null
+          }
+        />
+        {logoInput}
+      </>
+    );
+  }
+
   return (
     <>
       {workspace && (
@@ -204,18 +246,7 @@ export default function WorkspaceTab() {
                 </Button>
               )}
             </div>
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              style={{ display: 'none' }}
-              disabled={!canEditConfig}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f && canEditConfig) handleLogoUpload(f);
-                e.target.value = '';
-              }}
-            />
+            {logoInput}
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
               PNG, JPG ou WebP. Máx 2MB. Será redimensionado para 512px.
             </p>

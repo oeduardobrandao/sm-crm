@@ -59,6 +59,7 @@ const LeadsPage = lazy(() => import('./pages/leads/LeadsPage'));
 const EquipePage = lazy(() => import('./pages/equipe/EquipePage'));
 const MembroDetalhePage = lazy(() => import('./pages/membro-detalhe/MembroDetalhePage'));
 const ConfiguracaoLayout = lazy(() => import('./pages/configuracao/ConfiguracaoLayout'));
+const ConfiguracaoIndex = lazy(() => import('./pages/configuracao/ConfiguracaoIndex'));
 const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
 const NotificacoesTab = lazy(() => import('./pages/configuracao/tabs/NotificacoesTab'));
 const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
@@ -233,7 +234,8 @@ export default function App() {
                 <Route path="/equipe" element={<EquipePage />} />
                 <Route path="/equipe/:id" element={<MembroDetalhePage />} />
                 <Route path="/configuracao" element={<ConfiguracaoLayout />}>
-                  <Route index element={<Navigate to="/configuracao/perfil" replace />} />
+                  {/* Desktop: redirects to perfil. Phones: the Settings list. */}
+                  <Route index element={<ConfiguracaoIndex />} />
                   <Route path="perfil" element={<PerfilTab />} />
                   <Route path="notificacoes" element={<NotificacoesTab />} />
                   <Route path="workspace" element={<WorkspaceTab />} />
