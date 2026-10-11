@@ -16491,6 +16491,12 @@ button.phone-sheet__grabber::before {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+/* No blur support: the 78% glass alone lets content show through text. */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .phone-bottom-bar:not(.phone-bottom-bar--above-tab-bar) {
+    background: var(--phone-menu-bg);
+  }
+}
 .phone-bottom-bar__spacer {
   height: calc(64px + env(safe-area-inset-bottom, 0px));
 }
@@ -16959,8 +16965,6 @@ button.phone-sheet__grabber::before {
 /* ---- Bottom bar ---- */
 .phone-editor-bar {
   flex-wrap: wrap;
-  /* Warnings sit on the bar: near-opaque instead of the kit's lighter glass. */
-  background: var(--phone-menu-bg);
 }
 .phone-editor-bar__column {
   display: flex;
@@ -17080,6 +17084,8 @@ button.phone-sheet__grabber::before {
 }
 .phone-editor-bar__warning {
   color: var(--danger-text);
+  /* Sits on translucent glass: weight keeps it readable over busy media. */
+  font-weight: 600;
 }
 .phone-editor-bar__missing {
   color: #b45309;
