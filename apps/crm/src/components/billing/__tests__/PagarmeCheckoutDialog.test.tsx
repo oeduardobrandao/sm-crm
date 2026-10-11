@@ -24,6 +24,8 @@ vi.mock('@/services/billing', async (importOriginal) => {
 });
 
 vi.mock('@/lib/analytics', () => ({ captureEvent: captureEventMock }));
+// jsdom's matchMedia reports false (phone); this suite asserts the desktop markup.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
