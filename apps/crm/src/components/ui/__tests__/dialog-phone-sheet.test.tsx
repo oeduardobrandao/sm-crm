@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PhoneLayoutProvider } from '@/components/layout/PhoneLayoutContext';
+import { GroupedList, PickerCell } from '@/components/mobile';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../dialog';
 import {
   AlertDialog,
@@ -253,6 +254,58 @@ describe('DialogContent phone sheet', () => {
     expect(
       dialog.compareDocumentPosition(overlays[1]) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+});
+
+describe('kit sheets opened from a phone dialog', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/clientes');
+  });
+
+  it('a PickerSheet layers above the dialog and picking returns to it', async () => {
+    function StatusForm() {
+      const [status, setStatus] = useState<string | null>('ativo');
+      return (
+        <Dialog open onOpenChange={() => {}}>
+          <DialogContent>
+            <DialogTitle>Novo lead</DialogTitle>
+            <GroupedList>
+              <PickerCell
+                label="Status"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: 'ativo', label: 'Ativo' },
+                  { value: 'pausado', label: 'Pausado' },
+                ]}
+              />
+            </GroupedList>
+          </DialogContent>
+        </Dialog>
+      );
+    }
+    renderInShell(<StatusForm />);
+    const start = idx();
+    const dialog = screen.getByRole('dialog', { name: 'Novo lead' });
+    fireEvent.click(screen.getByRole('button', { name: /Status/ }));
+    const picker = await screen.findByRole('dialog', { name: 'Status' });
+    expect(picker).not.toBe(dialog);
+    // Later in the DOM at the same z-index (9011): the picker and its overlay cover the
+    // dialog, so the dialog dims under the picker.
+    const overlays = [...document.querySelectorAll('.phone-sheet-overlay')];
+    const pickerOverlay = overlays[overlays.length - 1];
+    expect(
+      dialog.compareDocumentPosition(pickerOverlay) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      pickerOverlay.compareDocumentPosition(picker) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(idx()).toBe(start + 1);
+
+    fireEvent.click(within(picker).getByRole('button', { name: 'Pausado' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Status' })).toBeNull());
+    expect(screen.getByRole('dialog', { name: 'Novo lead' })).toBeTruthy();
+    await waitFor(() => expect(idx()).toBe(start));
   });
 });
 
