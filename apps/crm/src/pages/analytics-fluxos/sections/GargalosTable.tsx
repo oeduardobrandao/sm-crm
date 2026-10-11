@@ -6,7 +6,8 @@ import { formatDiasDecimal, formatDataCurta, SEM_DADOS } from '../format';
 import { SectionCard, SectionEmpty } from './SectionCard';
 
 /** Rows shown before the "Mostrar todas as etapas" toggle. */
-const TOP_N = 10;
+export const GARGALOS_TOP_N = 10;
+const TOP_N = GARGALOS_TOP_N;
 
 /**
  * What a null retrabalho prints. Not "0%": null means the etapa recorded no

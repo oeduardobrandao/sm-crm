@@ -36,6 +36,13 @@ const {
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// Tablet/desktop markup: true for the 768 phone gate, false for the 901 table gate, so
+// this suite keeps asserting the 768-900 card list it was written against. The phone
+// branch (below 768) has its own suite, AutomacoesPage.phone.test.tsx.
+vi.mock('../../../hooks/useIsDesktop', () => ({
+  useIsDesktop: (minWidth = 768) => minWidth < 900,
+}));
+
 // Mesmo padrão do ConectarPage.test: t devolve a CHAVE (com vars serializadas),
 // então os asserts abaixo verificam chaves do namespace, não strings pt/en.
 vi.mock('react-i18next', () => ({

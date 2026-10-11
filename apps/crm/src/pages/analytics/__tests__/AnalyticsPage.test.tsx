@@ -29,6 +29,10 @@ vi.mock('@tanstack/react-query', () => ({
   }),
 }));
 
+// These cases cover the desktop layout; AnalyticsPage.phone.test.tsx covers the phone one
+// (jsdom's matchMedia matches nothing, so without this the page renders its phone branch).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('chart.js', () => ({
   Chart: class MockChart {
     static register = analyticsTestState.chartRegister;

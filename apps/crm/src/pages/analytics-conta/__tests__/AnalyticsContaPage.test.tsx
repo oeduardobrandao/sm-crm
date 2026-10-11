@@ -38,6 +38,10 @@ const {
   };
 });
 
+// These tests assert the desktop layout; jsdom's matchMedia matches nothing, which would
+// render the phone branch (below 768px). The phone layout has its own suite.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
   useParams: () => paramsState,
