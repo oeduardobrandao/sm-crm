@@ -155,8 +155,8 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 
 - **Chosen:** the phone tab bar becomes Início (dashboard), Entregas, Agenda, Mensagens, Mais.
   Clientes and Analytics move to the top of Mais. When a tab's feature or permission is off for
-  the user (Agenda: `nav-data.ts` has no feature key for `calendario` today, so C1.3 adds
-  `calendario: 'feature_agenda'` (off on Free); Mensagens needs `feature_mensagens` and
+  the user (Agenda: gated in the tab bar on `feature_agenda`, off on Free, not through `nav-data.ts`'s
+  global feature map, which would also hide the editorial Calendário on desktop; Mensagens needs `feature_mensagens` and
   `clientes.ver`), Clientes then Analytics take the free slot, so the bar always has five items.
 - **Rejected:** keeping Dashboard / Clientes / Analytics / Entregas / Mais. Agenda and Mensagens
   are what staff open on a phone between meetings; Analytics is desk work.
