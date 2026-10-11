@@ -22,6 +22,10 @@
           document.documentElement.setAttribute('data-theme', 'dark');
         }
       })();
+      // iOS home-screen web app (style.css: html[data-standalone]). Set before first paint.
+      if (window.navigator.standalone === true) {
+        document.documentElement.setAttribute('data-standalone', '');
+      }
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
