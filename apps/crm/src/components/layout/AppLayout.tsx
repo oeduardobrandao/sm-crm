@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import TopBar from './TopBar';
+import PhoneShellHeader from './PhoneShellHeader';
 import { DunningBanner } from '../billing/DunningBanner';
 import { IncidentBanner } from './IncidentBanner';
 import { useAuth } from '../../context/AuthContext';
@@ -202,7 +203,9 @@ export default function AppLayout() {
         className="app-container"
         data-sidebar-collapsed={(sidebarCollapsible && !sidebarPinned) || undefined}
       >
-        {!isMobile && (
+        {isMobile ? (
+          <PhoneShellHeader />
+        ) : (
           <TopBar
             showHamburger={isTablet}
             isDrawerOpen={drawerOpen}
@@ -231,7 +234,8 @@ export default function AppLayout() {
         )}
 
         <main className="main-content" id="app">
-          <ContextHelpLinks />
+          {/* On phones the related-articles button lives in PhoneShellHeader. */}
+          {!isMobile && <ContextHelpLinks />}
           {/* The page chunks are lazy: on a cold load the shell stays up and only the
               content area waits. In-app navigations run in a transition, so they keep the
               previous page on screen instead of falling back here. */}

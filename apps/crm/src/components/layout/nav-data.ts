@@ -336,11 +336,110 @@ export function getMoreSheetGroups(
   features: Record<string, boolean> | null,
   workspaceRole: 'owner' | 'admin' | 'agent' | null,
   can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
+  /** Ids already on the tab bar. Defaults to the old fixed bar. */
+  excludeIds: readonly string[] = PRIMARY_NAV_IDS,
 ): NavGroup[] {
   return getNavGroups(features, workspaceRole, can)
     .map((g) => ({
       ...g,
-      items: g.items.filter((i) => !PRIMARY_NAV_IDS.includes(i.id)),
+      items: g.items.filter((i) => !excludeIds.includes(i.id)),
     }))
     .filter((g) => g.items.length > 0);
+}
+
+/** One slot of the phone tab bar. `navId` is the nav-data item it stands for. */
+export interface PhoneTab {
+  navId: string;
+  route: string;
+  label: string;
+  labelKey: string;
+}
+
+const PHONE_TAB: Record<string, PhoneTab> = {
+  dashboard: { navId: 'dashboard', route: '/dashboard', label: 'Início', labelKey: 'nav.home' },
+  entregas: { navId: 'entregas', route: '/entregas', label: 'Entregas', labelKey: 'nav.entregas' },
+  // With feature_agenda on, /calendario IS the Agenda (CalendarioPage renders AgendaPagina).
+  calendario: {
+    navId: 'calendario',
+    route: '/calendario',
+    label: 'Agenda',
+    labelKey: 'nav.agenda',
+  },
+  mensagens: {
+    navId: 'mensagens',
+    route: '/mensagens',
+    label: 'Mensagens',
+    labelKey: 'nav.mensagens',
+  },
+  clientes: { navId: 'clientes', route: '/clientes', label: 'Clientes', labelKey: 'nav.clientes' },
+  analytics: {
+    navId: 'analytics',
+    route: '/analytics',
+    label: 'Analytics',
+    labelKey: 'nav.analytics',
+  },
+};
+
+/** Preferred tabs in bar order (D18). */
+const PHONE_PRIMARY_IDS = ['dashboard', 'entregas', 'calendario', 'mensagens'] as const;
+/** Fill a missing tab's slot, in this order. Otherwise they head the Mais sheet. */
+const PHONE_FALLBACK_IDS = ['clientes', 'analytics'] as const;
+export const PHONE_TAB_SLOTS = 4;
+
+export interface PhoneNav {
+  /** Up to four tabs; "Mais" is the fifth slot, always rendered by MobileNav. */
+  tabs: PhoneTab[];
+  /** Clientes / Analytics when they didn't make the bar, shown first in Mais. */
+  shortcuts: NavItem[];
+  /** Everything else for the Mais sheet, minus what is on the bar or in `shortcuts`. */
+  moreGroups: NavGroup[];
+}
+
+/**
+ * Phone tab bar (D18): Início, Entregas, Agenda, Mensagens, Mais.
+ *
+ * Availability comes from `getNavGroups`, the same permission and plan filter as the
+ * sidebar, so the bar can't offer a page the sidebar hides. Agenda additionally needs
+ * `agendaEnabled` (the workspace's `feature_agenda`): without it `/calendario` is the
+ * editorial calendar, which stays in Mais as "Calendário". This is deliberately NOT a
+ * `calendario` entry in NAV_FEATURE, which would hide that calendar on desktop too.
+ *
+ * A tab that isn't available gives its slot to Clientes, then Analytics, so the bar
+ * keeps five items whenever enough pages are available.
+ */
+export function getPhoneNav(
+  features: Record<string, boolean> | null,
+  workspaceRole: 'owner' | 'admin' | 'agent' | null,
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
+  { agendaEnabled }: { agendaEnabled: boolean },
+): PhoneNav {
+  const groups = getNavGroups(features, workspaceRole, can);
+  const usable = new Map<string, NavItem>();
+  for (const group of groups) {
+    for (const item of group.items) {
+      if (!item.locked && !item.disabled) usable.set(item.id, item);
+    }
+  }
+  const isAvailable = (id: string) => usable.has(id) && (id !== 'calendario' || agendaEnabled);
+
+  const fallbacks = PHONE_FALLBACK_IDS.filter((id) => usable.has(id));
+  const tabIds: string[] = [];
+  for (const id of PHONE_PRIMARY_IDS) {
+    if (isAvailable(id)) tabIds.push(id);
+    else if (fallbacks.length > 0) tabIds.push(fallbacks.shift()!);
+  }
+  // A missing tab with no fallback left just shrinks the bar; leftovers stay for Mais.
+  const tabs = tabIds.slice(0, PHONE_TAB_SLOTS).map((id) => PHONE_TAB[id]);
+  const onBar = new Set(tabs.map((t) => t.navId));
+  // Named as on the tab bar ("Analytics", not the sidebar's "Instagram" under an
+  // Analytics heading): in Mais they sit on their own, without that heading.
+  const shortcuts = PHONE_FALLBACK_IDS.filter((id) => usable.has(id) && !onBar.has(id)).map(
+    (id) => ({ ...usable.get(id)!, label: PHONE_TAB[id].label, labelKey: PHONE_TAB[id].labelKey }),
+  );
+  const exclude = [...onBar, ...shortcuts.map((s) => s.id)];
+  return {
+    tabs,
+    shortcuts,
+    moreGroups: getMoreSheetGroups(features, workspaceRole, can, exclude),
+  };
 }

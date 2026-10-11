@@ -33,14 +33,23 @@ function lastValue(selector: string, property: string, width: number): string | 
 }
 
 describe('final mobile responsive CSS contracts', () => {
-  it('leaves one authoritative phone padding shorthand with top and bottom safe-area clearance', () => {
+  it('clears the status bar through the phone header and the tab bar through the content padding', () => {
+    // The phone shell header (bell, related articles) is fixed under the banners and
+    // holds the status-bar inset; .main-content starts below it instead of padding
+    // the inset itself.
+    expect(lastValue('.phone-shell-header', 'display', 390)).toBe('flex');
+    expect(lastValue('.phone-shell-header', 'display', 768)).toBe('none');
+    expect(lastValue('.phone-shell-header', 'padding', 390)).toContain('safe-area-inset-top');
+    expect(lastValue('.main-content', 'margin-top', 390)).toContain('--phone-header-height');
+    expect(lastValue('.main-content', 'height', 390)).toContain('--phone-header-height');
     const padding = lastValue('.main-content', 'padding', 390);
-    expect(padding).toContain('safe-area-inset-top');
     expect(padding).toContain('104px');
     expect(padding).toContain('safe-area-inset-bottom');
+    // Tablet keeps its own shell: no phone header offset there.
+    expect(lastValue('.main-content', 'margin-top', 800)).not.toContain('--phone-header-height');
   });
 
-  it('keeps phone navigation below Radix sheets and preserves More-sheet safe padding', () => {
+  it('keeps phone navigation below Radix sheets and keeps sheets clear of the status bar and home indicator', () => {
     expect(lastValue('.mobile-nav-glass', 'z-index', 390)).toBe('40');
     // Sheet's overlay/content used to both be z-50 (still > 40); bumped to
     // z-[9010]/z-[9011] (matching Dialog) so sheets clear the app's own
@@ -48,16 +57,36 @@ describe('final mobile responsive CSS contracts', () => {
     // every open drawer. Either way, well above .mobile-nav-glass's 40.
     expect(sheetSource.match(/z-\[9010\]/g)?.length).toBeGreaterThanOrEqual(1);
     expect(sheetSource.match(/z-\[9011\]/g)?.length).toBeGreaterThanOrEqual(1);
-    expect(lastValue('.mobile-more-sheet', 'padding-bottom', 390)).toContain(
-      'safe-area-inset-bottom',
-    );
+    expect(lastValue('.phone-sheet', 'z-index', 390)).toBe('9011');
+    // AUDIT #2: the Mais sheet reached under the status bar / Dynamic Island.
+    expect(lastValue('.phone-sheet', 'max-height', 390)).toContain('safe-area-inset-top');
+    expect(lastValue('.phone-sheet__body', 'padding', 390)).toContain('safe-area-inset-bottom');
   });
 
-  it('scopes More sheet portal layers to the phone breakpoint', () => {
-    expect(lastValue('.mobile-more-sheet', 'display', 390)).toBe('block');
-    expect(lastValue('.mobile-more-overlay', 'display', 390)).toBe('block');
+  it('scopes the Mais sheet to the phone breakpoint', () => {
+    expect(lastValue('.phone-sheet', 'display', 390)).toBe('flex');
+    expect(lastValue('.mobile-more-sheet', 'display', 390)).toBeUndefined();
     expect(lastValue('.mobile-more-sheet', 'display', 768)).toBe('none');
     expect(lastValue('.mobile-more-overlay', 'display', 768)).toBe('none');
+  });
+
+  it('defines phone tokens only under new --phone-* names, never redefining shared tokens (the Hub imports this file)', () => {
+    const shared = ['--radius', '--bg-color', '--card-bg', '--background', '--primary', '--border'];
+    root.walkRules((rule) => {
+      const scoped = rule.selectors?.some(
+        (sel) => sel.includes('.phone-kit') || sel.trim().endsWith('.app-container'),
+      );
+      if (!scoped) return;
+      rule.walkDecls((decl) => {
+        if (!decl.prop.startsWith('--')) return;
+        if (rule.selectors.some((sel) => sel.includes('.phone-kit'))) {
+          expect(decl.prop.startsWith('--phone-')).toBe(true);
+        }
+        expect(shared).not.toContain(decl.prop);
+      });
+    });
+    expect(lastValue('.app-container', '--phone-bg', 390)).toBe('#f2f2f7');
+    expect(lastValue('.app-container', '--phone-bg', 768)).toBeUndefined();
   });
 
   it('stacks the carousel header on phones while retaining touch-sized pagination', () => {

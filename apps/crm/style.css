@@ -3075,8 +3075,8 @@ select.form-input option {
   display: none;
 }
 
-.mobile-more-overlay,
-.mobile-more-sheet {
+/* Phone-only shell header (AppLayout renders it only below 768px; CSS is the real gate). */
+.phone-shell-header {
   display: none;
 }
 
@@ -3101,154 +3101,6 @@ select.form-input option {
   /* Hide desktop sidebar completely on mobile */
   .sidebar {
     display: none !important;
-  }
-
-  /* ===== MORE SHEET ===== */
-
-  .mobile-more-overlay {
-    background: rgba(0, 0, 0, 0.3);
-  }
-
-  .mobile-more-sheet {
-    gap: 0;
-    background: var(--surface-main);
-    border: 1px solid var(--border-color);
-    border-radius: 24px;
-    padding: 0.75rem 0;
-    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
-    max-height: calc(100svh - 9rem);
-    overflow-y: auto;
-  }
-
-  /* Profile */
-  .mobile-more-profile {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    margin: 0 0.5rem 0.25rem;
-    border-radius: 14px;
-  }
-
-  .mobile-more-profile .avatar {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    font-weight: 700;
-    background: var(--text-main);
-    color: var(--surface-main);
-  }
-
-  .mobile-more-profile-info {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .mobile-more-profile-name {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--text-main);
-  }
-
-  .mobile-more-profile-plan {
-    font-size: 0.68rem;
-    font-weight: 500;
-    color: var(--text-light);
-    font-family: var(--font-mono);
-  }
-
-  /* Group labels */
-  .mobile-more-group-label {
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-light);
-    padding: 0.75rem 1.25rem 0.35rem;
-  }
-
-  /* Items */
-  .mobile-more-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    width: 100%;
-    min-height: 44px;
-    padding: 0.65rem 1.25rem;
-    background: none;
-    border: none;
-    border-radius: 0;
-    cursor: pointer;
-    font-family: var(--font-main);
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--text-main);
-    text-align: left;
-    transition: background 0.15s ease;
-  }
-
-  .mobile-more-item:active {
-    background: var(--surface-hover);
-  }
-
-  .mobile-more-item.active {
-    color: var(--primary-color);
-  }
-
-  .mobile-more-item--disabled {
-    cursor: default;
-    opacity: 0.55;
-    pointer-events: none;
-  }
-
-  .mobile-more-item-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--surface-hover);
-    flex-shrink: 0;
-  }
-
-  .mobile-more-item.active .mobile-more-item-icon {
-    background: rgba(234, 179, 8, 0.12);
-  }
-
-  .mobile-more-item-icon i {
-    font-size: 1.15rem;
-    color: var(--text-muted);
-  }
-
-  .mobile-more-item.active .mobile-more-item-icon i {
-    color: var(--primary-color);
-  }
-
-  /* Danger item */
-  .mobile-more-item.danger {
-    color: var(--danger);
-  }
-
-  .mobile-more-item.danger .mobile-more-item-icon i {
-    color: var(--danger);
-  }
-
-  .mobile-more-item.danger:active {
-    background: rgba(245, 90, 66, 0.08);
-  }
-
-  /* Divider */
-  .mobile-more-divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 0.35rem 1.25rem;
   }
 
   /* ===== Main Content Mobile ===== */
@@ -3676,11 +3528,12 @@ select.form-input option {
 }
 
 @media (max-width: 767px) {
+  /* Floating glass tab bar (EntregasKanban mockup): Início, Entregas, Agenda, Mensagens, Mais. */
   .mobile-nav-glass {
     position: fixed;
     z-index: 40;
-    left: max(12px, env(safe-area-inset-left));
-    right: max(12px, env(safe-area-inset-right));
+    left: max(16px, env(safe-area-inset-left));
+    right: max(16px, env(safe-area-inset-right));
     /* env(safe-area-inset-bottom) only covers the home-indicator inset -- it does not
        account for Safari's own collapsible toolbar, which is a separate, dynamically
        sized overlay. --mobile-nav-chrome-offset (set from window.visualViewport in
@@ -3688,32 +3541,21 @@ select.form-input option {
        when it's expanded; it's 0px whenever there's no such overlay to clear. */
     bottom: calc(max(10px, env(safe-area-inset-bottom)) + var(--mobile-nav-chrome-offset, 0px));
     display: block;
-    min-height: 72px;
-    padding: 6px;
-    border: 1px solid color-mix(in srgb, var(--border-color) 76%, white 24%);
-    border-radius: 26px;
-    background: var(--surface-main);
-    background: color-mix(in srgb, var(--surface-main) 82%, transparent);
-    box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.12);
-    -webkit-backdrop-filter: blur(22px) saturate(145%);
-    backdrop-filter: blur(22px) saturate(145%);
-  }
-
-  .mobile-more-overlay,
-  .mobile-more-sheet {
-    display: block;
-  }
-
-  .mobile-more-sheet {
-    right: max(20px, env(safe-area-inset-right, 0px));
-    bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
-    left: max(20px, env(safe-area-inset-left, 0px));
-    width: auto;
+    min-height: 64px;
+    padding: 4px;
+    box-sizing: border-box;
+    border: 1px solid var(--phone-glass-border);
+    border-radius: 32px;
+    background: var(--phone-cell);
+    background: var(--phone-glass);
+    box-shadow: var(--phone-shadow-float);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
     .mobile-nav-glass {
-      background: var(--surface-main);
+      background: var(--phone-cell);
     }
   }
 
@@ -3721,7 +3563,7 @@ select.form-input option {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: stretch;
-    min-height: 58px;
+    min-height: 54px;
   }
 
   .mobile-nav-item {
@@ -3730,64 +3572,129 @@ select.form-input option {
     align-items: center;
     justify-content: center;
     min-width: 0;
-    min-height: 58px;
+    min-height: 54px;
     padding: 4px 2px;
-    gap: 3px;
+    gap: 2px;
     border: none;
+    border-radius: 28px;
     background: none;
-    color: var(--text-muted);
+    color: var(--phone-label-secondary);
     cursor: pointer;
     font-family: var(--font-main);
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    transition: background-color 160ms ease;
+  }
+
+  .mobile-nav-item.active {
+    background: var(--phone-tab-active);
+    color: var(--phone-label);
+  }
+
+  .mobile-nav-item:focus-visible {
+    outline: 2px solid var(--phone-accent);
+    outline-offset: -2px;
   }
 
   .mobile-nav-item__icon {
+    position: relative;
     display: grid;
-    width: 36px;
-    height: 30px;
+    width: 28px;
+    height: 24px;
     place-items: center;
+  }
+
+  .mobile-nav-item__icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mobile-nav-item__badge {
+    position: absolute;
+    top: -4px;
+    left: calc(50% + 6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    box-sizing: border-box;
     border-radius: 999px;
-    transition:
-      background-color 160ms ease,
-      color 160ms ease,
-      transform 160ms ease;
-  }
-
-  .mobile-nav-item__icon i {
-    font-size: 1.35rem;
-  }
-
-  .mobile-nav-item.active .mobile-nav-item__icon {
-    color: var(--text-main);
-    background: color-mix(in srgb, var(--primary-color) 24%, transparent);
-  }
-
-  .mobile-nav-item.active .icon-wrap,
-  .mobile-nav-item.active .mobile-nav-item__icon {
-    opacity: 1;
-    visibility: visible;
+    background: var(--phone-accent);
+    color: var(--phone-on-accent);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
   }
 
   .mobile-nav-item .nav-label {
     max-width: 100%;
     overflow: hidden;
-    color: var(--text-muted);
-    font-size: 0.64rem;
-    font-weight: 600;
-    line-height: 1;
+    color: inherit;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.1;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .mobile-nav-item.active .nav-label {
-    color: var(--text-main);
-    font-weight: 750;
+    font-weight: 600;
   }
 
+  /* The phone shell header (.phone-shell-header: bell, related articles) is fixed
+     right under the banners and carries the status-bar inset, so the content area
+     starts below it and keeps its own height, the way the desktop topbar works. */
   .main-content {
-    padding: calc(1.25rem + max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px)))
-      1rem calc(104px + env(safe-area-inset-bottom, 0px));
+    margin-top: calc(var(--banner-height, 0px) + var(--phone-header-height));
+    height: calc(100dvh - var(--banner-height, 0px) - var(--phone-header-height));
+    padding: 0.5rem 1rem calc(104px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Full-bleed pages re-added the status-bar inset themselves (<=900px rule above);
+     on phones the header already holds it. */
+  .main-content:has(> .page-full-bleed) {
+    padding-top: 0 !important;
+  }
+
+  @supports not (height: 100dvh) {
+    .main-content {
+      height: calc(100vh - var(--banner-height, 0px) - var(--phone-header-height));
+    }
+  }
+
+  .phone-shell-header {
+    position: fixed;
+    top: var(--banner-height, 0px);
+    right: 0;
+    left: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    height: var(--phone-header-height);
+    padding: max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+      max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    background: var(--bg-color);
+  }
+
+  /* The related-articles button lives in the header on phones instead of floating
+     over the page (AUDIT #3: it covered the first card and page links). */
+  .phone-shell-header .context-help {
+    position: static;
+    z-index: auto;
+  }
+
+  .phone-shell-header .context-help__trigger {
+    height: 36px;
+    padding: 0 0.6rem;
+    border: 0;
+    background: var(--phone-fill);
+    box-shadow: none;
+    color: var(--phone-label);
   }
 
   /* Mensagens (.page-full-bleed) forces .main-content padding to 0 at every
@@ -3802,12 +3709,23 @@ select.form-input option {
   .mensagens-thread-root {
     padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
   }
+
+  /* Thread event rows (approval, correction): on a phone the three flex items squeezed
+     each other and the time wrapped onto 3-4 lines (AUDIT #4). Let the row wrap and keep
+     the time on one line. */
+  .mensagens-event-row {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .mensagens-event-row__time {
+    white-space: nowrap;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mobile-nav-item__icon,
-  .mobile-more-sheet,
-  .mobile-more-overlay {
+  .mobile-nav-item,
+  .mobile-nav-item__icon {
     transition: none;
   }
 }
@@ -15695,4 +15613,1083 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
 .list-groups-toggle:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
+}
+
+/* ===== PHONE KIT (iOS idiom below 768px, PLAN C1) =====================================
+   Tokens use new --phone-* names only. The Hub imports this stylesheet, so the shared
+   tokens (--radius, --bg-color, --card-bg, the shadcn HSL vars) are never redefined
+   here and nothing below is an unscoped element rule.
+   - `.app-container` carries the tokens on phones (page CSS in later PRs reads them).
+   - `.phone-kit` carries them on the kit's own roots at any width: sheets and menus
+     portal to <body>, outside `.app-container`, and would otherwise render unstyled.
+   Component classes are all `phone-*` and only appear where the kit is used. */
+.phone-kit {
+  --phone-bg: #f2f2f7;
+  --phone-cell: #ffffff;
+  --phone-cell-pressed: #e5e5ea;
+  --phone-separator: rgba(60, 60, 67, 0.14);
+  --phone-label: #12151a;
+  --phone-label-secondary: #4b5563;
+  --phone-fill: rgba(118, 118, 128, 0.12);
+  --phone-fill-pressed: rgba(118, 118, 128, 0.24);
+  --phone-ink: #12151a;
+  --phone-on-ink: #ffffff;
+  --phone-accent: #ffbf30;
+  --phone-on-accent: #12151a;
+  --phone-destructive: #d70015;
+  --phone-success: #15803d;
+  --phone-neutral-action: #636366;
+  --phone-overlay: rgba(10, 12, 15, 0.45);
+  --phone-sheet-bg: #f2f2f7;
+  --phone-menu-bg: rgba(246, 246, 248, 0.94);
+  --phone-menu-separator: rgba(60, 60, 67, 0.12);
+  --phone-menu-group-gap: rgba(60, 60, 67, 0.1);
+  --phone-glass: rgba(255, 255, 255, 0.78);
+  --phone-glass-border: rgba(0, 0, 0, 0.06);
+  --phone-tab-active: rgba(18, 21, 26, 0.07);
+  --phone-segment-thumb: #ffffff;
+  --phone-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --phone-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.18);
+  --phone-shadow-thumb: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --phone-text-large-title: 34px;
+  --phone-text-title: 22px;
+  --phone-text-body: 17px;
+  --phone-text-subhead: 15px;
+  --phone-text-footnote: 13px;
+  --phone-radius-group: 16px;
+  --phone-radius-sheet: 38px;
+  --phone-radius-menu: 16px;
+  --phone-gutter: 16px;
+  --phone-row-min: 44px;
+}
+
+[data-theme='dark'] .phone-kit {
+  --phone-bg: #0a0c0f;
+  --phone-cell: #1a1e26;
+  --phone-cell-pressed: #252b38;
+  --phone-separator: rgba(235, 235, 245, 0.12);
+  --phone-label: #e8eaf0;
+  --phone-label-secondary: #9ca3af;
+  --phone-fill: rgba(118, 118, 128, 0.24);
+  --phone-fill-pressed: rgba(118, 118, 128, 0.36);
+  --phone-ink: #e8eaf0;
+  --phone-on-ink: #12151a;
+  --phone-destructive: #ff6b5e;
+  --phone-overlay: rgba(0, 0, 0, 0.6);
+  --phone-sheet-bg: #12151a;
+  --phone-menu-bg: rgba(30, 36, 48, 0.94);
+  --phone-menu-separator: rgba(235, 235, 245, 0.1);
+  --phone-menu-group-gap: rgba(0, 0, 0, 0.35);
+  --phone-glass: rgba(18, 21, 26, 0.78);
+  --phone-glass-border: rgba(255, 255, 255, 0.08);
+  --phone-tab-active: rgba(232, 234, 240, 0.12);
+  --phone-segment-thumb: #3a404d;
+  --phone-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --phone-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --phone-shadow-thumb: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 767px) {
+  .app-container {
+    --phone-bg: #f2f2f7;
+    --phone-cell: #ffffff;
+    --phone-cell-pressed: #e5e5ea;
+    --phone-separator: rgba(60, 60, 67, 0.14);
+    --phone-label: #12151a;
+    --phone-label-secondary: #4b5563;
+    --phone-fill: rgba(118, 118, 128, 0.12);
+    --phone-fill-pressed: rgba(118, 118, 128, 0.24);
+    --phone-ink: #12151a;
+    --phone-on-ink: #ffffff;
+    --phone-accent: #ffbf30;
+    --phone-on-accent: #12151a;
+    --phone-destructive: #d70015;
+    --phone-success: #15803d;
+    --phone-neutral-action: #636366;
+    --phone-overlay: rgba(10, 12, 15, 0.45);
+    --phone-sheet-bg: #f2f2f7;
+    --phone-menu-bg: rgba(246, 246, 248, 0.94);
+    --phone-menu-separator: rgba(60, 60, 67, 0.12);
+    --phone-menu-group-gap: rgba(60, 60, 67, 0.1);
+    --phone-glass: rgba(255, 255, 255, 0.78);
+    --phone-glass-border: rgba(0, 0, 0, 0.06);
+    --phone-tab-active: rgba(18, 21, 26, 0.07);
+    --phone-segment-thumb: #ffffff;
+    --phone-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --phone-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.18);
+    --phone-shadow-thumb: 0 1px 3px rgba(0, 0, 0, 0.12);
+    --phone-text-large-title: 34px;
+    --phone-text-title: 22px;
+    --phone-text-body: 17px;
+    --phone-text-subhead: 15px;
+    --phone-text-footnote: 13px;
+    --phone-radius-group: 16px;
+    --phone-radius-sheet: 38px;
+    --phone-radius-menu: 16px;
+    --phone-gutter: 16px;
+    --phone-row-min: 44px;
+    /* Shell header (bell, related articles) above every phone page. Carries the
+       status-bar inset the way the first banner does: only the part no banner covered. */
+    --phone-header-bar: 44px;
+    --phone-header-height: calc(
+      var(--phone-header-bar) + max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+    );
+  }
+
+  [data-theme='dark'] .app-container {
+    --phone-bg: #0a0c0f;
+    --phone-cell: #1a1e26;
+    --phone-cell-pressed: #252b38;
+    --phone-separator: rgba(235, 235, 245, 0.12);
+    --phone-label: #e8eaf0;
+    --phone-label-secondary: #9ca3af;
+    --phone-fill: rgba(118, 118, 128, 0.24);
+    --phone-fill-pressed: rgba(118, 118, 128, 0.36);
+    --phone-ink: #e8eaf0;
+    --phone-on-ink: #12151a;
+    --phone-destructive: #ff6b5e;
+    --phone-overlay: rgba(0, 0, 0, 0.6);
+    --phone-sheet-bg: #12151a;
+    --phone-menu-bg: rgba(30, 36, 48, 0.94);
+    --phone-menu-separator: rgba(235, 235, 245, 0.1);
+    --phone-menu-group-gap: rgba(0, 0, 0, 0.35);
+    --phone-glass: rgba(18, 21, 26, 0.78);
+    --phone-glass-border: rgba(255, 255, 255, 0.08);
+    --phone-tab-active: rgba(232, 234, 240, 0.12);
+    --phone-segment-thumb: #3a404d;
+    --phone-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --phone-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.6);
+    --phone-shadow-thumb: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ---- Large title + round header buttons ---- */
+.phone-large-title {
+  display: flex;
+  flex-direction: column;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-large-title__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  gap: 10px;
+}
+.phone-large-title__leading,
+.phone-large-title__trailing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.phone-large-title__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--phone-text-large-title);
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--phone-label);
+}
+.phone-large-title__subtitle {
+  margin: 2px 0 12px;
+  font-size: var(--phone-text-subhead);
+  color: var(--phone-label-secondary);
+}
+
+.phone-icon-button {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* 44px hit area around the 36px disc (Apple's minimum touch target). */
+.phone-icon-button::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+.phone-icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-icon-button--fill {
+  background: var(--phone-fill);
+  color: var(--phone-label);
+}
+.phone-icon-button--fill:active {
+  background: var(--phone-fill-pressed);
+}
+.phone-icon-button--ink {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+.phone-icon-button:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-icon-button__badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--phone-accent);
+  color: var(--phone-on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ---- Grouped list + cells ---- */
+.phone-group {
+  margin: 0 0 20px;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-group__header {
+  margin: 0 0 6px 16px;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--phone-label-secondary);
+}
+.phone-group__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-group__footer {
+  margin: 6px 16px 0;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+.phone-cell {
+  list-style: none;
+}
+.phone-cell__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--phone-row-min);
+  padding: 0 0 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+div.phone-cell__main:not([role]) {
+  cursor: default;
+}
+.phone-cell__main:is(button, a):active {
+  background: var(--phone-cell-pressed);
+}
+.phone-cell__main:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+.phone-cell__main:disabled,
+.phone-cell__main[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+.phone-cell__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--phone-label-secondary);
+  font-size: 20px;
+}
+.phone-cell__icon svg {
+  width: 20px;
+  height: 20px;
+}
+.phone-cell__icon--tile {
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 18px;
+}
+.phone-cell__icon--tile svg {
+  width: 18px;
+  height: 18px;
+}
+/* The separator starts at the text, not at the icon, as on iOS. */
+.phone-cell__body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: var(--phone-row-min);
+  padding: 10px 16px 10px 0;
+  box-sizing: border-box;
+}
+.phone-cell + .phone-cell .phone-cell__body {
+  border-top: 1px solid var(--phone-separator);
+}
+.phone-cell__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.phone-cell__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-cell__subtitle {
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-cell__value {
+  flex-shrink: 0;
+  max-width: 50%;
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-cell__chevron {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--phone-label-secondary);
+  opacity: 0.7;
+}
+.phone-cell__main--destructive,
+.phone-cell__main--destructive .phone-cell__icon {
+  color: var(--phone-destructive);
+}
+.phone-cell__main--current .phone-cell__label {
+  font-weight: 600;
+}
+
+.phone-switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 51px;
+  height: 31px;
+  padding: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill-pressed);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.phone-switch[aria-checked='true'] {
+  background: var(--phone-ink);
+}
+.phone-switch__thumb {
+  width: 27px;
+  height: 27px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+.phone-switch[aria-checked='true'] .phone-switch__thumb {
+  transform: translateX(20px);
+}
+.phone-switch:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+
+/* ---- Segmented control ---- */
+.phone-segmented {
+  display: flex;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--phone-fill);
+  font-family: var(--font-main);
+}
+.phone-segmented__item {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.phone-segmented__item[data-state='on'] {
+  background: var(--phone-segment-thumb);
+  box-shadow: var(--phone-shadow-thumb);
+  font-weight: 600;
+}
+.phone-segmented__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-segmented__item:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 1px;
+}
+
+/* ---- Bottom sheet ---- */
+.phone-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9010;
+  background: var(--phone-overlay);
+}
+.phone-sheet-overlay[data-state='open'] {
+  animation: sheet-fade-in 0.3s ease-out;
+}
+.phone-sheet-overlay[data-state='closed'] {
+  animation: sheet-fade-out 0.25s ease-in forwards;
+}
+.phone-sheet {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 9011;
+  display: flex;
+  flex-direction: column;
+  /* Never higher than the screen minus the status bar / Dynamic Island. */
+  max-height: calc(100dvh - max(env(safe-area-inset-top, 0px), 20px) - 10px);
+  border-radius: var(--phone-radius-sheet) var(--phone-radius-sheet) 0 0;
+  background: var(--phone-sheet-bg);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  box-shadow: var(--phone-shadow-menu);
+  outline: none;
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.phone-sheet[data-detent='large'] {
+  height: calc(100dvh - max(env(safe-area-inset-top, 0px), 20px) - 10px);
+}
+.phone-sheet[data-detent='medium'] {
+  height: 55dvh;
+}
+.phone-sheet[data-dragging] {
+  transition: none;
+}
+.phone-sheet[data-state='open'] {
+  animation: sheet-slide-in-bottom 0.38s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.phone-sheet[data-state='closed'] {
+  animation: sheet-slide-out-bottom 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.phone-sheet__drag-zone {
+  flex-shrink: 0;
+  padding: 0 var(--phone-gutter);
+  touch-action: none;
+  cursor: grab;
+}
+.phone-sheet__grabber {
+  display: block;
+  width: 36px;
+  height: 5px;
+  margin: 6px auto 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill-pressed);
+}
+button.phone-sheet__grabber {
+  position: relative;
+  cursor: pointer;
+}
+button.phone-sheet__grabber::before {
+  content: '';
+  position: absolute;
+  inset: -14px -24px;
+}
+.phone-sheet__header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 52px;
+  gap: 8px;
+}
+.phone-sheet__header-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.phone-sheet__header-side--end {
+  /* Explicit columns: a visually hidden (absolutely positioned) title leaves the grid
+     flow, and this side would otherwise slide into the centre column. */
+  grid-column: 3;
+  justify-content: flex-end;
+}
+.phone-sheet__title {
+  grid-column: 2;
+  margin: 0;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  text-align: center;
+}
+.phone-sheet__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+  cursor: pointer;
+}
+.phone-sheet__close svg {
+  width: 16px;
+  height: 16px;
+}
+.phone-sheet__close:focus-visible,
+.phone-sheet__grabber:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-sheet__body {
+  flex: 1;
+  min-height: 0;
+  padding: 4px var(--phone-gutter) calc(16px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---- Action sheet ---- */
+.phone-action-sheet {
+  position: fixed;
+  right: max(8px, env(safe-area-inset-right, 0px));
+  bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  left: max(8px, env(safe-area-inset-left, 0px));
+  z-index: 9011;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  outline: none;
+}
+.phone-action-sheet[data-state='open'] {
+  animation: sheet-slide-in-bottom 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.phone-action-sheet[data-state='closed'] {
+  animation: sheet-slide-out-bottom 0.24s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.phone-action-sheet__group {
+  overflow-y: auto;
+  border-radius: 14px;
+  background: var(--phone-menu-bg);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+}
+.phone-action-sheet__head {
+  padding: 14px 16px;
+  text-align: center;
+}
+.phone-action-sheet__title {
+  margin: 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-action-sheet__message {
+  margin: 4px 0 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-action-sheet__action,
+.phone-action-sheet__cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+.phone-action-sheet__head + .phone-action-sheet__action,
+.phone-action-sheet__action + .phone-action-sheet__action {
+  border-top: 1px solid var(--phone-menu-separator);
+}
+.phone-action-sheet__head.sr-only + .phone-action-sheet__action {
+  border-top: 0;
+}
+.phone-action-sheet__action:active,
+.phone-action-sheet__cancel:active {
+  background: var(--phone-fill);
+}
+.phone-action-sheet__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-action-sheet__action--destructive {
+  color: var(--phone-destructive);
+}
+.phone-action-sheet__cancel {
+  border-radius: 14px;
+  background: var(--phone-cell);
+  font-weight: 600;
+}
+.phone-action-sheet__action:focus-visible,
+.phone-action-sheet__cancel:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+
+/* ---- Context menu (long-press) ---- */
+/* During the hold iOS would show its link callout or start a text selection. */
+.phone-hold-target[data-holding] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.phone-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9010;
+  background: color-mix(in srgb, var(--phone-bg) 55%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+.phone-menu-overlay[data-state='open'] {
+  animation: sheet-fade-in 0.2s ease-out;
+}
+.phone-menu-overlay[data-state='closed'] {
+  animation: sheet-fade-out 0.15s ease-in forwards;
+}
+.phone-context-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 9011;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) 24px
+    calc(env(safe-area-inset-bottom, 0px) + 16px);
+  overflow-y: auto;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  outline: none;
+}
+.phone-context-menu[data-state='open'] {
+  animation: phone-menu-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.phone-context-menu[data-state='closed'] {
+  animation: sheet-fade-out 0.15s ease-in forwards;
+}
+@keyframes phone-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.phone-context-menu__preview {
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+.phone-context-menu__list {
+  flex-shrink: 0;
+  align-self: flex-start;
+  width: min(262px, 100%);
+  overflow: hidden;
+  border-radius: var(--phone-radius-menu);
+  background: var(--phone-menu-bg);
+  box-shadow: var(--phone-shadow-menu);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+}
+.phone-context-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  text-align: left;
+  cursor: pointer;
+}
+.phone-context-menu__item + .phone-context-menu__item {
+  border-top: 1px solid var(--phone-menu-separator);
+}
+.phone-context-menu__item:active,
+.phone-context-menu__item:focus-visible {
+  background: var(--phone-fill);
+  outline: none;
+}
+.phone-context-menu__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-context-menu__item--destructive {
+  color: var(--phone-destructive);
+}
+.phone-context-menu__icon {
+  display: flex;
+  flex-shrink: 0;
+}
+.phone-context-menu__icon svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-context-menu__separator {
+  height: 8px;
+  background: var(--phone-menu-group-gap);
+}
+
+/* ---- Swipe row ---- */
+.phone-swipe-row {
+  position: relative;
+  overflow: hidden;
+  list-style: none;
+  background: var(--phone-cell);
+}
+.phone-swipe-row__actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+}
+.phone-swipe-row__actions--leading {
+  left: 0;
+}
+.phone-swipe-row__actions--trailing {
+  right: 0;
+}
+.phone-swipe-row__action {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 4px;
+  border: 0;
+  color: #ffffff;
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-swipe-row__action svg {
+  width: 20px;
+  height: 20px;
+}
+.phone-swipe-row__action:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -3px;
+}
+.phone-swipe-row__action--neutral {
+  background: var(--phone-neutral-action);
+}
+.phone-swipe-row__action--success {
+  background: var(--phone-success);
+}
+.phone-swipe-row__action--ink {
+  background: #12151a;
+}
+.phone-swipe-row__action--destructive {
+  background: #d70015;
+}
+.phone-swipe-row__content {
+  position: relative;
+  background: var(--phone-cell);
+  /* The browser keeps vertical scrolling; the row only claims horizontal moves. */
+  touch-action: pan-y;
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.phone-swipe-row__content[data-dragging] {
+  transition: none;
+}
+
+/* ---- Bottom action bar ---- */
+.phone-bottom-bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 41;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  padding: 10px max(var(--phone-gutter), env(safe-area-inset-right, 0px))
+    calc(10px + env(safe-area-inset-bottom, 0px))
+    max(var(--phone-gutter), env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  border-top: 1px solid var(--phone-glass-border);
+  background: var(--phone-glass);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+.phone-bottom-bar--above-tab-bar {
+  bottom: calc(
+    max(10px, env(safe-area-inset-bottom, 0px)) + 72px + var(--mobile-nav-chrome-offset, 0px)
+  );
+  padding-bottom: 10px;
+  border-top: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.phone-bottom-bar__spacer {
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- Chip row ---- */
+.phone-chip-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-chip-row::-webkit-scrollbar {
+  display: none;
+}
+.phone-chip {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-family: var(--font-main);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.phone-chip[data-state='on'] {
+  background: var(--phone-segment-thumb);
+  box-shadow: var(--phone-shadow-thumb);
+  font-weight: 600;
+}
+.phone-chip__count {
+  color: var(--phone-label-secondary);
+  font-weight: 500;
+}
+.phone-chip--removable {
+  height: 28px;
+  padding: 0 8px 0 10px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font-size: var(--phone-text-footnote);
+  font-weight: 500;
+}
+.phone-chip__remove {
+  width: 12px;
+  height: 12px;
+}
+.phone-chip:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---- Mais sheet (MobileNav) ---- */
+/* Phone-only: MobileNav closes it when the viewport leaves the phone range; this hides
+   it for the frame in between. */
+@media (min-width: 768px) {
+  .mobile-more-sheet,
+  .mobile-more-overlay {
+    display: none;
+  }
+}
+.mobile-more-profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.mobile-more-profile .avatar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  font-size: 21px;
+  font-weight: 600;
+}
+.mobile-more-profile-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mobile-more-profile-name {
+  overflow: hidden;
+  color: var(--phone-label);
+  font-size: 20px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mobile-more-profile-plan {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.mobile-more-sheet .phone-cell__icon i {
+  font-size: 20px;
+}
+.mobile-more-sheet .nav-badge {
+  margin-left: 0;
+}
+
+/* ---- Phone notifications screen (PhoneNotifications) ---- */
+.phone-notifications {
+  position: fixed;
+  inset: 0;
+  z-index: 9011;
+  display: flex;
+  flex-direction: column;
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  outline: none;
+}
+.phone-notifications[data-state='open'] {
+  animation: sheet-slide-in-bottom 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.phone-notifications[data-state='closed'] {
+  animation: sheet-slide-out-bottom 0.26s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.phone-notifications__scroll {
+  flex: 1;
+  min-height: 0;
+  padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px))
+    calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.phone-notifications .phone-large-title {
+  margin-bottom: 12px;
+}
+.phone-notifications .phone-large-title__title {
+  margin-bottom: 12px;
+}
+.phone-notifications__text-button {
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-notifications__text-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-notifications__text-button:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-notifications__day {
+  margin: 20px 0 8px 4px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.phone-notifications__card {
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-notifications__card > div > div:last-child {
+  border-bottom: 0 !important;
+}
+.phone-notifications__empty {
+  margin-top: 48px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-sheet,
+  .phone-sheet-overlay,
+  .phone-notifications,
+  .phone-action-sheet,
+  .phone-context-menu,
+  .phone-menu-overlay,
+  .phone-swipe-row__content,
+  .phone-switch,
+  .phone-switch__thumb {
+    animation: none !important;
+    transition: none !important;
+  }
 }
