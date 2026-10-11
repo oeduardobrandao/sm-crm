@@ -1,0 +1,248 @@
+/* ===== POST EXPRESS NO CELULAR (PLAN F4.5, mockup FPostExpress) =========================
+   Loaded only by ExpressPostPhone, which renders only in the phone branch (below 768px) of
+   /post-express. Every class is `phone-express-*`; reads the kit's `--phone-*` tokens and
+   defines none of the shared ones. The page gutter (16px) and the grouped background come
+   from .main-content under data-phone-page-header. */
+
+/* The sheets portal to <body>, outside .phone-express: they carry the same vars. */
+.phone-express,
+.phone-express-confirm-sheet,
+.phone-express-preview-sheet {
+  --phone-express-warn: var(--danger-text, #b91c1c);
+  --phone-express-ig: #e1306c;
+}
+.phone-express {
+  display: flex;
+  flex-direction: column;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+[data-theme='dark'] .phone-express,
+[data-theme='dark'] .phone-express-confirm-sheet {
+  --phone-express-warn: #ff6b5e;
+}
+
+.phone-express__format {
+  margin: 0 0 12px;
+}
+
+/* White card for the media strip, the caption and the Stories note. */
+.phone-express__card {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-kit.phone-group .phone-express__card {
+  margin-bottom: 0;
+}
+.phone-express__card--muted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--phone-text-subhead);
+  color: var(--phone-label-secondary);
+}
+.phone-express__card--muted svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.phone-express__muted-cell {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+
+.phone-express__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-express__type svg {
+  width: 14px;
+  height: 14px;
+}
+
+.phone-express__caption {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 120px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  line-height: 1.35;
+}
+.phone-express__caption::placeholder {
+  color: var(--phone-label-secondary);
+}
+.phone-express__counter {
+  margin-top: 6px;
+  text-align: right;
+  font-size: var(--phone-text-footnote);
+  font-variant-numeric: tabular-nums;
+  color: var(--phone-label-secondary);
+}
+
+.phone-express__mode {
+  margin: 0 0 8px;
+}
+.phone-express__send {
+  margin-bottom: 12px;
+}
+
+.phone-express__hub {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 16px;
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+}
+.phone-express__hub svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+.phone-express__hub--ok {
+  color: var(--phone-success);
+}
+.phone-express__hub--warn,
+.phone-express__warning {
+  color: var(--phone-express-warn);
+}
+.phone-express__hub a,
+.phone-express__warning a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.phone-express__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.phone-express__warning svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.phone-express__note {
+  margin: 0 16px 20px;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+
+/* ---- Buttons (bottom bar, confirm sheet) ---- */
+.phone-express__primary,
+.phone-express__secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 50px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.phone-express__primary {
+  flex: 1;
+  min-width: 0;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+.phone-express__primary--publish {
+  background: var(--phone-express-ig);
+  color: #ffffff;
+}
+.phone-express__secondary {
+  flex: 1;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+}
+.phone-express__primary:disabled,
+.phone-express__secondary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.phone-express__primary svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-express__bar .phone-express__primary {
+  box-shadow: var(--phone-shadow-float);
+}
+
+/* ---- Preview sheet ---- */
+.phone-express__preview {
+  display: flex;
+  justify-content: center;
+  padding: 4px 16px 24px;
+}
+
+/* ---- Confirm sheet with the publish progress ---- */
+.phone-express__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-express__confirm-text {
+  margin: 0;
+  font-size: var(--phone-text-subhead);
+  line-height: 1.4;
+  color: var(--phone-label-secondary);
+}
+.phone-express__confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+.phone-express__progress-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+.phone-express__progress-pct {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--phone-label);
+}
+.phone-express__progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--phone-fill);
+}
+.phone-express__progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--phone-express-ig);
+  transition: width 300ms ease-out;
+}
+.phone-express__progress-fill[data-done] {
+  background: var(--phone-success);
+}
