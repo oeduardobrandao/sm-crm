@@ -899,6 +899,24 @@ body {
   color: #e8eaf0;
 }
 
+/* Phones: a 44px touch target around the small "×" without growing the bar (the stack's
+   height drives --banner-height). */
+@media (max-width: 767px) {
+  .app-container .banner-dismiss {
+    position: relative;
+  }
+
+  .app-container .banner-dismiss::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
 /* ===== Main Content ===== */
 .main-content {
   margin-left: var(--sidebar-width);
@@ -3682,19 +3700,57 @@ select.form-input option {
   }
 
   /* The related-articles button lives in the header on phones instead of floating
-     over the page (AUDIT #3: it covered the first card and page links). */
-  .phone-shell-header .context-help {
+     over the page (AUDIT #3: it covered the first card and page links). Keyed on the
+     shared actions group, so it holds in the shell bar and in PhonePageHeader alike. */
+  .phone-shell-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .phone-shell-actions .context-help {
     position: static;
     z-index: auto;
   }
 
-  .phone-shell-header .context-help__trigger {
+  .phone-shell-actions .context-help__trigger {
     height: 36px;
     padding: 0 0.6rem;
     border: 0;
     background: var(--phone-fill);
     box-shadow: none;
     color: var(--phone-label);
+  }
+
+  /* Phone chrome requested by the page (usePhoneChrome, PhoneLayoutContext).
+     data-phone-page-header: the page renders PhonePageHeader / PhoneNavBar, which carry
+     the bell and help links, so the shell bar goes away. Only its 44px row is dropped
+     from the offset: --phone-header-height keeps the status-bar inset, so the page's own
+     header starts under the Dynamic Island instead of behind it. */
+  .app-container[data-phone-page-header] {
+    --phone-header-bar: 0px;
+  }
+
+  .app-container[data-phone-page-header] .phone-shell-header {
+    display: none;
+  }
+
+  /* The page header's own 44px row replaces the shell bar, flush with the top. */
+  .app-container[data-phone-page-header] .main-content {
+    padding-top: 0;
+  }
+
+  /* data-phone-tab-bar="hidden": a screen with its own bottom (a composer, a bottom
+     action bar) hides the floating tab bar and the 104px reserved for it. Pages with
+     their own clearance (.mensagens-list-scroll, .mensagens-thread-root) still carry
+     it; the lane that hides the bar there drops it. */
+  .app-container[data-phone-tab-bar='hidden'] .mobile-nav-glass {
+    display: none;
+  }
+
+  .app-container[data-phone-tab-bar='hidden'] .main-content {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   /* Mensagens (.page-full-bleed) forces .main-content padding to 0 at every
@@ -13177,12 +13233,6 @@ a.hub-fill__row-inner:hover {
 .context-help__popover {
   padding: 0.5rem;
 }
-.context-help__sheet {
-  max-height: 72svh;
-  overflow-y: auto;
-  border-radius: 24px 24px 0 0;
-  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
-}
 
 .context-help__list {
   display: grid;
@@ -15077,6 +15127,21 @@ a.hub-fill__row-inner:hover {
   }
 }
 
+/* Toasts (components/ui/sonner.tsx) read this as their bottom offset. The Toaster is mounted in
+   App.tsx, outside .app-container, so the value hangs off body; it is only set while the CRM shell
+   shows the phone tab bar, and the Hub never mounts this Toaster. */
+@media (max-width: 767px) {
+  body:has(.mobile-nav-glass) {
+    --phone-toast-offset: calc(
+      96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px)
+    );
+  }
+
+  body:has(.app-container[data-phone-tab-bar='hidden']) {
+    --phone-toast-offset: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* The banner is mounted outside .lp-v2, so the landing's --lp2-* tokens are not in scope. The
    landing forces a black page, so mirror its card palette (landing-v2.css) here instead of the
    app's light card. Same rules for both buttons: rejecting must not look weaker than accepting. */
@@ -15796,6 +15861,49 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
   margin: 2px 0 12px;
   font-size: var(--phone-text-subhead);
   color: var(--phone-label-secondary);
+}
+
+/* ---- Pushed-screen nav bar (PhoneNavBar): back, optional title, trailing actions ---- */
+.phone-nav-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-nav-bar__leading,
+.phone-nav-bar__trailing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.phone-nav-bar__trailing {
+  flex-shrink: 0;
+}
+.phone-nav-bar__title {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-main);
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--phone-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Centered like UINavigationBar, clear of a back button and two trailing buttons. */
+.phone-nav-bar--title-center .phone-nav-bar__title {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: calc(100% - 192px);
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .phone-icon-button {
@@ -16614,6 +16722,106 @@ button.phone-sheet__grabber::before {
 }
 
 /* ---- Phone notifications screen (PhoneNotifications) ---- */
+/* ---- Global search, full screen on phones (FBusca): GlobalSearchDialog with
+   layout="fullscreen" inside the shell. Restyles the cmdk markup; the search logic and
+   keyboard handling stay cmdk's. ---- */
+.phone-kit.phone-search {
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0
+    env(safe-area-inset-left, 0px);
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-kit.phone-search [cmdk-root] {
+  background: transparent;
+  color: inherit;
+}
+.phone-search__bar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin-bottom: 8px;
+  padding: 0 var(--phone-gutter);
+}
+.phone-kit.phone-search .phone-search__bar [cmdk-input-wrapper] {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--phone-fill);
+}
+.phone-kit.phone-search .phone-search__bar [cmdk-input-wrapper] svg {
+  width: 17px;
+  height: 17px;
+  margin-right: 6px;
+  color: var(--phone-label-secondary);
+  opacity: 1;
+}
+.phone-kit.phone-search .phone-search__bar [cmdk-input] {
+  height: 36px;
+  padding: 0;
+  font-size: var(--phone-text-body);
+  color: var(--phone-label);
+}
+.phone-search__cancel {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  cursor: pointer;
+}
+.phone-kit.phone-search .phone-search__types {
+  flex-shrink: 0;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 0 var(--phone-gutter);
+  border: 0;
+}
+.phone-kit.phone-search .phone-search__list {
+  padding: 0 var(--phone-gutter) calc(24px + env(safe-area-inset-bottom, 0px));
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-kit.phone-search [cmdk-group] {
+  padding: 0;
+  margin-bottom: 18px;
+}
+.phone-kit.phone-search [cmdk-group-heading] {
+  padding: 0 16px 8px;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  color: var(--phone-label-secondary);
+  text-transform: uppercase;
+}
+.phone-kit.phone-search [cmdk-group-items] {
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-kit.phone-search [cmdk-item] {
+  min-height: 48px;
+  padding: 6px 16px;
+  gap: 12px;
+  border-radius: 0;
+  font-size: var(--phone-text-body);
+  color: var(--phone-label);
+}
+.phone-kit.phone-search [cmdk-item] + [cmdk-item] {
+  box-shadow: inset 0 1px 0 var(--phone-separator);
+}
+.phone-kit.phone-search [cmdk-item][data-selected='true'] {
+  background: var(--phone-cell-pressed);
+  color: var(--phone-label);
+}
+
 .phone-notifications {
   position: fixed;
   inset: 0;

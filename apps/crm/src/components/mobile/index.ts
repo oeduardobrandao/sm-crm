@@ -19,3 +19,7 @@ export type { ChipRowProps, ChipProps } from './ChipRow';
 export { useSheetActions } from './sheetActions';
 export { useSheetHistory } from './useSheetHistory';
 export { useLongPress } from './useLongPress';
+export { PhonePageHeader } from './PhonePageHeader';
+export type { PhonePageHeaderProps } from './PhonePageHeader';
+export { PhoneNavBar } from './PhoneNavBar';
+export type { PhoneNavBarProps } from './PhoneNavBar';

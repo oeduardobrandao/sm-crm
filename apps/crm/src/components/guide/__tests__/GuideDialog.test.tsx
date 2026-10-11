@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GuideContext, type GuideApi } from '../GuideContext';
 import { GUIDE_TRAILS } from '../guideContent';
 import GuideDialog from '../GuideDialog';
+import { PhoneLayoutProvider } from '../../layout/PhoneLayoutContext';
 import { recordKbViewSafely } from '../../../pages/ajuda/useRecordKbView';
 
 vi.mock('../../../lib/analytics', () => ({ captureEvent: vi.fn() }));
@@ -103,15 +104,17 @@ function LocationProbe() {
   return <span data-testid="loc">{loc.pathname + loc.search}</span>;
 }
 
-function renderDialog(api: GuideApi) {
+function renderDialog(api: GuideApi, { phone = false }: { phone?: boolean } = {}) {
   return render(
     <MemoryRouter initialEntries={['/dashboard']}>
-      <GuideContext.Provider value={api}>
-        <GuideDialog />
-        <Routes>
-          <Route path="*" element={<LocationProbe />} />
-        </Routes>
-      </GuideContext.Provider>
+      <PhoneLayoutProvider isPhone={phone}>
+        <GuideContext.Provider value={api}>
+          <GuideDialog />
+          <Routes>
+            <Route path="*" element={<LocationProbe />} />
+          </Routes>
+        </GuideContext.Provider>
+      </PhoneLayoutProvider>
     </MemoryRouter>,
   );
 }
@@ -251,5 +254,54 @@ describe('GuideDialog', () => {
     videos.series = { data: [SERIES[0]] };
     renderDialog(makeApi({ currentPageId: 't3p6' }));
     expect(screen.queryByText('Quando quiser ir além')).not.toBeInTheDocument();
+  });
+
+  describe('no celular (dentro do shell)', () => {
+    it('abre como bottom sheet, com o título do sheet e o da página como heading simples', () => {
+      renderDialog(makeApi(), { phone: true });
+      const sheet = screen.getByRole('dialog', { name: 'Guia de primeiros passos' });
+      expect(sheet).toHaveClass('phone-sheet');
+      expect(screen.getByRole('heading', { level: 2, name: 'Bem-vindo ao Mesaas' })).toBeVisible();
+      expect(screen.getAllByRole('button', { name: 'Começar' })).toHaveLength(3);
+    });
+
+    it('mantém a navegação entre home e páginas', () => {
+      const api = makeApi({ currentPageId: 't1p1' });
+      renderDialog(api, { phone: true });
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'Tudo começa com um cliente' }),
+      ).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+      expect(api.goTo).toHaveBeenCalledWith('t1p2');
+    });
+
+    it('Fazer agora fecha sem dismissal e navega', () => {
+      const api = makeApi({ currentPageId: 't1p2' });
+      renderDialog(api, { phone: true });
+      fireEvent.click(screen.getByRole('button', { name: 'Fazer agora' }));
+      expect(api.setLastPage).toHaveBeenCalledWith('t1p2');
+      expect(api.closeForAction).toHaveBeenCalled();
+      expect(api.close).not.toHaveBeenCalled();
+      expect(screen.getByTestId('loc').textContent).toBe('/clientes?novo=1');
+    });
+
+    it('os vídeos saem do guia pelo mesmo caminho (sem dismissal)', () => {
+      const api = makeApi({ currentPageId: 't3p6' });
+      renderDialog(api, { phone: true });
+      fireEvent.click(screen.getByRole('button', { name: 'Ver vídeos' }));
+      expect(api.closeForAction).toHaveBeenCalled();
+      expect(api.close).not.toHaveBeenCalled();
+      expect(screen.getByTestId('loc').textContent).toBe('/ajuda/video/metricas-do-instagram');
+    });
+
+    it('Esc fecha o guia como no desktop', () => {
+      const api = makeApi();
+      renderDialog(api, { phone: true });
+      fireEvent.keyDown(screen.getByRole('dialog', { name: 'Guia de primeiros passos' }), {
+        key: 'Escape',
+      });
+      expect(api.close).toHaveBeenCalled();
+      expect(api.closeForAction).not.toHaveBeenCalled();
+    });
   });
 });

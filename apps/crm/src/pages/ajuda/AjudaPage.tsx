@@ -4,6 +4,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { CardGridSkeleton } from '@/components/ui/skeletons';
+import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
 import { filterArticles } from './filterArticles';
@@ -17,6 +19,7 @@ import { filterVideos } from './videos/playlist';
 export default function AjudaPage() {
   // `?q=` vem do item "Ver todos em Ajuda" da busca global (⌘K).
   const [searchParams] = useSearchParams();
+  const isDesktop = useIsDesktop(768);
   const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
 
   const { data: articles = [], isLoading } = useQuery({
@@ -41,11 +44,15 @@ export default function AjudaPage() {
 
   return (
     <div className="space-y-6">
-      <div className="header">
-        <div className="header-title">
-          <h1>Central de Ajuda</h1>
+      {isDesktop ? (
+        <div className="header">
+          <div className="header-title">
+            <h1>Central de Ajuda</h1>
+          </div>
         </div>
-      </div>
+      ) : (
+        <PhonePageHeader title="Central de Ajuda" />
+      )}
 
       <VideoPlaylistHero requestedSlug={searchParams.get('video')} />
 

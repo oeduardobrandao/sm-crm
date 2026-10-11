@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
   Users,
   FileText,
@@ -36,6 +36,9 @@ import { getAllHubPages } from '@/store/hub';
 import { getKbSearchIndex } from '@/store/kb';
 import { getPostStatusDefinitions } from '@/store/postStatuses';
 import { useAuth } from '@/context/AuthContext';
+import { DialogClose } from '@/components/ui/dialog';
+import { useSheetHistory } from '@/components/mobile/useSheetHistory';
+import { usePhoneLayout } from './PhoneLayoutContext';
 import {
   buildSearchItems,
   countByType,
@@ -80,6 +83,13 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
   const financialsAllowed = canSeeFinancials === true;
   // Mesmo gate do item Tarefas na sidebar (nav-data).
   const tarefasAllowed = can('tarefas', 'ver') === true;
+
+  // No celular (dentro do shell) a busca é uma tela cheia com o campo fixo no topo: o
+  // teclado do iOS cobriria a metade de baixo de um diálogo centralizado (FBusca).
+  const { isPhone } = usePhoneLayout();
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  // Entrada no histórico: o Voltar do iOS/Android fecha a busca, não a página.
+  const { closeThen } = useSheetHistory(isPhone && open, close);
 
   const [query, setQuery] = useState('');
   const [activeType, setActiveType] = useState<SearchType | 'all'>('all');
@@ -202,29 +212,49 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
   const hasQuery = query.trim().length > 0;
 
   const go = (route: string) => {
+    if (isPhone) {
+      // Fecha antes: a rota nova substitui a entrada da busca no histórico.
+      closeThen(() => navigate(route));
+      return;
+    }
     onOpenChange(false);
     navigate(route);
   };
+
+  const input = (
+    <CommandInput
+      ref={inputRef}
+      placeholder={t('topbar.searchPlaceholder', 'Buscar...')}
+      value={query}
+      onValueChange={setQuery}
+    />
+  );
 
   return (
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
       commandProps={{ shouldFilter: false }}
-      contentClassName="sm:max-w-3xl"
+      layout={isPhone ? 'fullscreen' : 'default'}
+      contentClassName={isPhone ? 'phone-kit phone-search' : 'sm:max-w-3xl'}
     >
-      <CommandInput
-        ref={inputRef}
-        placeholder={t('topbar.searchPlaceholder', 'Buscar...')}
-        value={query}
-        onValueChange={setQuery}
-      />
+      {isPhone ? (
+        <div className="phone-search__bar">
+          {input}
+          <DialogClose className="phone-search__cancel">Cancelar</DialogClose>
+        </div>
+      ) : (
+        input
+      )}
 
       {hasQuery && matches.length > 0 && (
         <div
           role="group"
           aria-label="Filtrar por tipo"
-          className="flex gap-1.5 overflow-x-auto border-b px-3 py-2 [scrollbar-width:none]"
+          className={cn(
+            'flex gap-1.5 overflow-x-auto border-b px-3 py-2 [scrollbar-width:none]',
+            isPhone && 'phone-search__types',
+          )}
         >
           <TypePill
             icon={Layers}
@@ -246,7 +276,11 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
         </div>
       )}
 
-      <CommandList className="max-h-[min(60vh,560px)]">
+      <CommandList
+        className={
+          isPhone ? 'phone-search__list max-h-none min-h-0 flex-1' : 'max-h-[min(60vh,560px)]'
+        }
+      >
         {isLoading ? (
           <div className="py-6 text-center">
             <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />

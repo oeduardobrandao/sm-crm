@@ -113,6 +113,20 @@ vi.mock('../GlobalPopupHost', () => ({
 
 import { useAuth } from '../../../context/AuthContext';
 import AppLayout from '../AppLayout';
+import { usePhoneChrome, usePhoneLayout } from '../PhoneLayoutContext';
+
+/** A page that brings its own phone header and hides the tab bar (F0a.1). */
+function ChromePage() {
+  usePhoneChrome({ pageHeader: true, tabBar: false });
+  const { isPhone } = usePhoneLayout();
+  return (
+    <div>
+      <div>Chrome screen</div>
+      <span data-testid="is-phone">{String(isPhone)}</span>
+      <Link to="/clientes">Ir para clientes</Link>
+    </div>
+  );
+}
 
 const mockedUseAuth = vi.mocked(useAuth);
 
@@ -210,6 +224,7 @@ function renderLayout(pathname = '/dashboard') {
           <Route path="/clientes" element={<div>Clientes screen</div>} />
           <Route path="/financeiro" element={<div>Financeiro screen</div>} />
           <Route path="/contratos" element={<div>Contratos screen</div>} />
+          <Route path="/chrome" element={<ChromePage />} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -243,6 +258,39 @@ describe('AppLayout', () => {
     expect(
       document.getElementById('app')?.querySelector('[data-testid="context-help"]'),
     ).toBeNull();
+  });
+
+  it('applies the page phone chrome to .app-container and clears it on the next route', async () => {
+    setViewport(390);
+    mockMatchMedia(false);
+
+    renderLayout('/chrome');
+    await screen.findByText('Chrome screen');
+
+    const container = document.querySelector('.app-container')!;
+    expect(container).toHaveAttribute('data-phone-page-header');
+    expect(container).toHaveAttribute('data-phone-tab-bar', 'hidden');
+    // The page header carries the bell, so the shell's own bar is not mounted.
+    expect(screen.queryByTestId('phone-shell-header')).not.toBeInTheDocument();
+    expect(screen.getByTestId('is-phone')).toHaveTextContent('true');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Ir para clientes' }));
+    await screen.findByText('Clientes screen');
+
+    expect(container).not.toHaveAttribute('data-phone-page-header');
+    expect(container).not.toHaveAttribute('data-phone-tab-bar');
+    expect(screen.getByTestId('phone-shell-header')).toBeInTheDocument();
+  });
+
+  it('reports desktop through usePhoneLayout from 768px up', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    renderLayout('/chrome');
+    await screen.findByText('Chrome screen');
+
+    expect(screen.getByTestId('is-phone')).toHaveTextContent('false');
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
   });
 
   it('keeps the TopBar and the in-page related-articles button from 768px up', async () => {

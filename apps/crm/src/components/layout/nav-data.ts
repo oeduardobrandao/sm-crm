@@ -8,6 +8,12 @@ export interface NavItem {
   icon: string;
   /** Open the route in a new browser tab instead of in-app SPA navigation. */
   newTab?: boolean;
+  /**
+   * Public page outside the CRM shell (no AppLayout). The phone Mais sheet opens it in a
+   * new tab/window like `newTab`, so the user never lands outside the shell with no tab
+   * bar and no way back. Desktop navigation is unaffected.
+   */
+  outsideShell?: boolean;
   /** Renders as an inert row with a "coming soon" badge instead of a working link. */
   disabled?: boolean;
   /** Flag off: em vez de sumir, renderiza esmaecido com cadeado, clicável
@@ -209,6 +215,7 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         label: 'Privacidade',
         labelKey: 'nav.privacidade',
         icon: 'ph-shield-check',
+        outsideShell: true,
       },
     ],
   },

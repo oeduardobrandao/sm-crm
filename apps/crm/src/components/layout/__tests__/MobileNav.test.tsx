@@ -277,6 +277,26 @@ describe('MobileNav', () => {
     expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
   });
 
+  it.each([
+    ['Novidades', '/novidades'],
+    ['Privacidade', '/politica-de-privacidade'],
+  ])(
+    'opens %s (a page outside the shell) in a new tab instead of leaving the app',
+    async (label, route) => {
+      setAuth();
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      renderMobileNav('/dashboard');
+
+      const sheet = openMore();
+      fireEvent.click(within(sheet).getByRole('button', { name: `${label} (abre em nova aba)` }));
+
+      expect(open).toHaveBeenCalledWith(route, '_blank', 'noopener,noreferrer');
+      expect(screen.getByTestId('path').textContent).toBe('/dashboard');
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull());
+      open.mockRestore();
+    },
+  );
+
   it('includes the sidebar routes that are not on the bar in the more sheet', () => {
     setAuth();
     renderMobileNav('/dashboard');

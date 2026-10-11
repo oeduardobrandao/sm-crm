@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useGuide } from './GuideContext';
+import { useGuideLeave } from './guideLeave';
 import { GuideVideoCard } from './GuideVideoCard';
 import { useKbVideoSeries, useVideoProgress } from '../../pages/ajuda/videos/useKbVideos';
 import { formatDuration } from '../../pages/ajuda/videos/playlist';
@@ -22,10 +23,14 @@ export function findVideoBySlug(series: KbVideoSeries[], slug: string): KbVideo 
 function useOpenInHelpCenter(pageId: string) {
   const g = useGuide();
   const navigate = useNavigate();
+  const leave = useGuideLeave();
   return (slug: string) => {
     if (pageId !== 'home') g?.setLastPage(pageId);
+    const to = `/ajuda/video/${slug}`;
+    // Phone sheet: close, then navigate once its history entry is popped.
+    if (leave) return leave(to);
     g?.closeForAction();
-    navigate(`/ajuda/video/${slug}`);
+    navigate(to);
   };
 }
 

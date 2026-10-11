@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextHelpLinks } from '../ContextHelpLinks';
 import { getContextLinksForRoutes } from '@/store/kb';
@@ -31,12 +31,17 @@ const article = (id: string, slug: string) => ({
   },
 });
 
+function PathProbe() {
+  return <div data-testid="path">{useLocation().pathname}</div>;
+}
+
 function renderHelp(initialEntry = '/clientes/42') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const result = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <ContextHelpLinks />
+        <PathProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -101,7 +106,7 @@ describe('ContextHelpLinks', () => {
     expect(getContextLinksForRoutes).toHaveBeenCalledWith(['/financeiro']);
   });
 
-  it('uses the phone Sheet branch for related articles', async () => {
+  it('uses the kit BottomSheet on phones and navigates from its rows', async () => {
     vi.stubGlobal(
       'matchMedia',
       vi.fn().mockImplementation((query: string) => ({
@@ -114,16 +119,22 @@ describe('ContextHelpLinks', () => {
     vi.mocked(getContextLinksForRoutes).mockResolvedValue([article('1', 'artigo-no-celular')]);
     renderHelp();
 
-    fireEvent.click(await screen.findByRole('button', { name: /Artigos relacionados/ }));
+    const trigger = await screen.findByRole('button', { name: 'Artigos relacionados, 1' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
 
     const sheet = await screen.findByRole('dialog', { name: 'Artigos relacionados' });
-    expect(sheet).toHaveClass('context-help__sheet');
+    expect(sheet).toHaveClass('phone-sheet', 'context-help__sheet');
     expect(within(sheet).getByText('Escolha um artigo relacionado para abrir.')).toHaveClass(
       'sr-only',
     );
-    expect(within(sheet).getByRole('link', { name: 'Artigo 1' })).toHaveAttribute(
-      'href',
-      '/ajuda/artigo-no-celular',
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    // Rows close the sheet before navigating (no dead history entry behind the article).
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Artigo 1' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Artigos relacionados' })).toBeNull(),
     );
+    expect(screen.getByTestId('path')).toHaveTextContent('/ajuda/artigo-no-celular');
   });
 });

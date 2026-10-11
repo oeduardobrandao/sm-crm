@@ -6,6 +6,7 @@ import {
   ChartLine,
   Compass,
   Ellipsis,
+  ExternalLink,
   House,
   Lock,
   LogOut,
@@ -223,6 +224,13 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
 
   // Close first, then navigate once the sheet's history entry is gone (no dead Back step).
   const go = (route: string) => closeThen(() => navigate(route));
+  // Public pages (Novidades, Privacidade) live outside the shell: open them in a new tab
+  // or window instead of leaving the app with no tab bar. No SPA navigation, so a plain
+  // close is enough (the sheet's entry pops with it).
+  const openOutside = (route: string) => {
+    close();
+    window.open(route, '_blank', 'noopener,noreferrer');
+  };
 
   const toggleTheme = () => {
     const next = isDark ? 'light' : 'dark';
@@ -269,6 +277,19 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
         />
       );
     }
+    if (item.newTab || item.outsideShell) {
+      return (
+        <Cell
+          key={item.id}
+          label={label}
+          icon={icon}
+          data-testid={`mobile-nav-external-${item.id}`}
+          accessory={<ExternalLink className="phone-cell__chevron" aria-hidden="true" />}
+          aria-label={`${label} (abre em nova aba)`}
+          onClick={() => openOutside(item.route)}
+        />
+      );
+    }
     return (
       <Cell
         key={item.id}
@@ -307,20 +328,16 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
         <Cell
           label="Buscar"
           icon={<Search />}
-          onClick={() => {
-            close();
-            onSearch();
-          }}
+          // The search and the guide carry their own history entry on phones: open them
+          // only after the sheet's entry is gone, or the in-flight pop would close them.
+          onClick={() => closeThen(onSearch)}
         />
         {guide?.showEntryPoint && (
           <Cell
             label="Guia de primeiros passos"
             icon={<Compass />}
             value={`${guide.totals.done} de ${guide.totals.total}`}
-            onClick={() => {
-              close();
-              guide.open('mobile_nav');
-            }}
+            onClick={() => closeThen(() => guide.open('mobile_nav'))}
           />
         )}
         <Cell
