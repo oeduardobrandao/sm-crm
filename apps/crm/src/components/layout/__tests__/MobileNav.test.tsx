@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../context/AuthContext';
 
 vi.mock('../../../context/AuthContext', () => ({
@@ -177,6 +177,36 @@ describe('MobileNav', () => {
     // work and would stall silent deploy swaps.
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(screen.getByRole('navigation', { name: 'Navegação principal' })).toBeInTheDocument();
+  });
+
+  describe('--mobile-nav-chrome-offset', () => {
+    function stubViewport(offsetTop: number, height: number, innerHeight: number) {
+      const viewport = Object.assign(new EventTarget(), { offsetTop, height });
+      vi.stubGlobal('visualViewport', viewport);
+      vi.stubGlobal('innerHeight', innerHeight);
+      setAuth();
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      document.documentElement.style.removeProperty('--mobile-nav-chrome-offset');
+    });
+
+    const offset = () =>
+      document.documentElement.style.getPropertyValue('--mobile-nav-chrome-offset');
+
+    it("lifts the bar by the part of the layout viewport Safari's toolbar covers", () => {
+      stubViewport(0, 640, 714);
+      renderMobileNav('/dashboard');
+      expect(offset()).toBe('74px');
+    });
+
+    it('stays 0 in the iOS home-screen app, where offsetTop is minus the status bar', () => {
+      // Measured in the iOS 26 Simulator: innerHeight 874, visualViewport 874 tall at -62.
+      stubViewport(-62, 874, 874);
+      renderMobileNav('/dashboard');
+      expect(offset()).toBe('0px');
+    });
   });
 
   it('exposes the Mais sheet state', () => {

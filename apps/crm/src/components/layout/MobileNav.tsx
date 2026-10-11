@@ -108,7 +108,9 @@ export default function MobileNav() {
     if (!viewport) return;
 
     const updateChromeOffset = () => {
-      const gap = window.innerHeight - (viewport.offsetTop + viewport.height);
+      // The iOS home-screen app reports offsetTop as minus the status-bar height
+      // (-62px) with height = innerHeight, which would read as a 62px toolbar.
+      const gap = window.innerHeight - (Math.max(0, viewport.offsetTop) + viewport.height);
       document.documentElement.style.setProperty(
         '--mobile-nav-chrome-offset',
         `${Math.max(0, Math.round(gap))}px`,

@@ -216,6 +216,18 @@ body {
   background: var(--sidebar-bg);
 }
 
+/* iOS home-screen web app (black-translucent status bar): WebKit lays the document out
+   BELOW the status bar (documentElement is 812px tall from y=62 on a 874px screen) yet
+   still reports env(safe-area-inset-top) as 62px, so every in-flow offset that adds the
+   inset counts the status bar twice, and 100dvh runs 62px past the bottom. Fixed boxes
+   still start at the top of the screen, so pinning the shell to them puts it back on
+   the coordinate system the insets describe. index.html sets the attribute. */
+html[data-standalone] .app-container {
+  position: fixed;
+  inset: 0;
+  height: auto;
+}
+
 @supports not (height: 100dvh) {
   .app-container {
     height: 100vh;
@@ -3715,6 +3727,9 @@ select.form-input option {
   }
 
   .phone-shell-actions .context-help__trigger {
+    /* Button size="sm" carries mb-2, which made the wrapper 44px tall and pinned the
+       pill to the top of the row instead of centring it with the round buttons. */
+    margin: 0;
     height: 36px;
     padding: 0 0.6rem;
     border: 0;
