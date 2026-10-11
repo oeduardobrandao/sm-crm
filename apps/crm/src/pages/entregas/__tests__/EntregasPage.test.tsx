@@ -11,6 +11,24 @@ vi.mock('../hooks/useActivePosts', () => ({
   useActivePosts: vi.fn(() => ({ posts: [], isLoading: false })),
 }));
 
+// VistasTabs reads the saved views through this hook (TanStack Query + the
+// store); this suite has no QueryClientProvider, so the hook is stubbed and a
+// test seeds `savedViewsMock.views` to render saved tabs.
+const savedViewsMock = vi.hoisted(() => ({
+  views: [] as { id: string; name: string; query: string; position: number }[],
+}));
+vi.mock('../hooks/useSavedViews', () => ({
+  useSavedViews: () => ({
+    views: savedViewsMock.views,
+    isLoading: false,
+    isError: false,
+    save: vi.fn(),
+    updateQuery: vi.fn(),
+    rename: vi.fn(),
+    remove: vi.fn(),
+  }),
+}));
+
 const storeMocks = vi.hoisted(() => ({
   duplicateWorkflow: vi.fn(),
   getStandalonePost: vi.fn(),
@@ -868,6 +886,11 @@ function isoInDays(n: number): string {
   const dia = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${mes}-${dia}`;
 }
+
+// Every describe below starts without saved views.
+beforeEach(() => {
+  savedViewsMock.views = [];
+});
 
 describe('EntregasPage', () => {
   beforeEach(() => {
@@ -2733,10 +2756,9 @@ describe('EntregasPage: Minha fila', () => {
   });
 
   it('a saved vista with membro=12 selects that member', () => {
-    localStorage.setItem(
-      'entregas_saved_views_conta-1',
-      JSON.stringify([{ name: 'Fila do Bruno', query: 'view=fila&membro=12' }]),
-    );
+    savedViewsMock.views = [
+      { id: 'v1', name: 'Fila do Bruno', query: 'view=fila&membro=12', position: 0 },
+    ];
     renderFila('/entregas');
     fireEvent.click(screen.getByRole('button', { name: 'Fila do Bruno' }));
     expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
