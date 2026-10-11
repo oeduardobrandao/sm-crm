@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { CheckSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials, updateTarefa, type Membro, type TarefaWithRelations } from '../../../store';
+import { getInitials, type Membro, type TarefaWithRelations } from '../../../store';
 import { DUE_BUCKETS, dueBadge, groupByDueBucket } from '../tarefasLogic';
+import { toggleTarefaConcluida } from '../tarefaCommands';
 import { TagPill } from '../components/TagPicker';
+import { TarefasPhoneList } from '../phone/TarefasPhoneList';
 
 interface ListViewProps {
   tarefas: TarefaWithRelations[];
@@ -132,7 +134,18 @@ function TarefaRow({
 
 /** List grouped by due date buckets, with a collapsed "Concluídas" section. */
 export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListViewProps) {
+  const isDesktop = useIsDesktop(768);
   const [showConcluidas, setShowConcluidas] = useState(false);
+  if (!isDesktop) {
+    return (
+      <TarefasPhoneList
+        tarefas={tarefas}
+        membros={membros}
+        onTarefaClick={onTarefaClick}
+        onRefresh={onRefresh}
+      />
+    );
+  }
   const now = new Date();
   const buckets = groupByDueBucket(tarefas, now);
   const membroById = new Map(membros.filter((m) => m.id != null).map((m) => [m.id!, m]));
@@ -142,15 +155,8 @@ export function ListView({ tarefas, membros, onTarefaClick, onRefresh }: ListVie
     .sort((a, b) => (b.concluida_em ?? '').localeCompare(a.concluida_em ?? ''))
     .slice(0, 50);
 
-  const handleToggleComplete = async (tarefa: TarefaWithRelations, concluida: boolean) => {
-    try {
-      await updateTarefa(tarefa.id!, { status: concluida ? 'concluida' : 'pendente' });
-      toast.success(concluida ? 'Tarefa concluída!' : 'Tarefa reaberta!');
-      onRefresh();
-    } catch {
-      toast.error('Erro ao atualizar tarefa');
-    }
-  };
+  const handleToggleComplete = (tarefa: TarefaWithRelations, concluida: boolean) =>
+    toggleTarefaConcluida(tarefa, concluida, onRefresh);
 
   const membroOf = (t: TarefaWithRelations) =>
     t.responsavel_id != null ? (membroById.get(t.responsavel_id) ?? null) : null;
