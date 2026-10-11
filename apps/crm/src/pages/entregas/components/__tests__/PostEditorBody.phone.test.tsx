@@ -1,0 +1,304 @@
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}));
+vi.mock('@mesaas/app-lifecycle', () => ({
+  useUnsavedWork: vi.fn(),
+  trackUnsavedWork: vi.fn((p: Promise<unknown>) => p),
+}));
+vi.mock('@/lib/supabase');
+vi.mock('@/services/instagram', () => ({
+  scheduleInstagramPost: vi.fn(),
+  cancelInstagramSchedule: vi.fn(),
+  retryInstagramPublish: vi.fn(),
+  publishInstagramNow: vi.fn(),
+}));
+vi.mock('@/services/tiktok', () => ({
+  scheduleTikTokPost: vi.fn(),
+  cancelTikTokSchedule: vi.fn(),
+  retryTikTokPublish: vi.fn(),
+  publishTikTokNow: vi.fn(),
+}));
+
+const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: limitsMock.features, limits: null, isLoading: false }),
+}));
+vi.mock('@/hooks/useStatusRegistry', async () => {
+  const { buildStatusRegistry } = await import('../../statusRegistry');
+  return { useStatusRegistry: () => buildStatusRegistry([]) };
+});
+vi.mock('@/store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store')>()),
+  getPostTargets: vi.fn(async () => []),
+  getBoardPlatforms: vi.fn(async () => []),
+}));
+vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+vi.mock('@/services/inlineImage', () => ({
+  uploadInlineImage: vi.fn(),
+  extractR2Keys: vi.fn(() => []),
+  injectSignedUrls: vi.fn((c: unknown) => c),
+  stripSignedUrls: vi.fn((c: unknown) => c),
+  resolveInlineImageUrls: vi.fn(async () => ({})),
+}));
+vi.mock('@/pages/entregas/components/PostEditor', () => ({
+  PostEditor: ({ variant }: { variant?: string }) => (
+    <div data-testid="post-editor-stub" data-variant={variant} />
+  ),
+}));
+vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
+vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({ default: () => null }));
+vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
+  PostMediaGallery: ({ variant }: { variant?: string }) => (
+    <div data-testid="media-stub" data-variant={variant} />
+  ),
+  hasVideoMissingThumbnail: () => false,
+}));
+// A caption draft the user is typing: it must survive tab switches (panes stay mounted).
+vi.mock('@/pages/entregas/components/InstagramCaptionField', () => ({
+  InstagramCaptionField: () => <textarea aria-label="Legenda do Instagram" />,
+}));
+vi.mock('@/pages/entregas/components/PlatformSelector', () => ({
+  PlatformSelector: () => <div data-testid="platform-selector-stub" />,
+}));
+vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
+  TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
+}));
+vi.mock('@/store/postReferences', () => ({
+  getPostReferences: vi.fn(async () => []),
+  getPostReferenceCounts: vi.fn(async () => ({})),
+  deletePostReference: vi.fn(),
+}));
+vi.mock('@/pages/entregas/components/references/PostClientReferences', () => ({
+  PostClientReferences: () => null,
+}));
+vi.mock('@/pages/entregas/components/TrialReelPanel', () => ({ TrialReelPanel: () => null }));
+vi.mock('@/pages/entregas/components/PostAutomationSection', () => ({
+  PostAutomationSection: () => null,
+}));
+vi.mock('@/pages/entregas/components/PublishErrorBlock', () => ({ PublishErrorBlock: () => null }));
+vi.mock('@/pages/entregas/components/SuggestTimeButton', () => ({ SuggestTimeButton: () => null }));
+vi.mock('@/pages/entregas/components/PostVersionHistorySheet', () => ({
+  PostVersionHistorySheet: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="versions-open" /> : null,
+}));
+vi.mock('@/components/ui/date-time-picker', () => ({ DateTimePicker: () => null }));
+
+import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
+import type { PhoneEditorChrome } from '../postEditorPhone/types';
+import type { WorkflowPost } from '@/store';
+
+const basePost = {
+  id: 42,
+  workflow_id: 10,
+  conta_id: 'ws-1',
+  cliente_id: 7,
+  titulo: 'Lançamento outubro',
+  conteudo: null,
+  conteudo_plain: 'Primeiro parágrafo\nSegundo parágrafo',
+  tipo: 'feed',
+  ordem: 0,
+  status: 'rascunho',
+  platform: 'instagram',
+  ig_caption: 'Legenda IG',
+  tiktok_caption: null,
+  is_express: false,
+  scheduled_at: null,
+} as unknown as WorkflowPost;
+
+function renderPhone(
+  over: Partial<PostEditorBodyProps> = {},
+  chrome: Partial<PhoneEditorChrome> = {},
+) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const phone: PhoneEditorChrome = {
+    onBack: vi.fn(),
+    subtitle: 'Padaria Sol · Outubro',
+    clientName: 'Padaria Sol',
+    saving: false,
+    menuActions: [
+      { label: 'Copiar link', onSelect: vi.fn() },
+      { label: 'Excluir post', destructive: true, onSelect: vi.fn() },
+    ],
+    ...chrome,
+  };
+  const props: PostEditorBodyProps = {
+    post: basePost,
+    templateId: undefined,
+    workflowId: 10,
+    clienteId: 7,
+    clientePosts: [],
+    isExpanded: true,
+    approvals: [],
+    statusEvents: [],
+    editSuggestion: null,
+    membros: [],
+    replyText: '',
+    sendingReply: false,
+    commentThreads: [],
+    currentUserId: 'user-1',
+    currentUserRole: 'owner',
+    canManageAutomations: false,
+    workspaceUsers: [],
+    hasInstagramAccount: true,
+    igAccountStatus: null,
+    hasActiveTikTokAccount: false,
+    ttAccountStatus: null,
+    onFieldChange: vi.fn(),
+    onContentUpdate: vi.fn(),
+    onReplyChange: vi.fn(),
+    onReplySend: vi.fn(),
+    onRefresh: vi.fn(),
+    onCreateComment: vi.fn(async () => 1),
+    onSaveCaption: vi.fn(async () => {}),
+    onReplyToComment: vi.fn(async () => {}),
+    onResolveThread: vi.fn(async () => {}),
+    onReopenThread: vi.fn(async () => {}),
+    onEditComment: vi.fn(async () => {}),
+    onDeleteComment: vi.fn(async () => {}),
+    editorVersion: 0,
+    onAcceptSuggestion: vi.fn(),
+    onRejectSuggestion: vi.fn(),
+    layout: 'phone',
+    phone,
+    ...over,
+  };
+  const utils = render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <PostEditorBody {...props} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { ...utils, props, phone };
+}
+
+describe('PostEditorBody, phone layout', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('renders the header, the four tabs and every pane mounted, only Conteúdo visible', () => {
+    renderPhone();
+    expect(screen.getByRole('heading', { level: 1, name: 'Lançamento outubro' })).toBeVisible();
+    expect(screen.getByText('Padaria Sol · Outubro')).toBeInTheDocument();
+    const tabs = within(screen.getByRole('tablist', { name: 'Seções do post' }));
+    for (const name of ['Conteúdo', 'Detalhes', 'Publicar', /Comentários/]) {
+      expect(tabs.getByRole('tab', { name })).toBeInTheDocument();
+    }
+    const panes = screen.getAllByRole('tabpanel', { hidden: true });
+    expect(panes).toHaveLength(4);
+    expect(panes.filter((p) => !p.hidden)).toHaveLength(1);
+    expect(screen.getByTestId('media-stub')).toHaveAttribute('data-variant', 'phone');
+    expect(screen.getByTestId('post-editor-stub')).toHaveAttribute('data-variant', 'phone');
+    expect(screen.getByText('2 parágrafos')).toBeInTheDocument();
+  });
+
+  it('keeps a caption draft across tab switches (panes are hidden, not unmounted)', async () => {
+    const user = userEvent.setup();
+    renderPhone();
+    const caption = screen.getByRole('textbox', { name: 'Legenda do Instagram', hidden: true });
+    await user.type(caption, 'rascunho não salvo');
+    await user.click(screen.getByRole('tab', { name: 'Detalhes' }));
+    expect(caption).not.toBeVisible();
+    await user.click(screen.getByRole('tab', { name: 'Publicar' }));
+    await user.click(screen.getByRole('tab', { name: 'Conteúdo' }));
+    const again = screen.getByRole('textbox', { name: 'Legenda do Instagram' });
+    expect(again).toBe(caption);
+    expect(again).toHaveValue('rascunho não salvo');
+  });
+
+  it('Voltar calls the host back', async () => {
+    const user = userEvent.setup();
+    const { phone } = renderPhone();
+    await user.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(phone.onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('the "…" menu lists host actions with the editor ones before the destructive ones', async () => {
+    const user = userEvent.setup();
+    const { phone } = renderPhone();
+    await user.click(screen.getByRole('button', { name: 'Mais ações do post' }));
+    const sheet = await screen.findByRole('dialog');
+    const labels = within(sheet)
+      .getAllByRole('button')
+      .map((b) => b.textContent?.trim())
+      .filter(Boolean);
+    const order = ['Copiar link', 'Histórico de versões', 'Histórico do post', 'Excluir post'];
+    expect(labels.filter((l) => order.includes(l!))).toEqual(order);
+    await user.click(within(sheet).getByRole('button', { name: 'Copiar link' }));
+    expect(phone.menuActions[0].onSelect).toHaveBeenCalled();
+  });
+
+  it('picking a status in the status sheet calls onFieldChange', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPhone();
+    await user.click(screen.getByRole('button', { name: /Trocar status/ }));
+    const sheet = await screen.findByRole('dialog');
+    await user.click(within(sheet).getByRole('button', { name: /Em revisão/ }));
+    expect(props.onFieldChange).toHaveBeenCalledWith('status', 'revisao_interna');
+  });
+
+  describe('bottom bar follows the status', () => {
+    it('rascunho: no bottom bar', () => {
+      renderPhone();
+      expect(screen.queryByRole('button', { name: /Agendar publicação/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Enviar ao cliente/ })).toBeNull();
+    });
+
+    it('aprovado_interno with posts ready: Enviar ao cliente runs the host command', async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      renderPhone(
+        { post: { ...basePost, status: 'aprovado_interno' } },
+        { sendToClient: { count: 1, sending: false, onSend } },
+      );
+      await user.click(screen.getByRole('button', { name: 'Enviar ao cliente' }));
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('aprovado_cliente without date or caption: both blocked, "Falta" names them', () => {
+      renderPhone({ post: { ...basePost, status: 'aprovado_cliente', ig_caption: '' } });
+      expect(screen.getByRole('button', { name: /Agendar publicação/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Publicar agora/ })).toBeDisabled();
+      // Same copy as the desktop ScheduleButton, in the bar and in Publicar's checklist.
+      expect(
+        screen.getAllByText('Falta: data de publicação, legenda do Instagram', { exact: false })
+          .length,
+      ).toBeGreaterThan(0);
+    });
+
+    it('agendado: shows the date and Cancelar agendamento', () => {
+      renderPhone({
+        post: {
+          ...basePost,
+          status: 'agendado',
+          scheduled_at: '2030-10-15T21:00:00.000Z',
+        } as WorkflowPost,
+      });
+      expect(screen.getByText(/Agendado para/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Cancelar agendamento/ })).toBeEnabled();
+    });
+
+    it('falha: Tentar novamente', () => {
+      renderPhone({ post: { ...basePost, status: 'falha_publicacao' } });
+      expect(screen.getByRole('button', { name: /Tentar novamente/ })).toBeInTheDocument();
+    });
+
+    it('Comentários tab hides the bar and shows the two threads', async () => {
+      const user = userEvent.setup();
+      renderPhone({ post: { ...basePost, status: 'falha_publicacao' } });
+      await user.click(screen.getByRole('tab', { name: /Comentários/ }));
+      expect(screen.queryByRole('button', { name: /Tentar novamente/ })).toBeNull();
+      expect(screen.getByRole('radio', { name: /Com o cliente/ })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('radio', { name: /Equipe/ }));
+      expect(screen.getByText(/Nenhum comentário interno/)).toBeInTheDocument();
+    });
+  });
+});

@@ -315,7 +315,7 @@ describe('WorkflowDrawer on phones: header', () => {
 });
 
 describe('WorkflowDrawer on phones: posts list', () => {
-  it('rows read "Tipo · data" and tapping one still toggles the inline editor', async () => {
+  it('rows read "Tipo · data" and tapping one opens the pushed editor screen', async () => {
     renderDrawer();
     await screen.findByText('Carrossel de lançamento');
     // No post with the client yet: the counter falls back to the post count.
@@ -323,12 +323,14 @@ describe('WorkflowDrawer on phones: posts list', () => {
     expect(screen.getByText(new RegExp(`^${TIPO_LABELS.carrossel} · `))).toBeInTheDocument();
     expect(screen.getByText(`${TIPO_LABELS.feed} · A definir`)).toBeInTheDocument();
 
-    expect(screen.getByTestId('editor-1')).toHaveAttribute('data-expanded', 'false');
+    expect(screen.queryByRole('region', { name: 'Editor do post' })).toBeNull();
     fireEvent.click(rowMain('Carrossel de lançamento'));
-    expect(screen.getByTestId('editor-1')).toHaveAttribute('data-expanded', 'true');
-    expect(rowMain('Carrossel de lançamento')).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.click(rowMain('Carrossel de lançamento'));
-    expect(screen.getByTestId('editor-1')).toHaveAttribute('data-expanded', 'false');
+    const region = await screen.findByRole('region', { name: 'Editor do post' });
+    expect(within(region).getByTestId('editor-1')).toBeInTheDocument();
+    // The row itself never expands inline on phones.
+    const inline = screen.getAllByTestId('editor-1').filter((el) => !region.contains(el));
+    expect(inline).toHaveLength(1);
+    expect(inline[0]).toHaveAttribute('data-expanded', 'false');
   });
 
   it('opening the "…" menu does not expand the post', async () => {

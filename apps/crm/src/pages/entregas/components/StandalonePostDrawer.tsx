@@ -18,6 +18,7 @@ import {
   CircleOff,
   Calendar as CalendarIcon,
   FileText,
+  ChevronLeft,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -85,6 +86,12 @@ import {
   previousStepOf,
   type ProcessTarget,
 } from '../postProcessCommands';
+import { copyAppLink } from '@/lib/copyAppLink';
+import { buildHubPostLink } from '@/lib/hubLinks';
+import { PhoneIconButton } from '@/components/mobile';
+import { useIsPhoneEditor } from './postEditorPhone/useIsPhoneEditor';
+import { PhoneEditorScreen } from './postEditorPhone/PhoneEditorScreen';
+import type { PhoneMenuAction } from './postEditorPhone/types';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -150,6 +157,7 @@ export function StandalonePostDrawer({
 }: StandalonePostDrawerProps) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const isPhoneEditor = useIsPhoneEditor();
 
   const { data: post, isLoading } = useQuery({
     queryKey: ['standalone-post', postId],
@@ -582,6 +590,313 @@ export function StandalonePostDrawer({
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
+  const dialogs = (
+    <>
+      {post && clienteId != null && (
+        <AttachToFluxoDialog
+          open={attachOpen}
+          onClose={() => setAttachOpen(false)}
+          postId={postId}
+          clienteId={clienteId}
+          onAttached={onAttached}
+          process={postProcess}
+        />
+      )}
+      {post && (
+        <ApplyProcessDialog
+          open={applyOpen}
+          onClose={() => setApplyOpen(false)}
+          post={{ id: postId, titulo: post.titulo, cliente_id: post.cliente_id }}
+          membros={membros}
+          onApplied={() => {
+            refresh();
+            onRefresh();
+            onProcessApplied?.(postId);
+          }}
+        />
+      )}
+      {commands.dialogs}
+
+      <DuplicateDialog
+        target={duplicateTarget}
+        onClose={() => setDuplicateTarget(null)}
+        onDuplicated={(newId) => {
+          refresh();
+          onRefresh();
+          toast.success(
+            'Post duplicado',
+            onDuplicated
+              ? { action: { label: 'Abrir', onClick: () => onDuplicated(newId) } }
+              : undefined,
+          );
+        }}
+      />
+
+      <AlertDialog open={pendingDelete} onOpenChange={(open) => !open && setPendingDelete(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O post e seu conteúdo serão excluídos
+              permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingDelete(false)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeletePost}>Remover</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingEditData} onOpenChange={(open) => !open && handleCancelEdit()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este post foi aprovado. Editá-lo vai invalidar a aprovação e resetar o status para "Em
+              revisão". Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelEdit}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEdit}>Confirmar edição</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingStatusChange}
+        onOpenChange={(open) => !open && setPendingStatusChange(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingRejectSuggestionId}
+        onOpenChange={(open) => !open && setPendingRejectSuggestionId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rejeitar sugestão?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A sugestão do cliente será rejeitada e ele será notificado. O conteúdo original do
+              post será mantido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingRejectSuggestionId(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRejectSuggestion}>Rejeitar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
+  // ── Phone (C4): this drawer IS the pushed editor screen. EntregasPage's drawer entry
+  // already covers the layer, so the screen pushes no entry of its own. ──
+  if (isPhoneEditor) {
+    const phoneMenuActions: PhoneMenuAction[] = [];
+    if (post && target && target.process.estado === 'ativo') {
+      if (previousStepOf(target.process)) {
+        phoneMenuActions.push({
+          label: 'Voltar etapa',
+          disabled: commands.busy,
+          onSelect: () => commands.voltar(target),
+        });
+      }
+      phoneMenuActions.push({
+        label: forwardLabelFor(target.process),
+        disabled: commands.busy,
+        onSelect: () =>
+          canConcluir(target.process) ? commands.concluir(target) : commands.avancar(target),
+      });
+    }
+    if (post && target && target.process.estado === 'concluido') {
+      phoneMenuActions.push({
+        label: 'Reabrir processo',
+        disabled: commands.busy,
+        onSelect: () => commands.reabrir(target),
+      });
+    }
+    if (post && target) {
+      phoneMenuActions.push({
+        label: 'Remover processo',
+        disabled: commands.busy,
+        onSelect: () => commands.remover(target),
+      });
+    }
+    if (post && !postProcess && postProcessesEnabled) {
+      phoneMenuActions.push({ label: 'Aplicar processo', onSelect: () => setApplyOpen(true) });
+    }
+    if (post) {
+      phoneMenuActions.push({ label: 'Vincular a um fluxo', onSelect: () => setAttachOpen(true) });
+    }
+    if (clienteId != null) {
+      phoneMenuActions.push({
+        label: 'Ver calendário do cliente',
+        onSelect: () => setDrawerView('calendar'),
+      });
+    }
+    if (hubUrl) {
+      phoneMenuActions.push({
+        label: 'Copiar link da postagem',
+        immediate: true,
+        onSelect: () => {
+          navigator.clipboard.writeText(buildHubPostLink(hubUrl, postId)).then(
+            () => toast.success('Link copiado!'),
+            () => toast.error('Não foi possível copiar o link.'),
+          );
+        },
+      });
+    }
+    phoneMenuActions.push({
+      label: 'Copiar link',
+      immediate: true,
+      onSelect: () => void copyAppLink(`/entregas?post=${postId}`),
+    });
+    if (canDuplicate && post) {
+      phoneMenuActions.push({
+        label: 'Duplicar',
+        // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+        disabled: isSaving,
+        onSelect: () => setDuplicateTarget({ kind: 'post', postId, status: post.status }),
+      });
+    }
+    phoneMenuActions.push({
+      label: 'Excluir post',
+      destructive: true,
+      onSelect: () => setPendingDelete(true),
+    });
+
+    const backOnly = (title: string, body: React.ReactNode, onBack: () => void = onClose) => (
+      <div className="phone-editor">
+        <div className="phone-editor__scroll">
+          <header className="phone-editor-header">
+            <div className="phone-editor-header__bar">
+              <PhoneIconButton label="Voltar" onClick={onBack}>
+                <ChevronLeft aria-hidden="true" />
+              </PhoneIconButton>
+            </div>
+            <h1 className="phone-editor-header__title">{title}</h1>
+          </header>
+          {body}
+        </div>
+      </div>
+    );
+
+    return (
+      <>
+        <PhoneEditorScreen open onClose={onClose} label="Editor do post" historyEntry={false}>
+          {isLoading ? (
+            backOnly('Carregando post…', <PostEditorSkeleton />)
+          ) : !post ? (
+            backOnly(
+              'Post não encontrado',
+              <div className="drawer-empty">Este post não existe mais.</div>,
+            )
+          ) : drawerView === 'calendar' && clienteId != null ? (
+            backOnly(
+              'Calendário do cliente',
+              <WorkflowCalendarView
+                clienteId={clienteId}
+                clienteNome={post.cliente_nome || '—'}
+                currentWorkflowId={null}
+                membros={membros}
+                hubUrl={hubUrl}
+                onBack={() => setDrawerView('post')}
+                onPostsChanged={refresh}
+                onOpenPost={(id) => {
+                  if (id === postId) setDrawerView('post');
+                  else navigate(`/entregas?post=${id}`);
+                }}
+              />,
+              () => setDrawerView('post'),
+            )
+          ) : (
+            <PostEditorBody
+              layout="phone"
+              phone={{
+                onBack: onClose,
+                subtitle: `${post.cliente_nome || '—'} · ${
+                  postProcess
+                    ? `Individual · ${activeStepName ?? 'Processo concluído'}`
+                    : postProcessesEnabled
+                      ? 'Avulso · Sem processo'
+                      : 'Avulso'
+                }`,
+                clientName: post.cliente_nome,
+                saving: isSaving,
+                menuActions: phoneMenuActions,
+                processEvents,
+              }}
+              post={post}
+              templateId={undefined}
+              workflowId={null}
+              postProcess={postProcess}
+              clienteId={post.cliente_id}
+              clientePosts={clientePosts}
+              isExpanded
+              approvals={approvals}
+              statusEvents={statusEvents}
+              editSuggestion={editSuggestion}
+              membros={membros}
+              replyText={replyText}
+              sendingReply={sendingReply}
+              commentThreads={commentThreads}
+              currentUserId={user?.id}
+              currentUserRole={role}
+              canManageAutomations={canManageAutomations}
+              workspaceUsers={workspaceUsers}
+              hasInstagramAccount={hasInstagramAccount}
+              igAccountStatus={igAccountStatus}
+              hasActiveTikTokAccount={hasActiveTikTokAccount}
+              ttAccountStatus={ttAccountStatus}
+              onFieldChange={handleFieldChange}
+              onContentUpdate={scheduleContentSave}
+              onReplyChange={setReplyText}
+              onReplySend={handleReplySend}
+              onRefresh={refresh}
+              onCreateComment={handleCreateComment}
+              onSaveCaption={handleSaveCaption}
+              onReplyToComment={handleReplyToComment}
+              onResolveThread={handleResolveThread}
+              onReopenThread={handleReopenThread}
+              onEditComment={handleEditComment}
+              onDeleteComment={handleDeleteComment}
+              editorVersion={editorVersion}
+              onAcceptSuggestion={handleAcceptSuggestion}
+              onRejectSuggestion={handleRejectSuggestion}
+              onProcessAvancar={
+                target
+                  ? () =>
+                      canConcluir(target.process)
+                        ? commands.concluir(target)
+                        : commands.avancar(target)
+                  : undefined
+              }
+            />
+          )}
+        </PhoneEditorScreen>
+        {dialogs}
+      </>
+    );
+  }
+
   return (
     <>
       <div className="drawer-overlay" onClick={onClose} />
@@ -820,118 +1135,7 @@ export function StandalonePostDrawer({
         </div>
       </div>
 
-      {post && clienteId != null && (
-        <AttachToFluxoDialog
-          open={attachOpen}
-          onClose={() => setAttachOpen(false)}
-          postId={postId}
-          clienteId={clienteId}
-          onAttached={onAttached}
-          process={postProcess}
-        />
-      )}
-      {post && (
-        <ApplyProcessDialog
-          open={applyOpen}
-          onClose={() => setApplyOpen(false)}
-          post={{ id: postId, titulo: post.titulo, cliente_id: post.cliente_id }}
-          membros={membros}
-          onApplied={() => {
-            refresh();
-            onRefresh();
-            onProcessApplied?.(postId);
-          }}
-        />
-      )}
-      {commands.dialogs}
-
-      <DuplicateDialog
-        target={duplicateTarget}
-        onClose={() => setDuplicateTarget(null)}
-        onDuplicated={(newId) => {
-          refresh();
-          onRefresh();
-          toast.success(
-            'Post duplicado',
-            onDuplicated
-              ? { action: { label: 'Abrir', onClick: () => onDuplicated(newId) } }
-              : undefined,
-          );
-        }}
-      />
-
-      <AlertDialog open={pendingDelete} onOpenChange={(open) => !open && setPendingDelete(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover post?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação não pode ser desfeita. O post e seu conteúdo serão excluídos
-              permanentemente.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingDelete(false)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeletePost}>Remover</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={!!pendingEditData} onOpenChange={(open) => !open && handleCancelEdit()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
-            <AlertDialogDescription>
-              Este post foi aprovado. Editá-lo vai invalidar a aprovação e resetar o status para "Em
-              revisão". Deseja continuar?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelEdit}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmEdit}>Confirmar edição</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={!!pendingStatusChange}
-        onOpenChange={(open) => !open && setPendingStatusChange(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
-            <AlertDialogDescription>
-              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={!!pendingRejectSuggestionId}
-        onOpenChange={(open) => !open && setPendingRejectSuggestionId(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Rejeitar sugestão?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A sugestão do cliente será rejeitada e ele será notificado. O conteúdo original do
-              post será mantido.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingRejectSuggestionId(null)}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmRejectSuggestion}>Rejeitar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogs}
     </>
   );
 }

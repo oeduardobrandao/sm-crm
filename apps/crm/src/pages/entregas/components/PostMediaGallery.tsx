@@ -12,6 +12,9 @@ import {
   FolderOpen,
   Image as ImageIcon,
   ImageOff,
+  Plus,
+  Star,
+  Move,
 } from 'lucide-react';
 import { sanitizeUrl } from '@/utils/security';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
@@ -21,11 +24,19 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import {
+  SortableContext,
+  useSortable,
+  rectSortingStrategy,
+  horizontalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { ContextMenu, type ContextMenuAction } from '@/components/mobile';
 import { CSS } from '@dnd-kit/utilities';
 import {
   listPostMedia,
@@ -66,6 +77,9 @@ interface PostMediaGalleryProps {
    * wins when both exist; a TikTok-only post has no permalink. */
   instagramPermalink?: string | null;
   tiktokPostUrl?: string | null;
+  /** `phone`: the horizontal strip of the phone editor ("N de 10", Capa, Adicionar),
+   *  long-press menu per item and an explicit Reordenar mode (D20). Default: the grid. */
+  variant?: 'grid' | 'phone';
 }
 
 // Mirror of CAROUSEL_MAX_ITEMS in
@@ -97,7 +111,9 @@ export function PostMediaGallery({
   mediaAutocleanedAt,
   instagramPermalink,
   tiktokPostUrl,
+  variant = 'grid',
 }: PostMediaGalleryProps) {
+  const phone = variant === 'phone';
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
   const qc = useQueryClient();
@@ -128,6 +144,14 @@ export function PostMediaGallery({
   }, [media]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Phone strip, Reordenar mode only (D20): outside it a hold opens the item's menu, so
+  // the touch sensor exists only while the mode is on. Same values as
+  // WorkflowCalendarView / PostsKanbanView.
+  const [reorderMode, setReorderMode] = useState(false);
+  const phoneSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
 
   async function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e;
@@ -135,7 +159,17 @@ export function PostMediaGallery({
     const oldIndex = media.findIndex((m) => m.id === active.id);
     const newIndex = media.findIndex((m) => m.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(media, oldIndex, newIndex);
+    await applyOrder(arrayMove(media, oldIndex, newIndex));
+  }
+
+  /** "Definir como capa": the post's cover is its first item. */
+  async function moveToFront(id: number) {
+    const index = media.findIndex((m) => m.id === id);
+    if (index <= 0) return;
+    await applyOrder(arrayMove(media, index, 0));
+  }
+
+  async function applyOrder(next: PostMedia[]) {
     setMedia(next);
     try {
       await Promise.all(next.map((m, i) => reorderPostMedia(m.id, i)));
@@ -469,6 +503,15 @@ export function PostMediaGallery({
     }
   }
 
+  async function downloadSingle(m: PostMedia) {
+    try {
+      await downloadMedia(m);
+      toast.success(t('mediaGallery.downloadDone'));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   async function handleDelete(id: number) {
     try {
       await deletePostMedia(id);
@@ -642,80 +685,170 @@ export function PostMediaGallery({
           </div>
         </div>
       )}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={media.map((m) => m.id)} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-            {media.map((m, i) => (
-              <SortableMediaTile
-                key={m.id}
-                media={m}
-                disabled={effectiveDisabled}
-                onOpen={() => setLightboxIndex(i)}
-                onAdjust={canAdjust && !m.media_lost_at ? () => setAdjustingMedia(m) : undefined}
-                needsAdjustment={invalidMedia.includes(m)}
-                onDelete={() => handleDelete(m.id)}
-                onEditThumbnail={
-                  m.kind === 'video' && !m.media_lost_at ? () => setEditingMedia(m) : undefined
-                }
-              />
-            ))}
-            {!effectiveDisabled && !atLimit && (
-              <label
-                onDrop={handleDrop}
-                onDragOver={handleDragOverEvent}
-                onDragLeave={handleDragLeave}
-                className={`flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed cursor-pointer transition-colors ${dragOver ? 'ring-2 ring-[#eab308] border-[#eab308] bg-[#eab308]/10 text-[#eab308]' : 'border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700'}`}
-              >
-                <Upload className="h-4 w-4" />
-                <span className="text-[11px]">
-                  {dragOver
-                    ? t('mediaGallery.dropHere')
-                    : uploading
-                      ? t('mediaGallery.uploading')
-                      : t('mediaGallery.add')}
-                </span>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*,video/*"
-                  hidden
-                  onChange={(e) => {
-                    handleFiles(e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-            )}
-            {!effectiveDisabled && !atLimit && (
-              <button
-                type="button"
-                onClick={() => setShowFilePicker(true)}
-                className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
-              >
-                <FolderOpen className="h-4 w-4" />
-                <span className="text-[11px]">{t('mediaGallery.choose')}</span>
-              </button>
-            )}
-          </div>
-        </SortableContext>
-      </DndContext>
-
-      {media.length > 0 && (
-        <button
-          type="button"
-          onClick={handleDownloadAll}
-          disabled={downloading}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 dark:text-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 transition-colors disabled:opacity-50"
-        >
-          <Download className="h-3.5 w-3.5" />
-          {downloading
-            ? t('mediaGallery.downloading')
-            : t(media.length === 1 ? 'mediaGallery.downloadOne' : 'mediaGallery.downloadAll')}
-        </button>
+      {phone && (
+        <PhoneMediaStrip
+          media={media}
+          max={forStories ? null : CAROUSEL_MAX_ITEMS}
+          disabled={!!effectiveDisabled}
+          atLimit={atLimit}
+          uploading={uploading}
+          downloading={downloading}
+          reorderMode={reorderMode}
+          onReorderModeChange={setReorderMode}
+          sensors={phoneSensors}
+          onDragEnd={handleDragEnd}
+          invalidMedia={invalidMedia}
+          reelCoverImageId={canAdjust ? (reelCover?.image.id ?? null) : null}
+          labels={{
+            add: t('mediaGallery.add'),
+            uploading: t('mediaGallery.uploading'),
+            choose: t('mediaGallery.choose'),
+            downloadAll: t('mediaGallery.downloadAll'),
+            downloading: t('mediaGallery.downloading'),
+            reelCover: t('mediaGallery.reelCoverAction'),
+          }}
+          onFiles={handleFiles}
+          onChooseFromLibrary={() => setShowFilePicker(true)}
+          onDownloadAll={handleDownloadAll}
+          onOpen={(i) => setLightboxIndex(i)}
+          actionsFor={(m, i) => {
+            const edit: ContextMenuAction[] = [];
+            if (!effectiveDisabled) {
+              if (i > 0)
+                edit.push({
+                  label: 'Definir como capa',
+                  onSelect: () => void moveToFront(m.id),
+                  icon: <Star />,
+                });
+              if (m.kind === 'video' && !m.media_lost_at)
+                edit.push({
+                  label: 'Escolher miniatura',
+                  onSelect: () => setEditingMedia(m),
+                  icon: <ImageIcon />,
+                });
+              if (canAdjust && !m.media_lost_at)
+                edit.push({
+                  label: 'Ajustar proporção',
+                  onSelect: () => setAdjustingMedia(m),
+                  icon: <Crop />,
+                });
+              if (canAdjust && reelCover && m.id === reelCover.image.id)
+                edit.push({
+                  label: t('mediaGallery.reelCoverAction'),
+                  onSelect: () => void handleUseAsReelCover(),
+                  disabled: movingCover,
+                  icon: <ImageIcon />,
+                });
+              if (media.length > 1)
+                edit.push({
+                  label: 'Reordenar',
+                  onSelect: () => setReorderMode(true),
+                  icon: <Move />,
+                });
+            }
+            const sections: ContextMenuAction[][] = [];
+            if (edit.length) sections.push(edit);
+            if (m.url && !m.media_lost_at)
+              sections.push([
+                { label: 'Baixar', onSelect: () => void downloadSingle(m), icon: <Download /> },
+              ]);
+            if (!effectiveDisabled)
+              sections.push([
+                {
+                  label: 'Remover',
+                  destructive: true,
+                  onSelect: () => void handleDelete(m.id),
+                  icon: <Trash2 />,
+                },
+              ]);
+            return sections;
+          }}
+        />
       )}
+      {!phone && (
+        <>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={media.map((m) => m.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                {media.map((m, i) => (
+                  <SortableMediaTile
+                    key={m.id}
+                    media={m}
+                    disabled={effectiveDisabled}
+                    onOpen={() => setLightboxIndex(i)}
+                    onAdjust={
+                      canAdjust && !m.media_lost_at ? () => setAdjustingMedia(m) : undefined
+                    }
+                    needsAdjustment={invalidMedia.includes(m)}
+                    onDelete={() => handleDelete(m.id)}
+                    onEditThumbnail={
+                      m.kind === 'video' && !m.media_lost_at ? () => setEditingMedia(m) : undefined
+                    }
+                  />
+                ))}
+                {!effectiveDisabled && !atLimit && (
+                  <label
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOverEvent}
+                    onDragLeave={handleDragLeave}
+                    className={`flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed cursor-pointer transition-colors ${dragOver ? 'ring-2 ring-[#eab308] border-[#eab308] bg-[#eab308]/10 text-[#eab308]' : 'border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700'}`}
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="text-[11px]">
+                      {dragOver
+                        ? t('mediaGallery.dropHere')
+                        : uploading
+                          ? t('mediaGallery.uploading')
+                          : t('mediaGallery.add')}
+                    </span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,video/*"
+                      hidden
+                      onChange={(e) => {
+                        handleFiles(e.target.files);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+                {!effectiveDisabled && !atLimit && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFilePicker(true)}
+                    className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    <span className="text-[11px]">{t('mediaGallery.choose')}</span>
+                  </button>
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
 
-      {!effectiveDisabled && !atLimit && (
-        <UploadHint icon="🎬" text={t('mediaGallery.thumbnailHint')} />
+          {media.length > 0 && (
+            <button
+              type="button"
+              onClick={handleDownloadAll}
+              disabled={downloading}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 dark:text-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 transition-colors disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {downloading
+                ? t('mediaGallery.downloading')
+                : t(media.length === 1 ? 'mediaGallery.downloadOne' : 'mediaGallery.downloadAll')}
+            </button>
+          )}
+
+          {!effectiveDisabled && !atLimit && (
+            <UploadHint icon="🎬" text={t('mediaGallery.thumbnailHint')} />
+          )}
+        </>
       )}
 
       {uploadQueue.size > 0 && (
@@ -797,6 +930,7 @@ export function PostMediaGallery({
           media={adjustingMedia}
           forStories={forStories}
           isCarousel={isCarousel}
+          layout={phone ? 'phone' : 'default'}
           onClose={() => setAdjustingMedia(null)}
           onUpdated={() => {
             refreshWithCovers();
@@ -811,6 +945,7 @@ export function PostMediaGallery({
         media={editingMedia ? (media.find((m) => m.id === editingMedia.id) ?? editingMedia) : null}
         onClose={() => setEditingMedia(null)}
         onUpdated={refreshWithCovers}
+        layout={phone ? 'phone' : 'default'}
       />
 
       <FilePickerModal
@@ -819,6 +954,203 @@ export function PostMediaGallery({
         onSelect={handlePickFiles}
         filterKind={['image', 'video']}
       />
+    </div>
+  );
+}
+
+interface PhoneMediaStripProps {
+  media: PostMedia[];
+  /** Carousel cap ("N de 10"); null for Stories. */
+  max: number | null;
+  disabled: boolean;
+  atLimit: boolean;
+  uploading: boolean;
+  downloading: boolean;
+  reorderMode: boolean;
+  onReorderModeChange: (on: boolean) => void;
+  sensors: ReturnType<typeof useSensors>;
+  onDragEnd: (e: DragEndEvent) => void;
+  invalidMedia: PostMedia[];
+  reelCoverImageId: number | null;
+  labels: {
+    add: string;
+    uploading: string;
+    choose: string;
+    downloadAll: string;
+    downloading: string;
+    reelCover: string;
+  };
+  onFiles: (files: FileList | null) => void;
+  onChooseFromLibrary: () => void;
+  onDownloadAll: () => void;
+  onOpen: (index: number) => void;
+  actionsFor: (m: PostMedia, index: number) => ContextMenuAction[][];
+}
+
+/**
+ * The phone editor's media strip (EditorConteudo / C0bMidiaMenu mockups). A tap opens
+ * the lightbox, a hold opens the item's menu (Definir como capa, Escolher miniatura,
+ * Ajustar proporção, Reordenar, Baixar, Remover). Dragging exists only in Reordenar
+ * mode, where the touch sensor (250 ms) is the hold's owner instead of the menu.
+ */
+function PhoneMediaStrip({
+  media,
+  max,
+  disabled,
+  atLimit,
+  uploading,
+  downloading,
+  reorderMode,
+  onReorderModeChange,
+  sensors,
+  onDragEnd,
+  invalidMedia,
+  reelCoverImageId,
+  labels,
+  onFiles,
+  onChooseFromLibrary,
+  onDownloadAll,
+  onOpen,
+  actionsFor,
+}: PhoneMediaStripProps) {
+  const canReorder = reorderMode && !disabled && media.length > 1;
+  return (
+    <section className="phone-media" aria-label="Mídia">
+      <div className="phone-media__head">
+        <span className="phone-media__title">Mídia</span>
+        <span className="phone-media__count">
+          {max != null ? `${media.length} de ${max}` : `${media.length}`}
+        </span>
+        <span className="phone-media__actions">
+          {reorderMode ? (
+            <button
+              type="button"
+              className="phone-media__link"
+              onClick={() => onReorderModeChange(false)}
+            >
+              Concluir
+            </button>
+          ) : (
+            media.length > 0 && (
+              <button
+                type="button"
+                className="phone-media__link"
+                onClick={onDownloadAll}
+                disabled={downloading}
+              >
+                {downloading ? labels.downloading : labels.downloadAll}
+              </button>
+            )
+          )}
+        </span>
+      </div>
+      {reorderMode && (
+        <p className="phone-media__hint" role="status">
+          Segure e arraste para mudar a ordem. O primeiro item é a capa.
+        </p>
+      )}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={canReorder ? onDragEnd : undefined}
+      >
+        <SortableContext items={media.map((m) => m.id)} strategy={horizontalListSortingStrategy}>
+          <div className="phone-media__strip" data-reordering={canReorder || undefined}>
+            {media.map((m, i) =>
+              canReorder ? (
+                <PhoneSortableTile key={m.id} media={m} index={i} />
+              ) : (
+                <ContextMenu
+                  key={m.id}
+                  label={`Ações de ${m.original_filename}`}
+                  sections={actionsFor(m, i)}
+                  className="phone-media__hold"
+                  preview={<PhoneTileVisual media={m} large />}
+                >
+                  <button
+                    type="button"
+                    className="phone-media__tile"
+                    aria-label={`${m.original_filename}${i === 0 ? ' (capa)' : ''}. Toque para ver, segure para mais ações`}
+                    onClick={() => onOpen(i)}
+                  >
+                    <PhoneTileVisual media={m} />
+                    {i === 0 && <span className="phone-media__badge">Capa</span>}
+                    {(invalidMedia.includes(m) || m.id === reelCoverImageId) && (
+                      <span className="phone-media__warn" title="Mídia precisa de ajuste">
+                        <AlertTriangle size={12} aria-hidden="true" />
+                      </span>
+                    )}
+                  </button>
+                </ContextMenu>
+              ),
+            )}
+            {!disabled && !atLimit && !reorderMode && (
+              <>
+                {/* A real label around the input: the native picker (photos, camera,
+                    files) needs the tap itself, not a menu that closes first. */}
+                <label className="phone-media__add">
+                  <Plus aria-hidden="true" />
+                  <span>{uploading ? labels.uploading : labels.add}</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,video/*"
+                    hidden
+                    onChange={(e) => {
+                      onFiles(e.target.files);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <button type="button" className="phone-media__add" onClick={onChooseFromLibrary}>
+                  <FolderOpen aria-hidden="true" />
+                  <span>{labels.choose}</span>
+                </button>
+              </>
+            )}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </section>
+  );
+}
+
+function PhoneTileVisual({ media: m, large = false }: { media: PostMedia; large?: boolean }) {
+  if (m.media_lost_at) return <MediaUnavailable size="full" />;
+  const src = m.kind === 'image' ? m.url : (m.thumbnail_url ?? null);
+  return (
+    <span
+      className={large ? 'phone-media__visual phone-media__visual--large' : 'phone-media__visual'}
+    >
+      {src ? (
+        <img src={src} alt="" crossOrigin="anonymous" draggable={false} />
+      ) : (
+        <ImageIcon aria-hidden="true" />
+      )}
+      {m.kind === 'video' && <span className="phone-media__video">Vídeo</span>}
+    </span>
+  );
+}
+
+function PhoneSortableTile({ media: m, index }: { media: PostMedia; index: number }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: m.id,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.6 : 1,
+      }}
+      {...attributes}
+      {...listeners}
+      className="phone-media__tile phone-media__tile--sortable"
+      aria-label={`${m.original_filename}, posição ${index + 1}`}
+    >
+      <PhoneTileVisual media={m} />
+      {index === 0 && <span className="phone-media__badge">Capa</span>}
     </div>
   );
 }

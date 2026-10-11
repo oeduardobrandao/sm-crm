@@ -15,6 +15,7 @@ import { probeImage, probeVideo } from '@/services/postMedia';
 import { validateMedia, STORY_VIDEO_MAX_BYTES, VIDEO_MAX_BYTES } from '../instagramLimits';
 import { getPlacement, getPresets, type Adjustment } from '../media-editor/geometry';
 import { adjustedFilename, drawAdjustment, jpegFromCanvas } from '../media-editor/render';
+import { useTransientOverlayHistory } from './postEditorPhone/useTransientOverlayHistory';
 
 interface Props {
   media: PostMedia;
@@ -25,6 +26,9 @@ interface Props {
   isCarousel?: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  /** `phone`: full-screen dark editor (EditorMidia mockup) with Cancelar / Aplicar in the
+   *  header and its own history entry, so Back cancels it. Same logic either way. */
+  layout?: 'default' | 'phone';
 }
 const primary =
   'rounded-lg bg-[#12151a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:opacity-40';
@@ -32,13 +36,29 @@ const option = 'rounded-lg border px-3 py-2 text-sm transition-colors';
 const selected =
   'border-amber-400 bg-amber-50 text-stone-900 dark:bg-amber-900/30 dark:text-amber-100';
 
-export function MediaAdjustmentDialog({
+export function MediaAdjustmentDialog(props: Props) {
+  return props.layout === 'phone' ? (
+    <PhoneMediaAdjustmentDialog {...props} />
+  ) : (
+    <MediaAdjustmentDialogBody {...props} dismiss={props.onClose} />
+  );
+}
+
+/** The history entry only exists on phones, so desktop never needs a router here. */
+function PhoneMediaAdjustmentDialog(props: Props) {
+  const { dismiss } = useTransientOverlayHistory(true, props.onClose);
+  return <MediaAdjustmentDialogBody {...props} dismiss={dismiss} />;
+}
+
+function MediaAdjustmentDialogBody({
   media,
   forStories,
   isCarousel = false,
-  onClose,
   onUpdated,
-}: Props) {
+  layout = 'default',
+  dismiss,
+}: Props & { dismiss: () => void }) {
+  const phone = layout === 'phone';
   const video = media.kind === 'video';
   const presets = getPresets(media.kind, forStories, isCarousel);
   const portraitOnly = forStories || (video && !isCarousel);
@@ -162,7 +182,7 @@ export function MediaAdjustmentDialog({
   function close() {
     if (stage === 'saving') return;
     operation.current?.abort();
-    onClose();
+    dismiss();
   }
 
   async function apply() {
@@ -239,7 +259,7 @@ export function MediaAdjustmentDialog({
       controller.signal.throwIfAborted();
       toast.success('Proporção ajustada. O original foi preservado em Arquivos.');
       onUpdated();
-      onClose();
+      dismiss();
     } catch (e) {
       // HTTP cancellation cannot undo a transaction already received by the server.
       // Reconcile the cache even when navigating away during an uncertain save.
@@ -267,20 +287,57 @@ export function MediaAdjustmentDialog({
       }}
     >
       <DialogContent
-        className="max-w-4xl w-[calc(100%-2rem)] max-h-[92dvh] overflow-y-auto p-0 z-[9021]"
+        className={
+          phone
+            ? 'phone-kit phone-crop overflow-y-auto z-[9021]'
+            : 'max-w-4xl w-[calc(100%-2rem)] max-h-[92dvh] overflow-y-auto p-0 z-[9021]'
+        }
         overlayClassName="z-[9020]"
+        layout={phone ? 'fullscreen' : 'default'}
+        data-theme={phone ? 'dark' : undefined}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="px-6 pt-6 pr-12">
-          <DialogTitle>Ajustar proporção</DialogTitle>
-          <DialogDescription className="break-all">
-            {media.original_filename} · {video ? 'Vídeo' : 'Imagem'}
-          </DialogDescription>
-          <p className="text-xs text-muted-foreground">
-            Instagram · {forStories ? 'Stories' : portraitOnly ? 'Reel' : 'Feed / Carrossel'}
-          </p>
-        </DialogHeader>
-        <div className="grid gap-5 px-6 pb-5 md:grid-cols-[minmax(0,1fr)_260px]">
+        {phone ? (
+          <div className="phone-crop__header">
+            <button
+              type="button"
+              className="phone-crop__header-button"
+              onClick={close}
+              disabled={stage === 'saving'}
+            >
+              {stage === 'exporting' ? 'Parar' : 'Cancelar'}
+            </button>
+            <DialogTitle className="phone-crop__title">Ajustar proporção</DialogTitle>
+            <button
+              type="button"
+              className="phone-crop__header-button phone-crop__header-button--primary"
+              onClick={() => void apply()}
+              disabled={!dimensions || !!stage || !!durationInvalid}
+            >
+              Aplicar
+            </button>
+            <DialogDescription className="sr-only">
+              {media.original_filename} · {video ? 'Vídeo' : 'Imagem'}
+            </DialogDescription>
+          </div>
+        ) : (
+          <DialogHeader className="px-6 pt-6 pr-12">
+            <DialogTitle>Ajustar proporção</DialogTitle>
+            <DialogDescription className="break-all">
+              {media.original_filename} · {video ? 'Vídeo' : 'Imagem'}
+            </DialogDescription>
+            <p className="text-xs text-muted-foreground">
+              Instagram · {forStories ? 'Stories' : portraitOnly ? 'Reel' : 'Feed / Carrossel'}
+            </p>
+          </DialogHeader>
+        )}
+        <div
+          className={
+            phone
+              ? 'phone-crop__body grid gap-5 px-4 pb-5'
+              : 'grid gap-5 px-6 pb-5 md:grid-cols-[minmax(0,1fr)_260px]'
+          }
+        >
           <div className="min-w-0">
             <div className="flex min-h-64 items-center justify-center rounded-xl bg-[#12151a] p-3">
               {!dimensions && (
@@ -620,9 +677,15 @@ export function MediaAdjustmentDialog({
             </p>
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/30 px-6 py-4">
+        <div
+          className={
+            phone
+              ? 'phone-crop__footer px-4 pb-6'
+              : 'flex flex-wrap items-center justify-between gap-3 border-t bg-muted/30 px-6 py-4'
+          }
+        >
           <p className="text-xs text-muted-foreground">O original será preservado em Arquivos.</p>
-          <div className="flex gap-2">
+          <div className={phone ? 'hidden' : 'flex gap-2'}>
             <button
               type="button"
               onClick={close}
