@@ -512,3 +512,24 @@ describe('CalendarioPage — phone (flag off, below 768px)', () => {
     expect(localStorage.getItem('mesaas:calendario:ultimoNicho')).toBe('niche-b');
   });
 });
+
+describe('CalendarioPage — Agenda on a phone', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    armStore();
+    mockLoading.current = false;
+    mockFeatures.current = { feature_agenda: true };
+    layout.desktop = false;
+  });
+  afterEach(() => {
+    layout.desktop = true;
+  });
+
+  it('leaves the page header to AgendaTab (its phone header has the period and filters)', async () => {
+    const { container } = renderPage();
+    expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
+    expect(container.querySelector('.header')).toBeNull();
+    expect(screen.queryByText('Eventos, reuniões e gravações da equipe.')).not.toBeInTheDocument();
+    expect(document.title).toBe('Agenda | Mesaas');
+  });
+});

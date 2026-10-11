@@ -739,9 +739,19 @@ function CalendarioClassico() {
 /** No tab bar: the old tabs live on as layers of the Agenda. `?evento=` and
  *  `?data=` are read by AgendaTab itself. */
 function AgendaPagina() {
+  const isPhone = !useIsDesktop(768);
   useEffect(() => {
     document.title = 'Agenda | Mesaas';
   }, []);
+
+  // Phones: AgendaTab draws its own page header (title, period, filters, "+").
+  if (isPhone) {
+    return (
+      <Suspense fallback={<CalendarSkeleton />}>
+        <AgendaTab />
+      </Suspense>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

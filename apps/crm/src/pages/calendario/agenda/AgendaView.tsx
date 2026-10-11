@@ -33,7 +33,7 @@ const VIEW_OPTIONS: { value: AgendaViewType; label: string }[] = [
   { value: 'listWeek', label: 'Lista' },
 ];
 
-const NAV_LABELS: Record<AgendaViewType, { prev: string; next: string }> = {
+export const NAV_LABELS: Record<AgendaViewType, { prev: string; next: string }> = {
   dayGridMonth: { prev: 'Mês anterior', next: 'Próximo mês' },
   timeGridWeek: { prev: 'Semana anterior', next: 'Próxima semana' },
   timeGridDay: { prev: 'Dia anterior', next: 'Próximo dia' },
@@ -180,6 +180,12 @@ export interface AgendaViewProps {
   /** The parent gives the card a fixed height: every view fills it and scrolls
    *  inside (the time grid scrolls its hours, the list its rows). */
   preencher?: boolean;
+  /** Phones: no toolbar (AgendaTab's header has the period controls) and FullCalendar
+   *  only for the Dia view. */
+  semToolbar?: boolean;
+  /** Honoured at mount only (FullCalendar): where a remount lands. */
+  initialView?: AgendaViewType;
+  initialDate?: Date;
 }
 
 export default function AgendaView({
@@ -194,66 +200,75 @@ export default function AgendaView({
   onCamadaClick,
   onMover,
   preencher = false,
+  semToolbar = false,
+  initialView,
+  initialDate,
 }: AgendaViewProps) {
   const api = () => calRef.current?.getApi();
   // Read once: FullCalendar re-applies scrollTime whenever the option changes.
   const [scrollTime] = useState(() => format(new Date(), 'HH:00:00'));
+  // Mount-time only, like FullCalendar reads them: later changes must not re-render it.
+  const [vistaInicial] = useState(() => initialView ?? (isMobile ? 'listWeek' : 'timeGridWeek'));
+  const [dataInicial] = useState(initialDate);
   const opcoes = isMobile ? VIEW_OPTIONS.filter((v) => v.value !== 'timeGridWeek') : VIEW_OPTIONS;
   const nav = NAV_LABELS[view];
 
   return (
     <section className="agenda-view" aria-label={titulo || 'Agenda'}>
-      <div className="agenda-toolbar">
-        <div className="agenda-toolbar__nav">
-          <Button type="button" variant="outline" size="sm" onClick={() => api()?.today()}>
-            Hoje
-          </Button>
-          <button
-            type="button"
-            className="agenda-icon-btn"
-            aria-label={nav.prev}
-            onClick={() => api()?.prev()}
-          >
-            <ChevronLeft size={16} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="agenda-icon-btn"
-            aria-label={nav.next}
-            onClick={() => api()?.next()}
-          >
-            <ChevronRight size={16} aria-hidden="true" />
-          </button>
-          <h2 className="agenda-toolbar__titulo">{titulo}</h2>
-        </div>
-        <ToggleGroup
-          type="single"
-          className="agenda-segmented"
-          aria-label="Visão"
-          value={view}
-          // Radix fires '' when the active item is clicked again: a segmented
-          // control always keeps one value.
-          onValueChange={(next) => next && api()?.changeView(next)}
-        >
-          {opcoes.map((o) => (
-            <ToggleGroupItem
-              key={o.value}
-              value={o.value}
-              aria-label={o.label}
-              className="agenda-segmented__item"
+      {!semToolbar && (
+        <div className="agenda-toolbar">
+          <div className="agenda-toolbar__nav">
+            <Button type="button" variant="outline" size="sm" onClick={() => api()?.today()}>
+              Hoje
+            </Button>
+            <button
+              type="button"
+              className="agenda-icon-btn"
+              aria-label={nav.prev}
+              onClick={() => api()?.prev()}
             >
-              {o.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </div>
+              <ChevronLeft size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="agenda-icon-btn"
+              aria-label={nav.next}
+              onClick={() => api()?.next()}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+            <h2 className="agenda-toolbar__titulo">{titulo}</h2>
+          </div>
+          <ToggleGroup
+            type="single"
+            className="agenda-segmented"
+            aria-label="Visão"
+            value={view}
+            // Radix fires '' when the active item is clicked again: a segmented
+            // control always keeps one value.
+            onValueChange={(next) => next && api()?.changeView(next)}
+          >
+            {opcoes.map((o) => (
+              <ToggleGroupItem
+                key={o.value}
+                value={o.value}
+                aria-label={o.label}
+                className="agenda-segmented__item"
+              >
+                {o.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+      )}
 
       <div className="agenda-fc">
         <FullCalendar
           ref={calRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           locale={ptBrLocale}
-          initialView={isMobile ? 'listWeek' : 'timeGridWeek'}
+          initialView={vistaInicial}
+          initialDate={dataInicial}
           headerToolbar={false}
           firstDay={1}
           nowIndicator

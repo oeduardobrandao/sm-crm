@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addMonths, format, isSameDay, subMonths } from 'date-fns';
+import { addMonths, format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import type { Cliente, ClienteData, Membro, Transacao } from '../../../store';
 import { formatDate } from '../../../store';
-import { cn } from '@/lib/utils';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
@@ -17,20 +16,11 @@ import { useConfirmarPagamento } from '../camadas/useConfirmarPagamento';
 import { formatDeadlineStatus } from '../deadlineStatus';
 import { diaVazio, itensDoDia, refPagamento, type FinanceiroFontes } from '../financeiroDia';
 import { NICHE_CALENDARS } from '../nicheCalendars/registry';
+import { MesGridPhone } from './MesGridPhone';
 import { dotColorMap, type NicheCalendarDef } from '../nicheCalendars/types';
 import './calendarioPhone.css';
 
 type Aba = 'financeiro' | 'comemorativas';
-
-const WEEK_DAYS = [
-  { short: 'D', long: 'domingo' },
-  { short: 'S', long: 'segunda' },
-  { short: 'T', long: 'terça' },
-  { short: 'Q', long: 'quarta' },
-  { short: 'Q', long: 'quinta' },
-  { short: 'S', long: 'sexta' },
-  { short: 'S', long: 'sábado' },
-];
 
 /** Dot colours of the month grid, one per kind of item (the desktop pills' colours). */
 const DOT = {
@@ -99,7 +89,6 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
   const { pedirConfirmacao, dialog } = useConfirmarPagamento(p.canSeeFinancials);
   const year = mes.getFullYear();
   const month = mes.getMonth();
-  const hoje = new Date();
   const fontes: FinanceiroFontes = {
     clientes: p.clientes,
     membros: p.membros,
@@ -107,9 +96,6 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
     datasImportantes: p.datasImportantes,
     canSeeFinancials: p.canSeeFinancials,
   };
-  const diasNoMes = new Date(year, month + 1, 0).getDate();
-  const primeiro = new Date(year, month, 1).getDay();
-  const nomeMes = format(mes, 'MMMM', { locale: ptBR });
   const isPaid = (refId: string) => p.transacoes.some((t) => t.referencia_agendamento === refId);
 
   // A month change keeps the day only when it exists there (31 -> February).
@@ -121,77 +107,55 @@ function MesFinanceiro(p: CalendarioClassicoPhoneProps) {
   const selecionado = itensDoDia(fontes, year, month, dia);
   const dataSelecionada = new Date(year, month, dia);
 
+  const dotsDoDia = (d: Date) => {
+    const itens = itensDoDia(fontes, year, month, d.getDate());
+    const dots: string[] = [];
+    if (itens.incomes.length) dots.push(DOT.income);
+    if (itens.expenses.length) dots.push(DOT.expense);
+    if (itens.deadlines.length)
+      dots.push(itens.deadlines.some((x) => x.estourado) ? DOT.overdue : DOT.deadline);
+    if (itens.birthdays.length) dots.push(DOT.birthday);
+    if (itens.datas.length) dots.push(DOT.data);
+    return dots;
+  };
+  const resumoDoDia = (d: Date) => {
+    const itens = itensDoDia(fontes, year, month, d.getDate());
+    return [
+      itens.incomes.length ? plural(itens.incomes.length, 'recebimento', 'recebimentos') : '',
+      itens.expenses.length ? plural(itens.expenses.length, 'pagamento', 'pagamentos') : '',
+      itens.deadlines.length ? plural(itens.deadlines.length, 'entrega', 'entregas') : '',
+      itens.birthdays.length ? plural(itens.birthdays.length, 'aniversário', 'aniversários') : '',
+      itens.datas.length ? plural(itens.datas.length, 'data', 'datas') : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+  };
+
   return (
     <>
-      <div className="phone-cal-month">
-        <div className="phone-cal-month__head">
-          <h2 className="phone-cal-month__title">
-            {maiuscula(format(mes, "MMMM 'de' yyyy", { locale: ptBR }))}
-          </h2>
-          <span className="phone-cal-month__nav">
-            <PhoneIconButton label="Mês anterior" onClick={() => mudarMes(subMonths(mes, 1))}>
-              <ChevronLeft aria-hidden="true" />
-            </PhoneIconButton>
-            <PhoneIconButton label="Próximo mês" onClick={() => mudarMes(addMonths(mes, 1))}>
-              <ChevronRight aria-hidden="true" />
-            </PhoneIconButton>
-          </span>
-        </div>
-        <div className="phone-cal-month__weekdays" aria-hidden="true">
-          {WEEK_DAYS.map((d) => (
-            <span key={d.long}>{d.short}</span>
-          ))}
-        </div>
-        <div className="phone-cal-month__grid">
-          {Array.from({ length: primeiro }, (_, i) => (
-            <span key={`vazio-${i}`} />
-          ))}
-          {Array.from({ length: diasNoMes }, (_, i) => {
-            const d = i + 1;
-            const itens = itensDoDia(fontes, year, month, d);
-            const dots: string[] = [];
-            if (itens.incomes.length) dots.push(DOT.income);
-            if (itens.expenses.length) dots.push(DOT.expense);
-            if (itens.deadlines.length)
-              dots.push(itens.deadlines.some((x) => x.estourado) ? DOT.overdue : DOT.deadline);
-            if (itens.birthdays.length) dots.push(DOT.birthday);
-            if (itens.datas.length) dots.push(DOT.data);
-            const partes = [
-              itens.incomes.length
-                ? plural(itens.incomes.length, 'recebimento', 'recebimentos')
-                : '',
-              itens.expenses.length ? plural(itens.expenses.length, 'pagamento', 'pagamentos') : '',
-              itens.deadlines.length ? plural(itens.deadlines.length, 'entrega', 'entregas') : '',
-              itens.birthdays.length
-                ? plural(itens.birthdays.length, 'aniversário', 'aniversários')
-                : '',
-              itens.datas.length ? plural(itens.datas.length, 'data', 'datas') : '',
-            ].filter(Boolean);
-            const selected = dia === d;
-            return (
-              <button
-                key={d}
-                type="button"
-                className={cn(
-                  'phone-cal-month__day',
-                  isSameDay(new Date(year, month, d), hoje) && 'phone-cal-month__day--today',
-                  selected && 'phone-cal-month__day--selected',
-                )}
-                aria-pressed={selected}
-                aria-label={`${d} de ${nomeMes}${partes.length ? `, ${partes.join(', ')}` : ''}`}
-                onClick={() => setDia(d)}
-              >
-                {d}
-                <span className="phone-cal-month__dots" aria-hidden="true">
-                  {dots.slice(0, 4).map((cor, j) => (
-                    <i key={j} style={{ background: cor }} />
-                  ))}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <MesGridPhone
+        mes={mes}
+        weekStartsOn={0}
+        selecionado={dataSelecionada}
+        onSelect={(d) => setDia(d.getDate())}
+        dotsDoDia={dotsDoDia}
+        resumoDoDia={resumoDoDia}
+        cabecalho={
+          <div className="phone-cal-month__head">
+            <h2 className="phone-cal-month__title">
+              {maiuscula(format(mes, "MMMM 'de' yyyy", { locale: ptBR }))}
+            </h2>
+            <span className="phone-cal-month__nav">
+              <PhoneIconButton label="Mês anterior" onClick={() => mudarMes(subMonths(mes, 1))}>
+                <ChevronLeft aria-hidden="true" />
+              </PhoneIconButton>
+              <PhoneIconButton label="Próximo mês" onClick={() => mudarMes(addMonths(mes, 1))}>
+                <ChevronRight aria-hidden="true" />
+              </PhoneIconButton>
+            </span>
+          </div>
+        }
+      />
 
       {diaVazio(selecionado) ? (
         <p className="phone-cal-empty">Nenhuma movimentação neste dia.</p>
