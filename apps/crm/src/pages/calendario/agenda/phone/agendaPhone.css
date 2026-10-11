@@ -1,0 +1,347 @@
+/* Agenda below 768px (FAgenda, FAgendaFiltros, FAgendaEvento). Phone-only markup,
+   phone-agenda-* classes on the --phone-* tokens. */
+
+.phone-agenda {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+/* ---- Header: period subtitle and toolbar ---- */
+.phone-agenda-periodo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin: -6px 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-agenda-periodo svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-agenda-periodo:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.phone-agenda-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.phone-agenda-toolbar__vistas {
+  flex: 1;
+  min-width: 0;
+}
+.phone-agenda-toolbar__hoje {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 700;
+  box-shadow: var(--phone-shadow-thumb);
+  cursor: pointer;
+}
+.phone-agenda-toolbar__hoje:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-agenda-ir-para {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 8px;
+}
+
+/* ---- Day groups and rows ---- */
+.phone-agenda-dia {
+  margin: 0 0 20px;
+}
+.phone-agenda-dia__titulo {
+  margin: 0 0 6px 16px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.phone-agenda-dia__lista {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  list-style: none;
+}
+.phone-agenda-row {
+  position: relative;
+  list-style: none;
+}
+.phone-agenda-row + .phone-agenda-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 16px;
+  border-top: 0.5px solid var(--phone-separator);
+}
+.phone-agenda-row__btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--phone-row-min);
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-agenda-row__btn:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-agenda-row__btn:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+.phone-agenda-row__hora {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 52px;
+  font-size: var(--phone-text-footnote);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.phone-agenda-row__hora strong {
+  font-weight: 700;
+}
+.phone-agenda-row__hora span {
+  color: var(--phone-label-secondary);
+}
+.phone-agenda-row__barra {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 4px;
+  min-height: 34px;
+  border: 0 solid;
+  border-radius: 2px;
+}
+.phone-agenda-row__barra--pendente {
+  border-width: 0 0 0 2px;
+  border-style: dashed;
+  width: 2px;
+}
+.phone-agenda-row__swatch {
+  flex-shrink: 0;
+}
+.phone-agenda-row__texto {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.phone-agenda-row__titulo {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-agenda-row__titulo--recusado {
+  color: var(--phone-label-secondary);
+  text-decoration: line-through;
+}
+.phone-agenda-row__contexto {
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-agenda-vazio {
+  margin: 24px 16px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+
+/* Dia: FullCalendar's own card, flush with the page gutters. */
+.phone-agenda-dia-fc {
+  margin-bottom: 20px;
+}
+
+/* ---- Filters sheet ---- */
+.phone-agenda-filtros__rotulo {
+  margin: 0 0 6px 16px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.phone-agenda-filtros__modo {
+  margin-bottom: 20px;
+}
+.phone-agenda-filtros__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.phone-agenda-filtros__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.phone-agenda-filtros__dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+.phone-agenda-filtros__nota {
+  margin: -12px 16px 8px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+
+/* ---- Event sheet ---- */
+.phone-agenda-evento__acoes {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: -4px 0 12px;
+}
+.phone-agenda-evento__editar {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 700;
+  cursor: pointer;
+}
+.phone-agenda-evento__editar:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-agenda-evento__topo {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.phone-agenda-evento__cor {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-top: 7px;
+  border-radius: 4px;
+}
+.phone-agenda-evento__titulo {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-heading);
+  font-size: var(--phone-text-title);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.phone-agenda-evento__quando {
+  margin: 4px 0 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.phone-agenda-evento__bloco {
+  margin: 0 0 20px;
+}
+.phone-agenda-evento__descricao {
+  margin: 0 0 20px;
+  padding: 12px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.phone-agenda-evento__rsvp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  font-size: var(--phone-text-subhead);
+}
+.phone-agenda-evento__rsvp > span {
+  flex: 1;
+  color: var(--phone-label-secondary);
+}
+.phone-agenda-evento__respostas {
+  display: flex;
+  gap: 6px;
+}
+.phone-agenda-evento__resposta {
+  min-width: 60px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.phone-agenda-evento__resposta[aria-pressed='true'] {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+.phone-agenda-evento__resposta:disabled {
+  opacity: 0.5;
+}
+.phone-agenda-evento__resposta:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+
+/* ---- Layer sheet ---- */
+.phone-agenda-camada {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+.phone-agenda-camada__acao {
+  display: flex;
+}
+.phone-agenda-camada__acao > button {
+  flex: 1;
+  min-height: 44px;
+}
