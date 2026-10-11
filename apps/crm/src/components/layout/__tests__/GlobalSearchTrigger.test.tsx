@@ -53,6 +53,8 @@ vi.mock('@/store/postStatuses', () => ({
 }));
 
 import GlobalSearchTrigger from '../GlobalSearchTrigger';
+import GlobalSearchDialog from '../GlobalSearchDialog';
+import { PhoneLayoutProvider } from '../PhoneLayoutContext';
 import type { KbSearchEntry } from '@/store/kb';
 
 function renderTrigger() {
@@ -354,5 +356,75 @@ describe('GlobalSearchTrigger', () => {
       expect(await screen.findByText('Como agendar seu primeiro post')).toBeInTheDocument();
       expect(pill('Tudo')).toHaveAttribute('aria-pressed', 'true');
     });
+  });
+
+  // On phones (inside the shell, MobileNav's Mais > Buscar) the palette is a full screen
+  // with the field pinned at the top and an iOS "Cancelar" (FBusca), since the keyboard
+  // would cover the lower half of a centered dialog.
+  describe('on phones', () => {
+    function PhoneSearch({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+      const [open, setOpen] = React.useState(true);
+      return (
+        <GlobalSearchDialog
+          open={open}
+          onOpenChange={(next) => {
+            onOpenChange(next);
+            setOpen(next);
+          }}
+        />
+      );
+    }
+
+    function renderPhone(onOpenChange = vi.fn()) {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <PhoneLayoutProvider isPhone>
+              <PhoneSearch onOpenChange={onOpenChange} />
+            </PhoneLayoutProvider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      return onOpenChange;
+    }
+
+    it('renders full screen with the field and Cancelar on top', async () => {
+      renderPhone();
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveClass('phone-search', 'phone-kit', 'inset-0');
+      expect(dialog).not.toHaveClass('sm:max-w-3xl');
+      const bar = dialog.querySelector('.phone-search__bar')!;
+      expect(bar).toContainElement(screen.getByPlaceholderText('Buscar...'));
+      expect(bar).toContainElement(screen.getByRole('button', { name: 'Cancelar' }));
+      // Fullscreen has no built-in X; Cancelar is the way out.
+      expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    });
+
+    it('Cancelar closes the search', async () => {
+      const onOpenChange = renderPhone();
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('closes and navigates when a result is picked', async () => {
+      const onOpenChange = renderPhone();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('julho');
+      fireEvent.click(await screen.findByText('Julho'));
+
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(navigateMock).toHaveBeenCalledWith('/entregas?drawer=5');
+    });
+  });
+
+  it('keeps the centered palette outside the phone shell', async () => {
+    renderTrigger();
+    openPalette();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveClass('sm:max-w-3xl');
+    expect(dialog).not.toHaveClass('phone-search');
+    expect(screen.queryByRole('button', { name: 'Cancelar' })).toBeNull();
   });
 });
