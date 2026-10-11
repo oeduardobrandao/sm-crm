@@ -15825,6 +15825,9 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
 .phone-large-title {
   display: flex;
   flex-direction: column;
+  /* The space under the header lives here, not on the subtitle, so a header without a
+     subtitle doesn't sit flush on the first card. */
+  padding-bottom: 12px;
   color: var(--phone-label);
   font-family: var(--font-main);
 }
@@ -15851,7 +15854,7 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
   color: var(--phone-label);
 }
 .phone-large-title__subtitle {
-  margin: 2px 0 12px;
+  margin: 2px 0 0;
   font-size: var(--phone-text-subhead);
   color: var(--phone-label-secondary);
 }
