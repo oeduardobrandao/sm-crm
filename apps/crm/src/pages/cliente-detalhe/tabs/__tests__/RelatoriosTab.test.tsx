@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Desktop layout; the phone layout has its own tests (jsdom's matchMedia is false).
-vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+// Desktop layout by default; the phone describe flips it (jsdom's matchMedia is false).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -348,5 +349,46 @@ describe('RelatoriosTab — agent role gate on send_report_email', () => {
     expect(
       screen.queryByText('Apenas donos e admins alteram e-mails de cliente.'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('RelatoriosTab no celular', () => {
+  beforeEach(() => {
+    desktop.value = false;
+  });
+  afterEach(() => {
+    desktop.value = true;
+  });
+
+  it('shows both preferences as switch rows and saves a toggle', async () => {
+    updateClienteMock.mockResolvedValue(undefined);
+    renderTab();
+    const sendEmail = screen.getByRole('switch', { name: 'Enviar relatório por e-mail' });
+    const includeAi = screen.getByRole('switch', { name: 'Incluir análise AI' });
+    expect(sendEmail).toHaveAttribute('aria-checked', 'false');
+    expect(includeAi).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(sendEmail);
+    await waitFor(() =>
+      expect(updateClienteMock).toHaveBeenCalledWith(42, { send_report_email: true }),
+    );
+  });
+
+  it('keeps the agent gate on send_report_email', () => {
+    useAuthMock.mockReturnValue(authValue({ role: 'agent' }));
+    renderTab();
+    const sendEmail = screen.getByRole('switch', { name: 'Enviar relatório por e-mail' });
+    expect(sendEmail).toBeDisabled();
+    fireEvent.click(sendEmail);
+    expect(updateClienteMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Apenas donos e admins alteram e-mails de cliente.'),
+    ).toBeInTheDocument();
+  });
+
+  it('offers the Analytics shortcut as a row', () => {
+    renderTab();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver Analytics Completo →' }));
+    expect(navigateMock).toHaveBeenCalledWith('/analytics/42');
   });
 });
