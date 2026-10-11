@@ -24,6 +24,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { formatDeadlineStatus } from './deadlineStatus';
+import { itensDoDia, refPagamento } from './financeiroDia';
 import { dotColorMap, type NicheCalendarDef } from './nicheCalendars/types';
 import {
   NICHE_CALENDARS,
@@ -36,6 +37,8 @@ import { useConfirmarPagamento } from './camadas/useConfirmarPagamento';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CalendarSkeleton } from '@/components/ui/skeletons';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { CalendarioClassicoPhone } from './phone/CalendarioClassicoPhone';
 
 // Lazy: FullCalendar is heavy and workspaces without feature_agenda never render it.
 const AgendaTab = lazy(() => import('./agenda/AgendaTab'));
@@ -88,39 +91,14 @@ function FinanceiroCalendar({
 
   const isPaid = (refId: string) => transacoes.some((t) => t.referencia_agendamento === refId);
 
-  // Branch on the explicit capability, never on a nullable financial value: a
-  // legitimately null retainer is indistinguishable from a masked one, and
-  // Number(null) is 0, so inference would render phantom R$ 0 entries.
-  const selectedIncomes =
-    canSeeFinancials !== true
-      ? []
-      : clientes.filter(
-          (c) =>
-            c.data_pagamento === selectedDay &&
-            c.status === 'ativo' &&
-            currentDate.getMonth() === currentDate.getMonth(),
-        );
-  const selectedExpenses =
-    canSeeFinancials !== true ? [] : membros.filter((m) => m.data_pagamento === selectedDay);
-  const selectedDeadlines = deadlineEvents.filter(
-    (d) =>
-      d.deadlineDate.getDate() === selectedDay &&
-      d.deadlineDate.getMonth() === month &&
-      d.deadlineDate.getFullYear() === year,
-  );
-
-  // Birthday events for this month (recurring annually by month+day — stored as MM-DD)
-  const birthdayClients = clientes.filter((c) => {
-    if (!c.data_aniversario) return false;
-    const [bdMm, bdDd] = c.data_aniversario.split('-').map(Number);
-    return bdMm - 1 === month && bdDd === selectedDay;
-  });
-
-  // Important dates for this month/day
-  const selectedDatas = datasImportantes.filter((d) => {
-    const dt = new Date(d.data + 'T00:00:00');
-    return dt.getMonth() === month && dt.getDate() === selectedDay && dt.getFullYear() === year;
-  });
+  const fontes = { clientes, membros, deadlineEvents, datasImportantes, canSeeFinancials };
+  const {
+    incomes: selectedIncomes,
+    expenses: selectedExpenses,
+    deadlines: selectedDeadlines,
+    birthdays: birthdayClients,
+    datas: selectedDatas,
+  } = itensDoDia(fontes, year, month, selectedDay);
 
   const handleConfirm = (
     refId: string,
@@ -177,27 +155,13 @@ function FinanceiroCalendar({
             ))}
             {Array.from({ length: daysInMonth }, (_, i) => {
               const d = i + 1;
-              const dayIncomes =
-                canSeeFinancials !== true
-                  ? []
-                  : clientes.filter((c) => c.data_pagamento === d && c.status === 'ativo');
-              const dayExpenses =
-                canSeeFinancials !== true ? [] : membros.filter((m) => m.data_pagamento === d);
-              const dayDeadlines = deadlineEvents.filter(
-                (de) =>
-                  de.deadlineDate.getDate() === d &&
-                  de.deadlineDate.getMonth() === month &&
-                  de.deadlineDate.getFullYear() === year,
-              );
-              const dayBirthdays = clientes.filter((c) => {
-                if (!c.data_aniversario) return false;
-                const [bdMm, bdDd] = c.data_aniversario.split('-').map(Number);
-                return bdMm - 1 === month && bdDd === d;
-              });
-              const dayDatas = datasImportantes.filter((di) => {
-                const dt = new Date(di.data + 'T00:00:00');
-                return dt.getMonth() === month && dt.getDate() === d && dt.getFullYear() === year;
-              });
+              const {
+                incomes: dayIncomes,
+                expenses: dayExpenses,
+                deadlines: dayDeadlines,
+                birthdays: dayBirthdays,
+                datas: dayDatas,
+              } = itensDoDia(fontes, year, month, d);
               const hasEvents =
                 dayIncomes.length > 0 ||
                 dayExpenses.length > 0 ||
@@ -275,7 +239,7 @@ function FinanceiroCalendar({
             ) : (
               <>
                 {selectedIncomes.map((c) => {
-                  const refId = `cliente_${c.id}_${year}_${String(month + 1).padStart(2, '0')}`;
+                  const refId = refPagamento('cliente', c.id, year, month);
                   const paid = isPaid(refId);
                   return (
                     <div key={c.id} className="scheduled-item">
@@ -324,7 +288,7 @@ function FinanceiroCalendar({
                 })}
 
                 {selectedExpenses.map((m) => {
-                  const refId = `membro_${m.id}_${year}_${String(month + 1).padStart(2, '0')}`;
+                  const refId = refPagamento('membro', m.id, year, month);
                   const paid = isPaid(refId);
                   return (
                     <div key={m.id} className="scheduled-item">
@@ -640,6 +604,7 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
 /** The page from before the Agenda: the "Calendário" and "Datas Comemorativas"
  *  tabs. With `feature_agenda` on, both become layers of the Agenda instead. */
 function CalendarioClassico() {
+  const isPhone = !useIsDesktop(768);
   const [activeTab, setActiveTab] = useState<'financeiro' | 'comemorativas'>('financeiro');
 
   useEffect(() => {
@@ -692,6 +657,23 @@ function CalendarioClassico() {
     () => (etapasPorWorkflow ? calcularPrazos(workflows, etapasPorWorkflow, clientes) : []),
     [workflows, etapasPorWorkflow, clientes],
   );
+
+  if (isPhone) {
+    return (
+      <CalendarioClassicoPhone
+        aba={activeTab}
+        onAbaChange={setActiveTab}
+        clientes={clientes}
+        membros={membros}
+        transacoes={transacoes}
+        deadlineEvents={deadlineEvents}
+        datasImportantes={datasImportantes}
+        canSeeFinancials={canSeeFinancials}
+        niche={activeNiche}
+        onNicheChange={handleNicheChange}
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
