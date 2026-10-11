@@ -6,6 +6,13 @@ import { test, expect, type Page } from '@playwright/test';
 // Horizontal overflow for these routes is covered by phone-overflow.phone.spec.ts.
 test.skip(!process.env.E2E_CRM_EMAIL || !process.env.E2E_CRM_PASSWORD, 'E2E_CRM_* not set');
 
+// A live announcement popup (global_popups) opens as a modal over the page and hides it
+// from the accessibility tree, so role queries find nothing. Serve an empty list instead
+// of dismissing it: dismissing writes a popup_interactions row for the E2E account.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/rest/v1/global_popups*', (route) => route.fulfill({ json: [] }));
+});
+
 const PORTED_ROUTES = [
   '/configuracao',
   '/configuracao/perfil',
