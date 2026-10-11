@@ -3075,8 +3075,8 @@ select.form-input option {
   display: none;
 }
 
-.mobile-more-overlay,
-.mobile-more-sheet {
+/* Phone-only shell header (AppLayout renders it only below 768px; CSS is the real gate). */
+.phone-shell-header {
   display: none;
 }
 
@@ -3101,154 +3101,6 @@ select.form-input option {
   /* Hide desktop sidebar completely on mobile */
   .sidebar {
     display: none !important;
-  }
-
-  /* ===== MORE SHEET ===== */
-
-  .mobile-more-overlay {
-    background: rgba(0, 0, 0, 0.3);
-  }
-
-  .mobile-more-sheet {
-    gap: 0;
-    background: var(--surface-main);
-    border: 1px solid var(--border-color);
-    border-radius: 24px;
-    padding: 0.75rem 0;
-    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
-    max-height: calc(100svh - 9rem);
-    overflow-y: auto;
-  }
-
-  /* Profile */
-  .mobile-more-profile {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    margin: 0 0.5rem 0.25rem;
-    border-radius: 14px;
-  }
-
-  .mobile-more-profile .avatar {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    font-weight: 700;
-    background: var(--text-main);
-    color: var(--surface-main);
-  }
-
-  .mobile-more-profile-info {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .mobile-more-profile-name {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--text-main);
-  }
-
-  .mobile-more-profile-plan {
-    font-size: 0.68rem;
-    font-weight: 500;
-    color: var(--text-light);
-    font-family: var(--font-mono);
-  }
-
-  /* Group labels */
-  .mobile-more-group-label {
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-light);
-    padding: 0.75rem 1.25rem 0.35rem;
-  }
-
-  /* Items */
-  .mobile-more-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    width: 100%;
-    min-height: 44px;
-    padding: 0.65rem 1.25rem;
-    background: none;
-    border: none;
-    border-radius: 0;
-    cursor: pointer;
-    font-family: var(--font-main);
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--text-main);
-    text-align: left;
-    transition: background 0.15s ease;
-  }
-
-  .mobile-more-item:active {
-    background: var(--surface-hover);
-  }
-
-  .mobile-more-item.active {
-    color: var(--primary-color);
-  }
-
-  .mobile-more-item--disabled {
-    cursor: default;
-    opacity: 0.55;
-    pointer-events: none;
-  }
-
-  .mobile-more-item-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--surface-hover);
-    flex-shrink: 0;
-  }
-
-  .mobile-more-item.active .mobile-more-item-icon {
-    background: rgba(234, 179, 8, 0.12);
-  }
-
-  .mobile-more-item-icon i {
-    font-size: 1.15rem;
-    color: var(--text-muted);
-  }
-
-  .mobile-more-item.active .mobile-more-item-icon i {
-    color: var(--primary-color);
-  }
-
-  /* Danger item */
-  .mobile-more-item.danger {
-    color: var(--danger);
-  }
-
-  .mobile-more-item.danger .mobile-more-item-icon i {
-    color: var(--danger);
-  }
-
-  .mobile-more-item.danger:active {
-    background: rgba(245, 90, 66, 0.08);
-  }
-
-  /* Divider */
-  .mobile-more-divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 0.35rem 1.25rem;
   }
 
   /* ===== Main Content Mobile ===== */
@@ -3676,11 +3528,12 @@ select.form-input option {
 }
 
 @media (max-width: 767px) {
+  /* Floating glass tab bar (EntregasKanban mockup): Início, Entregas, Agenda, Mensagens, Mais. */
   .mobile-nav-glass {
     position: fixed;
     z-index: 40;
-    left: max(12px, env(safe-area-inset-left));
-    right: max(12px, env(safe-area-inset-right));
+    left: max(16px, env(safe-area-inset-left));
+    right: max(16px, env(safe-area-inset-right));
     /* env(safe-area-inset-bottom) only covers the home-indicator inset -- it does not
        account for Safari's own collapsible toolbar, which is a separate, dynamically
        sized overlay. --mobile-nav-chrome-offset (set from window.visualViewport in
@@ -3688,32 +3541,21 @@ select.form-input option {
        when it's expanded; it's 0px whenever there's no such overlay to clear. */
     bottom: calc(max(10px, env(safe-area-inset-bottom)) + var(--mobile-nav-chrome-offset, 0px));
     display: block;
-    min-height: 72px;
-    padding: 6px;
-    border: 1px solid color-mix(in srgb, var(--border-color) 76%, white 24%);
-    border-radius: 26px;
-    background: var(--surface-main);
-    background: color-mix(in srgb, var(--surface-main) 82%, transparent);
-    box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.12);
-    -webkit-backdrop-filter: blur(22px) saturate(145%);
-    backdrop-filter: blur(22px) saturate(145%);
-  }
-
-  .mobile-more-overlay,
-  .mobile-more-sheet {
-    display: block;
-  }
-
-  .mobile-more-sheet {
-    right: max(20px, env(safe-area-inset-right, 0px));
-    bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
-    left: max(20px, env(safe-area-inset-left, 0px));
-    width: auto;
+    min-height: 64px;
+    padding: 4px;
+    box-sizing: border-box;
+    border: 1px solid var(--phone-glass-border);
+    border-radius: 32px;
+    background: var(--phone-cell);
+    background: var(--phone-glass);
+    box-shadow: var(--phone-shadow-float);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
     .mobile-nav-glass {
-      background: var(--surface-main);
+      background: var(--phone-cell);
     }
   }
 
@@ -3721,7 +3563,7 @@ select.form-input option {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: stretch;
-    min-height: 58px;
+    min-height: 54px;
   }
 
   .mobile-nav-item {
@@ -3730,64 +3572,129 @@ select.form-input option {
     align-items: center;
     justify-content: center;
     min-width: 0;
-    min-height: 58px;
+    min-height: 54px;
     padding: 4px 2px;
-    gap: 3px;
+    gap: 2px;
     border: none;
+    border-radius: 28px;
     background: none;
-    color: var(--text-muted);
+    color: var(--phone-label-secondary);
     cursor: pointer;
     font-family: var(--font-main);
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    transition: background-color 160ms ease;
+  }
+
+  .mobile-nav-item.active {
+    background: var(--phone-tab-active);
+    color: var(--phone-label);
+  }
+
+  .mobile-nav-item:focus-visible {
+    outline: 2px solid var(--phone-accent);
+    outline-offset: -2px;
   }
 
   .mobile-nav-item__icon {
+    position: relative;
     display: grid;
-    width: 36px;
-    height: 30px;
+    width: 28px;
+    height: 24px;
     place-items: center;
+  }
+
+  .mobile-nav-item__icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mobile-nav-item__badge {
+    position: absolute;
+    top: -4px;
+    left: calc(50% + 6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    box-sizing: border-box;
     border-radius: 999px;
-    transition:
-      background-color 160ms ease,
-      color 160ms ease,
-      transform 160ms ease;
-  }
-
-  .mobile-nav-item__icon i {
-    font-size: 1.35rem;
-  }
-
-  .mobile-nav-item.active .mobile-nav-item__icon {
-    color: var(--text-main);
-    background: color-mix(in srgb, var(--primary-color) 24%, transparent);
-  }
-
-  .mobile-nav-item.active .icon-wrap,
-  .mobile-nav-item.active .mobile-nav-item__icon {
-    opacity: 1;
-    visibility: visible;
+    background: var(--phone-accent);
+    color: var(--phone-on-accent);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
   }
 
   .mobile-nav-item .nav-label {
     max-width: 100%;
     overflow: hidden;
-    color: var(--text-muted);
-    font-size: 0.64rem;
-    font-weight: 600;
-    line-height: 1;
+    color: inherit;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.1;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .mobile-nav-item.active .nav-label {
-    color: var(--text-main);
-    font-weight: 750;
+    font-weight: 600;
   }
 
+  /* The phone shell header (.phone-shell-header: bell, related articles) is fixed
+     right under the banners and carries the status-bar inset, so the content area
+     starts below it and keeps its own height, the way the desktop topbar works. */
   .main-content {
-    padding: calc(1.25rem + max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px)))
-      1rem calc(104px + env(safe-area-inset-bottom, 0px));
+    margin-top: calc(var(--banner-height, 0px) + var(--phone-header-height));
+    height: calc(100dvh - var(--banner-height, 0px) - var(--phone-header-height));
+    padding: 0.5rem 1rem calc(104px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Full-bleed pages re-added the status-bar inset themselves (<=900px rule above);
+     on phones the header already holds it. */
+  .main-content:has(> .page-full-bleed) {
+    padding-top: 0 !important;
+  }
+
+  @supports not (height: 100dvh) {
+    .main-content {
+      height: calc(100vh - var(--banner-height, 0px) - var(--phone-header-height));
+    }
+  }
+
+  .phone-shell-header {
+    position: fixed;
+    top: var(--banner-height, 0px);
+    right: 0;
+    left: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    height: var(--phone-header-height);
+    padding: max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+      max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    background: var(--bg-color);
+  }
+
+  /* The related-articles button lives in the header on phones instead of floating
+     over the page (AUDIT #3: it covered the first card and page links). */
+  .phone-shell-header .context-help {
+    position: static;
+    z-index: auto;
+  }
+
+  .phone-shell-header .context-help__trigger {
+    height: 36px;
+    padding: 0 0.6rem;
+    border: 0;
+    background: var(--phone-fill);
+    box-shadow: none;
+    color: var(--phone-label);
   }
 
   /* Mensagens (.page-full-bleed) forces .main-content padding to 0 at every
@@ -3805,9 +3712,8 @@ select.form-input option {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mobile-nav-item__icon,
-  .mobile-more-sheet,
-  .mobile-more-overlay {
+  .mobile-nav-item,
+  .mobile-nav-item__icon {
     transition: none;
   }
 }
@@ -15810,6 +15716,12 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
     --phone-radius-menu: 16px;
     --phone-gutter: 16px;
     --phone-row-min: 44px;
+    /* Shell header (bell, related articles) above every phone page. Carries the
+       status-bar inset the way the first banner does: only the part no banner covered. */
+    --phone-header-bar: 44px;
+    --phone-header-height: calc(
+      var(--phone-header-bar) + max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+    );
   }
 
   [data-theme='dark'] .app-container {
@@ -16547,7 +16459,8 @@ button.phone-sheet__grabber::before {
   gap: 10px;
   min-height: 64px;
   padding: 10px max(var(--phone-gutter), env(safe-area-inset-right, 0px))
-    calc(10px + env(safe-area-inset-bottom, 0px)) max(var(--phone-gutter), env(safe-area-inset-left, 0px));
+    calc(10px + env(safe-area-inset-bottom, 0px))
+    max(var(--phone-gutter), env(safe-area-inset-left, 0px));
   box-sizing: border-box;
   border-top: 1px solid var(--phone-glass-border);
   background: var(--phone-glass);
@@ -16557,7 +16470,9 @@ button.phone-sheet__grabber::before {
   backdrop-filter: blur(20px) saturate(180%);
 }
 .phone-bottom-bar--above-tab-bar {
-  bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 72px + var(--mobile-nav-chrome-offset, 0px));
+  bottom: calc(
+    max(10px, env(safe-area-inset-bottom, 0px)) + 72px + var(--mobile-nav-chrome-offset, 0px)
+  );
   padding-bottom: 10px;
   border-top: 0;
   background: transparent;
@@ -16626,9 +16541,136 @@ button.phone-sheet__grabber::before {
   cursor: default;
 }
 
+/* ---- Mais sheet (MobileNav) ---- */
+/* Phone-only: MobileNav closes it when the viewport leaves the phone range; this hides
+   it for the frame in between. */
+@media (min-width: 768px) {
+  .mobile-more-sheet,
+  .mobile-more-overlay {
+    display: none;
+  }
+}
+.mobile-more-profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.mobile-more-profile .avatar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  font-size: 21px;
+  font-weight: 600;
+}
+.mobile-more-profile-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mobile-more-profile-name {
+  overflow: hidden;
+  color: var(--phone-label);
+  font-size: 20px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mobile-more-profile-plan {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.mobile-more-sheet .phone-cell__icon i {
+  font-size: 20px;
+}
+.mobile-more-sheet .nav-badge {
+  margin-left: 0;
+}
+
+/* ---- Phone notifications screen (PhoneNotifications) ---- */
+.phone-notifications {
+  position: fixed;
+  inset: 0;
+  z-index: 9011;
+  display: flex;
+  flex-direction: column;
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  outline: none;
+}
+.phone-notifications[data-state='open'] {
+  animation: sheet-slide-in-bottom 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.phone-notifications[data-state='closed'] {
+  animation: sheet-slide-out-bottom 0.26s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.phone-notifications__scroll {
+  flex: 1;
+  min-height: 0;
+  padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px))
+    calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.phone-notifications .phone-large-title {
+  margin-bottom: 12px;
+}
+.phone-notifications .phone-large-title__title {
+  margin-bottom: 12px;
+}
+.phone-notifications__text-button {
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-notifications__text-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-notifications__text-button:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-notifications__day {
+  margin: 20px 0 8px 4px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.phone-notifications__card {
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-notifications__card > div > div:last-child {
+  border-bottom: 0 !important;
+}
+.phone-notifications__empty {
+  margin-top: 48px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .phone-sheet,
   .phone-sheet-overlay,
+  .phone-notifications,
   .phone-action-sheet,
   .phone-context-menu,
   .phone-menu-overlay,

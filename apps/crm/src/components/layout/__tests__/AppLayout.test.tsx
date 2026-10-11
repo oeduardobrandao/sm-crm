@@ -65,6 +65,10 @@ vi.mock('../TopBar', () => ({
   ),
 }));
 
+vi.mock('../PhoneShellHeader', () => ({
+  default: () => <div data-testid="phone-shell-header">Phone header</div>,
+}));
+
 vi.mock('../GlobalBannerContainer', () => ({
   default: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="global-banner">{children}</div>
@@ -80,7 +84,7 @@ vi.mock('../IncidentBanner', () => ({
 }));
 
 vi.mock('../../help/ContextHelpLinks', () => ({
-  ContextHelpLinks: () => null,
+  ContextHelpLinks: () => <div data-testid="context-help" />,
 }));
 
 // The guide feature has its own dedicated test suites (GuideContext,
@@ -224,6 +228,35 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-open', 'false');
     expect(screen.queryByRole('button', { name: 'Abrir menu' })).not.toBeInTheDocument();
     expect(screen.getByTestId('mobile-nav')).toBeInTheDocument();
+  });
+
+  it('renders the phone shell header instead of the TopBar below 768px (AUDIT #1)', async () => {
+    setViewport(390);
+    mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('phone-shell-header')).toBeInTheDocument();
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
+    // The related-articles button moves into the phone header (AUDIT #3): not in <main>.
+    expect(
+      document.getElementById('app')?.querySelector('[data-testid="context-help"]'),
+    ).toBeNull();
+  });
+
+  it('keeps the TopBar and the in-page related-articles button from 768px up', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(screen.queryByTestId('phone-shell-header')).not.toBeInTheDocument();
+    expect(
+      document.getElementById('app')?.querySelector('[data-testid="context-help"]'),
+    ).not.toBeNull();
   });
 
   it('opens and closes the tablet drawer, then resets when leaving tablet mode', async () => {

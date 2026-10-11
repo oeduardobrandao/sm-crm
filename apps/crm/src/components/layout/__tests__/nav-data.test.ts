@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getNavGroups, getMoreSheetGroups } from '../nav-data';
+import { getNavGroups, getMoreSheetGroups, getPhoneNav } from '../nav-data';
 import { deriveFinancialAccess } from '@/lib/financialAccess';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 import type { MyMembership } from '@/store/workspace';
@@ -187,5 +187,74 @@ describe('locked nav items (showLockedWhenGated)', () => {
   it('features null (carregando/ilimitado) não marca nada', () => {
     const items = getNavGroups(null, 'owner', ownerCan).flatMap((g) => g.items);
     expect(items.find((i) => i.id === 'automacoes')?.locked).toBeUndefined();
+  });
+});
+
+describe('getPhoneNav (D18 phone tab bar)', () => {
+  const tabIds = (nav: ReturnType<typeof getPhoneNav>) => nav.tabs.map((t) => t.navId);
+
+  it('prefers Início, Entregas, Agenda, Mensagens and moves Clientes/Analytics to the top of Mais', () => {
+    const nav = getPhoneNav({ feature_mensagens: true }, 'owner', ownerCan, {
+      agendaEnabled: true,
+    });
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'calendario', 'mensagens']);
+    expect(nav.tabs.map((t) => t.label)).toEqual(['Início', 'Entregas', 'Agenda', 'Mensagens']);
+    expect(nav.tabs[2].route).toBe('/calendario');
+    expect(nav.shortcuts.map((s) => [s.id, s.label])).toEqual([
+      ['clientes', 'Clientes'],
+      ['analytics', 'Analytics'],
+    ]);
+    const more = ids(nav.moreGroups);
+    for (const id of [
+      'dashboard',
+      'entregas',
+      'calendario',
+      'mensagens',
+      'clientes',
+      'analytics',
+    ]) {
+      expect(more).not.toContain(id);
+    }
+    expect(more).toContain('analytics-fluxos');
+  });
+
+  it('keeps the editorial Calendário in Mais and gives its slot to Clientes without the Agenda', () => {
+    const nav = getPhoneNav(null, 'owner', ownerCan, { agendaEnabled: false });
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes', 'mensagens']);
+    expect(nav.shortcuts.map((s) => s.id)).toEqual(['analytics']);
+    expect(ids(nav.moreGroups)).toContain('calendario');
+  });
+
+  it('uses Clientes then Analytics when both Agenda and Mensagens are unavailable', () => {
+    const nav = getPhoneNav({ feature_mensagens: false }, 'owner', ownerCan, {
+      agendaEnabled: false,
+    });
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes', 'analytics']);
+    expect(nav.shortcuts).toEqual([]);
+  });
+
+  it('respects the plan flag on the Analytics fallback, like the sidebar', () => {
+    const nav = getPhoneNav(
+      { feature_mensagens: false, feature_analytics_reports: false },
+      'owner',
+      ownerCan,
+      { agendaEnabled: false },
+    );
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes']);
+  });
+
+  it('does not touch the desktop nav: Calendário stays a sidebar item on every plan', () => {
+    const groups = getNavGroups({ feature_agenda: false }, 'owner', ownerCan);
+    expect(ids(groups)).toContain('calendario');
+  });
+
+  it('shows only Início while the membership is unresolved (fails closed, like the sidebar)', () => {
+    const nav = getPhoneNav(null, 'owner', unresolvedCan, { agendaEnabled: true });
+    expect(tabIds(nav)).toEqual(['dashboard']);
+  });
+
+  it('keeps a legacy agent on Início, Entregas, Clientes, Mensagens without the Agenda', () => {
+    const nav = getPhoneNav(null, 'agent', agentCan, { agendaEnabled: false });
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes', 'mensagens']);
   });
 });

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../context/AuthContext';
@@ -76,6 +76,22 @@ function setAuth(overrides: Record<string, unknown> = {}) {
   } as any);
 }
 
+function setCustomRole(permissions: Record<string, string>) {
+  mockedUseAuth.mockReturnValue({
+    user: { id: '1' } as any,
+    profile: { id: '1', nome: 'Ana Maria', role: 'agent', conta_id: 'c1' } as any,
+    role: 'agent',
+    workspaceRole: 'agent',
+    canSeeFinancials: false,
+    can: makeCan(
+      fakeMembership({ role: 'agent', role_id: 'role-1', permissions: permissions as never }),
+    ),
+    loading: false,
+    signOut: vi.fn(),
+    refreshProfile: vi.fn(),
+  } as any);
+}
+
 function renderMobileNav(pathname = '/dashboard') {
   return render(
     <MemoryRouter initialEntries={[pathname]}>
@@ -92,6 +108,25 @@ function renderMobileNav(pathname = '/dashboard') {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+/** Visible tab labels, in bar order ("Mais" included). */
+function tabLabels(): string[] {
+  const nav = screen.getByRole('navigation', { name: 'Navegação principal' });
+  return Array.from(nav.querySelectorAll('.mobile-nav-item .nav-label')).map(
+    (el) => el.textContent ?? '',
+  );
+}
+
+function openMore() {
+  fireEvent.click(document.getElementById('mobile-more-btn')!);
+  return screen.getByRole('dialog', { name: 'Mais' });
+}
+
+/** Row labels in the open Mais sheet, top to bottom. */
+function moreRows(): string[] {
+  const sheet = screen.getByRole('dialog', { name: 'Mais' });
+  return Array.from(sheet.querySelectorAll('.phone-cell__label')).map((el) => el.textContent ?? '');
 }
 
 function createPhoneMediaQuery(initialMatches = true) {
@@ -126,13 +161,22 @@ describe('MobileNav', () => {
 
   it('renders a stable active route without canvas chrome', () => {
     setAuth();
-    renderMobileNav('/analytics');
+    renderMobileNav('/entregas');
 
-    const analytics = screen.getByRole('button', { name: 'Analytics' });
-    expect(analytics).toHaveAttribute('aria-current', 'page');
-    expect(analytics).toHaveClass('active');
+    const entregas = screen.getByRole('button', { name: 'Entregas' });
+    expect(entregas).toHaveAttribute('aria-current', 'page');
+    expect(entregas).toHaveClass('active');
     expect(document.querySelector('canvas')).not.toBeInTheDocument();
     expect(document.querySelector('.mobile-nav-bubble-circle')).not.toBeInTheDocument();
+  });
+
+  it('is a permanently mounted nav, never a dialog', () => {
+    setAuth();
+    renderMobileNav('/dashboard');
+    // isDocumentBusy (packages/app-lifecycle) treats any [role="dialog"] as unsaved
+    // work and would stall silent deploy swaps.
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Navegação principal' })).toBeInTheDocument();
   });
 
   it('exposes the Mais sheet state', () => {
@@ -154,7 +198,13 @@ describe('MobileNav', () => {
 
     expect(screen.getByRole('button', { name: 'Mais' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: 'Mais' })).toHaveClass('active');
-    expect(screen.getByRole('button', { name: 'Analytics' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: 'Início' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('marks Mais as current on a shortcut route that is not on the bar (Analytics)', () => {
+    setAuth();
+    renderMobileNav('/analytics');
+    expect(screen.getByRole('button', { name: 'Mais' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('uses dialog semantics, makes the background inert, closes on Escape, and restores focus', async () => {
@@ -171,7 +221,7 @@ describe('MobileNav', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull());
-    expect(more).toHaveFocus();
+    await waitFor(() => expect(more).toHaveFocus());
   });
 
   it('closes the phone sheet when the phone media query stops matching', async () => {
@@ -205,14 +255,9 @@ describe('MobileNav', () => {
     setAuth();
     renderMobileNav('/dashboard');
 
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    const sheet = openMore();
     expect(screen.queryByTestId('global-search-dialog')).toBeNull();
-
-    const buscar = Array.from(document.querySelectorAll('.mobile-more-item')).find((el) =>
-      el.textContent?.includes('Buscar'),
-    );
-    expect(buscar).toBeTruthy();
-    fireEvent.click(buscar!);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Buscar' }));
 
     expect(screen.getByTestId('global-search-dialog')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull());
@@ -222,13 +267,8 @@ describe('MobileNav', () => {
     setAuth();
     renderMobileNav('/dashboard');
 
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
-
-    const configBtn = Array.from(document.querySelectorAll('.mobile-more-item')).find((el) =>
-      el.textContent?.includes('Configurações'),
-    );
-    expect(configBtn).toBeTruthy();
-    fireEvent.click(configBtn!);
+    const sheet = openMore();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Configurações' }));
 
     await waitFor(() => {
       expect(screen.getByTestId('path').textContent).toBe('/configuracao');
@@ -237,31 +277,31 @@ describe('MobileNav', () => {
     expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
   });
 
-  it('includes all sidebar routes in more sheet', () => {
+  it('includes the sidebar routes that are not on the bar in the more sheet', () => {
     setAuth();
     renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    openMore();
+    const rows = moreRows();
 
-    const items = Array.from(document.querySelectorAll('.mobile-more-item')).map((el) =>
-      el.textContent?.trim(),
-    );
-
-    expect(items).toContain('Calendário');
-    expect(items).toContain('Leads');
-    expect(items).toContain('Ideias');
-    expect(items).toContain('Arquivos');
-    expect(items).toContain('Fluxos');
-    expect(items).toContain('Privacidade');
+    expect(rows).toContain('Calendário');
+    expect(rows).toContain('Leads');
+    expect(rows).toContain('Ideias');
+    expect(rows).toContain('Arquivos');
+    expect(rows).toContain('Fluxos');
+    expect(rows).toContain('Privacidade');
+    // On the bar, so not repeated in Mais.
+    expect(rows).not.toContain('Entregas');
+    expect(rows).not.toContain('Mensagens');
   });
 
   it('does not render the TikTok analytics placeholder (spec B4)', () => {
     setAuth();
     renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    openMore();
 
-    const rows = Array.from(document.querySelectorAll('.mobile-more-item'));
+    const rows = moreRows();
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.some((el) => el.textContent?.includes('TikTok'))).toBe(false);
+    expect(rows.some((label) => label.includes('TikTok'))).toBe(false);
   });
 
   it('toggles theme and signs out', async () => {
@@ -269,11 +309,17 @@ describe('MobileNav', () => {
     setAuth({ signOut });
     renderMobileNav('/dashboard');
 
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    openMore();
+    const themeSwitch = screen.getByRole('switch', { name: 'Modo Escuro' });
+    expect(themeSwitch).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(document.getElementById('mobile-theme-toggle')!);
 
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(localStorage.getItem('theme')).toBe('dark');
+    expect(screen.getByRole('switch', { name: 'Modo Escuro' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
 
     fireEvent.click(document.getElementById('mobile-logout-btn')!);
     expect(signOut).toHaveBeenCalled();
@@ -285,17 +331,14 @@ describe('MobileNav', () => {
       features: { feature_leads: false, feature_financial: false, feature_contracts: false },
     });
     renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    openMore();
+    const rows = moreRows();
 
-    const items = Array.from(document.querySelectorAll('.mobile-more-item')).map((el) =>
-      el.textContent?.trim(),
-    );
-
-    expect(items).not.toContain('Leads');
-    expect(items).not.toContain('Financeiro');
-    expect(items).not.toContain('Contratos');
+    expect(rows).not.toContain('Leads');
+    expect(rows).not.toContain('Financeiro');
+    expect(rows).not.toContain('Contratos');
     // Ungated more-sheet items remain.
-    expect(items).toContain('Calendário');
+    expect(rows).toContain('Calendário');
   });
 
   it('shows feature-gated items in the more sheet when their flag is true', () => {
@@ -304,26 +347,23 @@ describe('MobileNav', () => {
       features: { feature_leads: true, feature_financial: true, feature_contracts: true },
     });
     renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    openMore();
+    const rows = moreRows();
 
-    const items = Array.from(document.querySelectorAll('.mobile-more-item')).map((el) =>
-      el.textContent?.trim(),
-    );
-
-    expect(items).toContain('Leads');
-    expect(items).toContain('Financeiro');
-    expect(items).toContain('Contratos');
+    expect(rows).toContain('Leads');
+    expect(rows).toContain('Financeiro');
+    expect(rows).toContain('Contratos');
   });
 
   it('renders Automações dimmed with a lock icon in the more sheet when the feature flag is false', () => {
     setAuth();
     setLimits({ features: { feature_instagram_automation: false } });
     renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    openMore();
 
     const locked = screen.getByTestId('mobile-nav-locked-automacoes');
     expect(locked).toBeInTheDocument();
-    expect(locked.querySelector('.ph-lock')).not.toBeNull();
+    expect(within(locked).getByLabelText('Bloqueado')).toBeInTheDocument();
     expect(locked).toHaveClass('mobile-more-item--locked');
     expect(locked.textContent).toContain('Automações');
   });
@@ -332,7 +372,7 @@ describe('MobileNav', () => {
     setAuth();
     setLimits({ features: { feature_instagram_automation: false } });
     renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    openMore();
 
     fireEvent.click(screen.getByTestId('mobile-nav-locked-automacoes'));
 
@@ -341,115 +381,161 @@ describe('MobileNav', () => {
     });
   });
 
-  it('renders the Mensagens unread badge in the more sheet when count > 0', () => {
-    setAuth();
-    setLimits({ features: { feature_mensagens: true } });
-    mockedUseMensagensUnread.mockReturnValue(5);
+  describe('Mensagens unread badge on the tab', () => {
+    it('shows the count and names it', () => {
+      setAuth();
+      setLimits({ features: { feature_mensagens: true } });
+      mockedUseMensagensUnread.mockReturnValue(5);
+      renderMobileNav('/dashboard');
 
-    renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+      expect(screen.getByTestId('mensagens-tab-badge')).toHaveTextContent('5');
+      expect(screen.getByRole('button', { name: 'Mensagens, 5 não lidas' })).toBeInTheDocument();
+    });
 
-    const badge = screen.getByTestId('mensagens-nav-badge');
-    expect(badge).toBeInTheDocument();
-    expect(badge).toHaveTextContent('5');
+    it('is hidden at 0', () => {
+      setAuth();
+      setLimits({ features: { feature_mensagens: true } });
+      renderMobileNav('/dashboard');
+
+      expect(screen.queryByTestId('mensagens-tab-badge')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Mensagens' })).toBeInTheDocument();
+    });
+
+    it('caps at 99+', () => {
+      setAuth();
+      setLimits({ features: { feature_mensagens: true } });
+      mockedUseMensagensUnread.mockReturnValue(150);
+      renderMobileNav('/dashboard');
+
+      expect(screen.getByTestId('mensagens-tab-badge')).toHaveTextContent('99+');
+    });
   });
 
-  it('hides the Mensagens badge in the more sheet when count is 0', () => {
-    setAuth();
-    setLimits({ features: { feature_mensagens: true } });
-    mockedUseMensagensUnread.mockReturnValue(0);
+  /** D18: Início, Entregas, Agenda, Mensagens, Mais, with Clientes then Analytics
+   *  taking the slot of a tab the plan or the role doesn't have. */
+  describe('tab bar and fallbacks', () => {
+    it('shows Início, Entregas, Agenda, Mensagens, Mais with the Agenda on', () => {
+      setAuth();
+      setLimits({ features: { feature_agenda: true, feature_mensagens: true } });
+      renderMobileNav('/dashboard');
 
-    renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+      expect(tabLabels()).toEqual(['Início', 'Entregas', 'Agenda', 'Mensagens', 'Mais']);
+    });
 
-    expect(screen.queryByTestId('mensagens-nav-badge')).not.toBeInTheDocument();
-  });
+    it('puts Clientes and Analytics at the top of Mais and drops the Calendário row (it is the Agenda tab)', () => {
+      setAuth();
+      setLimits({ features: { feature_agenda: true, feature_mensagens: true } });
+      renderMobileNav('/dashboard');
+      openMore();
+      const rows = moreRows();
 
-  it('shows "99+" in the Mensagens badge in the more sheet when count > 99', () => {
-    setAuth();
-    setLimits({ features: { feature_mensagens: true } });
-    mockedUseMensagensUnread.mockReturnValue(150);
+      expect(rows.slice(0, 2)).toEqual(['Clientes', 'Analytics']);
+      expect(rows).not.toContain('Calendário');
+      expect(rows).not.toContain('Agenda');
+    });
 
-    renderMobileNav('/dashboard');
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    it('marks the Agenda tab active on /calendario', () => {
+      setAuth();
+      setLimits({ features: { feature_agenda: true } });
+      renderMobileNav('/calendario');
 
-    const badge = screen.getByTestId('mensagens-nav-badge');
-    expect(badge).toBeInTheDocument();
-    expect(badge).toHaveTextContent('99+');
+      expect(screen.getByRole('button', { name: 'Agenda' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      expect(screen.getByRole('button', { name: 'Mais' })).not.toHaveAttribute('aria-current');
+    });
+
+    it('gives the Agenda slot to Clientes on a plan without feature_agenda (Free), keeping the editorial Calendário in Mais', () => {
+      setAuth();
+      setLimits({ features: { feature_agenda: false, feature_mensagens: true } });
+      renderMobileNav('/dashboard');
+
+      expect(tabLabels()).toEqual(['Início', 'Entregas', 'Clientes', 'Mensagens', 'Mais']);
+      openMore();
+      const rows = moreRows();
+      expect(rows[0]).toBe('Analytics');
+      expect(rows).toContain('Calendário');
+    });
+
+    it('fills both free slots with Clientes then Analytics when Agenda and Mensagens are off', () => {
+      setAuth();
+      setLimits({ features: { feature_agenda: false, feature_mensagens: false } });
+      renderMobileNav('/dashboard');
+
+      expect(tabLabels()).toEqual(['Início', 'Entregas', 'Clientes', 'Analytics', 'Mais']);
+      openMore();
+      expect(moreRows()).not.toContain('Clientes');
+      expect(moreRows()).not.toContain('Analytics');
+    });
+
+    it('keeps the default bar while the plan is loading (no tab flip on boot)', () => {
+      setAuth();
+      setLimits({ features: null, isLoading: true });
+      renderMobileNav('/dashboard');
+
+      expect(tabLabels()).toEqual(['Início', 'Entregas', 'Agenda', 'Mensagens', 'Mais']);
+    });
+
+    it('treats a loaded but missing plan like CalendarioPage does: no Agenda tab', () => {
+      setAuth();
+      setLimits({ features: null, isLoading: false });
+      renderMobileNav('/dashboard');
+
+      expect(tabLabels()).toEqual(['Início', 'Entregas', 'Clientes', 'Mensagens', 'Mais']);
+    });
+
+    it('drops Agenda without calendario.ver even with feature_agenda on', () => {
+      setCustomRole({ entregas: 'ver', clientes: 'ver', analytics: 'ver', calendario: 'none' });
+      setLimits({ features: { feature_agenda: true, feature_mensagens: true } });
+      renderMobileNav('/dashboard');
+
+      expect(tabLabels()).toEqual(['Início', 'Entregas', 'Clientes', 'Mensagens', 'Mais']);
+    });
+
+    it('falls through to Analytics when clientes.ver is missing (Mensagens and Clientes both need it)', () => {
+      setCustomRole({ entregas: 'ver', calendario: 'ver', analytics: 'ver', clientes: 'none' });
+      setLimits({ features: { feature_agenda: true, feature_mensagens: true } });
+      renderMobileNav('/dashboard');
+
+      expect(tabLabels()).toEqual(['Início', 'Entregas', 'Agenda', 'Analytics', 'Mais']);
+    });
   });
 
   /**
-   * Task 14, revisão externa round 4 (P2): the fixed primary bar
-   * (dashboard/clientes/analytics/entregas) used to render unconditionally
-   * regardless of role -- only the "Mais" sheet (getMoreSheetGroups) ran the
-   * NAV_MODULE permission filter. A denied module's primary item now
-   * disappears too, via the same NAV_MODULE table.
+   * Task 14, revisão externa round 4 (P2): primary items are gated on the same
+   * NAV_MODULE table `getNavGroups` uses, so a denied module never shows a tab.
    */
   describe('primary bar gated on NAV_MODULE/can()', () => {
-    it('hides the Clientes primary item for a custom role with clientes:none, keeping Dashboard', () => {
-      mockedUseAuth.mockReturnValue({
-        user: { id: '1' } as any,
-        profile: { id: '1', nome: 'Ana Maria', role: 'agent', conta_id: 'c1' } as any,
-        role: 'agent',
-        workspaceRole: 'agent',
-        canSeeFinancials: false,
-        can: makeCan(
-          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'none' } }),
-        ),
-        loading: false,
-        signOut: vi.fn(),
-        refreshProfile: vi.fn(),
-      } as any);
+    it('hides Clientes for a custom role with clientes:none, keeping Início', () => {
+      setCustomRole({ clientes: 'none' });
       renderMobileNav('/dashboard');
 
-      expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Início' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Clientes' })).not.toBeInTheDocument();
     });
 
-    it('keeps the Dashboard primary item even with no permissions granted at all', () => {
-      mockedUseAuth.mockReturnValue({
-        user: { id: '1' } as any,
-        profile: { id: '1', nome: 'Ana Maria', role: 'agent', conta_id: 'c1' } as any,
-        role: 'agent',
-        workspaceRole: 'agent',
-        canSeeFinancials: false,
-        can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
-        loading: false,
-        signOut: vi.fn(),
-        refreshProfile: vi.fn(),
-      } as any);
+    it('keeps Início even with no permissions granted at all', () => {
+      setCustomRole({});
       renderMobileNav('/dashboard');
 
-      expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
+      expect(tabLabels()).toEqual(['Início', 'Mais']);
       expect(screen.queryByRole('button', { name: 'Clientes' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Analytics' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Entregas' })).not.toBeInTheDocument();
     });
 
-    it("keeps every legacy agent's primary item visible (preset grants clientes/analytics/entregas) — no regression", () => {
+    it("keeps every legacy agent's tabs (preset grants clientes/analytics/entregas) — no regression", () => {
       setAuth({ role: 'agent' });
       renderMobileNav('/dashboard');
 
-      expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Analytics' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Entregas' })).toBeInTheDocument();
+      expect(tabLabels()).toEqual(['Início', 'Entregas', 'Clientes', 'Mensagens', 'Mais']);
+      openMore();
+      expect(moreRows()[0]).toBe('Analytics');
     });
 
-    it('shows a custom role with clientes:ver the Clientes primary item (the fix — ver satisfies the nav gate)', () => {
-      mockedUseAuth.mockReturnValue({
-        user: { id: '1' } as any,
-        profile: { id: '1', nome: 'Ana Maria', role: 'agent', conta_id: 'c1' } as any,
-        role: 'agent',
-        workspaceRole: 'agent',
-        canSeeFinancials: false,
-        can: makeCan(
-          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
-        ),
-        loading: false,
-        signOut: vi.fn(),
-        refreshProfile: vi.fn(),
-      } as any);
+    it('shows a custom role with clientes:ver the Clientes tab (ver satisfies the nav gate)', () => {
+      setCustomRole({ clientes: 'ver' });
       renderMobileNav('/dashboard');
 
       expect(screen.getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
