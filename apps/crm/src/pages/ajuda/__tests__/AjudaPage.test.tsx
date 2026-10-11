@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/store/kb', () => ({ getPublishedArticles: vi.fn() }));
+// Desktop markup: the phone branch (PhonePageHeader) has its own suite.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 vi.mock('@/store/kbViews', () => ({ recordKbView: vi.fn(() => Promise.resolve()) }));
 vi.mock('@/store/kbVideos', () => ({
   getPublishedVideoSeries: vi.fn(),
