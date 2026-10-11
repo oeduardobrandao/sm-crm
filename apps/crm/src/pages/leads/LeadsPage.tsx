@@ -95,6 +95,14 @@ import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { useAuth } from '../../context/AuthContext';
 import { stripFinancialFields } from '@/lib/financialAccess';
 import { captureEvent } from '@/lib/analytics';
+import { LeadsPhone } from './phone/LeadsPhone';
+import {
+  CANAL_KEYS,
+  FATURAMENTO_DB_VALUES,
+  FATURAMENTO_KEYS,
+  LEAD_STATUS_KEYS,
+} from './leadOptions';
+import { ConvertFormPhoneFields, LeadFormPhoneFields } from './phone/LeadFormPhoneFields';
 
 function createLeadSchema(t: (key: string) => string) {
   return z.object({
@@ -125,24 +133,6 @@ function createConvertSchema(t: (key: string) => string) {
 }
 type ConvertFormValues = z.infer<ReturnType<typeof createConvertSchema>>;
 
-const CANAL_KEYS = [
-  'Instagram',
-  'Facebook',
-  'Google Ads',
-  'Indicação',
-  'Site',
-  'WhatsApp',
-  'Typeform',
-  'Outro',
-] as const;
-const FATURAMENTO_KEYS = ['upTo5k', '5kTo10k', '10kTo20k', '20kTo50k', 'above50k'] as const;
-const FATURAMENTO_DB_VALUES: Record<string, string> = {
-  upTo5k: 'Até R$ 5.000/mês',
-  '5kTo10k': 'De R$ 5.000 a R$ 10.000/mês',
-  '10kTo20k': 'De R$ 10.000 a R$ 20.000/mês',
-  '20kTo50k': 'De R$ 20.000 a R$ 50.000/mês',
-  above50k: 'Acima de R$ 50.000/mês',
-};
 type StatusFilter = 'todos' | Lead['status'];
 type SortDir = 'asc' | 'desc';
 
@@ -160,6 +150,9 @@ export default function LeadsPage() {
   // Same 900px split as the .leads-desktop-table / .leads-mobile-cards CSS below, so the
   // skeleton takes the shape of whichever layout is about to render.
   const isDesktop = useIsDesktop(901);
+  // Phone branch below 768px (iOS plan F2a). 768-900 keeps the cards above as the
+  // tablet layout; 901+ the table.
+  const isPhone = !useIsDesktop(768);
   const qc = useQueryClient();
   const { canSeeFinancials, profile, can } = useAuth();
   // No role check existed here before Task 14 -- the route itself already
@@ -421,357 +414,393 @@ export default function LeadsPage() {
     );
   };
 
-  const STATUS_KEYS = ['novo', 'contatado', 'qualificado', 'perdido', 'convertido'] as const;
+  const STATUS_KEYS = LEAD_STATUS_KEYS;
 
   return (
     <div className="page-content">
-      <div className="header">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-          <div
-            className="header-title"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <h1>{t('title')}</h1>
-            <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
-              <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-            </span>
-          </div>
-          {leadsCount !== undefined && limits && limits.max_leads !== null && (
-            <div style={{ marginTop: 6 }}>
-              <UsageMeter
-                size="compact"
-                label="leads"
-                used={usedLeads}
-                limit={limits.max_leads}
-                showUpgradeCta={isOwner}
-              />
-            </div>
-          )}
-        </div>
-        <div className="header-actions">
-          <span
-            data-tooltip={t('csvTooltip')}
-            data-tooltip-dir="bottom"
-            style={{ display: 'flex' }}
-          >
-            <HelpCircle
-              className="h-4 w-4"
-              style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-            />
-          </span>
-          {canEditLeads && (
-            <FeatureGate flag="feature_csv_import" label="Importação CSV">
-              <Button variant="outline" onClick={handleCSVImport}>
-                <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
-                {tc('actions.importCsv')}
-              </Button>
-            </FeatureGate>
-          )}
-          {canEditLeads && (
-            <Button
-              onClick={openAdd}
-              disabled={leadsAtLimit}
-              title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
-            >
-              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <Search
-            className="h-4 w-4"
-            style={{
-              position: 'absolute',
-              left: '0.625rem',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-muted)',
-              pointerEvents: 'none',
-            }}
-          />
-          <Input
-            className="h-9"
-            placeholder={t('searchPlaceholder')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: '2rem' }}
-          />
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 mb-0"
-              style={{ position: 'relative' }}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              {(filterStatus !== 'todos' || sortCol !== 'created_at' || sortDir !== 'desc') && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -2,
-                    right: -2,
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: 'var(--primary-color)',
-                  }}
-                />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>{tc('filter.status')}</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={filterStatus}
-              onValueChange={(v) => setFilterStatus(v as StatusFilter)}
-            >
-              {(['todos', ...STATUS_KEYS] as StatusFilter[]).map((f) => (
-                <DropdownMenuRadioItem key={f} value={f}>
-                  {tc(`status.${f}`)}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>{tc('filter.sortBy')}</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={sortCol}
-              onValueChange={(v) => {
-                setSortCol(v);
-                setSortDir('asc');
-              }}
-            >
-              <DropdownMenuRadioItem value="nome">{tc('sort.name')}</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="email">{t('table.email')}</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="canal">{t('table.channel')}</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="created_at">
-                {t('table.createdAt')}
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}>
-              <ArrowUpDown className="h-4 w-4 mr-2" />
-              {sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {isLoading ? (
-        isDesktop ? (
-          <TableSkeleton columns={6} />
-        ) : (
-          <CardListSkeleton />
-        )
+      {isPhone ? (
+        <LeadsPhone
+          leads={leads}
+          filtered={filtered}
+          isLoading={isLoading}
+          locale={locale}
+          search={search}
+          onSearchChange={setSearch}
+          filterStatus={filterStatus}
+          onFilterStatusChange={setFilterStatus}
+          sortCol={sortCol}
+          onSortColChange={setSortCol}
+          sortDir={sortDir}
+          onSortDirChange={setSortDir}
+          canEdit={canEditLeads}
+          atLimit={leadsAtLimit}
+          used={usedLeads}
+          usageLimit={leadsCount !== undefined && limits ? limits.max_leads : undefined}
+          isOwner={isOwner}
+          onNew={openAdd}
+          onImport={handleCSVImport}
+          onEdit={openEdit}
+          onConvert={openConvert}
+          onDelete={setDeleteId}
+          onStatusChange={handleStatusChange}
+        />
       ) : (
         <>
-          {/* Desktop table */}
-          <div className="card leads-desktop-table">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead
-                    style={{ cursor: 'pointer', fontWeight: '800' }}
-                    onClick={() => handleSort('nome')}
-                  >
-                    {t('table.name')}
-                    {sortIcon('nome')}
-                  </TableHead>
-                  <TableHead
-                    style={{ cursor: 'pointer', fontWeight: '800' }}
-                    onClick={() => handleSort('email')}
-                  >
-                    {t('table.email')}
-                    {sortIcon('email')}
-                  </TableHead>
-                  <TableHead
-                    style={{ cursor: 'pointer', fontWeight: '800' }}
-                    onClick={() => handleSort('canal')}
-                  >
-                    {t('table.channel')}
-                    {sortIcon('canal')}
-                  </TableHead>
-                  <TableHead
-                    style={{ cursor: 'pointer', fontWeight: '800' }}
-                    onClick={() => handleSort('especialidade')}
-                  >
-                    {t('table.specialty')}
-                    {sortIcon('especialidade')}
-                  </TableHead>
-                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }}>
-                    {t('table.status')}
-                  </TableHead>
-                  <TableHead
-                    style={{ cursor: 'pointer', fontWeight: '800' }}
-                    onClick={() => handleSort('created_at')}
-                  >
-                    {t('table.created')}
-                    {sortIcon('created_at')}
-                  </TableHead>
-                  <TableHead style={{ fontWeight: '800' }}>{t('table.actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((l) => (
-                  <TableRow key={l.id ?? l.nome}>
-                    <TableCell data-label={t('table.name')}>
-                      <div>{l.nome}</div>
-                      {l.instagram && (
-                        <div style={{ fontSize: 12, color: '#888' }}>{l.instagram}</div>
-                      )}
-                    </TableCell>
-                    <TableCell data-label={t('table.email')}>{l.email || '—'}</TableCell>
-                    <TableCell data-label={t('table.channel')}>{l.canal || '—'}</TableCell>
-                    <TableCell data-label={t('table.specialty')}>
-                      {l.especialidade || '—'}
-                    </TableCell>
-                    <TableCell data-label={t('table.status')}>
-                      <Select
-                        value={l.status}
-                        disabled={!canEditLeads}
-                        onValueChange={(val) =>
-                          l.id && handleStatusChange(l.id, val as Lead['status'])
-                        }
-                      >
-                        <SelectTrigger style={{ width: 140 }}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {STATUS_KEYS.map((v) => (
-                            <SelectItem key={v} value={v}>
-                              {tc(`status.${v}`)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell data-label={t('table.created')}>
-                      {l.created_at ? new Date(l.created_at).toLocaleDateString(locale) : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {canEditLeads && (
-                        <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title={t('convertToClient')}
-                            onClick={() => openConvert(l)}
-                          >
-                            <UserPlus className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          {l.id && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-destructive"
-                              onClick={() => setDeleteId(l.id!)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="header">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+              <div
+                className="header-title"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <h1>{t('title')}</h1>
+                <span
+                  data-tooltip={t('tooltip')}
+                  data-tooltip-dir="right"
+                  style={{ display: 'flex' }}
+                >
+                  <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+                </span>
+              </div>
+              {leadsCount !== undefined && limits && limits.max_leads !== null && (
+                <div style={{ marginTop: 6 }}>
+                  <UsageMeter
+                    size="compact"
+                    label="leads"
+                    used={usedLeads}
+                    limit={limits.max_leads}
+                    showUpgradeCta={isOwner}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="header-actions">
+              <span
+                data-tooltip={t('csvTooltip')}
+                data-tooltip-dir="bottom"
+                style={{ display: 'flex' }}
+              >
+                <HelpCircle
+                  className="h-4 w-4"
+                  style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+                />
+              </span>
+              {canEditLeads && (
+                <FeatureGate flag="feature_csv_import" label="Importação CSV">
+                  <Button variant="outline" onClick={handleCSVImport}>
+                    <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+                    {tc('actions.importCsv')}
+                  </Button>
+                </FeatureGate>
+              )}
+              {canEditLeads && (
+                <Button
+                  onClick={openAdd}
+                  disabled={leadsAtLimit}
+                  title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
+                >
+                  <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
+                </Button>
+              )}
+            </div>
           </div>
 
-          {/* Mobile cards */}
-          <div className="leads-mobile-cards">
-            {filtered.map((l) => (
-              <div key={l.id ?? l.nome} className="team-card card animate-up">
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
+          <div
+            style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}
+          >
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search
+                className="h-4 w-4"
+                style={{
+                  position: 'absolute',
+                  left: '0.625rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <Input
+                className="h-9"
+                placeholder={t('searchPlaceholder')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ paddingLeft: '2rem' }}
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 mb-0"
+                  style={{ position: 'relative' }}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  {(filterStatus !== 'todos' || sortCol !== 'created_at' || sortDir !== 'desc') && (
+                    <span
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        flexWrap: 'wrap',
+                        position: 'absolute',
+                        top: -2,
+                        right: -2,
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: 'var(--primary-color)',
                       }}
-                    >
-                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{l.nome}</span>
-                      <Badge
-                        variant={
-                          l.status === 'convertido'
-                            ? 'success'
-                            : l.status === 'qualificado'
-                              ? 'primary'
-                              : l.status === 'novo'
-                                ? 'info'
-                                : l.status === 'perdido'
-                                  ? 'danger'
-                                  : 'neutral'
-                        }
-                        size="sm"
-                        style={{ pointerEvents: 'none' }}
+                    />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>{tc('filter.status')}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={filterStatus}
+                  onValueChange={(v) => setFilterStatus(v as StatusFilter)}
+                >
+                  {(['todos', ...STATUS_KEYS] as StatusFilter[]).map((f) => (
+                    <DropdownMenuRadioItem key={f} value={f}>
+                      {tc(`status.${f}`)}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>{tc('filter.sortBy')}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={sortCol}
+                  onValueChange={(v) => {
+                    setSortCol(v);
+                    setSortDir('asc');
+                  }}
+                >
+                  <DropdownMenuRadioItem value="nome">{tc('sort.name')}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="email">{t('table.email')}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="canal">{t('table.channel')}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="created_at">
+                    {t('table.createdAt')}
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}>
+                  <ArrowUpDown className="h-4 w-4 mr-2" />
+                  {sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {isLoading ? (
+            isDesktop ? (
+              <TableSkeleton columns={6} />
+            ) : (
+              <CardListSkeleton />
+            )
+          ) : (
+            <>
+              {/* Desktop table */}
+              <div className="card leads-desktop-table">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead
+                        style={{ cursor: 'pointer', fontWeight: '800' }}
+                        onClick={() => handleSort('nome')}
                       >
-                        {tc(`status.${l.status}`)}
-                      </Badge>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '0.75rem',
-                        color: '#888',
-                        display: 'flex',
-                        gap: '0.35rem',
-                        flexWrap: 'wrap',
-                        marginTop: 2,
-                      }}
-                    >
-                      {l.instagram && <span>{l.instagram}</span>}
-                      {l.instagram && l.canal && <span>&bull;</span>}
-                      {l.canal && <span>{l.canal}</span>}
-                      {(l.instagram || l.canal) && l.created_at && <span>&bull;</span>}
-                      {l.created_at && (
-                        <span>{new Date(l.created_at).toLocaleDateString(locale)}</span>
+                        {t('table.name')}
+                        {sortIcon('nome')}
+                      </TableHead>
+                      <TableHead
+                        style={{ cursor: 'pointer', fontWeight: '800' }}
+                        onClick={() => handleSort('email')}
+                      >
+                        {t('table.email')}
+                        {sortIcon('email')}
+                      </TableHead>
+                      <TableHead
+                        style={{ cursor: 'pointer', fontWeight: '800' }}
+                        onClick={() => handleSort('canal')}
+                      >
+                        {t('table.channel')}
+                        {sortIcon('canal')}
+                      </TableHead>
+                      <TableHead
+                        style={{ cursor: 'pointer', fontWeight: '800' }}
+                        onClick={() => handleSort('especialidade')}
+                      >
+                        {t('table.specialty')}
+                        {sortIcon('especialidade')}
+                      </TableHead>
+                      <TableHead style={{ cursor: 'pointer', fontWeight: '800' }}>
+                        {t('table.status')}
+                      </TableHead>
+                      <TableHead
+                        style={{ cursor: 'pointer', fontWeight: '800' }}
+                        onClick={() => handleSort('created_at')}
+                      >
+                        {t('table.created')}
+                        {sortIcon('created_at')}
+                      </TableHead>
+                      <TableHead style={{ fontWeight: '800' }}>{t('table.actions')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((l) => (
+                      <TableRow key={l.id ?? l.nome}>
+                        <TableCell data-label={t('table.name')}>
+                          <div>{l.nome}</div>
+                          {l.instagram && (
+                            <div style={{ fontSize: 12, color: '#888' }}>{l.instagram}</div>
+                          )}
+                        </TableCell>
+                        <TableCell data-label={t('table.email')}>{l.email || '—'}</TableCell>
+                        <TableCell data-label={t('table.channel')}>{l.canal || '—'}</TableCell>
+                        <TableCell data-label={t('table.specialty')}>
+                          {l.especialidade || '—'}
+                        </TableCell>
+                        <TableCell data-label={t('table.status')}>
+                          <Select
+                            value={l.status}
+                            disabled={!canEditLeads}
+                            onValueChange={(val) =>
+                              l.id && handleStatusChange(l.id, val as Lead['status'])
+                            }
+                          >
+                            <SelectTrigger style={{ width: 140 }}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {STATUS_KEYS.map((v) => (
+                                <SelectItem key={v} value={v}>
+                                  {tc(`status.${v}`)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell data-label={t('table.created')}>
+                          {l.created_at ? new Date(l.created_at).toLocaleDateString(locale) : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {canEditLeads && (
+                            <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title={t('convertToClient')}
+                                onClick={() => openConvert(l)}
+                              >
+                                <UserPlus className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              {l.id && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="text-destructive"
+                                  onClick={() => setDeleteId(l.id!)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="leads-mobile-cards">
+                {filtered.map((l) => (
+                  <div key={l.id ?? l.nome} className="team-card card animate-up">
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{l.nome}</span>
+                          <Badge
+                            variant={
+                              l.status === 'convertido'
+                                ? 'success'
+                                : l.status === 'qualificado'
+                                  ? 'primary'
+                                  : l.status === 'novo'
+                                    ? 'info'
+                                    : l.status === 'perdido'
+                                      ? 'danger'
+                                      : 'neutral'
+                            }
+                            size="sm"
+                            style={{ pointerEvents: 'none' }}
+                          >
+                            {tc(`status.${l.status}`)}
+                          </Badge>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.75rem',
+                            color: '#888',
+                            display: 'flex',
+                            gap: '0.35rem',
+                            flexWrap: 'wrap',
+                            marginTop: 2,
+                          }}
+                        >
+                          {l.instagram && <span>{l.instagram}</span>}
+                          {l.instagram && l.canal && <span>&bull;</span>}
+                          {l.canal && <span>{l.canal}</span>}
+                          {(l.instagram || l.canal) && l.created_at && <span>&bull;</span>}
+                          {l.created_at && (
+                            <span>{new Date(l.created_at).toLocaleDateString(locale)}</span>
+                          )}
+                        </div>
+                      </div>
+                      {canEditLeads && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 mb-0">
+                              <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openConvert(l)}>
+                              <UserPlus className="h-4 w-4 mr-2" />
+                              {t('convertToClient')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(l)}>
+                              <Edit2 className="h-4 w-4 mr-2" />
+                              {tc('actions.edit')}
+                            </DropdownMenuItem>
+                            {l.id && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => setDeleteId(l.id!)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  {tc('actions.delete')}
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </div>
                   </div>
-                  {canEditLeads && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 mb-0">
-                          <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openConvert(l)}>
-                          <UserPlus className="h-4 w-4 mr-2" />
-                          {t('convertToClient')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEdit(l)}>
-                          <Edit2 className="h-4 w-4 mr-2" />
-                          {tc('actions.edit')}
-                        </DropdownMenuItem>
-                        {l.id && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => setDeleteId(l.id!)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              {tc('actions.delete')}
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </>
       )}
 
@@ -785,157 +814,163 @@ export default function LeadsPage() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
-              <FormField
-                control={form.control}
-                name="nome"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.name')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.email')}</FormLabel>
-                    <FormControl>
-                      <Input type="email" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="instagram"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.instagram')}</FormLabel>
-                    <FormControl>
-                      <Input placeholder={t('form.instagramPlaceholder')} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="canal"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.channel')}</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={t('form.selectPlaceholder')} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {CANAL_KEYS.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {t(`channels.${c}`)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="especialidade"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.specialty')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="faturamento"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.revenue')}</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={t('form.selectPlaceholder')} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {FATURAMENTO_KEYS.map((k) => (
-                          <SelectItem key={k} value={FATURAMENTO_DB_VALUES[k]}>
-                            {t(`revenue.${k}`)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="tags"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.tags')}</FormLabel>
-                    <FormControl>
-                      <Input placeholder={t('form.tagsPlaceholder')} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="notas"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.notes')}</FormLabel>
-                    <FormControl>
-                      <Textarea rows={3} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {editing && (
-                <FormField
-                  control={form.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('form.status')}</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
+              {isPhone ? (
+                <LeadFormPhoneFields form={form} showStatus={!!editing} />
+              ) : (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="nome"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.name')}</FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
+                          <Input {...field} />
                         </FormControl>
-                        <SelectContent>
-                          {STATUS_KEYS.map((v) => (
-                            <SelectItem key={v} value={v}>
-                              {tc(`status.${v}`)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.email')}</FormLabel>
+                        <FormControl>
+                          <Input type="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="instagram"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.instagram')}</FormLabel>
+                        <FormControl>
+                          <Input placeholder={t('form.instagramPlaceholder')} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="canal"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.channel')}</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('form.selectPlaceholder')} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {CANAL_KEYS.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {t(`channels.${c}`)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="especialidade"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.specialty')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="faturamento"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.revenue')}</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('form.selectPlaceholder')} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {FATURAMENTO_KEYS.map((k) => (
+                              <SelectItem key={k} value={FATURAMENTO_DB_VALUES[k]}>
+                                {t(`revenue.${k}`)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="tags"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.tags')}</FormLabel>
+                        <FormControl>
+                          <Input placeholder={t('form.tagsPlaceholder')} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="notas"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.notes')}</FormLabel>
+                        <FormControl>
+                          <Textarea rows={3} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {editing && (
+                    <FormField
+                      control={form.control}
+                      name="status"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('form.status')}</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {STATUS_KEYS.map((v) => (
+                                <SelectItem key={v} value={v}>
+                                  {tc(`status.${v}`)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   )}
-                />
+                </>
               )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
@@ -960,86 +995,92 @@ export default function LeadsPage() {
           </p>
           <Form {...convertForm}>
             <form onSubmit={convertForm.handleSubmit(onConvertSubmit)} className="space-y-3">
-              <FormField
-                control={convertForm.control}
-                name="nome"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.name')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={convertForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.email')} (opcional)</FormLabel>
-                    <FormControl>
-                      <Input type="email" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={convertForm.control}
-                name="telefone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.phone')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={convertForm.control}
-                name="plano"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.plan')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {canSeeFinancials === true && (
-                <FormField
-                  control={convertForm.control}
-                  name="valor"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('form.monthlyValue')}</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={0} step={0.01} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+              {isPhone ? (
+                <ConvertFormPhoneFields form={convertForm} showValor={canSeeFinancials === true} />
+              ) : (
+                <>
+                  <FormField
+                    control={convertForm.control}
+                    name="nome"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.name')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={convertForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.email')} (opcional)</FormLabel>
+                        <FormControl>
+                          <Input type="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={convertForm.control}
+                    name="telefone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.phone')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={convertForm.control}
+                    name="plano"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.plan')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {canSeeFinancials === true && (
+                    <FormField
+                      control={convertForm.control}
+                      name="valor"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('form.monthlyValue')}</FormLabel>
+                          <FormControl>
+                            <Input type="number" min={0} step={0.01} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   )}
-                />
+                  <FormField
+                    control={convertForm.control}
+                    name="diaPag"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('form.paymentDay')}</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={1} max={31} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
               )}
-              <FormField
-                control={convertForm.control}
-                name="diaPag"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.paymentDay')}</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={1} max={31} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setConvertModalOpen(false)}>
                   {tc('actions.cancel')}

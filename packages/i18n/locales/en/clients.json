@@ -36,6 +36,19 @@
     "dayRange": "Day must be between 1 and 31"
   },
   "openNotion": "Open in Notion",
+  "phone": {
+    "count_one": "{{count}} client",
+    "count_other": "{{count}} clients",
+    "addMenu": "New client or import CSV",
+    "menuLabel": "Client actions",
+    "sortedBy": "Sorted by {{field}}",
+    "holdHint": "Touch and hold a client to Edit or Remove.",
+    "emptyTitle": "No clients yet",
+    "emptyText": "Add your first client or import a CSV spreadsheet.",
+    "emptyFilteredText": "No clients match these filters or this search.",
+    "clearFilters": "Clear filters",
+    "notion": "Notion"
+  },
   "instagram": {
     "connectTitle": "Connect Instagram",
     "connectDescription": "Connect this client's Instagram Business account to view metrics, follower growth, and post performance directly in the CRM.",

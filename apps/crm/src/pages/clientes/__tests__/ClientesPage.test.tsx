@@ -38,6 +38,10 @@ vi.mock('../../../lib/csv', () => ({
 
 vi.mock('../../../lib/supabase');
 
+// These suites cover the desktop markup (table, header buttons); the phone branch below
+// 768px has its own suite. jsdom's matchMedia would otherwise render the phone branch.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('../../../context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../context/AuthContext')>();
   return {
@@ -449,7 +453,7 @@ function renderPage() {
 }
 
 function getClientCard(name: string) {
-  const card = screen.getByRole('button', { name }).closest('.team-card');
+  const card = screen.getByRole('button', { name }).closest('tr');
   expect(card).not.toBeNull();
   return card as HTMLElement;
 }
