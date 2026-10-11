@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import {
   DndContext,
   DragOverlay,
+  MouseSensor,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -92,6 +93,9 @@ import {
 } from '../postsKanbanDrop';
 import { getCustomStatusIcon } from '../statusIcons';
 import { ACTIVE_POSTS_KEY, useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneStatusBoard } from '../phone/PhoneStatusBoard';
+import { PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
 
 /* Column-header icon per canonical status; color only where the status carries
  * a semantic outcome (approved/scheduled/published/failed), muted otherwise.
@@ -729,6 +733,14 @@ export function PostsKanbanView({
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
 
+  // Celular: segurar abre o menu do card; arrastar só pela alça, no modo
+  // Reordenar (a PointerSensor acima disputaria o toque com a rolagem).
+  const isPhone = !useIsDesktop(768);
+  const phoneSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
+
   const activePost = activeId != null ? posts.find((p) => p.id === activeId) : undefined;
 
   /** Persists a manual-column placement: applies it to the cache the board
@@ -941,6 +953,15 @@ export function PostsKanbanView({
 
     // Cross-column: existing status-change flow, then placement if the
     // target column is manually sorted.
+    moveToStatus(dragged, targetKey, slotAtDrop?.key === targetKey ? slotAtDrop.index : undefined);
+  };
+
+  /** Status change of one post to `targetKey` (drag drop, or the phone card
+   *  menu's "Mover para"): the drop resolver decides locked / confirm / write,
+   *  and a manually sorted target gets the post at `slotIndex` (end when
+   *  absent). */
+  const moveToStatus = (dragged: ActivePost, targetKey: StatusKey, slotIndex?: number) => {
+    const draggedId = dragged.id;
     const result = resolvePostsKanbanDrop({
       post: dragged,
       overId: `${COL_PREFIX}${targetKey}`,
@@ -949,7 +970,7 @@ export function PostsKanbanView({
     const placeAfter = () => {
       if (columnSortFor(targetKey) !== 'manual') return;
       const targetList = (sortedByStatus.get(targetKey) ?? []).filter((p) => p.id !== draggedId);
-      const index = slotAtDrop?.key === targetKey ? slotAtDrop.index : targetList.length;
+      const index = slotIndex ?? targetList.length;
       persistPlacement(planBoardPlacement(targetList, index, draggedId));
     };
 
@@ -998,6 +1019,79 @@ export function PostsKanbanView({
           </>
         )}
       </div>
+    );
+  }
+
+  const confirmTitle = 'Post aprovado';
+  const confirmMessage =
+    'Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?';
+  const nudgeDialog = (
+    <AutoSchedulePromptDialog
+      post={nudgePost}
+      onClose={() => setNudgePost(null)}
+      onScheduled={() => {
+        setNudgePost(null);
+        qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
+        // Prefixo sem o workflowId de propósito: TanStack Query casa chaves por
+        // prefixo, então isto invalida ['workflow-posts-with-props', <qualquer
+        // id>]. O diálogo não carrega o workflow_id do post, e invalidar a lista
+        // de outro fluxo é inofensivo (são listas refetch-on-demand).
+        qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
+        qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+      }}
+    />
+  );
+
+  const renderCardContent = (post: ActivePost) => (
+    <PostBoardCardContent
+      post={post}
+      registry={registry}
+      card={post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined}
+      processEtapa={processEtapaByPostId?.get(post.id)}
+      awaitedApproval={awaitedApprovalByPostId?.get(post.id)}
+      onAutoScheduleClick={activeId == null ? () => handleAutoScheduleClick(post) : undefined}
+      schedulingEnabled={schedulingEnabled}
+      tiktokEnabled={tiktokEnabled}
+      multiplatformEnabled={multiplatformEnabled}
+    />
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <PhoneStatusBoard
+          options={registry.options}
+          postsFor={(key) => sortedByStatus.get(key) ?? []}
+          sortFor={columnSortFor}
+          onSortChange={onColumnSortChange}
+          renderContent={renderCardContent}
+          isOpenable={(post) => isPostOpenable(post, openableWorkflowIds)}
+          onOpen={onPostClick}
+          isLockedOption={(o) => LOCKED_STATUSES.has(o.canonical)}
+          lockedReason={(o) =>
+            LOCKED_TOOLTIPS[o.canonical] ?? 'Esta coluna é controlada pelo sistema.'
+          }
+          optionOf={(post) => registry.resolve(post)}
+          onMoveTo={(post, key) => moveToStatus(post, key)}
+          sensors={phoneSensors}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => {
+            setActiveId(null);
+            setDropSlot(null);
+          }}
+          activePost={activePost}
+        />
+        <PhoneConfirmSheet
+          open={!!pendingConfirm}
+          title={confirmTitle}
+          message={confirmMessage}
+          actions={[{ label: 'Confirmar', onSelect: handleConfirmStatusChange }]}
+          onCancel={() => setPendingConfirm(null)}
+        />
+        {nudgeDialog}
+      </>
     );
   }
 
@@ -1068,10 +1162,8 @@ export function PostsKanbanView({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
-            <AlertDialogDescription>
-              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
-            </AlertDialogDescription>
+            <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingConfirm(null)}>Cancelar</AlertDialogCancel>
@@ -1079,20 +1171,7 @@ export function PostsKanbanView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AutoSchedulePromptDialog
-        post={nudgePost}
-        onClose={() => setNudgePost(null)}
-        onScheduled={() => {
-          setNudgePost(null);
-          qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
-          // Prefixo sem o workflowId de propósito: TanStack Query casa chaves por
-          // prefixo, então isto invalida ['workflow-posts-with-props', <qualquer
-          // id>]. O diálogo não carrega o workflow_id do post, e invalidar a lista
-          // de outro fluxo é inofensivo (são listas refetch-on-demand).
-          qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
-          qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-        }}
-      />
+      {nudgeDialog}
     </>
   );
 }

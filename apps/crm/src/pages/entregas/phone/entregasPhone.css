@@ -372,3 +372,79 @@
   font-size: var(--phone-text-subhead);
   text-align: center;
 }
+
+/* ---- Status board (EntregasStatusDrag mockup) ---- */
+.phone-ent-status-card {
+  position: relative;
+  margin: 0;
+  padding-right: 56px;
+}
+.phone-ent-status-card__actions {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}
+.phone-ent-drop-grid {
+  position: sticky;
+  top: calc(var(--phone-header-height, 44px) + env(safe-area-inset-top, 0px));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+  background: var(--phone-bg);
+}
+.phone-ent-drop-grid__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.phone-ent-drop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 2px dashed var(--phone-separator);
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+}
+.phone-ent-drop svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--phone-label-secondary);
+}
+.phone-ent-drop__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-ent-drop__count {
+  flex-shrink: 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 500;
+}
+.phone-ent-drop[data-current='true'] {
+  border-style: solid;
+}
+.phone-ent-drop[data-locked='true'] {
+  opacity: 0.5;
+}
+.phone-ent-drop[data-over='true'] {
+  border-style: solid;
+  border-color: var(--phone-accent);
+  background: var(--phone-fill);
+}
+.phone-ent-drop[data-over='true'][data-locked='true'] {
+  border-color: var(--phone-destructive);
+}
