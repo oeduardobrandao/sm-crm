@@ -94,8 +94,16 @@ button.phone-el-row__main:active {
 /* The swipe actions sit exactly under the content; at rest their colours bled through
    the content's anti-aliased edges as thin grey/red lines. Hide them (opacity, so a
    Tab onto one still slides the row open) until the row is open or being dragged. */
+.phone-el-row .phone-swipe-row__actions {
+  /* Hidden only once the content has slid back (0.25s, the kit's transform transition). */
+  transition: opacity 0s linear 0.25s;
+}
 .phone-el-row:not([data-open]):not(:has([data-dragging])) .phone-swipe-row__actions {
   opacity: 0;
+}
+.phone-el-row[data-open] .phone-swipe-row__actions,
+.phone-el-row:has([data-dragging]) .phone-swipe-row__actions {
+  transition-delay: 0s;
 }
 
 /* ---- Row content pieces ---- */
