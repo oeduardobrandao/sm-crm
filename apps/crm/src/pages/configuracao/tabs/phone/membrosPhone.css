@@ -1,0 +1,58 @@
+/* Configurações > Membros on phones (FConfigMembros). phone-* classes and --phone-*
+   tokens only: the Hub imports the CRM stylesheet. */
+
+/* Member rows carry a 36px avatar in the icon slot. */
+.phone-kit .phone-cell__main.phone-membros-cell .phone-cell__icon {
+  width: 36px;
+  height: 36px;
+}
+
+/* Header of a member's sub-screen: the large avatar above the title. */
+.phone-kit .phone-membros-hero {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 16px;
+}
+
+/* Invite rows: status pill, role and time left on the second line. */
+.phone-kit .phone-membros-invite .phone-cell__subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 3px;
+  white-space: normal;
+}
+.phone-kit .phone-membros-invite__time {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.phone-kit .phone-membros-invite__time svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Explicit "…" trigger of an invite's context menu (keyboard and screen readers). */
+.phone-kit .phone-membros-more {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-right: -8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--phone-label-secondary);
+}
+.phone-kit .phone-membros-more svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Invite sheet: the send button under the form. */
+.phone-kit .phone-membros-sheet-actions {
+  padding: 4px 0 0;
+}

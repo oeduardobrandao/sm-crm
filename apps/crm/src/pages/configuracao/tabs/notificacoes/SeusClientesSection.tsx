@@ -1,11 +1,7 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
-import { useAuth } from '@/context/AuthContext';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,23 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  getClientes,
-  updateCliente,
-  getWorkspaceBranding,
-  updateWorkspaceBranding,
-  type Cliente,
-} from '@/store';
-
-const CLIENTES_QUERY_KEY = ['seus-clientes-report'];
-const BRANDING_QUERY_KEY = ['seus-clientes-branding'];
-
-const SAVE_ERROR_MESSAGE = 'Não foi possível salvar. Tente novamente.';
-
-const STATUS_TAG: Record<Exclude<Cliente['status'], 'ativo'>, string> = {
-  pausado: '(pausado)',
-  encerrado: '(encerrado)',
-};
+import { STATUS_TAG, useSeusClientes } from './useSeusClientes';
 
 /** "Seus clientes": matriz do relatório mensal e das pendências do Hub por
  * cliente, cada uma com um interruptor geral — workspaces.send_report_email /
@@ -51,121 +31,25 @@ const STATUS_TAG: Record<Exclude<Cliente['status'], 'ativo'>, string> = {
  * autorização real para essa escrita, daí o segundo gate aqui (Task 14,
  * revisão externa round 3, P1). */
 export default function SeusClientesSection() {
-  const qc = useQueryClient();
-  const [search, setSearch] = useState('');
-  const [confirmReactivateId, setConfirmReactivateId] = useState<number | null>(null);
-  const { can } = useAuth();
-  const canEditClients = can('clientes', 'editar') === true;
+  const {
+    loading,
+    canEditClients,
+    masterEnabled,
+    masterEventEnabled,
+    search,
+    setSearch,
+    filtered,
+    confirmReactivateId,
+    setConfirmReactivateId,
+    confirmCliente,
+    handleConfirmReactivate,
+    saveMaster,
+    saveMasterEvent,
+    changeClienteReport,
+    changeClienteEvent,
+  } = useSeusClientes();
 
-  const { data: clientes, isLoading: clientesLoading } = useQuery({
-    queryKey: CLIENTES_QUERY_KEY,
-    queryFn: getClientes,
-  });
-  const { data: branding, isLoading: brandingLoading } = useQuery({
-    queryKey: BRANDING_QUERY_KEY,
-    queryFn: getWorkspaceBranding,
-  });
-
-  const saveMaster = useMutation({
-    mutationFn: (enabled: boolean) => updateWorkspaceBranding({ send_report_email: enabled }),
-    onMutate: async (enabled) => {
-      // Optimistic flip so the switch responds instantly instead of waiting
-      // on the round trip; cancelQueries first so an in-flight refetch can't
-      // clobber this optimistic write with stale data.
-      await qc.cancelQueries({ queryKey: BRANDING_QUERY_KEY });
-      const prev =
-        qc.getQueryData<Awaited<ReturnType<typeof getWorkspaceBranding>>>(BRANDING_QUERY_KEY);
-      qc.setQueryData<Awaited<ReturnType<typeof getWorkspaceBranding>>>(
-        BRANDING_QUERY_KEY,
-        (old) => (old ? { ...old, send_report_email: enabled } : old),
-      );
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(BRANDING_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: BRANDING_QUERY_KEY });
-      // Configuração > Relatórios lê o mesmo workspaces.send_report_email por
-      // outra chave: invalida para não ficar até 30s defasada entre telas.
-      qc.invalidateQueries({ queryKey: ['workspace-branding'] });
-    },
-  });
-
-  const saveMasterEvent = useMutation({
-    mutationFn: (enabled: boolean) =>
-      updateWorkspaceBranding({ send_client_event_emails: enabled }),
-    onMutate: async (enabled) => {
-      await qc.cancelQueries({ queryKey: BRANDING_QUERY_KEY });
-      const prev =
-        qc.getQueryData<Awaited<ReturnType<typeof getWorkspaceBranding>>>(BRANDING_QUERY_KEY);
-      qc.setQueryData<Awaited<ReturnType<typeof getWorkspaceBranding>>>(
-        BRANDING_QUERY_KEY,
-        (old) => (old ? { ...old, send_client_event_emails: enabled } : old),
-      );
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(BRANDING_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: BRANDING_QUERY_KEY });
-      qc.invalidateQueries({ queryKey: ['workspace-branding'] });
-    },
-  });
-
-  const saveCliente = useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      updateCliente(id, { send_report_email: enabled }),
-    onMutate: async (v) => {
-      await qc.cancelQueries({ queryKey: CLIENTES_QUERY_KEY });
-      const prev = qc.getQueryData<Cliente[]>(CLIENTES_QUERY_KEY);
-      qc.setQueryData<Cliente[]>(CLIENTES_QUERY_KEY, (old) =>
-        old?.map((c) => (c.id === v.id ? { ...c, send_report_email: v.enabled } : c)),
-      );
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(CLIENTES_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
-    },
-    onSettled: (_data, _error, v) => {
-      qc.invalidateQueries({ queryKey: CLIENTES_QUERY_KEY });
-      // A aba Relatórios do cliente lê o mesmo clientes.send_report_email por
-      // outra chave: invalida para não ficar até 30s defasada entre telas.
-      qc.invalidateQueries({ queryKey: ['cliente', v.id] });
-    },
-  });
-
-  const saveClienteEvent = useMutation({
-    mutationFn: ({
-      id,
-      patch,
-    }: {
-      id: number;
-      patch: Partial<Pick<Cliente, 'send_event_email' | 'event_email_unsub_at'>>;
-    }) => updateCliente(id, patch),
-    onMutate: async (v) => {
-      await qc.cancelQueries({ queryKey: CLIENTES_QUERY_KEY });
-      const prev = qc.getQueryData<Cliente[]>(CLIENTES_QUERY_KEY);
-      qc.setQueryData<Cliente[]>(CLIENTES_QUERY_KEY, (old) =>
-        old?.map((c) => (c.id === v.id ? { ...c, ...v.patch } : c)),
-      );
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(CLIENTES_QUERY_KEY, ctx.prev);
-      toast.error(SAVE_ERROR_MESSAGE);
-    },
-    onSettled: (_data, _error, v) => {
-      qc.invalidateQueries({ queryKey: CLIENTES_QUERY_KEY });
-      qc.invalidateQueries({ queryKey: ['cliente', v.id] });
-    },
-  });
-
-  if (clientesLoading || brandingLoading) {
+  if (loading) {
     return (
       <SkeletonStatus className="card animate-up">
         <div className="mb-4 flex flex-col gap-2">
@@ -191,21 +75,6 @@ export default function SeusClientesSection() {
       </SkeletonStatus>
     );
   }
-
-  const masterEnabled = branding?.send_report_email ?? false;
-  const masterEventEnabled = branding?.send_client_event_emails ?? false;
-  const query = search.trim().toLowerCase();
-  const filtered = (clientes ?? []).filter((c) => c.nome.toLowerCase().includes(query));
-  const confirmCliente = (clientes ?? []).find((c) => c.id === confirmReactivateId) ?? null;
-
-  const handleConfirmReactivate = () => {
-    if (confirmReactivateId == null) return;
-    saveClienteEvent.mutate({
-      id: confirmReactivateId,
-      patch: { send_event_email: true, event_email_unsub_at: null },
-    });
-    setConfirmReactivateId(null);
-  };
 
   return (
     <div className="card animate-up">
@@ -245,7 +114,7 @@ export default function SeusClientesSection() {
             aria-label="Relatório mensal para todos os clientes"
             checked={masterEnabled}
             disabled={!canEditClients}
-            onCheckedChange={(v) => saveMaster.mutate(v)}
+            onCheckedChange={(v) => saveMaster(v)}
           />
         </span>
         <span className="flex justify-center">
@@ -253,7 +122,7 @@ export default function SeusClientesSection() {
             aria-label="Pendências do Hub para todos os clientes"
             checked={masterEventEnabled}
             disabled={!canEditClients}
-            onCheckedChange={(v) => saveMasterEvent.mutate(v)}
+            onCheckedChange={(v) => saveMasterEvent(v)}
           />
         </span>
       </div>
@@ -308,10 +177,7 @@ export default function SeusClientesSection() {
                     aria-label={`Relatório mensal para ${cliente.nome} (${cliente.email})`}
                     checked={cliente.send_report_email ?? false}
                     disabled={!canEditClients}
-                    onCheckedChange={(v) => {
-                      if (cliente.id == null) return;
-                      saveCliente.mutate({ id: cliente.id, enabled: v });
-                    }}
+                    onCheckedChange={(v) => changeClienteReport(cliente, v)}
                   />
                 ) : (
                   <span
@@ -338,14 +204,7 @@ export default function SeusClientesSection() {
                       // comportamento certo.
                       className={unsubbed ? 'opacity-60' : undefined}
                       disabled={!canEditClients}
-                      onCheckedChange={(v) => {
-                        if (cliente.id == null || !canEditClients) return;
-                        if (unsubbed) {
-                          setConfirmReactivateId(cliente.id);
-                          return;
-                        }
-                        saveClienteEvent.mutate({ id: cliente.id, patch: { send_event_email: v } });
-                      }}
+                      onCheckedChange={(v) => changeClienteEvent(cliente, v)}
                     />
                     {unsubbed && (
                       // --warning não tem contraparte de texto acessível (o

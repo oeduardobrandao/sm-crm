@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { captureEvent } from '@/lib/analytics';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import {
@@ -49,10 +50,12 @@ import {
   computeEffectiveInviteStatus,
   inviteSuccessMessage,
 } from '../inviteHelpers';
+import { MembrosPhone } from './phone/MembrosPhone';
 
 /** Workspace members and pending invites. */
 export default function MembrosTab() {
   const { user, profile, workspaceRole, can } = useAuth();
+  const isPhone = !useIsDesktop(768);
   const canViewTeam = can('equipe', 'ver') === true;
   // Mutations (invite, edit role, remove, cancel/resend invite) all require
   // `editar` — a custom role granted only `equipe:ver` can reach this tab
@@ -84,7 +87,11 @@ export default function MembrosTab() {
   const canActOnMember = (u: Record<string, string>) =>
     u.id !== user?.id && (u.role !== 'owner' || isOwner);
 
-  const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
+  const {
+    data: wsUsers,
+    refetch: refetchWsUsers,
+    isLoading: wsUsersLoading,
+  } = useQuery({
     queryKey: ['workspace-users'],
     queryFn: getWorkspaceUsers,
     enabled: canViewTeam,
@@ -140,22 +147,29 @@ export default function MembrosTab() {
     setEditRoleOpen(true);
   };
 
-  const handleEditRoleSave = async () => {
-    if (!editRoleUser) return;
+  // Shared by the desktop dialog's Salvar and the phone role picker (which saves on
+  // pick). Resolves true when the role was saved.
+  const saveRole = async (userId: string, roleValue: string): Promise<boolean> => {
     setEditRoleLoading(true);
     try {
-      const value = editRoleValue.startsWith('custom:')
-        ? { roleId: editRoleValue.slice(7) }
-        : { role: editRoleValue as 'admin' | 'agent' };
-      await updateWorkspaceUserRole(editRoleUser.id, value);
+      const value = roleValue.startsWith('custom:')
+        ? { roleId: roleValue.slice(7) }
+        : { role: roleValue as 'admin' | 'agent' };
+      await updateWorkspaceUserRole(userId, value);
       refetchWsUsers();
-      setEditRoleOpen(false);
       toast.success('Função atualizada!');
+      return true;
     } catch (err: unknown) {
       toast.error('Erro: ' + (err as Error).message);
+      return false;
     } finally {
       setEditRoleLoading(false);
     }
+  };
+
+  const handleEditRoleSave = async () => {
+    if (!editRoleUser) return;
+    if (await saveRole(editRoleUser.id, editRoleValue)) setEditRoleOpen(false);
   };
 
   const handleRemoveUser = async () => {
@@ -297,6 +311,49 @@ export default function MembrosTab() {
       toast.error('Erro: ' + (err as Error).message);
     }
   };
+
+  if (isPhone) {
+    // Phone: grouped lists, a member sub-screen and kit sheets. The desktop dialogs
+    // below are not mounted here.
+    return (
+      <MembrosPhone
+        currentUserId={user?.id}
+        loading={wsUsersLoading}
+        members={wsUsers ?? []}
+        invites={invites ?? []}
+        workspaceRoles={workspaceRoles}
+        canManageTeam={canManageTeam}
+        canAssignRoles={canAssignRoles}
+        isOwner={isOwner}
+        canActOnMember={canActOnMember}
+        roleSaving={editRoleLoading}
+        onSaveRole={saveRole}
+        financialAccessLoadingId={financialAccessLoadingId}
+        onToggleFinancialAccess={handleToggleFinancialAccess}
+        removeUserId={removeUserId}
+        onRequestRemove={setRemoveUserId}
+        onConfirmRemove={handleRemoveUser}
+        inviteOpen={inviteOpen}
+        onInviteOpenChange={(open) => {
+          if (!open) {
+            setInviteEmail('');
+            setInviteRole('agent');
+          }
+          setInviteOpen(open);
+        }}
+        inviteEmail={inviteEmail}
+        onInviteEmailChange={setInviteEmail}
+        inviteRole={inviteRole}
+        onInviteRoleChange={setInviteRole}
+        inviteLoading={inviteLoading}
+        onInvite={handleInvite}
+        cancelInviteId={cancelInviteId}
+        onRequestCancelInvite={setCancelInviteId}
+        onConfirmCancelInvite={handleCancelInvite}
+        onResendInvite={handleResendInvite}
+      />
+    );
+  }
 
   return (
     <>
