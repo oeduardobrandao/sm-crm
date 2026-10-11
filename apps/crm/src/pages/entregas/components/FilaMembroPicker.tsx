@@ -9,7 +9,7 @@ import {
 import type { Membro } from '../../../store';
 
 // Ordem alfabética pt-BR, sem diferenciar acento nem caixa ("Débora" junto de "Davi").
-const byNome = (a: Membro, b: Membro) =>
+export const byNome = (a: Membro, b: Membro) =>
   a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
 
 /** Seletor "Fila de" da Minha fila. Mora na linha das abas (VistasTabs

@@ -22,7 +22,7 @@ interface PublicacoesPanelProps {
 // ScheduleButton only reads id/status/tipo/scheduled_at/ig_caption/publish_error plus
 // platform/tiktok_* (to route to the right platform service); the rest are filled
 // with inert defaults so we never fetch the heavy `conteudo`.
-function toWorkflowPost(p: ScheduledPost): WorkflowPost {
+export function toWorkflowPost(p: ScheduledPost): WorkflowPost {
   return {
     id: p.id,
     workflow_id: p.workflow_id,

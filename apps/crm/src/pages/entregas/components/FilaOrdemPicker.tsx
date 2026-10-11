@@ -8,12 +8,13 @@ import {
 } from '@/components/ui/select';
 import type { FilaOrdem } from '../minhaFila';
 
-const FILA_ORDEM_LABELS: Record<FilaOrdem, string> = {
+export const FILA_ORDEM_LABELS: Record<FilaOrdem, string> = {
   prazo: 'Prazo da etapa',
   publicacao: 'Data de publicação',
 };
 
-const OPTIONS = Object.keys(FILA_ORDEM_LABELS) as FilaOrdem[];
+export const FILA_ORDEM_OPTIONS = Object.keys(FILA_ORDEM_LABELS) as FilaOrdem[];
+const OPTIONS = FILA_ORDEM_OPTIONS;
 
 /** Seletor "Ordenar" da Minha fila, ao lado do FilaMembroPicker na linha das
  *  abas: decide se as seções seguem o prazo da etapa ou a data de publicação. */
