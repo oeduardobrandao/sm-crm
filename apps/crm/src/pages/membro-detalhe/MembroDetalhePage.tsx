@@ -21,6 +21,8 @@ import { avatarColorClass } from '@/lib/avatarColor';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { MembroFormDialog } from '../equipe/MembroFormDialog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { MembroDetalhePhone } from './phone/MembroDetalhePhone';
 
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
@@ -34,6 +36,8 @@ export default function MembroDetalhePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
+  // Below 768px: a pushed screen with the phone nav bar (PLAN F2d).
+  const isPhone = !useIsDesktop(768);
 
   const { data: membros = [], isLoading: loadingMembros } = useQuery({
     queryKey: ['membros'],
@@ -55,17 +59,6 @@ export default function MembroDetalhePage() {
 
   const membro = membros.find((m) => m.id?.toString() === id);
 
-  if (!loadingMembros && !membro) {
-    return (
-      <div style={{ padding: '2rem' }}>
-        <Button variant="outline" onClick={() => navigate('/equipe')}>
-          <ArrowLeft className="h-4 w-4" /> Voltar
-        </Button>
-        <p style={{ marginTop: 16 }}>Membro não encontrado.</p>
-      </div>
-    );
-  }
-
   const membroTx = transacoes.filter(
     (t) =>
       (membro && t.descricao?.includes(membro.nome)) ||
@@ -78,6 +71,41 @@ export default function MembroDetalhePage() {
     if (!membro) return;
     setModalOpen(true);
   };
+
+  if (isPhone) {
+    return (
+      <>
+        <MembroDetalhePhone
+          membro={membro}
+          loadingMembro={loadingMembros}
+          canEditTeam={canEditTeam}
+          canSeeFinancials={canSeeFinancials}
+          transacoes={membroTx}
+          loadingTransacoes={canSeeFinancials === true && loadingTx}
+          totalPago={totalPago}
+          pendente={pendente}
+          onEdit={openEdit}
+        />
+        <MembroFormDialog
+          open={modalOpen}
+          membro={membro ?? null}
+          membros={membros}
+          onOpenChange={setModalOpen}
+        />
+      </>
+    );
+  }
+
+  if (!loadingMembros && !membro) {
+    return (
+      <div style={{ padding: '2rem' }}>
+        <Button variant="outline" onClick={() => navigate('/equipe')}>
+          <ArrowLeft className="h-4 w-4" /> Voltar
+        </Button>
+        <p style={{ marginTop: 16 }}>Membro não encontrado.</p>
+      </div>
+    );
+  }
 
   const avatarClass = avatarColorClass(membro?.id ?? membro?.nome);
 

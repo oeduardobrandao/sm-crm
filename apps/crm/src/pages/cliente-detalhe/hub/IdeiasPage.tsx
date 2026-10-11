@@ -7,9 +7,23 @@ import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
 import { HubRoleGate } from './HubRoleGate';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ChipRow, Chip } from '@/components/mobile/ChipRow';
+import { PhoneEmptyCard, PhoneRow, PhoneSectionList } from '../phone/PhoneRows';
+import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 
 export default function IdeiasPage() {
   const { clienteId } = useOutletContext<ClienteDetalheOutletContext>();
+  const isPhone = !useIsDesktop(768);
+  useClientePhoneHeader({ subtitle: 'Ideias enviadas pelo cliente pelo portal.' });
+
+  if (isPhone) {
+    return (
+      <HubRoleGate>
+        <IdeiasTab clienteId={clienteId} isPhone />
+      </HubRoleGate>
+    );
+  }
 
   return (
     <div className="hub-page">
@@ -54,7 +68,7 @@ function canShowConvertShortcut(ideia: Ideia): boolean {
   return ideia.tipo === 'solicitacao' && CONVERSIBLE_STATUSES.includes(ideia.status);
 }
 
-function IdeiasTab({ clienteId }: { clienteId: number }) {
+function IdeiasTab({ clienteId, isPhone = false }: { clienteId: number; isPhone?: boolean }) {
   const queryKey = ['hub-ideias-crm', clienteId];
   const { data: ideias = [], isLoading } = useQuery({
     queryKey,
@@ -104,6 +118,91 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
       <div className="py-8 flex justify-center">
         <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" />
       </div>
+    );
+  }
+
+  const drawer =
+    selectedIdeia &&
+    (() => {
+      // The drawer keeps a prop snapshot; once a conversion refetches the list, resolve
+      // the fresh row so the drawer's derived-state UI (locked status, "Ver tarefa") updates
+      // without the user having to close and reopen the drawer.
+      const current = ideias.find((i) => i.id === selectedIdeia.id) ?? selectedIdeia;
+      return (
+        <IdeiaDrawer
+          ideia={current}
+          queryKey={queryKey}
+          onClose={closeDrawer}
+          initialAction={initialAction}
+        />
+      );
+    })();
+
+  if (isPhone) {
+    return (
+      <>
+        <ChipRow aria-label="Filtrar por status" className="phone-cli-chips">
+          <Chip
+            label="Todas"
+            count={ideias.length}
+            selected={statusFilter === 'all'}
+            onClick={() => setStatusFilter('all')}
+          />
+          {STATUS_ORDER.filter((status) => (statusCounts.get(status) ?? 0) > 0).map((status) => (
+            <Chip
+              key={status}
+              label={STATUS_LABELS[status]}
+              count={statusCounts.get(status)}
+              selected={statusFilter === status}
+              onClick={() => setStatusFilter(status)}
+            />
+          ))}
+        </ChipRow>
+        <PhoneSectionList
+          title="Ideias do cliente"
+          empty={<PhoneEmptyCard title="Nenhuma ideia encontrada." />}
+        >
+          {filtered.map((ideia) => {
+            const extras = [
+              ideia.ideia_reactions.length > 0
+                ? `${ideia.ideia_reactions.length} reação(ões)`
+                : null,
+              ideia.comentario_agencia ? 'com resposta' : null,
+            ].filter(Boolean);
+            return (
+              <PhoneRow
+                key={ideia.id}
+                title={ideia.titulo}
+                subtitle={[
+                  STATUS_LABELS[ideia.status],
+                  new Date(ideia.created_at).toLocaleDateString('pt-BR'),
+                  ...extras,
+                ].join(' · ')}
+                meta={ideia.descricao || (ideia.audio_r2_key ? 'Áudio gravado' : undefined)}
+                onOpen={() => openDrawer(ideia)}
+                menuLabel={`Ações da ideia ${ideia.titulo}`}
+                actions={[
+                  {
+                    label: 'Responder',
+                    icon: <MessageSquare aria-hidden="true" />,
+                    onSelect: () => openDrawer(ideia, 'responder'),
+                  },
+                  ...(canShowConvertShortcut(ideia)
+                    ? [
+                        {
+                          label: 'Virar tarefa',
+                          icon: <ListChecks aria-hidden="true" />,
+                          onSelect: () => openDrawer(ideia, 'converter'),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+            );
+          })}
+        </PhoneSectionList>
+        {drawer}
+      </>
     );
   }
 
@@ -202,21 +301,7 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
         </div>
       )}
 
-      {selectedIdeia &&
-        (() => {
-          // The drawer keeps a prop snapshot; once a conversion refetches the list, resolve
-          // the fresh row so the drawer's derived-state UI (locked status, "Ver tarefa") updates
-          // without the user having to close and reopen the drawer.
-          const current = ideias.find((i) => i.id === selectedIdeia.id) ?? selectedIdeia;
-          return (
-            <IdeiaDrawer
-              ideia={current}
-              queryKey={queryKey}
-              onClose={closeDrawer}
-              initialAction={initialAction}
-            />
-          );
-        })()}
+      {drawer}
     </section>
   );
 }

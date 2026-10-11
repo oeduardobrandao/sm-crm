@@ -29,6 +29,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { FormRow } from '@/components/mobile/FormRow';
+import { GroupedList } from '@/components/mobile/GroupedList';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { PhoneDateRow } from '../phone/PhoneDateRow';
+import '../phone/tarefasPhone.css';
 import {
   addTarefa,
   aplicarEdicaoSerie,
@@ -125,6 +131,9 @@ export function TarefaFormDialog({
   lockCliente,
   onCreate,
 }: TarefaFormDialogProps) {
+  // Phones (inside the phone shell, the gate the dialog primitive itself uses): grouped
+  // rows, picker sheets and native date inputs instead of selects and popovers.
+  const { isPhone } = usePhoneLayout();
   const [saving, setSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [tagIds, setTagIds] = useState<number[]>([]);
@@ -305,6 +314,146 @@ export function TarefaFormDialog({
       aplicarEdicaoSerie(editing!.id!, escopo!.payload, tagIds, escopo!.regra, false),
     );
 
+  const descriptionField = (
+    <FormField
+      control={form.control}
+      name="descricao"
+      render={({ field }) => (
+        <TarefaDescriptionEditor
+          key={editorRevision}
+          initialContent={editorInitialContent}
+          onUpdate={(doc, plainText) => {
+            setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
+            field.onChange(plainText);
+          }}
+          onUploadStateChange={setImageUploading}
+        />
+      )}
+    />
+  );
+
+  const submitLabel = imageUploading
+    ? 'Enviando imagem...'
+    : saving
+      ? 'Salvando...'
+      : editing
+        ? 'Salvar'
+        : 'Criar tarefa';
+
+  const errors = form.formState.errors;
+  const phoneFields = (
+    <div className="phone-kit phone-tar-form">
+      <GroupedList aria-label="Tarefa">
+        <FormRow
+          label="Título"
+          layout="stacked"
+          error={errors.titulo?.message}
+          input={{ placeholder: 'O que precisa ser feito?', ...form.register('titulo') }}
+        />
+      </GroupedList>
+      <GroupedList header="Descrição">
+        <li className="phone-cell phone-form-row">
+          <div className="phone-tar-form__editor">{descriptionField}</div>
+        </li>
+      </GroupedList>
+      <GroupedList aria-label="Detalhes">
+        <FormField
+          control={form.control}
+          name="responsavel_id"
+          render={({ field }) => (
+            <PickerCell<string>
+              label="Responsável"
+              emptyOption={{ label: 'Sem responsável' }}
+              searchable={sortedMembros.length > 8}
+              options={sortedMembros
+                .filter((m) => m.id != null)
+                .map((m) => ({ value: String(m.id), label: m.nome }))}
+              value={field.value === 'none' ? null : field.value}
+              onChange={(v) => field.onChange(v ?? 'none')}
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="cliente_id"
+          render={({ field }) => (
+            <PickerCell<string>
+              label="Cliente"
+              emptyOption={{ label: 'Sem cliente' }}
+              searchable={activeClientes.length > 8}
+              disabled={lockCliente}
+              options={activeClientes
+                .filter((c) => c.id != null)
+                .map((c) => ({ value: String(c.id), label: c.nome }))}
+              value={field.value === 'none' ? null : field.value}
+              onChange={(v) => field.onChange(v ?? 'none')}
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="data_limite"
+          render={({ field }) => (
+            <PhoneDateRow
+              label="Prazo"
+              value={field.value}
+              onChange={field.onChange}
+              emptyLabel="Sem prazo"
+              error={errors.data_limite?.message}
+            />
+          )}
+        />
+        {editing && (
+          <FormField
+            control={form.control}
+            name="status"
+            render={({ field }) => (
+              <PickerCell<TarefaFormValues['status']>
+                label="Status"
+                options={STATUS_ORDER.map((st) => ({ value: st, label: STATUS_LABELS[st] }))}
+                value={field.value}
+                onChange={(v) => {
+                  if (v) field.onChange(v);
+                }}
+              />
+            )}
+          />
+        )}
+      </GroupedList>
+      {!onCreate && (
+        <RecorrenciaFields
+          layout="phone"
+          form={form}
+          landing={landing}
+          disabled={repetirBloqueado}
+          disabledHint={repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined}
+        />
+      )}
+      <GroupedList aria-label="Tags">
+        <TagPicker
+          layout="phone"
+          tags={tags}
+          selectedIds={tagIds}
+          onSelectedChange={setTagIds}
+          onTagCreated={onTagCreated}
+        />
+      </GroupedList>
+      <div className="phone-tar-form__actions">
+        <button
+          type="button"
+          className="phone-tar-secondary-btn"
+          onClick={onClose}
+          disabled={saving || imageUploading}
+        >
+          Cancelar
+        </button>
+        <button type="submit" className="phone-tar-ink-btn" disabled={saving || imageUploading}>
+          {submitLabel}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <Dialog open={open} onOpenChange={(o) => !o && !saving && !imageUploading && onClose()}>
@@ -323,181 +472,181 @@ export function TarefaFormDialog({
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
-              <FormField
-                control={form.control}
-                name="titulo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Título</FormLabel>
-                    <FormControl>
-                      <Input placeholder="O que precisa ser feito?" autoFocus {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="descricao"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Descrição</FormLabel>
-                    <TarefaDescriptionEditor
-                      key={editorRevision}
-                      initialContent={editorInitialContent}
-                      onUpdate={(doc, plainText) => {
-                        setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
-                        field.onChange(plainText);
-                      }}
-                      onUploadStateChange={setImageUploading}
-                    />
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="responsavel_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Responsável</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">Sem responsável</SelectItem>
-                          {sortedMembros
-                            .filter((m) => m.id != null)
-                            .map((m) => (
-                              <SelectItem key={m.id} value={String(m.id)}>
-                                {m.nome}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="cliente_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cliente</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={lockCliente}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">Sem cliente</SelectItem>
-                          {activeClientes
-                            .filter((c) => c.id != null)
-                            .map((c) => (
-                              <SelectItem key={c.id} value={String(c.id)}>
-                                {c.nome}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="data_limite"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Prazo</FormLabel>
-                      <FormControl>
-                        <DatePicker
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Sem prazo"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {editing && (
+              {isPhone ? (
+                phoneFields
+              ) : (
+                <>
                   <FormField
                     control={form.control}
-                    name="status"
+                    name="titulo"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="block">Status</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {STATUS_ORDER.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {STATUS_LABELS[s]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormLabel>Título</FormLabel>
+                        <FormControl>
+                          <Input placeholder="O que precisa ser feito?" autoFocus {...field} />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                )}
-              </div>
-              {!onCreate && (
-                <RecorrenciaFields
-                  form={form}
-                  landing={landing}
-                  disabled={repetirBloqueado}
-                  disabledHint={
-                    repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined
-                  }
-                />
+                  <FormField
+                    control={form.control}
+                    name="descricao"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Descrição</FormLabel>
+                        <TarefaDescriptionEditor
+                          key={editorRevision}
+                          initialContent={editorInitialContent}
+                          onUpdate={(doc, plainText) => {
+                            setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
+                            field.onChange(plainText);
+                          }}
+                          onUploadStateChange={setImageUploading}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="responsavel_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Responsável</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">Sem responsável</SelectItem>
+                              {sortedMembros
+                                .filter((m) => m.id != null)
+                                .map((m) => (
+                                  <SelectItem key={m.id} value={String(m.id)}>
+                                    {m.nome}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="cliente_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cliente</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={lockCliente}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">Sem cliente</SelectItem>
+                              {activeClientes
+                                .filter((c) => c.id != null)
+                                .map((c) => (
+                                  <SelectItem key={c.id} value={String(c.id)}>
+                                    {c.nome}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="data_limite"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>Prazo</FormLabel>
+                          <FormControl>
+                            <DatePicker
+                              value={field.value}
+                              onChange={field.onChange}
+                              placeholder="Sem prazo"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {editing && (
+                      <FormField
+                        control={form.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="block">Status</FormLabel>
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {STATUS_ORDER.map((s) => (
+                                  <SelectItem key={s} value={s}>
+                                    {STATUS_LABELS[s]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </div>
+                  {!onCreate && (
+                    <RecorrenciaFields
+                      form={form}
+                      landing={landing}
+                      disabled={repetirBloqueado}
+                      disabledHint={
+                        repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined
+                      }
+                    />
+                  )}
+                  <div>
+                    <FormLabel className="mb-2 block">Tags</FormLabel>
+                    <TagPicker
+                      tags={tags}
+                      selectedIds={tagIds}
+                      onSelectedChange={setTagIds}
+                      onTagCreated={onTagCreated}
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={onClose}
+                      disabled={saving || imageUploading}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button type="submit" disabled={saving || imageUploading}>
+                      {submitLabel}
+                    </Button>
+                  </DialogFooter>
+                </>
               )}
-              <div>
-                <FormLabel className="mb-2 block">Tags</FormLabel>
-                <TagPicker
-                  tags={tags}
-                  selectedIds={tagIds}
-                  onSelectedChange={setTagIds}
-                  onTagCreated={onTagCreated}
-                />
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onClose}
-                  disabled={saving || imageUploading}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving || imageUploading}>
-                  {imageUploading
-                    ? 'Enviando imagem...'
-                    : saving
-                      ? 'Salvando...'
-                      : editing
-                        ? 'Salvar'
-                        : 'Criar tarefa'}
-                </Button>
-              </DialogFooter>
             </form>
           </Form>
         </DialogContent>

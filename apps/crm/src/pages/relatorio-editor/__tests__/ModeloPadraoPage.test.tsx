@@ -41,6 +41,10 @@ const { toastMock } = vi.hoisted(() => ({
 }));
 vi.mock('sonner', () => ({ toast: toastMock }));
 
+// Esta suíte cobre o layout de desktop; o do celular (abaixo de 768px) tem a sua
+// própria em *.phone.test.tsx. jsdom responde false a todo matchMedia.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import ModeloPadraoPage from '../ModeloPadraoPage';
 
 let qc: QueryClient;

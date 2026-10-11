@@ -30,6 +30,8 @@ vi.mock('@/services/dataImport', async (importOriginal) => {
 });
 
 vi.mock('@/store', () => ({ getClientes: vi.fn() }));
+// Desktop layout; the phone wizard has its own suite (ImportarPage.phone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 // The wizard sits behind FeatureGate(feature_csv_import); the real gate runs, only
 // its entitlement source is stubbed.

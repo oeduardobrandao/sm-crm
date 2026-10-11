@@ -4,6 +4,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// These cases cover the desktop layout; AnalyticsFluxosPage.phone.test.tsx covers the
+// phone one (jsdom's matchMedia matches nothing, so the page would render its phone branch).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Two charts on this page now, so the stub keys its testid off the aria-label
 // rather than handing both the same one — `findByTestId` throws on duplicates,
 // and every test below waits on the ritmo chart to know the page has settled.

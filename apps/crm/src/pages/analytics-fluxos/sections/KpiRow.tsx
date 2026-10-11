@@ -45,7 +45,7 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
   const semRetrabalho = kpis.retrabalho_pct === null;
 
   return (
-    <StatCardGrid maxCols={5} className="animate-up">
+    <StatCardGrid maxCols={5} className="animate-up" phoneLayout="scroll">
       <StatCard
         label="Concluídos"
         icon={CheckCircle2}

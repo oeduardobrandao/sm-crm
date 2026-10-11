@@ -3,6 +3,9 @@ import { MemoryRouter, Navigate, Route, Routes, useLocation } from 'react-router
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Desktop layout: the phone branch (sections index, nav bar) has its own suite,
+// ClienteDetalhePhone.test.tsx.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ features: {}, isLoading: false }),
 }));

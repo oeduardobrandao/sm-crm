@@ -15,6 +15,9 @@ import { InviteTimeLeft } from '../configuracao/inviteHelpers';
 import { UsageMeter } from '@/components/usage/UsageMeter';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
 import { getWorkspaceRoles } from '@/store';
+import { GroupedList, Cell } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
 import type { MembroFormValues } from './membroForm';
 import type { SeatState } from './inviteSupport';
 
@@ -62,6 +65,7 @@ export function InviteSection({
   pendingInvite,
   canManageWorkspace,
   canAssignRoles,
+  phone = false,
 }: {
   form: UseFormReturn<MembroFormValues>;
   seat: SeatState;
@@ -93,6 +97,8 @@ export function InviteSection({
    * as MembrosTab's own invite dialog.
    */
   canAssignRoles: boolean;
+  /** Grouped phone rows (switch cell, form rows, checkmark picker) instead of the desktop block. */
+  phone?: boolean;
 }) {
   const { data: workspaceRoles = [] } = useQuery({
     queryKey: ['workspace-roles'],
@@ -113,6 +119,18 @@ export function InviteSection({
       <UserPlus className="h-3.5 w-3.5" /> Acesso ao CRM
     </span>
   );
+
+  if (phone) {
+    return (
+      <PhoneInviteSection
+        form={form}
+        seat={seat}
+        pendingInvite={pendingInvite}
+        canAssignRoles={canAssignRoles}
+        workspaceRoles={workspaceRoles}
+      />
+    );
+  }
 
   if (pendingInvite) {
     return (
@@ -235,5 +253,122 @@ export function InviteSection({
         </div>
       )}
     </div>
+  );
+}
+
+const INVITE_ON_TEXT =
+  'A pessoa receberá um convite por e-mail e ocupará 1 vaga do plano. Quando aceitar, a conta será vinculada a este membro automaticamente.';
+const INVITE_OFF_TEXT =
+  'Sem convite, o membro serve para custos e atribuições, mas não faz login no CRM. Você pode convidar depois.';
+
+function SeatFullNotice() {
+  return (
+    <div
+      style={{
+        margin: '-8px 0 20px',
+        borderRadius: 12,
+        padding: '8px 11px',
+        fontSize: '0.8rem',
+        lineHeight: 1.5,
+        color: 'var(--danger-text)',
+        background: 'var(--surface-1)',
+        border: '1px solid var(--border-color)',
+      }}
+    >
+      Todas as vagas do plano estão em uso. O membro pode ser salvo normalmente; para convidá-lo ao
+      CRM, faça upgrade do plano ou remova um usuário.
+    </div>
+  );
+}
+
+/** "Acesso ao CRM" on phones: the same states and copy as the desktop block, as grouped rows. */
+function PhoneInviteSection({
+  form,
+  seat,
+  pendingInvite,
+  canAssignRoles,
+  workspaceRoles,
+}: {
+  form: UseFormReturn<MembroFormValues>;
+  seat: SeatState;
+  pendingInvite: { email: string; role: string; expires_at: string } | null;
+  canAssignRoles: boolean;
+  workspaceRoles: { id: string; nome: string }[];
+}) {
+  if (pendingInvite) {
+    return (
+      <GroupedList
+        header="Acesso ao CRM"
+        footer={
+          <>
+            <InviteTimeLeft expiresAt={pendingInvite.expires_at} status="pending" />. Reenviar ou
+            cancelar em Configurações → Workspace.
+          </>
+        }
+      >
+        <Cell
+          icon={<UserPlus aria-hidden="true" />}
+          label="Convite pendente"
+          subtitle={pendingInvite.email}
+          value={ROLE_PT[pendingInvite.role] ?? pendingInvite.role}
+        />
+      </GroupedList>
+    );
+  }
+
+  const inviteEnabled = form.watch('inviteEnabled');
+  const inviteRole = form.watch('inviteRole');
+  const switchDisabled = seat.status !== 'ok' && seat.status !== 'unlimited';
+  const roleOptions = [
+    ...(canAssignRoles ? [{ value: 'admin', label: 'Admin' }] : []),
+    { value: 'agent', label: 'Agente' },
+    ...(canAssignRoles
+      ? workspaceRoles.map((r) => ({ value: `custom:${r.id}`, label: r.nome }))
+      : []),
+  ];
+
+  return (
+    <>
+      <GroupedList header="Acesso ao CRM" footer={inviteEnabled ? INVITE_ON_TEXT : INVITE_OFF_TEXT}>
+        <Cell
+          label="Convidar para o workspace"
+          disabled={switchDisabled}
+          switch={{
+            checked: inviteEnabled,
+            onCheckedChange: (v) => form.setValue('inviteEnabled', v, { shouldDirty: true }),
+          }}
+        />
+        {inviteEnabled && (
+          <FormRow
+            label="Email *"
+            error={form.formState.errors.inviteEmail?.message}
+            input={{
+              ...form.register('inviteEmail'),
+              type: 'email',
+              inputMode: 'email',
+              autoComplete: 'email',
+              autoCapitalize: 'none',
+            }}
+          />
+        )}
+        {inviteEnabled && (
+          <PickerCell
+            label="Função no workspace"
+            subtitle={
+              canAssignRoles
+                ? undefined
+                : 'Apenas donos e admins convidam com função elevada ou papel.'
+            }
+            options={roleOptions}
+            value={inviteRole || null}
+            onChange={(v) => v && form.setValue('inviteRole', v, { shouldDirty: true })}
+          />
+        )}
+      </GroupedList>
+      <div style={{ margin: '-8px 0 20px' }}>
+        <SeatMeter seat={seat} previewing={inviteEnabled} />
+      </div>
+      {seat.status === 'full' && <SeatFullNotice />}
+    </>
   );
 }

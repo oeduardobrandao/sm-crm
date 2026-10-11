@@ -32,7 +32,10 @@ import {
   formatDate,
   type ClienteData,
 } from '@/store';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { ResponsiveCardRail } from '../ResponsiveCardRail';
+import { PhoneEmptyCard, PhoneRow, PhoneSectionList, editRemoveActions } from '../phone/PhoneRows';
 
 interface ClienteDatasSectionProps {
   clienteId: number;
@@ -49,6 +52,7 @@ export function ClienteDatasSection({ clienteId }: ClienteDatasSectionProps) {
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   const queryClient = useQueryClient();
+  const isPhone = !useIsDesktop(768);
 
   const { data: datasImportantes, isLoading: loadingDatas } = useQuery({
     queryKey: ['clienteDatas', clienteId],
@@ -116,97 +120,128 @@ export function ClienteDatasSection({ clienteId }: ClienteDatasSectionProps) {
     setDateDeleteId(null);
   };
 
+  const phoneList = (
+    <PhoneSectionList
+      title={t('detail.importantDates')}
+      addLabel={t('detail.newImportantDate')}
+      onAdd={() => handleOpenDateModal()}
+      empty={
+        loadingDatas ? null : (
+          <PhoneEmptyCard title={t('detail.noImportantDates')} hint={t('detail.addDateHint')} />
+        )
+      }
+    >
+      {datasImportantes?.map((d) => (
+        <PhoneRow
+          key={d.id}
+          title={d.titulo}
+          subtitle={formatDate(d.data)}
+          onOpen={() => handleOpenDateModal(d)}
+          menuLabel={`Ações da data ${d.titulo}`}
+          actions={editRemoveActions(
+            () => handleOpenDateModal(d),
+            () => setDateDeleteId(d.id!),
+          )}
+        />
+      ))}
+    </PhoneSectionList>
+  );
+
   return (
     <>
-      <div id="sec-datas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-          }}
-        >
-          <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
-            <CalendarDays className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
-            {t('detail.importantDates')}
-          </h3>
-          <Button size="sm" onClick={() => handleOpenDateModal()}>
-            <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> {tc('actions.add')}
-          </Button>
-        </div>
-
-        {loadingDatas && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '1.5rem' }}>
-            <Spinner size="sm" />
-          </div>
-        )}
-
-        {!loadingDatas && (!datasImportantes || datasImportantes.length === 0) && (
+      {isPhone ? (
+        phoneList
+      ) : (
+        <div id="sec-datas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <div
             style={{
-              textAlign: 'center',
-              padding: '2rem 1rem',
-              color: 'var(--text-muted)',
-              border: '1px dashed var(--border-color)',
-              borderRadius: '12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1rem',
             }}
           >
-            <CalendarDays className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.9rem' }}>{t('detail.noImportantDates')}</p>
-            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('detail.addDateHint')}</p>
+            <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
+              <CalendarDays className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
+              {t('detail.importantDates')}
+            </h3>
+            <Button size="sm" onClick={() => handleOpenDateModal()}>
+              <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> {tc('actions.add')}
+            </Button>
           </div>
-        )}
 
-        {!loadingDatas && datasImportantes && datasImportantes.length > 0 && (
-          <ResponsiveCardRail className="cliente-dates-rail">
-            {datasImportantes.map((d) => (
-              <div
-                key={d.id}
-                className="cliente-date-card"
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
-                  (e.currentTarget as HTMLDivElement).style.boxShadow =
-                    '0 6px 16px rgba(0,0,0,0.08)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.transform = '';
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = '';
-                }}
-              >
-                <div>
-                  <p style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.1rem' }}>
-                    {d.titulo}
-                  </p>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {formatDate(d.data)}
-                  </p>
+          {loadingDatas && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '1.5rem' }}>
+              <Spinner size="sm" />
+            </div>
+          )}
+
+          {!loadingDatas && (!datasImportantes || datasImportantes.length === 0) && (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '2rem 1rem',
+                color: 'var(--text-muted)',
+                border: '1px dashed var(--border-color)',
+                borderRadius: '12px',
+              }}
+            >
+              <CalendarDays className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+              <p style={{ fontSize: '0.9rem' }}>{t('detail.noImportantDates')}</p>
+              <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('detail.addDateHint')}</p>
+            </div>
+          )}
+
+          {!loadingDatas && datasImportantes && datasImportantes.length > 0 && (
+            <ResponsiveCardRail className="cliente-dates-rail">
+              {datasImportantes.map((d) => (
+                <div
+                  key={d.id}
+                  className="cliente-date-card"
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+                    (e.currentTarget as HTMLDivElement).style.boxShadow =
+                      '0 6px 16px rgba(0,0,0,0.08)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.transform = '';
+                    (e.currentTarget as HTMLDivElement).style.boxShadow = '';
+                  }}
+                >
+                  <div>
+                    <p style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.1rem' }}>
+                      {d.titulo}
+                    </p>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      {formatDate(d.data)}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      style={{ width: 28, height: 28 }}
+                      onClick={() => handleOpenDateModal(d)}
+                      aria-label={`${t('detail.editDate')}: ${d.titulo}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      style={{ width: 28, height: 28, color: 'var(--danger)' }}
+                      onClick={() => setDateDeleteId(d.id!)}
+                      aria-label={`${t('detail.removeDate')}: ${d.titulo}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    style={{ width: 28, height: 28 }}
-                    onClick={() => handleOpenDateModal(d)}
-                    aria-label={`${t('detail.editDate')}: ${d.titulo}`}
-                  >
-                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    style={{ width: 28, height: 28, color: 'var(--danger)' }}
-                    onClick={() => setDateDeleteId(d.id!)}
-                    aria-label={`${t('detail.removeDate')}: ${d.titulo}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </ResponsiveCardRail>
-        )}
-      </div>
+              ))}
+            </ResponsiveCardRail>
+          )}
+        </div>
+      )}
 
       {/* Date Add/Edit Modal */}
       <Dialog
@@ -263,23 +298,35 @@ export function ClienteDatasSection({ clienteId }: ClienteDatasSectionProps) {
       </Dialog>
 
       {/* Date Delete Confirm */}
-      <AlertDialog
-        open={dateDeleteId !== null}
-        onOpenChange={(open) => {
-          if (!open) setDateDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('detail.removeDate')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('detail.removeDateConfirm')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc('actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDateDelete}>{tc('actions.delete')}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {isPhone ? (
+        <PhoneConfirmSheet
+          open={dateDeleteId !== null}
+          title={t('detail.removeDate')}
+          message={t('detail.removeDateConfirm')}
+          actions={[{ label: tc('actions.delete'), destructive: true, onSelect: handleDateDelete }]}
+          onCancel={() => setDateDeleteId(null)}
+        />
+      ) : (
+        <AlertDialog
+          open={dateDeleteId !== null}
+          onOpenChange={(open) => {
+            if (!open) setDateDeleteId(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('detail.removeDate')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('detail.removeDateConfirm')}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{tc('actions.cancel')}</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDateDelete}>
+                {tc('actions.delete')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </>
   );
 }

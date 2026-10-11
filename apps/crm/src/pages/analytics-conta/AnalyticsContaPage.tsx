@@ -26,7 +26,7 @@ import {
   UserPlus,
   type LucideIcon,
 } from 'lucide-react';
-import { StatCard, type StatTone, type StatDelta } from '@/components/StatCard';
+import { StatCard, type StatTone } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,6 +71,7 @@ import {
   createTag,
   deleteTag,
   assignTagToPost,
+  removeTagFromPost,
   getClientReports,
   getAccountAIAnalysis,
   upsertManualFollowerCount,
@@ -99,6 +100,14 @@ import {
 import { compareNullableNumber, type ActionSortKey } from '../../lib/post-action-metrics';
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
 import { NewReportDialog } from './components/NewReportDialog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
+import {
+  BEST_TIME_BUCKET_STARTS,
+  bucketBestTimes,
+  formatReportMonth,
+  toStatDelta,
+} from './contaFormat';
 import { ActionMetricValue, PostInsightsDetail } from './components/PostInsightsDetail';
 
 Chart.register(...registerables);
@@ -147,25 +156,6 @@ function formatMediaType(type: string): string {
     default:
       return type;
   }
-}
-
-function formatReportMonth(month: string): string {
-  const [y, m] = month.split('-');
-  const months = [
-    'Jan',
-    'Fev',
-    'Mar',
-    'Abr',
-    'Mai',
-    'Jun',
-    'Jul',
-    'Ago',
-    'Set',
-    'Out',
-    'Nov',
-    'Dez',
-  ];
-  return `${months[parseInt(m) - 1]} ${y}`;
 }
 
 function formatNumber(n: number): string {
@@ -484,19 +474,6 @@ function KpiCard({
   );
 }
 
-/** Builds a StatCard trend delta straight from a current/previous KPI pair --
- *  for cards that render via StatCard directly instead of through KpiCard
- *  (no period tab / previous-value footer needed). Mirrors the KpiDelta ->
- *  StatDelta mapping KpiCard does internally above. */
-function toStatDelta(
-  current: number | undefined,
-  previous: number | null | undefined,
-): StatDelta | undefined {
-  if (current == null || previous == null) return undefined;
-  const { direction, deltaPercent } = makeDelta(current, previous);
-  return { direction, percent: deltaPercent, caption: 'vs período anterior' };
-}
-
 // ---- Follower Chart ----
 function FollowerChart({ history, postDates }: { history: any[]; postDates: any[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -675,30 +652,10 @@ function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
 }
 
 // ---- Best Times Heatmap ----
-// The API returns a 7x24 grid but posts are sparse, so cells are aggregated into
-// 3h buckets (weighted by post count) — otherwise slots at e.g. 1h or 23h would
-// be invisible in a grid that samples only every 3rd hour.
+// Cells are 3h buckets weighted by post count (see bucketBestTimes).
 function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
-  const bucketStarts = [0, 3, 6, 9, 12, 15, 18, 21];
-  const cols = data.heatmap[0]?.length ?? 0;
-  const bucketSize = cols >= 24 ? 3 : 1;
-  const buckets = data.labels_days.map((_, d) =>
-    bucketStarts.map((start, b) => {
-      let eng = 0;
-      let n = 0;
-      for (let i = 0; i < bucketSize; i++) {
-        const h = bucketSize === 3 ? start + i : b;
-        eng += (data.heatmap[d]?.[h] ?? 0) * (data.counts[d]?.[h] ?? 0);
-        n += data.counts[d]?.[h] ?? 0;
-      }
-      return { value: n > 0 ? eng / n : 0, count: n };
-    }),
-  );
-  const max = Math.max(...buckets.flat().map((c) => c.value), 0.1);
-  const topSlot = data.topSlots[0];
-  const topCell = topSlot
-    ? { day: topSlot.day, bucket: bucketSize === 3 ? Math.floor(topSlot.hour / 3) : topSlot.hour }
-    : null;
+  const bucketStarts = BEST_TIME_BUCKET_STARTS;
+  const { buckets, bucketSize, max, topCell } = bucketBestTimes(data);
   return (
     <div>
       <div className="an-hm">
@@ -1034,6 +991,7 @@ function AnalyticsContent({
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const isPhone = !useIsDesktop(768);
 
   const [days, setDays] = useState(30);
   const [overviewDays, setOverviewDays] = useState(30);
@@ -1416,28 +1374,52 @@ function AnalyticsContent({
     }
   };
 
-  const handleAddTag = async () => {
-    const name = prompt('Nome da nova tag (ex: Educativo, Procedimento, Bastidores):');
-    if (!name || !name.trim()) return;
+  // Resolves true when the tag was created. The phone's "Nova tag" sheet calls it
+  // directly; desktop asks for the name with prompt() first.
+  const createTagNamed = async (name: string): Promise<boolean> => {
     const colors = ['#3ecf8e', '#f5a342', '#42c8f5', '#f542c8', '#eab308', '#f55a42', '#8b5cf6'];
     const color = colors[Math.floor(Math.random() * colors.length)];
     try {
       await createTag(name.trim(), color);
       toast.success('Tag criada!');
       qc.invalidateQueries({ queryKey: ['analytics-tags'] });
+      return true;
     } catch (err: any) {
       toast.error(err.message || 'Erro ao criar tag');
+      return false;
     }
   };
 
-  const handleRemoveTag = async (tagId: number) => {
-    if (!confirm('Remover esta tag?')) return;
+  const handleAddTag = async () => {
+    const name = prompt('Nome da nova tag (ex: Educativo, Procedimento, Bastidores):');
+    if (!name || !name.trim()) return;
+    await createTagNamed(name);
+  };
+
+  const deleteTagConfirmed = async (tagId: number) => {
     try {
       await deleteTag(tagId);
       toast.success('Tag removida');
       qc.invalidateQueries({ queryKey: ['analytics-tags'] });
     } catch (err: any) {
       toast.error(err.message || 'Erro');
+    }
+  };
+
+  const handleRemoveTag = async (tagId: number) => {
+    if (!confirm('Remover esta tag?')) return;
+    await deleteTagConfirmed(tagId);
+  };
+
+  // Phone tag toggles in the post sheet: assigning is the desktop "+ tag" chip;
+  // un-assigning uses removeTagFromPost, which the desktop table doesn't offer.
+  const handleToggleTag = async (post: PostAnalytics, tag: PostTag, assigned: boolean) => {
+    try {
+      if (assigned) await removeTagFromPost(post.id, tag.id);
+      else await assignTagToPost(post.id, tag.id);
+      await qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
+    } catch (err: any) {
+      toast.error(err.message || (assigned ? 'Erro ao remover tag' : 'Erro ao atribuir tag'));
     }
   };
 
@@ -1469,19 +1451,47 @@ function AnalyticsContent({
     }
   };
 
-  const handleDownloadReport = async (reportId: number) => {
+  // `viaTap`: iOS Safari blocks a window.open that runs after an await (the user gesture
+  // is gone), so phones get a toast whose "Abrir PDF" tap opens the signed URL instead.
+  // Not location.assign: inside the native shell that would leave no way back.
+  const handleDownloadReport = async (reportId: number, viaTap = false) => {
     // Signing the URL takes a moment; without feedback the row looks inert and
     // gets clicked again. Every download button locks so the spinner on the
     // active row is the only thing that looks clickable.
     if (downloadingReportId !== null) return;
     setDownloadingReportId(reportId);
+    // The phone's action sheet closes on tap, so the toast is the in-flight feedback.
+    const toastId = viaTap ? toast.loading('Preparando PDF…') : undefined;
     try {
       const url = await getReportDownloadUrl(reportId);
-      openExternalUrl(url);
+      if (viaTap) {
+        toast.success('PDF pronto.', {
+          id: toastId,
+          action: { label: 'Abrir PDF', onClick: () => openExternalUrl(url) },
+          duration: 15000,
+        });
+      } else openExternalUrl(url);
     } catch {
-      toast.error('Erro ao baixar relatório');
+      toast.error('Erro ao baixar relatório', { id: toastId });
     } finally {
       setDownloadingReportId(null);
+    }
+  };
+
+  const applyCustomDays = (val: number) => {
+    setOverviewDays(val);
+    setPeriodStart(undefined);
+    setPeriodEnd(undefined);
+    setPeriodLabel(undefined);
+  };
+
+  const deleteDoc = async (docId: string) => {
+    try {
+      await deleteReportDoc(docId);
+      qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
+      toast.success('Relatório excluído.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir relatório');
     }
   };
 
@@ -1525,12 +1535,297 @@ function AnalyticsContent({
 
   if (!overview) return null;
 
+  const kpiGrid = (
+    <>
+      {/* KPI Cards */}
+      {/* 8 metrics as two clean rows of 4: eight-up squeezes the cards until
+      labels wrap into the icon bubbles */}
+      <StatCardGrid className="animate-up" maxCols={4} phoneLayout="scroll">
+        <KpiCard
+          label="Visualizações"
+          icon={Play}
+          tone="violet"
+          value={metricValue(metricsCurrent?.views)}
+          delta={metricDelta(metricsCurrent?.views, metricsPrevious?.views)}
+          period={periodTag}
+          prevFormatted={metricPrevFormatted(metricsPrevious?.views)}
+          sub={viewsSub}
+        />
+        <KpiCard
+          label="Seguidores"
+          icon={Users}
+          tone="blue"
+          value={followersValue}
+          delta={followersDelta}
+          period={periodTag}
+          prevFormatted={followersPrevFormatted}
+        />
+        <KpiCard
+          label="Engajamento"
+          icon={Heart}
+          tone="pink"
+          value={overview.engagement.current.toFixed(2) + '%'}
+          delta={overview.engagement}
+          period={periodTag}
+          prevFormatted={overview.engagement.previous.toFixed(2) + '%'}
+        />
+        <KpiCard
+          label="Contas engajadas"
+          icon={Zap}
+          tone="amber"
+          value={metricValue(metricsCurrent?.accounts_engaged)}
+          delta={metricDelta(metricsCurrent?.accounts_engaged, metricsPrevious?.accounts_engaged)}
+          period={periodTag}
+          prevFormatted={metricPrevFormatted(metricsPrevious?.accounts_engaged)}
+        />
+        <KpiCard
+          label="Alcance acumulado"
+          icon={Eye}
+          tone="violet"
+          value={metricValue(metricsCurrent?.reach)}
+          delta={metricDelta(metricsCurrent?.reach, metricsPrevious?.reach)}
+          period={periodTag}
+          prevFormatted={metricPrevFormatted(metricsPrevious?.reach)}
+        />
+        <KpiCard
+          label="Cliques no link"
+          icon={MousePointerClick}
+          tone="green"
+          value={metricValue(metricsCurrent?.website_clicks)}
+          delta={metricDelta(metricsCurrent?.website_clicks, metricsPrevious?.website_clicks)}
+          period={periodTag}
+          prevFormatted={metricPrevFormatted(metricsPrevious?.website_clicks)}
+        />
+        <KpiCard
+          label="Taxa de salvamentos"
+          icon={Bookmark}
+          tone="slate"
+          value={overview.savesRate.current.toFixed(2) + '%'}
+          delta={overview.savesRate}
+          period={periodTag}
+          prevFormatted={overview.savesRate.previous.toFixed(2) + '%'}
+        />
+        <KpiCard
+          label="Posts publicados"
+          icon={Send}
+          tone="blue"
+          value={String(overview.postsPublished.current)}
+          delta={overview.postsPublished}
+          period={periodTag}
+          prevFormatted={String(overview.postsPublished.previous)}
+        />
+      </StatCardGrid>
+    </>
+  );
+
+  // Rendered by both layouts (F0c turns the dialogs into sheets on phones).
+  const dialogs = (
+    <>
+      {/* Send report email confirmation dialog */}
+      <AlertDialog
+        open={emailReportTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setEmailReportTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enviar relatório por e-mail</AlertDialogTitle>
+            <AlertDialogDescription>
+              {emailReportTarget && (
+                <>
+                  Enviar o relatório de{' '}
+                  <strong>{formatReportMonth(emailReportTarget.report_month)}</strong> por e-mail
+                  para o cliente <strong>{cliente.nome}</strong>?
+                  {cliente.send_report_email === false && (
+                    <span
+                      style={{
+                        display: 'block',
+                        marginTop: '0.5rem',
+                        color: 'var(--warning)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Atenção: este cliente tem o envio de relatórios por e-mail desativado.
+                    </span>
+                  )}
+                  {emailReportTarget.last_emailed_at && (
+                    <span
+                      style={{
+                        display: 'block',
+                        marginTop: '0.25rem',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      Último envio:{' '}
+                      {new Date(emailReportTarget.last_emailed_at).toLocaleString('pt-BR')}
+                    </span>
+                  )}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sendingEmail}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={sendingEmail} onClick={handleConfirmSendEmail}>
+              {sendingEmail ? 'Enviando...' : 'Enviar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Manual follower modal */}
+      <Dialog
+        open={manualFollowerOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManualFollowerOpen(false);
+            setManualCount('');
+          }
+        }}
+      >
+        <DialogContent
+          onConfirmClose={() => {
+            setManualFollowerOpen(false);
+            setManualCount('');
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Inserir Seguidores Manualmente</DialogTitle>
+          </DialogHeader>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Insira a contagem de seguidores para uma data específica. Dados manuais não serão
+            sobrescritos pela sincronização automática.
+          </p>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Data</Label>
+              <Input
+                type="date"
+                value={manualDate}
+                max={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setManualDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Número de seguidores</Label>
+              <Input
+                type="number"
+                min={0}
+                placeholder="Ex: 15432"
+                value={manualCount}
+                onChange={(e) => setManualCount(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setManualFollowerOpen(false);
+                setManualCount('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveManualFollower}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} clientId={clientId} />
+    </>
+  );
+
   const cacheNote = overviewRes?.fromCache ? (
     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
       Dados de{' '}
       {new Date(overviewRes.fetchedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
     </span>
   ) : null;
+
+  if (isPhone) {
+    const typeHeadline =
+      typeTop && typeSecond && typeRatio !== null && typeRatio >= 1.3
+        ? `${typeTop.type} engaja ${formatPct(typeRatio)}× mais que ${typeSecond.type}`
+        : typeTop
+          ? `${typeTop.type} é o formato que mais engaja`
+          : null;
+    const demoHeadline = !demographicsData
+      ? 'Indisponível'
+      : demoHotAge && demoAgeTotal > 0
+        ? `${demoFemaleDominant ? 'Mulheres' : 'Homens'} de ${demoHotAge.age_range} são o núcleo da audiência`
+        : null;
+    return (
+      <>
+        <ContaPhone
+          clientId={clientId}
+          clienteNome={cliente.nome}
+          account={account}
+          cachedAt={overviewRes?.fromCache ? overviewRes.fetchedAt : null}
+          syncing={syncing}
+          onSync={handleSync}
+          onNewReport={() => setNewReportOpen(true)}
+          overviewDays={overviewDays}
+          days={days}
+          periodStart={periodStart}
+          periodTag={periodTag}
+          onDays={handleDaysChange}
+          onLastMonth={handleLastMonth}
+          onCustomDays={applyCustomDays}
+          kpis={kpiGrid}
+          history={history}
+          onManualFollower={() => setManualFollowerOpen(true)}
+          posts={posts}
+          rankedPosts={rankedPosts}
+          matureRankedPosts={matureRankedPosts}
+          drawer={{
+            mode: rankedDrawer,
+            open: openRankedDrawer,
+            close: resetRankedDrawer,
+            posts: rankedDrawerPosts,
+            total: rankedDrawer === 'worst' ? matureRankedPosts.length : posts.length,
+            orderBy: rankedOrderBy,
+            setOrderBy: (v) => setRankedOrderBy(v as RankedPostOrderBy),
+            asc: rankedAsc,
+            setAsc: setRankedAsc,
+            format: rankedFormatFilter,
+            setFormat: setRankedFormatFilter,
+            formats: rankedPostFormats,
+            dateFrom: rankedDateFrom,
+            setDateFrom: setRankedDateFrom,
+            dateTo: rankedDateTo,
+            setDateTo: setRankedDateTo,
+          }}
+          sort={sort}
+          onSort={setSort}
+          showAllPosts={showAllPosts}
+          onToggleShowAll={() => setShowAllPosts((v) => !v)}
+          tags={tagsData}
+          onToggleTag={handleToggleTag}
+          onCreateTag={createTagNamed}
+          onDeleteTag={deleteTagConfirmed}
+          topSaved={topSaved}
+          typeBreakdown={typeBreakdown}
+          topicStats={topicStats}
+          typeHeadline={typeHeadline}
+          demographics={demographicsData}
+          demoHeadline={demoHeadline}
+          bestTimes={bestTimesData}
+          stories={storiesQuery.data ?? null}
+          baseline={baselineQuery.data?.baseline ?? null}
+          reportDocs={reportDocs}
+          reports={reportsData}
+          onOpenDoc={(id) => navigate(`/relatorios/${id}`)}
+          onDeleteDoc={deleteDoc}
+          downloadingReportId={downloadingReportId}
+          onDownloadReport={(id) => handleDownloadReport(id, true)}
+          onEmailReport={setEmailReportTarget}
+        />
+        {dialogs}
+      </>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -1623,93 +1918,13 @@ function AnalyticsContent({
                 toast.error('Insira um valor entre 1 e 730 dias');
                 return;
               }
-              setOverviewDays(val);
-              setPeriodStart(undefined);
-              setPeriodEnd(undefined);
-              setPeriodLabel(undefined);
+              applyCustomDays(val);
             }
           }}
         />
       </div>
 
-      {/* KPI Cards */}
-      {/* 8 metrics as two clean rows of 4: eight-up squeezes the cards until
-          labels wrap into the icon bubbles */}
-      <StatCardGrid className="animate-up" maxCols={4}>
-        <KpiCard
-          label="Visualizações"
-          icon={Play}
-          tone="violet"
-          value={metricValue(metricsCurrent?.views)}
-          delta={metricDelta(metricsCurrent?.views, metricsPrevious?.views)}
-          period={periodTag}
-          prevFormatted={metricPrevFormatted(metricsPrevious?.views)}
-          sub={viewsSub}
-        />
-        <KpiCard
-          label="Seguidores"
-          icon={Users}
-          tone="blue"
-          value={followersValue}
-          delta={followersDelta}
-          period={periodTag}
-          prevFormatted={followersPrevFormatted}
-        />
-        <KpiCard
-          label="Engajamento"
-          icon={Heart}
-          tone="pink"
-          value={overview.engagement.current.toFixed(2) + '%'}
-          delta={overview.engagement}
-          period={periodTag}
-          prevFormatted={overview.engagement.previous.toFixed(2) + '%'}
-        />
-        <KpiCard
-          label="Contas engajadas"
-          icon={Zap}
-          tone="amber"
-          value={metricValue(metricsCurrent?.accounts_engaged)}
-          delta={metricDelta(metricsCurrent?.accounts_engaged, metricsPrevious?.accounts_engaged)}
-          period={periodTag}
-          prevFormatted={metricPrevFormatted(metricsPrevious?.accounts_engaged)}
-        />
-        <KpiCard
-          label="Alcance acumulado"
-          icon={Eye}
-          tone="violet"
-          value={metricValue(metricsCurrent?.reach)}
-          delta={metricDelta(metricsCurrent?.reach, metricsPrevious?.reach)}
-          period={periodTag}
-          prevFormatted={metricPrevFormatted(metricsPrevious?.reach)}
-        />
-        <KpiCard
-          label="Cliques no link"
-          icon={MousePointerClick}
-          tone="green"
-          value={metricValue(metricsCurrent?.website_clicks)}
-          delta={metricDelta(metricsCurrent?.website_clicks, metricsPrevious?.website_clicks)}
-          period={periodTag}
-          prevFormatted={metricPrevFormatted(metricsPrevious?.website_clicks)}
-        />
-        <KpiCard
-          label="Taxa de salvamentos"
-          icon={Bookmark}
-          tone="slate"
-          value={overview.savesRate.current.toFixed(2) + '%'}
-          delta={overview.savesRate}
-          period={periodTag}
-          prevFormatted={overview.savesRate.previous.toFixed(2) + '%'}
-        />
-        <KpiCard
-          label="Posts publicados"
-          icon={Send}
-          tone="blue"
-          value={String(overview.postsPublished.current)}
-          delta={overview.postsPublished}
-          period={periodTag}
-          prevFormatted={String(overview.postsPublished.previous)}
-        />
-      </StatCardGrid>
+      {kpiGrid}
 
       {/* Top Saved callout */}
       {topSaved.length > 0 && (
@@ -2327,13 +2542,7 @@ function AnalyticsContent({
                       !window.confirm('Excluir este relatório? O PDF exportado também é removido.')
                     )
                       return;
-                    try {
-                      await deleteReportDoc(doc.id);
-                      qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
-                      toast.success('Relatório excluído.');
-                    } catch (err) {
-                      toast.error(err instanceof Error ? err.message : 'Erro ao excluir relatório');
-                    }
+                    await deleteDoc(doc.id);
                   }}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -2438,118 +2647,7 @@ function AnalyticsContent({
         </div>
       </div>
 
-      {/* Send report email confirmation dialog */}
-      <AlertDialog
-        open={emailReportTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setEmailReportTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Enviar relatório por e-mail</AlertDialogTitle>
-            <AlertDialogDescription>
-              {emailReportTarget && (
-                <>
-                  Enviar o relatório de{' '}
-                  <strong>{formatReportMonth(emailReportTarget.report_month)}</strong> por e-mail
-                  para o cliente <strong>{cliente.nome}</strong>?
-                  {cliente.send_report_email === false && (
-                    <span
-                      style={{
-                        display: 'block',
-                        marginTop: '0.5rem',
-                        color: 'var(--warning)',
-                        fontWeight: 600,
-                      }}
-                    >
-                      Atenção: este cliente tem o envio de relatórios por e-mail desativado.
-                    </span>
-                  )}
-                  {emailReportTarget.last_emailed_at && (
-                    <span
-                      style={{
-                        display: 'block',
-                        marginTop: '0.25rem',
-                        fontSize: '0.8rem',
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      Último envio:{' '}
-                      {new Date(emailReportTarget.last_emailed_at).toLocaleString('pt-BR')}
-                    </span>
-                  )}
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={sendingEmail}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction disabled={sendingEmail} onClick={handleConfirmSendEmail}>
-              {sendingEmail ? 'Enviando...' : 'Enviar'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Manual follower modal */}
-      <Dialog
-        open={manualFollowerOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setManualFollowerOpen(false);
-            setManualCount('');
-          }
-        }}
-      >
-        <DialogContent
-          onConfirmClose={() => {
-            setManualFollowerOpen(false);
-            setManualCount('');
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>Inserir Seguidores Manualmente</DialogTitle>
-          </DialogHeader>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Insira a contagem de seguidores para uma data específica. Dados manuais não serão
-            sobrescritos pela sincronização automática.
-          </p>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Data</Label>
-              <Input
-                type="date"
-                value={manualDate}
-                max={new Date().toISOString().split('T')[0]}
-                onChange={(e) => setManualDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Número de seguidores</Label>
-              <Input
-                type="number"
-                min={0}
-                placeholder="Ex: 15432"
-                value={manualCount}
-                onChange={(e) => setManualCount(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setManualFollowerOpen(false);
-                setManualCount('');
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveManualFollower}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {dialogs}
 
       <Sheet
         open={rankedDrawer !== null}
@@ -2857,8 +2955,6 @@ function AnalyticsContent({
           </div>
         </SheetContent>
       </Sheet>
-
-      <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} clientId={clientId} />
     </div>
   );
 }
@@ -3175,8 +3271,10 @@ export default function AnalyticsContaPage() {
     queryFn: () => getInstagramSummary(clientId),
     enabled: !!clientId && !isNaN(clientId) && !!cliente,
   });
+  const isPhone = !useIsDesktop(768);
 
   if (isNaN(clientId) || clientId <= 0) {
+    if (isPhone) return <ContaPhoneMessage title="ID de cliente inválido." />;
     return (
       <div className="card">
         <p style={{ color: 'var(--danger)' }}>ID de cliente inválido.</p>
@@ -3189,6 +3287,7 @@ export default function AnalyticsContaPage() {
   }
 
   if (!cliente) {
+    if (isPhone) return <ContaPhoneMessage title="Cliente não encontrado." />;
     return (
       <div className="card">
         <p style={{ color: 'var(--danger)' }}>Cliente não encontrado.</p>
@@ -3199,6 +3298,15 @@ export default function AnalyticsContaPage() {
   if (igError) {
     const msg = igError instanceof Error ? igError.message : 'Erro';
     if (msg === 'TOKEN_EXPIRED') {
+      if (isPhone) {
+        return (
+          <ContaPhoneMessage
+            title="Token do Instagram expirado"
+            message="Reconecte a conta Instagram para continuar visualizando os analytics."
+            action={{ label: 'Reconectar conta', to: `/clientes/${clientId}/redes-sociais` }}
+          />
+        );
+      }
       return (
         <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
           <h3>Token do Instagram expirado</h3>
@@ -3211,6 +3319,9 @@ export default function AnalyticsContaPage() {
         </div>
       );
     }
+    if (isPhone) {
+      return <ContaPhoneMessage title="Erro ao carregar analytics" message={msg} />;
+    }
     return (
       <div className="card">
         <p style={{ color: 'var(--danger)' }}>Erro ao carregar analytics: {msg}</p>
@@ -3219,6 +3330,18 @@ export default function AnalyticsContaPage() {
   }
 
   if (!igSummary) {
+    if (isPhone) {
+      return (
+        <ContaPhoneMessage
+          title="Instagram não conectado"
+          message="Conecte a conta Instagram deste cliente para acessar os analytics."
+          action={{
+            label: 'Ir para o perfil do cliente',
+            to: `/clientes/${clientId}/redes-sociais`,
+          }}
+        />
+      );
+    }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <header className="header header--flush animate-up">

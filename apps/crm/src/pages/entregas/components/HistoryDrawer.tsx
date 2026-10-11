@@ -24,6 +24,8 @@ import { buildWorkflowTimeline } from './workflowTimeline';
 import { TIPO_LABELS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { PostStatusChip } from './PostStatusChip';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import './historyPage.css';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -77,9 +79,20 @@ interface HistoryDrawerProps {
   workflow: Workflow;
   clienteName?: string;
   onClose: () => void;
+  /**
+   * `drawer` (default): the right-hand panel over an overlay. `page`: a pushed screen
+   * for phones, in the page flow under its own nav bar (Back = `onClose`). The caller
+   * renders it in place of the page content and registers the history entry.
+   */
+  variant?: 'drawer' | 'page';
 }
 
-export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerProps) {
+export function HistoryDrawer({
+  workflow,
+  clienteName,
+  onClose,
+  variant = 'drawer',
+}: HistoryDrawerProps) {
   const workflowId = workflow.id!;
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
 
@@ -126,6 +139,163 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
     concludedEtapas.length > 0 ? concludedEtapas[concludedEtapas.length - 1].concluido_em : null;
   const totalDays = firstStart && lastEnd ? daysBetween(firstStart, lastEnd) : null;
 
+  const subtitle = (
+    <>
+      {clienteName || '—'}
+      {lastEnd && <> &bull; Concluído em {formatDateFull(lastEnd)}</>}
+    </>
+  );
+  const duration =
+    totalDays !== null ? (
+      <div className="history-duration">
+        Duração total: {totalDays} dia{totalDays !== 1 ? 's' : ''}
+      </div>
+    ) : null;
+
+  const body = (
+    <div className="drawer-body">
+      <div style={{ marginBottom: '1.5rem' }}>
+        <div className="history-section-title">Etapas</div>
+        <div className="history-timeline">
+          {compliance.map((c, i) => {
+            const isLate = c.daysOverdue > 0;
+            const mod = isLate ? 'late' : 'ok';
+            return (
+              <div key={c.etapa.id} className="history-step">
+                <div className="history-step-track">
+                  <div className={`history-step-icon history-step-icon--${mod}`}>
+                    <Check className="h-3 w-3" />
+                  </div>
+                  {i < compliance.length - 1 && (
+                    <div className={`history-step-line history-step-line--${mod}`} />
+                  )}
+                </div>
+                <div className="history-step-body">
+                  <div className="history-step-header">
+                    <span className="history-step-name">{c.etapa.nome}</span>
+                    <span className={`history-step-badge history-step-badge--${mod}`}>
+                      {isLate ? `${c.daysOverdue}d de atraso` : '✓ No prazo'}
+                    </span>
+                  </div>
+                  <div className="history-step-detail">
+                    {c.assigneeName} &bull; {formatDateShort(c.etapa.iniciado_em!)} →{' '}
+                    {formatDateShort(c.etapa.concluido_em!)} &bull; {c.daysUsed} dia
+                    {c.daysUsed !== 1 ? 's' : ''} (prazo: {c.etapa.prazo_dias}d{' '}
+                    {c.etapa.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'})
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div className="history-final-node">
+            <div className="history-final-icon">
+              <Flag className="h-3 w-3" />
+            </div>
+            <span>Fluxo concluído</span>
+          </div>
+        </div>
+      </div>
+
+      {historyNodes.length > 0 && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <div className="history-section-title">Histórico</div>
+          <WorkflowHistoryList nodes={historyNodes} />
+        </div>
+      )}
+
+      <div>
+        <div className="history-section-title">Posts ({posts.length})</div>
+        <div className="drawer-posts-list">
+          {posts.map((post) => {
+            const isExpanded = expandedPostId === post.id;
+            const postApprovals = approvals.filter((a) => a.post_id === post.id);
+            return (
+              <div key={post.id} className={`drawer-post-item${isExpanded ? ' expanded' : ''}`}>
+                <div
+                  className="drawer-post-trigger"
+                  onClick={() => setExpandedPostId(isExpanded ? null : post.id!)}
+                >
+                  <div className="drawer-post-trigger-left">
+                    {isExpanded ? (
+                      <ChevronDown className="h-4 w-4 drawer-post-chevron" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 drawer-post-chevron" />
+                    )}
+                    <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
+                    <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+                  </div>
+                  <div className="drawer-post-trigger-right">
+                    <PostStatusChip post={post} registry={statusRegistry} />
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="drawer-post-content">
+                    {workflow.template_id != null && workflow.template_id !== 0 && (
+                      <PropertyPanel
+                        templateId={workflow.template_id}
+                        postId={post.id!}
+                        workflowId={workflowId}
+                        propertyValues={
+                          (post as WorkflowPost & { property_values?: PostPropertyValue[] })
+                            .property_values ?? []
+                        }
+                        membros={membros}
+                        readOnly
+                      />
+                    )}
+
+                    <PostEditor
+                      key={post.id}
+                      initialContent={post.conteudo}
+                      disabled
+                      onUpdate={() => {}}
+                      threads={commentThreads.filter((t) => t.post_id === post.id)}
+                      membros={membros}
+                    />
+
+                    <PostCommentSummary
+                      threads={commentThreads.filter((t) => t.post_id === post.id)}
+                      membros={membros}
+                      onThreadClick={() => {}}
+                      readOnly
+                    />
+
+                    {postApprovals.length > 0 && (
+                      <div className="history-approval-thread">
+                        <div className="history-thread-label">
+                          <MessageSquare className="h-3.5 w-3.5" /> Comentários (
+                          {postApprovals.length})
+                        </div>
+                        {postApprovals.map((a) => (
+                          <ApprovalBubble key={a.id} approval={a} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (variant === 'page') {
+    return (
+      <div className="phone-history-page">
+        <PhoneNavBar backLabel="Voltar" onBack={onClose} />
+        <header className="phone-kit phone-large-title phone-history-page__head">
+          <h1 className="phone-large-title__title">{workflow.titulo}</h1>
+          <p className="phone-large-title__subtitle">{subtitle}</p>
+          {duration}
+        </header>
+        {body}
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="drawer-overlay" onClick={onClose} />
@@ -133,150 +303,15 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
         <div className="drawer-header">
           <div className="drawer-header-info">
             <div className="drawer-header-title">{workflow.titulo}</div>
-            <div className="drawer-header-subtitle">
-              {clienteName || '—'}
-              {lastEnd && <> &bull; Concluído em {formatDateFull(lastEnd)}</>}
-            </div>
-            {totalDays !== null && (
-              <div className="history-duration">
-                Duração total: {totalDays} dia{totalDays !== 1 ? 's' : ''}
-              </div>
-            )}
+            <div className="drawer-header-subtitle">{subtitle}</div>
+            {duration}
           </div>
           <button className="drawer-close-btn drawer-dismiss-btn" onClick={onClose} title="Fechar">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="drawer-body">
-          <div style={{ marginBottom: '1.5rem' }}>
-            <div className="history-section-title">Etapas</div>
-            <div className="history-timeline">
-              {compliance.map((c, i) => {
-                const isLate = c.daysOverdue > 0;
-                const mod = isLate ? 'late' : 'ok';
-                return (
-                  <div key={c.etapa.id} className="history-step">
-                    <div className="history-step-track">
-                      <div className={`history-step-icon history-step-icon--${mod}`}>
-                        <Check className="h-3 w-3" />
-                      </div>
-                      {i < compliance.length - 1 && (
-                        <div className={`history-step-line history-step-line--${mod}`} />
-                      )}
-                    </div>
-                    <div className="history-step-body">
-                      <div className="history-step-header">
-                        <span className="history-step-name">{c.etapa.nome}</span>
-                        <span className={`history-step-badge history-step-badge--${mod}`}>
-                          {isLate ? `${c.daysOverdue}d de atraso` : '✓ No prazo'}
-                        </span>
-                      </div>
-                      <div className="history-step-detail">
-                        {c.assigneeName} &bull; {formatDateShort(c.etapa.iniciado_em!)} →{' '}
-                        {formatDateShort(c.etapa.concluido_em!)} &bull; {c.daysUsed} dia
-                        {c.daysUsed !== 1 ? 's' : ''} (prazo: {c.etapa.prazo_dias}d{' '}
-                        {c.etapa.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'})
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="history-final-node">
-                <div className="history-final-icon">
-                  <Flag className="h-3 w-3" />
-                </div>
-                <span>Fluxo concluído</span>
-              </div>
-            </div>
-          </div>
-
-          {historyNodes.length > 0 && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <div className="history-section-title">Histórico</div>
-              <WorkflowHistoryList nodes={historyNodes} />
-            </div>
-          )}
-
-          <div>
-            <div className="history-section-title">Posts ({posts.length})</div>
-            <div className="drawer-posts-list">
-              {posts.map((post) => {
-                const isExpanded = expandedPostId === post.id;
-                const postApprovals = approvals.filter((a) => a.post_id === post.id);
-                return (
-                  <div key={post.id} className={`drawer-post-item${isExpanded ? ' expanded' : ''}`}>
-                    <div
-                      className="drawer-post-trigger"
-                      onClick={() => setExpandedPostId(isExpanded ? null : post.id!)}
-                    >
-                      <div className="drawer-post-trigger-left">
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 drawer-post-chevron" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 drawer-post-chevron" />
-                        )}
-                        <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
-                        <span className="drawer-post-titulo">
-                          {post.titulo || 'Post sem título'}
-                        </span>
-                      </div>
-                      <div className="drawer-post-trigger-right">
-                        <PostStatusChip post={post} registry={statusRegistry} />
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="drawer-post-content">
-                        {workflow.template_id != null && workflow.template_id !== 0 && (
-                          <PropertyPanel
-                            templateId={workflow.template_id}
-                            postId={post.id!}
-                            workflowId={workflowId}
-                            propertyValues={
-                              (post as WorkflowPost & { property_values?: PostPropertyValue[] })
-                                .property_values ?? []
-                            }
-                            membros={membros}
-                            readOnly
-                          />
-                        )}
-
-                        <PostEditor
-                          key={post.id}
-                          initialContent={post.conteudo}
-                          disabled
-                          onUpdate={() => {}}
-                          threads={commentThreads.filter((t) => t.post_id === post.id)}
-                          membros={membros}
-                        />
-
-                        <PostCommentSummary
-                          threads={commentThreads.filter((t) => t.post_id === post.id)}
-                          membros={membros}
-                          onThreadClick={() => {}}
-                          readOnly
-                        />
-
-                        {postApprovals.length > 0 && (
-                          <div className="history-approval-thread">
-                            <div className="history-thread-label">
-                              <MessageSquare className="h-3.5 w-3.5" /> Comentários (
-                              {postApprovals.length})
-                            </div>
-                            {postApprovals.map((a) => (
-                              <ApprovalBubble key={a.id} approval={a} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        {body}
       </div>
     </>
   );

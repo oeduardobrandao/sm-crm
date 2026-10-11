@@ -145,3 +145,37 @@ describe('ContextMenu focus return', () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 });
+
+describe('ContextMenu immediate actions', () => {
+  it('runs an immediate action inside the tap, before closing; others after closing', () => {
+    const calls: string[] = [];
+    render(
+      <MemoryRouter>
+        <ContextMenu
+          label="Ações do arquivo"
+          onOpenChange={(open) => calls.push(open ? 'open' : 'close')}
+          sections={[
+            [
+              { label: 'Download', immediate: true, onSelect: () => calls.push('download') },
+              { label: 'Renomear', onSelect: () => calls.push('rename') },
+            ],
+          ]}
+        >
+          {({ triggerProps }) => (
+            <button {...triggerProps} aria-label="Mais ações">
+              …
+            </button>
+          )}
+        </ContextMenu>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Download' }));
+    expect(calls).toEqual(['open', 'download', 'close']);
+
+    calls.length = 0;
+    fireEvent.click(screen.getByRole('button', { name: 'Mais ações' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Renomear' }));
+    expect(calls).toEqual(['open', 'close', 'rename']);
+  });
+});

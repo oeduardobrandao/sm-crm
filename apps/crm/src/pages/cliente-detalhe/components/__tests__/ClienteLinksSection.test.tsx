@@ -1,6 +1,12 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Desktop layout by default; the phone describe below flips it (jsdom's matchMedia is
+// false, so without a mock every suite would render the phone branch).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
 vi.mock('@/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store')>()),
@@ -51,7 +57,10 @@ function renderSection() {
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   const utils = render(
     <QueryClientProvider client={queryClient}>
-      <ClienteLinksSection clienteId={CLIENTE_ID} />
+      {/* The phone sheets register a history entry (useOverlayHistoryEntry). */}
+      <MemoryRouter>
+        <ClienteLinksSection clienteId={CLIENTE_ID} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
   return { ...utils, invalidateSpy };
@@ -247,5 +256,49 @@ describe('ClienteLinksSection', () => {
     await waitFor(() => expect(mockedRemove).toHaveBeenCalledWith(1));
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clienteLinks', CLIENTE_ID] });
     expect(mockedToast.success).toHaveBeenCalledWith('Link removido!');
+  });
+
+  describe('no celular', () => {
+    beforeEach(() => {
+      desktop.value = false;
+    });
+    afterEach(() => {
+      desktop.value = true;
+    });
+
+    it('lists links as rows that open the URL in a new tab', async () => {
+      mockedGet.mockResolvedValue([link()]);
+      renderSection();
+
+      const row = await screen.findByRole('link', { name: /Google Drive/ });
+      expect(row).toHaveAttribute('href', 'https://www.drive.google.com/drive/folders/abc');
+      expect(row).toHaveAttribute('target', '_blank');
+      expect(row).toHaveTextContent('Pasta de criativos');
+      expect(screen.getByRole('button', { name: 'Adicionar link' })).toBeInTheDocument();
+    });
+
+    it('Remover (swipe action) asks in a confirm sheet before removing', async () => {
+      mockedGet.mockResolvedValue([link()]);
+      mockedRemove.mockResolvedValue(undefined);
+      renderSection();
+
+      await screen.findByRole('link', { name: /Google Drive/ });
+      fireEvent.click(screen.getByRole('button', { name: 'Remover' }));
+      expect(mockedRemove).not.toHaveBeenCalled();
+
+      const sheet = await screen.findByRole('dialog');
+      fireEvent.click(within(sheet).getByRole('button', { name: /Remover/ }));
+      await waitFor(() => expect(mockedRemove).toHaveBeenCalledWith(1));
+    });
+
+    it('Editar (swipe action) opens the link dialog filled in', async () => {
+      mockedGet.mockResolvedValue([link()]);
+      renderSection();
+
+      await screen.findByRole('link', { name: /Google Drive/ });
+      fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByDisplayValue('Google Drive')).toBeInTheDocument();
+    });
   });
 });

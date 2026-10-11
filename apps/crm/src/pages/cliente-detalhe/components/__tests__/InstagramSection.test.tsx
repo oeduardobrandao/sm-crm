@@ -1,4 +1,14 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Desktop layout by default; the phone describe flips it (jsdom's matchMedia is false).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
+
+vi.mock('../../phone/ConnectLinkCells', () => ({
+  ConnectLinkCells: ({ clienteId }: { clienteId: number }) => (
+    <div data-testid="connect-link-cells">connect-cells-{clienteId}</div>
+  ),
+}));
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -179,6 +189,47 @@ describe('InstagramSection', () => {
     it('does not show the auto-publish toggle before the account has synced', () => {
       renderSection({ loadingIg: false, igSummary: IG_SUMMARY_UNSYNCED });
       expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('InstagramSection no celular', () => {
+  beforeEach(() => {
+    desktop.value = false;
+  });
+  afterEach(() => {
+    desktop.value = true;
+  });
+
+  it('keeps the connect widget and shows the connect-link rows', async () => {
+    const { container } = renderSection({ loadingIg: false, igSummary: null });
+    await waitFor(() => expect(container.querySelector('#btn-ig-connect')).not.toBeNull());
+    expect(screen.getByTestId('connect-link-cells')).toHaveTextContent('connect-cells-42');
+    expect(screen.queryByTestId('connect-link-row')).not.toBeInTheDocument();
+  });
+
+  it('once synced: analytics row and the auto-publish switch row', async () => {
+    __queueSupabaseResult('clientes', 'select', {
+      data: { auto_publish_on_approval: false },
+    });
+    __queueSupabaseResult('clientes', 'update', { data: null });
+    const { onNavigateAnalytics } = renderSection({
+      loadingIg: false,
+      igSummary: IG_SUMMARY_SYNCED,
+    });
+
+    expect(screen.getByTestId('latest-instagram-posts')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver Analytics Completo' }));
+    expect(onNavigateAnalytics).toHaveBeenCalled();
+
+    const toggle = screen.getByRole('switch', { name: /Publicar automaticamente/ });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      const update = __getSupabaseCalls().find(
+        (c) => c.table === 'clientes' && c.operation === 'update',
+      );
+      expect(update?.payload).toEqual({ auto_publish_on_approval: true });
     });
   });
 });

@@ -28,6 +28,9 @@ import {
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { publishInstagramPostNow } from '../../services/instagram';
 import { PostMediaGallery } from '../entregas/components/PostMediaGallery';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ExpressPreview } from './ExpressPreview';
+import { ExpressPostPhone } from './ExpressPostPhone';
 
 interface DraftState {
   postId: number;
@@ -141,6 +144,8 @@ function StepIndicator({
 }
 
 export default function ExpressPostPage() {
+  // Celular (PLAN F4.5): mesmo estado e mesmos comandos, outro desenho (ExpressPostPhone).
+  const isPhone = !useIsDesktop(768);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useTranslation('posts');
@@ -447,6 +452,60 @@ export default function ExpressPostPage() {
     </label>
   );
 
+  const mediaMaxFiles =
+    isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1;
+
+  if (isPhone) {
+    const typeInfo = effectiveType ? getTypeLabel(effectiveType, t) : null;
+    return (
+      <ExpressPostPhone
+        isStory={isStory}
+        onStoryChange={setIsStory}
+        loading={loading}
+        creatingDraft={creatingDraft}
+        clients={eligibleClients.map((c) => ({ id: c.id!, nome: c.nome }))}
+        selectedClientId={selectedClientId}
+        onClientChange={handleClientChange}
+        igAccount={igAccount ?? null}
+        warningMessage={warningMessage}
+        postId={draft?.postId ?? null}
+        mediaList={mediaList}
+        maxFiles={mediaMaxFiles}
+        onMediaChange={handleMediaChange}
+        typeChip={
+          typeInfo
+            ? {
+                label:
+                  isStory && mediaList.length > 1
+                    ? `${typeInfo.label} · ${t('story.segments', { count: mediaList.length })}`
+                    : typeInfo.label,
+                color: typeInfo.color,
+                bg: typeInfo.bg,
+                icon: typeInfo.icon,
+              }
+            : null
+        }
+        caption={caption}
+        onCaptionChange={setCaption}
+        maxCaption={MAX_CAPTION}
+        approvalAllowed={approvalAllowed}
+        mode={mode}
+        onModeChange={setMode}
+        hubTokenLoading={hubTokenLoading}
+        hubTokenUsable={hubTokenUsable}
+        canPublish={canPublish}
+        confirmOpen={confirmOpen}
+        onConfirmOpenChange={(o) => {
+          if (!publishing) setConfirmOpen(o);
+        }}
+        publishing={publishing}
+        publishPct={publishPct}
+        onPublishNow={handlePublishNow}
+        onSendForApproval={handleSendForApproval}
+      />
+    );
+  }
+
   return (
     <div className="animate-up" style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}>
       <div style={{ maxWidth: '720px', margin: '0 auto' }}>
@@ -596,9 +655,7 @@ export default function ExpressPostPage() {
                 <PostMediaGallery
                   postId={draft.postId}
                   forStories={isStory}
-                  maxFiles={
-                    isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1
-                  }
+                  maxFiles={mediaMaxFiles}
                   onChange={handleMediaChange}
                 />
                 {effectiveType && (
@@ -740,111 +797,13 @@ export default function ExpressPostPage() {
                 >
                   {t('labels.preview')}
                 </label>
-                <div
-                  className="rounded-lg overflow-hidden"
-                  style={{ background: '#000', padding: '0.75rem', maxWidth: '240px' }}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    {igAccount.profile_picture_url ? (
-                      <img
-                        src={igAccount.profile_picture_url}
-                        alt=""
-                        className="w-6 h-6 rounded-full"
-                        style={{ border: '1.5px solid #E1306C' }}
-                      />
-                    ) : (
-                      <div
-                        className="w-6 h-6 rounded-full"
-                        style={{ background: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)' }}
-                      />
-                    )}
-                    <span className="text-xs font-semibold" style={{ color: '#e8eaf0' }}>
-                      @{igAccount.username ?? 'conta'}
-                    </span>
-                  </div>
-                  <div
-                    className="rounded-lg overflow-hidden"
-                    style={{
-                      background: '#1a1e26',
-                      aspectRatio: isStory ? '9 / 16' : '1',
-                      maxWidth: isStory ? '150px' : undefined,
-                      margin: isStory ? '0 auto' : undefined,
-                      position: 'relative',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {isStory && mediaList.length > 1 && (
-                      <>
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: 6,
-                            left: 6,
-                            right: 6,
-                            display: 'flex',
-                            gap: 3,
-                            zIndex: 2,
-                          }}
-                        >
-                          {mediaList.map((m, i) => (
-                            <span
-                              key={m.id}
-                              style={{
-                                flex: 1,
-                                height: 2.5,
-                                borderRadius: 2,
-                                background: i === 0 ? '#fff' : 'rgba(255,255,255,0.35)',
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <span
-                          style={{
-                            position: 'absolute',
-                            top: 12,
-                            right: 8,
-                            zIndex: 2,
-                            color: '#fff',
-                            fontSize: '0.6rem',
-                            background: 'rgba(0,0,0,0.5)',
-                            padding: '1px 6px',
-                            borderRadius: 8,
-                          }}
-                        >
-                          1/{mediaList.length}
-                        </span>
-                      </>
-                    )}
-                    {mediaList.length > 0 && mediaList[0].url ? (
-                      mediaList[0].kind === 'video' ? (
-                        <video
-                          src={mediaList[0].url}
-                          poster={mediaList[0].thumbnail_url ?? undefined}
-                          muted
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <img
-                          src={mediaList[0].thumbnail_url ?? mediaList[0].url}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      )
-                    ) : (
-                      <span className="text-xs" style={{ color: '#4b5563' }}>
-                        {t('empty.mediaPlaceholder')}
-                      </span>
-                    )}
-                  </div>
-                  {!isStory && caption && (
-                    <p className="mt-2 text-xs leading-relaxed" style={{ color: '#9ca3af' }}>
-                      <strong style={{ color: '#e8eaf0' }}>@{igAccount.username ?? 'conta'}</strong>{' '}
-                      {caption.length > 100 ? caption.slice(0, 100) + '...' : caption}
-                    </p>
-                  )}
-                </div>
+                <ExpressPreview
+                  igAccount={igAccount}
+                  isStory={isStory}
+                  mediaList={mediaList}
+                  caption={caption}
+                  emptyLabel={t('empty.mediaPlaceholder')}
+                />
               </div>
             )}
 

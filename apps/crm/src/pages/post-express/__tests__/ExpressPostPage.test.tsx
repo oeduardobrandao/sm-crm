@@ -60,6 +60,10 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+// Esta suíte cobre o layout de desktop; o do celular (abaixo de 768px) tem a sua
+// própria em *.phone.test.tsx. jsdom responde false a todo matchMedia.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import ExpressPostPage from '../ExpressPostPage';
 import {
   getClientes,

@@ -106,6 +106,13 @@ function mockMatchMedia(matches: boolean) {
   );
 }
 
+/** Phone: "Responder sobre este post" lives on the post chip's long-press menu
+ *  (right-click opens the same kit ContextMenu). */
+function replyAboutPost(titulo: string) {
+  fireEvent.contextMenu(screen.getByRole('link', { name: titulo }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Responder sobre este post' }));
+}
+
 function renderPage(initialPath = '/mensagens') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const utils = render(
@@ -301,10 +308,12 @@ describe('MensagensPage', () => {
     expect(scrollTopSpy).toHaveBeenCalledWith(999);
   });
 
-  it('replies to a post via the Responder flow', async () => {
+  it('phone: replies to a post via the chip menu (Responder sobre este post)', async () => {
     renderPage('/mensagens/14');
     await screen.findByText('Trocar a foto');
-    fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
+    expect(screen.queryByRole('button', { name: 'Responder' })).not.toBeInTheDocument();
+    replyAboutPost('Post de julho');
+    expect(screen.getByText('Respondendo sobre:')).toBeInTheDocument();
     const input = screen.getByPlaceholderText('Responder sobre o post…');
     fireEvent.change(input, { target: { value: 'Feito' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -341,7 +350,7 @@ describe('MensagensPage', () => {
     mockReply.mockRejectedValueOnce(new Error('network error'));
     renderPage('/mensagens/14');
     await screen.findByText('Trocar a foto');
-    fireEvent.click(screen.getByRole('button', { name: 'Responder' }));
+    replyAboutPost('Post de julho');
     const input = screen.getByPlaceholderText('Responder sobre o post…');
     fireEvent.change(input, { target: { value: 'Feito' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -350,5 +359,62 @@ describe('MensagensPage', () => {
       await Promise.resolve();
     });
     expect(screen.getByPlaceholderText('Responder sobre o post…')).toHaveValue('Feito');
+  });
+
+  describe('phone layout (below 768px)', () => {
+    it('list: page header with the info text visible, search and sort', async () => {
+      renderPage();
+      expect(await screen.findByText('ACME')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Mensagens' })).toBeInTheDocument();
+      // The desktop Info tooltip text is the visible subtitle on phones.
+      expect(
+        screen.getByText(/Toda a comunicação com os clientes, agrupada por conversa/),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText('2 não lidas')).toHaveTextContent('2');
+
+      // Most recent first: Beta Corp (31/07) above ACME (30/07).
+      const rows = () => screen.getAllByTestId(/^conversa-/).map((el) => el.dataset.testid);
+      expect(rows()).toEqual(['conversa-15', 'conversa-14']);
+      fireEvent.click(screen.getByRole('button', { name: 'Ordenar: Mais recentes' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Mais antigas' }));
+      await waitFor(() => expect(rows()).toEqual(['conversa-14', 'conversa-15']));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buscar cliente' }));
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar cliente' }), {
+        target: { value: 'beta' },
+      });
+      expect(rows()).toEqual(['conversa-15']);
+    });
+
+    it('thread: nav bar with the client, the four types as a segmented control', async () => {
+      renderPage('/mensagens/14');
+      await screen.findByText('Trocar a foto');
+      expect(screen.getByRole('heading', { level: 1, name: /ACME/ })).toBeInTheDocument();
+      const tipos = screen.getByRole('radiogroup', { name: 'Tipo de mensagem' });
+      expect(tipos).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('radio', { name: 'Mensagens' }));
+      expect(screen.queryByText('Trocar a foto')).not.toBeInTheDocument();
+      expect(screen.getByText('Obrigado!', { selector: 'p' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('radio', { name: 'Aprovações' }));
+      expect(screen.getByText('Trocar a foto')).toBeInTheDocument();
+    });
+
+    it('thread: the post chip menu offers Abrir post and cancelling the reply restores the composer', async () => {
+      renderPage('/mensagens/14');
+      await screen.findByText('Trocar a foto');
+      fireEvent.contextMenu(screen.getByRole('link', { name: 'Post de julho' }));
+      expect(screen.getByRole('menuitem', { name: 'Abrir post' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Responder sobre este post' }));
+      expect(screen.getByPlaceholderText('Responder sobre o post…')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar resposta' }));
+      expect(screen.getByPlaceholderText('Enviar mensagem…')).toBeInTheDocument();
+    });
+
+    it('thread states keep the nav bar back to the list', async () => {
+      renderPage('/mensagens/999');
+      expect(await screen.findByText('Conversa não encontrada.')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Voltar para as conversas' }));
+      expect(screen.getByTestId('current-path')).toHaveTextContent('/mensagens');
+    });
   });
 });

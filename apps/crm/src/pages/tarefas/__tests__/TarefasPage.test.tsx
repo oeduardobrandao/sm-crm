@@ -33,6 +33,9 @@ vi.mock('@/context/AuthContext', async (importOriginal) => {
   return { ...actual, useAuth: useAuthMock };
 });
 
+// Desktop layout (the phone branch has its own suite); jsdom's matchMedia reports false.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import TarefasPage from '../TarefasPage';
 import type { TarefaWithRelations } from '../../../store';
 

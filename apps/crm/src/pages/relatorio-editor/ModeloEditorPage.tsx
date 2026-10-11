@@ -1,7 +1,7 @@
 // Editor de modelo (spec 2026-09-25 §2): o mesmo canvas do relatório, com
 // dados de exemplo e a marca real do workspace, gravando em report_templates.
 // Sem PDF, atualizar dados, ver como cliente ou salvar/aplicar template.
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Info, Plus, Sparkles } from 'lucide-react';
@@ -24,8 +24,13 @@ import { AddWidgetDrawer } from './AddWidgetDrawer';
 import { LayersPanel } from './LayersPanel';
 import { AppearancePopover } from './AppearancePopover';
 import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
+import { withAiSampleText } from './templateOps';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
+const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
 
 function AiPlaceholder() {
   return (
@@ -75,6 +80,24 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     handleInsert,
     handleRemoveBlock,
   } = useBlockEditing(layoutRef, commit);
+  // Celular (D27): o modelo só é visto, não editado. Todos os hooks acima seguem
+  // montados para a ordem não mudar quando a largura cruza 768px.
+  const isPhone = !useIsDesktop(768);
+  const previewLayout = useMemo(() => withAiSampleText(layout), [layout]);
+
+  if (isPhone) {
+    return (
+      <ReportPhoneView
+        title={title}
+        subtitle="Modelo de relatório"
+        fallbackTo={SETTINGS_PATH}
+        backLabel="Voltar para Modelos"
+        sampleNote={SAMPLE_NOTE}
+        layout={previewLayout}
+        snapshot={snapshot}
+      />
+    );
+  }
 
   return (
     <div className="rb-editor-with-rail">
@@ -150,7 +173,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         }}
       >
         <Info className="h-4 w-4" aria-hidden="true" />
-        Dados de exemplo. Os números reais entram quando o relatório é gerado.
+        {SAMPLE_NOTE}
       </p>
 
       <EditorCanvas
@@ -195,6 +218,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
 export default function ModeloEditorPage() {
   // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
   usePreventStrayFileDrop();
+  const isPhone = !useIsDesktop(768);
   const { id } = useParams<{ id: string }>();
   const {
     data: template,
@@ -219,7 +243,8 @@ export default function ModeloEditorPage() {
   // qual dos dois aconteceu.
   if (isError) {
     return (
-      <div style={{ padding: '2rem' }}>
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar backLabel="Voltar para Modelos" fallbackTo={SETTINGS_PATH} />}
         <p style={{ color: 'var(--text-muted)' }}>Não foi possível carregar o modelo.</p>
         <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
       </div>
@@ -228,7 +253,8 @@ export default function ModeloEditorPage() {
 
   if (!template) {
     return (
-      <div style={{ padding: '2rem' }}>
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar backLabel="Voltar para Modelos" fallbackTo={SETTINGS_PATH} />}
         <p style={{ color: 'var(--text-muted)' }}>Modelo não encontrado.</p>
         <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
       </div>
