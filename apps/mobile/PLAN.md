@@ -87,7 +87,7 @@ Cross-cutting rules for C1-C4 (from the plan review):
 - **One owner per hold gesture.** On phone cards a long-press opens the context menu; drag starts
   only from a drag handle or in an explicit "Reordenar" mode. dnd-kit's `TouchSensor` (250 ms)
   would otherwise win over any long-press menu.
-- **Every sheet and pushed screen gets a history entry** (`useOverlayHistoryEntry`), so iOS
+- **Every sheet and pushed screen gets a history entry** (`useSheetHistory`, which wraps `useOverlayHistoryEntry`), so iOS
   edge-swipe Back and Android Back close one layer, not the page.
 - **Hold targets** set `-webkit-touch-callout: none` and `user-select: none` during the hold, or iOS
   shows its link callout or text selection instead of the menu.
@@ -179,7 +179,8 @@ marketing pages outside the shell. Inputs: three code audits (scratchpad `f-audi
 Rules for every F PR, on top of C's cross-cutting rules:
 
 - **Same breakpoint everywhere.** A page's phone branch is `!useIsDesktop(768)`. Existing 900/901
-  branches stay as the tablet fallback (768-900) unless they only existed to approximate phones.
+  branches stay as the tablet fallback (768-900): Leads, Financeiro, Automações, ContactsTab,
+  AutomationContactsSection and Entregas keep their `useIsDesktop(901)`.
 - **One page header.** Root screens render the F0 page header (large title, page actions, bell);
   pushed screens render the F0 nav bar (back, title, actions). No page keeps `.header` on phones.
 - **No hover-only information.** Anything in `title=`, `data-tooltip` or `HelpTooltip` is either
@@ -194,24 +195,50 @@ Rules for every F PR, on top of C's cross-cutting rules:
 - **Tests:** each PR updates the suites that render its phone branch and adds desktop mocks
   (`useIsDesktop` true) where a suite asserts desktop markup.
 
-### F0. Foundations (one PR, blocks F1-F5)
+### F0. Foundations (three stacked PRs; lanes stack on the one they need)
+
+All of F0 is CRM-only: Admin has its own `dialog.tsx` copy and the Hub uses `HubDialog`.
+
+**F0a. Phone layout context + chrome (PR).** Needed by every lane.
 
 | # | Step | Effort | Why this level |
 |---|---|---|---|
-| F0.1 | Page header: `PhonePageHeader` = `LargeTitleHeader` + page actions + the shell's bell and help-links in one 44px row; `PhoneShellHeader` stops rendering its own bar on routes that render a page header (route opt-in, so unported routes keep today's bar until their PR lands). `PhoneNavBar` for pushed screens (back, title, trailing actions), extracted from `PhoneEditorHeader` | medium | Touches the shell on every route; opt-in avoids a flag day |
-| F0.2 | Kit additions with tests: `FormRow` (from the `.phone-field` CSS), `PickerCell` + `PickerSheet` (checkmark list replacing Select/DropdownMenu/native select), `InfoButton` (tap-to-open sheet), `KpiTiles` (phone variant of `StatCardGrid`, from ChartViewPhone's Tile), `BarList` (CSS bar rows replacing small charts), `PhoneConfirmSheet` and a generic `PhoneFiltersSheet` moved from `pages/entregas/phone` into the kit | high | Each replaces many call sites; API mistakes multiply |
-| F0.3 | Phone variants of the primitives: `DialogContent` renders as a large bottom sheet below 768 (opt-out prop for dialogs that must stay fullscreen); `AlertDialogContent` renders as an action-sheet-style confirm; `HelpTooltip` and `[data-tooltip]` get a tap path (InfoButton) on touch | high | Every dialog in the app changes on phones; unsaved-work and focus-return semantics must hold |
-| F0.4 | Global chrome: Sonner `mobileOffset` above the tab bar; global search full-screen on phones; Mais rows with `newTab` open outside the shell correctly (Novidades, Privacidade); `ContextHelpLinks` and other `Sheet side="bottom"` uses move to the kit `BottomSheet`; banner dismiss target 44px with a Portuguese label; `GuideDialog` as a sheet; safe-area + `dvh` on `/workspace-setup` and `/comecar` | medium | Many small, independent fixes |
-| F0.5 | Tests for F0 and the desktop mocks the primitives' phone branches require in existing suites | medium | DialogContent change flips many suites |
+| F0a.1 | `PhoneLayoutContext` provided by `AppLayout` (routes live in `<Routes>` under a single `path: '*'` data route, so route `handle`s can't carry flags). A page opts in with `usePhoneChrome({ pageHeader: true, tabBar: false? })`, which sets `data-phone-page-header` / `data-phone-tab-bar="hidden"` on `.app-container`; CSS keyed on those attributes hides `PhoneShellHeader`, zeroes `.main-content`'s `--phone-header-height` offset (style.css:3650) and, for hidden tab bars, the 104px bottom padding (3652) | high | Shell behaviour on every route; layout offsets are CSS-coupled |
+| F0a.2 | `PhonePageHeader` (large title + page actions + the shell's bell and `ContextHelpLinks`, both made importable) and `PhoneNavBar` for pushed screens (back, title, actions; extracted from `PhoneEditorHeader`; never `role="dialog"`, it stays mounted) | medium | |
+| F0a.3 | Global chrome: Sonner `mobileOffset` above the tab bar; global search full-screen on phones; Mais `newTab` rows (Novidades, Privacidade) honoured (`MobileNav.tsx:268/279` ignore it); `ContextHelpLinks` on the kit `BottomSheet`; banner dismiss 44px with a Portuguese label; `GuideDialog` as a sheet; safe-area + `dvh` on `/workspace-setup` and `/comecar` | medium | Small independent fixes |
+| F0a.4 | e2e: a 390px Playwright project and a smoke test that walks every in-shell route asserting no horizontal overflow (`scrollWidth <= clientWidth`); the "no `.header`" assertion is added per route as lanes land | medium | Turns F6's done criteria into a gate |
+
+**F0b. Kit additions (PR).**
+
+| # | Step | Effort | Why this level |
+|---|---|---|---|
+| F0b.1 | `FormRow` (from the `.phone-field` CSS), `PickerCell` + `PickerSheet` (checkmark list replacing Select/DropdownMenu/native select), `InfoButton` (tap-to-open sheet), `BarList` (CSS bar rows replacing small charts) | high | Each replaces many call sites |
+| F0b.2 | `StatCardGrid` renders compact tiles on phones, in place (10 importers across F1-F4; no per-lane swap) | medium | Shared file, one owner |
+| F0b.3 | Move `PhoneConfirmSheet` and a generic `PhoneFiltersSheet` from `pages/entregas/phone` into the kit, keeping re-exports so Entregas imports don't break | low | |
+| F0b.4 | `HelpTooltip` gets the `InfoButton` tap path on touch. `[data-tooltip]` is CSS-only (14 files): each lane replaces its own | low | |
+
+**F0c. Dialog primitives as sheets (PR, highest risk).**
+
+| # | Step | Effort | Why this level |
+|---|---|---|---|
+| F0c.1 | `DialogContent` below 768 renders as a large bottom sheet; `AlertDialogContent` as an action-sheet confirm. Gated on `PhoneLayoutContext` (default desktop outside it), not on `useIsDesktop`, so suites that render dialogs outside the shell don't flip (47 test files query dialogs; 82 files render `DialogContent`, 52 `AlertDialogContent`). Styled with CSS classes (`.phone-sheet`) plus `phone-kit` on the portaled element, not utilities: `cn` is `twMerge`, so callers' `max-w-*`/`w-[..]` and inline `maxWidth` (GuideDialog) would win. Keeps `layout="fullscreen"` callers (`EventoFormDialog`, `MediaAdjustmentDialog`) as they are, `data-dialog-scroll` on the scroll wrapper (TourOverlay measures it) and the DOM order that lets the confirm AlertDialog sit over its dialog at the same z-index | high | Every dialog in the app changes on phones |
+| F0c.2 | History: each phone dialog registers a history entry; Back clicks a hidden `DialogPrimitive.Close` so it goes through `confirmClose`. Fix `useOverlayHistoryEntry` to re-push when a close is cancelled ("Continuar editando"), or the next Back leaves the page | high | Unsaved-work semantics |
+| F0c.3 | Tests: primitives in and out of the shell, confirmClose on Back, re-push, z-order; desktop mocks where in-shell suites assert desktop markup | medium | |
+
+`TarefaFormDialog` is a `ui/dialog`, so F0c converts it for Tarefas, Ideias and Entregas at once.
+`IdeiaDrawer` is a `ui/sheet` and is not covered: F2c owns it, F3's Hub ideias tab consumes it.
+`Sheet side="bottom"` filter sheets in lane files (Clientes, Equipe, Ideias, TarefasFilters,
+Agenda popovers) are converted by the lane that owns the page.
 
 ### F1. Primary tabs (PR)
 
 | # | Step | Effort | Why this level |
 |---|---|---|---|
 | F1.1 | Início: page header; Hoje and Minha fila as grouped sections (check accessory, bucket chips); health monitor as grouped rows with filter chips, search and sort in the header; KPIs as `KpiTiles` | medium | Small files, many links |
-| F1.2 | Mensagens: list with page header (info text as subtitle), search and sort; thread as a pushed screen with the type segmented control, PostChip long-press preview with Abrir post / Responder, composer pinned at the bottom with the tab bar hidden on `/mensagens/:id` (shell hook) | medium | Shell hook for hiding the tab bar |
-| F1.3 | Agenda: page header with period subtitle, filters sheet (Mostrar, Pessoas, Camadas, Sincronizar), Mês/Dia/Lista segmented, event and layer details as bottom sheets reusing the popover bodies, "Mais ações" as action sheet, drag off on phones (edit via form) | high | Large popovers, FullCalendar touch defaults, deep links |
-| F1.4 | Tests | medium | |
+| F1.2 | Mensagens: list with page header (info text as subtitle), search and sort; thread as a pushed screen with the type segmented control, PostChip long-press preview with Abrir post / Responder, composer pinned at the bottom with the tab bar hidden on `/mensagens/:id` via `usePhoneChrome({ tabBar: false })` (F0a.1) | medium | |
+| F1.3 | Agenda (`/calendario` with `feature_agenda`): page header with period subtitle, filters sheet (Mostrar, Pessoas, Camadas, Sincronizar), Mês/Dia/Lista segmented, event and layer details as bottom sheets reusing the popover bodies, "Mais ações" as action sheet, drag off on phones (edit via form) | high | Large popovers, FullCalendar touch defaults, deep links |
+| F1.4 | Calendário editorial (`/calendario` without `feature_agenda`, Free plans, reached from Mais): CalendarViewPhone month + day list with confirm actions; Datas comemorativas as chips + grouped months | medium | Same route, other mode |
+| F1.5 | Tests | medium | |
 
 ### F2. Mais lists (one PR per lane, parallel)
 
@@ -226,11 +253,11 @@ Rules for every F PR, on top of C's cross-cutting rules:
 
 | # | Step | Effort | Why this level |
 |---|---|---|---|
-| F3.1 | Shell: `/clientes/:id` on phones is a sections index (4 groups, 11 sections) instead of the pill strip; sections stay real routes with the nav bar; Editar / foto in "…" | medium | Index route behaves differently by layout |
+| F3.1 | Shell: `/clientes/:id` on phones is a sections index (4 groups, 11 sections) instead of the pill strip; sections stay real routes with the nav bar; Editar / foto in "…". `ClienteDetalheIndexRedirect` must keep sending OAuth callbacks (`ig_connected`, `ig_error`, `tt_*`) to `redes-sociais` on phones | medium | Index route behaves differently by layout; OAuth return path |
 | F3.2 | Visão geral, Relatórios, Acesso, Marca, Financeiro, Arquivos tabs as grouped lists | medium | Mostly presentational |
 | F3.3 | Entregas tab with the C3 phone cards, CalendarViewPhone and the phone-aware dialogs; `EditWorkflowModal` and `HistoryDrawer` phone layouts | medium | Reuses C3 |
 | F3.4 | Briefing (picker, "…" actions, filter, collapsible sections, Reordenar mode, templates sheet) and Páginas (list + pushed editor with `PhoneFormatBar`) | high | Two editors with reorder |
-| F3.5 | Redes sociais: kit layout around the existing IG/TikTok innerHTML cards (restyled, not rewritten, D31) | low | |
+| F3.5 | Redes sociais: kit layout around the existing IG/TikTok innerHTML cards (restyled, not rewritten, D31). `AutomationContactsSection` is owned here; F4.6 consumes it | low | |
 
 ### F4. Analytics, automations, publishing (PR, can split)
 
@@ -247,7 +274,7 @@ Rules for every F PR, on top of C's cross-cutting rules:
 
 | # | Step | Effort | Why this level |
 |---|---|---|---|
-| F5.1 | Settings index on phones at `/configuracao` (profile cell + Conta/Workspace/Avançado from `visibleConfigTabs()`); each tab keeps its route under a nav bar; the perfil redirect becomes desktop-only | medium | Route behaviour differs by layout |
+| F5.1 | Settings index on phones at `/configuracao` (profile cell + Conta/Workspace/Avançado from `visibleConfigTabs()`); each tab keeps its route under a nav bar; the index redirect lives in `App.tsx:236` and becomes a layout-aware element (desktop keeps the perfil redirect) | medium | Route behaviour differs by layout |
 | F5.2 | Perfil, Workspace, Armazenamento, Relatórios, MCP as grouped forms | medium | |
 | F5.3 | Notificações (channel segmented: No app / E-mail), Membros (rows push a member sheet), Papéis (per-module segmented), Status de posts (fixes today's overflow; reorder via menu), Hub (sections pushed, preview sheet defaulting to Celular, Salvar bar; fixes the 340px grid overflow) | high | Four of the heaviest tabs |
 | F5.4 | Cobrança: plan list, interval segmented, `PagarmeCheckoutDialog` as a full-screen sheet (shared with `/comecar`) | medium | Billing form on a keyboard |
@@ -262,15 +289,15 @@ button row, a sideways table, a centered dialog or hover-only help below 768px.
 ### F order and parallelism
 
 ```
-F0 foundations ──┬── F1 primary tabs ───────┐
-                 ├── F2a / F2b / F2c / F2d ─┤
-                 ├── F3 cliente detalhe ────┤── F6 sweep ── D
-                 ├── F4 analytics etc. ─────┤
-                 └── F5 configurações ──────┘
+F0a ── F0b ── F0c ┬── F1 primary tabs ──────┐
+                  ├── F2a / F2b / F2c / F2d ┤
+                  ├── F3 cliente detalhe ───┤── F6 sweep ── D
+                  ├── F4 analytics etc. ────┤
+                  └── F5 configurações ─────┘
 ```
 
-F1-F5 start once F0 is merged (or stacked on its branch while it's in review) and run as parallel
-lanes in separate worktrees. They're frontend only: no migrations, no edge functions.
+F1-F5 stack on F0c (which stacks on F0b and F0a) while those are in review, and run as parallel
+lanes in separate worktrees; each lane rebases as the F0 PRs merge. They're frontend only: no migrations, no edge functions.
 
 ## Phase D: CRM native module (PR, parallel with C3/C4)
 
