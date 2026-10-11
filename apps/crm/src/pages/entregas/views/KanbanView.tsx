@@ -2,7 +2,9 @@ import { Fragment, useState, useCallback, useEffect, useMemo, useRef } from 'rea
 import {
   DndContext,
   DragOverlay,
+  MouseSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -72,6 +74,8 @@ import {
 } from '../postProcessCommands';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { useWorkflowStageCommands } from '../hooks/useWorkflowStageCommands';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneKanbanBoard } from '../phone/PhoneKanbanBoard';
 
 interface KanbanViewBaseProps {
   /** Persistencia das prefs de ordenacao por coluna; opcional para os testes. */
@@ -813,6 +817,13 @@ export function KanbanView({
   }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Celular: a pressão longa é do menu do card (ContextMenu); o arrasto só
+  // existe no modo Reordenar, pela alça, com o atraso de toque do kit.
+  const isPhone = !useIsDesktop(768);
+  const phoneSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
 
   const findCard = (id: string) => localCards.find((c) => String(c.workflow.id) === id);
   const findPost = (id: string) => posts.find((p) => p.id === id);
@@ -1097,6 +1108,71 @@ export function KanbanView({
             : 'Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.'}
         </p>
       </div>
+    );
+  }
+
+  if (isPhone) {
+    const countsFor = (id: number) => ({
+      postsCount: postsCounts.get(id) ?? 0,
+      approvedPostsCount: approvedPostsCounts.get(id) ?? 0,
+      clearedClienteCount: clearedClienteCounts.get(id) ?? 0,
+      revisaoInternaCount: revisaoInternaCounts.get(id) ?? 0,
+      awaitingClienteCount: awaitingClienteCounts.get(id) ?? 0,
+    });
+    return (
+      <>
+        <PhoneKanbanBoard
+          rows={boardRows}
+          activeRowKey={activeRowKey}
+          onActiveRowKeyChange={setActiveRowKey}
+          displayMixed={displayMixed}
+          sortModeFor={sortModeFor}
+          setColumnSort={setColumnSort}
+          sensors={phoneSensors}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => {
+            setActiveEntity(null);
+            setDropSlot(null);
+            pendingInsertRef.current = null;
+          }}
+          activeEntity={activeEntity}
+          membros={membros}
+          onRefresh={onRefresh}
+          countsFor={countsFor}
+          workflow={{
+            open: onCardClick,
+            edit: onEditClick,
+            forward: stage.forward,
+            revert: stage.revert,
+            duplicate: onDuplicateWorkflowClick
+              ? (card) => onDuplicateWorkflowClick(card, postsCounts.get(card.workflow.id!) ?? null)
+              : undefined,
+            remove: onDeleteWorkflowClick,
+          }}
+          post={{
+            open: onPostClick,
+            forward: (entity) =>
+              canConcluir(entity.process)
+                ? commands.concluir(targetOf(entity))
+                : commands.avancar(targetOf(entity)),
+            forwardLabel: (entity) => forwardLabelFor(entity.process),
+            canRevert: (entity) => previousStepOf(entity.process) != null,
+            revert: (entity) => commands.voltar(targetOf(entity)),
+            removeProcess: (entity) => commands.remover(targetOf(entity)),
+            duplicate: onDuplicatePostClick,
+            remove: onDeletePostClick,
+          }}
+          onAddWorkflow={onAddWorkflow}
+          onAddPostIndividual={onAddPostIndividual}
+          onCreateTemplate={onCreateTemplate}
+          createTemplateDisabled={createTemplateDisabled}
+          postProcessesEnabled={postProcessesEnabled}
+        />
+        {stage.dialogs}
+        {commands.dialogs}
+      </>
     );
   }
 
