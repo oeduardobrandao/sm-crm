@@ -16393,6 +16393,219 @@ button.phone-sheet__grabber::before {
   outline-offset: -2px;
 }
 
+/* ---- Dialog primitives as sheets (F0c) ----
+   `ui/dialog` and `ui/alert-dialog` inside the phone shell. The content keeps the caller's
+   className (its own hooks), so every geometry rule here is `.phone-kit.phone-*` (two
+   classes) to outrank the single-class utilities callers pass for desktop: max-w-*,
+   w-[..], p-*, max-h-*, overflow-*, z-*, grid/gap. */
+.phone-kit.phone-dialog {
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 9011;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: auto;
+  max-width: none;
+  max-height: calc(100dvh - max(env(safe-area-inset-top, 0px), 20px) - 10px);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--phone-radius-sheet) var(--phone-radius-sheet) 0 0;
+  background: var(--phone-sheet-bg);
+  box-shadow: var(--phone-shadow-menu);
+  color: var(--phone-label);
+}
+.phone-dialog__grab {
+  flex-shrink: 0;
+  height: 22px;
+  padding-top: 6px;
+  touch-action: none;
+  cursor: grab;
+}
+.phone-dialog__grab .phone-sheet__grabber {
+  margin-top: 0;
+}
+.phone-kit.phone-dialog .phone-dialog__close {
+  position: absolute;
+  top: 18px;
+  right: 16px;
+  z-index: 2;
+}
+.phone-dialog__body {
+  position: relative;
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 16px;
+  min-height: 0;
+  padding: 4px var(--phone-gutter) calc(16px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-kit.phone-dialog [data-dialog-header] {
+  min-height: 30px;
+  padding-right: 40px;
+  text-align: left;
+}
+/* The footer stays at the bottom of the sheet while the form scrolls (and above the
+   keyboard, which shrinks the sheet with the viewport). */
+.phone-kit.phone-dialog [data-dialog-footer] {
+  position: sticky;
+  bottom: calc(-16px - env(safe-area-inset-bottom, 0px));
+  z-index: 1;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  margin: 0 calc(-1 * var(--phone-gutter)) calc(-16px - env(safe-area-inset-bottom, 0px));
+  padding: 12px var(--phone-gutter) calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--phone-sheet-bg);
+}
+.phone-kit.phone-dialog [data-dialog-footer] > :not([hidden]) {
+  width: 100%;
+  min-height: 50px;
+  margin: 0;
+  border-radius: 14px;
+  font-size: var(--phone-text-body);
+}
+
+/* Confirm (AlertDialog) as an action sheet: header, extra content and actions form one
+   floating group; the cancel control sits apart below it. The footer dissolves
+   (`display: contents`) so its buttons can be ordered and styled as group rows. Cancel is
+   `AlertDialogCancel` or an outline Button; destructive is a `bg-destructive` / `--danger`
+   button. */
+.phone-kit.phone-alert {
+  position: fixed;
+  top: auto;
+  right: max(8px, env(safe-area-inset-right, 0px));
+  bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  left: max(8px, env(safe-area-inset-left, 0px));
+  z-index: 9011;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: auto;
+  max-width: none;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+  text-align: center;
+  outline: none;
+}
+.phone-kit.phone-alert[data-state='open'] {
+  animation: sheet-slide-in-bottom 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.phone-kit.phone-alert[data-state='closed'] {
+  animation: sheet-slide-out-bottom 0.24s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.phone-kit.phone-alert > :not([data-alert-footer]),
+.phone-kit.phone-alert [data-alert-footer] > * {
+  background: var(--phone-menu-bg);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+}
+.phone-kit.phone-alert > :first-child {
+  border-radius: 14px 14px 0 0;
+}
+.phone-kit.phone-alert [data-alert-header] {
+  gap: 4px;
+  margin: 0;
+  padding: 14px 16px;
+  text-align: center;
+}
+.phone-kit.phone-alert [data-alert-header] > * {
+  margin: 0;
+}
+.phone-kit.phone-alert [data-alert-title] {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.phone-kit.phone-alert [data-alert-description] {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+}
+/* Extra content between header and footer (radios, an input). */
+.phone-kit.phone-alert > :not([data-alert-header]):not([data-alert-footer]) {
+  margin: 0;
+  padding: 0 16px 14px;
+  font-size: var(--phone-text-subhead);
+  text-align: left;
+}
+.phone-kit.phone-alert [data-alert-footer] {
+  display: contents;
+}
+.phone-kit.phone-alert [data-alert-footer] > * {
+  order: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  min-height: 56px;
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+  border-top: 1px solid var(--phone-menu-separator);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 400;
+  opacity: 1;
+}
+.phone-kit.phone-alert [data-alert-footer] > [class*='bg-destructive'],
+.phone-kit.phone-alert [data-alert-footer] > [class*='--danger'] {
+  color: var(--phone-destructive);
+}
+/* Last row of the group: the last action that isn't the cancel. */
+.phone-kit.phone-alert
+  [data-alert-footer]
+  > :not([data-alert-cancel]):not([class*='border-input']):not(
+    :has(~ :not([data-alert-cancel]):not([class*='border-input']))
+  ) {
+  border-radius: 0 0 14px 14px;
+}
+.phone-kit.phone-alert [data-alert-footer] > :is([data-alert-cancel], [class*='border-input']) {
+  order: 2;
+  margin-top: 8px;
+  border-top: 0;
+  border-radius: 14px;
+  background: var(--phone-cell);
+  font-weight: 600;
+}
+.phone-kit.phone-alert [data-alert-footer] > :active {
+  background: var(--phone-fill);
+}
+.phone-kit.phone-alert [data-alert-footer] > :disabled {
+  opacity: 0.4;
+}
+.phone-kit.phone-alert [data-alert-footer] > :focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .phone-kit.phone-alert {
+    animation: none !important;
+  }
+}
+
 /* ---- Context menu (long-press) ---- */
 /* During the hold iOS would show its link callout or start a text selection. */
 .phone-hold-target[data-holding] {
