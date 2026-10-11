@@ -12,6 +12,8 @@ import { AgentPendingSection } from './components/AgentPendingSection';
 import { TodayCard } from './components/TodayCard';
 import { MinhaFilaCard } from './components/MinhaFilaCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
+import { DashboardPhone } from './phone/DashboardPhone';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function DashboardPage() {
   const { role, workspaceRole, canSeeFinancials } = useAuth();
@@ -19,6 +21,7 @@ export default function DashboardPage() {
   // stale across workspace switches (a user can be owner in one workspace and
   // agent in another). Fall back to `role` only while membership resolves.
   const isAgent = (workspaceRole ?? role) === 'agent';
+  const isPhone = !useIsDesktop(768);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -74,6 +77,39 @@ export default function DashboardPage() {
     .filter((tx) => tx.tipo === 'saida' && tx.status === 'agendado')
     .reduce((s, tx) => s + Number(tx.valor), 0);
 
+  const importBanner = clientesRes.data && <ImportBanner clienteCount={clientes.length} />;
+  const financeStrip = canSeeFinancials === true && stats && (
+    <FinanceKpiStrip
+      aReceber={aReceber}
+      aPagar={aPagar}
+      saldoProjetado={stats.saldo}
+      receitaMensal={stats.receitaMensal}
+      canSeeFinancials={canSeeFinancials}
+    />
+  );
+
+  if (isPhone) {
+    return (
+      <DashboardPhone
+        isAgent={isAgent}
+        cards={
+          !isAgent && (
+            <>
+              <TrialNudgeCard />
+              <WhatsAppSupportCard />
+            </>
+          )
+        }
+        footer={
+          <>
+            {importBanner}
+            {financeStrip}
+          </>
+        }
+      />
+    );
+  }
+
   return (
     <div>
       <TodayCard />
@@ -85,17 +121,9 @@ export default function DashboardPage() {
       {/* Agents see their own pending work where managers see client health. */}
       {isAgent ? <AgentPendingSection /> : <ClientHealthMonitor />}
 
-      {clientesRes.data && <ImportBanner clienteCount={clientes.length} />}
+      {importBanner}
 
-      {canSeeFinancials === true && stats && (
-        <FinanceKpiStrip
-          aReceber={aReceber}
-          aPagar={aPagar}
-          saldoProjetado={stats.saldo}
-          receitaMensal={stats.receitaMensal}
-          canSeeFinancials={canSeeFinancials}
-        />
-      )}
+      {financeStrip}
     </div>
   );
 }

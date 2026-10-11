@@ -39,6 +39,9 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
   };
 });
 
+// Desktop layout (the phone branch has its own suite); jsdom's matchMedia reports false.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import { CalendarView } from '../views/CalendarView';
 
 const SERIE = {

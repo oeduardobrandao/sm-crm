@@ -1,0 +1,194 @@
+/* Classic Calendário below 768px (Free plans). Phone-only markup, phone-cal-* classes
+   on the --phone-* tokens. */
+
+.phone-cal {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-cal-tabs {
+  margin-bottom: 16px;
+}
+
+/* ---- Month grid ---- */
+.phone-cal-month {
+  margin: 0 0 20px;
+  padding: 12px 8px 10px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-cal-month__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px 8px;
+}
+.phone-cal-month__title {
+  margin: 0;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+}
+.phone-cal-month__nav {
+  display: flex;
+  gap: 4px;
+}
+.phone-cal-month__weekdays,
+.phone-cal-month__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.phone-cal-month__weekdays span {
+  padding: 4px 0;
+  color: var(--phone-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+.phone-cal-month__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 3px;
+  min-height: 44px;
+  padding: 6px 0 4px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-cal-month__day:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+.phone-cal-month__day--today {
+  color: var(--phone-accent);
+  font-weight: 700;
+}
+.phone-cal-month__day--selected {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font-weight: 700;
+}
+.phone-cal-month__dots {
+  display: flex;
+  gap: 2px;
+  height: 5px;
+}
+.phone-cal-month__dots i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+}
+
+/* ---- Day list ---- */
+.phone-cal-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+.phone-cal-pago {
+  color: var(--phone-label-secondary);
+  text-decoration: line-through;
+}
+.phone-cal-confirm {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-cal-confirm:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-cal-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.phone-cal-badge--ok {
+  background: color-mix(in srgb, var(--phone-success) 15%, transparent);
+  color: var(--phone-success);
+}
+.phone-cal-empty {
+  margin: 0 16px 20px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+.phone-cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 16px 20px;
+  color: var(--phone-label-secondary);
+  font-size: 12px;
+}
+.phone-cal-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.phone-cal-legend .phone-cal-dot {
+  width: 8px;
+  height: 8px;
+}
+
+/* ---- Datas comemorativas ---- */
+.phone-cal-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.phone-cal-chips {
+  flex: 1;
+  min-width: 0;
+}
+.phone-cal-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-cal-search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-cal-search input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+.phone-cal-count {
+  margin: 0 16px 6px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}

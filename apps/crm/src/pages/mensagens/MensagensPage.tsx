@@ -11,6 +11,9 @@ import {
   ThreadNotFound,
   ThreadPlaceholder,
 } from './components/ThreadStatus';
+import { MensagensListPhone } from './phone/MensagensListPhone';
+import { ConversationThreadPhone } from './phone/ConversationThreadPhone';
+import { ThreadPhoneShell } from './phone/ThreadPhoneShell';
 
 export default function MensagensPage() {
   const { clienteId: clienteIdParam } = useParams();
@@ -42,19 +45,15 @@ export default function MensagensPage() {
     navigate(`/mensagens/${id}`);
   }
 
-  const onBack = !isDesktop ? () => navigate('/mensagens') : undefined;
-
   function renderThreadSlot() {
-    if (invalidId) return <ThreadNotFound onBack={onBack} />;
-    // Only reachable when isDesktop: on mobile with no id, showThread below
-    // is false and the list fills the screen instead.
+    if (invalidId) return <ThreadNotFound />;
     if (clienteId == null) return <ThreadPlaceholder />;
-    if (conversas.isLoading) return <ThreadLoading onBack={onBack} />;
+    if (conversas.isLoading) return <ThreadLoading />;
     if (conversasHardError) {
-      return <ThreadLoadError onRetry={() => conversas.refetch()} onBack={onBack} />;
+      return <ThreadLoadError onRetry={() => conversas.refetch()} />;
     }
     const conversa = conversas.data?.find((c) => c.cliente_id === clienteId);
-    if (!conversa) return <ThreadNotFound onBack={onBack} />;
+    if (!conversa) return <ThreadNotFound />;
     return (
       <ConversationThread
         key={clienteId}
@@ -63,30 +62,65 @@ export default function MensagensPage() {
         sendGeneral={sendGeneral}
         replyToPost={replyToPost}
         clientesById={clientesById}
-        onBack={onBack}
       />
     );
   }
 
-  const showList = isDesktop || (clienteId == null && !invalidId);
-  const showThread = isDesktop || clienteId != null || invalidId;
-
-  return (
-    <div className="page-full-bleed flex min-h-0">
-      {showList && (
-        <ConversationList
-          className={
-            isDesktop ? 'w-[340px] shrink-0 border-r border-[var(--border-color)]' : 'flex-1'
-          }
+  // Phones (below 768): the list is a root screen with the page header; a thread is a
+  // pushed screen with its own nav bar and composer, and the tab bar hidden.
+  if (!isDesktop) {
+    if (clienteId == null && !invalidId) {
+      return (
+        <MensagensListPhone
           conversas={conversas.data ?? []}
           isLoading={conversas.isLoading}
           isError={conversasHardError}
-          selectedClienteId={clienteId}
           clientesById={clientesById}
           onSelect={goToConversa}
         />
-      )}
-      {showThread && renderThreadSlot()}
+      );
+    }
+    const conversa =
+      clienteId != null ? conversas.data?.find((c) => c.cliente_id === clienteId) : undefined;
+    if (conversa && !conversas.isLoading) {
+      return (
+        <ConversationThreadPhone
+          key={clienteId}
+          conversa={conversa}
+          feed={feed}
+          sendGeneral={sendGeneral}
+          replyToPost={replyToPost}
+          clientesById={clientesById}
+        />
+      );
+    }
+    return (
+      <ThreadPhoneShell title="Mensagens">
+        {invalidId ? (
+          <ThreadNotFound />
+        ) : conversas.isLoading ? (
+          <ThreadLoading />
+        ) : conversasHardError ? (
+          <ThreadLoadError onRetry={() => conversas.refetch()} />
+        ) : (
+          <ThreadNotFound />
+        )}
+      </ThreadPhoneShell>
+    );
+  }
+
+  return (
+    <div className="page-full-bleed flex min-h-0">
+      <ConversationList
+        className="w-[340px] shrink-0 border-r border-[var(--border-color)]"
+        conversas={conversas.data ?? []}
+        isLoading={conversas.isLoading}
+        isError={conversasHardError}
+        selectedClienteId={clienteId}
+        clientesById={clientesById}
+        onSelect={goToConversa}
+      />
+      {renderThreadSlot()}
     </div>
   );
 }

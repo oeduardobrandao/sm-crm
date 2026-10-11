@@ -253,7 +253,10 @@ export function FileUploader({
 
       {/* Floating upload progress panel */}
       {hasQueue && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2" style={{ width: 320 }}>
+        <div
+          className="phone-arq-upload-queue fixed bottom-6 right-6 z-50 flex flex-col gap-2"
+          style={{ width: 320 }}
+        >
           {queue.map((item) => (
             <UploadProgressCard key={item.id} item={item} />
           ))}

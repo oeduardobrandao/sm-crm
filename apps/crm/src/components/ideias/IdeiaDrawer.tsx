@@ -1,15 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
+  EyeOff,
   ExternalLink,
   Save,
   Loader2,
   ImagePlus,
   ListChecks,
+  MoreHorizontal,
   Pencil,
+  Plus,
   Trash2,
   X,
 } from 'lucide-react';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   listIdeiaImages,
   uploadIdeiaImage,
@@ -69,6 +73,21 @@ import { useAuth } from '@/context/AuthContext';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
 import { Switch } from '@/components/ui/switch';
 import { sanitizeExternalUrl, sanitizeUrl } from '@/utils/security';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { BottomActionBar } from '@/components/mobile/BottomActionBar';
+import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
+import { PickerSheet } from '@/components/mobile/PickerSheet';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import {
+  PhoneEditorScreen,
+  type PhoneEditorScreenApi,
+} from '@/pages/entregas/components/postEditorPhone/PhoneEditorScreen';
+import { IDEIA_STATUS_LABELS } from '@/pages/ideias/ideiaLabels';
+import { IdeiaStatusPill } from './IdeiaStatusPill';
+import './ideiaPhone.css';
 
 const ALLOWED_EMOJI = ['👍', '❤️', '🔥', '💡', '🎯'] as const;
 
@@ -217,6 +236,51 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Phone (below 768px inside the shell): the drawer is a pushed screen instead of the
+  // right Sheet. Gated on the shell context, not the viewport, so the drawer rendered
+  // outside AppLayout (tests, isolated trees) keeps the desktop Sheet.
+  const { isPhone } = usePhoneLayout();
+  const navigate = useNavigate();
+  // The screen stays mounted for one open/close cycle and is closed locally first: its
+  // history entry is popped only while it is mounted, so every exit (Back, Excluir,
+  // Editar, Ver tarefa) closes the screen, waits for the pop, and only then tells the
+  // parent, which unmounts the drawer.
+  const [screenOpen, setScreenOpen] = useState(true);
+  const screenApiRef = useRef<PhoneEditorScreenApi | null>(null);
+  const uiClosingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const handleScreenClose = useCallback(() => {
+    setScreenOpen(false);
+    // Back (edge swipe, Android back) already popped the entry: tell the parent now.
+    if (!uiClosingRef.current) onCloseRef.current();
+  }, []);
+  const requestClose = (then: () => void = () => onCloseRef.current()) => {
+    const api = screenApiRef.current;
+    if (!isPhone || !api) {
+      then();
+      return;
+    }
+    uiClosingRef.current = true;
+    api.closeThen(then);
+  };
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Outside a dialog the comment draft is an editor of its own (CLAUDE.md, silent updates):
+  // on desktop the Sheet is a dialog and already holds deploy swaps.
+  const comentarioDirty = comentario !== (ideia.comentario_agencia ?? '');
+  useUnsavedWork(isPhone && (comentarioDirty || comentarioSaving));
+
+  // "Responder" shortcut on phones: the screen focuses its own root when it opens (its
+  // effect runs first, as a child), so this focus on the response field wins.
+  useEffect(() => {
+    if (isPhone && initialAction === 'responder') comentarioRef.current?.focus();
+    // Once per mount, like the converter shortcut above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString('pt-BR', {
       day: '2-digit',
@@ -258,7 +322,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
       qc.invalidateQueries({ queryKey });
       toast.success('Ideia excluída.');
       setConfirmDelete(false);
-      onClose();
+      requestClose();
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao excluir ideia.');
     } finally {
@@ -300,6 +364,364 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
     entry.names.push(r.membros.nome);
     if (r.membro_id === membroId) entry.myReaction = true;
     reactionMap.set(r.emoji, entry);
+  }
+
+  const tarefaForm = (
+    <TarefaFormDialog
+      open={convertOpen}
+      onClose={() => setConvertOpen(false)}
+      editing={null}
+      membros={membros}
+      clientes={clientes}
+      tags={tarefaTags}
+      onSaved={() => {}}
+      onTagCreated={() => qc.invalidateQueries({ queryKey: ['tarefa-tags'] })}
+      initialValues={{
+        titulo: ideia.titulo,
+        descricao: ideia.descricao ?? undefined,
+        cliente_id: ideia.cliente_id,
+      }}
+      lockCliente
+      onCreate={handleConvertCreate}
+    />
+  );
+
+  if (isPhone) {
+    const canEditThis = isAgency && canEditIdeias && !!onEdit;
+    const menuActions: ActionSheetAction[] = [];
+    if (canEditThis) {
+      menuActions.push({
+        label: 'Editar',
+        icon: <Pencil aria-hidden="true" />,
+        onSelect: () => requestClose(() => onEdit?.()),
+      });
+    }
+    if (canEditIdeias) {
+      menuActions.push({
+        label: 'Excluir',
+        icon: <Trash2 aria-hidden="true" />,
+        destructive: true,
+        onSelect: () => setConfirmDelete(true),
+      });
+    }
+    const statusValue =
+      CONVERSIBLE_STATUSES.includes(ideia.status) || ideia.status === 'descartada'
+        ? ideia.status
+        : null;
+    const statusLabel = IDEIA_STATUS_LABELS[ideia.status] ?? ideia.status;
+    const hiddenFromHub = isAgency && !ideia.visivel_no_hub;
+
+    return (
+      <>
+        <PhoneEditorScreen
+          open={screenOpen}
+          onClose={handleScreenClose}
+          label={`Ideia: ${ideia.titulo}`}
+          apiRef={screenApiRef}
+          className="phone-ideia"
+        >
+          <div className="phone-ideia__bar">
+            <PhoneNavBar
+              backLabel="Voltar"
+              onBack={() => requestClose()}
+              trailing={
+                menuActions.length > 0 ? (
+                  <PhoneIconButton
+                    ref={menuButtonRef}
+                    label="Mais ações da ideia"
+                    aria-haspopup="dialog"
+                    onClick={() => setMenuOpen(true)}
+                  >
+                    <MoreHorizontal aria-hidden="true" />
+                  </PhoneIconButton>
+                ) : undefined
+              }
+            />
+          </div>
+          <div className="phone-ideia__scroll">
+            <header className="phone-ideia__head">
+              <h2 className="phone-ideia__title">{ideia.titulo}</h2>
+              <p className="phone-ideia__meta">
+                {ideia.clientes.nome} · {formatDate(ideia.created_at)}
+                {isAgency && ideia.autor ? ` · por ${ideia.autor.nome}` : ''}
+              </p>
+              <div className="phone-ideia__chips">
+                {statusLocked ? (
+                  <IdeiaStatusPill status={ideia.status} />
+                ) : (
+                  <button
+                    type="button"
+                    className={`phone-ideia-pill phone-ideia-pill--${ideia.status} phone-ideia__status`}
+                    aria-label={`Status: ${statusLabel}. Trocar status`}
+                    aria-haspopup="dialog"
+                    disabled={statusSaving}
+                    onClick={() => setStatusPickerOpen(true)}
+                  >
+                    <span className="phone-ideia-pill__dot" aria-hidden="true" />
+                    {statusLabel}
+                  </button>
+                )}
+                <span className="phone-ideia__tag">
+                  {ideia.tipo === 'solicitacao' ? 'Solicitação' : 'Ideia'}
+                </span>
+                <span className="phone-ideia__tag">
+                  {hiddenFromHub && <EyeOff aria-hidden="true" />}
+                  {isAgency ? 'Agência' : 'Cliente'}
+                  {hiddenFromHub ? ' · Oculta do Hub' : ''}
+                </span>
+              </div>
+            </header>
+
+            {statusLocked && (
+              <GroupedList aria-label="Tarefa">
+                <Cell
+                  label="Ver tarefa"
+                  icon={<ListChecks aria-hidden="true" />}
+                  chevron
+                  onClick={() =>
+                    requestClose(() => {
+                      onCloseRef.current();
+                      navigate(`/tarefas?tarefa=${ideia.tarefa_id}`);
+                    })
+                  }
+                />
+              </GroupedList>
+            )}
+
+            {isAgency && canEditIdeias && (
+              <GroupedList
+                footer="O cliente vê e reage, mas não edita."
+                aria-label="Hub do cliente"
+              >
+                <Cell
+                  label="Visível no Hub do cliente"
+                  disabled={visSaving}
+                  switch={{ checked: ideia.visivel_no_hub, onCheckedChange: handleVisibilidade }}
+                />
+              </GroupedList>
+            )}
+
+            {ideia.descricao && (
+              <GroupedList header="Descrição">
+                <li className="phone-cell">
+                  <p className="phone-ideia__text">{ideia.descricao}</p>
+                </li>
+              </GroupedList>
+            )}
+
+            <div className="phone-ideia__card">
+              <IdeiaAudioSection
+                ideia={ideia}
+                canWrite={isAgency && canEditIdeias}
+                queryKey={queryKey}
+              />
+            </div>
+
+            {ideia.links.length > 0 && (
+              <GroupedList header="Links de referência">
+                {ideia.links.map((link, i) => (
+                  <li key={i} className="phone-cell">
+                    <a
+                      href={sanitizeUrl(link)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="phone-ideia__link"
+                    >
+                      <ExternalLink aria-hidden="true" />
+                      <span>{link}</span>
+                    </a>
+                  </li>
+                ))}
+              </GroupedList>
+            )}
+
+            {(images.length > 0 || canEditIdeias) && (
+              <GroupedList header={`Imagens · ${images.length} de ${MAX_IMAGES}`}>
+                <li className="phone-cell">
+                  <div className="phone-ideia__images">
+                    {images.map((img: CrmIdeiaImage) => (
+                      <div key={img.file_id} className="phone-ideia__thumb">
+                        <a
+                          href={sanitizeExternalUrl(img.url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label="Abrir imagem"
+                        >
+                          <img src={img.thumbnail_url ?? img.url} alt="" />
+                        </a>
+                        {canEditIdeias && (
+                          <button
+                            type="button"
+                            className="phone-ideia__remove"
+                            onClick={() => handleRemoveImage(img.file_id)}
+                            disabled={imgBusy}
+                            aria-label="Remover imagem"
+                          >
+                            <X aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {canEditIdeias && images.length < MAX_IMAGES && (
+                      <button
+                        type="button"
+                        className="phone-ideia__add"
+                        disabled={imgBusy}
+                        onClick={() => inputRef.current?.click()}
+                        aria-label="Adicionar imagem"
+                      >
+                        {imgBusy ? (
+                          <Loader2 aria-hidden="true" className="animate-spin" />
+                        ) : (
+                          <Plus aria-hidden="true" />
+                        )}
+                        Adicionar
+                      </button>
+                    )}
+                  </div>
+                </li>
+              </GroupedList>
+            )}
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+              className="hidden"
+              onChange={(e) => handleImageFiles(e.target.files)}
+            />
+
+            <section className="phone-kit phone-group">
+              <h2 className="phone-group__header">Reações</h2>
+              <div className="phone-ideia__reactions">
+                {ALLOWED_EMOJI.map((emoji) => {
+                  const entry = reactionMap.get(emoji);
+                  const active = entry?.myReaction ?? false;
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className="phone-ideia__reaction"
+                      aria-pressed={active}
+                      aria-label={
+                        entry
+                          ? `${emoji} ${entry.count}: ${entry.names.join(', ')}`
+                          : `Reagir com ${emoji}`
+                      }
+                      onClick={() => handleReaction(emoji)}
+                      disabled={reactionLoading === emoji}
+                    >
+                      {reactionLoading === emoji ? (
+                        <Loader2 aria-hidden="true" className="animate-spin" />
+                      ) : (
+                        <span aria-hidden="true">{emoji}</span>
+                      )}
+                      {entry && (
+                        <span className="phone-ideia__reaction-count" aria-hidden="true">
+                          {entry.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="phone-kit phone-group">
+              <h2 className="phone-group__header">
+                <label htmlFor={`ideia-comentario-${ideia.id}`}>Resposta da agência</label>
+              </h2>
+              <div className="phone-ideia__card">
+                <textarea
+                  id={`ideia-comentario-${ideia.id}`}
+                  ref={comentarioRef}
+                  value={comentario}
+                  onChange={(e) => setComentario(e.target.value)}
+                  placeholder="Escreva uma resposta para o cliente..."
+                  className="phone-ideia__comment"
+                />
+                <div className="phone-ideia__comment-foot">
+                  {ideia.comentario_at && (
+                    <span className="phone-ideia__edited">
+                      Editado em {formatDate(ideia.comentario_at)}
+                      {ideia.comentario_autor && ` por ${ideia.comentario_autor.nome}`}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="phone-ideia__save"
+                    onClick={handleSaveComentario}
+                    disabled={comentarioSaving}
+                  >
+                    {comentarioSaving ? (
+                      <Loader2 aria-hidden="true" className="animate-spin" />
+                    ) : (
+                      <Save aria-hidden="true" />
+                    )}
+                    Salvar comentário
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {canConvert && (
+              <BottomActionBar>
+                <button
+                  type="button"
+                  className="phone-ideia__primary"
+                  onClick={() => setConvertOpen(true)}
+                >
+                  <ListChecks aria-hidden="true" />
+                  Converter em tarefa
+                </button>
+              </BottomActionBar>
+            )}
+          </div>
+        </PhoneEditorScreen>
+
+        <PickerSheet<Ideia['status']>
+          open={statusPickerOpen}
+          onOpenChange={setStatusPickerOpen}
+          title="Status"
+          options={STATUS_OPTIONS}
+          value={statusValue}
+          onChange={(next) => {
+            if (next && next !== ideia.status) void handleStatusChange(next);
+          }}
+        />
+
+        <ActionSheet
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          title="Ações da ideia"
+          hideTitle
+          actions={menuActions}
+          returnFocusRef={menuButtonRef}
+        />
+
+        <PhoneConfirmSheet
+          open={confirmDelete}
+          title="Excluir ideia?"
+          message={`A ideia "${ideia.titulo}" será excluída, junto com seu áudio, imagens e reações. Essa ação não pode ser desfeita.`}
+          onCancel={() => setConfirmDelete(false)}
+          actions={[
+            {
+              label: 'Excluir ideia',
+              destructive: true,
+              disabled: deleting,
+              onSelect: () => {
+                // Closed before the request: a failed delete must leave the sheet able
+                // to open again (PhoneConfirmSheet stays hidden while `open` is true).
+                setConfirmDelete(false);
+                void handleDelete();
+              },
+            },
+          ]}
+        />
+
+        {tarefaForm}
+      </>
+    );
   }
 
   return (
@@ -601,23 +1023,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
         </AlertDialogContent>
       </AlertDialog>
 
-      <TarefaFormDialog
-        open={convertOpen}
-        onClose={() => setConvertOpen(false)}
-        editing={null}
-        membros={membros}
-        clientes={clientes}
-        tags={tarefaTags}
-        onSaved={() => {}}
-        onTagCreated={() => qc.invalidateQueries({ queryKey: ['tarefa-tags'] })}
-        initialValues={{
-          titulo: ideia.titulo,
-          descricao: ideia.descricao ?? undefined,
-          cliente_id: ideia.cliente_id,
-        }}
-        lockCliente
-        onCreate={handleConvertCreate}
-      />
+      {tarefaForm}
     </Sheet>
   );
 }
