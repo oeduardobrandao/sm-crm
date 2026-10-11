@@ -808,3 +808,40 @@ button.phone-an-spark__bar {
   opacity: 0.6;
   cursor: default;
 }
+
+/* ---- Account identity under the nav bar (/analytics/:id) ---- */
+.phone-an-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 16px;
+}
+.phone-an-identity__text {
+  min-width: 0;
+}
+.phone-an-identity__name {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-heading, inherit);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-an-identity__meta {
+  margin: 2px 0 0;
+  font-size: var(--phone-text-subhead);
+}
+.phone-an-identity__meta a {
+  color: var(--phone-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.phone-an-identity .phone-an-avatar {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  font-size: 18px;
+}
