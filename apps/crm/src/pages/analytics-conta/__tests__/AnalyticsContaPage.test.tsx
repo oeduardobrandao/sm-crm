@@ -510,10 +510,13 @@ describe('AnalyticsContaPage', () => {
 
     const { container } = render(<AnalyticsContaPage />);
 
-    const labels = Array.from(container.querySelectorAll('.kpi-label')).map((el) => el.textContent);
+    // jsdom renders the phone branch: StatCardGrid's cards are `.phone-stat-tile` there.
+    const labels = Array.from(
+      container.querySelectorAll('.kpi-label, .phone-stat-tile__label'),
+    ).map((el) => el.textContent);
     expect(labels[0]).toBe('Visualizações');
     expect(labels[1]).toBe('Seguidores');
-    const card = container.querySelector('.kpi-card');
+    const card = container.querySelector('.kpi-card, .phone-stat-tile');
     expect(card?.textContent).toContain((45678).toLocaleString('pt-BR'));
     expect(card?.textContent).toContain('vs período anterior');
   });
@@ -541,7 +544,7 @@ describe('AnalyticsContaPage', () => {
 
     const { container } = render(<AnalyticsContaPage />);
 
-    const card = container.querySelector('.kpi-card');
+    const card = container.querySelector('.kpi-card, .phone-stat-tile');
     expect(card?.textContent).toContain((999999).toLocaleString('pt-BR'));
     expect(card?.textContent).not.toContain('vs período anterior');
   });

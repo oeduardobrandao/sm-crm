@@ -213,19 +213,23 @@ function anchorHoje(): string {
   ).padStart(2, '0')}`;
 }
 
-/** The KPI card carrying `label`. Scoped to `.kpi-label`: several of these
- *  words also appear as table column headers. */
+/** The KPI card carrying `label`. Scoped to the card label: several of these
+ *  words also appear as table column headers. jsdom renders the phone branch, where
+ *  StatCardGrid's cards are `.phone-stat-tile`. */
 function kpiCard(label: string): HTMLElement {
   const el = screen
     .getAllByText(label)
-    .find((node) => node.classList.contains('kpi-label'))
-    ?.closest('.kpi-card');
+    .find(
+      (node) =>
+        node.classList.contains('kpi-label') || node.classList.contains('phone-stat-tile__label'),
+    )
+    ?.closest('.kpi-card, .phone-stat-tile');
   if (!el) throw new Error(`KPI card "${label}" não encontrado`);
   return el as HTMLElement;
 }
 
 function delta(card: HTMLElement) {
-  return card.querySelector('.kpi-delta');
+  return card.querySelector('.kpi-delta, .phone-stat-tile__delta');
 }
 
 /** One row of the approval ranking, addressed by the client it links to. */

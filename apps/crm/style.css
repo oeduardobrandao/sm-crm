@@ -16929,6 +16929,127 @@ button.phone-sheet__grabber::before {
   background: var(--phone-bar-secondary);
 }
 
+/* ---- KPI tiles (StatCardGrid below 768px) ---- */
+.phone-kit.phone-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 20px;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-stat-grid > .phone-stat-tile:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+/* Swipeable strip (Analytics): one row of fixed-width tiles. */
+.phone-kit.phone-stat-grid--scroll {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-stat-grid--scroll::-webkit-scrollbar {
+  display: none;
+}
+.phone-stat-grid--scroll > .phone-stat-tile {
+  flex: 0 0 164px;
+  scroll-snap-align: start;
+}
+.phone-stat-tile {
+  --phone-stat-up: #15803d;
+  --phone-stat-down: var(--phone-destructive);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font: inherit;
+  text-align: left;
+}
+[data-theme='dark'] .phone-stat-tile {
+  --phone-stat-up: #3ecf8e;
+}
+button.phone-stat-tile {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+button.phone-stat-tile:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-stat-tile:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-stat-tile--active {
+  box-shadow: inset 0 0 0 2px var(--phone-ink);
+}
+.phone-stat-tile__label {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.3;
+}
+.phone-stat-tile__value-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+.phone-stat-tile__value {
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.phone-stat-tile__value--compact {
+  font-size: var(--phone-text-body);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.phone-stat-tile__delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.phone-stat-tile__delta svg {
+  width: 13px;
+  height: 13px;
+}
+.phone-stat-tile__delta[data-direction='up'] {
+  color: var(--phone-stat-up);
+}
+.phone-stat-tile__delta[data-direction='down'] {
+  color: var(--phone-stat-down);
+}
+/* invertDelta: data-good says which way reads as good, whatever the arrow. */
+.phone-stat-tile__delta[data-good='true'] {
+  color: var(--phone-stat-up);
+}
+.phone-stat-tile__delta[data-good='false'] {
+  color: var(--phone-stat-down);
+}
+.phone-stat-tile__sub,
+.phone-stat-tile__footnote {
+  color: var(--phone-label-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
 /* ---- Mais sheet (MobileNav) ---- */
 /* Phone-only: MobileNav closes it when the viewport leaves the phone range; this hides
    it for the frame in between. */
