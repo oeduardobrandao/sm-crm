@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -17,7 +17,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -60,6 +60,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
+import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { useAuth } from '../../context/AuthContext';
 import { useEntitlements } from '../../hooks/useEntitlements';
@@ -93,6 +96,7 @@ import { contactsHref, useAutomacoesTab } from './contacts/useContactsFilters';
 import TourOverlay from './tour/TourOverlay';
 import { useAutomationTour } from './tour/useAutomationTour';
 import { TOUR_STEPS } from './tour/tourSteps';
+import { AutomacoesPhone } from './phone/AutomacoesPhone';
 
 /** Module-level so other surfaces (e.g. useEffectiveNavFeatures' sibling
  * count query) can invalidate the same cache entry after a write. */
@@ -137,9 +141,15 @@ export default function AutomacoesPage() {
   const { profile, can } = useAuth();
   const qc = useQueryClient();
   const isDesktop = useIsDesktop(901);
+  // Phones (below 768) get the iOS layout; 768-900 keeps the card list as the tablet
+  // fallback and 901+ the table.
+  const isPhone = !useIsDesktop(768);
+  const navigate = useNavigate();
 
   const [clientFilter, setClientFilter] = useState<number | 'todos'>('todos');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** Phone only: the automation whose detail sheet is open (the expand row's stand-in). */
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InstagramCommentAutomation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstagramCommentAutomation | null>(null);
@@ -164,10 +174,13 @@ export default function AutomacoesPage() {
     return map;
   }, [clientes]);
 
+  // The sends log belongs to the expanded row (tablet/desktop) or the open detail sheet
+  // (phone): one query, keyed on whichever surface is showing it.
+  const sendsFor = isPhone ? detailId : expandedId;
   const sendsQuery = useQuery({
-    queryKey: ['instagram-automation-sends', expandedId],
-    queryFn: () => getInstagramAutomationSends(expandedId as string),
-    enabled: expandedId != null,
+    queryKey: ['instagram-automation-sends', sendsFor],
+    queryFn: () => getInstagramAutomationSends(sendsFor as string),
+    enabled: sendsFor != null,
   });
 
   const [tab, setTab, tabExplicit] = useAutomacoesTab();
@@ -322,24 +335,37 @@ export default function AutomacoesPage() {
     prevFormOpenRef.current = formOpen;
   }, [formOpen, tour]);
 
+  /** The gate screens below on phones: same content under the page header. */
+  const phoneFrame = (content: ReactNode) => (
+    <div className="phone-auto">
+      <PhonePageHeader title={t('title')} />
+      {content}
+    </div>
+  );
+
   if (
     flagOff &&
     (automationsQuery.isPending || (automations.length === 0 && contactsCountQuery.isPending))
   ) {
-    return <PageSkeleton body="table" style={{ padding: '1.5rem' }} />;
+    return isPhone ? (
+      phoneFrame(<CardListSkeleton rows={4} />)
+    ) : (
+      <PageSkeleton body="table" style={{ padding: '1.5rem' }} />
+    );
   }
   if (flagOff && automationsQuery.isError) {
-    return (
-      <div style={{ padding: '4rem', textAlign: 'center' }}>
+    const errorState = (
+      <div style={{ padding: isPhone ? '2rem 0' : '4rem', textAlign: 'center' }}>
         <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('loadError')}</p>
         <Button variant="outline" onClick={() => automationsQuery.refetch()}>
           {t('retry')}
         </Button>
       </div>
     );
+    return isPhone ? phoneFrame(errorState) : errorState;
   }
   if (flagOff && automations.length === 0 && !hasContacts) {
-    return (
+    const locked = (
       <UpgradeLockedScreen featureLabel={t('featureLabel')} feature="feature_instagram_automation">
         <p className="text-sm max-w-md" style={{ color: 'var(--text-muted)' }}>
           {t('locked.pitch')}
@@ -362,11 +388,152 @@ export default function AutomacoesPage() {
         </div>
       </UpgradeLockedScreen>
     );
+    return isPhone ? phoneFrame(locked) : locked;
   }
 
   const contactsOnly = flagOff && automations.length === 0;
   // Forced only until the user picks a tab, so Automações stays reachable.
   const activeTab = contactsOnly && !tabExplicit ? 'contatos' : tab;
+
+  const sharedOverlays = (
+    <>
+      {/* Sem !formOpen aqui, o overlay de página ficaria preso por cima de
+        QUALQUER dialog aberto enquanto o tour segue no passo de página --
+        o botão real, o CTA do card, a checklist, editar uma linha
+        existente, ou qualquer botão futuro que abra o formulário. O tour
+        pode continuar no índice 0 até o dialog fechar (handleDialogClose
+        só encerra passos de surface "dialog"); ao fechar um dialog não
+        relacionado ao tour, o card "Comece por aqui" reaparece, o que é
+        aceitável. */}
+      {tour.activeStep?.surface === 'page' && !formOpen && (
+        <TourOverlay
+          step={tour.activeStep}
+          index={tour.activeIndex ?? 0}
+          total={TOUR_STEPS.length}
+          onNext={tour.next}
+          onBack={tour.back}
+          onSkip={tour.skip}
+          onFinish={tour.finish}
+          onCta={openCreateAndAdvanceTour}
+        />
+      )}
+
+      <AutomationFormDialog
+        open={formOpen}
+        onOpenChange={closeForm}
+        editing={editing}
+        initialTab={retargetTab}
+        tour={
+          tour.activeStep?.surface === 'dialog'
+            ? {
+                step: tour.activeStep,
+                index: tour.activeIndex ?? 0,
+                total: TOUR_STEPS.length,
+                onNext: tour.next,
+                onBack: tour.back,
+                onSkip: tour.skip,
+                onFinish: tour.finish,
+              }
+            : undefined
+        }
+        onSaved={() => {
+          setFormOpen(false);
+          setRetargetTab(undefined);
+          invalidate();
+        }}
+      />
+    </>
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <AutomacoesPhone
+          activeCount={automations.filter((a) => a.ativo).length}
+          createAction={
+            flagOff ? null : (
+              <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
+                <PhoneIconButton
+                  label={t('newAutomation')}
+                  variant="ink"
+                  onClick={openCreateAndAdvanceTour}
+                  data-tour="nova-automacao"
+                >
+                  <Plus aria-hidden="true" />
+                </PhoneIconButton>
+              </FeatureGate>
+            )
+          }
+          lockedNotice={
+            flagOff ? (
+              <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
+                {null}
+              </FeatureGate>
+            ) : null
+          }
+          tab={activeTab}
+          onTabChange={setTab}
+          contacts={<ContactsTab />}
+          checklist={
+            !checklistDismissed && automationsQuery.isSuccess && readyQuery.isSuccess ? (
+              <AutomacoesChecklist
+                accountReady={readyQuery.data === true}
+                hasAutomation={automations.length > 0}
+                hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
+                canCreate={canCreate}
+                onCreate={openCreateAndAdvanceTour}
+                onDismiss={dismissChecklist}
+                onStartTour={canCreate ? tour.start : undefined}
+              />
+            ) : null
+          }
+          clientOptions={clientesComAutomacao}
+          clientFilter={clientFilter}
+          onClientFilterChange={setClientFilter}
+          isLoading={isLoading}
+          automations={filtered}
+          hasAny={automations.length > 0}
+          clientesById={clientesById}
+          canEdit={can('automacoes', 'editar') === true}
+          detailId={detailId}
+          onOpenDetail={setDetailId}
+          sends={sendsQuery.data}
+          sendsLoading={sendsQuery.isLoading}
+          sendsError={sendsQuery.isError}
+          reachedByAutomation={reachedByAutomation}
+          formatDateTime={(iso) => formatDate(iso, i18n.language)}
+          onToggle={(a, ativo) => toggleMutation.mutate({ id: a.id, ativo })}
+          onEdit={openEdit}
+          onDelete={setDeleteTarget}
+          onRetarget={openRetarget}
+          onViewContacts={(a) =>
+            navigate(contactsHref({ clientId: a.client_id, automationId: a.id }))
+          }
+        />
+
+        {sharedOverlays}
+
+        {/* The AlertDialog's phone face: same copy, same handler. */}
+        <PhoneConfirmSheet
+          open={deleteTarget != null}
+          title={t('deleteTitle', { name: deleteTarget?.name ?? '' })}
+          message={t('deleteDescription')}
+          cancelLabel={t('cancel')}
+          onCancel={() => setDeleteTarget(null)}
+          actions={[
+            {
+              label: t('delete'),
+              destructive: true,
+              onSelect: () => {
+                if (deleteTarget) deleteMutation.mutate(deleteTarget);
+                setDeleteTarget(null);
+              },
+            },
+          ]}
+        />
+      </>
+    );
+  }
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -810,51 +977,7 @@ export default function AutomacoesPage() {
         </>
       )}
 
-      {/* Sem !formOpen aqui, o overlay de página ficaria preso por cima de
-          QUALQUER dialog aberto enquanto o tour segue no passo de página --
-          o botão real, o CTA do card, a checklist, editar uma linha
-          existente, ou qualquer botão futuro que abra o formulário. O tour
-          pode continuar no índice 0 até o dialog fechar (handleDialogClose
-          só encerra passos de surface "dialog"); ao fechar um dialog não
-          relacionado ao tour, o card "Comece por aqui" reaparece, o que é
-          aceitável. */}
-      {tour.activeStep?.surface === 'page' && !formOpen && (
-        <TourOverlay
-          step={tour.activeStep}
-          index={tour.activeIndex ?? 0}
-          total={TOUR_STEPS.length}
-          onNext={tour.next}
-          onBack={tour.back}
-          onSkip={tour.skip}
-          onFinish={tour.finish}
-          onCta={openCreateAndAdvanceTour}
-        />
-      )}
-
-      <AutomationFormDialog
-        open={formOpen}
-        onOpenChange={closeForm}
-        editing={editing}
-        initialTab={retargetTab}
-        tour={
-          tour.activeStep?.surface === 'dialog'
-            ? {
-                step: tour.activeStep,
-                index: tour.activeIndex ?? 0,
-                total: TOUR_STEPS.length,
-                onNext: tour.next,
-                onBack: tour.back,
-                onSkip: tour.skip,
-                onFinish: tour.finish,
-              }
-            : undefined
-        }
-        onSaved={() => {
-          setFormOpen(false);
-          setRetargetTab(undefined);
-          invalidate();
-        }}
-      />
+      {sharedOverlays}
 
       <AlertDialog
         open={deleteTarget != null}
