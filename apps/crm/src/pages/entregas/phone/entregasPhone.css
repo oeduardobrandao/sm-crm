@@ -228,7 +228,7 @@
 .phone-ent-check {
   width: 18px;
   height: 18px;
-  color: var(--phone-accent);
+  color: var(--phone-label);
 }
 .phone-ent-history {
   padding: 0 var(--phone-gutter, 16px) 24px;
@@ -243,9 +243,10 @@
   padding: 0 4px;
   border: 0;
   background: transparent;
-  color: var(--phone-accent);
+  color: var(--phone-label);
   font-family: var(--font-main);
   font-size: var(--phone-text-subhead);
+  font-weight: 500;
   cursor: pointer;
 }
 .phone-ent-text-btn svg {
@@ -341,7 +342,7 @@
   border: 1px dashed var(--phone-separator);
   border-radius: var(--phone-radius-group);
   background: transparent;
-  color: var(--phone-accent);
+  color: var(--phone-label);
   font-family: inherit;
   font-size: var(--phone-text-subhead);
   font-weight: 600;
@@ -377,7 +378,12 @@
 .phone-ent-status-card {
   position: relative;
   margin: 0;
-  padding-right: 56px;
+  padding: 12px 56px 12px 14px;
+  border-radius: var(--phone-radius-group);
+}
+.phone-ent-status-card .item-title {
+  font-size: var(--phone-text-body);
+  font-weight: 600;
 }
 .phone-ent-status-card__actions {
   position: absolute;
@@ -422,11 +428,13 @@
   color: var(--phone-label-secondary);
 }
 .phone-ent-drop__label {
+  display: -webkit-box;
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .phone-ent-drop__count {
   flex-shrink: 0;
@@ -463,7 +471,7 @@
 }
 .phone-ent-filters__label {
   margin: 0;
-  padding: 0 var(--phone-gutter, 16px);
+  padding: 0 4px;
   color: var(--phone-label-secondary);
   font-size: var(--phone-text-footnote);
   font-weight: 600;
@@ -474,7 +482,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  padding: 0 var(--phone-gutter, 16px);
 }
 .phone-ent-filters__range label {
   display: flex;
@@ -708,4 +715,9 @@
 .phone-ent-sem__meta {
   color: var(--phone-label-secondary);
   font-size: var(--phone-text-footnote);
+}
+
+.phone-ent-header__chips .phone-ent-text-btn {
+  min-height: 32px;
+  flex-shrink: 0;
 }
