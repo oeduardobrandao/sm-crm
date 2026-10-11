@@ -1,7 +1,13 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type React from 'react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Desktop layout by default; the "no celular" describe flips it (jsdom's matchMedia is
+// false, so without a mock this suite would render the phone branch).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
 vi.mock('@/store', () => ({
   getWorkflowsByCliente: vi.fn(),
@@ -180,10 +186,94 @@ vi.mock('@/pages/entregas/components/StandalonePostDrawer', () => ({
 }));
 
 vi.mock('@/pages/entregas/components/HistoryDrawer', () => ({
-  HistoryDrawer: ({ workflow, onClose }: { workflow: { titulo: string }; onClose: () => void }) => (
-    <div>
+  HistoryDrawer: ({
+    workflow,
+    onClose,
+    variant,
+  }: {
+    workflow: { titulo: string };
+    onClose: () => void;
+    variant?: string;
+  }) => (
+    <div data-variant={variant ?? 'drawer'} data-testid="history-drawer">
       <span>HistoryDrawer open: {workflow.titulo}</span>
       <button onClick={onClose}>close-history-drawer</button>
+    </div>
+  ),
+}));
+
+// Phone cards and their long-press menus (shipped Entregas phone code, with suites of
+// their own): stubs that expose the handlers EntregasTab wires.
+vi.mock('@/pages/entregas/phone/PhoneBoardCards', () => ({
+  PhoneWorkflowCard: ({
+    card,
+    counts,
+    onOpen,
+    onForward,
+    preview,
+  }: {
+    card: { workflow: { id: number; titulo: string } };
+    counts: { postsCount: number; clearedClienteCount: number };
+    onOpen?: () => void;
+    onForward?: () => void;
+    preview?: boolean;
+  }) =>
+    preview ? null : (
+      <div>
+        <span>{card.workflow.titulo}</span>
+        <span data-testid={`counts-${card.workflow.id}`}>
+          {counts.postsCount}/{counts.clearedClienteCount}
+        </span>
+        <button onClick={onOpen}>phone-open-card-{card.workflow.id}</button>
+        <button onClick={onForward}>phone-forward-card-{card.workflow.id}</button>
+      </div>
+    ),
+  PhonePostProcessCard: ({
+    entity,
+    onOpen,
+    preview,
+  }: {
+    entity: { id: string; titulo: string };
+    onOpen?: () => void;
+    preview?: boolean;
+  }) =>
+    preview ? null : (
+      <div>
+        <span>{entity.titulo}</span>
+        <button onClick={onOpen}>phone-open-post-{entity.id}</button>
+      </div>
+    ),
+}));
+vi.mock('@/pages/entregas/phone/cardMenus', () => ({
+  WorkflowCardMenu: ({
+    card,
+    onEdit,
+    onRevert,
+    children,
+  }: {
+    card: { workflow: { id: number } };
+    onEdit?: () => void;
+    onRevert?: () => void;
+    children: (api: { triggerProps: object }) => React.ReactNode;
+  }) => (
+    <div>
+      {children({ triggerProps: {} })}
+      <button onClick={onEdit}>menu-edit-{card.workflow.id}</button>
+      <button onClick={onRevert}>menu-revert-{card.workflow.id}</button>
+    </div>
+  ),
+  PostProcessCardMenu: ({
+    entity,
+    onRemoveProcess,
+    children,
+  }: {
+    entity: { id: string };
+    onRemoveProcess?: () => void;
+    children: (api: { triggerProps: object }) => React.ReactNode;
+  }) => (
+    <div>
+      {children({ triggerProps: {} })}
+      <button onClick={onRemoveProcess}>menu-remove-{entity.id}</button>
     </div>
   ),
 }));
@@ -965,6 +1055,118 @@ describe('EntregasTab', () => {
           queryKey: ['post-processes-cliente', 42],
         }),
       );
+    });
+  });
+
+  describe('no celular', () => {
+    beforeEach(() => {
+      desktop.value = false;
+    });
+    afterEach(() => {
+      desktop.value = true;
+    });
+
+    it('stacks phone cards instead of the desktop rail', async () => {
+      renderTab();
+      expect(await screen.findByText('phone-open-card-1')).toBeInTheDocument();
+      expect(screen.queryByText('open-card-1')).not.toBeInTheDocument();
+      expect(document.querySelector('.cliente-deliveries-rail')).toBeNull();
+      expect(screen.getByRole('heading', { level: 2, name: 'Fluxos' })).toBeInTheDocument();
+    });
+
+    it('opens the workflow drawer from the card and the edit modal from the menu', async () => {
+      renderTab();
+      fireEvent.click(await screen.findByText('phone-open-card-1'));
+      expect(await screen.findByText('WorkflowDrawer open: Posts Agosto')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('close-workflow-drawer'));
+
+      fireEvent.click(screen.getByText('menu-edit-1'));
+      expect(await screen.findByRole('dialog', { name: 'Editar Fluxo' })).toBeInTheDocument();
+    });
+
+    it('shows the empty state card when there are no active deliveries', async () => {
+      mockedGetWorkflowsByCliente.mockResolvedValue([]);
+      renderTab();
+      expect(await screen.findByText('Nenhuma entrega ativa no momento.')).toBeInTheDocument();
+    });
+
+    it('opens a concluded fluxo as a pushed history screen in place of the tab', async () => {
+      const concluded = workflow({ id: 2, status: 'concluido', titulo: 'Ciclo Julho' });
+      mockedGetConcludedWorkflowsByCliente.mockResolvedValue([concluded]);
+      mockedGetConcludedWorkflowSummaries.mockResolvedValue([
+        { workflow: concluded, postCount: 3, totalDays: 12, completedAt: null },
+      ] as never);
+      renderTab();
+
+      fireEvent.click(await screen.findByRole('button', { name: /Ciclo Julho/ }));
+      expect(await screen.findByTestId('history-drawer')).toHaveAttribute('data-variant', 'page');
+      // Render only what's visible: the board is gone while the history is up.
+      expect(screen.queryByText('phone-open-card-1')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('close-history-drawer'));
+      expect(await screen.findByText('phone-open-card-1')).toBeInTheDocument();
+    });
+
+    it('asks to create a new cycle in a confirm sheet when a recurring fluxo concludes', async () => {
+      mockCounts(2);
+      mockedCompleteEtapaWithRearm.mockResolvedValue({
+        workflow: workflow({ status: 'concluido', recorrente: true }),
+        etapas: [],
+        rearmed: false,
+        rearmFailed: false,
+      });
+      mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
+      renderTab();
+      await awaitCountsLoaded(2, 2);
+      fireEvent.click(await screen.findByText('phone-forward-card-1'));
+      const forward = await screen.findByRole('dialog');
+      fireEvent.click(within(forward).getByRole('button', { name: /Avançar/ }));
+
+      const sheet = await screen.findByRole('dialog', { name: 'Criar novo ciclo?' });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Criar novo ciclo' }));
+      await waitFor(() => expect(mockedDuplicateWorkflow).toHaveBeenCalledWith(1));
+    });
+
+    it('uses the phone post calendar and keeps the Agendar step', async () => {
+      const { updateWorkflowPost } = await import('@/store');
+      vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
+      const d = new Date();
+      const p = (n: number) => String(n).padStart(2, '0');
+      mockedGetClientePosts.mockResolvedValue([
+        {
+          id: 500,
+          workflow_id: null,
+          titulo: 'Post avulso de hoje',
+          tipo: 'feed',
+          status: 'aprovado_interno',
+          custom_status_id: null,
+          scheduled_at: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T12:00:00`,
+          ordem: 0,
+          workflow_titulo: null,
+        },
+      ]);
+      renderTab();
+
+      expect(await screen.findByText('Post avulso de hoje')).toBeInTheDocument();
+      expect(document.querySelector('.phone-ent-v-cal')).not.toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Agendar' }));
+      await waitFor(() =>
+        expect(vi.mocked(updateWorkflowPost)).toHaveBeenCalledWith(500, { status: 'agendado' }),
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', { name: /Abrir publicação: Post avulso de hoje/i }),
+      );
+      expect(await screen.findByText('StandalonePostDrawer open: 500')).toBeInTheDocument();
+    });
+
+    it('wires "Remover processo" on an individual post card menu', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      fireEvent.click(await screen.findByText('menu-remove-post:9'));
+      // usePostProcessCommands asks before removing (its own AlertDialog).
+      expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
     });
   });
 });

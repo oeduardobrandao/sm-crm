@@ -18,6 +18,7 @@ import {
 import { ContactsList } from '../../automacoes/contacts/ContactsList';
 import { exportContactsCsv } from '../../automacoes/contacts/contactsCsv';
 import { contactsHref } from '../../automacoes/contacts/useContactsFilters';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 
 const PREVIEW = 10;
 
@@ -32,6 +33,7 @@ export function AutomationContactsSection({
   const { can } = useAuth();
   const allowed = can('automacoes', 'ver') === true;
   const isDesktop = useIsDesktop(901);
+  const isPhone = !useIsDesktop(768);
 
   const filters: ContactFilters = useMemo(
     () => ({
@@ -53,11 +55,15 @@ export function AutomationContactsSection({
   const hasContacts = (countsQuery.data ?? []).some(
     (c) => c.client_id === clienteId && c.total_count > 0,
   );
+  const reachedCount = (countsQuery.data ?? [])
+    .filter((c) => c.client_id === clienteId)
+    .reduce((n, c) => n + c.reached_count, 0);
 
   const listQuery = useQuery({
     queryKey: [CONTACTS_KEY, filters, 1, PREVIEW],
     queryFn: () => listInstagramContacts(filters, 1, PREVIEW),
-    enabled: allowed && hasContacts,
+    // Phones show a row into the full list instead of the 10-row preview.
+    enabled: allowed && hasContacts && !isPhone,
   });
 
   const [exporting, setExporting] = useState(false);
@@ -78,6 +84,26 @@ export function AutomationContactsSection({
   };
 
   const rows = listQuery.data?.rows ?? [];
+
+  if (isPhone) {
+    return (
+      <GroupedList header={t('contacts.sectionTitle')} headerAs="h3">
+        <Cell
+          label={t('contacts.viewAll')}
+          value={reachedCount > 0 ? reachedCount : undefined}
+          to={contactsHref({ clientId: clienteId })}
+        />
+        <Cell
+          label={exporting ? t('contacts.exporting') : t('contacts.export')}
+          icon={<Download />}
+          iconColor="var(--phone-fill)"
+          disabled={exporting || reachedCount === 0}
+          chevron={false}
+          onClick={() => void onExport()}
+        />
+      </GroupedList>
+    );
+  }
 
   return (
     <section style={{ marginTop: '1.5rem' }}>

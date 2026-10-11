@@ -7,6 +7,8 @@ import { DetailSkeleton } from '@/components/ui/skeletons';
 import { Button } from '@/components/ui/button';
 import { getCliente, getInitials } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ClientePhoneSectionShell, useClienteSectionBack } from './phone/ClientePhoneChrome';
 import { ClienteDetalheHeader } from './ClienteDetalheHeader';
 import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ClienteEditDialog } from './ClienteEditDialog';
@@ -35,6 +37,10 @@ export default function ClienteDetalhePage() {
 
   const clienteId = parseInt(idParam ?? '', 10);
   const validId = !isNaN(clienteId);
+  // Phones (PLAN F3.1): no header + pill strip; the index route is a sections list and
+  // every section renders under one nav bar. Tablet and desktop keep the layout below.
+  const isPhone = !useIsDesktop(768);
+  const sectionBack = useClienteSectionBack(clienteId);
 
   useEffect(() => {
     if (!loading && !user) navigate('/login');
@@ -157,6 +163,32 @@ export default function ClienteDetalhePage() {
   // `clientes:ver` must not reach either mutation surface, even though it
   // can view this page (Task 14, revisão externa round 4, P2).
   const canEditClient = can('clientes', 'editar') === true;
+  const outletContext = {
+    clienteId,
+    cliente,
+    onEditCliente: canEditClient ? () => setEditOpen(true) : undefined,
+  } satisfies ClienteDetalheOutletContext;
+
+  if (isPhone) {
+    const tab = CLIENTE_TABS.find((candidate) => candidate.key === current);
+    return (
+      <div className="phone-cli-page">
+        {tab ? (
+          <ClientePhoneSectionShell
+            clienteNome={cliente.nome}
+            tabLabel={t(tab.labelKey)}
+            onBack={sectionBack.onBack}
+            backToClient={sectionBack.toIndex}
+          >
+            <Outlet context={outletContext} />
+          </ClientePhoneSectionShell>
+        ) : (
+          <Outlet context={outletContext} />
+        )}
+        <ClienteEditDialog cliente={cliente} open={editOpen} onOpenChange={setEditOpen} />
+      </div>
+    );
+  }
 
   return (
     <div className="cliente-detalhe-page">
@@ -177,7 +209,7 @@ export default function ClienteDetalhePage() {
       <div className="cliente-tabs-shell">
         <ClienteDetalheNav clienteId={clienteId} cliente={cliente} />
         <div className="cliente-tabs-content">
-          <Outlet context={{ clienteId, cliente } satisfies ClienteDetalheOutletContext} />
+          <Outlet context={outletContext} />
         </div>
       </div>
 
