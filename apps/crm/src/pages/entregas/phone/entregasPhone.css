@@ -457,27 +457,8 @@
   border-color: var(--phone-destructive);
 }
 
-/* ---- Filters sheet (EntregasFiltros mockup) ---- */
-.phone-ent-filters {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding-bottom: 24px;
-}
-.phone-ent-filters__group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.phone-ent-filters__label {
-  margin: 0;
-  padding: 0 4px;
-  color: var(--phone-label-secondary);
-  font-size: var(--phone-text-footnote);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
+/* ---- Filters sheet (EntregasFiltros mockup): the shell is the kit's .phone-filters;
+   only the custom prazo range is Entregas' own ---- */
 .phone-ent-filters__range {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

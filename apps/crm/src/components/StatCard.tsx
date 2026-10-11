@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { TrendingUp, TrendingDown, Minus, type LucideIcon } from 'lucide-react';
 
 export type StatTone = 'green' | 'red' | 'blue' | 'amber' | 'violet' | 'pink' | 'slate';
@@ -47,6 +47,12 @@ interface StatCardProps {
   unit?: string;
 }
 
+/**
+ * Set by `StatCardGrid` below 768px: its cards render as compact phone tiles. A card
+ * outside a grid keeps the desktop card at every width.
+ */
+export const StatCardPhoneContext = createContext(false);
+
 const DIRECTION_ICON = {
   up: TrendingUp,
   down: TrendingDown,
@@ -72,11 +78,71 @@ export function StatCard({
   invertDelta,
   unit = '%',
 }: StatCardProps) {
+  const phone = useContext(StatCardPhoneContext);
   const DirectionIcon = delta ? DIRECTION_ICON[delta.direction] : null;
   const good =
     delta && delta.direction !== 'stable'
       ? (delta.direction === 'up') !== Boolean(invertDelta)
       : undefined;
+  const deltaText = delta
+    ? unit === '%'
+      ? Math.abs(delta.percent).toFixed(1)
+      : Math.round(Math.abs(delta.percent))
+    : null;
+  const shownValue =
+    compactValue && typeof value === 'string' ? value.replace(/\u00a0/g, ' ') : value;
+
+  if (phone) {
+    // Phone tile (ChartViewPhone / FAnalytics mockups): label, value with the delta
+    // beside it, then the caption or sub line and the footnote. Same facts as the
+    // card; the icon bubble is decoration and is left out.
+    const tileContent = (
+      <>
+        <span className="phone-stat-tile__label">{label}</span>
+        <span className="phone-stat-tile__value-row">
+          <span
+            className={
+              compactValue
+                ? 'phone-stat-tile__value phone-stat-tile__value--compact'
+                : 'phone-stat-tile__value'
+            }
+            style={valueColor ? { color: valueColor } : undefined}
+          >
+            {shownValue}
+          </span>
+          {delta && DirectionIcon && (
+            <span
+              className="phone-stat-tile__delta"
+              data-direction={delta.direction}
+              data-good={good === undefined ? undefined : String(good)}
+            >
+              <DirectionIcon aria-hidden="true" />
+              {deltaText}
+              {unit}
+            </span>
+          )}
+        </span>
+        {delta
+          ? delta.caption && <span className="phone-stat-tile__sub">{delta.caption}</span>
+          : sub && <span className="phone-stat-tile__sub">{sub}</span>}
+        {footNote && <span className="phone-stat-tile__footnote">{footNote}</span>}
+      </>
+    );
+    if (onClick) {
+      return (
+        <button
+          type="button"
+          className={active ? 'phone-stat-tile phone-stat-tile--active' : 'phone-stat-tile'}
+          data-active={active || undefined}
+          aria-pressed={active ?? false}
+          onClick={onClick}
+        >
+          {tileContent}
+        </button>
+      );
+    }
+    return <div className="phone-stat-tile">{tileContent}</div>;
+  }
 
   const content = (
     <>
@@ -92,7 +158,7 @@ export function StatCard({
         className={compactValue ? 'kpi-value kpi-value--compact' : 'kpi-value'}
         style={valueColor ? { color: valueColor } : undefined}
       >
-        {compactValue && typeof value === 'string' ? value.replace(/\u00a0/g, ' ') : value}
+        {shownValue}
       </span>
       {(delta || sub) && (
         <div className="kpi-foot">
@@ -104,9 +170,7 @@ export function StatCard({
                 data-good={good === undefined ? undefined : String(good)}
               >
                 <DirectionIcon className="h-3.5 w-3.5" />
-                {unit === '%'
-                  ? Math.abs(delta.percent).toFixed(1)
-                  : Math.round(Math.abs(delta.percent))}
+                {deltaText}
                 {unit}
               </span>
               {delta.caption && <span className="kpi-delta-caption">{delta.caption}</span>}

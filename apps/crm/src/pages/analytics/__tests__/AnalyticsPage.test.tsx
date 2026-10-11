@@ -358,8 +358,9 @@ function renderPage() {
   );
 }
 
+// jsdom renders the phone branch: StatCardGrid's cards are `.phone-stat-tile` there.
 function getKpiCard(label: string) {
-  return screen.getByText(label).closest('.kpi-card') as HTMLElement;
+  return screen.getByText(label).closest('.kpi-card, .phone-stat-tile') as HTMLElement;
 }
 
 function buildBaseAccounts() {
