@@ -1366,3 +1366,63 @@ button.phone-sheet__grabber::before {
   -webkit-appearance: none;
   appearance: none;
 }
+
+/* ---- @ios-kit excerpt: sheet keyframes (CRM "shadcn Sheet motion"). The kit sheets animate with these; without them Radix never sees animationend and a closed sheet stays mounted. */
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes sheet-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-slide-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes sheet-slide-out-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes sheet-slide-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes sheet-slide-out-bottom {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes sheet-slide-in-top {
+  from {
+    transform: translateY(-100%);
+  }
+}
+@keyframes sheet-slide-out-top {
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+/* ---- @ios-kit excerpt: context-menu keyframe (CRM phone context menu). */
+@keyframes phone-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
