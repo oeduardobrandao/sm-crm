@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { getClientHealthMonitor } from '../../../services/clientHealth';
 import { HealthFilterBar } from './HealthFilterBar';
 import { ClientHealthGrid } from './ClientHealthGrid';
@@ -17,6 +18,8 @@ const EMPTY_SUMMARY = {
 
 export function ClientHealthMonitor() {
   const { t } = useTranslation('dashboard');
+  // Under the Vidro toolbar the page h1 is "Início"; this section then titles itself with an h2.
+  const Heading = useVidroShell() ? 'h2' : 'h1';
   const [filter, setFilter] = useState<HealthFilterKey>('todos');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<HealthSort>('atencao');
@@ -35,7 +38,7 @@ export function ClientHealthMonitor() {
     <section style={{ marginBottom: '1.5rem' }}>
       <header className="header animate-up">
         <div className="header-title">
-          <h2>{t('health.title')}</h2>
+          <Heading>{t('health.title')}</Heading>
           <p>
             {t('health.subtitle', {
               count: summary.total,

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const { isAtLimitMock, limitsRef } = vi.hoisted(() => ({
   isAtLimitMock: vi.fn(),
@@ -244,5 +245,31 @@ describe('ClientesPage header meter', () => {
     // Give React a tick to settle without ever resolving the query.
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByText(/de .* clientes/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ClientesPage header meter in the Vidro toolbar', () => {
+  it('renders the meter as the toolbar subtitle, not in the page content', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_clients: 15 };
+    mockedGetClientes.mockResolvedValue([
+      { id: 1, nome: 'A', sigla: 'A', cor: '#000', status: 'ativo' } as store.Cliente,
+      { id: 2, nome: 'B', sigla: 'B', cor: '#000', status: 'ativo' } as store.Cliente,
+    ]);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          <VidroToolbarHarness>
+            <ClientesPage />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const meter = await screen.findByText('2 de 15 clientes');
+    expect(meter.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    expect(meter.closest('.page-content')).toBeNull();
+    expect(screen.getAllByText('2 de 15 clientes')).toHaveLength(1);
   });
 });

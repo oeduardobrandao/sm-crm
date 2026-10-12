@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const { isAtLimitMock, limitsRef } = vi.hoisted(() => ({
   isAtLimitMock: vi.fn(),
@@ -261,5 +262,25 @@ describe('LeadsPage at-limit create button', () => {
     expect(screen.queryByText(/de 200 leads/)).not.toBeInTheDocument();
     const createBtn = screen.getByRole('button', { name: /Novo Lead/ });
     expect(createBtn).not.toBeDisabled();
+  });
+
+  it('renders the meter as the toolbar subtitle under the Vidro shell, not in the page content', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_leads: 200 };
+    mockedGetLeads.mockResolvedValue([]);
+    mockedGetLeadsCount.mockResolvedValue(37);
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <VidroToolbarHarness>
+          <LeadsPage />
+        </VidroToolbarHarness>
+      </QueryClientProvider>,
+    );
+    const meter = await screen.findByText('37 de 200 leads');
+    expect(meter.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    expect(meter.closest('.page-content')).toBeNull();
+    expect(screen.getAllByText('37 de 200 leads')).toHaveLength(1);
   });
 });

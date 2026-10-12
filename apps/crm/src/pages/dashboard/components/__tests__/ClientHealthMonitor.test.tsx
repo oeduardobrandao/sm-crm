@@ -39,6 +39,7 @@ vi.mock('../../../../services/clientHealth', () => ({
 }));
 
 import { ClientHealthMonitor } from '../ClientHealthMonitor';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function renderMonitor() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -58,9 +59,25 @@ describe('ClientHealthMonitor', () => {
     await waitFor(() => expect(screen.getByText('Dr. Ana')).toBeTruthy());
   });
 
-  it('titles the section with a level-2 heading, leaving the page h1 to the toolbar', () => {
-    renderMonitor();
+  it('titles the section with a level-2 heading under the Vidro toolbar, which owns the page h1', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <VidroToolbarHarness>
+            <ClientHealthMonitor />
+          </VidroToolbarHarness>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
     expect(screen.getByRole('heading', { level: 2, name: 'Saúde dos clientes' })).toBeTruthy();
+    // The page h1 comes from DashboardPage's toolbar spec; the monitor must not add a second one.
     expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0);
+  });
+
+  it('keeps the level-1 heading without the Vidro toolbar', () => {
+    renderMonitor();
+    expect(screen.getByRole('heading', { level: 1, name: 'Saúde dos clientes' })).toBeTruthy();
+    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0);
   });
 });
