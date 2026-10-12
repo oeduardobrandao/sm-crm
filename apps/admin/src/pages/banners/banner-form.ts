@@ -22,6 +22,15 @@ export const TYPE_COLORS: Record<string, { accent: string; bg: string }> = {
   critical: { accent: '#f55a42', bg: 'rgba(245,90,66,0.25)' },
 };
 
+/**
+ * Text in a type's accent colour (the type chip, the preview's "Link"). Put the accent in
+ * `--type-color` inline. The raw accents are fills: as text on their tint they are 1.7-2.4:1
+ * in light. Mixed 55% with black in light and 80% with white in dark, the three accents reach
+ * 4.5:1 on their tint in both themes. Fills and tints keep the raw colours.
+ */
+export const TYPE_TEXT_CLASS =
+  'text-[color:color-mix(in_srgb,var(--type-color)_55%,black)] dark:text-[color:color-mix(in_srgb,var(--type-color)_80%,white)]';
+
 export interface FormState {
   type: 'info' | 'warning' | 'critical';
   content: string;

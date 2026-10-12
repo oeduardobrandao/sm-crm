@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react';
 import type { SortDir, WorkspaceSortKey, WorkspaceSummary } from '../../lib/api';
-import { getPlanColor } from '../../lib/plan-colors';
+import { PLAN_TEXT_CLASS, getPlanColor } from '../../lib/plan-colors';
 import {
   formatMoney,
   hasSubscription,
@@ -49,7 +49,11 @@ export function PlanBadge({ name }: { name: string | null }) {
   if (!name) return <span className="text-dim-foreground">—</span>;
   const color = getPlanColor(name);
   return (
-    <Badge variant="neutral" style={{ color, backgroundColor: `${color}26` }}>
+    <Badge
+      variant="neutral"
+      className={PLAN_TEXT_CLASS}
+      style={{ ['--plan-color' as string]: color, backgroundColor: `${color}26` }}
+    >
       {name}
     </Badge>
   );

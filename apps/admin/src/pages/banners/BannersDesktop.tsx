@@ -16,6 +16,7 @@ import { BannerPreview } from './BannerFormFields';
 import {
   STATUS_FILTERS,
   TYPE_COLORS,
+  TYPE_TEXT_CLASS,
   TYPE_LABELS,
   formatSchedule,
   getStatusBadge,
@@ -39,11 +40,13 @@ function BannerRow({
   const summary = banner.content.length > 40 ? `${banner.content.slice(0, 40)}…` : banner.content;
   return (
     <li className="flex flex-wrap items-center gap-4 border-t border-border/60 px-[18px] py-3.5 first:border-t-0">
-      <div className={`min-w-0 flex-[1_1_380px] ${banner.status === 'draft' ? 'opacity-70' : ''}`}>
+      {/* Drafts are marked by the Rascunho badge and muted values; the preview keeps its
+          real colours and full contrast. */}
+      <div className="min-w-0 flex-[1_1_380px]">
         <div className="mb-2 flex gap-1.5">
           <span
-            className="rounded-[6px] px-[7px] py-px text-[11px] font-bold uppercase tracking-[0.02em]"
-            style={{ color: tc.accent, backgroundColor: tc.bg }}
+            className={`rounded-[6px] px-[7px] py-px text-[11px] font-bold uppercase tracking-[0.02em] ${TYPE_TEXT_CLASS}`}
+            style={{ ['--type-color' as string]: tc.accent, backgroundColor: tc.bg }}
           >
             {TYPE_LABELS[banner.type]}
           </span>
@@ -57,7 +60,9 @@ function BannerRow({
           dismissible={banner.dismissible}
         />
       </div>
-      <dl className="m-0 grid flex-[0_1_260px] grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[13px]">
+      <dl
+        className={`m-0 grid flex-[0_1_260px] grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[13px] ${banner.status === 'draft' ? 'text-muted-foreground' : ''}`}
+      >
         <dt className="text-muted-foreground">Público</dt>
         <dd className="m-0">{getTargetLabel(banner, plans)}</dd>
         <dt className="text-muted-foreground">Período</dt>

@@ -1,6 +1,6 @@
 import { differenceInCalendarDays } from 'date-fns';
 import { Badge } from '../../components/ui/badge';
-import { getPlanColor } from '../../lib/plan-colors';
+import { PLAN_TEXT_CLASS, getPlanColor } from '../../lib/plan-colors';
 import { describeActivity } from '../workspace-activity';
 import type { MrrSummary, TrialsSummary, WorkspaceSummary } from '../../lib/api';
 import type { RiskCardProps } from './RiskCard';
@@ -9,7 +9,11 @@ export function PlanBadge({ name }: { name: string | null }) {
   if (!name) return <span className="text-dim-foreground">—</span>;
   const color = getPlanColor(name);
   return (
-    <Badge variant="neutral" style={{ color, backgroundColor: `${color}26` }}>
+    <Badge
+      variant="neutral"
+      className={PLAN_TEXT_CLASS}
+      style={{ ['--plan-color' as string]: color, backgroundColor: `${color}26` }}
+    >
       {name}
     </Badge>
   );

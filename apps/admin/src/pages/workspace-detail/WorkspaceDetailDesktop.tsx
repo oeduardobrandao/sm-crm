@@ -5,7 +5,7 @@ import { ExternalLink } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
 import { statusMeta, STATUS_BADGE_VARIANT, hasSubscription } from '../../lib/subscription';
 import { sanitizeExternalUrl } from '../../lib/security';
-import { getPlanColor } from '../../lib/plan-colors';
+import { PLAN_TEXT_CLASS, getPlanColor } from '../../lib/plan-colors';
 import type { McpKeyRow, OAuthGrantRow } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { WorkspaceAvatar } from '../../components/WorkspaceAvatar';
@@ -127,8 +127,9 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
             <span className="sr-only">Situação do workspace:</span>
             {data.plan && planColor && (
               <Badge
+                className={PLAN_TEXT_CLASS}
                 style={{
-                  color: planColor,
+                  ['--plan-color' as string]: planColor,
                   backgroundColor: `color-mix(in srgb, ${planColor} 15%, transparent)`,
                 }}
               >

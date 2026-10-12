@@ -152,8 +152,16 @@ export function KbArticlesDesktop(p: KbArticlesViewProps) {
                           className={ROUND_CHECK}
                         />
                       </div>
-                      <div className={cn('min-w-0', a.status === 'draft' && 'opacity-60')}>
-                        <RowLink to={to} className="block truncate text-sm">
+                      {/* Drafts mute the title with the token instead of fading the cell, so
+                          the slug under it keeps 4.5:1. */}
+                      <div className="min-w-0">
+                        <RowLink
+                          to={to}
+                          className={cn(
+                            'block truncate text-sm',
+                            a.status === 'draft' && 'text-muted-foreground',
+                          )}
+                        >
                           {a.title}
                         </RowLink>
                         <div className="truncate text-xs text-muted-foreground">/{a.slug}</div>
