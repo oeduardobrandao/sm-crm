@@ -228,6 +228,13 @@ html[data-standalone] .app-container {
   height: auto;
 }
 
+/* The home-screen app's status bar comes with a progressive blur that reaches ~28px
+   below the inset (iOS draws it; no CSS turns it off). Phone headers start this much
+   lower so their buttons sit mostly clear of it. Consumed by --phone-header-height. */
+html[data-standalone] {
+  --standalone-top-gap: 12px;
+}
+
 @supports not (height: 100dvh) {
   .app-container {
     height: 100vh;
@@ -3702,10 +3709,13 @@ select.form-input option {
     z-index: 30;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 10px;
     height: var(--phone-header-height);
-    padding: max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+    padding: max(
+        0px,
+        env(safe-area-inset-top, 0px) + var(--standalone-top-gap, 0px) - var(--banner-height, 0px)
+      )
       max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
     box-sizing: border-box;
     background: var(--bg-color);
@@ -3742,9 +3752,12 @@ select.form-input option {
      data-phone-page-header: the page renders PhonePageHeader / PhoneNavBar, which carry
      the bell and help links, so the shell bar goes away. Only its 44px row is dropped
      from the offset: --phone-header-height keeps the status-bar inset, so the page's own
-     header starts under the Dynamic Island instead of behind it. */
+     header starts under the Dynamic Island instead of behind it. The strip behind the
+     status bar is the shell's own background, so it takes the page's grouped grey: a
+     white one shows as a blurred band above the page header. */
   .app-container[data-phone-page-header] {
     --phone-header-bar: 0px;
+    background: var(--phone-bg);
   }
 
   .app-container[data-phone-page-header] .phone-shell-header {
@@ -15802,10 +15815,15 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
     --phone-gutter: 16px;
     --phone-row-min: 44px;
     /* Shell header (bell, related articles) above every phone page. Carries the
-       status-bar inset the way the first banner does: only the part no banner covered. */
+       status-bar inset the way the first banner does: only the part no banner covered,
+       plus --standalone-top-gap in the home-screen app (see html[data-standalone]). */
     --phone-header-bar: 44px;
     --phone-header-height: calc(
-      var(--phone-header-bar) + max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+      var(--phone-header-bar) +
+        max(
+          0px,
+          env(safe-area-inset-top, 0px) + var(--standalone-top-gap, 0px) - var(--banner-height, 0px)
+        )
     );
   }
 
@@ -15852,6 +15870,13 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
   justify-content: space-between;
   min-height: 44px;
   gap: 10px;
+}
+/* Mesaas mark at the left of a phone header row (BrandMark). */
+.phone-brand-mark {
+  display: block;
+  flex-shrink: 0;
+  width: auto;
+  height: 22px;
 }
 .phone-large-title__leading,
 .phone-large-title__trailing {
