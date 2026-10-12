@@ -25,10 +25,22 @@ vi.mock('../../../hooks/useMensagensUnread', () => ({
 
 vi.mock('../../../lib/supabase');
 
-// No QueryClientProvider in this tree: the real palette runs useQuery.
-vi.mock('../GlobalSearchDialog', () => ({
-  default: ({ open }: { open: boolean }) => (open ? <div role="dialog" /> : null),
-}));
+// No QueryClientProvider in this tree: the real palette runs useQuery. Like the real Radix
+// dialog, the stand-in renders through a portal and focuses its field on open.
+vi.mock('../GlobalSearchDialog', async () => {
+  const { createPortal } = await import('react-dom');
+  return {
+    default: ({ open }: { open: boolean }) =>
+      open
+        ? createPortal(
+            <div role="dialog">
+              <input aria-label="Campo de busca" autoFocus />
+            </div>,
+            document.body,
+          )
+        : null,
+  };
+});
 
 vi.mock('@/store/workspace', () => ({
   switchWorkspace: vi.fn().mockResolvedValue(undefined),
@@ -550,6 +562,40 @@ describe('Sidebar', () => {
 
       fireEvent.click(buttons[0]);
       expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('keeps the rail collapsed when focus lands in the portaled search dialog', () => {
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true, vidroShell: true });
+      const nav = document.getElementById('sidebar')!;
+      expect(nav).toHaveClass('sidebar--rail');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buscar' }));
+
+      // The field lives outside the nav's DOM; its focus still bubbles to the nav through React.
+      const field = screen.getByRole('textbox', { name: 'Campo de busca' });
+      expect(field).toHaveFocus();
+      expect(nav).not.toContainElement(field);
+      expect(nav).toHaveClass('sidebar--rail');
+      expect(nav).not.toHaveClass('sidebar--overlay');
+    });
+
+    it('collapses the rail when keyboard focus moves from the nav into the portaled dialog', () => {
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true, vidroShell: true });
+      const nav = document.getElementById('sidebar')!;
+      const trigger = screen.getByRole('button', { name: 'Buscar' });
+
+      // jsdom treats this focus as :focus-visible, i.e. keyboard modality.
+      act(() => {
+        trigger.focus();
+      });
+      expect(nav).toHaveClass('sidebar--overlay');
+
+      fireEvent.click(trigger);
+
+      expect(screen.getByRole('textbox', { name: 'Campo de busca' })).toHaveFocus();
+      expect(nav).toHaveClass('sidebar--rail');
     });
 
     it('offers "Visual clássico" in the account menu and toggles the look', () => {

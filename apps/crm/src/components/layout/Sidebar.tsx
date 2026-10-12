@@ -104,9 +104,15 @@ export default function Sidebar({
 
   // Only keyboard focus expands the rail. A mouse click leaves focus on the
   // clicked link, and expanding on any focus would then keep the overlay open
-  // after the pointer leaves.
+  // after the pointer leaves. Focus inside portaled content (the search dialog) bubbles here
+  // through React too, but is not in the nav's DOM and must not expand the rail behind it.
   const handleFocus = (e: React.FocusEvent<HTMLElement>) => {
-    if (collapsible && e.target.matches(':focus-visible')) setKeyboardFocused(true);
+    if (
+      collapsible &&
+      e.currentTarget.contains(e.target as Node) &&
+      e.target.matches(':focus-visible')
+    )
+      setKeyboardFocused(true);
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLElement>) => {
