@@ -129,6 +129,33 @@ describe('AffiliatesPage', () => {
     expect(screen.getByText('Sem conta Stripe')).toBeInTheDocument();
   });
 
+  it('ranks affiliates by available balance and totals the KPI row', async () => {
+    const base = {
+      code: 'x',
+      email: 'x@x.com',
+      status: 'active' as const,
+      stripe_account_id: null,
+      stripe_details_submitted: false,
+      stripe_transfers_active: false,
+      created_at: '2026-10-01T00:00:00Z',
+    };
+    vi.mocked(listAffiliates).mockResolvedValue({
+      affiliates: [
+        { ...base, id: 'low', nome: 'Baixo', summary: { ...SUMMARY, available_cents: 1000 } },
+        { ...base, id: 'high', nome: 'Alto', summary: { ...SUMMARY, available_cents: 9000 } },
+      ],
+      rules: RULES,
+    });
+    wrap(<AffiliatesPage />);
+    await screen.findAllByRole('link', { name: 'Alto' });
+    const names = screen
+      .getAllByRole('link')
+      .map((l) => l.textContent)
+      .filter((t) => t === 'Alto' || t === 'Baixo');
+    expect(names).toEqual(['Alto', 'Baixo']);
+    expect(screen.getByText('de 6 indicações')).toBeInTheDocument();
+  });
+
   it('edits a commission rule from the table', async () => {
     vi.mocked(listAffiliates).mockResolvedValue({ affiliates: [], rules: RULES });
     const user = userEvent.setup();
@@ -206,14 +233,18 @@ describe('AffiliateDetailPage', () => {
   });
 
   it('shows the Stripe account, the referred workspace and payout failures', async () => {
+    const user = userEvent.setup();
     wrap(<AffiliateDetailPage />, '/admin/afiliados/a1');
     expect(await screen.findByText('Ana Souza', { selector: 'h1' })).toBeInTheDocument();
     expect(screen.getByText('Recebe pelo Stripe')).toBeInTheDocument();
     expect(screen.getByText('acct_1')).toBeInTheDocument();
+    // The history is a tablist now: one panel at a time.
+    await user.click(screen.getByRole('tab', { name: 'Indicações' }));
     expect(screen.getByRole('link', { name: 'Agência X' })).toHaveAttribute(
       'href',
       '/admin/workspaces/ws-1',
     );
+    await user.click(screen.getByRole('tab', { name: 'Repasses' }));
     expect(screen.getByText('balance_insufficient')).toBeInTheDocument();
   });
 
