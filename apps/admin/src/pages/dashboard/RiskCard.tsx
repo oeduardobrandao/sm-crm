@@ -262,7 +262,7 @@ export function RiskCard({ trials, pending, now, phone = false, className }: Ris
         ) : (
           <div className="flex flex-col divide-y divide-border">
             {showTrials ? (
-              <section className="px-[18px] pb-4">
+              <section className="px-[18px] py-4 first:pt-0">
                 <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
                   <Badge variant="warning">{trialsCount}</Badge>
                   {trialsTitle}
@@ -295,7 +295,7 @@ export function RiskCard({ trials, pending, now, phone = false, className }: Ris
             ) : null}
 
             {showPending ? (
-              <section className="px-[18px] pb-4">
+              <section className="px-[18px] py-4 first:pt-0">
                 <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
                   <Badge variant="danger">{pendingCount}</Badge>
                   Pagamento pendente

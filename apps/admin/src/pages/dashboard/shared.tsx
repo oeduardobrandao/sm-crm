@@ -57,7 +57,9 @@ export function trialEndInfo(trialEndsAt: string | null): TrialEndInfo {
 
 /** "hoje", "ontem" or "há N dias" for a creation date. */
 export function relativeCreated(iso: string, now: Date = new Date()): string {
-  const days = Math.max(0, differenceInCalendarDays(now, new Date(iso)));
+  const created = new Date(iso);
+  if (Number.isNaN(created.getTime())) return '—';
+  const days = Math.max(0, differenceInCalendarDays(now, created));
   if (days === 0) return 'hoje';
   if (days === 1) return 'ontem';
   return `há ${days} dias`;

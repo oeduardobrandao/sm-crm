@@ -173,7 +173,10 @@ describe('AffiliatesPage (phone)', () => {
     expect(screen.getAllByText(/^Não salvo/)).toHaveLength(2);
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Max')));
-    expect(toast.error).toHaveBeenCalledWith(expect.not.stringContaining('Pro'));
+    // Pro was saved, so no error message may name it.
+    for (const [message] of vi.mocked(toast.error).mock.calls) {
+      expect(String(message)).not.toMatch(/\bPro\b/);
+    }
     expect(screen.getByRole('dialog', { name: 'Comissões' })).toBeInTheDocument();
     // Pro was saved: its edit is gone, only Max still shows as unsaved.
     expect(screen.getAllByText(/^Não salvo/)).toHaveLength(1);

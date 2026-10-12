@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, RouterProvider, createBrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../lib/api', () => ({
@@ -56,6 +56,38 @@ describe('MetricasPage', () => {
     expect(screen.getByRole('tab', { name: 'Depósitos' })).toHaveAttribute('aria-selected', 'true');
     expect(document.getElementById('depositos')).not.toBeNull();
     expect(document.getElementById('mrr')).toBeNull();
+  });
+
+  it('a tab click replaces the history entry instead of stacking one', async () => {
+    window.history.replaceState(null, '', '/admin/metricas');
+    const router = createBrowserRouter([{ path: '*', element: <MetricasPage /> }]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    try {
+      render(
+        <QueryClientProvider client={qc}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      );
+      const length = window.history.length;
+      const idx = (window.history.state as { idx: number }).idx;
+      fireEvent.click(screen.getByRole('tab', { name: 'Movimento e churn' }));
+      await waitFor(() => expect(window.location.hash).toBe('#churn'));
+      expect(window.history.length).toBe(length);
+      expect((window.history.state as { idx: number }).idx).toBe(idx);
+      expect(router.state.historyAction).toBe('REPLACE');
+    } finally {
+      router.dispose();
+    }
+  });
+
+  it('fetches deposits only once the Depósitos section is open', async () => {
+    const api = await import('../../lib/api');
+    renderPage();
+    expect(screen.getByRole('tab', { name: 'Receita' })).toHaveAttribute('aria-selected', 'true');
+    expect(api.getMetricsHistory).toHaveBeenCalled();
+    expect(api.getDeposits).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('tab', { name: 'Depósitos' }));
+    await waitFor(() => expect(api.getDeposits).toHaveBeenCalledTimes(1));
   });
 
   it('asks for confirmation before running the backfill and maps 403 to a production-only toast', async () => {

@@ -38,47 +38,45 @@ export function MovementDesktop({ months }: { months: MetricsMonth[] }) {
         </GlassPanel>
       </div>
       <GlassPanel flush>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mês</TableHead>
-                {MOVEMENT_KEYS.map((k) => (
-                  <TableHead key={k} className="text-right">
-                    {MOVEMENT_LABELS[k]}
-                  </TableHead>
-                ))}
-                <TableHead className="text-right">Churn logos</TableHead>
-                <TableHead className="text-right">Churn receita</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {s.months.map((m) => (
-                <TableRow key={m.month}>
-                  <TableCell className="whitespace-nowrap">
-                    <span>{monthLabel(m)}</span>
-                    {m.movements_since && m.movements_since !== prevCalendarMonth(m.month) ? (
-                      <span className="block text-xs text-muted-foreground">
-                        desde {formatMonth(m.movements_since)}
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  {MOVEMENT_KEYS.map((k) => (
-                    <TableCell key={k} className="text-right tabular-nums">
-                      {formatMoney(m.movements![k], 'brl')}
-                    </TableCell>
-                  ))}
-                  <TableCell className="text-right tabular-nums">
-                    {formatPct(m.churn?.logo_pct ?? null)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatPct(m.churn?.revenue_pct ?? null)}
-                  </TableCell>
-                </TableRow>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Mês</TableHead>
+              {MOVEMENT_KEYS.map((k) => (
+                <TableHead key={k} className="text-right">
+                  {MOVEMENT_LABELS[k]}
+                </TableHead>
               ))}
-            </TableBody>
-          </Table>
-        </div>
+              <TableHead className="text-right">Churn logos</TableHead>
+              <TableHead className="text-right">Churn receita</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {s.months.map((m) => (
+              <TableRow key={m.month}>
+                <TableCell className="whitespace-nowrap">
+                  <span>{monthLabel(m)}</span>
+                  {m.movements_since && m.movements_since !== prevCalendarMonth(m.month) ? (
+                    <span className="block text-xs text-muted-foreground">
+                      desde {formatMonth(m.movements_since)}
+                    </span>
+                  ) : null}
+                </TableCell>
+                {MOVEMENT_KEYS.map((k) => (
+                  <TableCell key={k} className="text-right tabular-nums">
+                    {formatMoney(m.movements![k], 'brl')}
+                  </TableCell>
+                ))}
+                <TableCell className="text-right tabular-nums">
+                  {formatPct(m.churn?.logo_pct ?? null)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatPct(m.churn?.revenue_pct ?? null)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </GlassPanel>
     </div>
   );

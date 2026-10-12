@@ -87,7 +87,7 @@ export function useCommissionRules() {
       const detail = first instanceof Error ? `: ${first.message}` : '';
       toast.error(`Não foi possível salvar ${names}${detail}`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    // No onError: allSettled never rejects, so every failure is reported above.
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['admin', 'affiliates'] }),
   });
 

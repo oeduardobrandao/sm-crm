@@ -114,12 +114,10 @@ export function DashboardDesktop({
           className="flex-[1.5_1_480px]"
           flush
           actions={
-            <>
-              <Button variant="secondary" size="sm" onClick={onExportPaying}>
-                <Download size={14} aria-hidden="true" />
-                Exportar CSV
-              </Button>
-            </>
+            <Button variant="secondary" size="sm" onClick={onExportPaying}>
+              <Download size={14} aria-hidden="true" />
+              Exportar CSV
+            </Button>
           }
         >
           {mrr.loading ? (
