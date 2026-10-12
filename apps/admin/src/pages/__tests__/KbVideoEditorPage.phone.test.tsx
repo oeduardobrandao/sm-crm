@@ -102,6 +102,16 @@ describe('KbVideoEditorPage (phone)', () => {
     expect(screen.getByText(/Só é possível publicar/)).toBeInTheDocument();
   });
 
+  it('wraps the title in a stacked textarea and hides the Ordem stepper', async () => {
+    renderAt('/admin/kb-videos/7/edit');
+    await screen.findByDisplayValue('Primeiro acesso');
+    const title = screen.getByLabelText('Título');
+    expect(title.tagName).toBe('TEXTAREA');
+    fireEvent.change(title, { target: { value: 'Um título\ncom quebra' } });
+    expect(title).toHaveValue('Um título com quebra');
+    expect(screen.getByLabelText('Ordem')).toHaveClass('[appearance:textfield]');
+  });
+
   it('saves the metadata from the nav bar', async () => {
     renderAt('/admin/kb-videos/7/edit');
     await screen.findByDisplayValue('Primeiro acesso');

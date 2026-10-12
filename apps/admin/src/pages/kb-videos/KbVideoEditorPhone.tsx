@@ -6,6 +6,10 @@ import { STATUS_OPTIONS } from './fields';
 import { PUBLISH_LOCKED_HINT, type KbVideoEditorViewProps } from './editor-view';
 import { VideoFilePanel } from './VideoFilePanel';
 
+/** Hides the native number stepper (WebKit spin buttons and Firefox's textfield fallback). */
+const NO_SPINNER =
+  '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
+
 /** Phone editor: pushed screen (nav bar with Excluir + Salvar), file card, grouped form rows. */
 export function KbVideoEditorPhone(p: KbVideoEditorViewProps) {
   const { values, onChange } = p;
@@ -57,10 +61,15 @@ export function KbVideoEditorPhone(p: KbVideoEditorViewProps) {
       <GroupedList aria-label="Dados do vídeo">
         <FormRow
           label="Título"
-          input={{
+          // A stacked textarea wraps a long title at word boundaries; an inline input clipped it.
+          textarea={{
+            rows: 2,
             value: values.title,
             maxLength: 200,
-            onChange: (e) => onChange({ title: e.target.value }),
+            onKeyDown: (e) => {
+              if (e.key === 'Enter') e.preventDefault();
+            },
+            onChange: (e) => onChange({ title: e.target.value.replace(/\s*\n+\s*/g, ' ') }),
           }}
         />
         <FormRow
@@ -108,6 +117,7 @@ export function KbVideoEditorPhone(p: KbVideoEditorViewProps) {
             inputMode: 'numeric',
             min: 0,
             max: 10000,
+            className: NO_SPINNER,
             value: values.displayOrder,
             onChange: (e) => onChange({ displayOrder: e.target.value }),
           }}

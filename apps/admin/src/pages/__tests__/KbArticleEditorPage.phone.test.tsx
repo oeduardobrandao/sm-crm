@@ -162,6 +162,27 @@ describe('KbArticleEditorPage on phones', () => {
     expect(screen.getByRole('textbox', { name: 'Título' })).toHaveValue('Primeiro post');
   });
 
+  it('wraps a long title in a textarea instead of clipping it, and keeps it one logical line', async () => {
+    renderEditor();
+    const title = await screen.findByRole('textbox', { name: 'Título' });
+    expect(title.tagName).toBe('TEXTAREA');
+    expect(title).toHaveClass('break-words');
+    expect(title).toHaveClass('resize-none');
+    // Enter is swallowed; pasted line breaks collapse to a space.
+    expect(fireEvent.keyDown(title, { key: 'Enter' })).toBe(false);
+    fireEvent.change(title, { target: { value: 'Como conectar\nsua conta' } });
+    expect(title).toHaveValue('Como conectar sua conta');
+  });
+
+  it('docks the editor toolbar at the bottom of the card, above the browser chrome offset', async () => {
+    renderEditor();
+    const card = (await screen.findByTestId('article-editor')).parentElement as HTMLElement;
+    const cls = card.className;
+    expect(cls).toContain('[&_.post-editor-toolbar]:sticky');
+    expect(cls).toContain('[&_.post-editor-toolbar]:bottom-[var(--mobile-nav-chrome-offset,0px)]');
+    expect(cls).toContain('[&_.post-editor-toolbar]:order-last');
+  });
+
   it('Salvar sends the edited fields', async () => {
     renderEditor();
     const title = await screen.findByRole('textbox', { name: 'Título' });
