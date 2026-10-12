@@ -123,6 +123,9 @@ export const STATUS_FILTERS = [
   { value: 'archived', label: 'Arquivo' },
 ] as const;
 
+/** Example value for the custom colour field (a hex the admin types, so data, not theme). */
+export const CUSTOM_COLOR_PLACEHOLDER = '#ff5500';
+
 /**
  * Link field: https URL or a site path, never protocol-relative (`//x`) or `/\x`. Written so it
  * also compiles under the `v` flag browsers use for the `pattern` attribute (`/` must be escaped

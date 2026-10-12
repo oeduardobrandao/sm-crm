@@ -48,9 +48,14 @@ function collect(dir: string, match: (rel: string) => boolean): string[] {
   return out;
 }
 
+/**
+ * Every view under a page folder (`pages/<area>/**\/*.tsx`), not just the `*Phone`/`*Desktop`
+ * files: shared view pieces (`shared.tsx`, `RiskCard.tsx`, `charts.tsx`, …) render colour too.
+ * Data `.ts` files stay unscanned; that is where colours that are data live.
+ */
 const NEW_DESIGN = [
   ...collect('components/shell', (r) => r.endsWith('.tsx')),
-  ...collect('pages', (r) => /(Phone|Desktop)\.tsx$/.test(r) || /\/phone\/.+\.tsx$/.test(r)),
+  ...collect('pages', (r) => /^pages\/[^/]+\/.+\.tsx$/.test(r) && !r.endsWith('.test.tsx')),
   'components/PageHeader.tsx',
 ];
 

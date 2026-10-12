@@ -8,6 +8,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { useIsPhone } from '../../hooks/useIsPhone';
 import {
   BANNER_TYPES,
+  CUSTOM_COLOR_PLACEHOLDER,
   STATUSES,
   STATUS_LABELS,
   TYPE_COLORS,
@@ -131,7 +132,7 @@ function DesktopFields({
             type="text"
             value={form.custom_color}
             onChange={(e) => setForm((f) => ({ ...f, custom_color: e.target.value }))}
-            placeholder="#ff5500"
+            placeholder={CUSTOM_COLOR_PLACEHOLDER}
           />
         </Field>
       </div>
@@ -282,7 +283,7 @@ function PhoneFields({
           label="Cor (opcional)"
           input={{
             value: form.custom_color,
-            placeholder: '#ff5500',
+            placeholder: CUSTOM_COLOR_PLACEHOLDER,
             onChange: (e) => setForm((f) => ({ ...f, custom_color: e.target.value })),
           }}
         />
