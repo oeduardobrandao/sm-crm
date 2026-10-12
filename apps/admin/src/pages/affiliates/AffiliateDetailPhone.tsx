@@ -48,10 +48,10 @@ export function AffiliateDetailPhone({
       <div className="mb-4 flex items-center gap-3">
         <AffiliateAvatar name={a.nome} size={56} />
         <div className="min-w-0">
-          <h1 className="flex flex-wrap items-center gap-2 font-sf text-[22px] font-bold leading-tight">
-            {a.nome}
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="font-sf text-[22px] font-bold leading-tight">{a.nome}</h1>
             <AccountStatus status={a.status} />
-          </h1>
+          </div>
           <p className="mt-0.5 break-words text-sm text-muted-foreground">
             {a.email}
             {a.telefone ? ` · ${a.telefone}` : ''} · código{' '}
@@ -65,7 +65,7 @@ export function AffiliateDetailPhone({
       <KpiGrid min={150}>
         <KpiTile label="Indicações" value={summary.referrals_count} />
         <KpiTile label="Em teste" value={summary.trialing_count} />
-        <KpiTile label="Assinantes" value={summary.paying_count} />
+        <KpiTile label="Assinantes (Stripe)" value={summary.paying_count} />
         <KpiTile label="Pendente" value={formatMoney(summary.pending_cents)} />
         <KpiTile label="Disponível" value={formatMoney(summary.available_cents)} />
         <KpiTile label="Já pago" value={formatMoney(summary.paid_out_cents)} />

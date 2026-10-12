@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AffiliatesPage from '../AffiliatesPage';
 import { listAffiliates, updateAffiliateCommissionRule } from '../../lib/api';
+import { toast } from 'sonner';
 import { mockPhone } from '../../__tests__/phone';
 
 vi.mock('../../lib/api', () => ({
@@ -76,6 +77,7 @@ describe('AffiliatesPage (phone)', () => {
     vi.mocked(listAffiliates)
       .mockReset()
       .mockResolvedValue({ affiliates: [ANA], rules: RULES });
+    vi.mocked(toast.error).mockClear();
     vi.mocked(updateAffiliateCommissionRule)
       .mockReset()
       .mockResolvedValue({ rule: {} as never });
@@ -116,5 +118,66 @@ describe('AffiliatesPage (phone)', () => {
       }),
     );
     expect(updateAffiliateCommissionRule).toHaveBeenCalledTimes(1);
+  });
+
+  async function openSheet() {
+    const user = userEvent.setup();
+    wrap();
+    await user.click(await screen.findByRole('button', { name: /Tabela de comissões/ }));
+    await screen.findByRole('dialog', { name: 'Comissões' });
+    return user;
+  }
+
+  it('saves two edited rules with two calls and closes the sheet', async () => {
+    const user = await openSheet();
+    for (const [plan, value] of [
+      ['Pro', '25'],
+      ['Max', '20'],
+    ]) {
+      const rate = screen.getByLabelText(`Comissão do plano ${plan}`);
+      await user.clear(rate);
+      await user.type(rate, value);
+    }
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(updateAffiliateCommissionRule).toHaveBeenCalledTimes(2));
+    expect(updateAffiliateCommissionRule).toHaveBeenCalledWith({
+      plan_id: 'max',
+      rate_bps: 2000,
+      months: 6,
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('makes no call and keeps the sheet open on an invalid value', async () => {
+    const user = await openSheet();
+    const rate = screen.getByLabelText('Comissão do plano Pro');
+    await user.clear(rate);
+    await user.type(rate, 'abc');
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(updateAffiliateCommissionRule).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith('Percentual inválido (0 a 100).');
+    expect(screen.getByRole('dialog', { name: 'Comissões' })).toBeInTheDocument();
+  });
+
+  it('clears the saved rule, keeps the sheet open and names the plan that failed', async () => {
+    vi.mocked(updateAffiliateCommissionRule).mockImplementation(async (params) => {
+      if (params.plan_id === 'max') throw new Error('boom');
+      return { rule: {} as never };
+    });
+    const user = await openSheet();
+    for (const plan of ['Pro', 'Max']) {
+      const rate = screen.getByLabelText(`Comissão do plano ${plan}`);
+      await user.clear(rate);
+      await user.type(rate, '10');
+    }
+    expect(screen.getAllByText(/^Não salvo/)).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Max')));
+    expect(toast.error).toHaveBeenCalledWith(expect.not.stringContaining('Pro'));
+    expect(screen.getByRole('dialog', { name: 'Comissões' })).toBeInTheDocument();
+    // Pro was saved: its edit is gone, only Max still shows as unsaved.
+    expect(screen.getAllByText(/^Não salvo/)).toHaveLength(1);
+    expect(screen.getByLabelText('Comissão do plano Pro')).toHaveValue('30');
+    expect(screen.getByLabelText('Comissão do plano Max')).toHaveValue('10');
   });
 });

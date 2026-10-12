@@ -73,10 +73,12 @@ export function AffiliateDetailDesktop({
           <div className="flex min-w-0 items-center gap-4">
             <AffiliateAvatar name={a.nome} size={56} />
             <div className="min-w-0">
-              <h1 className="flex flex-wrap items-center gap-2 font-sf text-[28px] font-bold leading-[1.1] tracking-[-0.01em]">
-                {a.nome}
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-sf text-[28px] font-bold leading-[1.1] tracking-[-0.01em]">
+                  {a.nome}
+                </h1>
                 <AccountStatus status={a.status} />
-              </h1>
+              </div>
               <p className="mt-1 text-[15px] text-muted-foreground">
                 {a.email}
                 {a.telefone ? ` · ${a.telefone}` : ''} · código{' '}
@@ -100,7 +102,7 @@ export function AffiliateDetailDesktop({
           value={summary.referrals_count}
           sub={`${summary.trialing_count} em teste`}
         />
-        <KpiTile label="Assinantes" value={summary.paying_count} sub={conversion} />
+        <KpiTile label="Assinantes (Stripe)" value={summary.paying_count} sub={conversion} />
         <KpiTile label="Pendente" value={formatMoney(summary.pending_cents)} />
         <KpiTile label="Disponível" value={formatMoney(summary.available_cents)} />
         <KpiTile label="Já pago" value={formatMoney(summary.paid_out_cents)} />
