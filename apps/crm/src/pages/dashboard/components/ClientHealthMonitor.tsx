@@ -35,7 +35,7 @@ export function ClientHealthMonitor() {
     <section style={{ marginBottom: '1.5rem' }}>
       <header className="header animate-up">
         <div className="header-title">
-          <h1>{t('health.title')}</h1>
+          <h2>{t('health.title')}</h2>
           <p>
             {t('health.subtitle', {
               count: summary.total,

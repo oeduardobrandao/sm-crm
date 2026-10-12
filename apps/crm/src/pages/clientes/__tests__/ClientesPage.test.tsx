@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock, mockUseAuth } =
   vi.hoisted(() => ({
@@ -942,5 +943,52 @@ describe('ClientesPage — mutation buttons gated on clientes:editar', () => {
     const card = getClientCard('Gamma Care');
     expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+});
+
+describe('ClientesPage — Vidro toolbar', () => {
+  function renderInHarness(vidroShell: boolean) {
+    const queryClient = createTestQueryClient();
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <ClientesPage />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('moves the title and every header action into the toolbar, each exactly once', async () => {
+    renderInHarness(true);
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Clientes');
+    expect(screen.getAllByRole('button', { name: 'Novo Cliente' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Importar CSV' })).toHaveLength(1);
+    const toolbar = document.querySelector('.vidro-toolbar') as HTMLElement;
+    expect(within(toolbar).getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(within(toolbar).getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    expect(toolbar.querySelectorAll('[data-tooltip]')).toHaveLength(2);
+    expect(document.querySelector('.page-content .header')).toBeNull();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.header')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Novo Cliente' })).toHaveLength(1);
   });
 });

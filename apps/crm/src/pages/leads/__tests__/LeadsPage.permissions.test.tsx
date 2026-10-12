@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 // Follows LeadsPage.atlimit.test.tsx's mocking convention (shallow UI
 // primitive stand-ins so only LeadsPage's own logic is exercised).
@@ -220,5 +221,46 @@ describe('LeadsPage — mutation UI gated on leads:editar', () => {
     await waitFor(() => expect(screen.getAllByText('Ana Lead').length).toBeGreaterThan(0));
     expect(screen.getByRole('button', { name: /Novo Lead/ })).toBeInTheDocument();
     expect(screen.getByTitle('Converter em cliente')).toBeInTheDocument();
+  });
+});
+
+describe('LeadsPage — Vidro toolbar', () => {
+  function renderInHarness(vidroShell: boolean) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VidroToolbarHarness vidroShell={vidroShell}>
+          <LeadsPage />
+        </VidroToolbarHarness>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('moves the title and every header action into the toolbar, each exactly once', async () => {
+    renderInHarness(true);
+
+    await waitFor(() => expect(screen.getAllByText('Ana Lead').length).toBeGreaterThan(0));
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Leads');
+    expect(screen.getAllByRole('button', { name: /Novo Lead/ })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /Importar CSV/i })).toHaveLength(1);
+    const toolbar = document.querySelector('.vidro-toolbar') as HTMLElement;
+    expect(within(toolbar).getByRole('button', { name: /Novo Lead/ })).toBeInTheDocument();
+    expect(within(toolbar).getByRole('button', { name: /Importar CSV/i })).toBeInTheDocument();
+    expect(toolbar.querySelectorAll('[data-tooltip]')).toHaveLength(2);
+    expect(document.querySelector('.page-content .header')).toBeNull();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    await waitFor(() => expect(screen.getAllByText('Ana Lead').length).toBeGreaterThan(0));
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.header')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: /Novo Lead/ })).toHaveLength(1);
   });
 });

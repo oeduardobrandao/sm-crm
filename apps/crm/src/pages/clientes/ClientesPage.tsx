@@ -40,6 +40,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { UsageMeter } from '@/components/usage/UsageMeter';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
 import {
@@ -353,79 +354,84 @@ export default function ClientesPage() {
     );
   };
 
+  const infoTooltip = (
+    <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const usageMeter =
+    !isLoading && limits && limits.max_clients !== null ? (
+      <UsageMeter
+        size="compact"
+        label="clientes"
+        used={clientes.length}
+        limit={limits.max_clients}
+        showUpgradeCta={isOwner}
+      />
+    ) : null;
+  const headerActions = (
+    <>
+      <span data-tooltip={t('csvTooltip')} data-tooltip-dir="bottom" style={{ display: 'flex' }}>
+        <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+      </span>
+      {canEditClients && (
+        <FeatureGate flag="feature_csv_import" label="Importação CSV">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleCSVImport}
+            className="header-actions-icon-only"
+          >
+            <Upload className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
+            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+            {tc('actions.importCsv')}
+          </Button>
+        </FeatureGate>
+      )}
+    </>
+  );
+  const primaryAction = canEditClients ? (
+    <Button
+      onClick={openAdd}
+      disabled={clientsAtLimit}
+      title={clientsAtLimit ? 'Limite do plano atingido' : undefined}
+    >
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newClient')}
+    </Button>
+  ) : null;
+
+  const inToolbar = usePageToolbar({
+    title: t('title'),
+    titleAccessory: infoTooltip,
+    subtitle: usageMeter ?? undefined,
+    actions: headerActions,
+    primary: primaryAction,
+  });
+
   return (
     <div className="page-content">
       {isDesktop ? (
         <>
-          <div className="header">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-              <div
-                className="header-title"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                <h1>{t('title')}</h1>
-                <span
-                  data-tooltip={t('tooltip')}
-                  data-tooltip-dir="right"
-                  style={{ display: 'flex' }}
+          {!inToolbar && (
+            <div className="header">
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <div
+                  className="header-title"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
-                  <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-                </span>
-              </div>
-              {!isLoading && limits && limits.max_clients !== null && (
-                <div style={{ marginTop: 6 }}>
-                  <UsageMeter
-                    size="compact"
-                    label="clientes"
-                    used={clientes.length}
-                    limit={limits.max_clients}
-                    showUpgradeCta={isOwner}
-                  />
+                  <h1>{t('title')}</h1>
+                  {infoTooltip}
                 </div>
-              )}
+                {usageMeter && <div style={{ marginTop: 6 }}>{usageMeter}</div>}
+              </div>
+              <div className="header-actions">
+                {headerActions}
+                {primaryAction}
+              </div>
             </div>
-            <div className="header-actions">
-              <span
-                data-tooltip={t('csvTooltip')}
-                data-tooltip-dir="bottom"
-                style={{ display: 'flex' }}
-              >
-                <HelpCircle
-                  className="h-4 w-4"
-                  style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-                />
-              </span>
-              {canEditClients && (
-                <FeatureGate flag="feature_csv_import" label="Importação CSV">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleCSVImport}
-                    className="header-actions-icon-only"
-                  >
-                    <Upload className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleCSVImport}
-                    className="header-actions-full-only"
-                  >
-                    <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
-                    {tc('actions.importCsv')}
-                  </Button>
-                </FeatureGate>
-              )}
-              {canEditClients && (
-                <Button
-                  onClick={openAdd}
-                  disabled={clientsAtLimit}
-                  title={clientsAtLimit ? 'Limite do plano atingido' : undefined}
-                >
-                  <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newClient')}
-                </Button>
-              )}
-            </div>
-          </div>
+          )}
 
           <div
             style={{

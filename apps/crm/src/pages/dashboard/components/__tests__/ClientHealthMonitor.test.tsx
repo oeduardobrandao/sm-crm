@@ -57,4 +57,10 @@ describe('ClientHealthMonitor', () => {
     expect(screen.getByText('Saúde dos clientes')).toBeTruthy();
     await waitFor(() => expect(screen.getByText('Dr. Ana')).toBeTruthy());
   });
+
+  it('titles the section with a level-2 heading, leaving the page h1 to the toolbar', () => {
+    renderMonitor();
+    expect(screen.getByRole('heading', { level: 2, name: 'Saúde dos clientes' })).toBeTruthy();
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0);
+  });
 });
