@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockPhone } from '../../../__tests__/phone';
+import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../../lib/api', () => ({
@@ -16,11 +18,16 @@ import { SeriesDialog } from '../SeriesDialog';
 
 const toastError = vi.mocked(toast.error);
 
-function renderDialog(series: Parameters<typeof SeriesDialog>[0]['series'] = null) {
+function renderDialog(
+  series: Parameters<typeof SeriesDialog>[0]['series'] = null,
+  onClose: () => void = vi.fn(),
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <SeriesDialog series={series} onClose={vi.fn()} />
+      <MemoryRouter>
+        <SeriesDialog series={series} onClose={onClose} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -113,5 +120,86 @@ describe('SeriesDialog', () => {
 
     expect(screen.getByText('Apenas letras minúsculas, números e hifens')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+  });
+
+  it('saves from the sheet header and closes on success', async () => {
+    vi.mocked(upsertKbVideoSeries).mockResolvedValue({ series: {} } as never);
+    const onClose = vi.fn();
+    renderDialog(null, onClose);
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Primeiros passos' } });
+    expect(screen.getByLabelText('Slug')).toHaveValue('primeiros-passos');
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() =>
+      expect(upsertKbVideoSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Primeiros passos', slug: 'primeiros-passos' }),
+      ),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('Cancelar closes the sheet without saving', () => {
+    const onClose = vi.fn();
+    renderDialog(null, onClose);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(upsertKbVideoSeries).not.toHaveBeenCalled();
+  });
+
+  it('does not delete when the confirm is declined', () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderDialog({
+      id: 's1',
+      title: 'Primeiros passos',
+      slug: 'primeiros-passos',
+      description: null,
+      display_order: 0,
+      status: 'draft',
+    } as never);
+    fireEvent.click(screen.getByRole('button', { name: /Excluir série/ }));
+    expect(deleteKbVideoSeries).not.toHaveBeenCalled();
+  });
+});
+
+describe('SeriesDialog (phone)', () => {
+  let restorePhone: () => void;
+  beforeEach(() => {
+    restorePhone = mockPhone();
+  });
+  afterEach(() => restorePhone());
+
+  it('renders grouped form rows and submits through the header Salvar', async () => {
+    vi.mocked(upsertKbVideoSeries).mockResolvedValue({ series: {} } as never);
+    renderDialog();
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Agenda' } });
+    expect(screen.getByLabelText('Slug')).toHaveValue('agenda');
+    expect(screen.getByRole('button', { name: /^Status/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(upsertKbVideoSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Agenda', slug: 'agenda', status: 'draft' }),
+      ),
+    );
+  });
+
+  it('keeps the destructive row behind the confirm', async () => {
+    const err = Object.assign(new Error('x'), { status: 409 });
+    vi.mocked(deleteKbVideoSeries).mockRejectedValue(err);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderDialog({
+      id: 's1',
+      title: 'Agenda',
+      slug: 'agenda',
+      description: null,
+      display_order: 0,
+      status: 'draft',
+    } as never);
+    fireEvent.click(screen.getByRole('button', { name: /Excluir série/ }));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        'Esta série ainda tem vídeos. Mova ou exclua os vídeos antes.',
+      ),
+    );
   });
 });

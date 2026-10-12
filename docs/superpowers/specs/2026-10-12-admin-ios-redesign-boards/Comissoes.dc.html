@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Tabela de comissões</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/mesaas/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; box-sizing: border-box; padding-top: 54px; background: #0a0c0f; color: #e8eaf0; font-family: var(--font-apple); overflow: hidden;">
+<div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(60% 38% at 12% 8%, rgba(234,179,8,0.32), transparent 70%), radial-gradient(55% 40% at 95% 30%, rgba(57,132,255,0.30), transparent 70%), radial-gradient(60% 45% at 10% 78%, rgba(245,66,200,0.24), transparent 70%), radial-gradient(55% 40% at 90% 95%, rgba(106,201,208,0.24), transparent 70%);"></div>
+<div style="position: relative;">
+<header style="display: flex; justify-content: space-between; align-items: center; height: 44px; padding: 0 16px;">
+<button type="button" aria-label="Voltar para Afiliados" style="width: 36px; height: 36px; border-radius: 999px; border: 0; background: rgba(118,118,128,0.24); color: #e8eaf0; display: flex; align-items: center; justify-content: center;"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+<button type="button" style="height: 36px; padding: 0 16px; border-radius: 999px; border: 0; background: #facc15; color: #12151a; font-size: 15px; font-weight: 600; font-family: inherit;">Salvar</button>
+</header>
+<div style="padding: 0 16px;"><h1 style="margin: 4px 0 0; font-family: var(--font-heading); font-size: 34px; line-height: 1.1; font-weight: 700;">Comissões</h1><p style="margin: 4px 0 16px; font-size: 15px; line-height: 1.35; color: #9ca3af;">Percentual sobre os primeiros meses pagos de cada indicado (cartão, Stripe). Mudanças valem para os próximos pagamentos.</p></div>
+<h2 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">STARTER · R$ 97/MÊS</h2>
+<ul style="list-style: none; margin: 0 16px 6px; padding: 0; border-radius: 16px; overflow: hidden; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);">
+<li><label style="display: flex; align-items: center; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Comissão</span><input inputmode="decimal" value="20%" style="width: 70px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; min-height: 44px; padding: 0 16px;"><span style="flex-grow: 1; font-size: 17px;">Meses</span><input inputmode="numeric" value="3" style="width: 70px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+</ul>
+<p style="margin: 0 32px 18px; font-size: 13px; color: #9ca3af;">R$ 58,20 por indicado · 20% × 3 meses</p>
+<h2 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">PRO · R$ 297/MÊS</h2>
+<ul style="list-style: none; margin: 0 16px 6px; padding: 0; border-radius: 16px; overflow: hidden; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(250,204,21,0.4);">
+<li><label style="display: flex; align-items: center; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Comissão</span><input inputmode="decimal" value="30%" style="width: 70px; text-align: right; border: 0; background: transparent; color: #facc15; font-weight: 600; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; min-height: 44px; padding: 0 16px;"><span style="flex-grow: 1; font-size: 17px;">Meses</span><input inputmode="numeric" value="6" style="width: 70px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+</ul>
+<p style="margin: 0 32px 18px; font-size: 13px; color: #facc15;">Não salvo · R$ 534,60 por indicado · 30% × 6 meses</p>
+<h2 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">MAX · R$ 497/MÊS</h2>
+<ul style="list-style: none; margin: 0 16px 6px; padding: 0; border-radius: 16px; overflow: hidden; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);">
+<li><label style="display: flex; align-items: center; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Comissão</span><input inputmode="decimal" value="30%" style="width: 70px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; min-height: 44px; padding: 0 16px;"><span style="flex-grow: 1; font-size: 17px;">Meses</span><input inputmode="numeric" value="6" style="width: 70px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+</ul>
+<p style="margin: 0 32px 18px; font-size: 13px; color: #9ca3af;">R$ 894,60 por indicado · 30% × 6 meses</p>
+<h2 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">FREE</h2>
+<ul style="list-style: none; margin: 0 16px; padding: 0; border-radius: 16px; overflow: hidden; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);"><li style="display: flex; align-items: center; min-height: 44px; padding: 0 16px;"><span style="flex-grow: 1; font-size: 17px; color: #9ca3af;">Sem comissão</span></li></ul>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

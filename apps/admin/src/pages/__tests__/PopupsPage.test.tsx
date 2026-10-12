@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -16,8 +16,8 @@ vi.mock('../../lib/inline-image', () => ({
   resolveInlineImageUrls: vi.fn(),
 }));
 
-import { createPopup, listPlans, listPopups, listWorkspaces } from '../../lib/api';
-import { resolveInlineImageUrls } from '../../lib/inline-image';
+import { createPopup, listPlans, listPopups, listWorkspaces, updatePopup } from '../../lib/api';
+import { resolveInlineImageUrls, uploadInlineImage } from '../../lib/inline-image';
 import PopupsPage from '../PopupsPage';
 
 const popup = {
@@ -68,6 +68,12 @@ beforeEach(() => {
   vi.mocked(createPopup).mockResolvedValue({ popup } as never);
 });
 
+/** As abas das páginas do popup (o segmentado Páginas · Configurações também é uma tablist). */
+const pageTabs = () =>
+  within(screen.getByRole('tablist', { name: 'Páginas do popup' })).getAllByRole('tab');
+/** Os campos que valem para o popup todo ficam na seção Configurações do editor. */
+const openSettings = () => fireEvent.click(screen.getByRole('tab', { name: 'Configurações' }));
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -87,6 +93,16 @@ describe('PopupsPage lista', () => {
     expect(screen.getByText('Uma vez · confirmação')).toBeInTheDocument();
     expect(screen.getByText(/vistos 312/)).toBeInTheDocument();
     expect(screen.getByText(/cta 87/)).toBeInTheDocument();
+  });
+
+  it('keeps Status on one line and the long cells capped so the row fits the panel', async () => {
+    renderPage();
+    const title = await screen.findByText('Analytics de Stories');
+    const row = title.closest('tr')!;
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[5]).toHaveClass('whitespace-nowrap');
+    expect(title).toHaveAttribute('title', 'Analytics de Stories');
+    expect(cells[0].firstElementChild).toHaveClass('max-w-[16rem]');
   });
 
   it('the popup title is a real button that opens the editor', async () => {
@@ -129,7 +145,7 @@ describe('PopupsPage editor', () => {
     await screen.findByText('Analytics de Stories');
     fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
     expect(screen.getByRole('heading', { name: 'Novo popup' })).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(1);
+    expect(pageTabs()).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
     expect(await screen.findByText('Título é obrigatório')).toBeInTheDocument();
     expect(createPopup).not.toHaveBeenCalled();
@@ -143,10 +159,11 @@ describe('PopupsPage editor', () => {
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Página 1' } });
     fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'corpo 1' } });
     fireEvent.click(screen.getByRole('button', { name: '+ Página' }));
-    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(pageTabs()).toHaveLength(2);
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Página 2' } });
     fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'corpo 2' } });
 
+    openSettings();
     fireEvent.click(screen.getByLabelText(/Exigir confirmação/));
     expect(screen.getByLabelText('Toda sessão até clicar no CTA')).toBeDisabled();
 
@@ -215,7 +232,7 @@ describe('PopupsPage editor', () => {
     renderPage();
     fireEvent.click(await screen.findByText('Analytics de Stories'));
     expect(screen.getByRole('heading', { name: 'Editar popup' })).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('tab')[1]);
+    fireEvent.click(pageTabs()[1]);
     expect(screen.getByRole('heading', { level: 2, name: 'Segunda' })).toBeInTheDocument();
   });
 
@@ -252,6 +269,7 @@ describe('PopupsPage editor', () => {
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'P' } });
     fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'c' } });
 
+    openSettings();
     expect(screen.getByLabelText('Gatilho')).toHaveValue('');
     expect(screen.queryByLabelText('Dias antes do fim do teste')).toBeNull();
     expect(
@@ -288,10 +306,66 @@ describe('PopupsPage editor', () => {
     renderPage();
     await screen.findByText('Analytics de Stories');
     fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    openSettings();
     fireEvent.click(screen.getByLabelText('Uma vez por dia'));
     fireEvent.click(screen.getByLabelText(/Exigir confirmação/));
     expect(screen.getByLabelText('Toda sessão até clicar no CTA')).toBeDisabled();
     expect(screen.getByLabelText('Uma vez por dia')).toBeChecked();
     expect(screen.getByLabelText('Uma vez por dia')).not.toBeDisabled();
+  });
+});
+
+describe('PopupsPage editor: seções e sessão', () => {
+  it('submit com erro só nas configurações, a partir de Páginas, abre Configurações', async () => {
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    openSettings();
+    // CTA global sem URL: erro só de configuração.
+    fireEvent.change(screen.getByLabelText('Rótulo do CTA'), { target: { value: 'Ver' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Páginas' }));
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'P' } });
+    fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'c' } });
+    expect(screen.getByRole('tab', { name: 'Páginas' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
+    expect(await screen.findByText('O CTA precisa de rótulo e URL')).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'Configurações' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(createPopup).not.toHaveBeenCalled();
+  });
+
+  it('upload que termina depois de fechar e abrir outro popup não escreve no novo', async () => {
+    let resolveUpload: (v: { r2Key: string }) => void = () => {};
+    vi.mocked(uploadInlineImage).mockImplementation(
+      () => new Promise((resolve) => (resolveUpload = resolve)) as never,
+    );
+    vi.mocked(updatePopup).mockResolvedValue({ popup } as never);
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(await screen.findByRole('button', { name: /Enviando/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Analytics de Stories' }))[0]);
+    expect(await screen.findByRole('heading', { name: 'Editar popup' })).toBeInTheDocument();
+
+    resolveUpload({ r2Key: 'late-key' });
+    await waitFor(() => expect(uploadInlineImage).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: 'Enviar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Enviando/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remover' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }));
+    await waitFor(() => expect(updatePopup).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(updatePopup).mock.calls[0][0] as {
+      pages: Array<{ image_key: unknown }>;
+    };
+    expect(payload.pages.map((p) => p.image_key)).toEqual([null, null]);
   });
 });

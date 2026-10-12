@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Dashboard desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/mesaas/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; box-sizing: border-box; padding: 12px; background: #0a0c0f; color: #e8eaf0; font-family: var(--font-apple); overflow: hidden; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;">
+<div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(40% 45% at 8% 5%, rgba(234,179,8,0.32), transparent 70%), radial-gradient(40% 45% at 95% 15%, rgba(57,132,255,0.30), transparent 70%), radial-gradient(45% 50% at 30% 95%, rgba(245,66,200,0.24), transparent 70%), radial-gradient(40% 45% at 90% 90%, rgba(106,201,208,0.24), transparent 70%);"></div>
+<div style="position: relative; flex: 0 0 248px;"><dc-import name="DkSidebar" active="dashboard" hint-size="248px,876px"></dc-import></div>
+<main style="position: relative; flex: 999 1 560px; min-width: 0; padding: 18px 28px 28px; box-sizing: border-box;">
+<div style="max-width: 1100px; margin: 0 auto;">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px;">
+<div><h1 style="margin: 0; font-family: var(--font-heading); font-size: 34px; line-height: 1.1; font-weight: 700; letter-spacing: -0.01em;">Dashboard</h1><p style="margin: 4px 0 0; font-size: 15px; color: #9ca3af;">Visão geral da plataforma</p></div>
+<div style="display: flex; gap: 8px;"><a href="#" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; background: rgba(118,118,128,0.24); color: #e8eaf0; text-decoration: none; font-size: 14px; font-weight: 600;">Ver métricas<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></a></div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px;">
+<div style="padding: 16px 18px; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);"><span style="display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af;">WORKSPACES</span><span style="display: block; margin-top: 6px; font-size: 30px; font-weight: 700;">148</span><span style="display: block; font-size: 13px; color: #9ca3af;">12 nos últimos 30 dias</span></div>
+<div style="padding: 16px 18px; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);"><span style="display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af;">USUÁRIOS</span><span style="display: block; margin-top: 6px; font-size: 30px; font-weight: 700;">412</span><span style="display: block; font-size: 13px; color: #9ca3af;">2,8 por workspace</span></div>
+<div style="padding: 16px 18px; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);"><span style="display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af;">CONTAS DO INSTAGRAM</span><span style="display: block; margin-top: 6px; font-size: 30px; font-weight: 700;">391</span><span style="display: block; font-size: 13px; color: #f5a342;">3 precisam reconectar</span></div>
+<div style="padding: 16px 18px; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);"><span style="display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af;">PAGANTES</span><span style="display: block; margin-top: 6px; font-size: 30px; font-weight: 700;">61</span><span style="display: block; font-size: 13px; color: #9ca3af;">41% dos workspaces</span></div>
+<a href="#" style="display: block; padding: 16px 18px; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08); color: inherit; text-decoration: none;"><span style="display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af;">MRR</span><span style="display: block; margin-top: 6px; font-size: 30px; font-weight: 700;">R$ 9.870</span><span style="display: block; font-size: 13px; color: #9ca3af;">61 pagantes</span></a>
+<div style="padding: 16px 18px; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);"><span style="display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af;">TESTES</span><span style="display: block; margin-top: 6px; font-size: 30px; font-weight: 700;">18</span><span style="display: block; font-size: 13px; color: #9ca3af;">18 em teste</span></div>
+<div style="padding: 16px 18px; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(245,163,66,0.35);"><span style="display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #f5a342;">EM RISCO</span><span style="display: block; margin-top: 6px; font-size: 30px; font-weight: 700; color: #f5a342;">6</span><span style="display: block; font-size: 13px; color: #9ca3af;">4 testes vencendo · 2 pendentes</span></div>
+<a href="#" style="display: block; padding: 16px 18px; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08); color: inherit; text-decoration: none;"><span style="display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af;">MRR PROJETADO</span><span style="display: block; margin-top: 6px; font-size: 30px; font-weight: 700;">R$ 12.340</span><span style="display: block; font-size: 13px; color: #9ca3af;">MRR + testes</span></a>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+<section aria-labelledby="dk-att" style="flex: 1 1 340px; min-width: 0; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08); overflow: hidden;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px;"><h2 id="dk-att" style="margin: 0; font-size: 17px; font-weight: 600;">Atenção</h2><div role="tablist" aria-label="Filtro de risco" style="padding: 2px; border-radius: 9px; background: rgba(118,118,128,0.24); display: flex;"><button type="button" role="tab" aria-selected="true" style="height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: #3a404d; color: #e8eaf0; font-size: 12px; font-weight: 600; font-family: inherit;">Todos</button><button type="button" role="tab" aria-selected="false" style="height: 26px; padding: 0 12px; border: 0; background: transparent; color: #e8eaf0; font-size: 12px; font-family: inherit;">Testes</button><button type="button" role="tab" aria-selected="false" style="height: 26px; padding: 0 12px; border: 0; background: transparent; color: #e8eaf0; font-size: 12px; font-family: inherit;">Pendentes</button></div></div>
+<h3 style="margin: 0; padding: 6px 18px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af; border-top: 1px solid rgba(235,235,245,0.12);">TESTES TERMINANDO EM ATÉ 3 DIAS · 4</h3>
+<ul style="list-style: none; margin: 0; padding: 0;">
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 18px; box-sizing: border-box; color: inherit; text-decoration: none; border-top: 1px solid rgba(235,235,245,0.08);"><span style="flex-grow: 1; min-width: 0;"><span style="display: block; font-size: 15px;">Agência Norte</span><span style="display: block; font-size: 12px; color: #9ca3af;">Pro · R$ 297/mês · ativo há 2 dias</span></span><span style="font-size: 13px; font-weight: 600; color: #f5a342;">amanhã</span></a></li>
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 18px; box-sizing: border-box; color: inherit; text-decoration: none; border-top: 1px solid rgba(235,235,245,0.08);"><span style="flex-grow: 1; min-width: 0;"><span style="display: block; font-size: 15px;">Lumen Conteúdo</span><span style="display: block; font-size: 12px; color: #9ca3af;">Starter · R$ 97/mês · nunca ativou</span></span><span style="font-size: 13px; font-weight: 600; color: #f5a342;">hoje</span></a></li>
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 18px; box-sizing: border-box; color: inherit; text-decoration: none; border-top: 1px solid rgba(235,235,245,0.08);"><span style="flex-grow: 1; min-width: 0;"><span style="display: block; font-size: 15px;">Social Bee</span><span style="display: block; font-size: 12px; color: #9ca3af;">Pro · R$ 297/mês · ativo hoje</span></span><span style="font-size: 13px; font-weight: 600; color: #f5a342;">em 2 dias</span></a></li>
+</ul>
+<h3 style="margin: 0; padding: 6px 18px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: #9ca3af; border-top: 1px solid rgba(235,235,245,0.12);">PAGAMENTO PENDENTE · 2</h3>
+<ul style="list-style: none; margin: 0; padding: 0;">
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 18px; box-sizing: border-box; color: inherit; text-decoration: none; border-top: 1px solid rgba(235,235,245,0.08);"><span style="flex-grow: 1; min-width: 0;"><span style="display: block; font-size: 15px;">Studio Maré</span><span style="display: block; font-size: 12px; color: #9ca3af;">Starter · R$ 97/mês · ativo hoje</span></span><span style="font-size: 13px; font-weight: 600; color: #ff6b5e;">2ª tentativa</span></a></li>
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 18px; box-sizing: border-box; color: inherit; text-decoration: none; border-top: 1px solid rgba(235,235,245,0.08);"><span style="flex-grow: 1; min-width: 0;"><span style="display: block; font-size: 15px;">Clara Social</span><span style="display: block; font-size: 12px; color: #9ca3af;">Starter · R$ 97/mês · há 4 dias</span></span><span style="font-size: 13px; font-weight: 600; color: #ff6b5e;">venceu há 3 dias</span></a></li>
+</ul>
+</section>
+<section aria-labelledby="dk-pag" style="flex: 1.5 1 480px; min-width: 0; border-radius: 18px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08); overflow: hidden;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px;"><h2 id="dk-pag" style="margin: 0; font-size: 17px; font-weight: 600;">Workspaces pagantes <span style="font-weight: 400; color: #9ca3af;">· 61 · R$ 9.870/mês</span></h2><button type="button" style="height: 28px; padding: 0 12px; border-radius: 999px; border: 0; background: rgba(118,118,128,0.24); color: #e8eaf0; font-size: 12px; font-weight: 600; font-family: inherit;">Exportar CSV</button></div>
+<div style="overflow-x: auto;">
+<table style="width: 100%; min-width: 520px; border-collapse: collapse; font-size: 14px;">
+<thead><tr style="color: #9ca3af; font-size: 11px; letter-spacing: 0.04em; text-align: left;"><th scope="col" style="padding: 8px 18px; font-weight: 600; border-top: 1px solid rgba(235,235,245,0.12);">WORKSPACE</th><th scope="col" style="padding: 8px 10px; font-weight: 600; border-top: 1px solid rgba(235,235,245,0.12);">PLANO</th><th scope="col" style="padding: 8px 10px; font-weight: 600; border-top: 1px solid rgba(235,235,245,0.12);">COBRANÇA</th><th scope="col" style="padding: 8px 10px; font-weight: 600; border-top: 1px solid rgba(235,235,245,0.12);">ÚLTIMA ATIVIDADE</th><th scope="col" style="padding: 8px 18px; font-weight: 600; text-align: right; border-top: 1px solid rgba(235,235,245,0.12);">MRR</th></tr></thead>
+<tbody>
+<tr style="border-top: 1px solid rgba(235,235,245,0.08);"><td style="padding: 12px 18px;"><a href="#" style="color: inherit; text-decoration: none;">DK Marketing Médico</a></td><td style="padding: 12px 10px;"><span style="padding: 1px 7px; border-radius: 6px; background: rgba(244,63,94,0.15); color: #fb7185; font-size: 11px; font-weight: 700;">MAX</span></td><td style="padding: 12px 10px; color: #9ca3af;">anual · Stripe</td><td style="padding: 12px 10px;">hoje</td><td style="padding: 12px 18px; text-align: right; font-weight: 600;">R$ 497</td></tr>
+<tr style="border-top: 1px solid rgba(235,235,245,0.08);"><td style="padding: 12px 18px;"><a href="#" style="color: inherit; text-decoration: none;">Agência Norte</a></td><td style="padding: 12px 10px;"><span style="padding: 1px 7px; border-radius: 6px; background: rgba(139,92,246,0.15); color: #a78bfa; font-size: 11px; font-weight: 700;">PRO</span></td><td style="padding: 12px 10px; color: #9ca3af;">mensal · Stripe</td><td style="padding: 12px 10px;">há 2 dias</td><td style="padding: 12px 18px; text-align: right; font-weight: 600;">R$ 297</td></tr>
+<tr style="border-top: 1px solid rgba(235,235,245,0.08);"><td style="padding: 12px 18px;"><a href="#" style="color: inherit; text-decoration: none;">Vértice Mídia</a></td><td style="padding: 12px 10px;"><span style="padding: 1px 7px; border-radius: 6px; background: rgba(139,92,246,0.15); color: #a78bfa; font-size: 11px; font-weight: 700;">PRO</span></td><td style="padding: 12px 10px; color: #9ca3af;">12x · Pagar.me</td><td style="padding: 12px 10px;">hoje</td><td style="padding: 12px 18px; text-align: right; font-weight: 600;">R$ 247</td></tr>
+<tr style="border-top: 1px solid rgba(235,235,245,0.08);"><td style="padding: 12px 18px;"><a href="#" style="color: inherit; text-decoration: none;">Rede Criativa</a></td><td style="padding: 12px 10px;"><span style="padding: 1px 7px; border-radius: 6px; background: rgba(139,92,246,0.15); color: #a78bfa; font-size: 11px; font-weight: 700;">PRO</span></td><td style="padding: 12px 10px; color: #9ca3af;">mensal · Stripe</td><td style="padding: 12px 10px; color: #9ca3af;">há 12 dias</td><td style="padding: 12px 18px; text-align: right; font-weight: 600;">R$ 297</td></tr>
+<tr style="border-top: 1px solid rgba(235,235,245,0.08);"><td style="padding: 12px 18px;"><a href="#" style="color: inherit; text-decoration: none;">Clara Social</a></td><td style="padding: 12px 10px;"><span style="padding: 1px 7px; border-radius: 6px; background: rgba(59,130,246,0.15); color: #60a5fa; font-size: 11px; font-weight: 700;">STARTER</span></td><td style="padding: 12px 10px; color: #f5a342;">pendente · Stripe</td><td style="padding: 12px 10px; color: #f5a342;">há 34 dias</td><td style="padding: 12px 18px; text-align: right; font-weight: 600;">R$ 97</td></tr>
+<tr style="border-top: 1px solid rgba(235,235,245,0.08);"><td colspan="5" style="padding: 10px 18px; text-align: center;"><a href="#" style="color: #facc15; text-decoration: none; font-size: 13px; font-weight: 600;">Ver todos os 61</a></td></tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

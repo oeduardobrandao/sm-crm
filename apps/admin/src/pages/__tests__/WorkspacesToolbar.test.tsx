@@ -59,6 +59,20 @@ describe('WorkspacesToolbar', () => {
     expect(onChange).toHaveBeenCalledWith({ q: 'ag' });
   });
 
+  it('the Filtros pill reveals the select row and flips aria-expanded', () => {
+    renderToolbar();
+    const pill = screen.getByRole('button', { name: /^Filtros/ });
+    expect(pill).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('combobox', { name: 'Status' })).toBeNull();
+    fireEvent.click(pill);
+    expect(pill).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('combobox', { name: 'Status' })).toBeInTheDocument();
+    expect(document.getElementById(pill.getAttribute('aria-controls')!)).not.toBeNull();
+    fireEvent.click(pill);
+    expect(pill).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('combobox', { name: 'Status' })).toBeNull();
+  });
+
   it('shows the current filter values and the export state', () => {
     render(
       <WorkspacesToolbar

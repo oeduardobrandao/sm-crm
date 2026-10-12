@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Editar plano</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/mesaas/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; background: #0a0c0f; color: #e8eaf0; font-family: var(--font-apple); overflow: hidden;">
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.6);"></div>
+<section role="dialog" aria-modal="true" aria-labelledby="pf-title" style="position: absolute; left: 0; right: 0; top: 64px; bottom: 0; border-radius: 38px 38px 0 0; background: #12151a; overflow: hidden;">
+<div aria-hidden="true" style="width: 36px; height: 5px; margin: 6px auto 0; border-radius: 999px; background: rgba(235,235,245,0.3);"></div>
+<div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 16px 12px;"><button type="button" style="justify-self: start; border: 0; background: transparent; color: #facc15; font-size: 17px; font-family: inherit; padding: 8px 0;">Cancelar</button><h2 id="pf-title" style="margin: 0; font-size: 17px; font-weight: 600;">Editar: Pro</h2><button type="button" style="justify-self: end; border: 0; background: transparent; color: #facc15; font-size: 17px; font-weight: 600; font-family: inherit; padding: 8px 0;">Atualizar</button></div>
+<ul style="list-style: none; margin: 0 16px 18px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;">
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="width: 96px; font-size: 17px;">Nome</span><input value="Pro" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; color: #e8eaf0; font-size: 17px; font-family: inherit;"></label></li>
+<li style="display: flex; align-items: center; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span id="p1" style="flex-grow: 1; font-size: 17px;">Padrão</span><button type="button" role="switch" aria-checked="false" aria-labelledby="p1" style="position: relative; width: 51px; height: 31px; border: 0; border-radius: 999px; background: rgba(120,120,128,0.32);"><span aria-hidden="true" style="position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 999px; background: #fff;"></span></button></li>
+<li style="display: flex; align-items: center; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span id="p2" style="flex-grow: 1; font-size: 17px;">Ativo</span><button type="button" role="switch" aria-checked="true" aria-labelledby="p2" style="position: relative; width: 51px; height: 31px; border: 0; border-radius: 999px; background: #34c759;"><span aria-hidden="true" style="position: absolute; top: 2px; right: 2px; width: 27px; height: 27px; border-radius: 999px; background: #fff;"></span></button></li>
+<li style="display: flex; align-items: center; min-height: 44px; padding: 0 16px;"><span id="p3" style="flex-grow: 1; font-size: 17px;">Parcelamento 12x (Pagar.me)</span><button type="button" role="switch" aria-checked="true" aria-labelledby="p3" style="position: relative; width: 51px; height: 31px; border: 0; border-radius: 999px; background: #34c759;"><span aria-hidden="true" style="position: absolute; top: 2px; right: 2px; width: 27px; height: 27px; border-radius: 999px; background: #fff;"></span></button></li>
+</ul>
+<h3 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">PREÇOS</h3>
+<ul style="list-style: none; margin: 0 16px 18px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;">
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Preço mensal</span><input inputmode="decimal" value="R$ 297,00" style="width: 120px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Preço anual</span><input inputmode="decimal" value="R$ 2.970,00" style="width: 120px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Parcela 12x</span><input inputmode="decimal" value="R$ 247,50" style="width: 120px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px;"><span style="flex-grow: 1; font-size: 17px;">Ordem</span><input inputmode="numeric" value="3" style="width: 60px; text-align: right; border: 0; background: transparent; color: #9ca3af; font-size: 17px; font-family: inherit;"></label></li>
+</ul>
+<h3 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">COBRANÇA</h3>
+<ul style="list-style: none; margin: 0 16px 18px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;">
+<li><label style="display: block; padding: 8px 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="display: block; font-size: 13px; color: #9ca3af;">ID do produto Stripe</span><input value="prod_Q8xYv2LmA0" style="width: 100%; border: 0; background: transparent; color: #e8eaf0; font-size: 15px; font-family: ui-monospace, SFMono-Regular, monospace; padding: 2px 0 0;"></label></li>
+<li><label style="display: block; padding: 8px 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="display: block; font-size: 13px; color: #9ca3af;">ID do preço Stripe (mensal)</span><input value="price_1PmQ4k2eZ" style="width: 100%; border: 0; background: transparent; color: #e8eaf0; font-size: 15px; font-family: ui-monospace, SFMono-Regular, monospace; padding: 2px 0 0;"></label></li>
+<li><label style="display: block; padding: 8px 16px;"><span style="display: block; font-size: 13px; color: #9ca3af;">ID do plano Pagar.me (anual)</span><input value="plan_kQ9wB1xV" style="width: 100%; border: 0; background: transparent; color: #e8eaf0; font-size: 15px; font-family: ui-monospace, SFMono-Regular, monospace; padding: 2px 0 0;"></label></li>
+</ul>
+<ul style="list-style: none; margin: 0 16px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;">
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; color: inherit; text-decoration: none; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Limites de recursos</span><span style="font-size: 17px; color: #9ca3af;">12</span><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></a></li>
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; color: inherit; text-decoration: none; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1; font-size: 17px;">Funcionalidades</span><span style="font-size: 17px; color: #9ca3af;">22 de 25</span><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></a></li>
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; color: inherit; text-decoration: none;"><span style="flex-grow: 1; font-size: 17px;">Limites de taxa</span><span style="font-size: 17px; color: #9ca3af;">3</span><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></a></li>
+</ul>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ import { cn } from '../../lib/utils';
  * the admin does not load.
  */
 const badgeVariants = cva(
-  'inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-transparent font-semibold uppercase leading-none tracking-wide',
+  'inline-flex items-center gap-1 whitespace-nowrap rounded-[6px] border border-transparent font-bold uppercase leading-none tracking-[0.02em]',
   {
     variants: {
       variant: {
@@ -16,14 +16,15 @@ const badgeVariants = cva(
         success: 'bg-success/10 text-success',
         warning: 'bg-warning/10 text-warning',
         danger: 'bg-destructive/10 text-destructive',
-        info: 'bg-sky-500/10 text-sky-500',
+        // Text on the soft tints reads the text tokens (globals.css): 5.4-6.5:1 in light.
+        info: 'bg-sky-500/10 text-sky-700 dark:text-sky-400',
         primary: 'bg-primary/20 text-foreground',
         outline: 'border-border bg-transparent text-foreground',
       },
       tone: { soft: '', solid: '' },
       size: {
         sm: 'h-[18px] px-1.5 text-[0.6rem]',
-        md: 'h-5 px-2 text-[0.7rem]',
+        md: 'h-[18px] px-[7px] text-[11px]',
         lg: 'h-6 px-2.5 text-xs',
       },
     },

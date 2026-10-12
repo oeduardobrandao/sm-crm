@@ -11,6 +11,8 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { router } from './router';
 import './globals.css';
 import './liquidglass/glass.css';
+import '@mesaas/ios-kit/ios-kit.css';
+import './ios/admin-kit.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();

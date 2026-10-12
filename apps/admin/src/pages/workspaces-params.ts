@@ -147,6 +147,25 @@ export function hasActiveFilters(p: WorkspacesListParams): boolean {
   return FILTER_KEYS.some((key) => p[key] !== DEFAULT_PARAMS[key]);
 }
 
+/** The filters the phone sheet owns: everything but the search text, which has its own field. */
+export const SHEET_FILTER_KEYS = ['plano', 'status', 'overrides', 'atividade', 'criado'] as const;
+
+/** How many of the sheet's filters are active (the badge on the phone Filtros button). */
+export function countSheetFilters(p: WorkspacesListParams): number {
+  return SHEET_FILTER_KEYS.filter((key) => p[key] !== DEFAULT_PARAMS[key]).length;
+}
+
+/** A patch that clears the sheet's filters and leaves the search text alone. */
+export function clearSheetFiltersPatch(): Partial<WorkspacesListParams> {
+  return {
+    plano: DEFAULT_PARAMS.plano,
+    status: DEFAULT_PARAMS.status,
+    overrides: DEFAULT_PARAMS.overrides,
+    atividade: DEFAULT_PARAMS.atividade,
+    criado: DEFAULT_PARAMS.criado,
+  };
+}
+
 export function nextSort(
   current: Pick<WorkspacesListParams, 'ord' | 'dir'>,
   key: WorkspaceSortKey,

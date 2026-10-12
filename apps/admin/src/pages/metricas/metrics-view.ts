@@ -1,4 +1,5 @@
 import type { BackfillReport, MetricsMonth, MetricsMovements } from '../../lib/api';
+import { formatMoney } from '../../lib/subscription';
 import { formatMonth } from './deposits-view';
 
 export const MOVEMENT_KEYS = [
@@ -120,4 +121,28 @@ export function backfillToastMessage(r: BackfillReport): string {
     `${plural(r.months_kept_cron, 'mantido do cron diário', 'mantidos do cron diário')}, ` +
     `${plural(ignored, 'assinatura ignorada', 'assinaturas ignoradas')}.`
   );
+}
+
+/** Net MRR change of a month: the movements are signed (losses already negative). */
+export function movementNet(m: MetricsMonth): number {
+  if (!m.movements) return 0;
+  return MOVEMENT_KEYS.reduce((acc, k) => acc + m.movements![k], 0);
+}
+
+/** "+R$ 760,00" for gains; losses and zero come out of formatMoney as is. */
+export function signedMoney(cents: number): string {
+  return `${cents > 0 ? '+' : ''}${formatMoney(cents, 'brl')}`;
+}
+
+export type RevenueMode = 'provider' | 'plan';
+
+export const REVENUE_MODE_OPTIONS: { value: RevenueMode; label: string }[] = [
+  { value: 'provider', label: 'Por provedor' },
+  { value: 'plan', label: 'Por plano' },
+];
+
+/** 'YYYY-MM' of the calendar month before `month`. */
+export function prevCalendarMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }

@@ -9,6 +9,12 @@ const MAX_LABEL = 40;
 const MAX_URL = 2048;
 const CTA_URL_RE = /^(\/(?![/\\])|https?:\/\/)/; // `//host` é protocol-relative, não caminho interno, nem `/\host`
 
+/**
+ * Prefixo do erro do rótulo secundário. `validateForm` o põe em `errors.cta` (o campo do CTA
+ * global) e o editor o separa de volta por este prefixo (`splitCtaError`).
+ */
+export const SECONDARY_LABEL_ERROR_PREFIX = 'Rótulo secundário';
+
 export const MAX_TRIGGER_DAYS = 60;
 export const DEFAULT_TRIGGER_DAYS = '3';
 export const TRIGGER_LABEL: Record<PopupTrigger, string> = {
@@ -203,7 +209,7 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
     errors.cta = `Rótulo do CTA: máximo de ${MAX_LABEL} caracteres`;
   else if (urlErr) errors.cta = urlErr;
   else if (f.secondary_label.trim().length > MAX_LABEL) {
-    errors.cta = `Rótulo secundário: máximo de ${MAX_LABEL} caracteres`;
+    errors.cta = `${SECONDARY_LABEL_ERROR_PREFIX}: máximo de ${MAX_LABEL} caracteres`;
   }
   if (errors.cta) any = true;
 

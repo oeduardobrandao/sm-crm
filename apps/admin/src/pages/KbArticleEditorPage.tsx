@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Trash2, Plus, X, Upload, Loader2 } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
   getKbArticle,
   createKbArticle,
@@ -11,8 +12,6 @@ import {
   listKbContextLinks,
   upsertKbContextLink,
   deleteKbContextLink,
-  type KbArticle,
-  type KbContextLink,
 } from '../lib/api';
 import {
   uploadInlineImage,
@@ -20,34 +19,16 @@ import {
   resolveInlineImageUrls,
   injectSignedUrls,
 } from '../lib/inline-image';
+import { useIsPhone } from '../hooks/useIsPhone';
 import { ArticleEditor } from '../components/editor/ArticleEditor';
+import { KbArticleEditorDesktop } from './kb-articles/KbArticleEditorDesktop';
+import { KbArticleEditorPhone } from './kb-articles/KbArticleEditorPhone';
 import {
-  KB_CATEGORIES as CATEGORIES,
-  ALL_KB_CATEGORIES as ALL_CATEGORIES,
-} from '../lib/kb-categories';
-
-const CRM_ROUTES = [
-  { value: '/dashboard', label: 'Dashboard' },
-  { value: '/clientes', label: 'Clientes' },
-  { value: '/equipe', label: 'Equipe' },
-  { value: '/tarefas', label: 'Tarefas' },
-  { value: '/entregas', label: 'Entregas' },
-  { value: '/mensagens', label: 'Mensagens' },
-  { value: '/post-express', label: 'Post Express' },
-  { value: '/automacoes', label: 'Automações' },
-  { value: '/analytics', label: 'Analytics' },
-  { value: '/analytics-fluxos', label: 'Analytics de Fluxos' },
-  { value: '/relatorios', label: 'Relatórios' },
-  { value: '/financeiro', label: 'Financeiro' },
-  { value: '/contratos', label: 'Contratos' },
-  { value: '/configuracao', label: 'Configuração' },
-  { value: '/configuracao/mcp', label: 'Configuração · Agentes (MCP)' },
-  { value: '/calendario', label: 'Calendário' },
-  { value: '/leads', label: 'Leads' },
-  { value: '/ideias', label: 'Ideias' },
-  { value: '/importar', label: 'Importar' },
-  { value: '/arquivos', label: 'Arquivos' },
-];
+  CRM_ROUTES,
+  STATUS_LABELS,
+  type ArticleStatus,
+  type KbArticleEditorViewProps,
+} from './kb-articles/editor-view';
 
 const RESERVED_SLUGS = ['novo', 'editar', 'video'];
 
@@ -64,6 +45,7 @@ export default function KbArticleEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const isPhone = useIsPhone();
   const isEdit = !!id;
 
   const [title, setTitle] = useState('');
@@ -72,15 +54,32 @@ export default function KbArticleEditorPage() {
   const [excerpt, setExcerpt] = useState('');
   const [tags, setTags] = useState('');
   const [displayOrder, setDisplayOrder] = useState('0');
-  const [status, setStatus] = useState<'draft' | 'published'>('draft');
+  const [status, setStatus] = useState<ArticleStatus>('draft');
   const [coverUrl, setCoverUrl] = useState('');
   const [coverPreview, setCoverPreview] = useState('');
   const [coverUploading, setCoverUploading] = useState(false);
-  const coverInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<{ json: Record<string, unknown> | null; plain: string }>({
     json: null,
     plain: '',
   });
+  // Crossing 768px swaps the phone and desktop views, which remounts the TipTap editor with
+  // `initialContent`. Left alone that is the loaded document, so the remount would drop (and undo
+  // would revert past) whatever was typed. So the flip render itself, by comparing against the
+  // isPhone it last saw, picks the latest typed document as the seed: the new editor mounts with
+  // it as its initial content. Reloading the article (load or post-save refetch) clears the seed.
+  const editedRef = useRef(false);
+  const seedRef = useRef<{ isPhone: boolean; seed: Record<string, unknown> | null }>({
+    isPhone,
+    seed: null,
+  });
+  if (seedRef.current.isPhone !== isPhone) {
+    seedRef.current = {
+      isPhone,
+      seed: editedRef.current ? contentRef.current.json : seedRef.current.seed,
+    };
+  }
+  const remountSeed = seedRef.current.seed;
+
   const [resolvedContent, setResolvedContent] = useState<Record<string, unknown> | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState('');
@@ -112,6 +111,8 @@ export default function KbArticleEditorPage() {
     setStatus(article.status);
     setCoverUrl(article.cover_image_url ?? '');
     contentRef.current = { json: article.content, plain: article.content_plain };
+    editedRef.current = false;
+    seedRef.current = { ...seedRef.current, seed: null };
 
     if (article.content) {
       const r2Keys = extractR2Keys(article.content);
@@ -169,6 +170,7 @@ export default function KbArticleEditorPage() {
   }, [title, isEdit]);
 
   const handleEditorUpdate = useCallback((json: Record<string, unknown>, plain: string) => {
+    editedRef.current = true;
     contentRef.current = { json, plain };
   }, []);
 
@@ -177,8 +179,10 @@ export default function KbArticleEditorPage() {
     qc.invalidateQueries({ queryKey: ['admin', 'kb-article', id] });
   };
 
+  // `override` lets "Publicar" save with the new status in the same click (setStatus would only
+  // land on the next render).
   const saveMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (override?: { status: ArticleStatus }) => {
       const parsedTags = tags
         ? tags
             .split(',')
@@ -192,7 +196,7 @@ export default function KbArticleEditorPage() {
         excerpt: excerpt || null,
         tags: parsedTags,
         display_order: Math.max(0, parseInt(displayOrder, 10) || 0),
-        status,
+        status: override?.status ?? status,
         content: contentRef.current.json,
         content_plain: contentRef.current.plain,
         cover_image_url: coverUrl || null,
@@ -203,7 +207,8 @@ export default function KbArticleEditorPage() {
       }
       return createKbArticle(payload);
     },
-    onSuccess: (data) => {
+    onSuccess: (data, override) => {
+      if (override) setStatus(override.status);
       invalidate();
       toast.success(isEdit ? 'Artigo atualizado' : 'Artigo criado');
       if (!isEdit && data.article) {
@@ -256,284 +261,67 @@ export default function KbArticleEditorPage() {
         : null);
 
   if (isEdit && articleLoading) {
-    return <p className="text-sm text-dim-foreground py-8">Carregando…</p>;
+    return <p className="py-8 text-sm text-dim-foreground">Carregando…</p>;
   }
 
-  return (
-    <div className="max-w-4xl">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/admin/kb-articles')}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <h1 className="font-sf text-xl font-bold">{isEdit ? 'Editar artigo' : 'Novo artigo'}</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {isEdit && (
-            <button
-              onClick={() => {
-                if (confirm('Excluir este artigo permanentemente?')) deleteMut.mutate();
-              }}
-              disabled={deleteMut.isPending}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-            >
-              <Trash2 size={14} /> Excluir
-            </button>
-          )}
-          <button
-            onClick={() => saveMut.mutate()}
-            disabled={saveMut.isPending || !title || !slug || !category || !!slugError}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
-          >
-            <Save size={14} /> {saveMut.isPending ? 'Salvando…' : 'Salvar'}
-          </button>
-        </div>
-      </div>
-
-      {/* Form fields */}
-      <div className="bg-card border border-border rounded-2xl p-5 md:p-6 space-y-5 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Título *
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Como adicionar um cliente"
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Slug *
-            </label>
-            <input
-              type="text"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="how-to-add-a-client"
-              className={`w-full px-3 py-2 rounded-lg bg-secondary border text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary ${slugError ? 'border-destructive' : 'border-transparent'}`}
-            />
-            {slugError && <p className="text-xs text-destructive mt-1">{slugError}</p>}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Categoria *
-            </label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground focus:outline-none focus:border-primary"
-            >
-              <option value="">Selecionar categoria</option>
-              {ALL_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORIES[c]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Tags
-            </label>
-            <input
-              type="text"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="instagram, tutorial, básico"
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-            Resumo
-          </label>
-          <textarea
-            value={excerpt}
-            onChange={(e) => setExcerpt(e.target.value)}
-            placeholder="Breve descrição do artigo (até 200 caracteres)"
-            rows={2}
-            maxLength={200}
-            className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary resize-none"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-            Imagem de capa
-          </label>
-          <div className="flex items-start gap-3">
-            <div className="flex-1 flex items-center gap-2">
-              <input
-                type="text"
-                value={coverUrl}
-                onChange={(e) => setCoverUrl(e.target.value)}
-                placeholder="https://... ou envie uma imagem"
-                className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
-              />
-              <input
-                ref={coverInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleCoverUpload(file);
-                  e.target.value = '';
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => coverInputRef.current?.click()}
-                disabled={coverUploading}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors disabled:opacity-50 shrink-0"
-              >
-                {coverUploading ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Upload size={14} />
-                )}
-                {coverUploading ? 'Enviando…' : 'Enviar'}
-              </button>
-              {coverUrl && (
-                <button
-                  type="button"
-                  onClick={() => setCoverUrl('')}
-                  className="p-2 rounded-lg text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                  title="Remover capa"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-          {coverPreview && (
-            <div className="mt-2 rounded-xl overflow-hidden border border-border">
-              <img
-                src={coverPreview}
-                alt="Prévia da capa"
-                className="w-full max-h-48 object-cover"
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Ordem de exibição
-            </label>
-            <input
-              type="number"
-              value={displayOrder}
-              onChange={(e) => setDisplayOrder(e.target.value)}
-              min={0}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground focus:outline-none focus:border-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Status
-            </label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as 'draft' | 'published')}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground focus:outline-none focus:border-primary"
-            >
-              <option value="draft">Rascunho</option>
-              <option value="published">Publicado</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Content editor */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden mb-6">
-        <div className="px-5 pt-4 pb-2">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Conteúdo
-          </label>
-        </div>
-        {contentLoading ? (
-          <p className="text-sm text-dim-foreground py-8 px-5">Carregando…</p>
-        ) : (
-          <ArticleEditor
-            initialContent={isEdit ? resolvedContent : null}
-            onUpdate={handleEditorUpdate}
-            onUploadInlineImage={uploadInlineImage}
-          />
-        )}
-      </div>
-
-      {/* Context links — only in edit mode */}
-      {isEdit && article && (
-        <div className="bg-card border border-border rounded-2xl p-5 md:p-6">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            Links de contexto
-          </label>
-          <p className="text-xs text-dim-foreground mb-3">
-            Selecione em quais páginas do CRM este artigo aparece como sugestão de ajuda.
-          </p>
-
-          {contextLinks.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {contextLinks.map((link) => {
-                const route = CRM_ROUTES.find((r) => r.value === link.route_pattern);
-                return (
-                  <span
-                    key={link.id}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs text-foreground"
-                  >
-                    {route?.label ?? link.route_pattern}
-                    <button
-                      type="button"
-                      className="rounded-full p-0.5 hover:bg-border transition-colors"
-                      onClick={() => removeContextLink(link.id)}
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedRoute}
-              onChange={(e) => setSelectedRoute(e.target.value)}
-              className="px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground focus:outline-none focus:border-primary"
-            >
-              <option value="">Selecionar página</option>
-              {CRM_ROUTES.filter((r) => !usedRoutes.has(r.value)).map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={addContextLink}
-              disabled={!selectedRoute}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors disabled:opacity-50"
-            >
-              <Plus size={14} /> Adicionar
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+  const editorContent = remountSeed ?? (isEdit ? resolvedContent : null);
+  const editor = contentLoading ? (
+    <p className="px-5 py-8 text-sm text-dim-foreground">Carregando…</p>
+  ) : (
+    <ArticleEditor
+      initialContent={editorContent}
+      onUpdate={handleEditorUpdate}
+      onUploadInlineImage={uploadInlineImage}
+    />
   );
+
+  let saveState: string;
+  if (saveMut.isPending) saveState = 'Salvando…';
+  else if (article) {
+    const saved = new Date(article.updated_at);
+    const when = Number.isNaN(saved.getTime())
+      ? 'Salvo'
+      : `Salvo ${formatDistanceToNow(saved, { addSuffix: true, locale: ptBR })}`;
+    saveState = `${when} · ${STATUS_LABELS[article.status]}`;
+  } else saveState = 'Ainda não salvo';
+
+  const view: KbArticleEditorViewProps = {
+    isEdit,
+    saveState,
+    values: { title, slug, category, excerpt, tags, displayOrder, status, coverUrl },
+    set: {
+      title: setTitle,
+      slug: setSlug,
+      category: setCategory,
+      excerpt: setExcerpt,
+      tags: setTags,
+      displayOrder: setDisplayOrder,
+      status: setStatus,
+      coverUrl: setCoverUrl,
+    },
+    slugError: slugError || null,
+    coverPreview,
+    coverUploading,
+    onCoverFile: handleCoverUpload,
+    editor,
+    contextEnabled: isEdit && !!article,
+    contextLinks,
+    availableRoutes: CRM_ROUTES.filter((r) => !usedRoutes.has(r.value)),
+    selectedRoute,
+    onSelectedRouteChange: setSelectedRoute,
+    onAddContextLink: addContextLink,
+    onRemoveContextLink: removeContextLink,
+    canSave: !!title && !!slug && !!category && !slugError,
+    saving: saveMut.isPending,
+    onSave: () => saveMut.mutate(undefined),
+    onPublish: () => saveMut.mutate({ status: 'published' }),
+    onDelete: isEdit
+      ? () => {
+          if (confirm('Excluir este artigo permanentemente?')) deleteMut.mutate();
+        }
+      : undefined,
+    deleting: deleteMut.isPending,
+  };
+
+  return isPhone ? <KbArticleEditorPhone {...view} /> : <KbArticleEditorDesktop {...view} />;
 }

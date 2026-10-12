@@ -5,6 +5,8 @@
       "@/*": ["./src/*"],
       "@mesaas/i18n": ["../../packages/i18n/index.ts"],
       "@mesaas/ui/*": ["../../packages/ui/*"],
+      "@mesaas/ios-kit": ["../../packages/ios-kit/index.ts"],
+      "@mesaas/ios-kit/*": ["../../packages/ios-kit/*"],
       "@mesaas/report-blocks/*": ["../../packages/report-blocks/*"],
       "@mesaas/import-parsers": ["../../packages/import-parsers/index.ts"],
       "@mesaas/app-lifecycle": ["../../packages/app-lifecycle/index.ts"],
