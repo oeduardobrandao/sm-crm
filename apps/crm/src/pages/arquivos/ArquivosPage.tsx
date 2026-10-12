@@ -45,6 +45,7 @@ import type { FileRecord, FolderContents } from './types';
 import type { PostMedia } from '../../store';
 import { openExternalUrl } from '@/utils/security';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { PhoneArquivosView } from './phone/PhoneArquivosView';
 import { PhoneFolderPickerSheet } from './phone/PhoneFolderPickerSheet';
@@ -73,6 +74,7 @@ export default function ArquivosPage() {
   const isDesktop = useIsDesktop(901);
   const isPhone = !isAbovePhone;
   const isMobile = isAbovePhone && !isDesktop;
+  const inToolbar = usePageToolbar({ title: 'Arquivos' });
   const isOwner = useIsWorkspaceOwner();
   const { can } = useAuth();
   // No role check existed here before Task 14 -- any authenticated member
@@ -806,14 +808,17 @@ export default function ArquivosPage() {
         className="flex flex-col border-r border-[var(--border-color)] bg-[var(--card-bg)] flex-shrink-0"
         style={{ width: 260 }}
       >
-        <div className="px-4 pt-5 pb-3 border-b border-[var(--border-color)]">
-          <h1
-            className="text-xl font-bold text-[var(--text-main)] leading-tight"
-            style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}
-          >
-            Arquivos
-          </h1>
-        </div>
+        {/* The strip only holds the title, so it goes with it under the Vidro toolbar. */}
+        {!inToolbar && (
+          <div className="px-4 pt-5 pb-3 border-b border-[var(--border-color)]">
+            <h1
+              className="text-xl font-bold text-[var(--text-main)] leading-tight"
+              style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}
+            >
+              Arquivos
+            </h1>
+          </div>
+        )}
         <FolderTree
           selectedFolderId={currentFolderId}
           onSelectFolder={setCurrentFolderId}

@@ -24,6 +24,7 @@ import { getCliente, updateCliente, type Cliente } from '../../../store';
 import ClienteDetalhePage from '../ClienteDetalhePage';
 import ClienteDetalheIndexRedirect from '../ClienteDetalheIndexRedirect';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 
 type CanFn = (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
@@ -92,35 +93,52 @@ function PathProbe() {
   return <span data-testid="path">{location.pathname + location.search}</span>;
 }
 
-function renderAt(path: string, { hubHasIndex = true }: { hubHasIndex?: boolean } = {}) {
+function renderAt(
+  path: string,
+  {
+    hubHasIndex = true,
+    vidroShell,
+  }: {
+    hubHasIndex?: boolean;
+    /** Wraps the routes in VidroToolbarHarness (true: the Vidro toolbar shows; false: classic). */
+    vidroShell?: boolean;
+  } = {},
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
-  const utils = render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/clientes" element={<div>lista de clientes</div>} />
-          <Route path="/clientes/:id" element={<ClienteDetalhePage />}>
-            <Route index element={<ClienteDetalheIndexRedirect />} />
-            <Route path="visao-geral" element={<div>conteudo visao-geral</div>} />
-            <Route path="entregas" element={<div>conteudo entregas</div>} />
-            <Route path="redes-sociais" element={<div>conteudo redes-sociais</div>} />
-            <Route path="relatorios" element={<div>conteudo relatorios</div>} />
-            <Route path="hub">
-              {/* hubHasIndex=false: exercises the harness App.tsx actually ships without
+  const routes = (
+    <Routes>
+      <Route path="/clientes" element={<div>lista de clientes</div>} />
+      <Route path="/clientes/:id" element={<ClienteDetalhePage />}>
+        <Route index element={<ClienteDetalheIndexRedirect />} />
+        <Route path="visao-geral" element={<div>conteudo visao-geral</div>} />
+        <Route path="entregas" element={<div>conteudo entregas</div>} />
+        <Route path="redes-sociais" element={<div>conteudo redes-sociais</div>} />
+        <Route path="relatorios" element={<div>conteudo relatorios</div>} />
+        <Route path="hub">
+          {/* hubHasIndex=false: exercises the harness App.tsx actually ships without
                   (see task-2-report.md "Fix round 1") — without an index child here, the
                   ONLY thing that can produce "conteudo acesso" from bare /hub is
                   ClienteDetalhePage's own `current === 'hub'` guard, resolved before the
                   Outlet mounts at all. */}
-              {hubHasIndex && <Route index element={<Navigate to="acesso" replace />} />}
-              <Route path="acesso" element={<div>conteudo acesso</div>} />
-              <Route path="marca" element={<div>conteudo marca</div>} />
-            </Route>
-            <Route path="arquivos" element={<div>conteudo arquivos</div>} />
-            <Route path="financeiro" element={<div>conteudo financeiro</div>} />
-            <Route path="*" element={null} />
-          </Route>
-        </Routes>
+          {hubHasIndex && <Route index element={<Navigate to="acesso" replace />} />}
+          <Route path="acesso" element={<div>conteudo acesso</div>} />
+          <Route path="marca" element={<div>conteudo marca</div>} />
+        </Route>
+        <Route path="arquivos" element={<div>conteudo arquivos</div>} />
+        <Route path="financeiro" element={<div>conteudo financeiro</div>} />
+        <Route path="*" element={null} />
+      </Route>
+    </Routes>
+  );
+  const utils = render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[path]}>
+        {vidroShell === undefined ? (
+          routes
+        ) : (
+          <VidroToolbarHarness vidroShell={vidroShell}>{routes}</VidroToolbarHarness>
+        )}
         <PathProbe />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -495,6 +513,89 @@ describe('ClienteDetalhePage', () => {
       await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['cliente', 42] });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
+    });
+  });
+  describe('Vidro toolbar', () => {
+    it('fills the toolbar with back, avatar, name, badges and Editar, and hides the in-page header', async () => {
+      setAuth('owner');
+      mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
+      const { container } = renderAt('/clientes/42/visao-geral', { vidroShell: true });
+      await screen.findByText('conteudo visao-geral');
+
+      const h1s = await screen.findAllByRole('heading', { level: 1 });
+      expect(h1s).toHaveLength(1);
+      expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+      expect(h1s[0]).toHaveTextContent('Aurora Estética');
+
+      expect(container.querySelector('.cliente-detalhe-header')).toBeNull();
+      expect(screen.queryByRole('heading', { level: 2, name: 'Aurora Estética' })).toBeNull();
+
+      const toolbar = container.querySelector('.vidro-toolbar') as HTMLElement;
+      expect(screen.getAllByRole('button', { name: 'Voltar para clientes' })).toHaveLength(1);
+      expect(toolbar).toContainElement(
+        screen.getByRole('button', { name: 'Voltar para clientes' }),
+      );
+      expect(screen.getAllByLabelText('Alterar foto do cliente')).toHaveLength(1);
+      expect(toolbar).toContainElement(screen.getByLabelText('Alterar foto do cliente'));
+      expect(screen.getAllByText('Plano Ouro')).toHaveLength(1);
+      expect(toolbar.querySelector('.vidro-toolbar-subtitle')).toHaveTextContent('Plano Ouro');
+      expect(screen.getAllByRole('button', { name: /editar/i })).toHaveLength(1);
+      expect(toolbar).toContainElement(screen.getByRole('button', { name: /editar/i }));
+
+      // The vertical nav stays in the content.
+      expect(screen.getByRole('link', { name: 'Visão geral' })).toBeInTheDocument();
+    });
+
+    it('opens the edit dialog from the toolbar Editar button', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/visao-geral', { vidroShell: true });
+      await screen.findByText('conteudo visao-geral');
+      fireEvent.click(screen.getByRole('button', { name: /editar/i }));
+      expect(await screen.findByRole('button', { name: 'Salvar' })).toBeInTheDocument();
+    });
+
+    it('leaves Editar out of the toolbar for a custom role with clientes:ver only', async () => {
+      setAuth('agent', {
+        can: makeCan(
+          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
+        ),
+      });
+      renderAt('/clientes/42/visao-geral', { vidroShell: true });
+      await screen.findByText('conteudo visao-geral');
+      await screen.findAllByRole('heading', { level: 1 });
+      expect(screen.queryByRole('button', { name: /editar/i })).not.toBeInTheDocument();
+    });
+
+    it('has exactly one h1, the toolbar one, at a hub sub-route', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/hub/marca', { vidroShell: true });
+      await screen.findByText('conteudo marca');
+      const h1s = await screen.findAllByRole('heading', { level: 1 });
+      expect(h1s).toHaveLength(1);
+      expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+      expect(h1s[0]).toHaveTextContent('Aurora Estética');
+    });
+
+    it('shows no client name in the toolbar while the client is loading', async () => {
+      setAuth('owner');
+      mockedGetCliente.mockReturnValue(new Promise(() => undefined));
+      const { container } = renderAt('/clientes/42/visao-geral', { vidroShell: true });
+      expect(container.querySelector('[data-testid="crm-skeleton"]')).toBeInTheDocument();
+      expect(container.querySelector('.vidro-toolbar')).not.toBeNull();
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    });
+
+    it('keeps the classic header when the Vidro shell is off', async () => {
+      setAuth('owner');
+      const { container } = renderAt('/clientes/42/visao-geral', { vidroShell: false });
+      await screen.findByText('conteudo visao-geral');
+      expect(container.querySelector('.vidro-toolbar')).toBeNull();
+      expect(screen.getByRole('heading', { level: 2, name: 'Aurora Estética' })).toHaveClass(
+        'cliente-detalhe-header__name',
+      );
+      expect(container.querySelector('.cliente-detalhe-header')).not.toBeNull();
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(screen.getAllByRole('button', { name: /editar/i })).toHaveLength(1);
     });
   });
 });

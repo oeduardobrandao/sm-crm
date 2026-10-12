@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { Cliente } from '@/store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { useMensagensData } from './hooks/useMensagensData';
-import { ConversationList } from './components/ConversationList';
+import { ConversationList, MensagensInfoTooltip } from './components/ConversationList';
 import { ConversationThread } from './components/ConversationThread';
 import {
   ThreadLoadError,
@@ -26,6 +27,10 @@ export default function MensagensPage() {
   const clienteId = hasParam && !invalidId ? parsedId : null;
 
   const { feed, conversas, clientes, sendGeneral, replyToPost } = useMensagensData(clienteId);
+  const inToolbar = usePageToolbar({
+    title: 'Mensagens',
+    titleAccessory: <MensagensInfoTooltip />,
+  });
 
   // A failed background refetch (e.g. window refocus, or the seen-marker's
   // post-mount invalidation) keeps `data` populated from the last successful
@@ -119,6 +124,7 @@ export default function MensagensPage() {
         selectedClienteId={clienteId}
         clientesById={clientesById}
         onSelect={goToConversa}
+        hideTitle={inToolbar}
       />
       {renderThreadSlot()}
     </div>

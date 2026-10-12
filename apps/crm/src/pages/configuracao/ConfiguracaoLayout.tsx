@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePhoneChrome } from '@/components/layout/PhoneLayoutContext';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { useAuth } from '../../context/AuthContext';
 import { visibleConfigTabs, canAccessConfigTab, CONFIG_TABS } from './configTabs';
@@ -26,6 +27,8 @@ export default function ConfiguracaoLayout() {
   // Held for the whole section, so the shell's bell bar doesn't flash between one
   // tab's nav bar unmounting and the next lazy tab mounting its own.
   usePhoneChrome({ pageHeader: isPhone });
+  // Desktop Vidro toolbar: the layout registers for every tab under it (tabs never do).
+  const inToolbar = usePageToolbar({ title: 'Configurações' });
   const current = pathname.replace(/^\/configuracao\/?/, '').split('/')[0];
 
   useEffect(() => {
@@ -61,9 +64,11 @@ export default function ConfiguracaoLayout() {
     return (
       <div className="page-content config-page">
         <SkeletonStatus className="config-shell">
-          <div className="config-shell-header">
-            <Skeleton className="h-7 w-44" />
-          </div>
+          {!inToolbar && (
+            <div className="config-shell-header">
+              <Skeleton className="h-7 w-44" />
+            </div>
+          )}
           <div className="config-shell-body">
             <div className="config-nav">
               {[0, 1, 2, 3, 4].map((i) => (
@@ -151,9 +156,11 @@ export default function ConfiguracaoLayout() {
   return (
     <div className="page-content config-page">
       <div className="config-shell">
-        <header className="config-shell-header">
-          <h1>Configurações</h1>
-        </header>
+        {!inToolbar && (
+          <header className="config-shell-header">
+            <h1>Configurações</h1>
+          </header>
+        )}
 
         <div className={`config-shell-body${tabs.length > 1 ? '' : ' config-shell-body--single'}`}>
           {/* A single visible tab is not a choice — don't render a nav for it. */}
