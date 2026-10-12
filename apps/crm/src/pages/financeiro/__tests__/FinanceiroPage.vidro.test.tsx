@@ -64,9 +64,8 @@ describe('FinanceiroPage in the Vidro toolbar', () => {
     expect(within(toolbar).getByRole('button', { name: /Entrada/ })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Saída/ })).toHaveLength(1);
     expect(within(toolbar).getByRole('button', { name: /Saída/ })).toBeInTheDocument();
-    expect(within(toolbar).getAllByRole('button', { name: /Importar CSV/ }).length).toBeGreaterThan(
-      0,
-    );
+    expect(screen.getAllByRole('button', { name: /Importar CSV/ })).toHaveLength(1);
+    expect(within(toolbar).getByRole('button', { name: /Importar CSV/ })).toBeInTheDocument();
     expect(document.querySelector('.header')).toBeNull();
   });
 

@@ -107,6 +107,7 @@ const membro = {
 };
 
 let transacoes: unknown[] = [];
+let membrosLoading = false;
 
 function setup(
   canSeeFinancials: boolean | 'unknown',
@@ -126,7 +127,9 @@ function setup(
     isLoading: false,
     isUnlimited: false,
   });
-  queryState.membros = { data: [membro], isLoading: false };
+  queryState.membros = membrosLoading
+    ? { data: [], isLoading: true }
+    : { data: [membro], isLoading: false };
   queryState.transacoes = { data: transacoes, isLoading: false };
   queryState['workspace-users'] = { data: [], isLoading: false };
   queryState.invites = { data: [], isLoading: false };
@@ -353,6 +356,22 @@ describe('MembroDetalhePage in the Vidro toolbar', () => {
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Voltar' })).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Editar' })).toHaveLength(1);
+  });
+
+  it('keeps Voltar in the toolbar, with no heading, while the member loads', () => {
+    membrosLoading = true;
+    try {
+      setup(true, undefined, true);
+
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      const toolbar = document.querySelector('.vidro-toolbar') as HTMLElement;
+      expect(toolbar).not.toBeNull();
+      expect(screen.getAllByRole('button', { name: 'Voltar' })).toHaveLength(1);
+      expect(within(toolbar).getByRole('button', { name: 'Voltar' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull();
+    } finally {
+      membrosLoading = false;
+    }
   });
 
   it('registers nothing for a member that does not exist, keeping its own Voltar', async () => {

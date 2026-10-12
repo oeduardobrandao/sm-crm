@@ -85,7 +85,11 @@ export default function MembroDetalhePage() {
   ) : undefined;
 
   const inToolbar = usePageToolbar(
-    membro ? { leading: backButton, title: membro.nome, primary: primaryAction } : null,
+    membro
+      ? { leading: backButton, title: membro.nome, primary: primaryAction }
+      : loadingMembros
+        ? { leading: backButton, title: null }
+        : null,
   );
 
   if (isPhone) {
