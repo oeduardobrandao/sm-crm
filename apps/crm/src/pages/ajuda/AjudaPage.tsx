@@ -5,6 +5,7 @@ import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { CardGridSkeleton } from '@/components/ui/skeletons';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
 import { filterArticles } from './filterArticles';
@@ -42,6 +43,8 @@ export default function AjudaPage() {
 
   const isSearching = search.trim().length > 0;
 
+  const inToolbar = usePageToolbar({ title: 'Central de Ajuda' });
+
   if (!isDesktop) {
     return (
       <AjudaPhone
@@ -59,11 +62,13 @@ export default function AjudaPage() {
 
   return (
     <div className="space-y-6">
-      <div className="header">
-        <div className="header-title">
-          <h1>Central de Ajuda</h1>
+      {!inToolbar && (
+        <div className="header">
+          <div className="header-title">
+            <h1>Central de Ajuda</h1>
+          </div>
         </div>
-      </div>
+      )}
 
       <VideoPlaylistHero requestedSlug={searchParams.get('video')} />
 

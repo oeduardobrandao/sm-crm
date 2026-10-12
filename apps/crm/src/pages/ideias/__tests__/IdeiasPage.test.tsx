@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ideia } from '@/store';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const { getIdeiasMock, getClientesMock } = vi.hoisted(() => ({
   getIdeiasMock: vi.fn(),
@@ -152,5 +153,43 @@ describe('IdeiasPage', () => {
       'data-editing-titulo',
       'Ideia antiga',
     );
+  });
+});
+
+describe('IdeiasPage in the Vidro toolbar', () => {
+  async function renderInHarness(vidroShell: boolean) {
+    const { default: IdeiasPage } = await import('../IdeiasPage');
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/ideias']}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <IdeiasPage />
+          </VidroToolbarHarness>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('puts the title, info tooltip and primary action in the toolbar, once', async () => {
+    await renderInHarness(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Ideias');
+    expect(screen.getAllByRole('button', { name: /nova ideia/i })).toHaveLength(1);
+    expect(document.querySelectorAll('.vidro-toolbar [data-tooltip]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-tooltip]')).toHaveLength(1);
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    await renderInHarness(false);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Ideias');
+    expect(h1s[0].closest('.header')).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /nova ideia/i })).toHaveLength(1);
   });
 });

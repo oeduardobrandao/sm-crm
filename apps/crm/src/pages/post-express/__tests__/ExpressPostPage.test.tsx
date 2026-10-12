@@ -77,6 +77,7 @@ import {
 import { publishInstagramPostNow } from '../../../services/instagram';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { toast } from 'sonner';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function renderWithProviders(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -458,5 +459,46 @@ describe('ExpressPostPage', () => {
       await waitFor(() => expect(screen.getByText(/não tem um link ativo do portal/)).toBeTruthy());
       expect(screen.getByTestId('express-submit').hasAttribute('disabled')).toBe(true);
     });
+  });
+});
+
+describe('ExpressPostPage in the Vidro toolbar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getClientes).mockResolvedValue(mockClientes);
+    vi.mocked(useWorkspaceLimits).mockReturnValue(workspaceLimitsValue(true));
+    vi.mocked(getHubToken).mockResolvedValue(null as any);
+  });
+
+  it('puts the title and subtitle in the toolbar and drops the inline header', async () => {
+    renderWithProviders(
+      <VidroToolbarHarness>
+        <ExpressPostPage />
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Post Express');
+    const subtitle = screen.getByText('Publique rapidamente no Instagram');
+    expect(subtitle.closest('.vidro-toolbar')).not.toBeNull();
+    expect(screen.getAllByText('Publique rapidamente no Instagram')).toHaveLength(1);
+    expect(screen.getByTestId('express-submit')).toBeTruthy();
+  });
+
+  it('keeps the inline header when the Vidro shell is off', async () => {
+    renderWithProviders(
+      <VidroToolbarHarness vidroShell={false}>
+        <ExpressPostPage />
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Post Express');
+    expect(h1s[0].closest('.vidro-toolbar')).toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getByText('Publique rapidamente no Instagram')).toBeTruthy();
   });
 });

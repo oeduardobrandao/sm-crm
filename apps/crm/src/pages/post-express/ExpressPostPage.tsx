@@ -29,6 +29,7 @@ import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { publishInstagramPostNow } from '../../services/instagram';
 import { PostMediaGallery } from '../entregas/components/PostMediaGallery';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { ExpressPreview } from './ExpressPreview';
 import { ExpressPostPhone } from './ExpressPostPhone';
 
@@ -455,6 +456,8 @@ export default function ExpressPostPage() {
   const mediaMaxFiles =
     isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1;
 
+  const inToolbar = usePageToolbar({ title: t('title'), subtitle: t('subtitle') });
+
   if (isPhone) {
     const typeInfo = effectiveType ? getTypeLabel(effectiveType, t) : null;
     return (
@@ -510,20 +513,22 @@ export default function ExpressPostPage() {
     <div className="animate-up" style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}>
       <div style={{ maxWidth: '720px', margin: '0 auto' }}>
         {/* Header */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <h1
-            style={{
-              fontFamily: 'var(--font-heading)',
-              fontSize: 'clamp(2rem, 4vw, 3.2rem)',
-              fontWeight: 900,
-            }}
-          >
-            {t('title')}
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-            {t('subtitle')}
-          </p>
-        </div>
+        {!inToolbar && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h1
+              style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: 'clamp(2rem, 4vw, 3.2rem)',
+                fontWeight: 900,
+              }}
+            >
+              {t('title')}
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+              {t('subtitle')}
+            </p>
+          </div>
+        )}
 
         {eligibleClients.length === 0 && (
           <div className="mb-4">

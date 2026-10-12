@@ -43,6 +43,7 @@ import {
 import { TableSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { IDEIA_STATUS_LABELS } from './ideiaLabels';
 import { IdeiasPhoneView } from './IdeiasPhoneView';
 
@@ -181,6 +182,32 @@ export default function IdeiasPage() {
     </>
   );
 
+  const infoTooltip = (
+    <span
+      data-tooltip="Ideias enviadas pelos clientes no portal ou criadas pela equipe."
+      data-tooltip-dir="right"
+      style={{ display: 'flex' }}
+    >
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const primaryAction = canEdit ? (
+    <Button
+      onClick={() => {
+        setEditingIdeia(null);
+        setFormOpen(true);
+      }}
+    >
+      <Plus size={15} className="mr-1.5" />
+      Nova ideia
+    </Button>
+  ) : null;
+  const inToolbar = usePageToolbar({
+    title: 'Ideias',
+    titleAccessory: infoTooltip,
+    primary: primaryAction,
+  });
+
   if (isPhone) {
     return (
       <>
@@ -217,32 +244,18 @@ export default function IdeiasPage() {
 
   return (
     <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Ideias</h1>
-          <span
-            data-tooltip="Ideias enviadas pelos clientes no portal ou criadas pela equipe."
-            data-tooltip-dir="right"
-            style={{ display: 'flex' }}
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
+            <h1>Ideias</h1>
+            {infoTooltip}
+          </div>
+          {primaryAction}
         </div>
-        {canEdit && (
-          <Button
-            onClick={() => {
-              setEditingIdeia(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus size={15} className="mr-1.5" />
-            Nova ideia
-          </Button>
-        )}
-      </div>
+      )}
 
       {/* Filters. Desktop keeps every control inline; below 901px it's just
           search + a single "Filtros" button opening a sheet, same pattern as
