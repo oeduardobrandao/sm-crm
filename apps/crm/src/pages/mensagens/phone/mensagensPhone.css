@@ -214,6 +214,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  /* Without it the line takes the chip's single-line title width and the thread
+     scrolls sideways; capped, the chip title ellipsizes. */
+  max-width: 100%;
   color: var(--phone-label-secondary);
   font-size: var(--phone-text-subhead);
 }
@@ -278,6 +281,7 @@
 /* Post chip (tap opens the post, long-press opens the menu). */
 .phone-msg-chip-hold {
   display: inline-flex;
+  min-width: 0;
   max-width: 100%;
 }
 .phone-msg-chip {
