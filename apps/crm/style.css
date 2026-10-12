@@ -3742,9 +3742,12 @@ select.form-input option {
      data-phone-page-header: the page renders PhonePageHeader / PhoneNavBar, which carry
      the bell and help links, so the shell bar goes away. Only its 44px row is dropped
      from the offset: --phone-header-height keeps the status-bar inset, so the page's own
-     header starts under the Dynamic Island instead of behind it. */
+     header starts under the Dynamic Island instead of behind it. The strip behind the
+     status bar is the shell's own background, so it takes the page's grouped grey: a
+     white one shows as a blurred band above the page header. */
   .app-container[data-phone-page-header] {
     --phone-header-bar: 0px;
+    background: var(--phone-bg);
   }
 
   .app-container[data-phone-page-header] .phone-shell-header {
