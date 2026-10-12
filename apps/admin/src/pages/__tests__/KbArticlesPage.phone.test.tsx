@@ -127,6 +127,14 @@ describe('KbArticlesPage on phones', () => {
     expect(await screen.findByText('Tela de novo artigo')).toBeInTheDocument();
   });
 
+  it('the reorder swipe actions are named after their article', async () => {
+    renderPage();
+    await screen.findByRole('link', { name: /Primeiro post/ });
+    expect(screen.getByRole('button', { name: 'Descer Primeiro post' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Subir Rascunho secreto' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Subir Primeiro post' })).toBeNull();
+  });
+
   it('selection mode turns rows into checkboxes and bulk-publishes from the bottom bar', async () => {
     renderPage();
     await screen.findByRole('link', { name: /Primeiro post/ });
@@ -141,13 +149,13 @@ describe('KbArticlesPage on phones', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /Convidar equipe/ }));
     expect(screen.getAllByText('2 selecionados').length).toBeGreaterThan(0);
 
-    const toolbar = screen.getByRole('toolbar', { name: 'Ações da seleção' });
+    const toolbar = screen.getByRole('toolbar', { name: 'Ações em massa' });
     fireEvent.click(within(toolbar).getByRole('button', { name: /^Publicar 2/ }));
     await waitFor(() => expect(updateKbArticle).toHaveBeenCalledTimes(2));
     expect(updateKbArticle).toHaveBeenCalledWith({ article_id: 'k1', status: 'published' });
     expect(updateKbArticle).toHaveBeenCalledWith({ article_id: 'k3', status: 'published' });
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('2 itens publicados.'));
-    expect(screen.queryByRole('toolbar', { name: 'Ações da seleção' })).toBeNull();
+    expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
   });
 
   it('"Selecionar todos" selects a whole category and OK leaves selection mode', async () => {
@@ -160,7 +168,7 @@ describe('KbArticlesPage on phones', () => {
     expect(screen.getAllByText('2 selecionados').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Concluir seleção' }));
-    expect(screen.queryByRole('toolbar', { name: 'Ações da seleção' })).toBeNull();
+    expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
     expect(screen.getByRole('link', { name: /Primeiro post/ })).toBeInTheDocument();
   });
 });

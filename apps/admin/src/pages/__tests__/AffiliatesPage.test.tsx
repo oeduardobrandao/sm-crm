@@ -248,6 +248,18 @@ describe('AffiliateDetailPage', () => {
     expect(screen.getByText('balance_insufficient')).toBeInTheDocument();
   });
 
+  it('hero: back link to Afiliados, the name as the h1 and the status beside it', async () => {
+    wrap(<AffiliateDetailPage />, '/admin/afiliados/a1');
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Ana Souza' });
+    expect(screen.getByRole('link', { name: /Afiliados/ })).toHaveAttribute(
+      'href',
+      '/admin/afiliados',
+    );
+    const status = screen.getByText('Ativo');
+    expect(h1).not.toContainElement(status);
+    expect(h1.parentElement).toContainElement(status);
+  });
+
   it('suspends the affiliate', async () => {
     const user = userEvent.setup();
     wrap(<AffiliateDetailPage />, '/admin/afiliados/a1');

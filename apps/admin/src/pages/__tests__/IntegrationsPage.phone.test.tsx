@@ -81,6 +81,9 @@ describe('IntegrationsPage (phone)', () => {
     expect(screen.getByText('Revogada')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /^Revogar/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /^Revogar/ })).toHaveAccessibleName(
+      'Revogar admin1@mesaas.com.br',
+    );
   });
 
   it('Revogar confirms and calls the API with the grant id', async () => {

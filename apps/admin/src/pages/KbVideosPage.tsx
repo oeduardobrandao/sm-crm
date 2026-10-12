@@ -96,6 +96,7 @@ export default function KbVideosPage() {
       } else if (result.failed > 0) toast.error(message);
       else toast.success(message);
       setSelected(new Set());
+      setSelectMode(false);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: KB_VIDEOS_KEY }),
   });

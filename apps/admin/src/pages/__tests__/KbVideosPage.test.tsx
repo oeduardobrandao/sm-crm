@@ -172,6 +172,8 @@ describe('KbVideosPage', () => {
       ),
     );
     expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
+    // Like KB Articles, a finished bulk action leaves selection mode.
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
   it('bulk-unpublishes a single selected video', async () => {
@@ -189,6 +191,7 @@ describe('KbVideosPage', () => {
     );
     expect(upsertKbVideo).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('1 item despublicado.'));
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
   it('does not auto-refresh a pending upload that is still fresh', async () => {

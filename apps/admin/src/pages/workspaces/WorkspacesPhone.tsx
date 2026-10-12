@@ -23,6 +23,7 @@ import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import type { WorkspaceSummary } from '../../lib/api';
+import { avatarColor, avatarLetter } from '../../lib/avatar-color';
 import { workspaceDetailPath } from '../../lib/routes';
 import {
   STATUS_GROUPS,
@@ -54,13 +55,6 @@ const STATUS_TONE_CLASS: Record<StatusTone, string> = {
   muted: 'text-muted-foreground',
 };
 
-/** A stable colour per workspace for its avatar letter. */
-function avatarColor(name: string): string {
-  let hue = 0;
-  for (let i = 0; i < name.length; i++) hue = (hue * 31 + name.charCodeAt(i)) % 360;
-  return `hsl(${hue} 45% 36%)`;
-}
-
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -82,7 +76,7 @@ function WorkspaceCell({ ws, now }: { ws: WorkspaceSummary; now: Date }) {
           className="-m-[5px] flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[15px] font-bold text-white"
           style={{ background: avatarColor(ws.name) }}
         >
-          {ws.name.trim().charAt(0).toUpperCase() || '?'}
+          {avatarLetter(ws.name)}
         </span>
       }
       label={

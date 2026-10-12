@@ -182,12 +182,12 @@ describe('KbArticlesPage', () => {
   it('bulk-publishes the selected articles and clears the selection', async () => {
     renderPage();
     await screen.findAllByRole('link', { name: 'Primeiro post' });
-    expect(screen.queryByRole('toolbar', { name: 'Ações da seleção' })).toBeNull();
+    expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
 
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Selecionar todos os artigos de Getting Started' }),
     );
-    const toolbar = screen.getByRole('toolbar', { name: 'Ações da seleção' });
+    const toolbar = screen.getByRole('toolbar', { name: 'Ações em massa' });
     expect(within(toolbar).getByText('2 selecionados')).toBeInTheDocument();
     fireEvent.click(within(toolbar).getByRole('button', { name: /^Publicar/ }));
 
@@ -195,7 +195,7 @@ describe('KbArticlesPage', () => {
     expect(updateKbArticle).toHaveBeenCalledWith({ article_id: 'k1', status: 'published' });
     expect(updateKbArticle).toHaveBeenCalledWith({ article_id: 'k2', status: 'published' });
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('2 itens publicados.'));
-    expect(screen.queryByRole('toolbar', { name: 'Ações da seleção' })).toBeNull();
+    expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
   });
 
   it('bulk actions skip selected articles hidden by a filter', async () => {

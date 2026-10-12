@@ -1,10 +1,9 @@
-import { Link } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
 import type { AffiliateDetail } from '../../lib/api';
 import { affiliatesPath, workspaceDetailPath } from '../../lib/routes';
 import { formatMoney } from '../../lib/subscription';
 import { formatRateBps, STRIPE_STATE_LABEL, stripeConnectState } from '../../lib/affiliates';
+import { PageHeader } from '../../components/PageHeader';
 import { RowLink } from '../../components/RowLink';
 import { GlassPanel } from '../../components/shell/GlassPanel';
 import { KpiGrid, KpiTile } from '../../components/shell/KpiTile';
@@ -61,31 +60,19 @@ export function AffiliateDetailDesktop({
 
   return (
     <div>
-      <div className="mb-5">
-        <Link
-          to={affiliatesPath()}
-          className="mb-1.5 inline-flex items-center gap-0.5 text-[15px] text-primary hover:underline"
-        >
-          <ChevronLeft size={18} aria-hidden="true" />
-          Afiliados
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-4">
-            <AffiliateAvatar name={a.nome} size={56} />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-sf text-[28px] font-bold leading-[1.1] tracking-[-0.01em]">
-                  {a.nome}
-                </h1>
-                <AccountStatus status={a.status} />
-              </div>
-              <p className="mt-1 text-[15px] text-muted-foreground">
-                {a.email}
-                {a.telefone ? ` · ${a.telefone}` : ''} · código{' '}
-                <span className="font-mono">{a.code}</span> · desde {formatDate(a.created_at)}
-              </p>
-            </div>
-          </div>
+      <PageHeader
+        back={{ to: affiliatesPath(), label: 'Afiliados' }}
+        title={a.nome}
+        leading={<AffiliateAvatar name={a.nome} size={56} />}
+        titleAddon={<AccountStatus status={a.status} />}
+        description={
+          <>
+            {a.email}
+            {a.telefone ? ` · ${a.telefone}` : ''} · código{' '}
+            <span className="font-mono">{a.code}</span> · desde {formatDate(a.created_at)}
+          </>
+        }
+        actions={
           <Button
             variant={a.status === 'active' ? 'destructive' : 'outline'}
             disabled={statusPending}
@@ -93,8 +80,8 @@ export function AffiliateDetailDesktop({
           >
             {a.status === 'active' ? 'Suspender' : 'Reativar'}
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       <KpiGrid min={160}>
         <KpiTile

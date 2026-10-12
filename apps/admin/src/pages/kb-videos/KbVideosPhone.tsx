@@ -166,6 +166,7 @@ export function KbVideosPhone(p: KbVideosViewProps) {
                     if (index > 0) {
                       actions.push({
                         label: 'Subir',
+                        ariaLabel: `Subir ${v.title}`,
                         icon: <ArrowUp />,
                         onAction: () => p.onMove(videos, index, -1),
                       });
@@ -173,6 +174,7 @@ export function KbVideosPhone(p: KbVideosViewProps) {
                     if (index < videos.length - 1) {
                       actions.push({
                         label: 'Descer',
+                        ariaLabel: `Descer ${v.title}`,
                         icon: <ArrowDown />,
                         onAction: () => p.onMove(videos, index, 1),
                       });

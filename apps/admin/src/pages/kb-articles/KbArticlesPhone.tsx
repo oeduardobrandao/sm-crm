@@ -158,6 +158,7 @@ export function KbArticlesPhone(p: KbArticlesViewProps) {
                 if (index > 0) {
                   actions.push({
                     label: 'Subir',
+                    ariaLabel: `Subir ${a.title}`,
                     icon: <ArrowUp />,
                     onAction: () => p.onMove(all, index, -1),
                   });
@@ -165,6 +166,7 @@ export function KbArticlesPhone(p: KbArticlesViewProps) {
                 if (index < all.length - 1) {
                   actions.push({
                     label: 'Descer',
+                    ariaLabel: `Descer ${a.title}`,
                     icon: <ArrowDown />,
                     onAction: () => p.onMove(all, index, 1),
                   });

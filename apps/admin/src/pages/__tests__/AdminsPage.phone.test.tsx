@@ -72,6 +72,7 @@ describe('AdminsPage (phone)', () => {
     await screen.findByText('outra@mesaas.com.br');
     const remove = screen.getAllByRole('button', { name: /^Remover/ });
     expect(remove).toHaveLength(1);
+    expect(remove[0]).toHaveAccessibleName('Remover outra@mesaas.com.br');
     fireEvent.click(remove[0]);
     await waitFor(() => expect(removeAdmin).toHaveBeenCalledWith('a2'));
   });

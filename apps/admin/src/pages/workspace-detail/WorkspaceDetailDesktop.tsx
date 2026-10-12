@@ -1,5 +1,5 @@
-// Workspace detail on desktop (DkWorkspaceDetalhe): back link + hero header, a segmented
-// control over the sections, panels below. Data and handlers come from the page.
+// Workspace detail on desktop (DkWorkspaceDetalhe): back link + hero header (avatar, title),
+// a segmented control over the sections, panels below. Data and handlers come from the page.
 import { useState, type ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
@@ -8,6 +8,7 @@ import { sanitizeExternalUrl } from '../../lib/security';
 import { getPlanColor } from '../../lib/plan-colors';
 import type { McpKeyRow, OAuthGrantRow } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
+import { WorkspaceAvatar } from '../../components/WorkspaceAvatar';
 import { KpiGrid } from '../../components/shell/KpiTile';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -117,6 +118,7 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
       <PageHeader
         back={{ to: '/admin/workspaces', label: 'Workspaces' }}
         title={data.workspace.name}
+        leading={<WorkspaceAvatar name={data.workspace.name} />}
         description={ownerLine(data)}
         actions={actions}
       >

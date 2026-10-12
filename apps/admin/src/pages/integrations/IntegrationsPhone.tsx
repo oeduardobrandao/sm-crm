@@ -122,6 +122,7 @@ export function IntegrationsPhone({
                 trailingActions={[
                   {
                     label: 'Revogar',
+                    ariaLabel: `Revogar ${grant.email ?? truncateClientId(grant.client_id)}`,
                     icon: <Trash2 />,
                     tone: 'destructive',
                     onAction: () => {

@@ -26,7 +26,7 @@ export function KbBulkBar({ count, pending, onSetStatus, onClear }: Props) {
   const size = isPhone ? 'lg' : 'default';
   const phonePill = isPhone ? 'h-10 px-4 text-[15px]' : undefined;
   return (
-    <SelectionBar count={count}>
+    <SelectionBar count={count} ariaLabel="Ações em massa">
       <Button
         size={size}
         className={phonePill}

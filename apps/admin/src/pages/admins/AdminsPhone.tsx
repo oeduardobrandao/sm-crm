@@ -83,6 +83,7 @@ export function AdminsPhone({
                 trailingActions={[
                   {
                     label: 'Remover',
+                    ariaLabel: `Remover ${admin.email}`,
                     icon: <Trash2 />,
                     tone: 'destructive',
                     onAction: () => {

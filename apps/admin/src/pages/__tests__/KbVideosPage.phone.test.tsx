@@ -164,6 +164,9 @@ describe('KbVideosPage (phone)', () => {
     await waitFor(() =>
       expect(upsertKbVideo).toHaveBeenCalledWith({ video_id: 2, status: 'published' }),
     );
+    // Success leaves selection mode: the rows are links again.
+    expect(await screen.findByRole('button', { name: 'Selecionar vídeos' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
   it('reorders through the swipe actions of a row', async () => {
