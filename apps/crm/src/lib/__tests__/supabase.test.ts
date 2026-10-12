@@ -298,6 +298,15 @@ describe('supabase helpers', () => {
 
     expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
+
+  it('drops the vidro look cache on sign-out', async () => {
+    const { module } = await loadSupabaseModule({ id: 'user-1' });
+    localStorage.setItem('look-vidro', 'u1');
+
+    await module.signOut();
+
+    expect(localStorage.getItem('look-vidro')).toBeNull();
+  });
 });
 
 describe('healPendingInvite', () => {

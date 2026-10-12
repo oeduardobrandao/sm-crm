@@ -1,0 +1,65 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  LOOK_CACHE_KEY,
+  applyVidro,
+  clearVidroCache,
+  isVidroAttributeSet,
+  optOutKey,
+  readOptOut,
+  writeOptOut,
+} from '../vidroLook';
+
+afterEach(() => {
+  localStorage.clear();
+  document.documentElement.removeAttribute('data-look');
+  vi.restoreAllMocks();
+});
+
+describe('vidroLook', () => {
+  it('scopes the opt-out to the user', () => {
+    writeOptOut('u1', true);
+    expect(localStorage.getItem(optOutKey('u1'))).toBe('1');
+    expect(readOptOut('u1')).toBe(true);
+    expect(readOptOut('u2')).toBe(false);
+    expect(readOptOut(null)).toBe(false);
+    writeOptOut('u1', false);
+    expect(localStorage.getItem(optOutKey('u1'))).toBeNull();
+  });
+
+  it('writes the attribute and the user-keyed cache together', () => {
+    applyVidro(true, 'u1');
+    expect(document.documentElement.getAttribute('data-look')).toBe('vidro');
+    expect(isVidroAttributeSet()).toBe(true);
+    expect(localStorage.getItem(LOOK_CACHE_KEY)).toBe('u1');
+    applyVidro(false, 'u1');
+    expect(document.documentElement.hasAttribute('data-look')).toBe(false);
+    expect(localStorage.getItem(LOOK_CACHE_KEY)).toBeNull();
+  });
+
+  it('applies the attribute even when storage throws', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    expect(() => applyVidro(true, 'u1')).not.toThrow();
+    expect(isVidroAttributeSet()).toBe(true);
+  });
+
+  it('does not write the cache without a user', () => {
+    applyVidro(true, null);
+    expect(isVidroAttributeSet()).toBe(true);
+    expect(localStorage.getItem(LOOK_CACHE_KEY)).toBeNull();
+  });
+
+  it('clears only the cache', () => {
+    applyVidro(true, 'u1');
+    clearVidroCache();
+    expect(localStorage.getItem(LOOK_CACHE_KEY)).toBeNull();
+    expect(isVidroAttributeSet()).toBe(true);
+  });
+
+  it('does not remove a foreign data-look value', () => {
+    document.documentElement.setAttribute('data-look', 'other');
+    applyVidro(false, 'u1');
+    expect(document.documentElement.getAttribute('data-look')).toBe('other');
+  });
+});

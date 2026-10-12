@@ -21,6 +21,23 @@
         if (localStorage.getItem('theme') === 'dark') {
           document.documentElement.setAttribute('data-theme', 'dark');
         }
+        // Desktop "Vidro" look (src/lib/vidroLook.ts): look-vidro holds the user id it was
+        // resolved for; pre-paint only when the stored Supabase session is that user's.
+        try {
+          var lookUser = localStorage.getItem('look-vidro');
+          if (lookUser) {
+            for (var i = 0; i < localStorage.length; i++) {
+              var k = localStorage.key(i);
+              if (k && /^sb-[a-z0-9]+-auth-token$/.test(k)) {
+                var sess = JSON.parse(localStorage.getItem(k) || 'null');
+                if (sess && sess.user && sess.user.id === lookUser) {
+                  document.documentElement.setAttribute('data-look', 'vidro');
+                  break;
+                }
+              }
+            }
+          }
+        } catch (e) {}
       })();
       // iOS home-screen web app (style.css: html[data-standalone]). Set before first paint.
       if (window.navigator.standalone === true) {
