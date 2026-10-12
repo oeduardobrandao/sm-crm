@@ -27,6 +27,12 @@
   --destructive-foreground: 0 0% 100%;
   --success: 154 60% 53%;
   --warning: 30 87% 61%;
+  /* Admin light text tokens (globals.css). Login renders none of the .text-* status
+     utilities today; declared so the pin stays complete. */
+  --primary-text: 32 81% 29%;
+  --success-text: 155 75% 26%;
+  --warning-text: 25 90% 34%;
+  --destructive-text: 5 76% 42%;
   --border: 220 14% 88%;
   --input: 220 14% 93%;
   --ring: 48 96% 53%;

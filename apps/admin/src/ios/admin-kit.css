@@ -6,7 +6,13 @@
   --font-heading: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
   --banner-height: 0px;
   --mobile-nav-chrome-offset: 0px;
-  --admin-tab-bar-space: calc(64px + max(10px, env(safe-area-inset-bottom)) + 16px);
+  /* Same clearance as the tab bar's own bottom offset, so content clears Safari's toolbar too. */
+  --admin-tab-bar-space: calc(
+    64px + max(10px, env(safe-area-inset-bottom)) + 16px + var(--mobile-nav-chrome-offset, 0px)
+  );
+  /* Settings-style tile colours for rows that are not nav items (Mais > Aparência). */
+  --admin-tile-glass: linear-gradient(135deg, #0a84ff, #bf5af2 55%, #ff375f);
+  --admin-tile-theme: #636366;
 }
 
 .phone-kit {
@@ -25,7 +31,6 @@
   --phone-glass-border: rgba(255, 255, 255, 0.08);
 }
 [data-liquid-glass='on'] .phone-kit.phone-sheet,
-[data-liquid-glass='on'] .phone-kit .phone-sheet,
 [data-liquid-glass='on'] .phone-kit.phone-action-sheet,
 [data-liquid-glass='on'] .phone-kit.phone-context-menu {
   -webkit-backdrop-filter: blur(30px) saturate(1.8);
@@ -58,7 +63,6 @@
   box-sizing: border-box;
   border: 1px solid var(--phone-glass-border);
   border-radius: 32px;
-  background: var(--phone-cell);
   background: var(--phone-glass);
   box-shadow: var(--phone-shadow-float);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -200,9 +204,29 @@
   grid-template-columns: repeat(auto-fit, minmax(var(--admin-kpi-min, 210px), 1fr));
   gap: 12px;
 }
+.admin-kpi-grid > * {
+  min-width: 0;
+}
 .admin-phone-shell .admin-kpi-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+/* KpiTile on phone: 2 tiles of ~172px at 390pt (144px of text). The value type follows the
+   tile width so "R$ 234.000,00" (13 chars) fits at 390pt: 13cqi is ~19px there and ~21px on
+   a 430pt phone, never above 22px. The value truncates with an ellipsis (KpiTile) as the
+   last resort. The first font-size is the fallback without container units. */
+.admin-phone-shell .admin-kpi-tile {
+  container-type: inline-size;
+  padding: 14px;
+}
+.admin-phone-shell .admin-kpi-value {
+  font-size: 19px;
+  font-size: min(22px, 13cqi);
+  letter-spacing: -0.01em;
+}
+.admin-phone-shell .admin-kpi-value--compact {
+  font-size: 16px;
+  font-size: min(18px, 11cqi);
 }
 
 /* Liquid glass on desktop panels (Card, KPI tiles, sidebar, selection bar). */
@@ -219,9 +243,10 @@
     0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
-/* Sheet header Cancelar (AdminFormSheet): gold, muted while disabled. */
+/* Sheet header Cancelar (AdminFormSheet): gold, muted while disabled. Gold text needs the
+   dark gold text token in light (6.1:1 on the sheet), the bright gold in dark. */
 .admin-sheet-cancel {
-  color: var(--phone-accent, #facc15);
+  color: hsl(var(--primary-text));
 }
 .admin-sheet-cancel:disabled {
   color: var(--phone-label-secondary);
@@ -293,4 +318,62 @@
 [data-theme='dark'] .phone-kit .phone-chip--removable,
 [data-liquid-glass='on'] .phone-kit .phone-chip--removable {
   color: #facc15;
+}
+
+/* Liquid Glass switch (sidebar footer, Mais > Aparência): the kit's on-state is ink, which
+   reads as a white track under a white thumb in dark. The boards (DkSidebar, Mais) use the
+   iOS green. Only these two switches: every other kit switch keeps the kit look. */
+.admin-sidebar .phone-switch[aria-checked='true'],
+.admin-mais-sheet .phone-switch[aria-checked='true'] {
+  background: #34c759;
+}
+
+/* Desktop segmented controls size each item to its label instead of splitting the width
+   evenly and truncating ("Visão g…"). Items still grow when a parent stretches the control.
+   Phone (below 768px) keeps the kit's equal-width segments. */
+.admin-desktop-main .phone-segmented {
+  display: inline-flex;
+  max-width: 100%;
+}
+.admin-desktop-main .phone-segmented__item {
+  flex: 1 0 auto;
+  min-width: auto;
+}
+
+/* Mais sheet (board Mais): large left-aligned title beside the close button. */
+.admin-mais-sheet .phone-sheet__header > .phone-sheet__header-side:first-child {
+  display: none;
+}
+.admin-mais-sheet .phone-sheet__title {
+  grid-column: 1 / 3;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: left;
+}
+
+/* Account avatar (Mais, sidebar footer): the e-mail initial on the brand gold. */
+.admin-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #facc15;
+  color: #12151a;
+  font-family: var(--font-main);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.admin-avatar--lg {
+  width: 40px;
+  height: 40px;
+  font-size: 17px;
+}
+.phone-cell__icon:has(> .admin-avatar--lg) {
+  width: 40px;
+  height: 40px;
 }

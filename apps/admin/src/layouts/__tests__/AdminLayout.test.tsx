@@ -57,6 +57,13 @@ describe('AdminLayout sidebar', () => {
     expect(aside.className).toContain('bg-card');
   });
 
+  it('the sidebar footer shows the e-mail initial and keeps "Liquid Glass" on one line', () => {
+    renderLayout();
+    const aside = screen.getByRole('complementary');
+    expect(aside.querySelector('.admin-avatar')).toHaveTextContent('a');
+    expect(screen.getByText('Liquid Glass')).toHaveClass('truncate');
+  });
+
   it('the theme toggle flips data-theme and persists it', () => {
     renderLayout();
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');

@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { Moon, Sun } from 'lucide-react';
 import { BrandMark } from '@mesaas/ios-kit';
 import { NAV_GROUPS } from '../../lib/nav-items';
+import { AccountAvatar } from './AccountAvatar';
 
 export interface DesktopSidebarProps {
   email: string | null;
@@ -56,18 +57,24 @@ export function DesktopSidebar({
           </div>
         ))}
       </nav>
-      <div className="mt-3 flex flex-col gap-2.5 border-t border-border px-1.5 pt-3">
-        <div className="min-w-0">
-          <p className="truncate text-[13px] font-semibold">{email}</p>
-          <p className="text-[11px] text-muted-foreground">Admin da plataforma</p>
+      <div className="mt-3 flex flex-col gap-2.5 border-t border-border px-1 pt-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {email && <AccountAvatar email={email} />}
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-semibold">{email}</p>
+            <p className="text-[11px] text-muted-foreground">Admin da plataforma</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span id={glassLabelId} className="flex-1 text-[13px] text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <span
+            id={glassLabelId}
+            className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground"
+          >
             Liquid Glass
           </span>
           {/* `.phone-switch` reads the kit tokens, which live on `.phone-kit`. Only the switch
               gets them, so the sidebar keeps the Admin's own colours. */}
-          <span className="phone-kit inline-flex">
+          <span className="phone-kit inline-flex shrink-0">
             <button
               type="button"
               role="switch"
@@ -85,7 +92,7 @@ export function DesktopSidebar({
               onClick={onToggleTheme}
               aria-label={themeLabel}
               title={themeLabel}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground/[0.08] text-muted-foreground hover:text-foreground"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground/[0.08] text-muted-foreground hover:text-foreground"
             >
               {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
             </button>
@@ -93,7 +100,7 @@ export function DesktopSidebar({
           <button
             type="button"
             onClick={onSignOut}
-            className="h-7 rounded-full bg-foreground/[0.08] px-2.5 text-xs text-foreground hover:bg-foreground/[0.14]"
+            className="h-7 shrink-0 rounded-full bg-foreground/[0.08] px-2 text-xs text-foreground hover:bg-foreground/[0.14]"
           >
             Sair
           </button>
