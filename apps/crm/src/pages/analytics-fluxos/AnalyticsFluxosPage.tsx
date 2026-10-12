@@ -30,6 +30,7 @@ import { GargalosTable } from './sections/GargalosTable';
 import { EquipeTable } from './sections/EquipeTable';
 import { OrigemCard } from './sections/OrigemCard';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { FluxosPhone } from './phone/FluxosPhone';
 
 const EMPTY_WORKSPACE =
@@ -151,6 +152,50 @@ export default function AnalyticsFluxosPage() {
   const workspaceVazio = semDados && !hasFilters;
   const filtroSemMatch = semDados && hasFilters;
 
+  const subtitle = (
+    <p
+      style={{ color: 'var(--text-muted)' }}
+      data-tooltip="O período filtra pela data de conclusão. Ativos são sempre o retrato atual."
+      data-tooltip-dir="bottom"
+    >
+      Fluxos concluídos no período
+    </p>
+  );
+  const periodTabs = (
+    <div className="page-tabs page-tabs--inline" role="tablist" aria-label="Período">
+      {PERIODOS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          role="tab"
+          aria-selected={opt.value === periodo}
+          className={`page-tab${opt.value === periodo ? ' active' : ''}`}
+          onClick={() => setPeriodo(opt.value)}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+  const headerActions = (
+    <>
+      <Button variant="outline" onClick={handleExport} disabled={!data}>
+        <Download className="h-4 w-4" />
+        Exportar CSV
+      </Button>
+      <Button variant="outline" onClick={() => window.print()}>
+        <Printer className="h-4 w-4" />
+        Imprimir
+      </Button>
+    </>
+  );
+  const inToolbar = usePageToolbar({
+    title: 'Analytics de Fluxos',
+    subtitle,
+    segmented: periodTabs,
+    actions: headerActions,
+  });
+
   if (isPhone) {
     let status: ReactNode = null;
     if (isError) {
@@ -194,31 +239,20 @@ export default function AnalyticsFluxosPage() {
       className="page-content analytics-fluxos-page"
       style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
     >
-      <header className="header header--flush animate-up">
-        <div className="header-title">
-          <h1>Analytics de Fluxos</h1>
-          <p
-            style={{ color: 'var(--text-muted)' }}
-            data-tooltip="O período filtra pela data de conclusão. Ativos são sempre o retrato atual."
-            data-tooltip-dir="bottom"
+      {!inToolbar && (
+        <header className="header header--flush animate-up">
+          <div className="header-title">
+            <h1>Analytics de Fluxos</h1>
+            {subtitle}
+          </div>
+          <div
+            className="header-actions analytics-fluxos-actions"
+            style={{ display: 'flex', gap: '0.5rem' }}
           >
-            Fluxos concluídos no período
-          </p>
-        </div>
-        <div
-          className="header-actions analytics-fluxos-actions"
-          style={{ display: 'flex', gap: '0.5rem' }}
-        >
-          <Button variant="outline" onClick={handleExport} disabled={!data}>
-            <Download className="h-4 w-4" />
-            Exportar CSV
-          </Button>
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="h-4 w-4" />
-            Imprimir
-          </Button>
-        </div>
-      </header>
+            {headerActions}
+          </div>
+        </header>
+      )}
 
       <p className="print-only analytics-fluxos-print-echo">
         Período: {periodoLabel} · Cliente: {clienteLabel} · Template: {templateLabel}
@@ -234,20 +268,7 @@ export default function AnalyticsFluxosPage() {
           flexWrap: 'wrap',
         }}
       >
-        <div className="page-tabs page-tabs--inline" role="tablist" aria-label="Período">
-          {PERIODOS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              role="tab"
-              aria-selected={opt.value === periodo}
-              className={`page-tab${opt.value === periodo ? ' active' : ''}`}
-              onClick={() => setPeriodo(opt.value)}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        {!inToolbar && periodTabs}
 
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <Select

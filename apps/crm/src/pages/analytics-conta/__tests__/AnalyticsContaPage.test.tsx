@@ -262,6 +262,7 @@ import {
 } from '../../../services/analytics';
 import { getClientes, getCurrentWorkspace } from '../../../store';
 import { getInstagramSummary, syncInstagramData } from '../../../services/instagram';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const mockedGetClientes = vi.mocked(getClientes);
 const mockedGetInstagramSummary = vi.mocked(getInstagramSummary);
@@ -1137,5 +1138,87 @@ describe('AnalyticsContaPage', () => {
     );
     expect(queryClientMock.cancelQueries).not.toHaveBeenCalled();
     expect(queryClientMock.fetchQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe('AnalyticsContaPage in the Vidro toolbar', () => {
+  it('puts the identity, handle and actions in the toolbar and renders them once', () => {
+    seedCommonAnalyticsData();
+
+    const { container } = render(
+      <VidroToolbarHarness>
+        <AnalyticsContaPage />
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Clinica Aurora');
+    const toolbar = container.querySelector('.vidro-toolbar') as HTMLElement;
+    expect(within(toolbar).getByRole('link', { name: '@clinicaaurora' })).toBeTruthy();
+    expect(toolbar.querySelector('img.conta-identity__avatar')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Gerar Relatório' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /Voltar/ })).toHaveLength(1);
+    expect(screen.getAllByTitle('Sincronizar Dados')).toHaveLength(1);
+    expect(container.querySelector('.conta-identity')).toBeNull();
+    // The period tabs stay in the page content.
+    const tabs = screen.getByRole('tab', { name: '7 dias' });
+    expect(tabs.closest('.vidro-toolbar')).toBeNull();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', () => {
+    seedCommonAnalyticsData();
+
+    const { container } = render(
+      <VidroToolbarHarness vidroShell={false}>
+        <AnalyticsContaPage />
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.conta-identity')).not.toBeNull();
+    expect(container.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Gerar Relatório' })).toHaveLength(1);
+  });
+
+  it('registers the not-connected toolbar from its own child, exactly once', () => {
+    queryState.clientes = { data: [{ id: 42, nome: 'Clinica Aurora' }] };
+    queryState['ig-summary'] = { data: null };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { container } = render(
+      <VidroToolbarHarness>
+        <AnalyticsContaPage />
+      </VidroToolbarHarness>,
+    );
+
+    expect(screen.getByText('Instagram não conectado')).toBeTruthy();
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Analytics');
+    expect(screen.getAllByRole('button', { name: /Voltar/ })).toHaveLength(1);
+    expect(container.querySelector('.header')).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('keeps the not-connected in-page header when the Vidro shell is off', () => {
+    queryState.clientes = { data: [{ id: 42, nome: 'Clinica Aurora' }] };
+    queryState['ig-summary'] = { data: null };
+
+    const { container } = render(
+      <VidroToolbarHarness vidroShell={false}>
+        <AnalyticsContaPage />
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.header')).not.toBeNull();
+    expect(container.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /Voltar/ })).toHaveLength(1);
   });
 });

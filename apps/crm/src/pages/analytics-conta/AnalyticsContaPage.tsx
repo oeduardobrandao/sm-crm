@@ -101,6 +101,7 @@ import { compareNullableNumber, type ActionSortKey } from '../../lib/post-action
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
 import { NewReportDialog } from './components/NewReportDialog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
 import {
   BEST_TIME_BUCKET_STARTS,
@@ -979,6 +980,29 @@ function TagPill({ tag, onRemove }: { tag: PostTag; onRemove: () => void }) {
   );
 }
 
+/**
+ * The not-connected state's header. Registers the Vidro toolbar itself because the default export
+ * cannot: AnalyticsContent is the only other registrant and is never mounted in this branch.
+ */
+function NotConnectedHeader() {
+  const navigate = useNavigate();
+  const backButton = (
+    <Button variant="outline" onClick={() => navigate(-1)}>
+      <ArrowLeft className="h-4 w-4" /> Voltar
+    </Button>
+  );
+  const inToolbar = usePageToolbar({ title: 'Analytics', actions: backButton });
+  if (inToolbar) return null;
+  return (
+    <header className="header header--flush animate-up">
+      <div className="header-title">
+        <h1>Analytics</h1>
+      </div>
+      <div className="header-actions">{backButton}</div>
+    </header>
+  );
+}
+
 // ---- Main Content ----
 function AnalyticsContent({
   clientId,
@@ -1529,6 +1553,67 @@ function AnalyticsContent({
     ? followersWindow.start.toLocaleString('pt-BR')
     : undefined;
 
+  const cacheNote = overviewRes?.fromCache ? (
+    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+      Dados de{' '}
+      {new Date(overviewRes.fetchedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+    </span>
+  ) : null;
+
+  const avatarUrl =
+    account.profile_picture_url && account.profile_picture_url.startsWith('https://')
+      ? account.profile_picture_url
+      : null;
+  const avatar = avatarUrl ? (
+    <img src={avatarUrl} alt="" className="conta-identity__avatar" />
+  ) : null;
+  const handleLink = (
+    <a
+      href={sanitizeUrl(`https://instagram.com/${encodeURIComponent(account.username)}`)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="conta-identity__handle-link"
+    >
+      @{account.username}
+    </a>
+  );
+  const headerActions = (
+    <>
+      <Button variant="outline" onClick={() => navigate(-1)}>
+        <ArrowLeft className="h-4 w-4" /> Voltar
+      </Button>
+      <Button
+        variant="outline"
+        size="icon"
+        disabled={syncing}
+        onClick={handleSync}
+        title="Sincronizar Dados"
+      >
+        {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <Button onClick={() => setNewReportOpen(true)}>
+      <FileText className="h-4 w-4" /> Gerar Relatório
+    </Button>
+  );
+  const inToolbar = usePageToolbar(
+    isLoading || !overview
+      ? null
+      : {
+          leading: avatar,
+          title: cliente.nome,
+          subtitle: (
+            <>
+              {handleLink} {cacheNote}
+            </>
+          ),
+          actions: headerActions,
+          primary: primaryAction,
+        },
+  );
+
   // The overview returns before the page header renders, so its placeholder carries the header
   // too: the outer route skeleton hands over to this one without the header blinking out.
   if (isLoading) return <PageSkeleton body="report" />;
@@ -1737,13 +1822,6 @@ function AnalyticsContent({
     </>
   );
 
-  const cacheNote = overviewRes?.fromCache ? (
-    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-      Dados de{' '}
-      {new Date(overviewRes.fetchedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
-    </span>
-  ) : null;
-
   if (isPhone) {
     const typeHeadline =
       typeTop && typeSecond && typeRatio !== null && typeRatio >= 1.3
@@ -1829,54 +1907,25 @@ function AnalyticsContent({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header header--flush animate-up">
-        <div className="header-title">
-          {(() => {
-            const avatarUrl =
-              account.profile_picture_url && account.profile_picture_url.startsWith('https://')
-                ? account.profile_picture_url
-                : null;
-            return (
-              <div className={`conta-identity${avatarUrl ? ' conta-identity--avatar' : ''}`}>
-                <div className="conta-identity__row">
-                  {avatarUrl && <img src={avatarUrl} alt="" className="conta-identity__avatar" />}
-                  <h1>{cliente.nome}</h1>
-                </div>
-                <p className="conta-identity__handle">
-                  <a
-                    href={sanitizeUrl(
-                      `https://instagram.com/${encodeURIComponent(account.username)}`,
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="conta-identity__handle-link"
-                  >
-                    @{account.username}
-                  </a>{' '}
-                  {cacheNote}
-                </p>
+      {!inToolbar && (
+        <header className="header header--flush animate-up">
+          <div className="header-title">
+            <div className={`conta-identity${avatarUrl ? ' conta-identity--avatar' : ''}`}>
+              <div className="conta-identity__row">
+                {avatar}
+                <h1>{cliente.nome}</h1>
               </div>
-            );
-          })()}
-        </div>
-        <div className="header-actions">
-          <Button variant="outline" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4" /> Voltar
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={syncing}
-            onClick={handleSync}
-            title="Sincronizar Dados"
-          >
-            {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
-          </Button>
-          <Button onClick={() => setNewReportOpen(true)}>
-            <FileText className="h-4 w-4" /> Gerar Relatório
-          </Button>
-        </div>
-      </header>
+              <p className="conta-identity__handle">
+                {handleLink} {cacheNote}
+              </p>
+            </div>
+          </div>
+          <div className="header-actions">
+            {headerActions}
+            {primaryAction}
+          </div>
+        </header>
+      )}
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3 animate-up">
@@ -3344,16 +3393,7 @@ export default function AnalyticsContaPage() {
     }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <header className="header header--flush animate-up">
-          <div className="header-title">
-            <h1>Analytics</h1>
-          </div>
-          <div className="header-actions">
-            <Button variant="outline" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4" /> Voltar
-            </Button>
-          </div>
-        </header>
+        <NotConnectedHeader />
         <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
           <h3>Instagram não conectado</h3>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>

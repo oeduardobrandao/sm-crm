@@ -233,6 +233,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getPortfolioAIAnalysis } from '../../../services/analytics';
 import { syncInstagramData } from '../../../services/instagram';
 import AnalyticsPage from '../AnalyticsPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import type {
   PortfolioAccount,
   PortfolioSummary,
@@ -783,6 +784,52 @@ describe('AnalyticsPage', () => {
       within(drawer).getByText('Top 200 por visualizações, reordenado por taxa'),
     ).toBeInTheDocument();
     expect(within(drawer).getByText('5,0%')).toBeInTheDocument(); // Bravo's share_rate 0.05 rendered
+  });
+});
+
+describe('AnalyticsPage in the Vidro toolbar', () => {
+  beforeEach(() => {
+    analyticsTestState.queryFixtures.clear();
+    mockedUseQuery.mockClear();
+  });
+
+  it('puts the title and the Sincronizar button in the toolbar, once', () => {
+    setQueryFixture(28, makeSummary(buildBaseAccounts()));
+
+    const { container } = render(
+      <VidroToolbarHarness>
+        <MemoryRouter initialEntries={['/analytics']}>
+          <AnalyticsPage />
+        </MemoryRouter>
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Analytics');
+    const sync = screen.getAllByRole('button', { name: 'Sincronizar' });
+    expect(sync).toHaveLength(1);
+    expect(sync[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(container.querySelector('header.header')).toBeNull();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', () => {
+    setQueryFixture(28, makeSummary(buildBaseAccounts()));
+
+    const { container } = render(
+      <VidroToolbarHarness vidroShell={false}>
+        <MemoryRouter initialEntries={['/analytics']}>
+          <AnalyticsPage />
+        </MemoryRouter>
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('header.header')).not.toBeNull();
+    expect(container.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Sincronizar' })).toHaveLength(1);
   });
 });
 

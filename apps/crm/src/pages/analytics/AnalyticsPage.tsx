@@ -71,6 +71,7 @@ import { formatRate } from '../../lib/ig-rates';
 import { syncInstagramData } from '../../services/instagram';
 import { HelpTooltip } from '../../components/help/HelpTooltip';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { AnalyticsPhone, type AccountSortCol } from './phone/AnalyticsPhone';
 
@@ -552,6 +553,33 @@ export default function AnalyticsPage() {
     refetch();
   };
 
+  const syncResultText = syncResult ? (
+    <span
+      style={{
+        fontSize: '0.8rem',
+        color: syncResult.failed > 0 ? 'var(--warning)' : 'var(--success)',
+      }}
+    >
+      {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
+      {syncResult.failed > 0 &&
+        `, ${syncResult.failed} falhou: ${syncResult.failedNames.join(', ')}`}
+    </span>
+  ) : null;
+  const syncButton = (
+    <Button
+      onClick={handleSyncAll}
+      disabled={syncing || !data?.accounts.length}
+      size="sm"
+      variant="outline"
+    >
+      <RefreshCw className={`h-4 w-4${syncing ? ' animate-spin' : ''}`} />
+      {syncing ? 'Sincronizando...' : 'Sincronizar'}
+    </Button>
+  );
+  const inToolbar = usePageToolbar(
+    isLoading ? null : { title: 'Analytics', actions: syncResultText, primary: syncButton },
+  );
+
   if (isLoading) {
     return <PageSkeleton body="report" />;
   }
@@ -834,34 +862,17 @@ export default function AnalyticsPage() {
 
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <header className="header header--flush animate-up">
-        <div className="header-title">
-          <h1>Analytics</h1>
-        </div>
-        <div className="header-actions">
-          {syncResult && (
-            <span
-              style={{
-                fontSize: '0.8rem',
-                color: syncResult.failed > 0 ? 'var(--warning)' : 'var(--success)',
-              }}
-            >
-              {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
-              {syncResult.failed > 0 &&
-                `, ${syncResult.failed} falhou: ${syncResult.failedNames.join(', ')}`}
-            </span>
-          )}
-          <Button
-            onClick={handleSyncAll}
-            disabled={syncing || !data?.accounts.length}
-            size="sm"
-            variant="outline"
-          >
-            <RefreshCw className={`h-4 w-4${syncing ? ' animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar'}
-          </Button>
-        </div>
-      </header>
+      {!inToolbar && (
+        <header className="header header--flush animate-up">
+          <div className="header-title">
+            <h1>Analytics</h1>
+          </div>
+          <div className="header-actions">
+            {syncResultText}
+            {syncButton}
+          </div>
+        </header>
+      )}
 
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <Select value={clienteFilter} onValueChange={setClienteFilter}>
