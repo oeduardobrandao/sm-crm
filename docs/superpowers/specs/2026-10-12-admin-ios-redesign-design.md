@@ -31,7 +31,10 @@ visual redesign, not a feature project (no new endpoints, columns or metrics).
 
 - No backend, migration, edge-function or `vercel.json` change. Routes stay exactly as in
   `apps/admin/src/router.tsx`.
-- No change to the CRM's look or behaviour. The CRM is touched only by the pure move in Part A.
+- No change to the CRM's look or behaviour. The CRM is touched by the pure move in Part A and,
+  through the shared package, by the opt-in `repushIfStillOpen` prop on `BottomSheet` (Part B,
+  default off, so no CRM call site changes behaviour); that commit runs the CRM kit and layout
+  suites as its regression gate.
 - Confirmation flows are not redesigned: the existing `window.confirm` calls stay (nine sites:
   IntegrationsPage, MetricasPage, KbArticleEditorPage, KbVideoEditorPage, PopupsPage,
   WorkspaceInvitesCard ×2, WorkspaceDetailPage, SeriesDialog). Phone swipe actions call the same
@@ -235,7 +238,13 @@ control, chips).
   submit shows a spinner and is disabled, and every dismiss path (Cancelar, Esc, outside click,
   swipe-down, Back) is ignored. Otherwise every dismiss path calls `canClose?.()` first.
 - Desktop branch: the Admin `Dialog` (restyled), centred, dimmed page behind (DkPlanoForm,
-  DkPopupEditor). Phone branch: kit `BottomSheet`, large detent, `repushIfStillOpen` when
+  DkPopupEditor). `DialogContent` gains `hideClose?: boolean`; `AdminFormSheet` sets it, so the
+  only close control is its own Cancelar (disabled while submitting), and Radix's Esc/outside
+  dismiss arrives through the controlled `onOpenChange`, which the sheet ignores while
+  submitting.
+- Sheets whose save is not a form submit today (WorkspaceDetail limits/features) get a
+  `<form id>` wrapper whose `onSubmit` calls the existing save mutation; their refusable close
+  is split into `confirmDiscard(): boolean` (`canClose`) and `discardAndClose()` (`onOpenChange`). Phone branch: kit `BottomSheet`, large detent, `repushIfStillOpen` when
   `canClose` is given.
 - Both branches unmount their content when closed, matching today's `{showForm && …}`
   lifecycle, so form reset and upload behaviour is unchanged. An open sheet is a dialog, which
@@ -352,3 +361,7 @@ with its own gate run, called out in the PR description for separate review.
   tracking in this project, the current protection is unchanged). **Rejected:** "merge Part A
   as a separate PR first". The user asked for one shot; Part A is an isolated commit with its
   own full gate run, bisectable and reviewable alone, and the CRM side is shims plus a file move.
+- Codex, second pass: limits/features panels have no form and a void `closePanel` (accepted:
+  form wrapper + `confirmDiscard`/`discardAndClose` split); `DialogContent` always renders a
+  close X (accepted: `hideClose`); the non-goal wording missed the shared `BottomSheet` prop
+  (accepted: scope amended, CRM suites gate that commit).
