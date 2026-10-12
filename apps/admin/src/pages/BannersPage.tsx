@@ -130,7 +130,7 @@ export default function BannersPage() {
         title={editingBanner ? 'Editar banner' : 'Novo banner'}
         formId={FORM_ID}
         submitLabel={editingBanner ? 'Atualizar' : 'Criar'}
-        submitting={createMut.isPending || updateMut.isPending}
+        submitting={createMut.isPending || updateMut.isPending || deleteMut.isPending}
         width="md"
       >
         <form id={FORM_ID} onSubmit={handleSubmit}>

@@ -91,7 +91,9 @@ export default function PlansPage() {
         title={editingPlan ? `Editar: ${editingPlan.name}` : 'Novo plano'}
         formId={PLAN_FORM_ID}
         submitLabel={editingPlan ? 'Atualizar' : 'Criar'}
-        submitting={createMutation.isPending || updateMutation.isPending}
+        submitting={
+          createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
+        }
         width="md"
       >
         <PlanFormFields

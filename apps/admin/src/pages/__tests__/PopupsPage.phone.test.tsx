@@ -160,4 +160,47 @@ describe('PopupsPage (phone)', () => {
       'true',
     );
   });
+  it('the secondary-label error shows on the Secundário row, not on the CTA URL', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Analytics de Stories/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Editar popup' });
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Configurações' }));
+    fireEvent.change(within(dialog).getByLabelText('Secundário'), {
+      target: { value: 'x'.repeat(41) },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Atualizar' }));
+
+    const message = await within(dialog).findByText('Rótulo secundário: máximo de 40 caracteres');
+    const secondary = within(dialog).getByLabelText('Secundário');
+    expect(secondary).toHaveAttribute('aria-invalid', 'true');
+    expect(secondary.getAttribute('aria-describedby')).toContain(message.id);
+    expect(
+      within(dialog).getByLabelText('URL', { selector: '#popup-cta-url' }),
+    ).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('rows: drafts mute their title instead of fading, image-less popups get a placeholder', async () => {
+    renderPage();
+    const draftRow = await screen.findByRole('button', { name: /Rascunho de aviso/ });
+    expect(draftRow.className).not.toMatch(/opacity-/);
+    expect(within(draftRow).getByText('Rascunho de aviso').className).toContain(
+      'text-muted-foreground',
+    );
+    expect(within(draftRow).getByTestId('popup-thumb-placeholder')).toBeInTheDocument();
+    const activeRow = screen.getByRole('button', { name: /Analytics de Stories/ });
+    expect(within(activeRow).getByText('Analytics de Stories').className).not.toContain(
+      'text-muted-foreground',
+    );
+  });
+
+  it('page pills keep the whole title (CSS truncates it) and name it in a tooltip', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Analytics de Stories/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Editar popup' });
+    const pages = within(dialog).getByRole('tablist', { name: 'Páginas do popup' });
+    const first = within(pages).getAllByRole('tab')[0];
+    expect(first).toHaveTextContent('1 · Analytics de Stories');
+    expect(first).toHaveAttribute('title', 'Analytics de Stories');
+    expect(first.className).toContain('truncate');
+  });
 });

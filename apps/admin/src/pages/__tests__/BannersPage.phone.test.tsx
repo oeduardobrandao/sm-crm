@@ -121,4 +121,44 @@ describe('BannersPage (phone)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Excluir banner' }));
     await waitFor(() => expect(deleteBanner).toHaveBeenCalledWith('b2'));
   });
+  it('Público is a grouped picker row, not native radios, and plans drill in from it', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: /Manutenção programada/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Novo banner' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Novo banner' });
+    expect(within(dialog).queryByRole('radio', { name: 'Todos' })).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText(/Conteúdo/), {
+      target: { value: 'Só para o Pro' },
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Público/ }));
+    const modes = await screen.findByRole('dialog', { name: 'Público' });
+    fireEvent.click(within(modes).getByRole('button', { name: 'Por plano' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Público' })).toBeNull());
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Planos/ }));
+    const planSheet = await screen.findByRole('dialog', { name: 'Planos' });
+    fireEvent.click(within(planSheet).getByRole('button', { name: 'Pro' }));
+    // Multi select stays open until dismissed (iOS Settings behaviour).
+    fireEvent.keyDown(planSheet, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Planos' })).toBeNull());
+    expect(within(dialog).getByRole('button', { name: /Planos/ })).toHaveTextContent('Pro');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Criar' }));
+    await waitFor(() =>
+      expect(createBanner).toHaveBeenCalledWith(
+        expect.objectContaining({ target_mode: 'plan', target_plan_ids: ['pro'] }),
+      ),
+    );
+  });
+
+  it('draft rows mute their text instead of fading the whole row', async () => {
+    renderPage();
+    const row = await screen.findByRole('button', { name: /Instabilidade na conexão/ });
+    expect(row.className).not.toMatch(/opacity-/);
+    expect(within(row).getByText('Instabilidade na conexão com o Instagram').className).toContain(
+      'text-muted-foreground',
+    );
+    expect(row.querySelector('.phone-cell__body')).not.toBeNull();
+  });
 });

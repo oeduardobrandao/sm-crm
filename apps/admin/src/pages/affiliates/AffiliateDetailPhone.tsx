@@ -52,7 +52,7 @@ export function AffiliateDetailPhone({
             <h1 className="font-sf text-[22px] font-bold leading-tight">{a.nome}</h1>
             <AccountStatus status={a.status} />
           </div>
-          <p className="mt-0.5 break-words text-sm text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground [overflow-wrap:anywhere]">
             {a.email}
             {a.telefone ? ` · ${a.telefone}` : ''} · código{' '}
             <span className="font-mono">{a.code}</span>
@@ -128,14 +128,15 @@ export function AffiliateDetailPhone({
               <Cell
                 key={c.id}
                 label={c.workspace_name ?? 'Sem workspace'}
+                // whitespace-normal: the kit's subtitle is nowrap, so these lines clipped mid-word.
                 subtitle={
                   <>
-                    <span className="block">
+                    <span className="block whitespace-normal">
                       {formatDate(c.paid_at)} · {c.plan_id ?? 'Sem plano'}{' '}
                       {formatRateBps(c.rate_bps)} ·{' '}
                       {c.covered_months > 0 ? `${c.covered_months} mês(es) da janela` : 'ajuste'}
                     </span>
-                    <span className="block">
+                    <span className="block whitespace-normal">
                       Fatura {formatMoney(c.invoice_amount_cents)}
                       {c.net_cents !== c.commission_cents
                         ? ` · de ${formatMoney(c.commission_cents)}`
@@ -165,10 +166,12 @@ export function AffiliateDetailPhone({
                   <>
                     <span className="block">{formatDate(p.paid_at ?? p.created_at)}</span>
                     {p.failure_code && (
-                      <span className="block font-mono text-xs">{p.failure_code}</span>
+                      <span className="block whitespace-normal break-all font-mono text-xs">
+                        {p.failure_code}
+                      </span>
                     )}
                     {p.stripe_transfer_id && (
-                      <span className="block break-all font-mono text-xs">
+                      <span className="block whitespace-normal break-all font-mono text-xs">
                         {p.stripe_transfer_id}
                       </span>
                     )}

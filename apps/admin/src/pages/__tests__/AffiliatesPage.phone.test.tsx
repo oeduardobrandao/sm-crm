@@ -99,7 +99,15 @@ describe('AffiliatesPage (phone)', () => {
     const cell = await screen.findByRole('button', { name: /Tabela de comissões/ });
     expect(within(cell).getByText('30% por 6 meses no Pro e no Max')).toBeInTheDocument();
     await user.click(cell);
-    expect(await screen.findByRole('dialog', { name: 'Comissões' })).toBeInTheDocument();
+    const sheet = await screen.findByRole('dialog', { name: 'Comissões' });
+    // The board's explanatory paragraph is visible, and each rate reads as a percentage.
+    expect(
+      within(sheet).getByText(/Percentual sobre os primeiros meses pagos de cada indicado/, {
+        selector: 'p[aria-hidden="true"]',
+      }),
+    ).toBeInTheDocument();
+    const rateRow = within(sheet).getByLabelText('Comissão do plano Pro').closest('li')!;
+    expect(within(rateRow).getByText('%')).toBeInTheDocument();
   });
 
   it('saves every edited rule from the sheet header', async () => {

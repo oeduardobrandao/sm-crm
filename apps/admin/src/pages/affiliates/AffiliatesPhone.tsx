@@ -14,6 +14,8 @@ import { perReferralCents, summarizeRules } from './commission-rules';
 import type { AffiliatesViewProps } from './AffiliatesDesktop';
 
 const RULES_FORM_ID = 'commission-rules-form';
+const RULES_DESCRIPTION =
+  'Percentual sobre os primeiros meses pagos de cada indicado (cartão, Stripe). Mudanças valem para os próximos pagamentos.';
 
 export function AffiliatesPhone({
   affiliates,
@@ -88,23 +90,21 @@ export function AffiliatesPhone({
                 to={affiliateDetailPath(a.id)}
                 icon={<AffiliateAvatar name={a.nome} size={30} />}
                 label={a.nome}
+                // One inline line with dots that wraps at word breaks. The kit's
+                // subtitle is nowrap, and block children used to clip mid-word with no ellipsis.
                 subtitle={
-                  <>
-                    <span className="block">
+                  <span className="block whitespace-normal">
+                    {a.status === 'suspended' && (
+                      <span className="font-semibold" style={{ color: 'var(--phone-destructive)' }}>
+                        Suspenso ·{' '}
+                      </span>
+                    )}
+                    <span>
                       {a.summary.referrals_count} indicações · {a.summary.paying_count} assinantes
                     </span>
-                    <span className="block">
-                      {a.status === 'suspended' && (
-                        <span
-                          className="font-semibold"
-                          style={{ color: 'var(--phone-destructive)' }}
-                        >
-                          Suspenso ·{' '}
-                        </span>
-                      )}
-                      <span>{STRIPE_STATE_LABEL[state]}</span>
-                    </span>
-                  </>
+                    {' · '}
+                    <span>{STRIPE_STATE_LABEL[state]}</span>
+                  </span>
                 }
                 value={formatMoney(a.summary.available_cents)}
               />
@@ -117,7 +117,7 @@ export function AffiliatesPhone({
         open={rulesOpen}
         onOpenChange={close}
         title="Comissões"
-        description="Percentual sobre os primeiros meses pagos de cada indicado (cartão, Stripe). Mudanças valem para os próximos pagamentos."
+        description={RULES_DESCRIPTION}
         formId={RULES_FORM_ID}
         submitting={editor.isPending}
       >
@@ -130,6 +130,13 @@ export function AffiliatesPhone({
             });
           }}
         >
+          {/* The sheet's description is screen-reader only on phones; the board shows it. */}
+          <p
+            aria-hidden="true"
+            className="mx-4 mb-4 text-[15px] leading-snug text-muted-foreground"
+          >
+            {RULES_DESCRIPTION}
+          </p>
           {rules.map((r) => {
             const v = editor.valueOf(r);
             const info = r.configured
@@ -150,6 +157,16 @@ export function AffiliatesPhone({
                     value: v.rate,
                     onChange: (e) => editor.setField(r, 'rate', e.target.value),
                   }}
+                  accessory={
+                    // Inline flex: the kit stretches every non-label child of an inline row.
+                    <span
+                      aria-hidden="true"
+                      className="text-[color:var(--phone-label-secondary)]"
+                      style={{ flex: '0 0 auto' }}
+                    >
+                      %
+                    </span>
+                  }
                 />
                 <FormRow
                   label="Meses"

@@ -24,6 +24,10 @@ import {
 } from './shared';
 import type { WorkspaceDetailViewProps } from './types';
 
+/** Right-aligned value of a subscription row: wraps instead of clipping, up to 65% of the row. */
+const SUBSCRIPTION_VALUE =
+  'ml-auto min-w-0 max-w-[65%] text-right text-[color:var(--phone-label-secondary)] [overflow-wrap:anywhere]';
+
 /** Section title with a trailing text action (the kit header has no action slot). */
 function SectionHeader({ id, title, action }: { id: string; title: string; action?: ReactNode }) {
   return (
@@ -58,11 +62,13 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
         >
           {data.workspace.name.charAt(0).toUpperCase()}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="m-0 break-words font-sf text-[28px] font-bold leading-[1.1]">
             {data.workspace.name}
           </p>
-          <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
+          {/* A long owner e-mail has no break point of its own: let it break anywhere rather
+              than widen the page. */}
+          <p className="mt-1 min-w-0 text-[13px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
             Dono: {data.owner?.email || '—'}
             <br />
             {data.owner?.telefone ? `${data.owner.telefone} · ` : ''}criado em {created}
@@ -130,7 +136,13 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
               }
             >
               {subscriptionRows(sub).map((row) => (
-                <Cell key={row.label} label={row.label} value={row.value} />
+                // The value goes in as an accessory: the kit's value slot is capped at half
+                // the row and nowrap, which clipped the coupon line and the renewal date.
+                <Cell
+                  key={row.label}
+                  label={row.label}
+                  accessory={<span className={SUBSCRIPTION_VALUE}>{row.value}</span>}
+                />
               ))}
             </GroupedList>
             {sub.provider === 'pagarme' && <PagarmeLiveNotes subscription={sub} />}
@@ -162,7 +174,7 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
         <Cell
           label="Funcionalidades"
           icon={<ToggleRight aria-hidden="true" />}
-          value={`${props.activeFeatureCount} de ${FEATURE_FLAG_KEYS.length}`}
+          subtitle={`${props.activeFeatureCount} de ${FEATURE_FLAG_KEYS.length} ativas`}
           accessory={
             props.featureOverrideCount > 0 ? (
               <Badge variant="warning" size="sm">

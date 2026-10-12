@@ -32,31 +32,36 @@ export function IntegrationsPhone({
 
       <section className="phone-kit phone-group">
         <h2 className="phone-group__header">Conector MCP do Admin</h2>
-        <div className="phone-group__list flex min-h-[52px] items-center gap-2.5 py-1.5 pl-4 pr-2">
-          <input
-            type="text"
-            readOnly
-            aria-label="URL do conector MCP"
-            value={CONNECTOR_URL}
-            onFocus={(e) => e.currentTarget.select()}
-            className="min-w-0 flex-1 truncate bg-transparent font-mono text-sm text-foreground outline-none"
-          />
-          <button
-            type="button"
-            aria-label="Copiar URL"
-            onClick={onCopy}
-            className="h-9 shrink-0 rounded-[10px] bg-foreground/[0.12] px-3 text-[15px] font-semibold text-foreground active:bg-foreground/[0.18]"
-          >
-            Copiar
-          </button>
+        {/* The kit zeroes padding on .phone-group__list, so the row's padding lives inside. */}
+        <div className="phone-group__list">
+          <div className="flex min-h-[52px] items-center gap-2.5 py-1.5 pl-4 pr-2">
+            <input
+              type="text"
+              readOnly
+              aria-label="URL do conector MCP"
+              value={CONNECTOR_URL}
+              onFocus={(e) => e.currentTarget.select()}
+              className="min-w-0 flex-1 truncate bg-transparent font-mono text-sm text-foreground outline-none"
+            />
+            <button
+              type="button"
+              aria-label="Copiar URL"
+              onClick={onCopy}
+              className="h-9 shrink-0 rounded-[10px] bg-foreground/[0.12] px-3 text-[15px] font-semibold text-foreground active:bg-foreground/[0.18]"
+            >
+              Copiar
+            </button>
+          </div>
         </div>
         <p className="phone-group__footer">{OAUTH_HELP}</p>
       </section>
 
       <section className="phone-kit phone-group">
         <h2 className="phone-group__header">Como conectar</h2>
-        <div className="phone-group__list p-3">
-          <ConnectGuide />
+        <div className="phone-group__list">
+          <div className="p-3">
+            <ConnectGuide />
+          </div>
         </div>
       </section>
 
@@ -103,10 +108,11 @@ export function IntegrationsPhone({
                 {isActive ? 'Ativa' : 'Revogada'}
               </Badge>
             );
+            // Inline with dots: a block child of the nowrap subtitle clipped without an ellipsis.
             const subtitle = (
               <>
-                {scopeCount(grant)} · {formatGrantDate(grant.created_at)}
-                <span className="block font-mono text-xs" title={grant.client_id}>
+                {scopeCount(grant)} · {formatGrantDate(grant.created_at)} ·{' '}
+                <span className="font-mono text-xs" title={grant.client_id}>
                   {truncateClientId(grant.client_id)}
                 </span>
               </>

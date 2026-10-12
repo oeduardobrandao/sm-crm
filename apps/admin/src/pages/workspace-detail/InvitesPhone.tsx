@@ -26,7 +26,10 @@ export interface InvitesPhoneProps {
   onCancel: (inviteId: string) => void;
   formOpen: boolean;
   onOpenForm: () => void;
+  /** Descartar: hides the form and clears the draft. */
   onCloseForm: () => void;
+  /** Dismissing the sheet: hides the form but keeps the typed e-mail and role. */
+  onHideForm: () => void;
   email: string;
   onEmailChange: (email: string) => void;
   role: Role;
@@ -52,9 +55,10 @@ export function InvitesPhone(props: InvitesPhoneProps) {
       ? `${pending} ${pending === 1 ? 'pendente' : 'pendentes'}`
       : String(props.total);
 
+  // Swiping the sheet away is not a discard: the draft survives for the next "Convidar".
   const close = (next: boolean) => {
     setOpen(next);
-    if (!next) props.onCloseForm();
+    if (!next) props.onHideForm();
   };
 
   return (
@@ -187,7 +191,8 @@ function InviteCell({
       label={invite.email}
       subtitle={
         <span className="flex flex-col gap-1">
-          <span>
+          {/* whitespace-normal: the kit's subtitle is nowrap, which clipped this line mid-word. */}
+          <span className="whitespace-normal">
             {roleLabel(invite.role)} · {formatSent(invite.created_at)}
             {auth ? ` · ${auth}` : ''}
           </span>

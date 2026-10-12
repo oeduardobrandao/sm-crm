@@ -133,7 +133,8 @@ function PageTab({
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
-  const label = page.title.trim() ? page.title.trim().slice(0, 18) : 'Sem título';
+  // Full title, cut by CSS with an ellipsis (a fixed slice cut mid-word with no marker).
+  const label = page.title.trim() || 'Sem título';
   const ring = hasError ? 'ring-1 ring-destructive' : '';
 
   const handle = (
@@ -217,7 +218,8 @@ function PageTab({
         role="tab"
         aria-selected={active}
         onClick={onSelect}
-        className="whitespace-nowrap"
+        title={label}
+        className="min-w-0 max-w-[9.5rem] truncate"
       >
         {index + 1} · {label}
       </button>

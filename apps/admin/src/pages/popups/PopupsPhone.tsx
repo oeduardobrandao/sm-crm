@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, Plus, Search } from 'lucide-react';
+import { ChevronRight, Image as ImageIcon, Plus, Search } from 'lucide-react';
 import { GroupedList, PhoneIconButton, SegmentedControl } from '@mesaas/ios-kit';
 import { PageHeader } from '../../components/PageHeader';
 import { Badge } from '../../components/ui/badge';
@@ -12,37 +12,52 @@ import {
 } from './list-model';
 
 function PopupRow({ row, onEdit }: { row: PopupRowView; onEdit: PopupsViewProps['onEdit'] }) {
+  // Kit structure: the thumbnail sits where a cell icon would, everything else inside
+  // .phone-cell__body (which carries the padding and the separator). Drafts dim their text
+  // with the muted token instead of fading the whole row, so the copy keeps its contrast.
   return (
     <li className="phone-cell">
-      <button
-        type="button"
-        className={`phone-cell__main items-start gap-3 py-3 ${row.draft ? 'opacity-50' : ''}`}
-        onClick={() => onEdit(row.popup)}
-      >
-        <PageThumb imageKey={row.imageKey} className="mt-0.5 h-[41px] w-[72px]" />
-        <span className="min-w-0 flex-1 text-left">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-[17px]">{row.title}</span>
-            {row.pageCount > 1 && (
-              <span className="shrink-0 rounded-[6px] bg-foreground/[0.12] px-1.5 text-[11px] font-semibold">
-                {row.pagesLabel}
+      <button type="button" className="phone-cell__main" onClick={() => onEdit(row.popup)}>
+        {row.imageKey ? (
+          <PageThumb imageKey={row.imageKey} className="h-[41px] w-[72px]" />
+        ) : (
+          <span
+            aria-hidden="true"
+            data-testid="popup-thumb-placeholder"
+            className="flex h-[41px] w-[72px] shrink-0 items-center justify-center rounded-[8px] bg-foreground/[0.1] text-muted-foreground"
+          >
+            <ImageIcon size={18} />
+          </span>
+        )}
+        <span className="phone-cell__body">
+          <span className="min-w-0 flex-1 text-left">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                className={`min-w-0 truncate text-[17px] ${row.draft ? 'text-muted-foreground' : ''}`}
+              >
+                {row.title}
               </span>
-            )}
+              {row.pageCount > 1 && (
+                <span className="shrink-0 whitespace-nowrap rounded-[6px] bg-foreground/[0.12] px-1.5 text-[11px] font-semibold">
+                  {row.pagesLabel}
+                </span>
+              )}
+            </span>
+            <span className="block text-[13px] text-muted-foreground">
+              {row.frequency} · {row.target}
+            </span>
+            <span className="block text-xs tabular-nums text-muted-foreground">{row.metrics}</span>
+            <span className="mt-1 flex flex-wrap gap-1.5">
+              <Badge variant={row.status.variant}>{row.status.label}</Badge>
+              {row.trigger && (
+                <Badge variant="warning" className="normal-case tracking-normal">
+                  {row.trigger}
+                </Badge>
+              )}
+            </span>
           </span>
-          <span className="block text-[13px] text-muted-foreground">
-            {row.frequency} · {row.target}
-          </span>
-          <span className="block text-xs tabular-nums text-muted-foreground">{row.metrics}</span>
-          <span className="mt-1 flex flex-wrap gap-1.5">
-            <Badge variant={row.status.variant}>{row.status.label}</Badge>
-            {row.trigger && (
-              <Badge variant="warning" className="normal-case tracking-normal">
-                {row.trigger}
-              </Badge>
-            )}
-          </span>
+          <ChevronRight className="phone-cell__chevron" aria-hidden="true" />
         </span>
-        <ChevronRight className="phone-cell__chevron self-center" aria-hidden="true" />
       </button>
     </li>
   );

@@ -29,22 +29,25 @@ export function AdminsPhone({
 
       <section className="phone-kit phone-group">
         <h2 className="phone-group__header">Convidar</h2>
+        {/* The kit zeroes padding on .phone-group__list, so the row's padding lives inside. */}
         <form
           onSubmit={onInvite}
-          className="phone-group__list flex items-center gap-2 py-1 pl-4 pr-1 focus-within:ring-2 focus-within:ring-ring"
+          className="phone-group__list focus-within:ring-2 focus-within:ring-ring"
         >
-          <input
-            type="email"
-            aria-label="E-mail do novo admin"
-            value={email}
-            onChange={(e) => onEmailChange(e.target.value)}
-            placeholder="E-mail do novo admin"
-            required
-            className="h-10 min-w-0 flex-1 bg-transparent text-[17px] text-foreground outline-none placeholder:text-muted-foreground"
-          />
-          <Button type="submit" disabled={inviting} className="h-10 shrink-0 rounded-xl px-3.5">
-            Convidar
-          </Button>
+          <div className="flex items-center gap-2 py-1 pl-4 pr-1">
+            <input
+              type="email"
+              aria-label="E-mail do novo admin"
+              value={email}
+              onChange={(e) => onEmailChange(e.target.value)}
+              placeholder="E-mail do novo admin"
+              required
+              className="h-10 min-w-0 flex-1 bg-transparent text-[17px] text-foreground outline-none placeholder:text-muted-foreground"
+            />
+            <Button type="submit" disabled={inviting} className="h-10 shrink-0 rounded-xl px-3.5">
+              Convidar
+            </Button>
+          </div>
         </form>
         <p className="phone-group__footer">{INVITE_HELP}</p>
       </section>

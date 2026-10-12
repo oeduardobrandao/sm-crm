@@ -285,6 +285,9 @@ function SettingsPanel({ m }: { m: PopupEditorModel }) {
               inputMode: 'numeric',
               min: 1,
               max: MAX_TRIGGER_DAYS,
+              // Sem o stepper nativo: o valor fica como texto, igual aos limites.
+              className:
+                '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
               value: form.trigger_days,
               onChange: (e) => m.patchForm({ trigger_days: e.target.value }, { clearErrors: true }),
             }}

@@ -64,6 +64,35 @@ function singleFromMulti(current: string, next: (string | number)[]): string {
   return next.map(String).find((v) => v !== current) ?? '';
 }
 
+interface SheetChip {
+  key: string;
+  label: string;
+  selected: boolean;
+  onToggle: () => void;
+}
+
+/**
+ * The filters sheet's chip group, but wrapping onto more lines (board WorkspacesFiltros): the
+ * kit's chip sections scroll sideways and clipped "Cancelado" and the longer plan names.
+ */
+function WrappingChips({ label, chips }: { label: string; chips: SheetChip[] }) {
+  return (
+    <section className="phone-filters__group">
+      <h3 className="phone-filters__label">{label}</h3>
+      <ChipRow aria-label={label} className="phone-filters__chips flex-wrap">
+        {chips.map((chip) => (
+          <Chip
+            key={chip.key}
+            label={chip.label}
+            selected={chip.selected}
+            onClick={chip.onToggle}
+          />
+        ))}
+      </ChipRow>
+    </section>
+  );
+}
+
 function WorkspaceCell({ ws, now }: { ws: WorkspaceSummary; now: Date }) {
   const activity = describeActivity(ws.last_activity_at, ws.created_at, now);
   const sub = hasSubscription(ws.subscription) ? statusMeta(ws.subscription.status) : null;
@@ -92,9 +121,15 @@ function WorkspaceCell({ ws, now }: { ws: WorkspaceSummary; now: Date }) {
       subtitle={
         <>
           <span className="block truncate">{ws.owner?.email || 'Sem dono'}</span>
-          <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-            {ws.plan_name ? <PlanBadge name={ws.plan_name} /> : null}
-            <span className="min-w-0 truncate">
+          {/* The meta line wraps to a second line at word breaks instead of ellipsizing
+              "há 4 …" mid-word. */}
+          <span className="mt-0.5 flex min-w-0 items-start gap-1.5">
+            {ws.plan_name ? (
+              <span className="shrink-0 whitespace-nowrap">
+                <PlanBadge name={ws.plan_name} />
+              </span>
+            ) : null}
+            <span className="line-clamp-2 min-w-0 whitespace-normal">
               <span className={sub ? STATUS_TONE_CLASS[sub.tone] : 'text-muted-foreground'}>
                 {sub ? sub.label : 'Sem assinatura'}
               </span>
@@ -159,37 +194,34 @@ export function WorkspacesPhone({
   const description =
     filtered && total !== undefined ? plural(total, 'resultado', 'resultados') : headerDescription;
 
+  const statusChips: SheetChip[] = STATUS_GROUPS.map((g) => ({
+    key: g,
+    label: STATUS_GROUP_LABELS[g],
+    selected: params.status === g,
+    onToggle: () => setInSheet({ status: params.status === g ? '' : g }),
+  }));
+  const planChips: SheetChip[] = [
+    {
+      key: 'todos',
+      label: 'Todos',
+      selected: params.plano === '',
+      onToggle: () => setInSheet({ plano: '' }),
+    },
+    ...plans.map((p) => ({
+      key: p.id,
+      label: p.name,
+      selected: params.plano === p.id,
+      onToggle: () => setInSheet({ plano: params.plano === p.id ? '' : p.id }),
+    })),
+  ];
+
   const sections: FilterSection[] = [
     {
-      type: 'chips',
+      type: 'custom',
       key: 'status',
-      label: 'Status',
-      chips: STATUS_GROUPS.map((g) => ({
-        key: g,
-        label: STATUS_GROUP_LABELS[g],
-        selected: params.status === g,
-        onToggle: () => setInSheet({ status: params.status === g ? '' : g }),
-      })),
+      content: <WrappingChips label="Status" chips={statusChips} />,
     },
-    {
-      type: 'chips',
-      key: 'plano',
-      label: 'Plano',
-      chips: [
-        {
-          key: 'todos',
-          label: 'Todos',
-          selected: params.plano === '',
-          onToggle: () => setInSheet({ plano: '' }),
-        },
-        ...plans.map((p) => ({
-          key: p.id,
-          label: p.name,
-          selected: params.plano === p.id,
-          onToggle: () => setInSheet({ plano: params.plano === p.id ? '' : p.id }),
-        })),
-      ],
-    },
+    { type: 'custom', key: 'plano', content: <WrappingChips label="Plano" chips={planChips} /> },
     {
       type: 'custom',
       key: 'atividade',

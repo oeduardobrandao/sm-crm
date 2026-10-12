@@ -80,7 +80,8 @@ export function PopupsDesktop({
                 <TableRow
                   key={r.popup.id}
                   onClick={() => onEdit(r.popup)}
-                  className={`cursor-pointer ${r.draft ? 'opacity-50' : ''}`}
+                  // Drafts mute their text (token, 4.5:1) instead of fading the whole row.
+                  className={`cursor-pointer ${r.draft ? 'text-muted-foreground' : ''}`}
                 >
                   <TableCell>
                     <div className="flex min-w-0 max-w-[16rem] items-center gap-3">
@@ -88,7 +89,7 @@ export function PopupsDesktop({
                       <div className="min-w-0">
                         <RowButton
                           onClick={() => onEdit(r.popup)}
-                          className="block max-w-full truncate text-sm font-medium"
+                          className={`block max-w-full truncate text-sm font-medium ${r.draft ? 'text-muted-foreground' : ''}`}
                           title={r.title}
                         >
                           {r.title}

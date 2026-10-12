@@ -7,6 +7,7 @@ import type { GlobalBanner } from '../../lib/api';
 import {
   STATUS_FILTERS,
   TYPE_COLORS,
+  TYPE_TEXT_CLASS,
   TYPE_LABELS,
   formatSchedule,
   getStatusBadge,
@@ -37,29 +38,34 @@ function BannerRow({
 }) {
   const tc = TYPE_COLORS[banner.type];
   const status = getStatusBadge(banner);
+  const draft = banner.status === 'draft';
   return (
     <li className="phone-cell">
-      <button
-        type="button"
-        className={`phone-cell__main ${banner.status === 'draft' ? 'opacity-60' : ''}`}
-        onClick={() => onEdit(banner)}
-      >
-        <span className="min-w-0 flex-1 text-left">
-          <span className="mb-1 flex gap-1.5">
-            <span
-              className="rounded-[6px] px-[7px] py-px text-[11px] font-bold uppercase"
-              style={{ color: tc.accent, backgroundColor: tc.bg }}
-            >
-              {TYPE_LABELS[banner.type]}
+      <button type="button" className="phone-cell__main" onClick={() => onEdit(banner)}>
+        {/* .phone-cell__body carries the padding and the separator (board Banners). Drafts dim
+            their text with the muted token rather than fading the whole row. */}
+        <span className="phone-cell__body">
+          <span className="min-w-0 flex-1 text-left">
+            <span className="mb-1 flex flex-wrap gap-1.5">
+              <span
+                className={`rounded-[6px] px-[7px] py-px text-[11px] font-bold uppercase ${TYPE_TEXT_CLASS}`}
+                style={{ ['--type-color' as string]: tc.accent, backgroundColor: tc.bg }}
+              >
+                {TYPE_LABELS[banner.type]}
+              </span>
+              <Badge variant={status.tone}>{status.label}</Badge>
             </span>
-            <Badge variant={status.tone}>{status.label}</Badge>
+            <span
+              className={`line-clamp-2 block text-[15px] leading-[1.35] ${draft ? 'text-muted-foreground' : ''}`}
+            >
+              {banner.content}
+            </span>
+            <span className="mt-1 block text-[13px] text-muted-foreground">
+              {getTargetLabel(banner, plans)} · {formatSchedule(banner)}
+            </span>
           </span>
-          <span className="line-clamp-2 block text-[15px] leading-[1.35]">{banner.content}</span>
-          <span className="mt-1 block text-[13px] text-muted-foreground">
-            {getTargetLabel(banner, plans)} · {formatSchedule(banner)}
-          </span>
+          <ChevronRight className="phone-cell__chevron" aria-hidden="true" />
         </span>
-        <ChevronRight className="phone-cell__chevron" aria-hidden="true" />
       </button>
     </li>
   );

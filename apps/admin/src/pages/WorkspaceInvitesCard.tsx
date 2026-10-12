@@ -67,6 +67,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
   const [role, setRole] = useState<'admin' | 'agent'>('agent');
   const [expanded, setExpanded] = useState(false);
 
+  /** Descartar and a successful send: hide the form and clear the draft. */
   const closeForm = () => {
     setFormOpen(false);
     setEmail('');
@@ -157,6 +158,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
         formOpen={formOpen}
         onOpenForm={() => setFormOpen(true)}
         onCloseForm={closeForm}
+        onHideForm={() => setFormOpen(false)}
         email={email}
         onEmailChange={setEmail}
         role={role}

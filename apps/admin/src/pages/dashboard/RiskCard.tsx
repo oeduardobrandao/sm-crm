@@ -180,14 +180,17 @@ export function RiskCard({ trials, pending, now, phone = false, className }: Ris
         return (
           <section className="phone-kit phone-group">
             <h3 className="phone-group__header">{header}</h3>
-            <div className="phone-group__list px-4 py-1">
-              {source.loading ? (
-                <GroupSkeleton />
-              ) : source.error ? (
-                <ErrorState message={errorText} onRetry={source.retry} />
-              ) : (
-                <p className="py-3 text-[15px] text-muted-foreground">{emptyText}</p>
-              )}
+            {/* The kit zeroes padding on .phone-group__list, so the padding lives inside. */}
+            <div className="phone-group__list">
+              <div className="px-4 py-1">
+                {source.loading ? (
+                  <GroupSkeleton />
+                ) : source.error ? (
+                  <ErrorState message={errorText} onRetry={source.retry} />
+                ) : (
+                  <p className="py-3 text-[15px] text-muted-foreground">{emptyText}</p>
+                )}
+              </div>
             </div>
           </section>
         );

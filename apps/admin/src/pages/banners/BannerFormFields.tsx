@@ -1,7 +1,7 @@
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { Trash2 } from 'lucide-react';
-import { Cell, FormRow, GroupedList } from '@mesaas/ios-kit';
-import { TargetPicker } from '../../components/TargetPicker';
+import { Cell, FormRow, GroupedList, PickerCell } from '@mesaas/ios-kit';
+import { TargetPicker, type TargetMode } from '../../components/TargetPicker';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
@@ -12,6 +12,7 @@ import {
   STATUSES,
   STATUS_LABELS,
   TYPE_COLORS,
+  TYPE_TEXT_CLASS,
   LINK_PATTERN,
   TYPE_LABELS,
   type FormState,
@@ -58,7 +59,10 @@ export function BannerPreview({
       <div className="flex-1 text-center text-sm text-foreground">
         {content || 'Prévia do banner…'}
         {link && (
-          <span style={{ color: accent }} className="ml-1 underline text-sm">
+          <span
+            style={{ ['--type-color' as string]: accent }}
+            className={`ml-1 text-sm underline ${TYPE_TEXT_CLASS}`}
+          >
             Link
           </span>
         )}
@@ -328,18 +332,7 @@ function PhoneFields({
         </FormRow>
       </GroupedList>
 
-      <div className="mb-4 px-1">
-        <TargetPicker
-          value={{
-            target_mode: form.target_mode,
-            target_plan_ids: form.target_plan_ids,
-            target_workspace_ids: form.target_workspace_ids,
-          }}
-          plans={plans}
-          workspaces={workspaces}
-          onChange={(next) => setForm((f) => ({ ...f, ...next }))}
-        />
-      </div>
+      <PhoneTargetRows form={form} setForm={setForm} plans={plans} workspaces={workspaces} />
 
       <GroupedList header="Agendamento" className="mb-4">
         <FormRow
@@ -373,5 +366,72 @@ function PhoneFields({
         </GroupedList>
       )}
     </div>
+  );
+}
+
+const TARGET_MODE_OPTIONS: { value: TargetMode; label: string }[] = [
+  { value: 'all', label: 'Todos' },
+  { value: 'plan', label: 'Por plano' },
+  { value: 'workspace', label: 'Por workspace' },
+];
+
+/**
+ * Público on phones (board BannerForm): a grouped row that picks the mode, plus a row that
+ * picks the plans or workspaces, each opening the kit's checkmark sheet. Same state as the
+ * desktop TargetPicker: switching mode clears both id lists.
+ */
+function PhoneTargetRows({
+  form,
+  setForm,
+  plans,
+  workspaces,
+}: Pick<BannerFormFieldsProps, 'form' | 'setForm' | 'plans' | 'workspaces'>) {
+  // A picked workspace can be missing from the list (deleted, or past the query's limit).
+  // It stays as a row so the selection can still be seen and removed.
+  const workspaceOptions = (workspaces ?? []).map((w) => ({ value: w.id, label: w.name }));
+  for (const id of form.target_workspace_ids) {
+    if (!workspaceOptions.some((o) => o.value === id)) {
+      workspaceOptions.push({ value: id, label: `Workspace fora da lista (${id.slice(0, 8)})` });
+    }
+  }
+  return (
+    <GroupedList aria-label="Público" className="mb-4">
+      <PickerCell<TargetMode>
+        label="Público"
+        sheetTitle="Público"
+        options={TARGET_MODE_OPTIONS}
+        value={form.target_mode}
+        onChange={(mode) => {
+          if (!mode || mode === form.target_mode) return;
+          setForm((f) => ({
+            ...f,
+            target_mode: mode,
+            target_plan_ids: [],
+            target_workspace_ids: [],
+          }));
+        }}
+      />
+      {form.target_mode === 'plan' && (
+        <PickerCell<string>
+          multiple
+          label="Planos"
+          placeholder="Nenhum"
+          options={(plans ?? []).map((p) => ({ value: p.id, label: p.name }))}
+          value={form.target_plan_ids}
+          onChange={(ids) => setForm((f) => ({ ...f, target_plan_ids: ids }))}
+        />
+      )}
+      {form.target_mode === 'workspace' && (
+        <PickerCell<string>
+          multiple
+          searchable
+          label="Workspaces"
+          placeholder="Nenhum"
+          options={workspaceOptions}
+          value={form.target_workspace_ids}
+          onChange={(ids) => setForm((f) => ({ ...f, target_workspace_ids: ids }))}
+        />
+      )}
+    </GroupedList>
   );
 }
