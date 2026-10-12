@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { SwipeRow, SWIPE_ACTION_WIDTH } from '../SwipeRow';
+import { SwipeRow, SWIPE_ACTION_WIDTH } from '../src/SwipeRow';
 import { installPointerEvent, pointerDown, pointerMove, pointerUp } from './pointer';
 
 beforeAll(installPointerEvent);

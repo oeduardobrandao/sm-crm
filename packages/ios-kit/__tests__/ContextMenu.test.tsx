@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ContextMenu } from '../ContextMenu';
-import { LONG_PRESS_MS } from '../useLongPress';
+import { ContextMenu } from '../src/ContextMenu';
+import { LONG_PRESS_MS } from '../src/useLongPress';
 import { installPointerEvent, pointerDown, pointerMove, pointerUp } from './pointer';
 
 beforeAll(installPointerEvent);

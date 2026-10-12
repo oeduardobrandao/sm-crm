@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { SegmentedControl } from '../SegmentedControl';
+import { SegmentedControl } from '../src/SegmentedControl';
 
 function Harness({
   semantics,

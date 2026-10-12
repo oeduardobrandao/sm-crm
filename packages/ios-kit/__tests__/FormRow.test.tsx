@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { FormRow } from '../FormRow';
-import { GroupedList } from '../GroupedList';
+import { FormRow } from '../src/FormRow';
+import { GroupedList } from '../src/GroupedList';
 
 function inList(ui: React.ReactNode) {
   return render(<GroupedList aria-label="Formulário">{ui}</GroupedList>);

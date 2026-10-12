@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { CheckList } from '../CheckList';
-import { GroupedList } from '../GroupedList';
-import { PickerCell } from '../PickerSheet';
+import { CheckList } from '../src/CheckList';
+import { GroupedList } from '../src/GroupedList';
+import { PickerCell } from '../src/PickerSheet';
 
 const CATEGORIAS = [
   { value: 'mensalidade', label: 'Mensalidade' },

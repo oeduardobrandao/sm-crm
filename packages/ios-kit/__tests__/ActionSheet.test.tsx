@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { ActionSheet } from '../ActionSheet';
+import { ActionSheet } from '../src/ActionSheet';
 
 function Harness({
   onAdvance,

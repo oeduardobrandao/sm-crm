@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { LargeTitleHeader, PhoneIconButton } from '../LargeTitleHeader';
+import { LargeTitleHeader, PhoneIconButton } from '../src/LargeTitleHeader';
 
 describe('LargeTitleHeader', () => {
   it('renders the title as the page heading with subtitle and toolbar actions', () => {

@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { BarList } from '../BarList';
-import { InfoButton } from '../InfoButton';
+import { BarList } from '../src/BarList';
+import { InfoButton } from '../src/InfoButton';
 
 describe('InfoButton', () => {
   it('needs no router and mounts no sheet until tapped', () => {

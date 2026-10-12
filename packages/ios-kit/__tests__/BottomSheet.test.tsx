@@ -8,8 +8,8 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BottomSheet, type SheetDetent } from '../BottomSheet';
-import { useSheetActions } from '../sheetActions';
+import { BottomSheet, type SheetDetent } from '../src/BottomSheet';
+import { useSheetActions } from '../src/sheetActions';
 import { installPointerEvent, pointerDown, pointerMove, pointerUp } from './pointer';
 
 beforeAll(installPointerEvent);

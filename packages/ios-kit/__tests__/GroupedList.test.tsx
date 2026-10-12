@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { Cell, GroupedList } from '../GroupedList';
+import { Cell, GroupedList } from '../src/GroupedList';
 
 function Path() {
   return <div data-testid="path">{useLocation().pathname}</div>;

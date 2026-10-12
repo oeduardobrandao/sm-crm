@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { Chip, ChipRow } from '../ChipRow';
-import { BottomActionBar } from '../BottomActionBar';
+import { Chip, ChipRow } from '../src/ChipRow';
+import { BottomActionBar } from '../src/BottomActionBar';
 
 describe('ChipRow', () => {
   it('renders toggle chips with aria-pressed and removable filter chips', () => {
