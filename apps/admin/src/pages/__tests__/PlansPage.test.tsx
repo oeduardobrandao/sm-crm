@@ -62,6 +62,13 @@ describe('PlansPage (desktop)', () => {
     fireEvent.change(within(sheet).getByLabelText('Preço mensal (R$)'), {
       target: { value: '49,90' },
     });
+    fireEvent.change(within(sheet).getByLabelText('ID do produto Stripe'), {
+      target: { value: 'prod_123' },
+    });
+    fireEvent.change(within(sheet).getByLabelText('Máx. de clientes'), {
+      target: { value: '7' },
+    });
+    fireEvent.click(within(sheet).getByRole('switch', { name: 'Leads' }));
     fireEvent.click(within(sheet).getByRole('switch', { name: 'Ativo' }));
     fireEvent.click(within(sheet).getByRole('button', { name: 'Criar' }));
     await waitFor(() => expect(createPlan).toHaveBeenCalledTimes(1));
@@ -69,6 +76,10 @@ describe('PlansPage (desktop)', () => {
       name: 'Gold',
       price_brl: 4990,
       is_active: false,
+      stripe_product_id: 'prod_123',
+      max_clients: 7,
+      feature_leads: true,
+      feature_instagram: false,
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
