@@ -2,6 +2,7 @@ import type { Ref } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 // The phone header now carries the shell's help links and bell (PhonePageHeader); their
 // own suites cover them, and they need the KB query and notifications.
@@ -3235,5 +3236,109 @@ describe('EntregasPage on phones (< 768px)', () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
     expect(screen.queryByRole('button', { name: /Remover filtro/ })).toBeNull();
+  });
+});
+
+describe('EntregasPage: Vidro toolbar', () => {
+  beforeEach(() => {
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    tourMock.startEntregasTour.mockReset();
+    limitsMock.features = null;
+    localStorage.clear();
+    // Dismissed explainer: the header shows its "Como funciona" reopen button.
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  function renderInShell(vidroShell: boolean) {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [],
+      templates: [],
+      cards: [makeCard({ deadline: { estourado: true, urgente: false } })],
+      activeWorkflows: [wfFixture],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
+      postProcessesVisible: false,
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+    return render(
+      <VidroToolbarHarness vidroShell={vidroShell}>{pageTree('/entregas')}</VidroToolbarHarness>,
+    );
+  }
+
+  it('fills the toolbar: title, counts subtitle, accessories, actions, Novo and the view tabs', async () => {
+    renderInShell(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Entregas');
+
+    const counts = screen.getByText(/fluxos ativos: 1/);
+    expect(counts.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    expect(screen.getByText(/1 atrasado/).closest('.vidro-toolbar-subtitle')).not.toBeNull();
+
+    const comoFunciona = screen.getAllByRole('button', { name: /como funciona/i });
+    expect(comoFunciona).toHaveLength(1);
+    expect(comoFunciona[0].closest('.vidro-toolbar')).not.toBeNull();
+    const replay = screen.getAllByRole('button', { name: 'Ver tour novamente' });
+    expect(replay).toHaveLength(1);
+    expect(replay[0].closest('.vidro-toolbar')).not.toBeNull();
+
+    const templates = screen.getAllByRole('button', { name: 'Templates' });
+    expect(templates).toHaveLength(1);
+    expect(templates[0].closest('.vidro-toolbar')).not.toBeNull();
+
+    const novo = screen.getAllByRole('button', { name: 'Novo' });
+    expect(novo).toHaveLength(1);
+    expect(novo[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
+
+    const tablists = screen.getAllByRole('tablist', { name: 'Modos de visualização' });
+    expect(tablists).toHaveLength(1);
+    expect(tablists[0]).toHaveClass('vidro-seg');
+    expect(tablists[0].closest('.vidro-toolbar')).not.toBeNull();
+    const kanbanTab = screen.getByRole('tab', { name: /Kanban/ });
+    expect(kanbanTab).toHaveClass('vidro-seg-btn');
+    expect(kanbanTab).toHaveAttribute('aria-selected', 'true');
+
+    // The in-page header is gone; the mode toggle stays in the content.
+    expect(document.querySelector('header.header')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vidro-toolbar')).toBeNull();
+  });
+
+  it('switches the view from the toolbar tabs and drops the replay link off the kanban', async () => {
+    renderInShell(true);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    const lista = screen.getByRole('tab', { name: /Lista/ });
+    expect(lista.closest('.vidro-toolbar')).not.toBeNull();
+    fireEvent.click(lista);
+
+    expect(await screen.findByText(/^List view:/)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Lista/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('button', { name: 'Ver tour novamente' })).toBeNull();
+  });
+
+  it('keeps the in-page header and tabs when the shell is classic', async () => {
+    renderInShell(false);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Entregas');
+    expect(h1s[0].closest('header.header')).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    const tablist = screen.getByRole('tablist', { name: 'Modos de visualização' });
+    expect(tablist).not.toHaveClass('vidro-seg');
+    expect(screen.getByText(/fluxos ativos: 1/).tagName).toBe('P');
+    expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
   });
 });

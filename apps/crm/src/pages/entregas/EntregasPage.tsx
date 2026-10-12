@@ -40,6 +40,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { shouldAutoStartTour } from './tour/tourGating';
 import { shouldShowExample } from './tour/exampleGate';
@@ -1308,6 +1309,137 @@ export default function EntregasPage() {
     refresh();
   };
 
+  // Header pieces, shared by the in-page header and the Vidro toolbar so the classic
+  // markup stays the same.
+  const headerTitleAccessory = (
+    <>
+      <span
+        data-tooltip="Acompanhe o andamento das entregas e fluxos ativos."
+        data-tooltip-dir="right"
+        style={{ display: 'flex' }}
+      >
+        <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+      </span>
+      {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
+    there, so a click elsewhere (other views, or the Publicações board) would fire
+    a "started" event and hit startEntregasTour's zero-anchor early return with no
+    visible tour. */}
+      {!explainerOpen && (
+        <button type="button" onClick={reopenExplainer} className="entregas-explainer-reopen">
+          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+          Como funciona
+        </button>
+      )}
+      {activeView === 'kanban' && mode === 'entregas' && (
+        <button
+          type="button"
+          onClick={handleReplay}
+          style={{
+            fontSize: '0.72rem',
+            color: 'var(--text-muted)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+          }}
+        >
+          Ver tour novamente
+        </button>
+      )}
+    </>
+  );
+  const headerCounts = (
+    <>
+      fluxos ativos: {activeWorkflows.length}
+      {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
+      {overdue > 0 && (
+        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+          {' '}
+          • {overdue} atrasado{overdue > 1 ? 's' : ''}
+        </span>
+      )}
+      {urgent > 0 && (
+        <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
+          {' '}
+          • {urgent} urgente{urgent > 1 ? 's' : ''}
+        </span>
+      )}
+    </>
+  );
+  const headerActions = (
+    <>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => setTemplatesOpen(true)}
+        className="header-actions-icon-only"
+      >
+        <LayoutGrid className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => setTemplatesOpen(true)}
+        className="header-actions-full-only"
+      >
+        <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button data-tour="novo-fluxo-btn">
+          <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
+          <Route aria-hidden="true" /> Novo fluxo
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setAvulsoTemplateId(null);
+            setNewAvulsoOpen(true);
+          }}
+        >
+          <CircleDashed aria-hidden="true" /> Post avulso
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  // The view tabs as the toolbar's capsule segmented control. The classic tablist in
+  // the content keeps its inline styles.
+  const toolbarViewTabs = (
+    <div role="tablist" aria-label="Modos de visualização" className="vidro-seg">
+      {VIEW_TABS.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={activeView === tab.id}
+          onClick={() => setActiveView(tab.id)}
+          className="vidro-seg-btn"
+        >
+          {tab.icon} {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const inToolbar = usePageToolbar(
+    isLoading
+      ? null
+      : {
+          title: 'Entregas',
+          titleAccessory: headerTitleAccessory,
+          // Same unfiltered totals as the classic header's line (see the note there).
+          subtitle: headerCounts,
+          segmented: toolbarViewTabs,
+          actions: headerActions,
+          primary: primaryAction,
+        },
+  );
+
   if (isLoading) {
     // Shaped like the view about to render (kanban by default, or the one in the URL).
     const body: PageSkeletonBody =
@@ -1431,109 +1563,26 @@ export default function EntregasPage() {
           </>
         ) : (
           <>
-            <header className="header header--flush animate-up">
-              <div className="header-title">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <h1>Entregas</h1>
-                  <span
-                    data-tooltip="Acompanhe o andamento das entregas e fluxos ativos."
-                    data-tooltip-dir="right"
-                    style={{ display: 'flex' }}
-                  >
-                    <Info
-                      className="h-5 w-5 cursor-pointer"
-                      style={{ color: 'var(--text-muted)' }}
-                    />
-                  </span>
-                  {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
-                there, so a click elsewhere (other views, or the Publicações board) would fire
-                a "started" event and hit startEntregasTour's zero-anchor early return with no
-                visible tour. */}
-                  {!explainerOpen && (
-                    <button
-                      type="button"
-                      onClick={reopenExplainer}
-                      className="entregas-explainer-reopen"
-                    >
-                      <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
-                      Como funciona
-                    </button>
-                  )}
-                  {activeView === 'kanban' && mode === 'entregas' && (
-                    <button
-                      type="button"
-                      onClick={handleReplay}
-                      style={{
-                        fontSize: '0.72rem',
-                        color: 'var(--text-muted)',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                      }}
-                    >
-                      Ver tour novamente
-                    </button>
-                  )}
-                </div>
-                {/* Deliberately unfiltered: the Visão geral's KPIs are the filtered
+            {!inToolbar && (
+              <header className="header header--flush animate-up">
+                <div className="header-title">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h1>Entregas</h1>
+                    {headerTitleAccessory}
+                  </div>
+                  {/* Deliberately unfiltered: the Visão geral's KPIs are the filtered
               read of the same numbers, and the two disagreeing looks like a bug
               unless the header says which one it is. */}
-                <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
-                  fluxos ativos: {activeWorkflows.length}
-                  {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
-                  {overdue > 0 && (
-                    <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                      {' '}
-                      • {overdue} atrasado{overdue > 1 ? 's' : ''}
-                    </span>
-                  )}
-                  {urgent > 0 && (
-                    <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
-                      {' '}
-                      • {urgent} urgente{urgent > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="header-actions">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setTemplatesOpen(true)}
-                  className="header-actions-icon-only"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setTemplatesOpen(true)}
-                  className="header-actions-full-only"
-                >
-                  <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button data-tour="novo-fluxo-btn">
-                      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
-                      <Route aria-hidden="true" /> Novo fluxo
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setAvulsoTemplateId(null);
-                        setNewAvulsoOpen(true);
-                      }}
-                    >
-                      <CircleDashed aria-hidden="true" /> Post avulso
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </header>
+                  <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
+                    {headerCounts}
+                  </p>
+                </div>
+                <div className="header-actions">
+                  {headerActions}
+                  {primaryAction}
+                </div>
+              </header>
+            )}
 
             {explainerOpen && (
               <ComoFuncionaPanel
@@ -1615,50 +1664,52 @@ export default function EntregasPage() {
                   minWidth: 0,
                 }}
               >
-                <div
-                  role="tablist"
-                  aria-label="Modos de visualização"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--border-color)',
-                    padding: '0.25rem',
-                    borderRadius: '8px',
-                    overflowX: 'auto',
-                    width: 'fit-content',
-                    maxWidth: '100%',
-                    flexShrink: 0,
-                  }}
-                  className="animate-up no-scrollbar"
-                >
-                  {VIEW_TABS.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={activeView === tab.id}
-                      onClick={() => setActiveView(tab.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.3rem 0.65rem',
-                        borderRadius: '6px',
-                        border: 'none',
-                        background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
-                        color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
-                        fontSize: '0.8rem',
-                        fontWeight: activeView === tab.id ? 600 : 400,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {tab.icon} {tab.label}
-                    </button>
-                  ))}
-                </div>
+                {!inToolbar && (
+                  <div
+                    role="tablist"
+                    aria-label="Modos de visualização"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      background: 'var(--card-bg)',
+                      border: '1px solid var(--border-color)',
+                      padding: '0.25rem',
+                      borderRadius: '8px',
+                      overflowX: 'auto',
+                      width: 'fit-content',
+                      maxWidth: '100%',
+                      flexShrink: 0,
+                    }}
+                    className="animate-up no-scrollbar"
+                  >
+                    {VIEW_TABS.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeView === tab.id}
+                        onClick={() => setActiveView(tab.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.3rem 0.65rem',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
+                          color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
+                          fontSize: '0.8rem',
+                          fontWeight: activeView === tab.id ? 600 : 400,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {tab.icon} {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {(activeView === 'kanban' ||
                   activeView === 'list' ||
