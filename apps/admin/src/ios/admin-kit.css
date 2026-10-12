@@ -219,6 +219,14 @@
     0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
+/* Sheet header Cancelar (AdminFormSheet): gold, muted while disabled. */
+.admin-sheet-cancel {
+  color: var(--phone-accent, #facc15);
+}
+.admin-sheet-cancel:disabled {
+  color: var(--phone-label-secondary);
+}
+
 /* Sheet header submit (AdminFormSheet). */
 .admin-sheet-submit {
   display: inline-flex;

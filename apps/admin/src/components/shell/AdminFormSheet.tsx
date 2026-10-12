@@ -58,7 +58,7 @@ export function AdminFormSheet({
   const cancel = (
     <button
       type="button"
-      className="phone-text-button"
+      className="phone-text-button admin-sheet-cancel"
       onClick={requestClose}
       disabled={submitting}
     >
