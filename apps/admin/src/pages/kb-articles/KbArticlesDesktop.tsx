@@ -42,7 +42,8 @@ const ALL = '__all__';
 const ROW_GRID =
   'grid grid-cols-[1.25rem_minmax(0,1fr)_6.5rem_minmax(12rem,15rem)_4.5rem_4.5rem] items-center gap-3.5';
 
-const ROUND_CHECK = 'h-5 w-5 rounded-full border-[1.5px] border-muted-foreground/50';
+const ROUND_CHECK =
+  'h-5 w-5 rounded-full border-[1.5px] border-muted-foreground/50 data-[state=checked]:border-primary';
 
 const articleCount = (n: number) => (n === 1 ? '1 artigo' : `${n} artigos`);
 

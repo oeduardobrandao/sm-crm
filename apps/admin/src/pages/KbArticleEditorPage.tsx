@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -151,11 +151,12 @@ export default function KbArticleEditorPage() {
 
   // Crossing 768px swaps the phone and desktop views, which remounts the TipTap editor. It would
   // come back with the loaded content and silently drop what was typed since, so once the admin
-  // has edited, the remount is seeded with the latest document instead.
+  // has edited, the remount is seeded with the latest document instead. A layout effect, so the
+  // snapshot is taken before the new editor's own passive effect can setContent() the stale doc.
   const editedRef = useRef(false);
   const lastIsPhone = useRef(isPhone);
   const [remountSeed, setRemountSeed] = useState<Record<string, unknown> | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lastIsPhone.current === isPhone) return;
     lastIsPhone.current = isPhone;
     if (editedRef.current && contentRef.current.json) setRemountSeed(contentRef.current.json);
