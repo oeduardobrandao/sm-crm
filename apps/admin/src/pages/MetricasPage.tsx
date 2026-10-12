@@ -1,34 +1,44 @@
-import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import { toast } from 'sonner';
+import { PhoneIconButton, SegmentedControl } from '@mesaas/ios-kit';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/button';
+import { useIsPhone } from '../hooks/useIsPhone';
 import { backfillMetrics, type AdminApiError } from '../lib/api';
 import { DepositsSection } from './metricas/DepositsSection';
 import { RevenueSection } from './metricas/RevenueSection';
 import { MovementSection } from './metricas/MovementSection';
-import { METRICS_HISTORY_KEY, useMetricsHistory } from './metricas/useMetricsHistory';
+import { METRICS_HISTORY_KEY } from './metricas/useMetricsHistory';
 import { backfillToastMessage } from './metricas/metrics-view';
 
 const BACKFILL_CONFIRM =
   'Reconstruir o histórico a partir da Stripe e do Pagar.me? Meses já gravados pelo fechamento diário não são alterados.';
 
+/** The page's sections. `id` is the URL hash, so `/metricas#mrr` (Dashboard tiles) deep-links. */
+const SECTIONS = [
+  { id: 'mrr', label: 'Receita', phoneLabel: 'Receita' },
+  { id: 'churn', label: 'Movimento e churn', phoneLabel: 'Churn' },
+  { id: 'depositos', label: 'Depósitos', phoneLabel: 'Depósitos' },
+] as const;
+
+type SectionId = (typeof SECTIONS)[number]['id'];
+
+function sectionFromHash(hash: string): SectionId {
+  return SECTIONS.find((s) => `#${s.id}` === hash)?.id ?? 'mrr';
+}
+
 /**
- * Métricas: MRR/churn history (sub-project B) above the live Depósitos panel (A).
- * Spec: docs/superpowers/specs/2026-09-25-admin-metricas-historico-design.md.
+ * Métricas: MRR/churn history (sub-project B) and the live Depósitos panel (A), one section at
+ * a time. Spec: docs/superpowers/specs/2026-09-25-admin-metricas-historico-design.md.
  */
 export default function MetricasPage() {
   const { hash } = useLocation();
-  const history = useMetricsHistory();
+  const navigate = useNavigate();
+  const isPhone = useIsPhone();
   const qc = useQueryClient();
-
-  // Dashboard tiles deep-link to #mrr; scroll once the charts have their height.
-  useEffect(() => {
-    if (!hash || history.isPending) return;
-    document.getElementById(hash.slice(1))?.scrollIntoView?.({ block: 'start' });
-  }, [hash, history.isPending]);
+  const section = sectionFromHash(hash);
 
   const backfill = useMutation({
     mutationFn: backfillMetrics,
@@ -44,42 +54,69 @@ export default function MetricasPage() {
       ),
   });
 
+  const onBackfill = () => {
+    if (window.confirm(BACKFILL_CONFIRM)) backfill.mutate();
+  };
+
+  // replace: switching sections must not stack history entries (Back would cycle the tabs).
+  const select = (id: SectionId) => navigate({ hash: `#${id}` }, { replace: true });
+
+  const tabs = (
+    <SegmentedControl
+      aria-label="Seção"
+      semantics="tablist"
+      value={section}
+      onChange={select}
+      options={SECTIONS.map((s) => ({
+        value: s.id,
+        label: isPhone ? s.phoneLabel : s.label,
+        ariaLabel: s.label,
+        id: `metricas-tab-${s.id}`,
+        controls: s.id,
+      }))}
+    />
+  );
+
   return (
     <div>
       <PageHeader
         title="Métricas"
         description="Receita, repasses e evolução da plataforma"
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={backfill.isPending}
-            onClick={() => {
-              if (window.confirm(BACKFILL_CONFIRM)) backfill.mutate();
-            }}
-          >
-            <History />
-            {backfill.isPending ? 'Reconstruindo...' : 'Reconstruir histórico'}
-          </Button>
+          <>
+            {tabs}
+            <Button variant="outline" size="sm" disabled={backfill.isPending} onClick={onBackfill}>
+              <History />
+              {backfill.isPending ? 'Reconstruindo...' : 'Reconstruir histórico'}
+            </Button>
+          </>
         }
-      />
-      <section id="mrr" aria-labelledby="mrr-title" className="scroll-mt-6 mb-10">
-        <h2 id="mrr-title" className="font-sf text-lg font-semibold mb-4">
-          Receita recorrente
-        </h2>
-        <RevenueSection />
-      </section>
-      <section id="churn" aria-labelledby="churn-title" className="scroll-mt-6 mb-10">
-        <h2 id="churn-title" className="font-sf text-lg font-semibold mb-4">
-          Movimento e churn
-        </h2>
-        <MovementSection />
-      </section>
-      <section id="depositos" aria-labelledby="depositos-title" className="scroll-mt-6">
-        <h2 id="depositos-title" className="font-sf text-lg font-semibold mb-4">
-          Depósitos
-        </h2>
-        <DepositsSection />
+        phoneActions={
+          <PhoneIconButton
+            label="Reconstruir histórico"
+            disabled={backfill.isPending}
+            onClick={onBackfill}
+          >
+            <History size={18} aria-hidden="true" />
+          </PhoneIconButton>
+        }
+      >
+        {isPhone ? tabs : null}
+      </PageHeader>
+      <section
+        key={section}
+        id={section}
+        role="tabpanel"
+        aria-labelledby={`metricas-tab-${section}`}
+        className="scroll-mt-6"
+      >
+        {section === 'mrr' ? (
+          <RevenueSection />
+        ) : section === 'churn' ? (
+          <MovementSection />
+        ) : (
+          <DepositsSection />
+        )}
       </section>
     </div>
   );

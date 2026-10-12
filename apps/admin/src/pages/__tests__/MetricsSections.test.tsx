@@ -100,7 +100,7 @@ describe('RevenueSection', () => {
       'Stripe',
       'Pagar.me',
     ]);
-    fireEvent.click(screen.getByRole('button', { name: 'Por plano' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Por plano' }));
     expect(JSON.parse(screen.getByTestId('bar-chart').dataset.datasets!)).toEqual(['Pro', 'Max']);
   });
 

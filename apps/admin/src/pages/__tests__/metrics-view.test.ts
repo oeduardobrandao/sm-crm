@@ -5,9 +5,12 @@ import {
   formatPct,
   latestMonth,
   monthLabel,
+  movementNet,
   movementSeries,
   mrrDelta,
+  prevCalendarMonth,
   revenueSeries,
+  signedMoney,
 } from '../metricas/metrics-view';
 
 const month = (over: Partial<MetricsMonth>): MetricsMonth => ({
@@ -113,5 +116,29 @@ describe('metrics-view', () => {
       'Histórico reconstruído: 3 meses gravados, 1 mantido do cron diário, 3 assinaturas ignoradas.',
     );
     expect(msg).not.toContain('—');
+  });
+
+  it('sums the signed movements into the net MRR change of a month', () => {
+    const m = month({
+      movements: {
+        new: 5000,
+        expansion: 1000,
+        contraction: -500,
+        past_due: -1000,
+        recovered: 200,
+        churn: -2000,
+        switch: 0,
+      },
+    });
+    expect(movementNet(m)).toBe(2700);
+    expect(movementNet(month({ movements: null }))).toBe(0);
+  });
+
+  it('signs only gains and finds the previous calendar month', () => {
+    expect(signedMoney(76000)).toContain('+');
+    expect(signedMoney(-12000)).not.toContain('+');
+    expect(signedMoney(0)).not.toContain('+');
+    expect(prevCalendarMonth('2026-01')).toBe('2025-12');
+    expect(prevCalendarMonth('2026-10')).toBe('2026-09');
   });
 });

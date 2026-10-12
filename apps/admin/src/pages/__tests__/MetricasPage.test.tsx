@@ -21,20 +21,41 @@ beforeEach(async () => {
   vi.mocked(api.getMetricsHistory).mockReturnValue(new Promise(() => {}) as never);
 });
 
+function renderPage(entry = '/') {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[entry]}>
+        <MetricasPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 describe('MetricasPage', () => {
-  it('renders the page header and the section anchors', () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter>
-          <MetricasPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+  it('renders the page header and the revenue section anchor by default', () => {
+    renderPage();
     expect(screen.getByRole('heading', { name: 'Métricas' })).toBeInTheDocument();
-    expect(document.getElementById('depositos')).not.toBeNull();
+    expect(screen.getByRole('tab', { name: 'Receita' })).toHaveAttribute('aria-selected', 'true');
     expect(document.getElementById('mrr')).not.toBeNull();
-    expect(document.getElementById('churn')).not.toBeNull();
+  });
+
+  it.each([
+    ['#mrr', 'Receita', 'mrr'],
+    ['#churn', 'Movimento e churn', 'churn'],
+    ['#depositos', 'Depósitos', 'depositos'],
+  ])('deep link %s opens the matching section and anchor', (hash, tab, id) => {
+    renderPage(`/${hash}`);
+    expect(screen.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
+    expect(document.getElementById(id)).not.toBeNull();
+  });
+
+  it('switches sections from the segmented control', () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: 'Depósitos' }));
+    expect(screen.getByRole('tab', { name: 'Depósitos' })).toHaveAttribute('aria-selected', 'true');
+    expect(document.getElementById('depositos')).not.toBeNull();
+    expect(document.getElementById('mrr')).toBeNull();
   });
 
   it('asks for confirmation before running the backfill and maps 403 to a production-only toast', async () => {
@@ -47,14 +68,7 @@ describe('MetricasPage', () => {
       .spyOn(window, 'confirm')
       .mockReturnValueOnce(false)
       .mockReturnValueOnce(true);
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter>
-          <MetricasPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    renderPage();
     const button = screen.getByRole('button', { name: /reconstruir histórico/i });
     fireEvent.click(button);
     expect(backfillMetrics).not.toHaveBeenCalled();
