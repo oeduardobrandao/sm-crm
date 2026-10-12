@@ -55,7 +55,7 @@ export function PlanBadge({ name }: { name: string | null }) {
   );
 }
 
-export function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
+function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
   if (!hasSubscription(ws.subscription)) return <span className="text-dim-foreground">—</span>;
   const meta = statusMeta(ws.subscription.status);
   return (

@@ -208,8 +208,13 @@ export function WorkspacesPhone({
             label: ACTIVITY_LABELS[k],
           }))}
           value={params.atividade || null}
+          // The kit's single list re-picks the current value; tapping it again deselects.
           onChange={(v) =>
-            setInSheet({ atividade: (v ?? '') as WorkspacesListParams['atividade'] })
+            setInSheet({
+              atividade: (v === params.atividade
+                ? ''
+                : (v ?? '')) as WorkspacesListParams['atividade'],
+            })
           }
         />
       ),

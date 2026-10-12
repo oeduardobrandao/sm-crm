@@ -211,52 +211,55 @@ export function WorkspacesToolbar({
         </div>
       </div>
 
-      {filtersOpen ? (
-        <div id="workspaces-filter-row" className="flex flex-wrap items-center gap-2">
-          <FilterSelect
-            label="Plano"
-            value={params.plano}
-            allLabel="Todos"
-            options={plans.map((p) => ({ value: p.id, label: p.name }))}
-            onChange={(plano) => onChange({ plano })}
-          />
-          <FilterSelect
-            label="Status"
-            value={params.status}
-            allLabel="Todos"
-            options={STATUS_GROUPS.map((g) => ({ value: g, label: STATUS_GROUP_LABELS[g] }))}
-            onChange={(status) => onChange({ status })}
-          />
-          <FilterSelect
-            label="Overrides"
-            value={params.overrides}
-            allLabel="Todos"
-            options={(Object.keys(OVERRIDES_LABELS) as (keyof typeof OVERRIDES_LABELS)[]).map(
-              (k) => ({ value: k, label: OVERRIDES_LABELS[k] }),
-            )}
-            onChange={(overrides) => onChange({ overrides })}
-          />
-          <FilterSelect
-            label="Atividade"
-            value={params.atividade}
-            allLabel="Qualquer"
-            options={(Object.keys(ACTIVITY_LABELS) as (keyof typeof ACTIVITY_LABELS)[]).map(
-              (k) => ({ value: k, label: ACTIVITY_LABELS[k] }),
-            )}
-            onChange={(atividade) => onChange({ atividade })}
-          />
-          <FilterSelect
-            label="Criado"
-            value={params.criado}
-            allLabel="Qualquer data"
-            options={(Object.keys(CREATED_LABELS) as (keyof typeof CREATED_LABELS)[]).map((k) => ({
-              value: k,
-              label: CREATED_LABELS[k],
-            }))}
-            onChange={(criado) => onChange({ criado })}
-          />
-        </div>
-      ) : null}
+      <div
+        id="workspaces-filter-row"
+        hidden={!filtersOpen}
+        className="flex flex-wrap items-center gap-2"
+      >
+        <FilterSelect
+          label="Plano"
+          value={params.plano}
+          allLabel="Todos"
+          options={plans.map((p) => ({ value: p.id, label: p.name }))}
+          onChange={(plano) => onChange({ plano })}
+        />
+        <FilterSelect
+          label="Status"
+          value={params.status}
+          allLabel="Todos"
+          options={STATUS_GROUPS.map((g) => ({ value: g, label: STATUS_GROUP_LABELS[g] }))}
+          onChange={(status) => onChange({ status })}
+        />
+        <FilterSelect
+          label="Overrides"
+          value={params.overrides}
+          allLabel="Todos"
+          options={(Object.keys(OVERRIDES_LABELS) as (keyof typeof OVERRIDES_LABELS)[]).map(
+            (k) => ({ value: k, label: OVERRIDES_LABELS[k] }),
+          )}
+          onChange={(overrides) => onChange({ overrides })}
+        />
+        <FilterSelect
+          label="Atividade"
+          value={params.atividade}
+          allLabel="Qualquer"
+          options={(Object.keys(ACTIVITY_LABELS) as (keyof typeof ACTIVITY_LABELS)[]).map((k) => ({
+            value: k,
+            label: ACTIVITY_LABELS[k],
+          }))}
+          onChange={(atividade) => onChange({ atividade })}
+        />
+        <FilterSelect
+          label="Criado"
+          value={params.criado}
+          allLabel="Qualquer data"
+          options={(Object.keys(CREATED_LABELS) as (keyof typeof CREATED_LABELS)[]).map((k) => ({
+            value: k,
+            label: CREATED_LABELS[k],
+          }))}
+          onChange={(criado) => onChange({ criado })}
+        />
+      </div>
     </div>
   );
 }

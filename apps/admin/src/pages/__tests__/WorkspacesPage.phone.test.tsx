@@ -140,6 +140,30 @@ describe('WorkspacesPage on phones', () => {
     expect(router.state.historyAction).toBe('REPLACE');
   });
 
+  it('Atividade and the drill-in lists set their param with REPLACE and deselect on a second tap', async () => {
+    const router = renderPage();
+    await screen.findByRole('link', { name: /Alpha/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+
+    // Atividade is an inline single-choice list.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Dormente (30d+)' }));
+    await waitFor(() => expect(search(router)).toBe('?atividade=dormente'));
+    expect(router.state.historyAction).toBe('REPLACE');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Dormente (30d+)' }));
+    await waitFor(() => expect(search(router)).toBe(''));
+    expect(router.state.historyAction).toBe('REPLACE');
+
+    // Overrides drills into its own page.
+    fireEvent.click(within(sheet).getByRole('button', { name: /Overrides/ }));
+    fireEvent.click(await within(sheet).findByRole('button', { name: 'Com overrides' }));
+    await waitFor(() => expect(search(router)).toBe('?overrides=sim'));
+    expect(router.state.historyAction).toBe('REPLACE');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Com overrides' }));
+    await waitFor(() => expect(search(router)).toBe(''));
+    expect(router.state.historyAction).toBe('REPLACE');
+  });
+
   it('shows removable chips for the active filters and clears one', async () => {
     const router = renderPage('/admin/workspaces?status=teste&atividade=7d');
     await screen.findByRole('link', { name: /Alpha/ });
