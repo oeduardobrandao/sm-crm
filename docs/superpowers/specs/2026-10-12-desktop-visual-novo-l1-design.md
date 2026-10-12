@@ -25,22 +25,31 @@ with the toggle off, the app is pixel-identical to today.
 | D3 | All new styling lives in one **ordinary stylesheet** (not a CSS `@layer`: an unlayered base rule would beat any layered override), `apps/crm/src/styles/visual-novo.css`, imported after `style.css`. Every selector carries `[data-look='ios']` on `html`, then `.app-container`, and every rule sits inside `@media (min-width: 1101px)`. It restyles shared selectors; pages are not restyled one by one. | ~15 pages share `.header-title`, ~132 files share `.card`, 15 use `StatCardGrid`. One sheet reaches them all, and removing the attribute restores today's look exactly. |
 | D4 | Applies from **1101px** up only: the width where the sidebar is static and the shell is the one the mockup shows. 768-1100px (drawer sidebar, and below 900px no sidebar at all, so no toggle) keeps today's look even with the toggle on. Phone (<768px), Hub and Admin are untouched. | Below 1101px the shell is the tablet/drawer layout (`AppLayout.tsx`, `style.css` tablet block) and the user menu holding the toggle is unreachable under 900px. One clean boundary avoids a half-applied look and overlap with the ≤900px/≤768px overrides. |
 | D5 | Out of scope: sidebar, topbar, Radix overlays (Dialog/Sheet/Popover, which also portal outside `.app-container`, so any `.card` inside them keeps the old look by construction), table internals (rows, headers, cells), page-specific layouts. Table **containers** that are `.card` wrappers (Equipe, Leads, Automações...) are in scope: the wrapper becomes a white group on the grey canvas, the table inside is unchanged. | Level 1 is "content surfaces only". |
-| D6 | Início gets no large page title at this level. Its only `.header-title` is the mid-page "Saúde dos clientes" section (`dashboard/components/ClientHealthMonitor.tsx`), which must stay a section heading. The follow-up Início rework (mockup's "Hoje"/"Minha fila" as list rows plus a real page title) is a separate TSX change after the owner has lived with this. | Adding a title would change the toggle-off look or need a hidden element; not worth it for level 1. |
+| D6 | Only the shared `.card`/`.kpi-*` surfaces change. Surfaces built another way keep today's treatment on the grey canvas: the shadcn `Card` primitive (used only by Importar), and ad-hoc Tailwind `bg-card` / `bg-[var(--card-bg)]` blocks (Ajuda, Ideias and others). The success criterion above applies to pages whose surfaces are `.card`. | Pulling those in means per-page TSX edits; the sweep records which pages stay mixed so the launch PR can decide. |
+| D7 | Início gets no large page title at this level. Its only `.header-title` is the mid-page "Saúde dos clientes" section (`dashboard/components/ClientHealthMonitor.tsx`), which must stay a section heading. The follow-up Início rework (mockup's "Hoje"/"Minha fila" as list rows plus a real page title) is a separate TSX change after the owner has lived with this. | Adding a title would change the toggle-off look or need a hidden element; not worth it for level 1. |
 
 ## The toggle
 
 - **Pre-paint:** the inline script in `apps/crm/index.html` that applies `data-theme` before React
   hydrates also sets `data-look="ios"` when `localStorage.getItem('look') === 'ios'`, inside the same
   function (after its `#/`/`#/login` early return). No flash of the old look on reload.
+- **Stored values:** `localStorage['look']` is `'ios'` (on) or `'classic'` (explicitly off); absent
+  means "never chose". Turning it off writes `'classic'`, never removes the key, so at launch the
+  default can flip to on for "never chose" while every explicit opt-out stays off. Rolling back the
+  launch flips the default back; stored values need no migration.
 - **Module:** `apps/crm/src/lib/visualLook.ts` exports `isVisualNovoOn(): boolean`, which reads the
   `data-look` attribute on `<html>` (the same way `Sidebar.tsx` derives `isDark` from the DOM, so the
   menu can never disagree with what is applied), and `setVisualNovo(on: boolean): void`, which sets or
-  removes the attribute and writes or removes `localStorage['look']` (storage in try/catch; the
-  attribute is applied even when storage throws).
+  removes the attribute and writes `'ios'` or `'classic'` (storage in try/catch; the attribute is
+  applied even when storage throws). The default for "never chose" is one exported constant used by
+  both this module and the pre-paint script's comment, `false` for now.
 - **Control:** a new item in the sidebar user dropdown (`components/layout/Sidebar.tsx`, the
   `user-dropdown-item` list, directly under the theme toggle): icon `ph-bold ph-sparkle`, label
-  `t('sidebar.visualNovo')`, with the existing `user-dropdown-item-check` icon when on. Clicking flips
-  the state through `setVisualNovo`. The phone "Mais"/Ajustes surfaces get no control (D4).
+  `t('sidebar.visualNovo')`, with the existing `user-dropdown-item-check` icon when on. Like the theme
+  toggle, the Sidebar keeps a `useState(isVisualNovoOn)` and the click handler calls `setVisualNovo`
+  and updates that state, so the check flips immediately. No cross-tab sync: the theme toggle has none
+  either, and another open tab picks the look up on its next reload. The phone "Mais"/Ajustes
+  surfaces get no control (D4).
 - **i18n:** `sidebar.visualNovo` in `packages/i18n/locales/pt/common.json` ("Visual novo (beta)") and
   `packages/i18n/locales/en/common.json` ("New look (beta)").
 - **Analytics:** `captureEvent('visual_novo_toggled', { on })` from `lib/analytics.ts` (consent-aware;
@@ -72,13 +81,16 @@ What it restyles, and nothing else:
    `.header-title:has(.conta-identity)` (the Analytics account header keeps its identity layout and
    its `.conta-identity__handle`):
    - `h1, h2`: font-size `--vn-title`, weight 700, `letter-spacing: -0.02em`.
-   - `.header-title` becomes `display: flex; flex-direction: column`; its **direct child** `p` gets
-     `order: -1` (moves above the title, also when the h1 is wrapped in a div as in Entregas and
-     Leads) and the eyebrow style: 13px, weight 600, `--text-light`, `font-family: var(--font-main)`,
-     no letter-spacing, `margin: 0 0 2px`. Nested `p`s are untouched.
+   - Only `.header-title:has(> p)` (a title with a direct-child subtitle) becomes `display: flex;
+     flex-direction: column; align-items: flex-start`; that `p` gets `order: -1` (moves above the
+     title, also when the h1 is wrapped in a div as in Entregas) and the eyebrow style: 13px, weight
+     600, `--text-light`, `font-family: var(--font-main)`, no letter-spacing, `margin: 0 0 2px`. Nested
+     `p`s are untouched. Headers that lay out the title as a row with an inline style (Leads,
+     Financeiro, Ideias, Contratos, Automações, Equipe, Clientes: `h1` plus an info-tooltip icon, no
+     direct-child `p`) keep that row and only get the larger title.
    - `ClientHealthMonitor.tsx`'s `<header className="header ...">` gets the extra class
      `header--section` (no base CSS uses it, so toggle-off is unchanged), keeping "Saúde dos clientes"
-     at today's size (D6).
+     at today's size (D7).
 3. **Cards.** `P .card:not(.card-blue):not(.card-yellow):not(.card-teal):not(.card-dark)`: background
    `--vn-group`, `border-color: transparent`, `box-shadow: none`, `border-radius: --vn-radius-group`.
    The colour variants (no TSX usages today) are left exactly as they are.
@@ -107,10 +119,12 @@ What it restyles, and nothing else:
      the thumb to `[data-slot='tabs-trigger'][data-state='active']`.
 6. **Buttons.** shadcn `Button` gets `data-slot="button"` on the rendered `Comp`
    (`components/ui/button.tsx`), so `asChild` sites pass it through; no base CSS reads it. The sheet
-   sets `border-radius: 999px` on `[data-slot='button']` and on **every `.btn-*` button class defined
-   in `style.css`** (the plan enumerates them: `.btn-primary`, `.btn-secondary`, `.btn-danger`,
-   `.btn-danger-outline`, `.btn-icon`, `.btn-upgrade`, ...), so a `.header-actions` row never mixes
-   pills and 10px corners. Square icon buttons become circles.
+   sets `border-radius: 999px` on `[data-slot='button']` and on exactly these generic classes from
+   `style.css`: `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-danger-outline`, `.btn-icon`,
+   `.btn-icon--danger`, `.btn-upgrade`, so a `.header-actions` row never mixes pills and 10px corners.
+   Square icon buttons become circles. The page-specific classes keep their shapes: `.btn-confirmar`,
+   `.btn-complete-etapa`, `.btn-revert-etapa`, `.btn-edit-workflow`, `.btn-remove-member`,
+   `.btn-instagram-action` (and `--danger`), `.btn-integration`.
 
 ## Risks
 
