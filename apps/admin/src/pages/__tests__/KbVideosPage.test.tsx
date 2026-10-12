@@ -124,11 +124,11 @@ describe('KbVideosPage', () => {
     expect(screen.getAllByText('1:05').length).toBeGreaterThan(0);
   });
 
-  it('"Novo vídeo" links to the new-video route', async () => {
+  it('"Enviar vídeo" links to the new-video route with the series preselected', async () => {
     renderPage();
-    expect(await screen.findByRole('link', { name: /Novo vídeo/ })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /Enviar vídeo/ })).toHaveAttribute(
       'href',
-      '/admin/kb-videos/new',
+      '/admin/kb-videos/new?series=s1',
     );
   });
 
@@ -153,6 +153,7 @@ describe('KbVideosPage', () => {
     await screen.findAllByRole('link', { name: 'Primeiro acesso' });
     expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Selecionar todos os vídeos de Primeiros passos' }),
     );
@@ -175,6 +176,7 @@ describe('KbVideosPage', () => {
     vi.mocked(upsertKbVideo).mockResolvedValue({ video: videos[0] } as never);
     renderPage();
     await screen.findAllByRole('link', { name: 'Primeiro acesso' });
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Selecionar Primeiro acesso' }));
     expect(screen.getByText('1 selecionado')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Despublicar/ }));

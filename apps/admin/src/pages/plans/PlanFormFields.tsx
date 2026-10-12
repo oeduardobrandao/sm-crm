@@ -59,7 +59,7 @@ export function PlanFormFields({
     return (
       <form id={PLAN_FORM_ID} onSubmit={onSubmit} className="flex flex-col gap-5">
         <Panel>
-          <Grid cols="2fr_1fr">
+          <Grid cols="2fr 1fr">
             <Field label="Nome">
               <Input {...text('name')} required className={FIELD} />
             </Field>
@@ -346,7 +346,7 @@ function Section({ title, note, children }: { title: string; note?: string; chil
 
 function Grid({ cols, children }: { cols: string; children: ReactNode }) {
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: cols.replaceAll('_', ' ') }}>
+    <div className="grid gap-3" style={{ gridTemplateColumns: cols }}>
       {children}
     </div>
   );
