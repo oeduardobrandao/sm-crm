@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Movimento e churn</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/mesaas/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; box-sizing: border-box; padding-top: 54px; background: #0a0c0f; color: #e8eaf0; font-family: var(--font-apple); overflow: hidden;">
+<div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(60% 38% at 12% 8%, rgba(234,179,8,0.32), transparent 70%), radial-gradient(55% 40% at 95% 30%, rgba(57,132,255,0.30), transparent 70%), radial-gradient(60% 45% at 10% 78%, rgba(245,66,200,0.24), transparent 70%), radial-gradient(55% 40% at 90% 95%, rgba(106,201,208,0.24), transparent 70%);"></div>
+<div style="position: relative; padding: 0 16px;">
+<div role="tablist" aria-label="Seção" style="padding: 2px; border-radius: 9px; background: rgba(118,118,128,0.24); display: flex; margin: 6px 0 14px;"><button type="button" role="tab" aria-selected="false" style="flex: 1; height: 30px; border: 0; background: transparent; color: #e8eaf0; font-size: 13px; font-family: inherit;">Receita</button><button type="button" role="tab" aria-selected="true" style="flex: 1; height: 30px; border: 0; border-radius: 7px; background: #3a404d; color: #e8eaf0; font-size: 13px; font-weight: 600; font-family: inherit;">Churn</button><button type="button" role="tab" aria-selected="false" style="flex: 1; height: 30px; border: 0; background: transparent; color: #e8eaf0; font-size: 13px; font-family: inherit;">Depósitos</button></div>
+<h2 style="margin: 0 16px 8px; font-size: 13px; font-weight: 600; color: #9ca3af;">MOVIMENTO DO MRR</h2>
+<div style="padding: 14px; border-radius: 16px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);">
+<div role="img" aria-label="Movimento do MRR por mês: entradas acima da linha, perdas abaixo" style="position: relative; height: 130px;">
+<div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 86px; border-top: 1px solid rgba(235,235,245,0.25);"></div>
+<div style="position: absolute; inset: 0; display: flex; gap: 10px;">
+<div style="flex: 1; position: relative;"><span style="position: absolute; left: 0; right: 0; bottom: 44px; height: 40px; border-radius: 4px 4px 0 0; background: #3ecf8e;"></span><span style="position: absolute; left: 0; right: 0; top: 87px; height: 14px; background: #f55a42;"></span></div>
+<div style="flex: 1; position: relative;"><span style="position: absolute; left: 0; right: 0; bottom: 44px; height: 52px; border-radius: 4px 4px 0 0; background: #3ecf8e;"></span><span style="position: absolute; left: 0; right: 0; top: 87px; height: 10px; background: #f55a42;"></span></div>
+<div style="flex: 1; position: relative;"><span style="position: absolute; left: 0; right: 0; bottom: 44px; height: 46px; border-radius: 4px 4px 0 0; background: #3ecf8e;"></span><span style="position: absolute; left: 0; right: 0; top: 87px; height: 22px; background: #f5a342;"></span></div>
+<div style="flex: 1; position: relative;"><span style="position: absolute; left: 0; right: 0; bottom: 44px; height: 64px; border-radius: 4px 4px 0 0; background: #3ecf8e;"></span><span style="position: absolute; left: 0; right: 0; top: 87px; height: 8px; background: #f55a42;"></span></div>
+<div style="flex: 1; position: relative;"><span style="position: absolute; left: 0; right: 0; bottom: 44px; height: 58px; border-radius: 4px 4px 0 0; background: #3ecf8e;"></span><span style="position: absolute; left: 0; right: 0; top: 87px; height: 18px; background: #f55a42;"></span></div>
+<div style="flex: 1; position: relative; opacity: 0.45;"><span style="position: absolute; left: 0; right: 0; bottom: 44px; height: 34px; border-radius: 4px 4px 0 0; background: #3ecf8e;"></span><span style="position: absolute; left: 0; right: 0; top: 87px; height: 6px; background: #f55a42;"></span></div>
+</div>
+</div>
+<div aria-hidden="true" style="display: flex; gap: 10px; margin-top: 4px; font-size: 11px; color: #9ca3af; text-align: center;"><span style="flex: 1;">mai</span><span style="flex: 1;">jun</span><span style="flex: 1;">jul</span><span style="flex: 1;">ago</span><span style="flex: 1;">set</span><span style="flex: 1;">out</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 13px; color: #c7cad1;"><span style="display: flex; align-items: center; gap: 6px;"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #3ecf8e;"></span>Novo + Expansão</span><span style="display: flex; align-items: center; gap: 6px;"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #f5a342;"></span>Inadimplência</span><span style="display: flex; align-items: center; gap: 6px;"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #f55a42;"></span>Churn</span></div>
+</div>
+<h2 style="margin: 20px 16px 8px; font-size: 13px; font-weight: 600; color: #9ca3af;">CHURN</h2>
+<div style="padding: 14px; border-radius: 16px; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);">
+<svg role="img" aria-label="Churn de logos e de receita, entre 1% e 4% ao mês" width="100%" height="90" viewBox="0 0 320 90" preserveAspectRatio="none"><path d="M0 60 L64 50 L128 72 L192 40 L256 58 L320 66" fill="none" stroke="#f472b6" stroke-width="2.5" stroke-linejoin="round"></path><path d="M0 70 L64 64 L128 78 L192 52 L256 70 L320 74" fill="none" stroke="#f55a42" stroke-width="2.5" stroke-dasharray="5 4" stroke-linejoin="round"></path></svg>
+<div style="display: flex; gap: 14px; margin-top: 8px; font-size: 13px; color: #c7cad1;"><span style="display: flex; align-items: center; gap: 6px;"><span aria-hidden="true" style="width: 14px; height: 3px; background: #f472b6;"></span>Churn de logos</span><span style="display: flex; align-items: center; gap: 6px;"><span aria-hidden="true" style="width: 14px; border-top: 3px dashed #f55a42;"></span>Churn de receita</span></div>
+</div>
+<h2 style="margin: 20px 16px 8px; font-size: 13px; font-weight: 600; color: #9ca3af;">POR MÊS</h2>
+<ul style="list-style: none; margin: 0; padding: 0; border-radius: 16px; overflow: hidden; background: rgba(17,21,28,0.55); backdrop-filter: blur(22px) saturate(1.7); border: 1px solid rgba(255,255,255,0.08);">
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px 16px; box-sizing: border-box; color: inherit; text-decoration: none; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="flex-grow: 1;"><span style="display: block; font-size: 17px;">Setembro</span><span style="display: block; font-size: 13px; color: #9ca3af;">churn 2,1% logos · 1,6% receita</span></span><span style="font-size: 15px; font-weight: 600; color: #3ecf8e;">+R$ 760</span><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></a></li>
+<li><a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px 16px; box-sizing: border-box; color: inherit; text-decoration: none;"><span style="flex-grow: 1;"><span style="display: block; font-size: 17px;">Agosto</span><span style="display: block; font-size: 13px; color: #9ca3af;">churn 1,2% logos · 0,9% receita</span></span><span style="font-size: 15px; font-weight: 600; color: #3ecf8e;">+R$ 1.120</span><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></a></li>
+</ul>
+</div>
+<nav aria-label="Abas" style="position: absolute; left: 16px; right: 16px; bottom: 24px; height: 64px; box-sizing: border-box; padding: 4px; border-radius: 32px; background: rgba(18,21,26,0.78); backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: flex;">
+<a href="#" style="flex: 1; color: #9ca3af; text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg><span style="font-size: 10px; font-weight: 500;">Dashboard</span></a>
+<a href="#" aria-current="page" style="flex: 1; border-radius: 28px; background: rgba(232,234,240,0.12); color: #e8eaf0; text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"></path><path d="m22 7-8.5 8.5-5-5L2 17"></path></svg><span style="font-size: 10px; font-weight: 600;">Métricas</span></a>
+<a href="#" style="flex: 1; color: #9ca3af; text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"></path><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"></path><path d="M10 6h4M10 10h4M10 14h4M10 18h4"></path></svg><span style="font-size: 10px; font-weight: 500;">Workspaces</span></a>
+<a href="#" style="flex: 1; color: #9ca3af; text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17"></path><path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9"></path><path d="m2 16 6 6"></path><circle cx="16" cy="9" r="2.9"></circle><circle cx="6" cy="5" r="3"></circle></svg><span style="font-size: 10px; font-weight: 500;">Afiliados</span></a>
+<a href="#" style="flex: 1; color: #9ca3af; text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg><span style="font-size: 10px; font-weight: 500;">Mais</span></a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
