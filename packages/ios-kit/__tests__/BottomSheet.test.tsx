@@ -188,4 +188,68 @@ describe('BottomSheet history (browser router)', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/entregas'));
     expect(idx()).toBe(start);
   });
+  describe('a parent that refuses the close (dirty form, save in flight)', () => {
+    function renderRefusing(repushIfStillOpen: boolean) {
+      const state = { refuse: true };
+      function Refusing() {
+        const [open, setOpen] = useState(false);
+        return (
+          <>
+            <button type="button" onClick={() => setOpen(true)}>
+              Abrir filtros
+            </button>
+            <BottomSheet
+              open={open}
+              onOpenChange={(next) => {
+                if (!next && state.refuse) return;
+                setOpen(next);
+              }}
+              title="Editar"
+              repushIfStillOpen={repushIfStillOpen}
+            >
+              <p>corpo</p>
+            </BottomSheet>
+          </>
+        );
+      }
+      // createMemoryRouter never writes window.history, so history.state.idx would stay
+      // null and no entry would be pushed: use the browser router.
+      window.history.replaceState(null, '', '/admin/plans');
+      const router = createBrowserRouter([{ path: '*', element: <Refusing /> }]);
+      render(<RouterProvider router={router} />);
+      return { state, router };
+    }
+
+    it('repushIfStillOpen: a refused Back keeps a history entry, so the next Back still targets the sheet', async () => {
+      const { state, router } = renderRefusing(true);
+      const start = idx();
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir filtros' }));
+      expect(idx()).toBe(start + 1);
+
+      // First Back is refused: the sheet stays open and its entry is pushed again.
+      // (history.back() is async: let the pop land and the re-push follow before asserting.)
+      act(() => window.history.back());
+      await new Promise((r) => setTimeout(r, 50));
+      expect(idx()).toBe(start + 1);
+      expect(screen.getByRole('dialog', { name: 'Editar' })).toBeInTheDocument();
+
+      // The parent now allows the close: the next Back closes only the sheet.
+      state.refuse = false;
+      act(() => window.history.back());
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(idx()).toBe(start);
+      expect(router.state.location.pathname).toBe('/admin/plans');
+    });
+
+    it('without the prop a refused Back is not re-pushed (CRM behaviour unchanged)', async () => {
+      renderRefusing(false);
+      const start = idx();
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir filtros' }));
+      act(() => window.history.back());
+      await waitFor(() => expect(idx()).toBe(start));
+      await new Promise((r) => setTimeout(r, 30));
+      expect(idx()).toBe(start);
+      expect(screen.getByRole('dialog', { name: 'Editar' })).toBeInTheDocument();
+    });
+  });
 });

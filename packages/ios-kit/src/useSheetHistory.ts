@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useOverlayHistoryEntry } from './useOverlayHistoryEntry';
+import { useOverlayHistoryEntry, type OverlayHistoryOptions } from './useOverlayHistoryEntry';
 
 /** Same slot identity `useOverlayHistoryEntry` uses (`history.state.idx`). */
 function currentSlot(): number | null {
@@ -21,8 +21,12 @@ function currentSlot(): number | null {
  * Where no entry was pushed (a MemoryRouter in tests, or the entry is no longer the
  * current one), `closeThen` closes and runs `fn` right away.
  */
-export function useSheetHistory(open: boolean, onClose: () => void) {
-  useOverlayHistoryEntry(open, onClose);
+export function useSheetHistory(
+  open: boolean,
+  onClose: () => void,
+  options?: OverlayHistoryOptions,
+) {
+  useOverlayHistoryEntry(open, onClose, options);
   const location = useLocation();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;

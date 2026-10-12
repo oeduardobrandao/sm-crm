@@ -47,6 +47,12 @@ export interface BottomSheetProps {
   className?: string;
   overlayClassName?: string;
   id?: string;
+  /**
+   * Re-push the sheet's history entry when a Back-triggered close is refused by the parent
+   * (a dirty-form confirm answered "cancel", a save in flight), so the next Back still
+   * targets the sheet instead of leaving the page. Default off.
+   */
+  repushIfStillOpen?: boolean;
   children: ReactNode;
 }
 
@@ -74,10 +80,15 @@ export function BottomSheet({
   className,
   overlayClassName,
   id,
+  repushIfStillOpen,
   children,
 }: BottomSheetProps) {
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
-  const { closeThen } = useSheetHistory(open, close);
+  const { closeThen } = useSheetHistory(
+    open,
+    close,
+    repushIfStillOpen ? { repushIfStillOpen: true } : undefined,
+  );
   const onCloseAutoFocus = useReturnFocus(open, returnFocusRef);
   const startDetent = initialDetent && detents.includes(initialDetent) ? initialDetent : detents[0];
   const [detent, setDetent] = useState<SheetDetent>(startDetent);
