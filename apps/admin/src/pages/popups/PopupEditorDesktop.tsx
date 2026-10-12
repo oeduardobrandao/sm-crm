@@ -8,7 +8,7 @@ import { Button } from '../../components/ui/button';
 import { MAX_TRIGGER_DAYS, TRIGGER_LABEL, type PopupFormState } from '../popup-form';
 import { PopupPageList } from './PopupPageList';
 import { PopupPreview } from './PopupPreview';
-import { STATUSES, STATUS_LABELS, type PopupEditorModel } from './editor-model';
+import { STATUSES, STATUS_LABELS, splitCtaError, type PopupEditorModel } from './editor-model';
 
 const INPUT =
   'h-9 w-full rounded-[10px] border border-border bg-foreground/[0.06] px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none';
@@ -157,6 +157,7 @@ function PageFields({ m }: { m: PopupEditorModel }) {
 
 function SettingsFields({ m }: { m: PopupEditorModel }) {
   const { form, errors } = m;
+  const ctaErrors = splitCtaError(errors);
   return (
     <div className="flex flex-col gap-3.5">
       <p className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
@@ -183,11 +184,11 @@ function SettingsFields({ m }: { m: PopupEditorModel }) {
             />
           </Field>
         </div>
-        {errors?.cta && <p className={ERROR}>{errors.cta}</p>}
+        {ctaErrors.cta && <p className={ERROR}>{ctaErrors.cta}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field id="popup-secondary" label="Rótulo secundário">
+        <Field id="popup-secondary" label="Rótulo secundário" error={ctaErrors.secondary}>
           <input
             id="popup-secondary"
             className={INPUT}

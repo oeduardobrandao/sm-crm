@@ -16,8 +16,8 @@ vi.mock('../../lib/inline-image', () => ({
   resolveInlineImageUrls: vi.fn(),
 }));
 
-import { createPopup, listPlans, listPopups, listWorkspaces } from '../../lib/api';
-import { resolveInlineImageUrls } from '../../lib/inline-image';
+import { createPopup, listPlans, listPopups, listWorkspaces, updatePopup } from '../../lib/api';
+import { resolveInlineImageUrls, uploadInlineImage } from '../../lib/inline-image';
 import PopupsPage from '../PopupsPage';
 
 const popup = {
@@ -302,5 +302,60 @@ describe('PopupsPage editor', () => {
     expect(screen.getByLabelText('Toda sessão até clicar no CTA')).toBeDisabled();
     expect(screen.getByLabelText('Uma vez por dia')).toBeChecked();
     expect(screen.getByLabelText('Uma vez por dia')).not.toBeDisabled();
+  });
+});
+
+describe('PopupsPage editor: seções e sessão', () => {
+  it('submit com erro só nas configurações, a partir de Páginas, abre Configurações', async () => {
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    openSettings();
+    // CTA global sem URL: erro só de configuração.
+    fireEvent.change(screen.getByLabelText('Rótulo do CTA'), { target: { value: 'Ver' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Páginas' }));
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'P' } });
+    fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'c' } });
+    expect(screen.getByRole('tab', { name: 'Páginas' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
+    expect(await screen.findByText('O CTA precisa de rótulo e URL')).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'Configurações' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(createPopup).not.toHaveBeenCalled();
+  });
+
+  it('upload que termina depois de fechar e abrir outro popup não escreve no novo', async () => {
+    let resolveUpload: (v: { r2Key: string }) => void = () => {};
+    vi.mocked(uploadInlineImage).mockImplementation(
+      () => new Promise((resolve) => (resolveUpload = resolve)) as never,
+    );
+    vi.mocked(updatePopup).mockResolvedValue({ popup } as never);
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(await screen.findByRole('button', { name: /Enviando/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Analytics de Stories' }))[0]);
+    expect(await screen.findByRole('heading', { name: 'Editar popup' })).toBeInTheDocument();
+
+    resolveUpload({ r2Key: 'late-key' });
+    await waitFor(() => expect(uploadInlineImage).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: 'Enviar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Enviando/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remover' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }));
+    await waitFor(() => expect(updatePopup).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(updatePopup).mock.calls[0][0] as {
+      pages: Array<{ image_key: unknown }>;
+    };
+    expect(payload.pages.map((p) => p.image_key)).toEqual([null, null]);
   });
 });

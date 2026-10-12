@@ -38,7 +38,7 @@ const DARK_VARS = {
 
 export type PreviewTheme = 'light' | 'dark';
 
-/** Fundo da prévia: o fundo de página do CRM em cada tema. */
+/** Fundo da prévia: um cinza claro neutro no claro; no escuro, o fundo do CRM com os tokens escuros. */
 export function previewStageStyle(theme: PreviewTheme): React.CSSProperties {
   return theme === 'dark' ? { ...DARK_VARS, background: '#0a0c0f' } : { background: '#eef0f3' };
 }

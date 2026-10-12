@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -168,8 +168,13 @@ function usePopupEditor({
   const [section, setSection] = useState<EditorSection>('pages');
   const [theme, setTheme] = useState<PreviewTheme>('light');
   const [uploading, setUploading] = useState(false);
+  // Uma sessão por abertura do editor: um upload que termina depois de fechar e abrir outro
+  // popup não pode escrever a imagem (nem o "Enviando…") na sessão nova.
+  const session = useRef(0);
 
   const openEditor = (p: GlobalPopup | null) => {
+    session.current += 1;
+    setUploading(false);
     setPopup(p);
     setForm(p ? popupToForm(p) : emptyForm());
     setSelected(0);
@@ -252,14 +257,17 @@ function usePopupEditor({
   };
 
   const handleUpload = async (file: File) => {
+    const started = session.current;
     setUploading(true);
     try {
       const r = await uploadInlineImage(file);
+      if (session.current !== started) return;
       updatePage({ image_key: r.r2Key });
     } catch (err) {
+      if (session.current !== started) return;
       toast.error(err instanceof Error ? err.message : 'Falha ao enviar');
     } finally {
-      setUploading(false);
+      if (session.current === started) setUploading(false);
     }
   };
 
@@ -338,7 +346,9 @@ function usePopupEditor({
     openEditor,
     close,
     handleSubmit,
-    submitting: createMut.isPending || updateMut.isPending,
+    // A exclusão também segura a folha: o `saved()` dela fecha o editor, então não pode
+    // chegar depois de o usuário já ter aberto outro popup.
+    submitting: createMut.isPending || updateMut.isPending || deleteMut.isPending,
     model,
   };
 }

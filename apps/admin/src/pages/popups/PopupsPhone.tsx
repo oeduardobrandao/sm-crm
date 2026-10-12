@@ -69,7 +69,11 @@ export function PopupsPhone({
         description={PAGE_DESCRIPTION}
         phoneActions={
           <>
-            <PhoneIconButton label="Buscar popups" onClick={() => setSearchOpen((v) => !v)}>
+            <PhoneIconButton
+              label="Abrir busca"
+              aria-expanded={showSearch}
+              onClick={() => setSearchOpen((v) => !v)}
+            >
               <Search aria-hidden="true" />
             </PhoneIconButton>
             <PhoneIconButton label="Novo popup" variant="ink" onClick={onCreate}>

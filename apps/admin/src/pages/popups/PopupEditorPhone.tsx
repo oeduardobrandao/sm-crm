@@ -7,7 +7,13 @@ import { TargetPicker } from '../../components/TargetPicker';
 import { MAX_TRIGGER_DAYS, TRIGGER_LABEL, type PopupFormState } from '../popup-form';
 import { PopupPageList } from './PopupPageList';
 import { PopupPreview } from './PopupPreview';
-import { STATUSES, STATUS_LABELS, type EditorSection, type PopupEditorModel } from './editor-model';
+import {
+  STATUSES,
+  STATUS_LABELS,
+  splitCtaError,
+  type EditorSection,
+  type PopupEditorModel,
+} from './editor-model';
 
 const SECTION_HEADER = 'phone-group__header';
 const ERROR = 'mx-4 -mt-3 mb-4 text-[13px] text-destructive';
@@ -145,6 +151,7 @@ function PagePanel({ m }: { m: PopupEditorModel }) {
 
 function SettingsPanel({ m }: { m: PopupEditorModel }) {
   const { form, errors } = m;
+  const ctaErrors = splitCtaError(errors);
   return (
     <>
       <GroupedList header="CTA do popup" footer="Vale para todas as páginas.">
@@ -159,7 +166,7 @@ function SettingsPanel({ m }: { m: PopupEditorModel }) {
         />
         <FormRow
           label="URL"
-          error={errors?.cta}
+          error={ctaErrors.cta}
           input={{
             id: 'popup-cta-url',
             value: form.cta_url,
@@ -170,6 +177,7 @@ function SettingsPanel({ m }: { m: PopupEditorModel }) {
         />
         <FormRow
           label="Secundário"
+          error={ctaErrors.secondary}
           input={{
             id: 'popup-secondary',
             value: form.secondary_label,

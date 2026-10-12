@@ -64,7 +64,7 @@ export function PopupPageList({
             className={
               vertical
                 ? 'flex flex-col gap-0.5'
-                : '-my-1 flex min-w-0 flex-1 gap-2 overflow-x-auto py-1'
+                : '-my-1.5 flex min-w-0 flex-1 gap-2 overflow-x-auto py-1.5'
             }
           >
             {pages.map((p, i) => (
@@ -134,8 +134,6 @@ function PageTab({
     opacity: isDragging ? 0.5 : 1,
   };
   const label = page.title.trim() ? page.title.trim().slice(0, 18) : 'Sem título';
-  // O anel de erro precisa ganhar explicitamente de "active": duas classes ring-* de
-  // cores diferentes competem pela ordem no stylesheet, não pela ordem no className.
   const ring = hasError ? 'ring-1 ring-destructive' : '';
 
   const handle = (
@@ -145,6 +143,8 @@ function PageTab({
       data-dnd-handle=""
       className={cn(
         'flex shrink-0 cursor-grab items-center',
+        // iPhone: alvo de ~44pt em volta do ícone, sem crescer a pílula de 34px.
+        !vertical && '-my-[5px] -ml-2 h-11 w-10 justify-center',
         vertical || !active ? 'text-muted-foreground' : 'text-background/60',
       )}
       aria-label={`Reordenar página ${index + 1}`}

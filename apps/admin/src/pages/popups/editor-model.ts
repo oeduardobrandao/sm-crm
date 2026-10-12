@@ -1,5 +1,18 @@
 import type { DragEndEvent } from '@dnd-kit/core';
 import type { PageForm, PopupFormErrors, PopupFormState } from '../popup-form';
+
+/**
+ * `validateForm` põe o erro do rótulo secundário em `errors.cta` (mesmo campo do CTA global).
+ * Só a exibição separa os dois, para o erro aparecer ao lado do campo certo.
+ */
+export function splitCtaError(errors: PopupFormErrors | null): {
+  cta?: string;
+  secondary?: string;
+} {
+  const msg = errors?.cta;
+  if (!msg) return {};
+  return msg.startsWith('Rótulo secundário') ? { secondary: msg } : { cta: msg };
+}
 import type { PreviewTheme } from './popup-preview';
 
 /** Seções do editor. `preview` só existe no iPhone; no desktop a prévia é uma coluna fixa. */
