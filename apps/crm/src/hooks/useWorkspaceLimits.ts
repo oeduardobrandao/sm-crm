@@ -57,6 +57,9 @@ export interface FeatureFlags {
    *  read it as `features?.feature_hub_pauta === true`, never through hasFeature
    *  (which treats a missing key as on). */
   feature_hub_pauta?: boolean;
+  /** Rollout flag for the desktop Vidro shell. Optional on purpose: read only as
+   *  `features?.feature_crm_vidro === true`. */
+  feature_crm_vidro?: boolean;
 }
 
 interface WorkspaceLimitsResponse {
@@ -90,7 +93,7 @@ export function useWorkspaceLimits() {
   // null workspace — outside an AuthProvider (e.g. in isolated component tests).
   const auth = useContext(AuthContext);
   const workspaceId = auth?.profile?.conta_id ?? null;
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isSuccess } = useQuery({
     queryKey: ['workspace-limits', workspaceId],
     queryFn: fetchWorkspaceLimits,
     staleTime: 5 * 60 * 1000,
@@ -102,6 +105,7 @@ export function useWorkspaceLimits() {
     features: data?.features ?? null,
     planName: data?.plan_name ?? null,
     isLoading,
+    isSuccess,
     isUnlimited: !isLoading && data?.limits === null,
   };
 }

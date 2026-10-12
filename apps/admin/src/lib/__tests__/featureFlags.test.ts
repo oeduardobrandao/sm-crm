@@ -9,6 +9,8 @@ describe('flags de plano no Admin', () => {
     expect(FEATURE_FLAG_KEYS).toContain('feature_multiplatform');
     expect(FEATURE_FLAG_KEYS).toContain('feature_hub_pauta');
     expect(FEATURE_FLAG_LABELS.feature_hub_pauta).toBe('Hub: visual Pauta');
+    expect(FEATURE_FLAG_KEYS).toContain('feature_crm_vidro');
+    expect(FEATURE_FLAG_LABELS.feature_crm_vidro).toBe('Visual vidro (CRM desktop)');
     for (const key of FEATURE_FLAG_KEYS) {
       expect(FEATURE_FLAG_LABELS[key], `sem rótulo para ${key}`).toBeTruthy();
     }
