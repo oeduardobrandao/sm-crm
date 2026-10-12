@@ -1,6 +1,7 @@
-import { createPortal } from 'react-dom';
 import { Eye, EyeOff, X } from 'lucide-react';
 import type { PublishStatus } from '../lib/kb-bulk';
+import { useIsPhone } from '../hooks/useIsPhone';
+import { SelectionBar } from './shell/SelectionBar';
 import { Button } from './ui/button';
 
 interface Props {
@@ -11,36 +12,46 @@ interface Props {
 }
 
 /**
- * Bulk publish/unpublish toolbar for the Central de Ajuda lists. Renders nothing with no selection.
- * Floats over the page (portaled to body, so no transformed ancestor can trap the fixed position)
- * instead of sitting in the flow: appearing in the flow would push the list down under the cursor
- * right after the first checkbox click. From md up it centres on the content column beside
- * AdminLayout's 220px sidebar, and z-30 keeps it under the mobile drawer and its backdrop.
+ * Bulk publish/unpublish actions for the Central de Ajuda lists, on the shell's `SelectionBar`:
+ * a floating glass bar centred on the content on desktop, the kit's bottom bar above the tab bar
+ * on phones. Renders nothing with no selection. Render it outside any Card/GlassPanel (their
+ * glass filter would trap the fixed position) and after the list (the phone bar leaves an
+ * in-flow spacer where it is rendered).
+ *
+ * On phones the bar has to fit 375pt next to the count, so the actions drop their icons and
+ * "Limpar seleção" stays out: both lists' "Concluir" header button clears the selection there.
  */
 export function KbBulkBar({ count, pending, onSetStatus, onClear }: Props) {
-  if (count === 0) return null;
-  return createPortal(
-    <div
-      role="toolbar"
-      aria-label="Ações em massa"
-      className="glass-surface fixed bottom-6 left-1/2 z-30 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 md:left-[calc(50%+110px)] md:w-[calc(100%-220px-4rem)] flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2.5 shadow-lg"
-    >
-      <span className="mr-auto text-sm font-medium tabular-nums" aria-live="polite">
-        {count === 1 ? '1 selecionado' : `${count} selecionados`}
-      </span>
-      <Button size="sm" disabled={pending} onClick={() => onSetStatus('published')}>
-        <Eye />
-        Publicar
+  const isPhone = useIsPhone();
+  const size = isPhone ? 'lg' : 'default';
+  const phonePill = isPhone ? 'h-10 px-4 text-[15px]' : undefined;
+  return (
+    <SelectionBar count={count}>
+      <Button
+        size={size}
+        className={phonePill}
+        disabled={pending}
+        onClick={() => onSetStatus('published')}
+      >
+        {!isPhone && <Eye aria-hidden="true" />}
+        {`Publicar ${count}`}
       </Button>
-      <Button size="sm" variant="outline" disabled={pending} onClick={() => onSetStatus('draft')}>
-        <EyeOff />
+      <Button
+        size={size}
+        variant="secondary"
+        className={phonePill}
+        disabled={pending}
+        onClick={() => onSetStatus('draft')}
+      >
+        {!isPhone && <EyeOff aria-hidden="true" />}
         Despublicar
       </Button>
-      <Button size="sm" variant="ghost" disabled={pending} onClick={onClear}>
-        <X />
-        Limpar seleção
-      </Button>
-    </div>,
-    document.body,
+      {!isPhone && (
+        <Button variant="secondary" disabled={pending} onClick={onClear}>
+          <X aria-hidden="true" />
+          Limpar seleção
+        </Button>
+      )}
+    </SelectionBar>
   );
 }
