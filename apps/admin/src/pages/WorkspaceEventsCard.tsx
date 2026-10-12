@@ -31,6 +31,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { listWorkspaceEvents } from '../lib/api';
 import { eventMeta, eventDescription, filterActions, FILTERABLE_TYPES } from './workspace-events';
+import { useIsPhone } from '../hooks/useIsPhone';
+import { EventsPhone } from './workspace-detail/EventsPhone';
 import { EmptyState } from '../components/EmptyState';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -82,7 +84,12 @@ const PAGE_SIZE = 15;
 const ALL = '__all__';
 const HEAD_CLASS = 'text-[0.7rem] uppercase tracking-wider';
 
+/**
+ * Paged event history of a workspace. Desktop: a panel with a table. Phone: a row for the
+ * caller's GroupedList that opens a sheet with the same filter, list and paging.
+ */
 export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: string }) {
+  const isPhone = useIsPhone();
   const [page, setPage] = useState(0);
   const [filterType, setFilterType] = useState('');
 
@@ -111,8 +118,29 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
     timeAgo: formatDistanceToNow(new Date(evt.created_at), { addSuffix: true, locale: ptBR }),
   }));
 
+  const changeFilter = (value: string) => {
+    setFilterType(value);
+    setPage(0);
+  };
+
+  if (isPhone) {
+    return (
+      <EventsPhone
+        rows={rows.map((r) => ({ ...r, Icon: ICON_MAP[r.meta.icon] ?? Activity }))}
+        total={total}
+        isLoading={isLoading}
+        filterType={filterType}
+        onFilterChange={changeFilter}
+        page={page}
+        totalPages={totalPages}
+        onPrev={() => setPage((p) => Math.max(0, p - 1))}
+        onNext={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+      />
+    );
+  }
+
   return (
-    <Card className="mt-6 min-w-0">
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle>Histórico de eventos ({total})</CardTitle>
         <span id="event-type-label" className="sr-only">
@@ -120,10 +148,7 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
         </span>
         <Select
           value={filterType === '' ? ALL : filterType}
-          onValueChange={(v) => {
-            setFilterType(v === ALL ? '' : v);
-            setPage(0);
-          }}
+          onValueChange={(v) => changeFilter(v === ALL ? '' : v)}
         >
           <SelectTrigger
             id="event-type-trigger"
