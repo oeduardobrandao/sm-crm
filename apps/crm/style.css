@@ -3709,7 +3709,7 @@ select.form-input option {
     z-index: 30;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 10px;
     height: var(--phone-header-height);
     padding: max(
@@ -15870,6 +15870,13 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
   justify-content: space-between;
   min-height: 44px;
   gap: 10px;
+}
+/* Mesaas mark at the left of a phone header row (BrandMark). */
+.phone-brand-mark {
+  display: block;
+  flex-shrink: 0;
+  width: auto;
+  height: 22px;
 }
 .phone-large-title__leading,
 .phone-large-title__trailing {

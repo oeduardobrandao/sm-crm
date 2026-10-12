@@ -21,7 +21,8 @@ import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
-import { LargeTitleHeader, PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
+import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
+import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { useSheetActions } from '@/components/mobile/sheetActions';
 import { SAVED_VIEW_NAME_MAX } from '@/store/savedViews';
@@ -79,8 +80,9 @@ export interface EntregasPhoneHeaderProps {
 }
 
 /**
- * Entregas header on phones (EntregasKanban + EntregasVistas mockups): Buscar,
- * Filtros (with the active count) and Novo in the toolbar; the large title opens
+ * Entregas header on phones (EntregasKanban + EntregasVistas mockups), the same
+ * PhonePageHeader as every root screen: Buscar, Filtros (with the active count) and
+ * Novo in the toolbar, before the shell's help links and bell; the large title opens
  * the views menu (saved views and their management, Exibir como, Mostrar,
  * Templates, Como funciona); the view button and the Etapas / Status control
  * under the counters; then the active filter chips with Limpar.
@@ -122,9 +124,9 @@ export function EntregasPhoneHeader(props: EntregasPhoneHeaderProps) {
 
   return (
     <>
-      <LargeTitleHeader
+      <PhonePageHeader
         className="phone-ent-header"
-        trailing={
+        actions={
           <>
             {showFilters && (
               <PhoneIconButton
@@ -241,7 +243,7 @@ export function EntregasPhoneHeader(props: EntregasPhoneHeaderProps) {
             </button>
           </ChipRow>
         )}
-      </LargeTitleHeader>
+      </PhonePageHeader>
 
       <ActionSheet
         open={newOpen}

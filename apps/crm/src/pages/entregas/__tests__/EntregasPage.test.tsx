@@ -3,6 +3,12 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The phone header now carries the shell's help links and bell (PhonePageHeader); their
+// own suites cover them, and they need the KB query and notifications.
+vi.mock('@/components/layout/PhoneShellHeader', () => ({
+  PhoneShellActions: () => <div data-testid="shell-actions" />,
+}));
+
 vi.mock('../hooks/useEntregasData', () => ({
   useEntregasData: vi.fn(),
 }));
