@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -68,6 +68,12 @@ beforeEach(() => {
   vi.mocked(createPopup).mockResolvedValue({ popup } as never);
 });
 
+/** As abas das páginas do popup (o segmentado Páginas · Configurações também é uma tablist). */
+const pageTabs = () =>
+  within(screen.getByRole('tablist', { name: 'Páginas do popup' })).getAllByRole('tab');
+/** Os campos que valem para o popup todo ficam na seção Configurações do editor. */
+const openSettings = () => fireEvent.click(screen.getByRole('tab', { name: 'Configurações' }));
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -129,7 +135,7 @@ describe('PopupsPage editor', () => {
     await screen.findByText('Analytics de Stories');
     fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
     expect(screen.getByRole('heading', { name: 'Novo popup' })).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(1);
+    expect(pageTabs()).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
     expect(await screen.findByText('Título é obrigatório')).toBeInTheDocument();
     expect(createPopup).not.toHaveBeenCalled();
@@ -143,10 +149,11 @@ describe('PopupsPage editor', () => {
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Página 1' } });
     fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'corpo 1' } });
     fireEvent.click(screen.getByRole('button', { name: '+ Página' }));
-    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(pageTabs()).toHaveLength(2);
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Página 2' } });
     fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'corpo 2' } });
 
+    openSettings();
     fireEvent.click(screen.getByLabelText(/Exigir confirmação/));
     expect(screen.getByLabelText('Toda sessão até clicar no CTA')).toBeDisabled();
 
@@ -215,7 +222,7 @@ describe('PopupsPage editor', () => {
     renderPage();
     fireEvent.click(await screen.findByText('Analytics de Stories'));
     expect(screen.getByRole('heading', { name: 'Editar popup' })).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('tab')[1]);
+    fireEvent.click(pageTabs()[1]);
     expect(screen.getByRole('heading', { level: 2, name: 'Segunda' })).toBeInTheDocument();
   });
 
@@ -252,6 +259,7 @@ describe('PopupsPage editor', () => {
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'P' } });
     fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'c' } });
 
+    openSettings();
     expect(screen.getByLabelText('Gatilho')).toHaveValue('');
     expect(screen.queryByLabelText('Dias antes do fim do teste')).toBeNull();
     expect(
@@ -288,6 +296,7 @@ describe('PopupsPage editor', () => {
     renderPage();
     await screen.findByText('Analytics de Stories');
     fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    openSettings();
     fireEvent.click(screen.getByLabelText('Uma vez por dia'));
     fireEvent.click(screen.getByLabelText(/Exigir confirmação/));
     expect(screen.getByLabelText('Toda sessão até clicar no CTA')).toBeDisabled();

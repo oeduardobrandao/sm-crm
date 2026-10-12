@@ -1,24 +1,8 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, Upload, Loader2, GripVertical, X } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  horizontalListSortingStrategy,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { PopupCard, defaultSecondaryLabel } from '@mesaas/ui/PopupCard';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { defaultSecondaryLabel } from '@mesaas/ui/PopupCard';
 import {
   listPopups,
   createPopup,
@@ -27,17 +11,12 @@ import {
   listPlans,
   listWorkspaces,
   type GlobalPopup,
-  type PopupTrigger,
 } from '../lib/api';
 import { uploadInlineImage, resolveInlineImageUrls } from '../lib/inline-image';
-import { sanitizeExternalUrl } from '../lib/security';
-import { TargetPicker } from '../components/TargetPicker';
-import { RowButton } from '../components/RowLink';
+import { useIsPhone } from '../hooks/useIsPhone';
+import { AdminFormSheet } from '../components/shell/AdminFormSheet';
 import {
   FREQUENCY_LABEL,
-  MAX_PAGES,
-  MAX_TRIGGER_DAYS,
-  TRIGGER_LABEL,
   addPage,
   emptyForm,
   formToPayload,
@@ -52,55 +31,18 @@ import {
   type PopupFormErrors,
   type PopupFormState,
 } from './popup-form';
+import { PopupsDesktop } from './popups/PopupsDesktop';
+import { PopupsPhone } from './popups/PopupsPhone';
+import { PopupEditorBody } from './popups/PopupEditorBody';
+import type { PopupRowView } from './popups/list-model';
+import type { EditorSection, NamedOption, PopupEditorModel } from './popups/editor-model';
+import type { PreviewTheme } from './popups/popup-preview';
 
-const STATUSES = ['draft', 'active', 'archived'] as const;
-const STATUS_LABELS: Record<string, string> = {
-  draft: 'Rascunho',
-  active: 'Ativo',
-  archived: 'Arquivado',
-};
-const INPUT =
-  'w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary';
-const LABEL = 'block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5';
-
-/** Espelha o sanitizeUrl do CRM (apps/crm/src/utils/security.ts): `//host` (protocol-relative)
- *  vira '#'; caminhos internos (`/`, `./`, `../`, `#`) passam direto; o resto vai para
- *  sanitizeExternalUrl (só http(s) sem credenciais). */
-function previewHref(href: string): string {
-  // O browser remove tab/LF/CR de QUALQUER posição antes de interpretar a URL (WHATWG),
-  // então `/\t/evil.com` vira `//evil.com`. Normalizar igual antes de decidir. Links markdown
-  // chegam aqui com esses caracteres já percent-encoded (`%09`/`%0a`/`%0d`) pelo parser de
-  // origem (micromark, via mdast-util-to-hast normalizeUri), então a mesma limpeza precisa
-  // cobrir as duas formas -- igual já valia para `\` cru vs. `%5c`.
-  const stripped = href.replace(/[\t\r\n]|%0[9ad]/gi, '');
-  // `//host` é protocol-relative; o browser trata `\` como `/` em http(s), então `/\host` também é.
-  // Links markdown chegam aqui já com o `\` percent-encoded (`%5C`) pelo parser de origem
-  // (micromark), então o mesmo prefixo bloqueado precisa cobrir a forma crua e a codificada.
-  if (/^\/(?:[/\\]|%5c)/i.test(stripped)) return '#';
-  if (
-    stripped.startsWith('/') ||
-    stripped.startsWith('./') ||
-    stripped.startsWith('../') ||
-    stripped.startsWith('#')
-  ) {
-    return stripped;
-  }
-  return sanitizeExternalUrl(stripped);
-}
-
-const DARK_VARS = {
-  '--card-bg': '#12151a',
-  '--text-main': '#e8eaf0',
-  '--text-muted': '#9ca3af',
-  '--border-color': '#1e2430',
-  '--cta-bg': '#e8eaf0',
-  '--cta-fg': '#12151a',
-} as React.CSSProperties;
+const FORM_ID = 'popup-form';
 
 export default function PopupsPage() {
+  const isPhone = useIsPhone();
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState<GlobalPopup | null>(null);
-  const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
 
@@ -114,11 +56,11 @@ export default function PopupsPage() {
     queryFn: () => listWorkspaces({ limit: 500 }),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin', 'popups'] });
-  const closeForm = () => {
-    setShowForm(false);
-    setEditing(null);
-  };
+  const editor = usePopupEditor({
+    plans: plansData?.plans,
+    workspaces: workspacesData?.workspaces,
+    onSaved: () => queryClient.invalidateQueries({ queryKey: ['admin', 'popups'] }),
+  });
 
   const popups = (data?.popups || []).filter(
     (p) => !search || p.pages.some((pg) => pg.title.toLowerCase().includes(search.toLowerCase())),
@@ -127,12 +69,11 @@ export default function PopupsPage() {
   const isExpired = (p: GlobalPopup) =>
     p.status === 'active' && p.ends_at && new Date(p.ends_at) < new Date();
 
-  const badge = (p: GlobalPopup) => {
-    if (isExpired(p)) return { label: 'EXPIRADO', cls: 'text-dim-foreground bg-secondary' };
-    if (p.status === 'active') return { label: 'ATIVO', cls: 'text-success bg-success/15' };
-    if (p.status === 'draft')
-      return { label: 'RASCUNHO', cls: 'text-muted-foreground bg-secondary' };
-    return { label: 'ARQUIVADO', cls: 'text-dim-foreground bg-secondary' };
+  const status = (p: GlobalPopup): PopupRowView['status'] => {
+    if (isExpired(p)) return { label: 'EXPIRADO', variant: 'neutral' };
+    if (p.status === 'active') return { label: 'ATIVO', variant: 'success' };
+    if (p.status === 'draft') return { label: 'RASCUNHO', variant: 'neutral' };
+    return { label: 'ARQUIVADO', variant: 'neutral' };
   };
 
   const schedule = (p: GlobalPopup) => {
@@ -154,172 +95,95 @@ export default function PopupsPage() {
   const frequencyLabel = (p: GlobalPopup) =>
     `${FREQUENCY_LABEL[p.frequency] ?? p.frequency}${p.require_ack ? ' · confirmação' : ''}`;
 
+  const rows: PopupRowView[] = popups.map((p) => ({
+    popup: p,
+    title: p.pages[0]?.title ?? 'Popup sem título',
+    pageCount: p.pages.length,
+    pagesLabel: `${p.pages.length} ${p.pages.length === 1 ? 'página' : 'páginas'}`,
+    metrics: `vistos ${p.counts.seen} · fechados ${p.counts.closed} · cta ${p.counts.cta} · confirmados ${p.counts.ack}`,
+    frequency: frequencyLabel(p),
+    target: targetLabel(p),
+    trigger: triggerChipLabel(p.trigger, p.trigger_days),
+    schedule: schedule(p),
+    status: status(p),
+    imageKey: p.pages[0]?.image_key ?? null,
+    draft: p.status === 'draft',
+  }));
+
+  const viewProps = {
+    rows,
+    isLoading,
+    statusFilter,
+    onStatusFilterChange: setStatusFilter,
+    search,
+    onSearchChange: setSearch,
+    onCreate: () => editor.openEditor(null),
+    onEdit: (p: GlobalPopup) => editor.openEditor(p),
+  };
+
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-        <div>
-          <h1 className="font-sf text-2xl font-bold mb-1">Popups</h1>
-          <p className="text-sm text-muted-foreground">
-            Avisos em modal exibidos no máximo uma vez por sessão dentro do CRM
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowForm(true);
-          }}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors"
-        >
-          <Plus size={16} /> Novo popup
-        </button>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <input
-          type="text"
-          placeholder="Buscar popups…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground focus:outline-none focus:border-primary"
-        >
-          <option value="">Todos os status</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="bg-card border border-border rounded-2xl p-5">
-        <div className="hidden md:grid grid-cols-[2fr_0.8fr_1fr_1fr_0.7fr_0.4fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Título</span>
-          <span>Frequência</span>
-          <span>Público</span>
-          <span>Agendamento</span>
-          <span>Status</span>
-          <span></span>
-        </div>
-
-        {isLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
-        ) : popups.length === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">Nenhum popup encontrado.</p>
-        ) : (
-          popups.map((p) => {
-            const b = badge(p);
-            const first = p.pages[0];
-            const metrics = `vistos ${p.counts.seen} · fechados ${p.counts.closed} · cta ${p.counts.cta} · confirmados ${p.counts.ack}`;
-            const open = () => {
-              setEditing(p);
-              setShowForm(true);
-            };
-            return (
-              <div
-                key={p.id}
-                onClick={open}
-                className={`cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 min-w-0 md:grid md:grid-cols-[2fr_0.8fr_1fr_1fr_0.7fr_0.4fr] md:gap-2 md:items-center ${p.status === 'draft' ? 'opacity-50' : ''}`}
-              >
-                <div className="min-w-0 flex items-center gap-3">
-                  <PageThumb imageKey={first?.image_key ?? null} />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate flex items-center gap-2">
-                      <RowButton onClick={open} className="truncate text-sm">
-                        {first?.title ?? 'Popup sem título'}
-                      </RowButton>
-                      {p.pages.length > 1 && (
-                        <span className="text-[0.65rem] font-semibold px-1.5 py-0.5 rounded-sm bg-secondary text-muted-foreground shrink-0">
-                          {p.pages.length} {p.pages.length === 1 ? 'página' : 'páginas'}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5 truncate">{metrics}</div>
-                  </div>
-                </div>
-                {/* Mobile: os mesmos nós viram uma linha de meta; `md:contents` devolve cada
-                    span à sua coluna do grid no desktop, sem duplicar texto algum. */}
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground md:mt-0 md:contents">
-                  <span className="md:text-sm">{frequencyLabel(p)}</span>
-                  <span className="md:text-sm md:truncate">
-                    {targetLabel(p)}
-                    {triggerChipLabel(p.trigger, p.trigger_days) && (
-                      <span className="ml-1.5 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded-sm bg-warning/15 text-warning whitespace-nowrap">
-                        {triggerChipLabel(p.trigger, p.trigger_days)}
-                      </span>
-                    )}
-                  </span>
-                  <span className="hidden md:block md:text-sm">{schedule(p)}</span>
-                  <span
-                    className={`text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm w-fit ${b.cls}`}
-                  >
-                    {b.label}
-                  </span>
-                  <span className="hidden md:block text-muted-foreground hover:text-primary">
-                    <Pencil size={14} />
-                  </span>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {showForm && (
-        <PopupEditor
-          popup={editing}
-          plans={plansData?.plans}
-          workspaces={workspacesData?.workspaces}
-          onClose={closeForm}
-          onSaved={() => {
-            invalidate();
-            closeForm();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function PageThumb({ imageKey }: { imageKey: string | null }) {
-  const { data: url } = useQuery({
-    queryKey: ['admin', 'popup-thumb', imageKey],
-    queryFn: () => resolveInlineImageUrls([imageKey!]).then((m) => m[imageKey!] ?? ''),
-    enabled: Boolean(imageKey),
-    staleTime: 30 * 60 * 1000,
-  });
-  return (
-    <div className="w-9 h-6 rounded bg-secondary shrink-0 overflow-hidden">
-      {url && <img src={url} alt="" className="w-full h-full object-cover" />}
-    </div>
+    <>
+      {isPhone ? <PopupsPhone {...viewProps} /> : <PopupsDesktop {...viewProps} />}
+      <AdminFormSheet
+        open={editor.open}
+        onOpenChange={(next) => {
+          if (!next) editor.close();
+        }}
+        title={editor.model.isEditing ? 'Editar popup' : 'Novo popup'}
+        formId={FORM_ID}
+        submitLabel={editor.model.isEditing ? 'Atualizar' : 'Criar'}
+        submitting={editor.submitting}
+        width="xl"
+      >
+        {/* noValidate: a validação é toda nossa (validateForm). Sem isso o min/max do campo de dias
+            faz o browser bloquear o submit com a bolha nativa em vez de mostrar o erro inline. */}
+        <form id={FORM_ID} onSubmit={editor.handleSubmit} noValidate>
+          <PopupEditorBody model={editor.model} />
+        </form>
+      </AdminFormSheet>
+    </>
   );
 }
 
 // ─── Editor ──────────────────────────────────────────────────
 
-interface EditorProps {
-  popup: GlobalPopup | null;
-  plans: { id: string; name: string }[] | undefined;
-  workspaces: { id: string; name: string }[] | undefined;
-  onClose: () => void;
+/**
+ * Estado e handlers do editor. Vivem na página, não dentro da folha: cruzar 768px com a
+ * folha aberta troca Dialog por BottomSheet (remonta o conteúdo), mas o rascunho fica aqui.
+ */
+function usePopupEditor({
+  plans,
+  workspaces,
+  onSaved,
+}: {
+  plans: NamedOption[] | undefined;
+  workspaces: NamedOption[] | undefined;
   onSaved: () => void;
-}
-
-function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps) {
-  const [form, setForm] = useState<PopupFormState>(() =>
-    popup ? popupToForm(popup) : emptyForm(),
-  );
+}) {
+  const [open, setOpen] = useState(false);
+  const [popup, setPopup] = useState<GlobalPopup | null>(null);
+  const [form, setForm] = useState<PopupFormState>(() => emptyForm());
   const [selected, setSelected] = useState(0);
   const [errors, setErrors] = useState<PopupFormErrors | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [section, setSection] = useState<EditorSection>('pages');
+  const [theme, setTheme] = useState<PreviewTheme>('light');
   const [uploading, setUploading] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const titleId = useId();
-  const bodyId = useId();
+
+  const openEditor = (p: GlobalPopup | null) => {
+    setPopup(p);
+    setForm(p ? popupToForm(p) : emptyForm());
+    setSelected(0);
+    setErrors(null);
+    setSection('pages');
+    setTheme('light');
+    setOpen(true);
+  };
+  // `popup` fica até o próximo openEditor: o título não troca durante a animação de saída.
+  const close = () => setOpen(false);
+  const saved = () => {
+    onSaved();
+    close();
+  };
 
   const page = form.pages[Math.min(selected, form.pages.length - 1)];
   const pageIndex = form.pages.indexOf(page);
@@ -331,7 +195,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
   const { data: imageUrls } = useQuery({
     queryKey: ['admin', 'popup-images', imageKeys],
     queryFn: () => resolveInlineImageUrls(imageKeys),
-    enabled: imageKeys.length > 0,
+    enabled: open && imageKeys.length > 0,
     staleTime: 30 * 60 * 1000,
   });
 
@@ -339,7 +203,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
     mutationFn: () => createPopup(formToPayload(form)),
     onSuccess: () => {
       toast.success('Popup criado');
-      onSaved();
+      saved();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -347,7 +211,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
     mutationFn: () => updatePopup({ popup_id: popup!.id, ...formToPayload(form) }),
     onSuccess: () => {
       toast.success('Popup atualizado');
-      onSaved();
+      saved();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -355,7 +219,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
     mutationFn: () => deletePopup(popup!.id),
     onSuccess: () => {
       toast.success('Popup excluído');
-      onSaved();
+      saved();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -373,8 +237,14 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
     const errs = validateForm(form);
     setErrors(errs);
     if (errs) {
+      // Mostra a seção do primeiro erro: um erro numa aba escondida seria invisível.
       const firstPage = Object.keys(errs.pages).map(Number)[0];
-      if (firstPage !== undefined) setSelected(firstPage);
+      if (firstPage !== undefined) {
+        setSelected(firstPage);
+        setSection('pages');
+      } else {
+        setSection('settings');
+      }
       return;
     }
     if (popup) updateMut.mutate();
@@ -402,10 +272,12 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
     setErrors(null);
   };
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const handleAddPage = () => {
+    setForm((f) => addPage(f));
+    setSelected(form.pages.length);
+    setErrors(null);
+  };
+
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -425,575 +297,48 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
   const anyCta = hasCta || form.pages.some((p) => p.cta_label.trim() && p.cta_url.trim());
   const last = form.pages[form.pages.length - 1];
   const lastHasCta = Boolean((last.cta_label.trim() && last.cta_url.trim()) || hasCta);
-  const secondaryLabel =
-    form.secondary_label.trim() || defaultSecondaryLabel(form.require_ack, lastHasCta);
-  const pending = createMut.isPending || updateMut.isPending;
 
-  return (
-    <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card border border-border rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto mx-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* noValidate: a validação é toda nossa (validateForm). Sem isso o min/max do campo de dias
-            faz o browser bloquear o submit com a bolha nativa em vez de mostrar o erro inline. */}
-        <form
-          onSubmit={handleSubmit}
-          noValidate
-          className="grid grid-cols-1 md:grid-cols-[1.15fr_0.85fr]"
-        >
-          {/* ── Coluna do formulário ── */}
-          <div className="p-5 md:p-7 flex flex-col gap-5 md:border-r border-border">
-            <h2 className="font-sf text-lg font-bold">{popup ? 'Editar popup' : 'Novo popup'}</h2>
-
-            <div>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={form.pages.map((p) => p.key)}
-                  strategy={horizontalListSortingStrategy}
-                >
-                  <div
-                    role="tablist"
-                    aria-label="Páginas"
-                    className="flex flex-wrap items-center gap-1.5"
-                  >
-                    {form.pages.map((p, i) => (
-                      <PageTab
-                        key={p.key}
-                        page={p}
-                        index={i}
-                        active={i === pageIndex}
-                        hasError={Boolean(errors?.pages[i])}
-                        canRemove={form.pages.length > 1}
-                        onSelect={() => setSelected(i)}
-                        onRemove={() => handleRemovePage(i)}
-                      />
-                    ))}
-                    {form.pages.length < MAX_PAGES && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setForm((f) => addPage(f));
-                          setSelected(form.pages.length);
-                          setErrors(null);
-                        }}
-                        className="text-xs px-3 py-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary"
-                      >
-                        + Página
-                      </button>
-                    )}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="popup-title" className={LABEL}>
-                  Título
-                </label>
-                <input
-                  id="popup-title"
-                  className={INPUT}
-                  value={page.title}
-                  maxLength={120}
-                  onChange={(e) => updatePage({ title: e.target.value })}
-                />
-                {errors?.pages[pageIndex]?.title && (
-                  <p className="text-xs text-destructive mt-1">{errors.pages[pageIndex].title}</p>
-                )}
-              </div>
-              <div>
-                <label htmlFor="popup-eyebrow" className={LABEL}>
-                  Sobretítulo (opcional)
-                </label>
-                <input
-                  id="popup-eyebrow"
-                  className={INPUT}
-                  value={page.eyebrow}
-                  maxLength={60}
-                  onChange={(e) => updatePage({ eyebrow: e.target.value })}
-                />
-                {errors?.pages[pageIndex]?.eyebrow && (
-                  <p className="text-xs text-destructive mt-1">{errors.pages[pageIndex].eyebrow}</p>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className={LABEL}>Imagem (opcional, 16:9 recomendado, até 10 MB)</label>
-              <div className="flex items-center gap-3 border border-dashed border-border rounded-lg px-3 py-2">
-                <div className="w-16 h-10 rounded bg-secondary overflow-hidden shrink-0">
-                  {page.image_key && imageUrls?.[page.image_key] && (
-                    <img
-                      src={imageUrls[page.image_key]}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                </div>
-                <input
-                  ref={fileInput}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleUpload(f);
-                    e.target.value = '';
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInput.current?.click()}
-                  disabled={uploading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:border-primary disabled:opacity-50"
-                >
-                  {uploading ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Upload size={14} />
-                  )}
-                  {uploading ? 'Enviando…' : page.image_key ? 'Substituir' : 'Enviar'}
-                </button>
-                {page.image_key && (
-                  <button
-                    type="button"
-                    onClick={() => updatePage({ image_key: '' })}
-                    className="text-xs text-muted-foreground hover:text-destructive"
-                  >
-                    Remover
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="popup-body" className={LABEL}>
-                Corpo (Markdown)
-              </label>
-              <textarea
-                id="popup-body"
-                rows={4}
-                maxLength={2000}
-                value={page.body}
-                onChange={(e) => updatePage({ body: e.target.value })}
-                className={`${INPUT} resize-none`}
-              />
-              {errors?.pages[pageIndex]?.body && (
-                <p className="text-xs text-destructive mt-1">{errors.pages[pageIndex].body}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="popup-page-cta-label" className={LABEL}>
-                  Rótulo do CTA da página
-                </label>
-                <input
-                  id="popup-page-cta-label"
-                  className={INPUT}
-                  maxLength={40}
-                  value={page.cta_label}
-                  onChange={(e) => updatePage({ cta_label: e.target.value })}
-                />
-              </div>
-              <div>
-                <label htmlFor="popup-page-cta-url" className={LABEL}>
-                  URL do CTA da página
-                </label>
-                <input
-                  id="popup-page-cta-url"
-                  className={INPUT}
-                  placeholder="/ajuda/... or https://..."
-                  value={page.cta_url}
-                  onChange={(e) => updatePage({ cta_url: e.target.value })}
-                />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground -mt-3">
-              Sobrescreve o CTA do popup nesta página.
-            </p>
-            {errors?.pages[pageIndex]?.cta && (
-              <p className="text-xs text-destructive -mt-3">{errors.pages[pageIndex].cta}</p>
-            )}
-
-            <div className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground border-t border-border pt-4">
-              Configurações do popup (valem para todas as páginas)
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="popup-cta-label" className={LABEL}>
-                  Rótulo do CTA
-                </label>
-                <input
-                  id="popup-cta-label"
-                  className={INPUT}
-                  maxLength={40}
-                  value={form.cta_label}
-                  onChange={(e) => setForm((f) => ({ ...f, cta_label: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label htmlFor="popup-cta-url" className={LABEL}>
-                  URL do CTA
-                </label>
-                <input
-                  id="popup-cta-url"
-                  className={INPUT}
-                  placeholder="/ajuda/... or https://..."
-                  value={form.cta_url}
-                  onChange={(e) => setForm((f) => ({ ...f, cta_url: e.target.value }))}
-                />
-              </div>
-            </div>
-            {errors?.cta && <p className="text-xs text-destructive -mt-3">{errors.cta}</p>}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="popup-secondary" className={LABEL}>
-                  Rótulo secundário
-                </label>
-                <input
-                  id="popup-secondary"
-                  className={INPUT}
-                  maxLength={40}
-                  value={form.secondary_label}
-                  placeholder={defaultSecondaryLabel(form.require_ack, lastHasCta)}
-                  onChange={(e) => setForm((f) => ({ ...f, secondary_label: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className={LABEL}>Estilo do CTA</label>
-                <div className="flex rounded-lg border border-border overflow-hidden text-xs">
-                  {(['ink', 'brand'] as const).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, cta_style: s }))}
-                      className={`flex-1 px-3 py-2 ${form.cta_style === s ? 'bg-card font-semibold text-foreground' : 'text-muted-foreground'}`}
-                    >
-                      {s === 'ink' ? 'Tinta' : 'Amarelo da marca'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className={LABEL}>Frequência</label>
-              <div className="flex gap-4 text-sm text-muted-foreground">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="frequency"
-                    checked={form.frequency === 'once'}
-                    onChange={() => setForm((f) => ({ ...f, frequency: 'once' }))}
-                  />
-                  Uma vez por usuário
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="frequency"
-                    checked={form.frequency === 'until_cta'}
-                    disabled={form.require_ack}
-                    onChange={() => setForm((f) => ({ ...f, frequency: 'until_cta' }))}
-                  />
-                  Toda sessão até clicar no CTA
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="frequency"
-                    checked={form.frequency === 'daily'}
-                    onChange={() => setForm((f) => ({ ...f, frequency: 'daily' }))}
-                  />
-                  Uma vez por dia
-                </label>
-              </div>
-              <p className="text-xs text-dim-foreground mt-1">
-                Uma vez por dia: abre no máximo uma vez por dia enquanto o popup estiver elegível.
-              </p>
-              {errors?.frequency && (
-                <p className="text-xs text-destructive mt-1">{errors.frequency}</p>
-              )}
-            </div>
-
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={form.require_ack}
-                onChange={(e) => setForm((f) => withRequireAck(f, e.target.checked))}
-                className="rounded"
-              />
-              Exigir confirmação (sem X, sem clique fora, sem Esc)
-            </label>
-
-            <div>
-              <TargetPicker
-                value={{
-                  target_mode: form.target_mode,
-                  target_plan_ids: form.target_plan_ids,
-                  target_workspace_ids: form.target_workspace_ids,
-                }}
-                plans={plans}
-                workspaces={workspaces}
-                onChange={(next) => setForm((f) => ({ ...f, ...next }))}
-              />
-              {errors?.target && <p className="text-xs text-destructive mt-1">{errors.target}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="popup-trigger" className={LABEL}>
-                Gatilho
-              </label>
-              <select
-                id="popup-trigger"
-                className={INPUT}
-                value={form.trigger}
-                onChange={(e) => {
-                  const trigger = e.target.value as PopupFormState['trigger'];
-                  setForm((f) => ({ ...f, trigger }));
-                  setErrors(null);
-                }}
-              >
-                <option value="">Nenhum</option>
-                {(Object.keys(TRIGGER_LABEL) as PopupTrigger[]).map((t) => (
-                  <option key={t} value={t}>
-                    {TRIGGER_LABEL[t]}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-dim-foreground mt-1">
-                Com gatilho, só o dono do workspace vê o popup, e só enquanto a condição valer.
-              </p>
-              {form.trigger === 'trial_ending' && (
-                <div className="mt-3">
-                  <label htmlFor="popup-trigger-days" className={LABEL}>
-                    Dias antes do fim do teste
-                  </label>
-                  <input
-                    id="popup-trigger-days"
-                    type="number"
-                    min={1}
-                    max={MAX_TRIGGER_DAYS}
-                    className={INPUT}
-                    value={form.trigger_days}
-                    onChange={(e) => {
-                      const trigger_days = e.target.value;
-                      setForm((f) => ({ ...f, trigger_days }));
-                      setErrors(null);
-                    }}
-                  />
-                </div>
-              )}
-              {errors?.trigger && <p className="text-xs text-destructive mt-1">{errors.trigger}</p>}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="popup-starts" className={LABEL}>
-                  Começa em (opcional)
-                </label>
-                <input
-                  id="popup-starts"
-                  type="datetime-local"
-                  className={INPUT}
-                  value={form.starts_at}
-                  onChange={(e) => setForm((f) => ({ ...f, starts_at: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label htmlFor="popup-ends" className={LABEL}>
-                  Termina em (opcional)
-                </label>
-                <input
-                  id="popup-ends"
-                  type="datetime-local"
-                  className={INPUT}
-                  value={form.ends_at}
-                  onChange={(e) => setForm((f) => ({ ...f, ends_at: e.target.value }))}
-                />
-                {errors?.schedule && (
-                  <p className="text-xs text-destructive mt-1">{errors.schedule}</p>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="popup-status" className={LABEL}>
-                Status
-              </label>
-              <select
-                id="popup-status"
-                className={INPUT}
-                value={form.status}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, status: e.target.value as PopupFormState['status'] }))
-                }
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* ── Coluna do preview ── */}
-          <div className="bg-secondary/40 p-5 md:p-7 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className={LABEL}>Prévia ao vivo</span>
-              <div className="flex rounded-lg border border-border overflow-hidden text-xs">
-                {(['light', 'dark'] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTheme(t)}
-                    className={`px-3 py-1 ${theme === t ? 'bg-card font-semibold text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    {t === 'light' ? 'Claro' : 'Escuro'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div
-              className="md:sticky md:top-4 flex justify-center rounded-xl p-4"
-              style={
-                theme === 'dark'
-                  ? { ...DARK_VARS, background: '#0a0c0f' }
-                  : { background: '#eef0f3' }
-              }
-            >
-              <PopupCard
-                pages={form.pages.map((p) => ({
-                  title: p.title || 'Título',
-                  eyebrow: p.eyebrow || null,
-                  body: p.body || 'Prévia do corpo…',
-                  imageUrl: p.image_key ? (imageUrls?.[p.image_key] ?? null) : null,
-                  ctaLabel: p.cta_label.trim() && p.cta_url.trim() ? p.cta_label.trim() : null,
-                }))}
-                page={pageIndex}
-                onPageChange={setSelected}
-                ctaLabel={hasCta ? form.cta_label : null}
-                ctaStyle={form.cta_style}
-                secondaryLabel={secondaryLabel}
-                requireAck={form.require_ack}
-                sanitizeHref={previewHref}
-                onCta={anyCta ? () => {} : undefined}
-                onSecondary={() => {}}
-                onClose={() => {}}
-                titleId={titleId}
-                bodyId={bodyId}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Componente exato do CRM. Navegar aqui seleciona a aba da página.
-            </p>
-          </div>
-
-          <div className="md:col-span-2 flex gap-3 p-5 md:px-7 border-t border-border">
-            <button
-              type="submit"
-              disabled={pending}
-              className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
-            >
-              {popup ? 'Atualizar' : 'Criar'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors"
-            >
-              Cancelar
-            </button>
-            {popup && popup.status === 'draft' && (
-              <button
-                type="button"
-                onClick={() => deleteMut.mutate()}
-                disabled={deleteMut.isPending}
-                aria-label="Excluir"
-                className="px-4 py-2.5 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function PageTab({
-  page,
-  index,
-  active,
-  hasError,
-  canRemove,
-  onSelect,
-  onRemove,
-}: {
-  page: PageForm;
-  index: number;
-  active: boolean;
-  hasError: boolean;
-  canRemove: boolean;
-  onSelect: () => void;
-  onRemove: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: page.key,
-  });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+  const model: PopupEditorModel = {
+    isEditing: Boolean(popup),
+    form,
+    page,
+    pageIndex,
+    errors,
+    section,
+    setSection,
+    theme,
+    setTheme,
+    imageUrls,
+    uploading,
+    plans,
+    workspaces,
+    hasCta,
+    anyCta,
+    lastHasCta,
+    secondaryLabel:
+      form.secondary_label.trim() || defaultSecondaryLabel(form.require_ack, lastHasCta),
+    canDelete: Boolean(popup && popup.status === 'draft'),
+    deleting: deleteMut.isPending,
+    onDelete: () => deleteMut.mutate(),
+    selectPage: setSelected,
+    addPage: handleAddPage,
+    removePage: handleRemovePage,
+    dragEnd: handleDragEnd,
+    updatePage,
+    patchForm: (patch, opts) => {
+      setForm((f) => ({ ...f, ...patch }));
+      if (opts?.clearErrors) setErrors(null);
+    },
+    setRequireAck: (on) => setForm((f) => withRequireAck(f, on)),
+    upload: handleUpload,
   };
-  const label = page.title.trim() ? page.title.trim().slice(0, 18) : 'Sem título';
-  const tone = active
-    ? 'bg-card text-foreground font-semibold'
-    : 'bg-secondary text-muted-foreground';
-  // O anel de erro precisa ganhar explicitamente de "active" — duas classes ring-* de
-  // cores diferentes competem pela ordem no stylesheet, não pela ordem no className.
-  const ring = hasError ? 'ring-1 ring-destructive' : active ? 'ring-1 ring-border' : '';
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 rounded-lg text-xs ${tone} ${ring}`}
-    >
-      <span
-        {...attributes}
-        {...listeners}
-        className="cursor-grab text-dim-foreground"
-        aria-label={`Reordenar página ${index + 1}`}
-      >
-        <GripVertical size={12} />
-      </span>
-      <button type="button" role="tab" aria-selected={active} onClick={onSelect}>
-        {index + 1} · {label}
-      </button>
-      {canRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Remover página ${index + 1}`}
-          className="text-dim-foreground hover:text-destructive"
-        >
-          <X size={12} />
-        </button>
-      )}
-    </div>
-  );
+
+  return {
+    open,
+    openEditor,
+    close,
+    handleSubmit,
+    submitting: createMut.isPending || updateMut.isPending,
+    model,
+  };
 }
