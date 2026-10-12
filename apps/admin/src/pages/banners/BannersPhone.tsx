@@ -54,7 +54,7 @@ function BannerRow({
             </span>
             <Badge variant={status.tone}>{status.label}</Badge>
           </span>
-          <span className="block text-[15px] leading-[1.35]">{banner.content}</span>
+          <span className="line-clamp-2 block text-[15px] leading-[1.35]">{banner.content}</span>
           <span className="mt-1 block text-[13px] text-muted-foreground">
             {getTargetLabel(banner, plans)} · {formatSchedule(banner)}
           </span>

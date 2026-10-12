@@ -11,6 +11,7 @@ import {
   STATUSES,
   STATUS_LABELS,
   TYPE_COLORS,
+  LINK_PATTERN,
   TYPE_LABELS,
   type FormState,
 } from './banner-form';
@@ -120,7 +121,7 @@ function DesktopFields({
             value={form.link}
             onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
             placeholder="https://..."
-            pattern="https://.*|/(?![/\\]).*"
+            pattern={LINK_PATTERN}
             title="https://… ou um caminho iniciado por /"
           />
         </Field>
@@ -272,7 +273,7 @@ function PhoneFields({
           input={{
             value: form.link,
             placeholder: 'https://...',
-            pattern: 'https://.*|/(?![/\\\\]).*',
+            pattern: LINK_PATTERN,
             title: 'https://… ou um caminho iniciado por /',
             onChange: (e) => setForm((f) => ({ ...f, link: e.target.value })),
           }}
@@ -292,7 +293,7 @@ function PhoneFields({
           {(field) => (
             <select
               {...field}
-              className="phone-form-row__input"
+              className="phone-form-row__input phone-field__select"
               value={form.type}
               onChange={(e) =>
                 setForm((f) => ({ ...f, type: e.target.value as FormState['type'] }))
@@ -310,7 +311,7 @@ function PhoneFields({
           {(field) => (
             <select
               {...field}
-              className="phone-form-row__input"
+              className="phone-form-row__input phone-field__select"
               value={form.status}
               onChange={(e) =>
                 setForm((f) => ({ ...f, status: e.target.value as FormState['status'] }))

@@ -122,3 +122,10 @@ export const STATUS_FILTERS = [
   { value: 'draft', label: 'Rascunhos' },
   { value: 'archived', label: 'Arquivo' },
 ] as const;
+
+/**
+ * Link field: https URL or a site path, never protocol-relative (`//x`) or `/\x`. Written so it
+ * also compiles under the `v` flag browsers use for the `pattern` attribute (`/` must be escaped
+ * inside a class there).
+ */
+export const LINK_PATTERN = 'https://.*|/(?![\\/\\\\]).*';

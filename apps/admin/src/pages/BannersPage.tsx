@@ -96,7 +96,7 @@ export default function BannersPage() {
     else createMut.mutate();
   };
 
-  // Row-menu delete asks first; the form's own delete button keeps its original one-tap behaviour.
+  // Both delete paths (row menu and the form's button) ask first.
   const confirmDelete = (b: GlobalBanner) => {
     if (window.confirm('Excluir este banner?')) deleteMut.mutate(b.id);
   };
@@ -141,7 +141,7 @@ export default function BannersPage() {
             workspaces={workspacesData?.workspaces}
             onDelete={
               editingBanner && editingBanner.status === 'draft'
-                ? () => deleteMut.mutate(editingBanner.id)
+                ? () => confirmDelete(editingBanner)
                 : undefined
             }
             deleting={deleteMut.isPending}

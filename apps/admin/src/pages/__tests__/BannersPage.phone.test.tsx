@@ -61,6 +61,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   restore();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -116,6 +117,7 @@ describe('BannersPage (phone)', () => {
     expect(within(dialog).getByLabelText(/Conteúdo/)).toHaveValue(
       'Instabilidade na conexão com o Instagram',
     );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Excluir banner' }));
     await waitFor(() => expect(deleteBanner).toHaveBeenCalledWith('b2'));
   });
