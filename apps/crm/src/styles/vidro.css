@@ -715,5 +715,8 @@
   html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-panel > .main-content {
     overflow: visible;
     height: auto;
+    /* Below 1101px (the sheet) the Vidro margin reset is off and style.css's topbar offset
+       would open a blank band between the toolbar title and the page. */
+    margin-top: 0;
   }
 }
