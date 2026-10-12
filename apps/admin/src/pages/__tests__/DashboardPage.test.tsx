@@ -111,9 +111,16 @@ function renderPage() {
   );
 }
 
-/** The KPI card element whose label text is `label` (labels are <p>; table headers are <span>). */
+/**
+ * The KPI tile element whose label text is `label`. Tile labels are spans that are direct
+ * children of the tile (`.admin-glass`); table headers and panel titles are not.
+ */
 function kpiCard(label: string): HTMLElement {
-  return screen.getByText(label, { selector: 'p' }).closest('[data-testid="kpi-card"]')!;
+  const labelEl = screen
+    .getAllByText(label)
+    .find((el) => el.tagName === 'SPAN' && el.parentElement?.classList.contains('admin-glass'));
+  if (!labelEl) throw new Error(`KPI tile "${label}" not found`);
+  return labelEl.parentElement!;
 }
 
 describe('DashboardPage per-card loading', () => {
@@ -315,7 +322,7 @@ describe('DashboardPage tile links', () => {
     const tiles = links.filter((a) => a.getAttribute('href') === '/admin/metricas#mrr');
     expect(tiles).toHaveLength(3);
     expect(within(tiles[0]).getByText('Pagantes')).toBeInTheDocument();
-    expect(within(tiles[1]).getByText('MRR', { selector: 'p' })).toBeInTheDocument();
+    expect(within(tiles[1]).getByText('MRR')).toBeInTheDocument();
     expect(within(tiles[2]).getByText('MRR projetado')).toBeInTheDocument();
     expect(
       links.some(
@@ -323,5 +330,16 @@ describe('DashboardPage tile links', () => {
           a.getAttribute('href') === '/admin/metricas#mrr' && within(a).queryByText('Workspaces'),
       ),
     ).toBe(false);
+  });
+});
+
+describe('DashboardPage desktop header and exports', () => {
+  it('links "Ver métricas" to the Métricas page and offers both CSV exports', async () => {
+    renderPage();
+    expect(await screen.findByRole('link', { name: 'Ver métricas' })).toHaveAttribute(
+      'href',
+      '/admin/metricas',
+    );
+    expect(screen.getAllByRole('button', { name: /Exportar CSV/ })).toHaveLength(2);
   });
 });

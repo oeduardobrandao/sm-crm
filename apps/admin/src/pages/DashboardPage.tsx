@@ -1,21 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, Link } from 'react-router-dom';
-import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { listWorkspaces, getMrr, getTrials } from '../lib/api';
-import { getPlanColor } from '../lib/plan-colors';
-import { formatMoney, intervalLabel, statusMeta, STATUS_BADGE_VARIANT } from '../lib/subscription';
+import { formatMoney } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
-import { describeActivity, ACTIVITY_TONE_CLASS } from './workspace-activity';
-import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
-import { Badge } from '../components/ui/badge';
-import { PageHeader } from '../components/PageHeader';
-import { RowLink } from '../components/RowLink';
-import { Skeleton } from '../components/ui/skeleton';
-import { EmptyState } from '../components/EmptyState';
-import { cn } from '../lib/utils';
-import { workspaceDetailPath, metricasPath } from '../lib/routes';
-import { RiskCard } from './dashboard/RiskCard';
+import { useIsPhone } from '../hooks/useIsPhone';
+import { metricasPath } from '../lib/routes';
+import { DashboardDesktop } from './dashboard/DashboardDesktop';
+import { DashboardPhone } from './dashboard/DashboardPhone';
+import type { DashboardKpi } from './dashboard/shared';
 import { selectTrialsEndingSoon } from './dashboard-risk';
 import {
   PAYING_WORKSPACE_EXPORT_COLUMNS,
@@ -24,33 +16,8 @@ import {
   buildTrialExportRows,
 } from './dashboard-export';
 
-function PlanBadge({ name }: { name: string | null }) {
-  if (!name) return <span className="text-dim-foreground">—</span>;
-  const color = getPlanColor(name);
-  return (
-    <Badge variant="neutral" style={{ color, backgroundColor: `${color}26` }}>
-      {name}
-    </Badge>
-  );
-}
-
-// created_at is only read when last_activity_at is null ("Nunca"); the "now" fallback keeps
-// that branch on the cooling tone in the unlikely case the workspace row wasn't found.
-const activity = (ws: { last_activity_at: string | null; created_at: string | null }) =>
-  describeActivity(ws.last_activity_at, ws.created_at ?? new Date().toISOString(), new Date());
-
-function ListSkeleton() {
-  return (
-    <div className="flex flex-col gap-3 py-4">
-      <Skeleton className="h-4 w-72" />
-      <Skeleton className="h-4 w-64" />
-      <Skeleton className="h-4 w-60" />
-    </div>
-  );
-}
-
 export default function DashboardPage() {
-  const navigate = useNavigate();
+  const isPhone = useIsPhone();
 
   const { data: workspacesData, isLoading: wsLoading } = useQuery({
     queryKey: ['admin', 'workspaces', { limit: 10 }],
@@ -141,14 +108,7 @@ export default function DashboardPage() {
 
   // Each card gates on its own query only: the Stripe-backed MRR/Trials queries
   // must not hold the instant workspace counts hostage.
-  const kpis: {
-    label: string;
-    value: string | number;
-    sub?: string;
-    loading: boolean;
-    tone?: 'warning';
-    to?: string;
-  }[] = [
+  const kpis: DashboardKpi[] = [
     { label: 'Workspaces', value: totalWorkspaces, loading: wsLoading },
     { label: 'Usuários', value: totalMembers, loading: wsLoading },
     {
@@ -201,385 +161,31 @@ export default function DashboardPage() {
     },
   ];
 
-  return (
-    <div>
-      <PageHeader title="Dashboard" description="Visão geral da plataforma" />
+  const view = {
+    kpis,
+    risk: {
+      now,
+      trials: {
+        data: trialsData?.trials,
+        loading: trialsLoading,
+        error: trialsQuery.isError,
+        retry: () => trialsQuery.refetch(),
+      },
+      pending: {
+        data: pendingQuery.data
+          ? { workspaces: pendingQuery.data.workspaces, total: pendingQuery.data.total }
+          : undefined,
+        loading: pendingQuery.isPending,
+        error: pendingQuery.isError,
+        retry: () => pendingQuery.refetch(),
+      },
+    },
+    mrr: { loading: mrrLoading, data: mrrData },
+    trials: { loading: trialsLoading, data: trialsData, mrrCents: trialMrrCents, currency },
+    recent: { loading: wsLoading, workspaces: workspacesData?.workspaces ?? [] },
+    onExportPaying: exportPayingWorkspacesCsv,
+    onExportTrials: exportTrialsCsv,
+  };
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-        {kpis.map((kpi) => {
-          const body = (
-            <>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
-                {kpi.label}
-              </p>
-              <p
-                className={cn(
-                  'text-2xl sm:text-3xl font-bold font-sf break-words',
-                  kpi.tone === 'warning' && 'text-warning',
-                )}
-              >
-                {kpi.loading ? '—' : kpi.value}
-              </p>
-              {!kpi.loading && kpi.sub && (
-                <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
-              )}
-            </>
-          );
-          const cls = 'glass-surface bg-card border border-border rounded-2xl p-5 min-w-0';
-          return kpi.to ? (
-            <Link
-              key={kpi.label}
-              to={kpi.to}
-              data-testid="kpi-card"
-              className={cn(
-                cls,
-                'block transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              )}
-            >
-              {body}
-            </Link>
-          ) : (
-            <div key={kpi.label} data-testid="kpi-card" className={cls}>
-              {body}
-            </div>
-          );
-        })}
-      </div>
-
-      <RiskCard
-        now={now}
-        trials={{
-          data: trialsData?.trials,
-          loading: trialsLoading,
-          error: trialsQuery.isError,
-          retry: () => trialsQuery.refetch(),
-        }}
-        pending={{
-          data: pendingQuery.data
-            ? { workspaces: pendingQuery.data.workspaces, total: pendingQuery.data.total }
-            : undefined,
-          loading: pendingQuery.isPending,
-          error: pendingQuery.isError,
-          retry: () => pendingQuery.refetch(),
-        }}
-      />
-
-      <div className="glass-surface bg-card border border-border rounded-2xl p-5 mb-8">
-        <div className="flex items-baseline justify-between mb-4 gap-3">
-          <h2 className="font-semibold">Workspaces pagantes</h2>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              {mrrLoading
-                ? '—'
-                : `${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`}
-            </span>
-            <button
-              onClick={exportPayingWorkspacesCsv}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Download size={14} />
-              Exportar CSV
-            </button>
-          </div>
-        </div>
-
-        {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Workspace</span>
-          <span>Plano</span>
-          <span>Cobrança</span>
-          <span>Última atividade</span>
-          <span className="text-right">MRR</span>
-        </div>
-
-        {mrrLoading ? (
-          <ListSkeleton />
-        ) : (mrrData?.workspaces?.length ?? 0) === 0 ? (
-          <EmptyState title="Nenhum workspace pagante ainda" />
-        ) : (
-          (mrrData?.workspaces || []).map((ws) => {
-            const meta = statusMeta(ws.status);
-            return (
-              <div
-                key={ws.workspace_id}
-                onClick={() => navigate(workspaceDetailPath(ws.workspace_id))}
-                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr_1fr] md:gap-2 md:items-center"
-              >
-                {/* Mobile card layout */}
-                <div className="md:hidden flex items-center justify-between gap-3">
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <RowLink to={workspaceDetailPath(ws.workspace_id)} className="block truncate">
-                      {ws.name}
-                    </RowLink>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {ws.plan_name && <PlanBadge name={ws.plan_name} />}
-                      <span>{intervalLabel(ws.interval) || '—'}</span>
-                      {ws.status !== 'active' && (
-                        <Badge variant={STATUS_BADGE_VARIANT[meta.tone]}>{meta.label}</Badge>
-                      )}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className={ACTIVITY_TONE_CLASS[activity(ws).tone]}>
-                            Ativo: {activity(ws).label}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>{activity(ws).title}</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </div>
-                  <span className="font-sf font-medium whitespace-nowrap">
-                    {formatMoney(ws.monthly_cents, mrrData?.currency)}
-                  </span>
-                </div>
-
-                {/* Desktop row */}
-                <span className="hidden md:flex items-center gap-2 min-w-0">
-                  <RowLink
-                    to={workspaceDetailPath(ws.workspace_id)}
-                    className="block truncate text-sm"
-                  >
-                    {ws.name}
-                  </RowLink>
-                  {ws.status !== 'active' && (
-                    <Badge
-                      variant={STATUS_BADGE_VARIANT[meta.tone]}
-                      className="shrink-0 whitespace-nowrap"
-                    >
-                      {meta.label}
-                    </Badge>
-                  )}
-                </span>
-                <span className="hidden md:inline text-sm">
-                  <PlanBadge name={ws.plan_name} />
-                </span>
-                <span className="hidden md:flex items-center gap-2 text-muted-foreground text-sm min-w-0">
-                  <span className="shrink-0">{intervalLabel(ws.interval) || '—'}</span>
-                  {ws.discount_label && (
-                    <span className="text-[0.7rem] text-success truncate" title={ws.discount_label}>
-                      {ws.discount_label}
-                    </span>
-                  )}
-                </span>
-                <Tooltip>
-                  {/* asChild keeps the span: the default trigger is a <button>, which would sit
-                      inside this navigable row and hijack its click. */}
-                  <TooltipTrigger asChild>
-                    <span
-                      className={`hidden w-fit md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
-                    >
-                      {activity(ws).label}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{activity(ws).title}</TooltipContent>
-                </Tooltip>
-                <span className="hidden md:block text-right font-sf text-sm">
-                  {formatMoney(ws.monthly_cents, mrrData?.currency)}
-                </span>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <div className="glass-surface bg-card border border-border rounded-2xl p-5 mb-8">
-        <div className="flex items-baseline justify-between mb-4 gap-3">
-          <h2 className="font-semibold">Testes</h2>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              {trialsLoading
-                ? '—'
-                : `${trialsData?.trial_count ?? 0} · ${formatMoney(trialMrrCents, currency)}/mês`}
-            </span>
-            <button
-              onClick={exportTrialsCsv}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Download size={14} />
-              Exportar CSV
-            </button>
-          </div>
-        </div>
-
-        {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Workspace</span>
-          <span>Plano</span>
-          <span>Fim do teste</span>
-          <span>Última atividade</span>
-          <span className="text-right">MRR</span>
-        </div>
-
-        {trialsLoading ? (
-          <ListSkeleton />
-        ) : (trialsData?.trials?.length ?? 0) === 0 ? (
-          <EmptyState title="Nenhum workspace em teste no momento" />
-        ) : (
-          (trialsData?.trials || []).map((ws) => {
-            const end = ws.trial_ends_at ? new Date(ws.trial_ends_at) : null;
-            const endLabel = end
-              ? end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
-              : '—';
-            // An end time that has already passed is "expirado" — decided by exact timestamp, so a
-            // trial that ended earlier *today* (webhook status update still in flight) isn't shown
-            // as "expira hoje". For a still-future end, the calendar-day delta distinguishes
-            // "expira hoje" (ends later today) from "Nd" — a 24h-window Math.ceil would mislabel
-            // "later today" as "1d". Math.round absorbs the ±1h DST wobble between two midnights.
-            let daysLabel: string | null = null;
-            let daysTone: 'danger' | 'warning' | 'muted' = 'muted';
-            if (end) {
-              if (end.getTime() <= Date.now()) {
-                daysLabel = 'expirado';
-                daysTone = 'danger';
-              } else {
-                const startOfToday = new Date();
-                startOfToday.setHours(0, 0, 0, 0);
-                const endDay = new Date(end);
-                endDay.setHours(0, 0, 0, 0);
-                const dayDiff = Math.round(
-                  (endDay.getTime() - startOfToday.getTime()) / 86_400_000,
-                );
-                daysLabel = dayDiff === 0 ? 'expira hoje' : `${dayDiff}d`;
-                daysTone = dayDiff <= 3 ? 'warning' : 'muted';
-              }
-            }
-            const daysTextClass =
-              daysTone === 'danger'
-                ? 'text-destructive'
-                : daysTone === 'warning'
-                  ? 'text-warning'
-                  : 'text-muted-foreground';
-            return (
-              <div
-                key={ws.workspace_id}
-                onClick={() => navigate(workspaceDetailPath(ws.workspace_id))}
-                className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr_1fr] md:gap-2 md:items-center"
-              >
-                {/* Mobile card layout */}
-                <div className="md:hidden flex items-center justify-between gap-3">
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <RowLink to={workspaceDetailPath(ws.workspace_id)} className="block truncate">
-                      {ws.name}
-                    </RowLink>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {ws.plan_name && <PlanBadge name={ws.plan_name} />}
-                      <span>{intervalLabel(ws.interval) || '—'}</span>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className={ACTIVITY_TONE_CLASS[activity(ws).tone]}>
-                            Ativo: {activity(ws).label}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>{activity(ws).title}</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-0.5 whitespace-nowrap">
-                    <span className="font-sf text-sm font-medium">
-                      {formatMoney(ws.monthly_cents, currency)}
-                    </span>
-                    <span className="text-[0.7rem] text-muted-foreground">
-                      {endLabel}
-                      {daysLabel && <span className={daysTextClass}> · {daysLabel}</span>}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Desktop row */}
-                <RowLink
-                  to={workspaceDetailPath(ws.workspace_id)}
-                  className="hidden truncate text-sm md:inline"
-                >
-                  {ws.name}
-                </RowLink>
-                <span className="hidden md:inline text-sm">
-                  <PlanBadge name={ws.plan_name} />
-                </span>
-                <span className="hidden md:flex items-center gap-2 text-sm min-w-0">
-                  <span className="text-muted-foreground truncate">{endLabel}</span>
-                  {daysLabel && (
-                    <Badge variant={STATUS_BADGE_VARIANT[daysTone]} className="shrink-0">
-                      {daysLabel}
-                    </Badge>
-                  )}
-                </span>
-                <Tooltip>
-                  {/* asChild keeps the span: the default trigger is a <button>, which would sit
-                      inside this navigable row and hijack its click. */}
-                  <TooltipTrigger asChild>
-                    <span
-                      className={`hidden w-fit md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
-                    >
-                      {activity(ws).label}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{activity(ws).title}</TooltipContent>
-                </Tooltip>
-                <span className="hidden md:block text-right font-sf text-sm">
-                  {formatMoney(ws.monthly_cents, currency)}
-                </span>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <div className="glass-surface bg-card border border-border rounded-2xl p-5">
-        <h2 className="font-semibold mb-4">Workspaces recentes</h2>
-
-        {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Workspace</span>
-          <span>Dono</span>
-          <span>Plano</span>
-          <span>Membros</span>
-          <span>Criado</span>
-        </div>
-
-        {wsLoading ? (
-          <ListSkeleton />
-        ) : (
-          (workspacesData?.workspaces || []).map((ws) => (
-            <div
-              key={ws.id}
-              onClick={() => navigate(workspaceDetailPath(ws.id))}
-              className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] md:gap-2 md:items-center"
-            >
-              {/* Mobile card layout */}
-              <div className="md:hidden flex flex-col gap-1">
-                <RowLink to={workspaceDetailPath(ws.id)}>{ws.name}</RowLink>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>{ws.owner?.name || '—'}</span>
-                  <span>·</span>
-                  <span>{ws.member_count} membros</span>
-                  {ws.plan_name && (
-                    <>
-                      <span>·</span>
-                      <PlanBadge name={ws.plan_name} />
-                    </>
-                  )}
-                </div>
-              </div>
-              {/* Desktop row */}
-              <RowLink to={workspaceDetailPath(ws.id)} className="hidden text-sm md:inline">
-                {ws.name}
-              </RowLink>
-              <span className="hidden md:inline text-muted-foreground text-sm">
-                {ws.owner?.name || '—'}
-              </span>
-              <span className="hidden md:inline text-sm">
-                <PlanBadge name={ws.plan_name} />
-              </span>
-              <span className="hidden md:inline font-sf text-sm">{ws.member_count}</span>
-              <span className="hidden md:inline text-muted-foreground text-sm">
-                {new Date(ws.created_at).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'short',
-                })}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+  return isPhone ? <DashboardPhone {...view} /> : <DashboardDesktop {...view} />;
 }
