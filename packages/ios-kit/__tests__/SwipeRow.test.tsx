@@ -98,4 +98,23 @@ describe('SwipeRow', () => {
     fireEvent.pointerDown(document.body);
     expect(root).not.toHaveAttribute('data-open');
   });
+
+  it('ariaLabel names the action for the row; without it the label is the name', () => {
+    const onRemove = vi.fn();
+    render(
+      <SwipeRow
+        trailingActions={[
+          { label: 'Remover', ariaLabel: 'Remover ana@x.com', onAction: onRemove },
+          { label: 'Mais', onAction: vi.fn() },
+        ]}
+      >
+        <span>ana@x.com</span>
+      </SwipeRow>,
+    );
+    const remove = screen.getByRole('button', { name: 'Remover ana@x.com' });
+    expect(remove).toHaveTextContent('Remover');
+    expect(screen.getByRole('button', { name: 'Mais' })).not.toHaveAttribute('aria-label');
+    fireEvent.click(remove);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
 });

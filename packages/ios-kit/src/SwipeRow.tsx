@@ -9,6 +9,8 @@ export interface SwipeAction {
   onAction: () => void;
   /** Background: grey `neutral`, green `success`, dark `ink`, red `destructive`. */
   tone?: 'neutral' | 'success' | 'ink' | 'destructive';
+  /** Row-specific accessible name (e.g. "Remover ana@x.com"); the visible label stays short. */
+  ariaLabel?: string;
 }
 
 export interface SwipeRowProps {
@@ -147,6 +149,7 @@ export function SwipeRow({
           <button
             key={action.label}
             type="button"
+            aria-label={action.ariaLabel}
             className={cn(
               'phone-swipe-row__action',
               `phone-swipe-row__action--${action.tone ?? 'neutral'}`,

@@ -3,7 +3,7 @@ import { MemoryRouter, RouterProvider, createBrowserRouter } from 'react-router-
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useEffect, useState } from 'react';
 import { AdminFormSheet } from '../AdminFormSheet';
-import { mockPhone } from '../../../__tests__/phone';
+import { controllableMatchMedia, mockPhone } from '../../../__tests__/phone';
 
 function Harness(props: { submitting?: boolean; canClose?: () => boolean; onSubmit?: () => void }) {
   const [open, setOpen] = useState(true);
@@ -125,7 +125,12 @@ describe.each([
 describe('Back on the phone sheet with a refused close', () => {
   const idx = () => (window.history.state as { idx: number }).idx;
   let restore: (() => void) | null = null;
-  afterEach(() => restore?.());
+  let browserRouter: ReturnType<typeof createBrowserRouter> | null = null;
+  afterEach(() => {
+    restore?.();
+    browserRouter?.dispose();
+    browserRouter = null;
+  });
 
   /** The controls the test flips while the sheet is open. */
   const ctl: { submitting: boolean; canClose: boolean; rerender: () => void } = {
@@ -161,18 +166,20 @@ describe('Back on the phone sheet with a refused close', () => {
     );
   }
 
-  function setupBrowser() {
+  function setupBrowser(flippable = false) {
     restore = mockPhone();
+    const flip = flippable ? controllableMatchMedia() : null;
     ctl.submitting = false;
     ctl.canClose = true;
     // createMemoryRouter never writes window.history, so no entry would be pushed.
     window.history.replaceState(null, '', '/admin/plans');
     const router = createBrowserRouter([{ path: '*', element: <BackHarness /> }]);
+    browserRouter = router;
     render(<RouterProvider router={router} />);
     const start = idx();
     fireEvent.click(screen.getByRole('button', { name: 'Abrir' }));
     expect(idx()).toBe(start + 1);
-    return { router, start };
+    return { router, start, flip };
   }
 
   const back = async () => {
@@ -211,5 +218,16 @@ describe('Back on the phone sheet with a refused close', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(idx()).toBe(start);
     expect(router.state.location.pathname).toBe('/admin/plans');
+  });
+
+  it('crossing 768px with the sheet open pops its entry and keeps the form open as a dialog', async () => {
+    const { router, start, flip } = setupBrowser(true);
+    await act(async () => flip!(false));
+
+    await waitFor(() => expect(idx()).toBe(start));
+    expect(screen.getByRole('dialog', { name: 'Editar: Pro' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/admin/plans');
+    // The desktop Dialog took over from the phone sheet.
+    expect(document.querySelector('.phone-sheet')).toBeNull();
   });
 });

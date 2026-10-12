@@ -16,6 +16,10 @@ interface PageHeaderProps {
   back?: { to: string; label: string };
   /** Under the title: segmented control, chips. */
   children?: ReactNode;
+  /** Desktop only: before the title block, e.g. an avatar. */
+  leading?: ReactNode;
+  /** Desktop only: beside the <h1> (a sibling, never inside it), e.g. a status badge. */
+  titleAddon?: ReactNode;
 }
 
 export function PageHeader({
@@ -25,6 +29,8 @@ export function PageHeader({
   phoneActions,
   back,
   children,
+  leading,
+  titleAddon,
 }: PageHeaderProps) {
   const isPhone = useIsPhone();
 
@@ -55,6 +61,23 @@ export function PageHeader({
     );
   }
 
+  const heading = (
+    <h1 className="font-sf text-[34px] font-bold leading-[1.1] tracking-[-0.01em]">{title}</h1>
+  );
+  const titleBlock = (
+    <div className="min-w-0">
+      {titleAddon ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {heading}
+          {titleAddon}
+        </div>
+      ) : (
+        heading
+      )}
+      {description ? <p className="mt-1 text-[15px] text-muted-foreground">{description}</p> : null}
+    </div>
+  );
+
   return (
     <div className="mb-5">
       {back && (
@@ -67,14 +90,14 @@ export function PageHeader({
         </Link>
       )}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="font-sf text-[34px] font-bold leading-[1.1] tracking-[-0.01em]">
-            {title}
-          </h1>
-          {description ? (
-            <p className="mt-1 text-[15px] text-muted-foreground">{description}</p>
-          ) : null}
-        </div>
+        {leading ? (
+          <div className="flex min-w-0 items-center gap-4">
+            {leading}
+            {titleBlock}
+          </div>
+        ) : (
+          titleBlock
+        )}
         {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
       {children ? <div className="mt-4">{children}</div> : null}

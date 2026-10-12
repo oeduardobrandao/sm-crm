@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBrowserRouter, createMemoryRouter, RouterProvider } from 'react-router-dom';
-import { mockPhone } from '../../__tests__/phone';
+import { controllableMatchMedia, mockPhone } from '../../__tests__/phone';
 
 const { signOut, glass } = vi.hoisted(() => ({
   signOut: vi.fn(),
@@ -36,34 +36,8 @@ function renderAt(path: string) {
   return router;
 }
 
-/**
- * A matchMedia whose `matches` can change and whose change listeners are captured, so a test
- * can cross 768px the way rotating an iPhone to landscape does. `restore` (from mockPhone in
- * beforeEach) still puts the original back. Starts in phone mode.
- */
-function controllableMatchMedia() {
-  const listeners: Array<() => void> = [];
-  let matches = true;
-  window.matchMedia = ((query: string) => ({
-    get matches() {
-      return matches;
-    },
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: (_: string, cb: () => void) => listeners.push(cb),
-    removeEventListener: (_: string, cb: () => void) => {
-      const i = listeners.indexOf(cb);
-      if (i >= 0) listeners.splice(i, 1);
-    },
-    dispatchEvent: vi.fn(),
-  })) as unknown as typeof window.matchMedia;
-  return (phone: boolean) => {
-    matches = phone;
-    listeners.slice().forEach((l) => l());
-  };
-}
+/** Real-history routers to dispose after each test (they listen to window popstate). */
+const browserRouters: Array<ReturnType<typeof createBrowserRouter>> = [];
 
 /** Real window.history (createMemoryRouter never writes it), starting at `/admin`. */
 function renderOnRealHistory() {
@@ -78,6 +52,7 @@ function renderOnRealHistory() {
       ],
     },
   ]);
+  browserRouters.push(router);
   render(<RouterProvider router={router} />);
   return router;
 }
@@ -96,7 +71,10 @@ describe('AdminLayout on phones', () => {
     glass.toggle.mockClear();
     signOut.mockClear();
   });
-  afterEach(() => restore());
+  afterEach(() => {
+    restore();
+    browserRouters.splice(0).forEach((r) => r.dispose());
+  });
 
   it('shows the tab bar, no sidebar', () => {
     renderAt('/admin');

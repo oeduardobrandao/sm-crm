@@ -256,3 +256,41 @@
 .phone-kit [data-dnd-handle] {
   touch-action: none;
 }
+
+/* Phone selection bar (SelectionBar, Artigos board): the kit's above-tab-bar variant is
+   transparent, so the Admin gives it a floating glass pill over the list. It wraps: when the
+   count and the actions don't fit one row, the actions take a second row (taller bar, so the
+   spacer before it grows to match). */
+.phone-bottom-bar.admin-selection-bar {
+  left: max(16px, env(safe-area-inset-left));
+  right: max(16px, env(safe-area-inset-right));
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  min-height: 64px;
+  padding: 8px;
+  border: 1px solid var(--phone-glass-border);
+  border-radius: 28px;
+  background: var(--phone-glass);
+  box-shadow: var(--phone-shadow-float);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .phone-bottom-bar.admin-selection-bar {
+    background: var(--phone-menu-bg);
+  }
+}
+.phone-bottom-bar__spacer:has(+ .admin-selection-bar) {
+  height: 96px;
+}
+
+/* Removable filter chips (Workspaces boards): gold tint. Light needs a darker gold for text:
+   #854d0e on the 16% fill is 5.8:1 over the #f2f2f7 page (6.4:1 over white). */
+.phone-kit .phone-chip--removable {
+  background: rgba(250, 204, 21, 0.16);
+  color: #854d0e;
+}
+[data-theme='dark'] .phone-kit .phone-chip--removable,
+[data-liquid-glass='on'] .phone-kit .phone-chip--removable {
+  color: #facc15;
+}

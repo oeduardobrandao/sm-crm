@@ -87,6 +87,8 @@ export function AdminFormSheet({
         headerLeading={cancel}
         headerTrailing={submit}
         repushIfStillOpen
+        // Crossing 768px while open swaps this branch for the Dialog: drop the sheet's entry.
+        popOnUnmount
       >
         {children}
       </BottomSheet>
