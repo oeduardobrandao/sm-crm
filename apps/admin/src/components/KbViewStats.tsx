@@ -40,7 +40,7 @@ export function KbViewStats({
         <span className="sr-only">Últimos 30 dias:</span>
         {`${formatViews(stats.views_30d)} · ${formatPeople(stats.users_30d)}`}
       </div>
-      <div className="text-xs text-muted-foreground/80">{total.join(' · ')}</div>
+      <div className="text-xs text-muted-foreground">{total.join(' · ')}</div>
     </div>
   );
 }
