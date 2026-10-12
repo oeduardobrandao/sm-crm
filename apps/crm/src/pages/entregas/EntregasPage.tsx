@@ -1320,16 +1320,16 @@ export default function EntregasPage() {
       >
         <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
       </span>
-      {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
-    there, so a click elsewhere (other views, or the Publicações board) would fire
-    a "started" event and hit startEntregasTour's zero-anchor early return with no
-    visible tour. */}
       {!explainerOpen && (
         <button type="button" onClick={reopenExplainer} className="entregas-explainer-reopen">
           <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
           Como funciona
         </button>
       )}
+      {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
+    there, so a click elsewhere (other views, or the Publicações board) would fire
+    a "started" event and hit startEntregasTour's zero-anchor early return with no
+    visible tour. */}
       {activeView === 'kanban' && mode === 'entregas' && (
         <button
           type="button"
@@ -1432,8 +1432,9 @@ export default function EntregasPage() {
       : {
           title: 'Entregas',
           titleAccessory: headerTitleAccessory,
-          // Same unfiltered totals as the classic header's line (see the note there).
-          subtitle: headerCounts,
+          // Same unfiltered totals as the classic header's line (see the note there). A native
+          // title, since the subtitle clips overflow and would cut a data-tooltip off.
+          subtitle: <span title="Totais gerais, sem filtros">{headerCounts}</span>,
           segmented: toolbarViewTabs,
           actions: headerActions,
           primary: primaryAction,
@@ -1454,6 +1455,16 @@ export default function EntregasPage() {
   }
 
   const filtersMode = postsMode ? 'posts' : 'entregas';
+  // With the view tabs in the Vidro toolbar, the filters row can end up empty (Minha fila)
+  // or hold an empty scroll strip (Visão geral); skip them there so the column gap leaves
+  // no blank band. Always true in the classic shell, whose markup stays as it was.
+  const showViewControls =
+    !inToolbar ||
+    activeView === 'kanban' ||
+    activeView === 'list' ||
+    activeView === 'calendar' ||
+    activeView === 'concluded';
+  const showFiltersRow = showFilters || showViewControls;
   const phoneResultCount =
     activeView === 'list' && mode === 'publicacoes'
       ? listPosts.length
@@ -1627,130 +1638,140 @@ export default function EntregasPage() {
           row (EntregasFilters is basis-full there) and the toggles wrap onto
           the next one -- without that they split the row 50/50 and the
           toggles get clipped. */}
-            <div className="flex flex-wrap items-center gap-3 min-[901px]:gap-y-6">
-              {showFilters && (
-                <EntregasFilters
-                  filters={filters}
-                  onChange={setFilters}
-                  clientes={clientes}
-                  membros={membros}
-                  templates={templates}
-                  etapaNames={etapaNames}
-                  mode={postsMode ? 'posts' : 'entregas'}
-                />
-              )}
+            {showFiltersRow && (
+              <div className="flex flex-wrap items-center gap-3 min-[901px]:gap-y-6">
+                {showFilters && (
+                  <EntregasFilters
+                    filters={filters}
+                    onChange={setFilters}
+                    clientes={clientes}
+                    membros={membros}
+                    templates={templates}
+                    etapaNames={etapaNames}
+                    mode={postsMode ? 'posts' : 'entregas'}
+                  />
+                )}
 
-              {/* View tabs + mode + entity toggles. Scrolls horizontally within its
+                {showViewControls && (
+                  <>
+                    {/* View tabs + mode + entity toggles. Scrolls horizontally within its
             own space instead of wrapping into several stacked control rows,
             which was eating the first fold on phones. */}
-              <div
-                // Below 901px, flex-basis 0% (flex-1, not 'auto') so the outer row's
-                // line-wrapping decision -- made from each item's hypothetical size
-                // BEFORE shrinking is applied -- doesn't see this item's full content
-                // width and wrap it onto its own line. minWidth:0 then lets it
-                // actually shrink to fit next to the Filtros button, and this
-                // element's own overflow-x:auto scrolls whatever doesn't fit. From
-                // 901px up the filters take a line of their own and the basis goes
-                // back to auto, so the Lista toolbar after this row wraps onto the
-                // next line when it doesn't fit beside the tabs, instead of
-                // squeezing them into a scroll.
-                className="no-scrollbar flex-1 min-[901px]:basis-auto"
-                style={{
-                  display: 'flex',
-                  flexWrap: 'nowrap',
-                  overflowX: 'auto',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  minWidth: 0,
-                }}
-              >
-                {!inToolbar && (
-                  <div
-                    role="tablist"
-                    aria-label="Modos de visualização"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      background: 'var(--card-bg)',
-                      border: '1px solid var(--border-color)',
-                      padding: '0.25rem',
-                      borderRadius: '8px',
-                      overflowX: 'auto',
-                      width: 'fit-content',
-                      maxWidth: '100%',
-                      flexShrink: 0,
-                    }}
-                    className="animate-up no-scrollbar"
-                  >
-                    {VIEW_TABS.map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={activeView === tab.id}
-                        onClick={() => setActiveView(tab.id)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          padding: '0.3rem 0.65rem',
-                          borderRadius: '6px',
-                          border: 'none',
-                          background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
-                          color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
-                          fontSize: '0.8rem',
-                          fontWeight: activeView === tab.id ? 600 : 400,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {tab.icon} {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                    <div
+                      // Below 901px, flex-basis 0% (flex-1, not 'auto') so the outer row's
+                      // line-wrapping decision -- made from each item's hypothetical size
+                      // BEFORE shrinking is applied -- doesn't see this item's full content
+                      // width and wrap it onto its own line. minWidth:0 then lets it
+                      // actually shrink to fit next to the Filtros button, and this
+                      // element's own overflow-x:auto scrolls whatever doesn't fit. From
+                      // 901px up the filters take a line of their own and the basis goes
+                      // back to auto, so the Lista toolbar after this row wraps onto the
+                      // next line when it doesn't fit beside the tabs, instead of
+                      // squeezing them into a scroll.
+                      className="no-scrollbar flex-1 min-[901px]:basis-auto"
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'nowrap',
+                        overflowX: 'auto',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        minWidth: 0,
+                      }}
+                    >
+                      {!inToolbar && (
+                        <div
+                          role="tablist"
+                          aria-label="Modos de visualização"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            background: 'var(--card-bg)',
+                            border: '1px solid var(--border-color)',
+                            padding: '0.25rem',
+                            borderRadius: '8px',
+                            overflowX: 'auto',
+                            width: 'fit-content',
+                            maxWidth: '100%',
+                            flexShrink: 0,
+                          }}
+                          className="animate-up no-scrollbar"
+                        >
+                          {VIEW_TABS.map((tab) => (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              role="tab"
+                              aria-selected={activeView === tab.id}
+                              onClick={() => setActiveView(tab.id)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                padding: '0.3rem 0.65rem',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
+                                color:
+                                  activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
+                                fontSize: '0.8rem',
+                                fontWeight: activeView === tab.id ? 600 : 400,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {tab.icon} {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
-                {(activeView === 'kanban' ||
-                  activeView === 'list' ||
-                  activeView === 'calendar') && (
-                  <div style={{ flexShrink: 0 }}>
-                    <ModeToggle mode={mode} onModeChange={setMode} />
-                  </div>
-                )}
+                      {(activeView === 'kanban' ||
+                        activeView === 'list' ||
+                        activeView === 'calendar') && (
+                        <div style={{ flexShrink: 0 }}>
+                          <ModeToggle mode={mode} onModeChange={setMode} />
+                        </div>
+                      )}
 
-                {postProcessesVisible &&
-                  (activeView === 'kanban' || activeView === 'list') &&
-                  mode === 'entregas' && (
-                    <div style={{ flexShrink: 0 }}>
-                      <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+                      {postProcessesVisible &&
+                        (activeView === 'kanban' || activeView === 'list') &&
+                        mode === 'entregas' && (
+                          <div style={{ flexShrink: 0 }}>
+                            <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+                          </div>
+                        )}
+
+                      {activeView === 'concluded' && (
+                        <div
+                          className="relative w-[220px]"
+                          style={{ marginLeft: 'auto', flexShrink: 0 }}
+                        >
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+                          <Input
+                            placeholder="Buscar cliente..."
+                            value={concludedClientSearch}
+                            onChange={(e) => setConcludedClientSearch(e.target.value)}
+                            className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+                          />
+                        </div>
+                      )}
                     </div>
-                  )}
-
-                {activeView === 'concluded' && (
-                  <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-                    <Input
-                      placeholder="Buscar cliente..."
-                      value={concludedClientSearch}
-                      onChange={(e) => setConcludedClientSearch(e.target.value)}
-                      className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
-                    />
-                  </div>
+                  </>
                 )}
-              </div>
 
-              {/* Barra da Lista (Agrupar por, Mostrar postados, Responsáveis) na linha
+                {/* Barra da Lista (Agrupar por, Mostrar postados, Responsáveis) na linha
             das abas quando cabe, alinhada à direita, sobre onde o painel lateral
             abre. Fica fora da rolagem das abas, que a escondia no fim da
             rolagem: abaixo de 901px tem linha própria, e a partir daí quebra
             para a linha de baixo quando não cabe ao lado das abas. */}
-              {activeView === 'list' && (
-                <div className="basis-full min-[901px]:basis-auto min-[901px]:ml-auto">
-                  {listToolbar}
-                </div>
-              )}
-            </div>
+                {activeView === 'list' && (
+                  <div className="basis-full min-[901px]:basis-auto min-[901px]:ml-auto">
+                    {listToolbar}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 

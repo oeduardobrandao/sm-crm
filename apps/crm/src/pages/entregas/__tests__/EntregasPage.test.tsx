@@ -3254,7 +3254,7 @@ describe('EntregasPage: Vidro toolbar', () => {
     });
   });
 
-  function renderInShell(vidroShell: boolean) {
+  function renderInShell(vidroShell: boolean, entry = '/entregas') {
     mockedUseEntregasData.mockReturnValue({
       clientes: [],
       membros: [],
@@ -3270,7 +3270,7 @@ describe('EntregasPage: Vidro toolbar', () => {
       refresh: vi.fn(),
     } as never);
     return render(
-      <VidroToolbarHarness vidroShell={vidroShell}>{pageTree('/entregas')}</VidroToolbarHarness>,
+      <VidroToolbarHarness vidroShell={vidroShell}>{pageTree(entry)}</VidroToolbarHarness>,
     );
   }
 
@@ -3284,6 +3284,8 @@ describe('EntregasPage: Vidro toolbar', () => {
 
     const counts = screen.getByText(/fluxos ativos: 1/);
     expect(counts.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    // Native tooltip: a data-tooltip would be clipped by the subtitle's overflow.
+    expect(counts.closest('[title="Totais gerais, sem filtros"]')).not.toBeNull();
     expect(screen.getByText(/1 atrasado/).closest('.vidro-toolbar-subtitle')).not.toBeNull();
 
     const comoFunciona = screen.getAllByRole('button', { name: /como funciona/i });
@@ -3328,6 +3330,24 @@ describe('EntregasPage: Vidro toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Ver tour novamente' })).toBeNull();
   });
 
+  it('leaves no empty filters row on Minha fila', async () => {
+    const { container } = renderInShell(true, '/entregas?view=fila');
+    expect(await screen.findByText(/^Fila view:/)).toBeInTheDocument();
+
+    expect(container.querySelector('div.flex.flex-wrap.items-center.gap-3')).toBeNull();
+    expect(container.querySelector('div.no-scrollbar.flex-1')).toBeNull();
+  });
+
+  it('keeps the filters but drops the empty view-controls strip on Visão geral', async () => {
+    const { container } = renderInShell(true, '/entregas?view=chart');
+    expect(await screen.findByText(/^Chart view:/)).toBeInTheDocument();
+
+    const row = container.querySelector('div.flex.flex-wrap.items-center.gap-3');
+    expect(row).not.toBeNull();
+    expect(row).toHaveTextContent('FiltersMode:');
+    expect(container.querySelector('div.no-scrollbar.flex-1')).toBeNull();
+  });
+
   it('keeps the in-page header and tabs when the shell is classic', async () => {
     renderInShell(false);
 
@@ -3339,6 +3359,7 @@ describe('EntregasPage: Vidro toolbar', () => {
     const tablist = screen.getByRole('tablist', { name: 'Modos de visualização' });
     expect(tablist).not.toHaveClass('vidro-seg');
     expect(screen.getByText(/fluxos ativos: 1/).tagName).toBe('P');
+    expect(document.querySelector('[title="Totais gerais, sem filtros"]')).toBeNull();
     expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
   });
 });
