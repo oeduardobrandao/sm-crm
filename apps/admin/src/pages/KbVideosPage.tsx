@@ -159,8 +159,9 @@ export default function KbVideosPage() {
   const View = isPhone ? KbVideosPhone : KbVideosDesktop;
 
   return (
-    // Room under the last row so the floating bulk bar never covers it.
-    <div className={cn(actionable.length > 0 && 'pb-20')}>
+    // Desktop: room under the last row so the floating bulk bar never covers it. The phone
+    // bar leaves its own in-flow spacer.
+    <div className={cn(!isPhone && actionable.length > 0 && 'pb-20')}>
       <View
         groups={groups}
         statusBody={statusBody}

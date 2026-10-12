@@ -139,4 +139,38 @@ describe('KbVideoEditorPage (phone)', () => {
     expect(await screen.findByText(/Salve o vídeo para enviar o arquivo/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Novo vídeo' })).toBeInTheDocument();
   });
+
+  describe('publish gate on the Status picker', () => {
+    async function openStatus() {
+      await screen.findByDisplayValue('Primeiro acesso');
+      fireEvent.click(screen.getByRole('button', { name: /^Status/ }));
+      return screen.findByRole('button', { name: /Publicado/ });
+    }
+
+    it('disables "Publicado" while the video is not ready', async () => {
+      renderAt('/admin/kb-videos/7/edit');
+      expect(await openStatus()).toBeDisabled();
+    });
+
+    it('enables "Publicado" once the video is ready', async () => {
+      vi.mocked(getKbVideo).mockResolvedValue({
+        video: {
+          ...video,
+          stream_status: 'ready',
+          hls_url: 'https://h/u1.m3u8',
+          duration_seconds: 65,
+        },
+      } as never);
+      renderAt('/admin/kb-videos/7/edit');
+      expect(await openStatus()).toBeEnabled();
+    });
+
+    it('keeps "Publicado" enabled for an already-published video being replaced', async () => {
+      const published = { ...video, status: 'published', stream_status: 'pending' };
+      vi.mocked(getKbVideo).mockResolvedValue({ video: published } as never);
+      vi.mocked(refreshKbVideo).mockResolvedValue({ video: published } as never);
+      renderAt('/admin/kb-videos/7/edit');
+      expect(await openStatus()).toBeEnabled();
+    });
+  });
 });

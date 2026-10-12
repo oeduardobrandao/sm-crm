@@ -135,7 +135,9 @@ describe('KbVideosPage', () => {
   it('moving a video down renumbers the series', async () => {
     renderPage();
     await screen.findAllByRole('link', { name: 'Primeiro acesso' });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Mover Primeiro acesso para baixo' })[0]);
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Mover Primeiro acesso para a direita' })[0],
+    );
     await waitFor(() =>
       expect(reorderKbVideos).toHaveBeenCalledWith([
         { id: 2, display_order: 10 },
@@ -153,6 +155,7 @@ describe('KbVideosPage', () => {
     await screen.findAllByRole('link', { name: 'Primeiro acesso' });
     expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
 
+    expect(screen.queryByRole('checkbox')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Selecionar todos os vídeos de Primeiros passos' }),
@@ -176,6 +179,7 @@ describe('KbVideosPage', () => {
     vi.mocked(upsertKbVideo).mockResolvedValue({ video: videos[0] } as never);
     renderPage();
     await screen.findAllByRole('link', { name: 'Primeiro acesso' });
+    expect(screen.queryByRole('checkbox')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Selecionar Primeiro acesso' }));
     expect(screen.getByText('1 selecionado')).toBeInTheDocument();

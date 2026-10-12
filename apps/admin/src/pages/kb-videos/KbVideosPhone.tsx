@@ -73,7 +73,7 @@ export function KbVideosPhone(p: KbVideosViewProps) {
           const groupIds = videos.map((v) => v.id);
           const headingId = `kb-series-${series.id}`;
           return (
-            <div key={series.id}>
+            <section key={series.id} aria-labelledby={headingId}>
               <div className="mx-4 mb-1.5 flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   {p.selectMode && videos.length > 0 && (
@@ -109,14 +109,16 @@ export function KbVideosPhone(p: KbVideosViewProps) {
                   videos.map((v, index) => {
                     const pBadge = publishBadge(v.status);
                     const sb = processingBadge(v);
+                    const duration = formatDuration(v.duration_seconds);
                     const stats = (
-                      <KbViewStats
-                        className="mt-0.5 [&>div]:text-xs"
-                        stats={p.statsFor(v.id)}
-                        loading={p.statsLoading}
-                        failed={p.statsFailed}
-                        showCompleted
-                      />
+                      <span className="mt-0.5 block">
+                        <KbViewStats
+                          stats={p.statsFor(v.id)}
+                          loading={p.statsLoading}
+                          failed={p.statsFailed}
+                          showCompleted
+                        />
+                      </span>
                     );
                     const body = (
                       <>
@@ -124,6 +126,7 @@ export function KbVideosPhone(p: KbVideosViewProps) {
                         <span className="phone-cell__body">
                           <span className="phone-cell__text">
                             <span className="phone-cell__label">{v.title}</span>
+                            {duration && <span className="sr-only">{`Duração ${duration}`}</span>}
                             <span className="mt-1 flex flex-wrap gap-1.5">
                               <Badge variant={pBadge.variant}>{pBadge.label}</Badge>
                               <Badge variant={sb.variant}>{sb.label}</Badge>
@@ -184,7 +187,7 @@ export function KbVideosPhone(p: KbVideosViewProps) {
                   })
                 )}
               </GroupedList>
-            </div>
+            </section>
           );
         })}
 

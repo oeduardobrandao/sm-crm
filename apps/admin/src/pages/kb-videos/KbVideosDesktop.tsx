@@ -137,7 +137,7 @@ export function KbVideosDesktop(p: KbVideosViewProps) {
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
-                                  aria-label={`Mover ${v.title} para cima`}
+                                  aria-label={`Mover ${v.title} para a esquerda`}
                                   disabled={index === 0 || p.reorderPending}
                                   onClick={() => p.onMove(videos, index, -1)}
                                 >
@@ -147,7 +147,7 @@ export function KbVideosDesktop(p: KbVideosViewProps) {
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
-                                  aria-label={`Mover ${v.title} para baixo`}
+                                  aria-label={`Mover ${v.title} para a direita`}
                                   disabled={index === videos.length - 1 || p.reorderPending}
                                   onClick={() => p.onMove(videos, index, 1)}
                                 >

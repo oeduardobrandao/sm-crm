@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { mockPhone } from '../../__tests__/phone';
 
@@ -92,11 +92,16 @@ beforeEach(() => {
 
 afterEach(() => restorePhone());
 
+function Where() {
+  return <output data-testid="where">{useLocation().pathname}</output>;
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
+        <Where />
         <KbVideosPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -114,6 +119,7 @@ describe('KbVideosPage (phone)', () => {
     expect(within(first).getByText('Publicado')).toBeInTheDocument();
     expect(within(first).getByText('Pronto')).toBeInTheDocument();
     expect(within(first).getByText('1:05')).toBeInTheDocument();
+    expect(first).toHaveAccessibleName(/Duração 1:05/);
     const second = screen.getByRole('link', { name: /Equipe/ });
     expect(second).toHaveAttribute('href', '/admin/kb-videos/2/edit');
     expect(within(second).getByText('Processando')).toBeInTheDocument();
@@ -128,11 +134,14 @@ describe('KbVideosPage (phone)', () => {
     expect(screen.getByLabelText('Título')).toBeInTheDocument();
   });
 
-  it('the plus button also offers a link to a new video', async () => {
+  it('the plus button also offers a new video, which opens the new-video route', async () => {
     renderPage();
     await screen.findByRole('link', { name: /Primeiro acesso/ });
     fireEvent.click(screen.getByRole('button', { name: 'Novo vídeo ou nova série' }));
-    expect(await screen.findByRole('button', { name: 'Novo vídeo' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Novo vídeo' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent('/admin/kb-videos/new'),
+    );
   });
 
   it('"Editar série" opens the series sheet with the series loaded', async () => {
@@ -147,6 +156,7 @@ describe('KbVideosPage (phone)', () => {
     vi.mocked(upsertKbVideo).mockResolvedValue({ video: videos[0] } as never);
     renderPage();
     await screen.findByRole('link', { name: /Primeiro acesso/ });
+    expect(screen.queryByRole('checkbox')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Selecionar vídeos' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Selecionar Equipe' }));
     expect(screen.getByText('1 selecionado')).toBeInTheDocument();
