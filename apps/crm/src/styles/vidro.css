@@ -1,0 +1,557 @@
+/*
+ * Desktop "Vidro" (level 3) shell and content look.
+ * Spec: docs/superpowers/specs/2026-10-12-desktop-vidro-design.md
+ * Applies only with html[data-look='vidro'] (workspace flag feature_crm_vidro + no opt-out,
+ * src/hooks/useVidro.ts) and only at >=1101px. Ordinary stylesheet on purpose: no @layer, no
+ * !important. src/__tests__/vidroContracts.test.ts enforces the guards.
+ */
+@media (min-width: 1101px) {
+  /* ---------- Tokens + backdrop ---------- */
+  html[data-look='vidro'] .app-container {
+    --vd-panel: rgba(255, 255, 255, 0.94);
+    --vd-glass: rgba(255, 255, 255, 0.55);
+    --vd-glass-bd: rgba(255, 255, 255, 0.75);
+    --vd-cap: rgba(255, 255, 255, 0.82);
+    --vd-cap-bd: rgba(18, 21, 26, 0.08);
+    --vd-cap-ring: #ffffff;
+    --vd-tile: #f4f4f6;
+    --vd-group: #ffffff;
+    --vd-sep: rgba(60, 60, 67, 0.12);
+    --vd-fill: rgba(118, 118, 128, 0.12);
+    --vd-sel: #12151a;
+    --vd-sel-fg: #ffffff;
+    --vd-txt3: #6b7280;
+    --vd-shadow: 0 20px 50px -20px rgba(18, 21, 26, 0.25);
+    --vd-solid: #f7f7f9;
+    --topbar-height: 70px;
+    background-color: #eceef3;
+    background-image:
+      radial-gradient(42rem 42rem at 6% 8%, rgba(255, 191, 48, 0.3), transparent 60%),
+      radial-gradient(40rem 40rem at 92% 12%, rgba(57, 132, 255, 0.18), transparent 60%),
+      radial-gradient(40rem 40rem at 80% 96%, rgba(245, 66, 200, 0.12), transparent 60%),
+      radial-gradient(36rem 36rem at 12% 92%, rgba(106, 201, 208, 0.22), transparent 62%);
+  }
+
+  html[data-theme='dark'][data-look='vidro'] .app-container {
+    --vd-panel: rgba(15, 17, 21, 0.86);
+    --vd-glass: rgba(17, 21, 28, 0.5);
+    --vd-glass-bd: rgba(255, 255, 255, 0.09);
+    --vd-cap: rgba(30, 36, 48, 0.7);
+    --vd-cap-bd: rgba(255, 255, 255, 0.08);
+    --vd-cap-ring: #1e2430;
+    --vd-tile: rgba(255, 255, 255, 0.05);
+    --vd-group: rgba(255, 255, 255, 0.03);
+    --vd-sep: rgba(235, 235, 245, 0.09);
+    --vd-fill: rgba(118, 118, 128, 0.24);
+    --vd-sel: rgba(255, 255, 255, 0.14);
+    --vd-sel-fg: #ffffff;
+    --vd-txt3: #8b93a1;
+    --vd-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+    --vd-solid: #12151a;
+    background-color: #0a0c0f;
+    background-image:
+      radial-gradient(42rem 42rem at 6% 8%, rgba(234, 179, 8, 0.32), transparent 60%),
+      radial-gradient(40rem 40rem at 92% 12%, rgba(57, 132, 255, 0.3), transparent 60%),
+      radial-gradient(40rem 40rem at 80% 96%, rgba(245, 66, 200, 0.24), transparent 60%),
+      radial-gradient(36rem 36rem at 12% 92%, rgba(106, 201, 208, 0.24), transparent 62%);
+  }
+
+  /* ---------- Sidebar: floating glass ---------- */
+  html[data-look='vidro'] .app-container .sidebar {
+    left: 10px;
+    top: calc(var(--banner-height, 0px) + 10px);
+    height: calc(100dvh - var(--banner-height, 0px) - 20px);
+    background: var(--vd-glass);
+    border: 1px solid var(--vd-glass-bd);
+    border-radius: 20px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      var(--vd-shadow);
+    -webkit-backdrop-filter: blur(26px) saturate(1.6);
+    backdrop-filter: blur(26px) saturate(1.6);
+    /* No overflow: hidden here: it would clip .user-menu-popover (width calc(100% + 1.5rem)). */
+  }
+
+  html[data-look='vidro'] .app-container .vidro-sidebar-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 16px 8px;
+    min-width: 0;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-sidebar-logo {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    border-radius: 6px;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-sidebar-logo img {
+    height: 16px;
+    width: auto;
+    display: block;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-sidebar-logo .vidro-sidebar-mark {
+    display: none;
+    height: 22px;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-sidebar-ws {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.2;
+    margin-left: auto;
+    text-align: right;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-sidebar-ws-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-sidebar-ws-plan {
+    font-size: 11px;
+    color: var(--vd-txt3);
+  }
+
+  /* Rail: the mark (public/icon.svg) instead of the wordmark, no workspace text. */
+  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-head {
+    justify-content: center;
+    padding: 14px 0 8px;
+  }
+
+  html[data-look='vidro']
+    .app-container
+    .sidebar--rail
+    .vidro-sidebar-logo
+    .vidro-sidebar-wordmark {
+    display: none;
+  }
+
+  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-logo .vidro-sidebar-mark {
+    display: block;
+  }
+
+  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-ws {
+    display: none;
+  }
+
+  html[data-look='vidro'] .app-container .search-trigger--sidebar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: calc(100% - 1.5rem);
+    height: 30px;
+    margin: 4px 0.75rem 6px;
+    padding: 0 12px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 999px;
+    background: var(--vd-fill);
+    color: var(--vd-txt3);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  html[data-look='vidro'] .app-container .search-trigger--sidebar .search-trigger-text {
+    flex: 1;
+    text-align: left;
+    font-size: 13px;
+  }
+
+  html[data-look='vidro'] .app-container .search-trigger--sidebar .search-trigger-kbd {
+    background: transparent;
+    color: var(--vd-txt3);
+    font-size: 11px;
+    padding: 0;
+  }
+
+  html[data-look='vidro'] .app-container .sidebar--rail .search-trigger--sidebar {
+    width: 36px;
+    height: 36px;
+    margin: 4px auto 6px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  html[data-look='vidro']
+    .app-container
+    .sidebar--rail
+    .search-trigger--sidebar
+    .search-trigger-text,
+  html[data-look='vidro']
+    .app-container
+    .sidebar--rail
+    .search-trigger--sidebar
+    .search-trigger-kbd {
+    display: none;
+  }
+
+  html[data-look='vidro'] .app-container .sidebar-group-label {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vd-txt3);
+  }
+
+  html[data-look='vidro'] .app-container .sidebar-sub-link {
+    min-height: 30px;
+    border-radius: 10px;
+    color: var(--text-main);
+  }
+
+  html[data-look='vidro'] .app-container .sidebar-sub-link:hover {
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro'] .app-container .sidebar-sub-link.active {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+    box-shadow: 0 4px 12px -4px rgba(18, 21, 26, 0.35);
+  }
+
+  html[data-look='vidro'] .app-container .sidebar-sub-link.active i {
+    color: #ffbf30;
+  }
+
+  html[data-look='vidro'] .app-container .sidebar-bottom {
+    border-top-color: var(--vd-sep);
+  }
+
+  /* ---------- Panel ---------- */
+  html[data-look='vidro'] .app-container .vidro-panel {
+    position: fixed;
+    top: calc(var(--banner-height, 0px) + 10px);
+    right: 10px;
+    bottom: 10px;
+    left: calc(10px + var(--sidebar-width) + 10px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--vd-panel);
+    border: 1px solid var(--vd-glass-bd);
+    border-radius: 20px;
+    box-shadow: var(--vd-shadow);
+    transition: left 0.25s ease;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-panel > .main-content {
+    margin: 0;
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 4px clamp(1rem, 2.4vw, 2rem) clamp(1.25rem, 3vw, 2.5rem);
+  }
+
+  html[data-look='vidro'] .app-container .vidro-panel > .main-content:has(> .page-full-bleed) {
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  /* ---------- Toolbar ---------- */
+  html[data-look='vidro'] .app-container .vidro-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    min-height: 60px;
+    padding: 10px 14px 10px 22px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+
+  /* 240px basis: the right cluster wraps to its own line exactly when it cannot fit beside it. */
+  html[data-look='vidro'] .app-container .vidro-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar-title {
+    margin: 0;
+    font-family: var(--font-heading);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar-subtitle {
+    font-size: 12px;
+    color: var(--vd-txt3);
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 1 auto;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar-right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar [data-slot='button'] {
+    margin-bottom: 0;
+  }
+
+  /* ---------- Shell capsule ---------- */
+  html[data-look='vidro'] .app-container .vidro-capsule {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 40px;
+    padding: 0 3px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background: var(--vd-cap);
+    border: 1px solid var(--vd-cap-bd);
+    box-shadow:
+      0 6px 16px -8px rgba(18, 21, 26, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.6);
+    backdrop-filter: blur(18px) saturate(1.6);
+  }
+
+  html[data-look='vidro'] .app-container .vidro-capsule-btn {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-light);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-capsule-btn:hover {
+    background: var(--vd-fill);
+    color: var(--text-main);
+  }
+
+  html[data-look='vidro'] .app-container .vidro-capsule-btn:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-capsule-btn .unread-dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 2px solid var(--vd-cap-ring);
+    background: var(--primary-color);
+  }
+
+  /* ---------- Floating corner, report editor rail ---------- */
+  html[data-look='vidro'] .app-container .guide-pill {
+    right: 30px;
+    bottom: 30px;
+  }
+
+  html[data-look='vidro'] .app-container .context-help {
+    right: 30px;
+    bottom: 30px;
+  }
+
+  html[data-look='vidro'] body:has(.guide-pill) .app-container .context-help {
+    bottom: 82px;
+  }
+
+  html[data-look='vidro'] .app-container .rb-layers-rail {
+    top: calc(var(--banner-height, 0px) + 10px + 60px + 16px);
+    right: 26px;
+    max-height: calc(100vh - var(--banner-height, 0px) - 10px - 60px - 42px);
+  }
+
+  /* ---------- Content: groups, tiles, segmented, pills ---------- */
+  html[data-look='vidro']
+    .app-container
+    .card:not(.card-blue):not(.card-yellow):not(.card-teal):not(.card-dark) {
+    background: var(--vd-group);
+    border: 1px solid var(--vd-sep);
+    box-shadow: none;
+    border-radius: 16px;
+  }
+
+  html[data-look='vidro'] .app-container .card .card {
+    background: var(--vd-fill);
+    border-color: transparent;
+  }
+
+  html[data-look='vidro'] .app-container .kpi-grid {
+    gap: 12px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  html[data-look='vidro'] .app-container .kpi-card {
+    background: var(--vd-tile);
+    border: 0;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  html[data-look='vidro'] .app-container .kpi-card--filler {
+    background: transparent;
+  }
+
+  html[data-look='vidro'] .app-container .kpi-grid > .kpi-card:hover,
+  html[data-look='vidro'] .app-container button.kpi-card--clickable:hover {
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro'] .app-container .kpi-card[data-active='true'] {
+    box-shadow: inset 0 0 0 2px var(--primary-color);
+  }
+
+  html[data-look='vidro'] .app-container .page-tabs,
+  html[data-look='vidro'] .app-container .calendar-tabs,
+  html[data-look='vidro'] .app-container .board-tabs,
+  html[data-look='vidro'] .app-container .agenda-segmented,
+  html[data-look='vidro'] .app-container .vidro-seg,
+  html[data-look='vidro'] .app-container [data-slot='tabs-list'] {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    width: fit-content;
+    max-width: 100%;
+    padding: 2px;
+    border: 0;
+    border-bottom: 0;
+    border-radius: 999px;
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro'] .app-container .page-tab,
+  html[data-look='vidro'] .app-container .calendar-tab,
+  html[data-look='vidro'] .app-container .board-tab:not(.board-tab-add),
+  html[data-look='vidro'] .app-container .agenda-segmented__item,
+  html[data-look='vidro'] .app-container .vidro-seg-btn,
+  html[data-look='vidro'] .app-container [data-slot='tabs-trigger'] {
+    border: 0;
+    border-radius: 999px;
+    padding: 6px 14px;
+    background: transparent;
+    color: var(--text-main);
+    font-family: var(--font-main);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    box-shadow: none;
+    cursor: pointer;
+  }
+
+  html[data-look='vidro'] .app-container .page-tab.active,
+  html[data-look='vidro'] .app-container .calendar-tab.active,
+  html[data-look='vidro'] .app-container .board-tab.active:not(.board-tab-add),
+  html[data-look='vidro'] .app-container .agenda-segmented__item[data-state='on'],
+  html[data-look='vidro'] .app-container .vidro-seg-btn[aria-pressed='true'],
+  html[data-look='vidro'] .app-container .vidro-seg-btn[aria-selected='true'],
+  html[data-look='vidro'] .app-container [data-slot='tabs-trigger'][data-state='active'] {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+  }
+
+  html[data-look='vidro'] .app-container .calendar-tab.active::after,
+  html[data-look='vidro'] .app-container .board-tab.active::after {
+    display: none;
+  }
+
+  html[data-look='vidro'] .app-container [data-slot='button'],
+  html[data-look='vidro'] .app-container .btn-primary,
+  html[data-look='vidro'] .app-container .btn-secondary,
+  html[data-look='vidro'] .app-container .btn-danger,
+  html[data-look='vidro'] .app-container .btn-danger-outline,
+  html[data-look='vidro'] .app-container .btn-icon,
+  html[data-look='vidro'] .app-container .btn-icon--danger,
+  html[data-look='vidro'] .app-container .btn-upgrade {
+    border-radius: 999px;
+  }
+}
+
+/* Reduced transparency / no backdrop-filter: opaque surfaces. */
+@media (min-width: 1101px) and (prefers-reduced-transparency: reduce) {
+  html[data-look='vidro'] .app-container .sidebar,
+  html[data-look='vidro'] .app-container .vidro-capsule {
+    background: var(--vd-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (min-width: 1101px) {
+    html[data-look='vidro'] .app-container .sidebar,
+    html[data-look='vidro'] .app-container .vidro-capsule {
+      background: var(--vd-solid);
+    }
+  }
+}
+
+/* Analytics de Fluxos print: its actions and period tabs live in the toolbar under Vidro. */
+@media print {
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar-right {
+    display: none;
+  }
+
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar {
+    padding: 0 0 12px;
+  }
+
+  /* The panel is fixed + overflow hidden with .main-content as the scroller: reset all of it so the
+     whole report prints, not the first screen. */
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .app-container {
+    background: #fff;
+    height: auto;
+    overflow: visible;
+  }
+
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-panel {
+    position: static;
+    display: block;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+  }
+
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-panel > .main-content {
+    overflow: visible;
+    height: auto;
+  }
+}

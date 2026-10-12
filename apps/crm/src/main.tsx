@@ -24,6 +24,7 @@ import ptAutomations from '../../../packages/i18n/locales/pt/automations.json';
 import enAutomations from '../../../packages/i18n/locales/en/automations.json';
 import App, { queryClient } from './App';
 import '../style.css';
+import './styles/vidro.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();
