@@ -16,7 +16,8 @@ const badgeVariants = cva(
         success: 'bg-success/10 text-success',
         warning: 'bg-warning/10 text-warning',
         danger: 'bg-destructive/10 text-destructive',
-        info: 'bg-sky-500/10 text-sky-500',
+        // Text on the soft tints reads the text tokens (globals.css): 5.4-6.5:1 in light.
+        info: 'bg-sky-500/10 text-sky-700 dark:text-sky-400',
         primary: 'bg-primary/20 text-foreground',
         outline: 'border-border bg-transparent text-foreground',
       },

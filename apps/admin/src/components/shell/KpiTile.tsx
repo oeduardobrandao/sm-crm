@@ -15,23 +15,34 @@ export interface KpiTileProps {
   sub?: ReactNode;
   tone?: keyof typeof TONE;
   to?: string;
+  /** Smaller value type for long values (money with cents): 22px on desktop, 18px on phone. */
+  compact?: boolean;
 }
 
-export function KpiTile({ label, value, sub, tone = 'default', to }: KpiTileProps) {
+export function KpiTile({ label, value, sub, tone = 'default', to, compact }: KpiTileProps) {
   const t = TONE[tone];
   const body = (
     <>
       <span className={cn('block text-xs font-semibold uppercase tracking-[0.04em]', t.label)}>
         {label}
       </span>
-      <span className={cn('mt-1.5 block text-[28px] font-bold leading-tight', t.value)}>
+      {/* Never wraps or widens the tile: 22px on phone (admin-kit.css), ellipsis as last resort. */}
+      <span
+        data-kpi-value
+        title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}
+        className={cn(
+          'admin-kpi-value mt-1.5 block min-w-0 truncate font-bold leading-tight tabular-nums',
+          compact ? 'admin-kpi-value--compact text-[22px]' : 'text-[28px]',
+          t.value,
+        )}
+      >
         {value}
       </span>
       {sub ? <span className="block text-[13px] text-muted-foreground">{sub}</span> : null}
     </>
   );
   const cls = cn(
-    'admin-glass block rounded-[18px] border border-border bg-card px-[18px] py-4 text-card-foreground',
+    'admin-glass admin-kpi-tile block min-w-0 rounded-[18px] border border-border bg-card px-[18px] py-4 text-card-foreground',
     t.border,
   );
   return to ? (

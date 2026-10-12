@@ -19,4 +19,21 @@ describe('KpiTile', () => {
     );
     expect(screen.getByText('6')).toBeInTheDocument();
   });
+
+  it('the value never wraps or widens the tile (B1): nowrap, ellipsis, tabular, min-w-0', () => {
+    render(
+      <KpiGrid>
+        <KpiTile label="ARR" value="R$ 234.000,00" />
+        <KpiTile label="MRR" value="R$ 19.500,00" compact />
+      </KpiGrid>,
+    );
+    const value = screen.getByText('R$ 234.000,00');
+    expect(value).toHaveAttribute('data-kpi-value');
+    expect(value).toHaveClass('admin-kpi-value', 'truncate', 'tabular-nums', 'min-w-0');
+    expect(value).toHaveAttribute('title', 'R$ 234.000,00');
+    expect(value.parentElement).toHaveClass('admin-kpi-tile', 'min-w-0');
+    const compact = screen.getByText('R$ 19.500,00');
+    expect(compact).toHaveClass('admin-kpi-value--compact', 'text-[22px]');
+    expect(compact).not.toHaveClass('text-[28px]');
+  });
 });
