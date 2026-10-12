@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { mockPhone } from '../../__tests__/phone';
 
 vi.mock('../../lib/api', async (importOriginal) => ({
@@ -25,7 +25,7 @@ vi.mock('../../lib/api', async (importOriginal) => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { revokeMcpKey, setWorkspaceOverrides, setWorkspacePlan } from '../../lib/api';
-import { primeApi, renderPage } from './workspace-detail-fixture';
+import { primeApi, renderPage, renderPageWithBrowserHistory } from './workspace-detail-fixture';
 
 const WARNING = 'Descartar as alterações não salvas?';
 
@@ -123,5 +123,43 @@ describe('WorkspaceDetailPage (phone)', () => {
     expect(within(sheet).getByLabelText('E-mail')).toBeTruthy();
     expect(within(sheet).getByRole('radiogroup', { name: 'Papel' })).toBeTruthy();
     expect(within(sheet).getByText('Nenhum convite')).toBeTruthy();
+  });
+
+  it('features sheet: Salvar sends the toggled feature override', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Funcionalidades/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Funcionalidades' });
+    fireEvent.click(within(sheet).getByRole('switch', { name: 'Portal do Hub' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(setWorkspaceOverrides).toHaveBeenCalledWith(
+        expect.objectContaining({ feature_overrides: { feature_hub_portal: true } }),
+      ),
+    );
+  });
+
+  it('Back with dirty limits asks once; declining keeps the sheet open on the page', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const router = renderPageWithBrowserHistory();
+    const idx = () => (window.history.state as { idx: number }).idx;
+    fireEvent.click(await screen.findByRole('button', { name: /Limites de recursos/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Limites de recursos' });
+    const start = idx();
+    fireEvent.change(within(sheet).getByLabelText('Máx. de clientes'), {
+      target: { value: '15' },
+    });
+
+    act(() => window.history.back());
+    // The pop is async; the refused-close re-push follows it.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith(WARNING);
+    expect(screen.getByRole('dialog', { name: 'Limites de recursos' })).toBeTruthy();
+    expect((screen.getByLabelText('Máx. de clientes') as HTMLInputElement).value).toBe('15');
+    expect(idx()).toBe(start);
+    expect(router.state.location.pathname).toBe('/admin/workspaces/ws1');
   });
 });

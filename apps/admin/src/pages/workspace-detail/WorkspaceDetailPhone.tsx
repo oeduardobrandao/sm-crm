@@ -16,7 +16,7 @@ import { ConnectionsPhone } from './ConnectionsPhone';
 import {
   PagarmeLiveNotes,
   UsageTile,
-  dashboardLink,
+  dashboardLinks,
   roleLabel,
   subscriptionRows,
   subscriptionTitle,
@@ -39,7 +39,7 @@ function SectionHeader({ id, title, action }: { id: string; title: string; actio
 export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
   const { data, workspaceId } = props;
   const sub = data.subscription;
-  const link = dashboardLink(data);
+  const links = dashboardLinks(data);
   const created = new Date(data.workspace.created_at).toLocaleDateString('pt-BR');
   const planColor = data.plan ? getPlanColor(data.plan.name) : null;
 
@@ -100,16 +100,21 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
           id="wdp-subscription"
           title={subscriptionTitle(data)}
           action={
-            link && (
-              <a
-                href={sanitizeExternalUrl(link.href)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary no-underline"
-              >
-                {link.label}
-                <ExternalLink size={12} aria-hidden="true" />
-              </a>
+            links.length > 0 && (
+              <span className="flex flex-wrap justify-end gap-3">
+                {links.map((link) => (
+                  <a
+                    key={link.label}
+                    href={sanitizeExternalUrl(link.href)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary no-underline"
+                  >
+                    {link.label}
+                    <ExternalLink size={12} aria-hidden="true" />
+                  </a>
+                ))}
+              </span>
             )
           }
         />

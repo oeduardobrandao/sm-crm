@@ -42,6 +42,7 @@ export function EventsPhone(props: EventsPhoneProps) {
       <BottomSheet
         open={open}
         onOpenChange={setOpen}
+        popOnUnmount
         title={`Histórico de eventos (${props.total})`}
       >
         <GroupedList aria-label="Filtro de eventos">

@@ -1,6 +1,6 @@
 // Shared by WorkspaceDetailPage.test.tsx and WorkspaceDetailPage.phone.test.tsx.
 import { render } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, RouterProvider, createBrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
 import type { Plan, WorkspaceDetail } from '../../lib/api';
@@ -110,4 +110,20 @@ export function renderPage() {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+/** Real window.history (createMemoryRouter never writes it), for Back-button tests. */
+export function renderPageWithBrowserHistory() {
+  window.history.replaceState(null, '', '/admin/workspaces/ws1');
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createBrowserRouter([
+    { path: '/admin/workspaces/:id', element: <WorkspaceDetailPage /> },
+    { path: '*', element: <p>fora da página</p> },
+  ]);
+  render(
+    <QueryClientProvider client={qc}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  return router;
 }

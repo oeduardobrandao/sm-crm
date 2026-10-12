@@ -33,7 +33,7 @@ export function ConnectionsPhone<T>({
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
       />
-      <BottomSheet open={open} onOpenChange={setOpen} title={title}>
+      <BottomSheet open={open} onOpenChange={setOpen} title={title} popOnUnmount>
         {model.visible.length === 0 ? (
           <p className="mb-5 px-4 text-sm text-muted-foreground">{emptyText}</p>
         ) : (

@@ -23,8 +23,8 @@ vi.mock('../../lib/api', async (importOriginal) => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { revokeMcpKey, setWorkspaceOverrides, setWorkspacePlan } from '../../lib/api';
-import { primeApi, renderPage } from './workspace-detail-fixture';
+import { getWorkspace, revokeMcpKey, setWorkspaceOverrides, setWorkspacePlan } from '../../lib/api';
+import { WORKSPACE, primeApi, renderPage } from './workspace-detail-fixture';
 
 // jsdom has no scrollIntoView; Radix's Select calls it when committing a selection.
 Element.prototype.scrollIntoView = vi.fn();
@@ -60,7 +60,10 @@ describe('WorkspaceDetailPage (desktop)', () => {
       'Membros',
       'Atividade',
     ]);
-    expect(screen.getByText('Caio Mendes')).toBeTruthy();
+    // Only the active section is exposed; the others stay mounted but hidden.
+    const overview = screen.getByRole('tabpanel', { name: 'Visão geral' });
+    expect(within(overview).getByText('Caio Mendes')).toBeTruthy();
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
   });
 
   it('switching the plan calls the plan mutation', async () => {
@@ -142,5 +145,44 @@ describe('WorkspaceDetailPage (desktop)', () => {
     expect(await screen.findByText('Claude Desktop')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Revogar' }));
     await waitFor(() => expect(revokeMcpKey).toHaveBeenCalledWith('ws1', 'k1'));
+  });
+
+  it('keeps an invite draft across a tab switch (sections stay mounted)', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Membros' }));
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    const email = screen.getByLabelText('E-mail') as HTMLInputElement;
+    fireEvent.change(email, { target: { value: 'nova@x.com' } });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Atividade' }));
+    expect(email.closest('[role="tabpanel"]')).toHaveAttribute('hidden'); // hidden, not unmounted
+    fireEvent.click(screen.getByRole('tab', { name: 'Membros' }));
+    expect(screen.getByLabelText('E-mail')).toBe(email);
+    expect(email.value).toBe('nova@x.com');
+  });
+
+  it('keeps the Notes textarea in the DOM while another tab is active', async () => {
+    renderPage();
+    const notes = (await screen.findByLabelText('Notas do admin')) as HTMLTextAreaElement;
+    fireEvent.change(notes, { target: { value: 'Rascunho' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Limites' }));
+    expect(notes.isConnected).toBe(true);
+    expect(notes.closest('[role="tabpanel"]')).toHaveAttribute('hidden');
+    expect(notes.value).toBe('Rascunho');
+  });
+
+  it('shows both dashboard links when Stripe and Pagar.me URLs are set', async () => {
+    vi.mocked(getWorkspace).mockResolvedValue({
+      ...WORKSPACE,
+      subscription: {
+        provider: 'pagarme',
+        status: 'active',
+        stripe_dashboard_url: 'https://dashboard.stripe.com/x',
+        pagarme_dashboard_url: 'https://dash.pagar.me/y',
+      } as never,
+    });
+    renderPage();
+    expect(await screen.findByRole('link', { name: /Abrir no Stripe/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Abrir no Pagar\.me/ })).toBeTruthy();
   });
 });

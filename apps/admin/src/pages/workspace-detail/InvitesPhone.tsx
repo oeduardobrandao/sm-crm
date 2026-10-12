@@ -43,9 +43,12 @@ function formatSent(iso: string): string {
 export function InvitesPhone(props: InvitesPhoneProps) {
   const [open, setOpen] = useState(false);
   const pending = props.invites.filter((i) => i.status === 'pending').length;
+  // The pending count is only exact when every invite is loaded; a truncated list shows the
+  // server's total instead of undercounting.
+  const complete = props.total <= props.invites.length;
   const summary = props.isLoading
     ? undefined
-    : pending > 0
+    : complete && pending > 0
       ? `${pending} ${pending === 1 ? 'pendente' : 'pendentes'}`
       : String(props.total);
 
@@ -75,6 +78,7 @@ export function InvitesPhone(props: InvitesPhoneProps) {
       <BottomSheet
         open={open}
         onOpenChange={close}
+        popOnUnmount
         title={`Convites (${props.total})`}
         description={
           props.total > props.invites.length

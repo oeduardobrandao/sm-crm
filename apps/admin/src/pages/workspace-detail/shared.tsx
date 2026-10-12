@@ -41,13 +41,14 @@ export function subscriptionTitle(data: WorkspaceDetail): string {
   return data.subscription?.provider === 'pagarme' ? 'Assinatura Pagar.me' : 'Assinatura Stripe';
 }
 
-/** External dashboard link of the subscription (Stripe or Pagar.me), when the server sent one. */
-export function dashboardLink(data: WorkspaceDetail): { href: string; label: string } | null {
+/** External dashboard links of the subscription: Stripe and/or Pagar.me, each when the server sent it. */
+export function dashboardLinks(data: WorkspaceDetail): { href: string; label: string }[] {
+  const links: { href: string; label: string }[] = [];
   if (data.subscription?.stripe_dashboard_url)
-    return { href: data.subscription.stripe_dashboard_url, label: 'Abrir no Stripe' };
+    links.push({ href: data.subscription.stripe_dashboard_url, label: 'Abrir no Stripe' });
   if (data.subscription?.pagarme_dashboard_url)
-    return { href: data.subscription.pagarme_dashboard_url, label: 'Abrir no Pagar.me' };
-  return null;
+    links.push({ href: data.subscription.pagarme_dashboard_url, label: 'Abrir no Pagar.me' });
+  return links;
 }
 
 // ── Usage tiles ────────────────────────────────────────────────────────────

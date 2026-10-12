@@ -1,6 +1,6 @@
 // Workspace detail on desktop (DkWorkspaceDetalhe): back link + hero header, a segmented
 // control over the sections, panels below. Data and handlers come from the page.
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
 import { statusMeta, STATUS_BADGE_VARIANT, hasSubscription } from '../../lib/subscription';
@@ -20,7 +20,7 @@ import {
 } from '../../components/ui/select';
 import WorkspaceInvitesCard from '../WorkspaceInvitesCard';
 import WorkspaceEventsCard from '../WorkspaceEventsCard';
-import { UsageTile, dashboardLink, ownerLine, usageTiles } from './shared';
+import { UsageTile, dashboardLinks, ownerLine, usageTiles } from './shared';
 import {
   ConnectionsPanel,
   FeaturesPanel,
@@ -47,7 +47,7 @@ const SECTIONS: { value: Section; label: string }[] = [
 export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
   const { data, workspaceId } = props;
   const [section, setSection] = useState<Section>('geral');
-  const link = dashboardLink(data);
+  const links = dashboardLinks(data);
   const sub = data.subscription;
   const status = hasSubscription(sub) ? statusMeta(sub.status) : null;
   const overrides = props.resourceOverrideCount + props.featureOverrideCount;
@@ -55,14 +55,14 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
 
   const actions = (
     <>
-      {link && (
-        <Button variant="secondary" asChild>
+      {links.map((link) => (
+        <Button key={link.label} variant="secondary" asChild>
           <a href={sanitizeExternalUrl(link.href)} target="_blank" rel="noopener noreferrer">
             <ExternalLink aria-hidden="true" />
             {link.label}
           </a>
         </Button>
-      )}
+      ))}
       <span id="workspace-plan-label" className="sr-only">
         Plano do workspace
       </span>
@@ -95,7 +95,22 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
   );
 
   const tabId = (s: Section) => `wd-tab-${s}`;
-  const panelId = 'wd-section-panel';
+  const panelId = (s: Section) => `wd-panel-${s}`;
+  // Every section stays mounted (hidden when inactive) so an invite draft, the events
+  // filter/page and unsaved Notes survive a tab switch, and the silent-update check still
+  // sees the touched Notes textarea.
+  const panel = (s: Section, children: ReactNode) => (
+    <div
+      key={s}
+      role="tabpanel"
+      id={panelId(s)}
+      aria-labelledby={tabId(s)}
+      hidden={section !== s}
+      className="min-w-0 flex-col gap-4 [&:not([hidden])]:flex"
+    >
+      {children}
+    </div>
+  );
 
   return (
     <div className="w-full min-w-0 max-w-full">
@@ -106,7 +121,8 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
         actions={actions}
       >
         <div className="flex flex-col items-start gap-4">
-          <div className="flex flex-wrap gap-1.5" aria-label="Situação do workspace">
+          <div className="flex flex-wrap gap-1.5">
+            <span className="sr-only">Situação do workspace:</span>
             {data.plan && planColor && (
               <Badge
                 style={{
@@ -126,81 +142,81 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
             aria-label="Seções do workspace"
             value={section}
             onChange={setSection}
-            options={SECTIONS.map((s) => ({ ...s, id: tabId(s.value), controls: panelId }))}
+            options={SECTIONS.map((s) => ({
+              ...s,
+              id: tabId(s.value),
+              controls: panelId(s.value),
+            }))}
           />
         </div>
       </PageHeader>
 
-      <div
-        role="tabpanel"
-        id={panelId}
-        aria-labelledby={tabId(section)}
-        className="flex min-w-0 flex-col gap-4"
-      >
-        {section === 'geral' && (
-          <>
-            <KpiGrid min={180}>
-              {usageTiles(data).map((t) => (
-                <UsageTile key={t.label} tile={t} />
-              ))}
-            </KpiGrid>
-            <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-              <div className="flex min-w-0 flex-col gap-4">
-                <MembersPanel members={data.members} />
-                <NotesPanel {...props} />
-              </div>
-              <div className="flex min-w-0 flex-col gap-4">
-                <SubscriptionPanel data={data} />
-                <OverridesPanel {...props} />
-              </div>
+      {panel(
+        'geral',
+        <>
+          <KpiGrid min={180}>
+            {usageTiles(data).map((t) => (
+              <UsageTile key={t.label} tile={t} />
+            ))}
+          </KpiGrid>
+          <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <div className="flex min-w-0 flex-col gap-4">
+              <MembersPanel members={data.members} titleId="wd-members-overview" />
+              <NotesPanel {...props} />
             </div>
-          </>
-        )}
-        {section === 'funcionalidades' && <FeaturesPanel {...props} />}
-        {section === 'limites' && <LimitsPanel {...props} />}
-        {section === 'membros' && (
-          <>
-            <MembersPanel members={data.members} />
-            <WorkspaceInvitesCard workspaceId={workspaceId} />
-          </>
-        )}
-        {section === 'atividade' && (
-          <>
-            <WorkspaceEventsCard workspaceId={workspaceId} />
-            <ConnectionsPanel<McpKeyRow>
-              title="Chaves de API do MCP"
-              titleId="wd-mcp-keys"
-              firstColumn="Nome"
-              emptyText="Nenhuma chave ativa."
-              model={props.mcpKeys}
-              toRow={(k) => ({
-                id: k.id,
-                primary: (
-                  <>
-                    <span className="font-medium">{k.name}</span>
-                    <span className="text-muted-foreground"> …{k.token_suffix}</span>
-                  </>
-                ),
-                scopes: k.scopes,
-                revoked: !!k.revoked_at,
-              })}
-            />
-            <ConnectionsPanel<OAuthGrantRow>
-              title="Conexões OAuth do MCP"
-              titleId="wd-oauth-grants"
-              firstColumn="Conectado por"
-              emptyText="Nenhuma conexão ativa."
-              model={props.oauthGrants}
-              toRow={(g) => ({
-                id: g.id,
-                primary: <span className="font-medium">{g.connected_by ?? 'Claude'}</span>,
-                scopes: g.scopes,
-                revoked: !!g.revoked_at,
-              })}
-            />
-          </>
-        )}
-      </div>
+            <div className="flex min-w-0 flex-col gap-4">
+              <SubscriptionPanel data={data} />
+              <OverridesPanel {...props} />
+            </div>
+          </div>
+        </>,
+      )}
+      {panel('funcionalidades', <FeaturesPanel {...props} />)}
+      {panel('limites', <LimitsPanel {...props} />)}
+      {panel(
+        'membros',
+        <>
+          <MembersPanel members={data.members} titleId="wd-members" />
+          <WorkspaceInvitesCard workspaceId={workspaceId} />
+        </>,
+      )}
+      {panel(
+        'atividade',
+        <>
+          <WorkspaceEventsCard workspaceId={workspaceId} />
+          <ConnectionsPanel<McpKeyRow>
+            title="Chaves de API do MCP"
+            titleId="wd-mcp-keys"
+            firstColumn="Nome"
+            emptyText="Nenhuma chave ativa."
+            model={props.mcpKeys}
+            toRow={(k) => ({
+              id: k.id,
+              primary: (
+                <>
+                  <span className="font-medium">{k.name}</span>
+                  <span className="text-muted-foreground"> …{k.token_suffix}</span>
+                </>
+              ),
+              scopes: k.scopes,
+              revoked: !!k.revoked_at,
+            })}
+          />
+          <ConnectionsPanel<OAuthGrantRow>
+            title="Conexões OAuth do MCP"
+            titleId="wd-oauth-grants"
+            firstColumn="Conectado por"
+            emptyText="Nenhuma conexão ativa."
+            model={props.oauthGrants}
+            toRow={(g) => ({
+              id: g.id,
+              primary: <span className="font-medium">{g.connected_by ?? 'Claude'}</span>,
+              scopes: g.scopes,
+              revoked: !!g.revoked_at,
+            })}
+          />
+        </>,
+      )}
     </div>
   );
 }

@@ -37,9 +37,9 @@ function InfoLine({ label, children }: { label: ReactNode; children: ReactNode }
   );
 }
 
-export function MembersPanel({ members }: { members: MemberInfo[] }) {
+export function MembersPanel({ members, titleId }: { members: MemberInfo[]; titleId: string }) {
   return (
-    <GlassPanel title={`Membros (${members.length})`} titleId="wd-members" flush>
+    <GlassPanel title={`Membros (${members.length})`} titleId={titleId} flush>
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -248,9 +248,11 @@ export function LimitsPanel(props: WorkspaceDetailViewProps) {
                       {limitLabel(key)}
                       {overridden && (
                         <span
-                          aria-label="override"
+                          title="override deste workspace"
                           className="h-2 w-2 shrink-0 rounded-full bg-primary"
-                        />
+                        >
+                          <span className="sr-only">override</span>
+                        </span>
                       )}
                     </span>
                   </TableCell>
@@ -296,9 +298,11 @@ export function FeaturesPanel(props: WorkspaceDetailViewProps) {
                   {FEATURE_FLAG_LABELS[key]}
                   {isOverridden(key, 'feature') && (
                     <span
-                      aria-label="override"
+                      title="override deste workspace"
                       className="h-2 w-2 shrink-0 rounded-full bg-primary"
-                    />
+                    >
+                      <span className="sr-only">override</span>
+                    </span>
                   )}
                 </span>
               }
