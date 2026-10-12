@@ -95,6 +95,16 @@ describe('PopupsPage lista', () => {
     expect(screen.getByText(/cta 87/)).toBeInTheDocument();
   });
 
+  it('keeps Status on one line and the long cells capped so the row fits the panel', async () => {
+    renderPage();
+    const title = await screen.findByText('Analytics de Stories');
+    const row = title.closest('tr')!;
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[5]).toHaveClass('whitespace-nowrap');
+    expect(title).toHaveAttribute('title', 'Analytics de Stories');
+    expect(cells[0].firstElementChild).toHaveClass('max-w-[16rem]');
+  });
+
   it('the popup title is a real button that opens the editor', async () => {
     renderPage();
     const buttons = await screen.findAllByRole('button', { name: 'Analytics de Stories' });

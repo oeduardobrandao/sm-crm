@@ -35,7 +35,7 @@ export const WORKSPACE_COLUMNS: readonly WorkspaceColumn[] = [
   { key: 'created_at', label: 'Criado em', sortKey: 'created_at', hideable: true },
   {
     key: 'last_activity_at',
-    label: 'Última atividade',
+    label: 'Atividade',
     sortKey: 'last_activity_at',
     hideable: true,
   },

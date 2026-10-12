@@ -111,7 +111,7 @@ export function DashboardDesktop({
               </span>
             </>
           }
-          className="flex-[1.5_1_480px]"
+          className="flex-[2.2_1_520px]"
           flush
           actions={
             <Button variant="secondary" size="sm" onClick={onExportPaying}>
@@ -131,7 +131,7 @@ export function DashboardDesktop({
                   <TableHead>Workspace</TableHead>
                   <TableHead>Plano</TableHead>
                   <TableHead>Cobrança</TableHead>
-                  <TableHead>Última atividade</TableHead>
+                  <TableHead className="whitespace-nowrap">Atividade</TableHead>
                   <TableHead className="text-right">MRR</TableHead>
                 </TableRow>
               </TableHeader>
@@ -145,10 +145,11 @@ export function DashboardDesktop({
                       className={rowClass}
                     >
                       <TableCell>
-                        <span className="flex min-w-0 items-center gap-2">
+                        <span className="flex min-w-0 max-w-[9.5rem] items-center gap-2">
                           <RowLink
                             to={workspaceDetailPath(ws.workspace_id)}
-                            className="block truncate text-sm"
+                            className="block min-w-0 truncate text-sm"
+                            title={ws.name}
                           >
                             {ws.name}
                           </RowLink>
@@ -166,7 +167,7 @@ export function DashboardDesktop({
                         <PlanBadge name={ws.plan_name} />
                       </TableCell>
                       <TableCell>
-                        <span className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                        <span className="flex min-w-0 max-w-[8rem] items-center gap-2 text-sm text-muted-foreground">
                           <span className="shrink-0">{intervalLabel(ws.interval) || '—'}</span>
                           {ws.discount_label && (
                             <span
@@ -178,10 +179,10 @@ export function DashboardDesktop({
                           )}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">
                         <ActivityCell ws={ws} />
                       </TableCell>
-                      <TableCell className="text-right font-sf text-sm">
+                      <TableCell className="whitespace-nowrap text-right font-sf text-sm">
                         {formatMoney(ws.monthly_cents, mrrData?.currency)}
                       </TableCell>
                     </TableRow>

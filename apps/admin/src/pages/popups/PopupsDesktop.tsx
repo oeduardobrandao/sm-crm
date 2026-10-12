@@ -83,16 +83,20 @@ export function PopupsDesktop({
                   className={`cursor-pointer ${r.draft ? 'opacity-50' : ''}`}
                 >
                   <TableCell>
-                    <div className="flex min-w-0 items-center gap-3">
-                      <PageThumb imageKey={r.imageKey} className="h-[27px] w-12" />
+                    <div className="flex min-w-0 max-w-[16rem] items-center gap-3">
+                      <PageThumb imageKey={r.imageKey} className="h-[27px] w-12 shrink-0" />
                       <div className="min-w-0">
                         <RowButton
                           onClick={() => onEdit(r.popup)}
-                          className="block max-w-[260px] truncate text-sm font-medium"
+                          className="block max-w-full truncate text-sm font-medium"
+                          title={r.title}
                         >
                           {r.title}
                         </RowButton>
-                        <div className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground">
+                        <div
+                          className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground"
+                          title={r.metrics}
+                        >
                           {r.metrics}
                         </div>
                       </div>
@@ -101,7 +105,7 @@ export function PopupsDesktop({
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {r.pagesLabel}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="max-w-[10rem]">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span>{r.target}</span>
                       {r.trigger && (
@@ -111,11 +115,11 @@ export function PopupsDesktop({
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">{r.frequency}</TableCell>
+                  <TableCell className="max-w-[10rem]">{r.frequency}</TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {r.schedule}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="whitespace-nowrap">
                     <Badge variant={r.status.variant}>{r.status.label}</Badge>
                   </TableCell>
                 </TableRow>

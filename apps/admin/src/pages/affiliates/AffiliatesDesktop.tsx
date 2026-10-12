@@ -86,7 +86,9 @@ export function AffiliatesDesktop({
         </KpiGrid>
       )}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
+      {/* Side by side only from 2xl: at 1440 the list would get ~580px and push Disponível out of
+          view, so below that the rules card stacks under the full-width list. */}
+      <div className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_440px]">
         <GlassPanel flush title="Por saldo disponível" titleId="affiliates-list-title">
           {isLoading ? (
             <div className="flex flex-col gap-3 px-[18px] pb-5">
@@ -108,10 +110,10 @@ export function AffiliatesDesktop({
                 <TableRow>
                   <TableHead className={HEAD}>Afiliado</TableHead>
                   <TableHead className={HEAD}>Código</TableHead>
-                  <TableHead className={HEAD}>Indicações</TableHead>
-                  <TableHead className={HEAD}>Assinantes</TableHead>
+                  <TableHead className={`${HEAD} whitespace-nowrap`}>Indicações</TableHead>
+                  <TableHead className={`${HEAD} whitespace-nowrap`}>Assinantes</TableHead>
                   <TableHead className={HEAD}>Repasse</TableHead>
-                  <TableHead className={HEAD}>Disponível</TableHead>
+                  <TableHead className={`${HEAD} whitespace-nowrap`}>Disponível</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -120,25 +122,37 @@ export function AffiliatesDesktop({
                   return (
                     <TableRow key={a.id} className="cursor-pointer" onClick={() => navigate(to)}>
                       <TableCell>
-                        <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex min-w-0 max-w-[18rem] items-center gap-3">
                           <AffiliateAvatar name={a.nome} />
                           <div className="min-w-0">
-                            <RowLink to={to} className="block truncate text-sm">
+                            <RowLink to={to} className="block truncate text-sm" title={a.nome}>
                               {a.nome}
                             </RowLink>
-                            <span className="block truncate text-xs text-muted-foreground">
+                            <span
+                              className="block truncate text-xs text-muted-foreground"
+                              title={a.email}
+                            >
                               {a.email}
                             </span>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{a.code}</TableCell>
-                      <TableCell className="text-sm">{a.summary.referrals_count}</TableCell>
-                      <TableCell className="text-sm">{a.summary.paying_count}</TableCell>
+                      <TableCell
+                        className="max-w-[12rem] truncate font-mono text-sm"
+                        title={a.code}
+                      >
+                        {a.code}
+                      </TableCell>
+                      <TableCell className="text-sm tabular-nums">
+                        {a.summary.referrals_count}
+                      </TableCell>
+                      <TableCell className="text-sm tabular-nums">
+                        {a.summary.paying_count}
+                      </TableCell>
                       <TableCell>
                         <PayoutBadges a={a} />
                       </TableCell>
-                      <TableCell className="text-sm font-medium">
+                      <TableCell className="whitespace-nowrap text-sm font-medium tabular-nums">
                         {formatMoney(a.summary.available_cents)}
                       </TableCell>
                     </TableRow>
@@ -149,7 +163,11 @@ export function AffiliatesDesktop({
           )}
         </GlassPanel>
 
-        {rules.length > 0 && <CommissionRulesCard rules={rules} editor={editor} />}
+        {rules.length > 0 && (
+          <div className="max-w-[560px] 2xl:max-w-none">
+            <CommissionRulesCard rules={rules} editor={editor} />
+          </div>
+        )}
       </div>
     </div>
   );

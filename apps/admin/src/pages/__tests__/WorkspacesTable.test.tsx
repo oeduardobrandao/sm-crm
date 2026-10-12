@@ -74,6 +74,21 @@ describe('WorkspacesTable', () => {
     expect(table.queryByText('rafa@agencianorte.com')).toBeNull();
   });
 
+  it('stacks the owner e-mail under the name instead of giving it a column', () => {
+    renderTable();
+    const table = within(screen.getByRole('table'));
+    expect(table.queryByRole('columnheader', { name: /Dono/ })).toBeNull();
+    const nameCell = table.getByRole('link', { name: 'Agência Norte' }).closest('td')!;
+    expect(within(nameCell).getByText('rafa@agencianorte.com')).toBeInTheDocument();
+  });
+
+  it('keeps short cells on one line so the default columns fit the panel', () => {
+    renderTable();
+    const table = within(screen.getByRole('table'));
+    expect(table.getByText('42').closest('td')).toHaveClass('px-2');
+    expect(table.getByText(/\d{2}\/\d{2}\/\d{2}/)).toHaveClass('whitespace-nowrap');
+  });
+
   it('has no separate mobile card list: phones get their own view (WorkspacesPhone)', () => {
     renderTable({ visible: ['name'] });
     expect(screen.queryByRole('list')).toBeNull();

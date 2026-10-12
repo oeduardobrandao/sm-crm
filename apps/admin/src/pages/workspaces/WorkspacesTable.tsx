@@ -41,7 +41,7 @@ interface WorkspacesTableProps {
 
 const DATE_FMT = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit',
-  month: 'short',
+  month: '2-digit',
   year: '2-digit',
 });
 
@@ -59,17 +59,20 @@ function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
   if (!hasSubscription(ws.subscription)) return <span className="text-dim-foreground">—</span>;
   const meta = statusMeta(ws.subscription.status);
   return (
-    <span className="flex min-w-0 items-center gap-2">
+    <span className="flex items-center gap-2 whitespace-nowrap">
       <Badge variant={STATUS_BADGE_VARIANT[meta.tone]}>{meta.label}</Badge>
-      <span className="whitespace-nowrap text-xs text-muted-foreground">
-        {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
-        {intervalSuffix(ws.subscription.interval)}
-      </span>
-      {ws.subscription.provider && (
-        <span className="whitespace-nowrap text-[0.65rem] uppercase tracking-wider text-dim-foreground">
-          {providerLabel(ws.subscription.provider)}
+      {/* Price over provider: the caption stacks instead of widening the row. */}
+      <span className="flex flex-col leading-tight">
+        <span className="text-xs text-muted-foreground">
+          {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
+          {intervalSuffix(ws.subscription.interval)}
         </span>
-      )}
+        {ws.subscription.provider && (
+          <span className="text-[0.65rem] uppercase tracking-wider text-dim-foreground">
+            {providerLabel(ws.subscription.provider)}
+          </span>
+        )}
+      </span>
     </span>
   );
 }
@@ -80,30 +83,46 @@ function ActivityCell({ ws, now }: { ws: WorkspaceSummary; now: Date }) {
     <Tooltip>
       {/* asChild keeps a span: a <button> here would hijack the row's click. */}
       <TooltipTrigger asChild>
-        <span className={cn('w-fit text-sm', ACTIVITY_TONE_CLASS[a.tone])}>{a.label}</span>
+        <span className={cn('w-fit whitespace-nowrap text-sm', ACTIVITY_TONE_CLASS[a.tone])}>
+          {a.label}
+        </span>
       </TooltipTrigger>
       <TooltipContent>{a.title}</TooltipContent>
     </Tooltip>
   );
 }
 
-function cellFor(key: WorkspaceColumnKey, ws: WorkspaceSummary, now: Date) {
+/** The owner's e-mail sits under the name when the "Dono" column is on, so it never needs a
+ * column of its own (the Colunas menu still toggles it). */
+function NameCell({ ws, showOwner }: { ws: WorkspaceSummary; showOwner: boolean }) {
+  const email = ws.owner?.email;
+  return (
+    <div className="flex min-w-0 max-w-[12rem] flex-col">
+      <span className="flex min-w-0 items-center gap-2">
+        <RowLink to={workspaceDetailPath(ws.id)} className="min-w-0 truncate" title={ws.name}>
+          {ws.name}
+        </RowLink>
+        {ws.has_overrides ? (
+          <Badge variant="warning" size="sm" className="shrink-0">
+            overrides
+          </Badge>
+        ) : null}
+      </span>
+      {showOwner && (
+        <span className="truncate text-xs text-muted-foreground" title={email || undefined}>
+          {email || '—'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function cellFor(key: WorkspaceColumnKey, ws: WorkspaceSummary, now: Date, showOwner: boolean) {
   switch (key) {
     case 'name':
-      return (
-        <span className="flex items-center gap-2">
-          <RowLink to={workspaceDetailPath(ws.id)}>{ws.name}</RowLink>
-          {ws.has_overrides ? (
-            <Badge variant="warning" size="sm">
-              overrides
-            </Badge>
-          ) : null}
-        </span>
-      );
+      return <NameCell ws={ws} showOwner={showOwner} />;
     case 'owner':
-      return (
-        <span className="truncate text-sm text-muted-foreground">{ws.owner?.email || '—'}</span>
-      );
+      return null;
     case 'plan':
       return <PlanBadge name={ws.plan_name} />;
     case 'subscription':
@@ -114,7 +133,7 @@ function cellFor(key: WorkspaceColumnKey, ws: WorkspaceSummary, now: Date) {
       return <span className="tabular-nums">{ws.member_count}</span>;
     case 'created_at':
       return (
-        <span className="text-sm text-muted-foreground">
+        <span className="whitespace-nowrap text-sm text-muted-foreground">
           {DATE_FMT.format(new Date(ws.created_at))}
         </span>
       );
@@ -135,7 +154,8 @@ export function WorkspacesTable({
   now,
   busy,
 }: WorkspacesTableProps) {
-  const columns = WORKSPACE_COLUMNS.filter((c) => visible.includes(c.key));
+  const showOwner = visible.includes('owner');
+  const columns = WORKSPACE_COLUMNS.filter((c) => c.key !== 'owner' && visible.includes(c.key));
   const cellPad = density === 'compacta' ? 'py-1.5 text-xs' : 'py-3';
 
   return (
@@ -150,7 +170,7 @@ export function WorkspacesTable({
                 key={col.key}
                 aria-sort={ariaSort}
                 className={cn(
-                  'text-[0.7rem] uppercase tracking-wider',
+                  'whitespace-nowrap px-2 text-[0.7rem] uppercase tracking-wider',
                   col.numeric && 'text-right',
                 )}
               >
@@ -180,18 +200,18 @@ export function WorkspacesTable({
               </TableHead>
             );
           })}
-          <TableHead className="w-8" />
+          <TableHead className="w-8 pl-0 last:pr-4" />
         </TableRow>
       </TableHeader>
       <TableBody>
         {workspaces.map((ws) => (
           <TableRow key={ws.id} onClick={() => onOpen(ws.id)} className="cursor-pointer">
             {columns.map((col) => (
-              <TableCell key={col.key} className={cn(cellPad, col.numeric && 'text-right')}>
-                {cellFor(col.key, ws, now)}
+              <TableCell key={col.key} className={cn(cellPad, 'px-2', col.numeric && 'text-right')}>
+                {cellFor(col.key, ws, now, showOwner)}
               </TableCell>
             ))}
-            <TableCell className={cn(cellPad, 'text-muted-foreground')}>
+            <TableCell className={cn(cellPad, 'pl-0 text-muted-foreground last:pr-4')}>
               <ArrowRight size={16} />
             </TableCell>
           </TableRow>
@@ -208,7 +228,7 @@ export function WorkspacesTableSkeleton({
   visible: WorkspaceColumnKey[];
   rows?: number;
 }) {
-  const columns = WORKSPACE_COLUMNS.filter((c) => visible.includes(c.key));
+  const columns = WORKSPACE_COLUMNS.filter((c) => c.key !== 'owner' && visible.includes(c.key));
   return (
     <Table>
       <TableHeader>
@@ -223,7 +243,7 @@ export function WorkspacesTableSkeleton({
           ))}
           {/* Mirrors the loaded table's trailing chevron column, so the columns do not
               shift sideways the moment the data lands. */}
-          <TableHead className="w-8" />
+          <TableHead className="w-8 pl-0 last:pr-4" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -234,7 +254,7 @@ export function WorkspacesTableSkeleton({
                 <Skeleton className={cn('h-3', col.key === 'name' ? 'w-36' : 'w-20')} />
               </TableCell>
             ))}
-            <TableCell className="py-3" />
+            <TableCell className="py-3 pl-0 last:pr-4" />
           </TableRow>
         ))}
       </TableBody>

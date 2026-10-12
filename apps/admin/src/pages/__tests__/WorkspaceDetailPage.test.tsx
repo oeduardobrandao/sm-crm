@@ -161,6 +161,17 @@ describe('WorkspaceDetailPage (desktop)', () => {
     expect(email.value).toBe('nova@x.com');
   });
 
+  it('keeps the member row cells on one line so Papel is never cut', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Membros' }));
+    const email = screen.getAllByText('caio@socialbee.com.br').find((el) => el.closest('tr'))!;
+    const row = email.closest('tr')!;
+    const cells = row.querySelectorAll('td');
+    expect(cells[2]).toHaveClass('whitespace-nowrap');
+    expect(cells[3]).toHaveClass('whitespace-nowrap');
+    expect(email).toHaveAttribute('title', 'caio@socialbee.com.br');
+  });
+
   it('keeps the Notes textarea in the DOM while another tab is active', async () => {
     renderPage();
     const notes = (await screen.findByLabelText('Notas do admin')) as HTMLTextAreaElement;

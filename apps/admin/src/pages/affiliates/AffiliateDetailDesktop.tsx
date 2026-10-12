@@ -95,7 +95,8 @@ export function AffiliateDetailDesktop({
         <KpiTile label="Já pago" value={formatMoney(summary.paid_out_cents)} />
       </KpiGrid>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      {/* Side by side only from 2xl: at 1440 the history tables would get ~700px and wrap. */}
+      <div className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_320px]">
         <GlassPanel flush>
           <div className="px-[18px] py-3.5">
             <SegmentedControl
@@ -164,17 +165,24 @@ export function AffiliateDetailDesktop({
                   <TableBody>
                     {data.commissions.map((c) => (
                       <TableRow key={c.id}>
-                        <TableCell className="text-sm">{formatDate(c.paid_at)}</TableCell>
-                        <TableCell className="text-sm">
-                          {c.workspace_name ?? 'Sem workspace'}
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {formatDate(c.paid_at)}
                         </TableCell>
-                        <TableCell className="text-sm">
+                        <TableCell className="max-w-[12rem] truncate text-sm">
+                          <span title={c.workspace_name ?? undefined}>
+                            {c.workspace_name ?? 'Sem workspace'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm tabular-nums">
                           {formatMoney(c.invoice_amount_cents)}
-                          <span className="block font-mono text-xs text-muted-foreground">
+                          <span
+                            className="block max-w-[9rem] truncate font-mono text-xs text-muted-foreground"
+                            title={c.stripe_invoice_id}
+                          >
                             {c.stripe_invoice_id}
                           </span>
                         </TableCell>
-                        <TableCell className="text-sm">
+                        <TableCell className="whitespace-nowrap text-sm">
                           {c.plan_id ?? 'Sem plano'} · {formatRateBps(c.rate_bps)}
                           <span className="block text-xs text-muted-foreground">
                             {c.covered_months > 0
@@ -182,7 +190,7 @@ export function AffiliateDetailDesktop({
                               : 'ajuste'}
                           </span>
                         </TableCell>
-                        <TableCell className="text-sm font-medium">
+                        <TableCell className="whitespace-nowrap text-sm font-medium tabular-nums">
                           {formatMoney(c.net_cents)}
                           {c.net_cents !== c.commission_cents && (
                             <span className="block text-xs text-muted-foreground">
@@ -190,7 +198,7 @@ export function AffiliateDetailDesktop({
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                           {formatDate(c.available_at)}
                         </TableCell>
                         <TableCell>
@@ -243,7 +251,11 @@ export function AffiliateDetailDesktop({
           </div>
         </GlassPanel>
 
-        <GlassPanel title="Repasse (Stripe Connect)" titleId="affiliate-connect-title">
+        <GlassPanel
+          title="Repasse (Stripe Connect)"
+          titleId="affiliate-connect-title"
+          className="max-w-[560px] 2xl:max-w-none"
+        >
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <Badge variant={stripeState === 'ready' ? 'success' : 'warning'}>
               {STRIPE_STATE_LABEL[stripeState]}

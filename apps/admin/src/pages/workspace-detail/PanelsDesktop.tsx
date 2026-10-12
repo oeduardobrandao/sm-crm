@@ -54,7 +54,7 @@ export function MembersPanel({ members, titleId }: { members: MemberInfo[]; titl
             {members.map((m) => (
               <TableRow key={m.user_id}>
                 <TableCell>
-                  <span className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex min-w-0 max-w-[13rem] items-center gap-2.5">
                     <span
                       aria-hidden="true"
                       className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold"
@@ -62,14 +62,19 @@ export function MembersPanel({ members, titleId }: { members: MemberInfo[]; titl
                       {m.name.charAt(0).toUpperCase()}
                     </span>
                     <span className="min-w-0">
-                      <span className="block truncate text-sm">{m.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
+                      <span className="block truncate text-sm" title={m.name}>
+                        {m.name}
+                      </span>
+                      <span
+                        className="block truncate text-xs text-muted-foreground"
+                        title={m.email}
+                      >
                         {m.email}
                       </span>
                     </span>
                   </span>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {m.telefone ? (
                     <span className="inline-flex items-center gap-1.5">
                       {m.telefone}
@@ -83,12 +88,12 @@ export function MembersPanel({ members, titleId }: { members: MemberInfo[]; titl
                     <span className="text-dim-foreground">—</span>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Badge variant={m.role === 'owner' ? 'primary' : 'neutral'}>
                     {roleLabel(m.role)}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {formatJoined(m.joined_at)}
                 </TableCell>
               </TableRow>
