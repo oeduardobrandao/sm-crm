@@ -1214,7 +1214,7 @@ git commit -m "feat(crm): one owner for the support-chat unread state; capsule v
   - `.vidro-panel`, `.vidro-toolbar`, `.vidro-toolbar-left`, `.vidro-toolbar-title`,
     `.vidro-toolbar-subtitle`, `.vidro-toolbar-right`;
   - `.vidro-capsule`, `.vidro-capsule-btn`;
-  - `.vidro-sidebar-head`, `.vidro-sidebar-logo`, `.vidro-sidebar-ws`, `.vidro-sidebar-ws-name`,
+  - `.vidro-sidebar-head`, `.vidro-sidebar-logo`, `.vidro-sidebar-wordmark`, `.vidro-sidebar-mark`, `.vidro-sidebar-ws`, `.vidro-sidebar-ws-name`,
     `.vidro-sidebar-ws-plan`;
   - `.search-trigger--sidebar`, `.vidro-seg`, `.vidro-seg-btn`.
 - Produces these attributes:
@@ -1446,6 +1446,11 @@ sweep, inside the same guards.
     display: block;
   }
 
+  html[data-look='vidro'] .app-container .vidro-sidebar-logo .vidro-sidebar-mark {
+    display: none;
+    height: 22px;
+  }
+
   html[data-look='vidro'] .app-container .vidro-sidebar-ws {
     display: flex;
     flex-direction: column;
@@ -1469,15 +1474,18 @@ sweep, inside the same guards.
     color: var(--vd-txt3);
   }
 
-  /* Rail: the mark only (the logo's left 22px), no workspace text. */
+  /* Rail: the mark (public/icon.svg) instead of the wordmark, no workspace text. */
   html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-head {
     justify-content: center;
     padding: 14px 0 8px;
   }
 
-  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-logo {
-    width: 22px;
-    overflow: hidden;
+  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-logo .vidro-sidebar-wordmark {
+    display: none;
+  }
+
+  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-logo .vidro-sidebar-mark {
+    display: block;
   }
 
   html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-ws {
@@ -2205,7 +2213,8 @@ Check the import path `@/context/AuthContext`: Sidebar imports `useAuth` from
    {vidroShell && (
      <div className="vidro-sidebar-head">
        <Link to="/dashboard" className="vidro-sidebar-logo" aria-label="Mesaas, ir para o início">
-         <img src={isDark ? '/logo-white.svg' : '/logo-black.svg'} alt="" />
+         <img className="vidro-sidebar-wordmark" src={isDark ? '/logo-white.svg' : '/logo-black.svg'} alt="" />
+         <img className="vidro-sidebar-mark" src="/icon.svg" alt="" />
        </Link>
        {(activeWorkspaceName || planName) && (
          <div className="vidro-sidebar-ws">
@@ -2597,9 +2606,8 @@ Each page task applies this recipe to the pages it lists.
     (`page.emulateMedia({ media: 'print' })`).
   - At 1100px and 800px with the flag on: today's shell.
   - Known sweep items: `.rb-layers-rail` top assumes a one-line (60px) toolbar, so check a report editor
-    at 1101px where the toolbar may wrap; the rail logo shows the wordmark's left 22px (there is no
-    mark-only asset in `apps/crm/public`), so judge it and, if it reads badly, use the favicon mark
-    instead; the account popover must not be clipped by the glass sidebar.
+    at 1101px where the toolbar may wrap; the rail shows `public/icon.svg` in place of the wordmark, so check
+    it reads on glass in light and dark; the account popover must not be clipped by the glass sidebar.
   - Fix any CSS gap in `vidro.css`, re-run `vidroContracts.test.ts`, and commit
     `fix(crm): vidro sweep fixes`.
 - [ ] **Step 4: Flag-off parity.**
