@@ -134,6 +134,7 @@ vi.mock('@/components/ui/select', async () => {
 
 import * as store from '../../../store';
 import CalendarioPage from '../CalendarioPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const nav: { current: NavigateFunction | null } = { current: null };
 function NavProbe() {
@@ -533,3 +534,94 @@ describe('CalendarioPage — Agenda on a phone', () => {
     expect(document.title).toBe('Agenda | Mesaas');
   });
 });
+
+function renderPageInShell(vidroShell: boolean) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/calendario']}>
+        <VidroToolbarHarness vidroShell={vidroShell}>
+          <CalendarioPage />
+        </VidroToolbarHarness>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe.each([true, false])(
+  'CalendarioPage in the Vidro toolbar (vidroShell %s)',
+  (vidroShell) => {
+    beforeEach(() => {
+      localStorage.clear();
+      armStore();
+      mockLoading.current = false;
+    });
+
+    describe('classic page (Agenda off)', () => {
+      beforeEach(() => {
+        mockFeatures.current = { feature_agenda: false };
+      });
+
+      it(
+        vidroShell ? 'title, subtitle and tabs live in the toolbar' : 'keeps the in-page header',
+        () => {
+          const { container } = renderPageInShell(vidroShell);
+
+          const h1s = screen.getAllByRole('heading', { level: 1 });
+          expect(h1s).toHaveLength(1);
+          expect(h1s[0]).toHaveTextContent('Calendário');
+          expect(screen.getAllByText('Visão geral mensal.')).toHaveLength(1);
+          expect(document.querySelectorAll('.calendar-tabs')).toHaveLength(1);
+          if (vidroShell) {
+            expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+            expect(document.querySelector('.vidro-toolbar .calendar-tabs')).not.toBeNull();
+            expect(document.querySelector('.vidro-toolbar-subtitle')).toHaveTextContent(
+              'Visão geral mensal.',
+            );
+            expect(container.querySelector('.header')).toBeNull();
+          } else {
+            expect(h1s[0].closest('.header')).not.toBeNull();
+            expect(document.querySelector('.vidro-toolbar')).toBeNull();
+          }
+        },
+      );
+
+      it('the tabs still switch, and the toolbar title follows the niche', () => {
+        renderPageInShell(vidroShell);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Datas Comemorativas' }));
+
+        expect(screen.getByRole('button', { name: 'Datas Comemorativas' })).toHaveClass('active');
+        const h1s = screen.getAllByRole('heading', { level: 1 });
+        expect(h1s).toHaveLength(1);
+        expect(h1s[0]).toHaveTextContent('Calendário Nicho A');
+        expect(screen.getAllByText('Subtítulo A')).toHaveLength(1);
+        expect(Boolean(h1s[0].closest('.vidro-toolbar'))).toBe(vidroShell);
+      });
+    });
+
+    describe('Agenda (flag on)', () => {
+      beforeEach(() => {
+        mockFeatures.current = { feature_agenda: true };
+      });
+
+      it(
+        vidroShell
+          ? 'title and subtitle live in the toolbar, AgendaTab stays in content'
+          : 'keeps the in-page header',
+        async () => {
+          const { container } = renderPageInShell(vidroShell);
+
+          expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
+          const h1s = screen.getAllByRole('heading', { level: 1 });
+          expect(h1s).toHaveLength(1);
+          expect(h1s[0]).toHaveTextContent('Agenda');
+          expect(screen.getAllByText('Eventos, reuniões e gravações da equipe.')).toHaveLength(1);
+          expect(Boolean(h1s[0].closest('.vidro-toolbar'))).toBe(vidroShell);
+          expect(Boolean(container.querySelector('.header'))).toBe(!vidroShell);
+          expect(screen.getByTestId('agenda-tab').closest('.vidro-toolbar')).toBeNull();
+        },
+      );
+    });
+  },
+);
