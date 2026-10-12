@@ -22,6 +22,7 @@
 - Pill buttons apply to exactly: `[data-slot='button']`, `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-danger-outline`, `.btn-icon`, `.btn-icon--danger`, `.btn-upgrade`. Not to `.btn-confirmar`, `.btn-complete-etapa`, `.btn-revert-etapa`, `.btn-edit-workflow`, `.btn-remove-member`, `.btn-instagram-action*`, `.btn-integration`.
 - Analytics: one event, `visual_novo_toggled` with `{ on: boolean }`.
 - Gates before pushing (CLAUDE.md): `npm run lint`, `npm run format:check`, `npx tsc -p apps/crm/tsconfig.json --noEmit`, `npx tsc -p apps/hub/tsconfig.json --noEmit`, `npx tsc -p apps/admin/tsconfig.json --noEmit`, `npx tsc -p tsconfig.scripts.json`, `npm run test`.
+- Before every commit, run `npx prettier --write` on the files the task created or changed (`format:check` is a CI gate).
 - All commands run from the worktree root: `/Users/eduardosouza/projects/sm-crm/.claude/worktrees/desktop-ios-macos-previews-ce1e35`. Vitest resolves file paths in tests relative to that root (`readFileSync('apps/crm/...')`).
 
 ## Review Focus
@@ -293,7 +294,7 @@ Leave everything after `})();` (the standalone/iOS block) untouched.
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run apps/crm/src/__tests__/visualNovoPrePaint.test.ts && npx eslint apps/crm/src/__tests__/visualNovoPrePaint.test.ts`
-Expected: PASS (8 tests) and no lint errors. If ESLint reports `no-new-func` on `new Function(prePaint)()`, add `// eslint-disable-next-line no-new-func -- runs index.html's inline pre-paint script verbatim` on the line above it.
+Expected: PASS (8 tests) and no lint errors (`no-new-func` is not enabled in this repo's ESLint config; add no disable comment).
 
 - [ ] **Step 5: Commit**
 
@@ -325,8 +326,9 @@ In `apps/crm/src/components/layout/__tests__/Sidebar.test.tsx`:
 Add this mock next to the other `vi.mock` calls at the top of the file:
 
 ```ts
-vi.mock('@/lib/analytics', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/analytics')>()),
+// Full factory, like GuideDialog/AuthContext tests: Sidebar only uses captureEvent, and an
+// importOriginal would load posthog-js into jsdom.
+vi.mock('@/lib/analytics', () => ({
   captureEvent: vi.fn(),
 }));
 ```
@@ -686,9 +688,11 @@ describe('Visual novo sheet contracts', () => {
 
   it('never uses !important', () => {
     root.walkDecls((decl) => {
-      expect(decl.important, `${decl.prop} in ${(decl.parent as { selector?: string }).selector}`).toBe(
-        false,
-      );
+      // postcss leaves `important` undefined when the flag is absent.
+      expect(
+        decl.important ?? false,
+        `${decl.prop} in ${(decl.parent as { selector?: string }).selector}`,
+      ).toBe(false);
     });
   });
 
@@ -736,7 +740,7 @@ Expected: FAIL, `ENOENT` on `apps/crm/src/styles/visual-novo.css`.
 
 - [ ] **Step 3: Create the sheet**
 
-Create `apps/crm/src/styles/visual-novo.css` with exactly:
+Create `apps/crm/src/styles/visual-novo.css` with this content (Step 5 formats it; prettier splits the long selectors across lines, which the contract test accepts):
 
 ```css
 /*
@@ -830,6 +834,10 @@ Create `apps/crm/src/styles/visual-novo.css` with exactly:
   }
 
   /* Restated: the tile rule above would otherwise drop these base states. */
+  html[data-look='ios'] .app-container .kpi-grid > .kpi-card:hover {
+    background: var(--surface-hover);
+  }
+
   html[data-look='ios'] .app-container button.kpi-card--clickable:hover {
     background: var(--surface-hover);
   }
@@ -872,7 +880,8 @@ Create `apps/crm/src/styles/visual-novo.css` with exactly:
     text-transform: none;
   }
 
-  /* The "+ Novo template" action stays a plain button at the end of the track. */
+  /* The "+ Novo template" action is not a segment: it keeps its base look (sentence case,
+     brand-colour text, never a thumb) and only gets padding to sit inside the track. */
   html[data-look='ios'] .app-container .board-tab-add {
     padding: 6px 12px;
   }
@@ -953,15 +962,21 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Start the CRM against staging and log in with the seed account**
 
-Use the Browser pane: `preview_start { name: "crm-staging" }`, then read `preview_logs` for the real "Local:" port (the tool's port is not authoritative). Worktrees have no `.env.staging`: copy it from `/Users/eduardosouza/Projects/sm-crm/.env.staging` into the worktree root first (gitignored; never `git add`). Log in with the seed technique from memory `reference_seed_login_browser_verification.md`: a node script reads `.env.staging`, signs in, writes `apps/crm/zz-seed-session.json`; the page fetches `/zz-seed-session.json` with `Accept: application/json`, stores it under its `key` in `localStorage`, navigates to `/dashboard`; delete the json right after. If edge functions fail from localhost (staging `ALLOWED_ORIGINS`), stub `functions/v1/workspace-limits` per `reference_local_browser_verify_stub_edge_functions.md`.
+Use the Browser pane, never prod:
+1. Worktrees have no `.env.staging`: copy it from `/Users/eduardosouza/Projects/sm-crm/.env.staging` into the worktree root (gitignored; never `git add`). Without it `dev:staging` silently runs against PROD.
+2. `preview_start { name: "crm-staging" }`, then read `preview_logs` for the real "Local:" port (the tool's port is not authoritative).
+3. Before logging in, confirm the page talks to staging: `javascript_tool` → `import.meta`-free check: `[...performance.getEntriesByType('resource')].some(e => e.name.includes('wlyzhyfondykzpsiqsce'))` after the login page loads, or read the Supabase URL in the console/network. If it shows the prod ref `skjzpekeqefvlojenfsw`, stop.
+4. Seed login per memory `reference_seed_login_browser_verification.md`: a node script reads `.env.staging`, signs in, writes `apps/crm/zz-seed-session.json` (Vite root; `/node_modules/.cache/*` answers an empty body on the CRM server); the page fetches `/zz-seed-session.json` with `Accept: application/json`, stores the session under its `key` in `localStorage`. The password never enters the conversation.
+5. Required, not optional: staging `ALLOWED_ORIGINS` admits no localhost, so `functions/v1/workspace-limits` fails and the CRM falls to a full-page spinner. Write `apps/crm/zz-fake-fetch.js` that patches `window.fetch` (`useWorkspaceLimits` uses raw `window.fetch`) to answer `functions/v1/workspace-limits` with `{ plan_name: 'Pro', limits: {}, features: <every feature_* key true> }` and 404 JSON for other `functions/v1/*`, deriving the URL as `input instanceof Request ? input.url : String(input)` (see `reference_local_browser_verify_stub_edge_functions.md`). Load it with `await import('/zz-fake-fetch.js')` after each reload, then navigate to `/dashboard`.
+6. Both `zz-*` files are deleted in Step 5 and must never be committed.
 
 - [ ] **Step 2: Sweep with the toggle on**
 
-`resize_window` 1440x900. Turn the look on through the user menu (or `localStorage.setItem('look','ios')` + reload). Visit, in light and then dark (`document.documentElement.setAttribute('data-theme','dark')`): `/dashboard`, `/entregas` (board tabs), `/clientes`, `/calendario` (calendar tabs), `/financeiro`, `/tarefas`, `/equipe` (table in a card), `/analytics`, an Analytics da conta page (identity header unchanged), `/mensagens` and `/arquivos` (full-bleed: no grey canvas), `/configuracao`, and open one Sheet (a task detail on `/tarefas`) to confirm overlays are unchanged. For each: screenshot; check no white-on-white nested cards (if found, add `html[data-look='ios'] .app-container .card .card { background: var(--vn-fill); }` and re-check), no invisible KPI filler, segmented tabs readable, buttons pill-shaped only where listed.
+`resize_window` 1440x900. Turn the look on through the user menu (or `localStorage.setItem('look','ios')` + reload). Visit, in light and then dark (`document.documentElement.setAttribute('data-theme','dark')`): `/dashboard`, `/entregas` (board tabs), `/clientes`, `/calendario` (calendar tabs), `/financeiro`, `/tarefas`, `/equipe` (table in a card), `/analytics`, an Analytics da conta page (identity header unchanged), `/mensagens` and `/arquivos` (full-bleed: no grey canvas), `/configuracao`, and open one Sheet (a task detail on `/tarefas`) to confirm overlays are unchanged. Also note any page whose surfaces stay in the old style (spec D6: Importar's shadcn `Card`, Ajuda/Ideias `bg-card` blocks) for the PR body, and check `.page-tabs--inline` period pickers (they grow from 0.8rem to 13px; fine unless they wrap). For each: screenshot; check no white-on-white nested cards (if found, add `html[data-look='ios'] .app-container .card .card { background: var(--vn-fill); }` and re-check), no invisible KPI filler, segmented tabs readable, buttons pill-shaped only where listed.
 
 - [ ] **Step 3: Check the boundaries**
 
-At 1000x800 with the toggle on: `/dashboard` looks like today (no grey canvas, no large title) and the drawer user menu has no "Visual novo" item. With the toggle off at 1440: on `/dashboard` and `/entregas`, `getComputedStyle` of `.main-content` background, the first `.card` border/radius/shadow, the first `.kpi-grid` gap/background and the first `[data-slot='button']` border-radius match `main` (run the same snippet on a `main` checkout dev server, or compare to the base values in `style.css`: `--bg-color #fdfdfd`, `.card` radius 12px, `.kpi-grid` gap 1px).
+At 1000x800 with the toggle on: `/dashboard` looks like today (no grey canvas, no large title) and the drawer user menu has no "Visual novo" item. With the toggle off at 1440: on `/dashboard` and `/entregas`, `getComputedStyle` of `.main-content` background, the first `.card` border/radius/shadow, the first `.kpi-grid` gap/background and the first `[data-slot='button']` border-radius match today's base values from `style.css`: `.main-content` background `#fdfdfd` (`--bg-color`), `.card` radius 12px with a `1px solid` border and the `--shadow` box-shadow, `.kpi-grid` gap 1px, Button radius `rounded-xs` (12px - 6px = 6px). Do not start a dev server in the main checkout: its `npm run dev` points at PROD.
 
 - [ ] **Step 4: Run every gate**
 
@@ -979,4 +994,4 @@ Expected: all exit 0. (`npm run format` fixes formatting; re-run `format:check`.
 
 - [ ] **Step 5: Clean up and open the PR**
 
-Remove the copied `.env.staging` and any seed/stub files; `git status` must show only intended changes. Rebase on `origin/main` if it moved (`git fetch origin && git rebase origin/main`), push, and open the PR with `gh pr create` (title `feat(crm): Visual novo (beta) desktop look, level 1`; body: what it does, that it ships off by default and is frontend-only so merge = deploy, the sweep screenshots, the spec and mockup links, ending with the Claude Code attribution line). Then follow the session's ccd_pr instructions (`get_status`, bind the PR).
+Remove the copied `.env.staging` and any seed/stub files; `git status` must show only intended changes. Rebase on `origin/main` if it moved (`git fetch origin && git rebase origin/main`), push, and open the PR with `gh pr create` (title `feat(crm): Visual novo (beta) desktop look, level 1`; body: what it does, the pages that stay mixed (from Step 2), that it ships off by default and is frontend-only so merge = deploy, the sweep screenshots, the spec and mockup links, ending with the Claude Code attribution line). Then follow the session's ccd_pr instructions (`get_status`, bind the PR).
