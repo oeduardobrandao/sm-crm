@@ -7,6 +7,8 @@ export interface PhonePageHeaderProps {
   title: ReactNode;
   /** One line under the title (counts, period, plan usage). */
   subtitle?: ReactNode;
+  /** Left side of the header row, above the title (e.g. the brand mark on Início). */
+  leading?: ReactNode;
   /** The page's round header buttons (search, filters, the ink "+"), before the bell. */
   actions?: ReactNode;
   /** Below the subtitle: segmented control, chips. */
@@ -24,6 +26,7 @@ export interface PhonePageHeaderProps {
 export function PhonePageHeader({
   title,
   subtitle,
+  leading,
   actions,
   children,
   className,
@@ -36,6 +39,7 @@ export function PhonePageHeader({
       subtitle={subtitle}
       className={className ? `phone-page-header ${className}` : 'phone-page-header'}
       titleId={titleId}
+      leading={leading}
       trailing={
         <>
           {actions}

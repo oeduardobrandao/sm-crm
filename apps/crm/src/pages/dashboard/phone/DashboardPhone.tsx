@@ -34,6 +34,7 @@ export function DashboardPhone({ isAgent, cards, footer }: Props) {
       <PhonePageHeader
         title="Início"
         subtitle={today.summary}
+        leading={<img className="phone-home-logo" src="/icon.svg" alt="Mesaas" />}
         actions={
           <PhoneIconButton
             label="Buscar"

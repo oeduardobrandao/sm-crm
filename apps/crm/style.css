@@ -228,6 +228,13 @@ html[data-standalone] .app-container {
   height: auto;
 }
 
+/* The home-screen app's status bar comes with a progressive blur that reaches ~28px
+   below the inset (iOS draws it; no CSS turns it off). Phone headers start this much
+   lower so their buttons sit mostly clear of it. Consumed by --phone-header-height. */
+html[data-standalone] {
+  --standalone-top-gap: 12px;
+}
+
 @supports not (height: 100dvh) {
   .app-container {
     height: 100vh;
@@ -3705,7 +3712,10 @@ select.form-input option {
     justify-content: flex-end;
     gap: 10px;
     height: var(--phone-header-height);
-    padding: max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+    padding: max(
+        0px,
+        env(safe-area-inset-top, 0px) + var(--standalone-top-gap, 0px) - var(--banner-height, 0px)
+      )
       max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
     box-sizing: border-box;
     background: var(--bg-color);
@@ -15805,10 +15815,15 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
     --phone-gutter: 16px;
     --phone-row-min: 44px;
     /* Shell header (bell, related articles) above every phone page. Carries the
-       status-bar inset the way the first banner does: only the part no banner covered. */
+       status-bar inset the way the first banner does: only the part no banner covered,
+       plus --standalone-top-gap in the home-screen app (see html[data-standalone]). */
     --phone-header-bar: 44px;
     --phone-header-height: calc(
-      var(--phone-header-bar) + max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+      var(--phone-header-bar) +
+        max(
+          0px,
+          env(safe-area-inset-top, 0px) + var(--standalone-top-gap, 0px) - var(--banner-height, 0px)
+        )
     );
   }
 

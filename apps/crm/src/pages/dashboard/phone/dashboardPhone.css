@@ -6,6 +6,13 @@
   font-family: var(--font-main);
 }
 
+/* Brand mark at the left of the header row, above the title. */
+.phone-home-logo {
+  display: block;
+  width: auto;
+  height: 22px;
+}
+
 /* Chips under the page title and above the health list. */
 .phone-home-chips {
   margin-bottom: 16px;

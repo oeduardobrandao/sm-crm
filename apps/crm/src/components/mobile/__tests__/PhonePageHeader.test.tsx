@@ -60,6 +60,13 @@ describe('PhonePageHeader', () => {
     expect(row.lastElementChild).toHaveAttribute('data-testid', 'shell-actions');
   });
 
+  it('puts the leading content at the left of the row, above the title', () => {
+    render(<PhonePageHeader title="Início" leading={<img src="/icon.svg" alt="Mesaas" />} />);
+    expect(document.querySelector('.phone-large-title__leading')).toContainElement(
+      screen.getByRole('img', { name: 'Mesaas' }),
+    );
+  });
+
   it('renders the row even without page actions (help links and bell)', () => {
     render(<PhonePageHeader title="Central de Ajuda" />);
     expect(screen.getByTestId('shell-actions')).toBeInTheDocument();
