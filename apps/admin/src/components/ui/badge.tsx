@@ -8,7 +8,7 @@ import { cn } from '../../lib/utils';
  * the admin does not load.
  */
 const badgeVariants = cva(
-  'inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-transparent font-semibold uppercase leading-none tracking-wide',
+  'inline-flex items-center gap-1 whitespace-nowrap rounded-[6px] border border-transparent font-bold uppercase leading-none tracking-[0.02em]',
   {
     variants: {
       variant: {
@@ -23,7 +23,7 @@ const badgeVariants = cva(
       tone: { soft: '', solid: '' },
       size: {
         sm: 'h-[18px] px-1.5 text-[0.6rem]',
-        md: 'h-5 px-2 text-[0.7rem]',
+        md: 'h-[18px] px-[7px] text-[11px]',
         lg: 'h-6 px-2.5 text-xs',
       },
     },
