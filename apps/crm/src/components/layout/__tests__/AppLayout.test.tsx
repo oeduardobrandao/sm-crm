@@ -81,7 +81,9 @@ vi.mock('../../../hooks/useVidro', () => ({
 }));
 
 vi.mock('../PageToolbar', () => ({
-  default: () => <div data-testid="page-toolbar" />,
+  default: ({ capsule }: { capsule?: React.ReactNode }) => (
+    <div data-testid="page-toolbar">{capsule}</div>
+  ),
 }));
 
 vi.mock('../TopBarActions', () => ({
@@ -234,7 +236,11 @@ function mockMatchMedia(tabletMatches: boolean) {
 }
 
 function renderLayout(pathname = '/dashboard') {
-  return render(
+  return render(layoutTree(pathname));
+}
+
+function layoutTree(pathname = '/dashboard') {
+  return (
     <MemoryRouter initialEntries={[pathname]}>
       <Routes>
         <Route element={<AppLayout />}>
@@ -253,7 +259,7 @@ function renderLayout(pathname = '/dashboard') {
           <Route path="/chrome" element={<ChromePage />} />
         </Route>
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
@@ -580,7 +586,67 @@ describe('AppLayout Vidro shell', () => {
     expect(panel).not.toBeNull();
     expect(panel).toContainElement(screen.getByTestId('page-toolbar'));
     expect(panel).toContainElement(document.getElementById('app'));
+    expect(panel).toContainElement(screen.getByTestId('actions-capsule'));
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-vidro-shell', 'true');
+  });
+
+  it('keeps the same <main> mounted when the window crosses 1101px', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(1280);
+    const tabletQuery = mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    const main = document.getElementById('app');
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+
+    act(() => {
+      tabletQuery.dispatch(true);
+    });
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.getElementById('app')).toBe(main);
+    // The wrapper stays, out of the layout.
+    expect(main?.parentElement).toHaveStyle({ display: 'contents' });
+
+    act(() => {
+      tabletQuery.dispatch(false);
+    });
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+    expect(document.getElementById('app')).toBe(main);
+  });
+
+  it('keeps the same <main> mounted when the user opts out of the look', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    const { rerender } = renderLayout();
+    await screen.findByTestId('global-banner');
+    const main = document.getElementById('app');
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+
+    vidroState.active = false;
+    vidroState.optedOut = true;
+    rerender(layoutTree());
+
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.getElementById('app')).toBe(main);
+  });
+
+  it('renders no wrapper around <main> when the flag is off', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    const { container } = renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(document.getElementById('app')?.parentElement).toBe(
+      container.querySelector('.app-container'),
+    );
   });
 
   it('keeps the classic TopBar at tablet width even when vidro is active', async () => {

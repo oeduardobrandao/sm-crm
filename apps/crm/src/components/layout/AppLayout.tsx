@@ -272,10 +272,17 @@ export default function AppLayout() {
               <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
             )}
 
-            {vidroShell ? (
-              <div className="vidro-panel">
-                <NavigationProgress />
-                <PageToolbar capsule={<TopBarActions variant="capsule" />} />
+            {/* With the flag on, the wrapper stays mounted at every width and through the
+              opt-out toggle (display: contents when it is not the panel), so <main> keeps its
+              place in the tree and crossing 1101px never remounts the page. Flag off: today's
+              tree, no wrapper. */}
+            {vidro.enabled ? (
+              <div
+                className={vidroShell ? 'vidro-panel' : undefined}
+                style={vidroShell ? undefined : { display: 'contents' }}
+              >
+                {vidroShell && <NavigationProgress />}
+                {vidroShell && <PageToolbar capsule={<TopBarActions variant="capsule" />} />}
                 {mainContent}
               </div>
             ) : (
