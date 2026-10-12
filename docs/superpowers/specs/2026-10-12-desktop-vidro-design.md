@@ -45,7 +45,7 @@ Success:
 |---|---|---|
 | D1 | A new workspace entitlement, **`feature_crm_vidro`**, gates the look. It is a `plans` column, false on every plan.<br>- Pilot: an Admin override on a chosen workspace.<br>- Launch: turn the column on in the plans.<br>- Kill switch: turn it off.<br>The CRM reads it only as `features?.feature_crm_vidro === true`, never through `hasFeature`, which treats a missing key as on (`useEntitlements.ts:16`). | The owner asked for a feature flag. This is the repo's established dark-launch pattern (`feature_hub_pauta`, `feature_agenda`). |
 | D2 | Inside a flagged workspace each person can step back. The account menu gets **"Visual clássico"** (and, while classic, **"Visual novo"**).<br>The choice is stored per browser and per user as `localStorage['look-optout:<userId>'] = '1'`.<br>The effective look is `flag && !optOut`.<br>The item only renders when the flag is on and the desktop shell is showing; the drawer sidebar at 900-1100px does not offer it. | The pilot will surface rough edges, and nobody should be stuck in the new look. There is no server-side user preference store, and scoping the key to the user stops one account's choice leaking into another's on a shared browser. |
-| D3 | **Pre-paint cache.** `localStorage['look-vidro'] = '1'` is written only after a *successful* `workspace-limits` response resolves the look on, and removed when one resolves it off.<br>The pre-paint script sets `<html data-look="vidro">` when the cache is `'1'`.<br>The cache is cleared:<br>- on sign-in success;<br>- in `signOut`;<br>- immediately before the workspace-switch reload.<br>A failed `workspace-limits` request keeps whatever state is current and touches neither cache nor attribute. | Entitlements arrive after React mounts. With the cache, every reload of the same account and workspace is correct before paint.<br>Clearing it at each identity change means another account or another workspace starts classic. The cost is a single classic-to-vidro flash on the first load after sign-in, after a switch, or after a flag change. |
+| D3 | **Pre-paint cache, keyed by user.** `localStorage['look-vidro'] = <userId>` is written only after a *successful* `workspace-limits` response resolves the look on, and removed when one resolves it off.<br>The pre-paint script reads the signed-in user id from the Supabase session in `localStorage` (the `sb-<ref>-auth-token` entry, `user.id`) and sets `<html data-look="vidro">` only when it equals the cache value. No session, an unreadable session or a different user means no pre-paint.<br>The cache is also cleared in `signOut` and immediately before the workspace-switch reload (the workspace is not in the session).<br>A failed `workspace-limits` request keeps whatever state is current and touches neither cache nor attribute. | Entitlements arrive after React mounts. With the cache, every reload of the same account and workspace is correct before paint.<br>Keying by user covers every identity change at once (password sign-in, sign-up, recovery link, another tab signing in, a session that expired while closed) without enumerating auth paths. Every failure mode falls back to classic. The cost is a single classic-to-vidro flash on the first load after a switch, a new user, or a flag change. |
 | D4 | Vidro applies at **≥1101px only**, the static-sidebar desktop shell.<br>- 768-1100px (drawer) and phone keep today's shell and content styling even with the flag on.<br>- All CSS lives in `@media (min-width: 1101px)`. The one exception is the scoped print block (see Print).<br>- The shell branches on one value, `vidroShell = vidroActive && desktopShell`, computed only in `AppLayout`. There `desktopShell` is today's private `!isTablet && !isMobile` (AppLayout.tsx:172).<br>- `AppLayout` publishes `vidroShell` through the toolbar context and passes it to `Sidebar` as a prop. Nothing else computes the breakpoint.<br>- Hub and Admin are untouched. | One clean boundary from one source, so nothing can drift at 1101px. |
 | D5 | The page title moves into a **shell-rendered toolbar** that pages fill through `usePageToolbar()`.<br>- A page that registers hides its in-page header while the toolbar shows it.<br>- A page that does not register keeps its in-page header under a toolbar that holds only the shell capsule. | CSS cannot move a title out of the scrolling `.main-content` into the shell. Pages migrate independently, and unmigrated pages stay correct. |
 | D6 | **View switchers.** These move into the toolbar's `segmented` slot, as in the mockups:<br>- Entregas view tabs (Kanban, Visão geral, Calendário, Lista, Minha fila, Concluídas);<br>- the Tarefas scope switch (minhas/todas);<br>- Calendário (classic) `.calendar-tabs`;<br>- the Analytics de Fluxos period tabs.<br>These stay in the content, restyled as capsules: Entregas vistas, mode toggle, entity toggle and board tabs, the Tarefas view tabs, the Agenda toolbar, the Analytics da conta period tabs and custom days input, and the Cliente vertical section nav. | The four that move are self-contained JSX that calls a setter or holds local state. Those that stay carry saved state, belong to a grid component (`AgendaView.tsx:219`), would overflow the toolbar (Analytics da conta), or have too many items for a toolbar (Cliente has 11 sections).<br>Calendário (Agenda) and Cliente will therefore not match their mockup boards; that is accepted for this phase. |
@@ -55,8 +55,13 @@ Success:
 ## The flag
 
 - **Migration** `supabase/migrations/<next>_feature_crm_vidro.sql` runs
-  `ALTER TABLE plans ADD COLUMN feature_crm_vidro boolean NOT NULL DEFAULT false;`. Its header comment
-  covers the pilot and launch steps. The version prefix must be above main's tail at PR time.
+  `ALTER TABLE public.plans ADD COLUMN IF NOT EXISTS feature_crm_vidro boolean NOT NULL DEFAULT false;`
+  (idempotent, as the other rollout-flag migrations). Its header comment covers the pilot and launch
+  steps. The version prefix must be above main's tail at PR time.
+- **Rollback / disable.** There is no down-migration: the column is inert when false. To turn Vidro off,
+  set `feature_crm_vidro = false` on every plan and remove the `feature_crm_vidro` key from every
+  `workspace_plan_overrides.feature_overrides` (the pilot first). Clients drop the look on their next
+  successful `workspace-limits` response; the cache follows.
 - **Entitlements:**
   - Add `'feature_crm_vidro'` to `FEATURE_COLUMNS` in `supabase/functions/_shared/entitlements.ts`.
     `mergeEntitlements` already resolves a missing column to `false` (`:43`).
@@ -83,9 +88,9 @@ Success:
 
 - `LOOK_CACHE_KEY = 'look-vidro'`; `optOutKey(userId) = 'look-optout:' + userId`.
 - `readOptOut(userId): boolean` and `writeOptOut(userId, classic: boolean): void`.
-- `applyVidro(on: boolean): void`:
+- `applyVidro(on: boolean, userId: string | null): void`:
   - sets or removes `data-look="vidro"` on `<html>`;
-  - writes or removes the cache;
+  - writes the cache as `userId` (only when `userId` is non-null) or removes it;
   - applies the attribute even when storage throws.
 - `clearVidroCache(): void` removes the cache. It does not touch the attribute: the reload or redirect
   that follows takes care of that.
@@ -96,6 +101,9 @@ Success:
 useVidro(): { enabled: boolean; active: boolean; optedOut: boolean; setOptedOut(v: boolean): void }
 ```
 
+- **Status.** `useWorkspaceLimits` today returns only `data` and `isLoading`, so a failed request looks
+  like "no flag". It gains `isSuccess` (TanStack's flag for the current key: true once data exists for
+  it). `useVidro` treats `!isSuccess` as "not resolved", whether loading or failed.
 - **`enabled`:**
   - after a successful response: `features?.feature_crm_vidro === true`;
   - while `useWorkspaceLimits` is loading, or after it errors: the attribute currently on `<html>`, which
@@ -107,12 +115,11 @@ useVidro(): { enabled: boolean; active: boolean; optedOut: boolean; setOptedOut(
   `captureEvent('vidro_look_toggled', { on: !v })`. Add the event name to the `AnalyticsEvent` union.
 
 **Pre-paint**, in `apps/crm/index.html`, inside the existing theme function, wrapped in try/catch:
-`if (localStorage.getItem('look-vidro') === '1') document.documentElement.setAttribute('data-look',
-'vidro');`. The function's `#/` early return is dead under path routing, so this also runs on `/login`.
+read `look-vidro`; if set, scan `localStorage` keys for `/^sb-[a-z0-9]+-auth-token$/`, `JSON.parse`
+the entry and compare its `user.id` to the cache; set `data-look="vidro"` only on a match. The function's `#/` early return is dead under path routing, so this also runs on `/login`.
 That is harmless: every vidro selector is under `.app-container`.
 
-**Cache clearing** calls `clearVidroCache()` in three places:
-- `AuthContext`'s sign-in success path;
+**Cache clearing** calls `clearVidroCache()` in two places (user changes are covered by the user key):
 - `signOut` (AuthContext.tsx:1017);
 - `Sidebar.tsx`'s `handleSwitchWorkspace`, before `window.location.reload()` (Sidebar.tsx:163).
 
@@ -208,7 +215,7 @@ When `vidroShell` is on, AppLayout renders the tree below and does not render `T
 
 **`PageToolbar`** is a flex row with `min-height: 60px` and `flex-wrap: wrap`.
 
-- **Left cluster** (`flex: 1 1 auto; min-width: 0`), in this order:
+- **Left cluster** (`flex: 1 1 240px; min-width: 0`), in this order:
   1. `leading`
   2. the title, inside the toolbar's `<h1>` (22px, 700, SF Pro Display)
   3. `titleAccessory`
@@ -219,7 +226,9 @@ When `vidroShell` is on, AppLayout renders the tree below and does not render `T
   3. the **shell capsule**
   4. `primary`
 
-  When the right cluster cannot fit beside the title, it wraps onto a second line and the toolbar grows.
+  Wrapping is deterministic: flex line-breaking uses the left cluster's 240px basis, so the right
+  cluster drops to a second line (right-aligned) exactly when 240px + gap + its own width exceeds the
+  toolbar. The title never truncates below that 240px before the wrap; after it, the toolbar grows.
   Nothing is hidden or moved into a menu, so every action stays one click away.
 - **Toolbar buttons:**
   - zero the `mb-2` that `buttonVariants` carries (button.tsx:7);
@@ -320,8 +329,8 @@ function usePageToolbar(spec: PageToolbarSpec | null): boolean; // true = the to
 **Nested routes.** Children of a registering layout must not register.
 - Every `/clientes/:id/*` child renders under the Cliente toolbar (client name, badges, Editar).
 - The hub sub-pages (`hub/AcessoPage`, `BriefingPage`, `MarcaPage`, `PaginasPage`, `IdeiasPage`)
-  render their title element as `h2` instead of `h1` when the hook's context reports `vidroShell`,
-  keeping one `<h1>` per page.
+  already use `h2` for their desktop titles; their `h1`s are phone-only branches that never render at
+  ≥1101px. No heading change is needed there.
 - Configurações sub-tabs render under the Configurações toolbar. Their cards already use `h3`.
 
 **Actions keep their identity.**
@@ -455,7 +464,7 @@ Rules (shared selectors only):
   - while loading, the pre-painted attribute is used;
   - after an error, state is kept and the cache is not touched;
   - a success writes the cache.
-- **AuthContext:** sign-in and `signOut` clear the cache.
+- **`signOut`** clears the cache; the pre-paint test covers match, mismatch, no session and a malformed session.
 - **Sidebar:** a workspace switch clears the cache before reloading.
 - **`PageToolbarContext`:**
   - register, set and unregister;
@@ -503,7 +512,7 @@ reloads.
   - reload (vidro before first paint, captured with a screenshot at `domcontentloaded`);
   - flag flipped off, then reload (one vidro paint, then classic, and the cache is cleared);
   - opt-out, then reload (classic, the cache cleared);
-  - sign-out, then sign-in (classic first);
+  - sign-out, then sign-in as another user (classic first, no pre-paint from the previous user's cache);
   - workspace switch (cache cleared before the reload).
 - **Sweep** at 1440px and at 1101px (to see the toolbar wrap), light and dark:
   - every migrated page;
