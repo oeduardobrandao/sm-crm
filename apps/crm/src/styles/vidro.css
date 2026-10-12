@@ -254,6 +254,12 @@
     padding: 4px clamp(1rem, 2.4vw, 2rem) clamp(1.25rem, 3vw, 2.5rem);
   }
 
+  /* .page-content's own 1.5rem would double the panel's padding: without this, pages that
+     use it sit 24px further in (and down) than pages that do not, and than the toolbar. */
+  html[data-look='vidro'] .app-container .vidro-panel > .main-content > .page-content {
+    padding: 0;
+  }
+
   html[data-look='vidro'] .app-container .vidro-panel > .main-content:has(> .page-full-bleed) {
     margin: 0;
     padding: 0;
