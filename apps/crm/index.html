@@ -25,6 +25,33 @@
       // iOS home-screen web app (style.css: html[data-standalone]). Set before first paint.
       if (window.navigator.standalone === true) {
         document.documentElement.setAttribute('data-standalone', '');
+        // iOS opens the home-screen app with the web view measured as if it ended at the
+        // status bar's height above the bottom (812 of 874pt on a 402x874 iPhone), and only
+        // re-measures when a scroll comes back to the top: until then fixed layers, the tab
+        // bar included, stop 62pt short of the bottom. The re-measure takes the smaller of
+        // the screen and the document, so stretch the document to the screen, scroll 1px
+        // and back, then let it go. Portrait only: iOS's screen.height does not rotate, so
+        // in landscape innerHeight is always below it.
+        (function () {
+          var root = document.documentElement;
+          var tries = 0;
+          function short() {
+            return window.innerWidth === screen.width && window.innerHeight < screen.height;
+          }
+          function nudge() {
+            if (!short() || tries++ >= 3) return;
+            root.style.minHeight = screen.height + 1 + 'px';
+            window.scrollTo(0, 1);
+            requestAnimationFrame(function () {
+              window.scrollTo(0, 0);
+              setTimeout(function () {
+                root.style.minHeight = '';
+                if (short()) setTimeout(nudge, 200);
+              }, 300);
+            });
+          }
+          window.addEventListener('load', nudge);
+        })();
       }
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
