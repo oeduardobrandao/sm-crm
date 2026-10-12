@@ -135,7 +135,7 @@ export function PostChip({ postId, workflowId, titulo }: Props) {
   return (
     <span
       ref={wrapperRef}
-      className="relative inline-flex"
+      className="relative inline-flex max-w-full"
       onMouseEnter={scheduleOpen}
       onMouseLeave={cancelOpen}
       onFocus={scheduleOpen}
@@ -143,11 +143,11 @@ export function PostChip({ postId, workflowId, titulo }: Props) {
     >
       <Link
         to={postChipHref(postId, workflowId)}
-        className="flex w-fit items-center gap-2 rounded-md border border-[var(--border-color)] px-3 py-2 font-semibold transition-colors hover:bg-[var(--surface-hover)]"
+        className="flex w-fit max-w-full items-center gap-2 rounded-md border border-[var(--border-color)] px-3 py-2 font-semibold transition-colors hover:bg-[var(--surface-hover)]"
         style={{ background: 'var(--bg-color)' }}
       >
         <FileText size={14} className="shrink-0 text-[var(--text-muted)]" />
-        <span>{titulo ?? 'Ver post'}</span>
+        <span className="min-w-0 [overflow-wrap:anywhere]">{titulo ?? 'Ver post'}</span>
         <ArrowUpRight size={12} className="shrink-0 text-[var(--text-light)]" />
       </Link>
       {open && (

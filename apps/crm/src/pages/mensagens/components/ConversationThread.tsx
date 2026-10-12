@@ -112,7 +112,7 @@ export function ConversationThread({
             return (
               <div
                 key={feedItemKey(m)}
-                className="mensagens-event-row flex items-center gap-2 self-start text-xs text-[var(--text-muted)]"
+                className="mensagens-event-row flex max-w-full items-center gap-2 self-start text-xs text-[var(--text-muted)]"
               >
                 {m.source === 'edit_suggestion' ? (
                   <FilePen size={13} />
@@ -123,7 +123,9 @@ export function ConversationThread({
                 {m.post_id != null && (
                   <PostChip postId={m.post_id} workflowId={m.workflow_id} titulo={m.post_titulo} />
                 )}
-                <span className="mensagens-event-row__time">· {formatTime(m.created_at)}</span>
+                <span className="mensagens-event-row__time whitespace-nowrap">
+                  · {formatTime(m.created_at)}
+                </span>
               </div>
             );
           }
@@ -137,9 +139,11 @@ export function ConversationThread({
                 cliente={clientesById.get(m.cliente_id)}
                 clienteFotoUrl={conversa.cliente_foto_url}
               />
-              <div className={`flex flex-col gap-1 ${daEquipe ? 'items-end' : 'items-start'}`}>
+              <div
+                className={`flex min-w-0 flex-col gap-1 ${daEquipe ? 'items-end' : 'items-start'}`}
+              >
                 <div
-                  className="rounded-2xl px-3.5 py-2.5 text-sm"
+                  className="max-w-full rounded-2xl px-3.5 py-2.5 text-sm"
                   style={{
                     background: daEquipe ? 'var(--surface-hover)' : 'var(--card-bg)',
                     boxShadow: 'inset 0 0 0 1px var(--border-color)',
@@ -155,7 +159,9 @@ export function ConversationThread({
                       Pediu correção
                     </div>
                   )}
-                  {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
+                  {m.content && (
+                    <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.content}</p>
+                  )}
                   {m.post_id != null && (
                     <div className="mt-2 text-xs">
                       <PostChip
@@ -193,7 +199,7 @@ export function ConversationThread({
       <div className="flex flex-col gap-2 border-t border-[var(--border-color)] p-3.5">
         {replyTo && (
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-            <span>
+            <span className="min-w-0 truncate">
               Respondendo sobre: <strong>{replyTo.titulo}</strong>
             </span>
             <button
@@ -213,7 +219,7 @@ export function ConversationThread({
               if (e.key === 'Enter') enviar();
             }}
             placeholder={replyTo ? 'Responder sobre o post…' : 'Enviar mensagem…'}
-            className="flex-1 rounded-full border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-2.5 text-sm outline-none"
+            className="min-w-0 flex-1 rounded-full border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-2.5 text-sm outline-none"
           />
           <button
             onClick={enviar}
