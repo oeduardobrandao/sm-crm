@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -84,6 +84,10 @@ export default function MobileNav() {
   const activeTab = isMoreRouteActive
     ? null
     : (tabs.find((tab) => isNavRouteActive(location.pathname, tab.route))?.navId ?? null);
+  // Column the selection pill sits on: the active tab, or Mais (the last column) while
+  // its sheet is open or one of its routes is showing. -1 hides the pill.
+  const selectedIndex =
+    moreOpen || isMoreRouteActive ? tabs.length : tabs.findIndex((tab) => tab.navId === activeTab);
 
   useEffect(() => {
     const phoneMedia = window.matchMedia('(max-width: 767px)');
@@ -131,7 +135,20 @@ export default function MobileNav() {
   return (
     <>
       <nav className="mobile-nav-glass" id="mobile-nav" aria-label="Navegação principal">
-        <div className="mobile-nav-items">
+        <div
+          className="mobile-nav-items"
+          style={
+            {
+              '--tab-count': tabs.length + 1,
+              '--tab-index': Math.max(0, selectedIndex),
+            } as CSSProperties
+          }
+        >
+          <span
+            className="mobile-nav-indicator"
+            aria-hidden="true"
+            data-hidden={selectedIndex < 0 || undefined}
+          />
           {tabs.map((tab) => {
             const active = activeTab === tab.navId;
             const Icon = TAB_ICON[tab.navId];

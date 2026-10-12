@@ -3581,13 +3581,54 @@ select.form-input option {
     min-height: 64px;
     padding: 4px;
     box-sizing: border-box;
-    border: 1px solid var(--phone-glass-border);
     border-radius: 32px;
+    isolation: isolate;
     background: var(--phone-cell);
-    background: var(--phone-glass);
-    box-shadow: var(--phone-shadow-float);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    backdrop-filter: blur(20px) saturate(180%);
+    background: var(--phone-tabbar-fill);
+    box-shadow: var(--phone-tabbar-shadow);
+    /* Liquid Glass, as far as CSS reaches: iOS bends the content behind the bar's edges
+       (lensing), which WebKit can't do from CSS (no SVG filters in backdrop-filter).
+       The rest is here: a lighter blur than the old frost so the content stays readable
+       through it, boosted saturation and light, a specular rim and an inner edge glow. */
+    -webkit-backdrop-filter: blur(10px) saturate(200%) brightness(1.04);
+    backdrop-filter: blur(10px) saturate(200%) brightness(1.04);
+  }
+
+  /* Specular rim: a hairline that catches light at the top-left and bottom-right. */
+  .mobile-nav-glass::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      var(--phone-tabbar-rim-lit),
+      var(--phone-tabbar-rim-dim) 32%,
+      var(--phone-tabbar-rim-dim) 68%,
+      var(--phone-tabbar-rim-lit)
+    );
+    content: '';
+    pointer-events: none;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  /* Edge glow and a faint outer edge, standing in for the light the lens gathers. */
+  .mobile-nav-glass::after {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow:
+      inset 0 0 8px var(--phone-tabbar-glow),
+      inset 0 1px 1px var(--phone-tabbar-glow),
+      0 0 0 0.5px var(--phone-tabbar-edge);
+    content: '';
+    pointer-events: none;
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -3596,11 +3637,44 @@ select.form-input option {
     }
   }
 
+  @media (prefers-reduced-transparency: reduce) {
+    .mobile-nav-glass {
+      background: var(--phone-cell);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
   .mobile-nav-items {
+    position: relative;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--tab-count, 5), minmax(0, 1fr));
     align-items: stretch;
     min-height: 54px;
+  }
+
+  /* Selection pill: one glassy capsule that slides to the active tab with a little
+     overshoot, the way the iOS tab bar moves its selection. */
+  .mobile-nav-indicator {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: calc(100% / var(--tab-count, 5));
+    border-radius: 28px;
+    background: var(--phone-tabbar-pill);
+    box-shadow:
+      inset 0 1px 0.5px var(--phone-tabbar-pill-rim),
+      inset 0 -0.5px 0.5px var(--phone-tabbar-pill-rim);
+    transform: translateX(calc(var(--tab-index, 0) * 100%));
+    transition:
+      transform 460ms cubic-bezier(0.32, 1.32, 0.56, 1),
+      opacity 160ms ease;
+    pointer-events: none;
+  }
+
+  .mobile-nav-indicator[data-hidden] {
+    opacity: 0;
   }
 
   .mobile-nav-item {
@@ -3618,14 +3692,25 @@ select.form-input option {
     color: var(--phone-label-secondary);
     cursor: pointer;
     font-family: var(--font-main);
+    position: relative;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
-    transition: background-color 160ms ease;
   }
 
   .mobile-nav-item.active {
-    background: var(--phone-tab-active);
     color: var(--phone-label);
+  }
+
+  /* Press: the icon and label swell a touch, like the glass lifting under the finger. */
+  .mobile-nav-item__icon,
+  .mobile-nav-item .nav-label {
+    transition: transform 320ms cubic-bezier(0.32, 1.32, 0.56, 1);
+  }
+
+  .mobile-nav-item:active .mobile-nav-item__icon,
+  .mobile-nav-item:active .nav-label {
+    transform: scale(1.1);
+    transition-duration: 120ms;
   }
 
   .mobile-nav-item:focus-visible {
@@ -3802,7 +3887,9 @@ select.form-input option {
 
 @media (prefers-reduced-motion: reduce) {
   .mobile-nav-item,
-  .mobile-nav-item__icon {
+  .mobile-nav-item__icon,
+  .mobile-nav-item .nav-label,
+  .mobile-nav-indicator {
     transition: none;
   }
 }
@@ -15800,6 +15887,16 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
     --phone-glass: rgba(255, 255, 255, 0.78);
     --phone-glass-border: rgba(0, 0, 0, 0.06);
     --phone-tab-active: rgba(18, 21, 26, 0.07);
+    /* Tab bar Liquid Glass (.mobile-nav-glass): a clearer fill than --phone-glass, a
+       specular rim brighter at the lit corners, and a glassy selection pill. */
+    --phone-tabbar-fill: rgba(255, 255, 255, 0.52);
+    --phone-tabbar-rim-lit: rgba(255, 255, 255, 0.95);
+    --phone-tabbar-rim-dim: rgba(255, 255, 255, 0.2);
+    --phone-tabbar-glow: rgba(255, 255, 255, 0.55);
+    --phone-tabbar-edge: rgba(0, 0, 0, 0.08);
+    --phone-tabbar-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+    --phone-tabbar-pill: rgba(18, 21, 26, 0.07);
+    --phone-tabbar-pill-rim: rgba(255, 255, 255, 0.7);
     --phone-segment-thumb: #ffffff;
     --phone-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.12);
     --phone-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.18);
@@ -15847,6 +15944,14 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
     --phone-glass: rgba(18, 21, 26, 0.78);
     --phone-glass-border: rgba(255, 255, 255, 0.08);
     --phone-tab-active: rgba(232, 234, 240, 0.12);
+    --phone-tabbar-fill: rgba(22, 26, 33, 0.5);
+    --phone-tabbar-rim-lit: rgba(255, 255, 255, 0.38);
+    --phone-tabbar-rim-dim: rgba(255, 255, 255, 0.06);
+    --phone-tabbar-glow: rgba(255, 255, 255, 0.1);
+    --phone-tabbar-edge: rgba(0, 0, 0, 0.4);
+    --phone-tabbar-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --phone-tabbar-pill: rgba(232, 234, 240, 0.14);
+    --phone-tabbar-pill-rim: rgba(255, 255, 255, 0.16);
     --phone-segment-thumb: #3a404d;
     --phone-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.5);
     --phone-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.6);
