@@ -57,12 +57,12 @@ import GlobalSearchDialog from '../GlobalSearchDialog';
 import { PhoneLayoutProvider } from '../PhoneLayoutContext';
 import type { KbSearchEntry } from '@/store/kb';
 
-function renderTrigger() {
+function renderTrigger(variant?: 'topbar' | 'sidebar') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <GlobalSearchTrigger />
+        <GlobalSearchTrigger variant={variant} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -417,6 +417,18 @@ describe('GlobalSearchTrigger', () => {
       expect(onOpenChange).toHaveBeenCalledWith(false);
       expect(navigateMock).toHaveBeenCalledWith('/entregas?drawer=5');
     });
+  });
+
+  it('renders the sidebar variant with its own class and still opens on Cmd+K', async () => {
+    renderTrigger('sidebar');
+    const button = screen.getByRole('button', { name: 'Buscar' });
+    expect(button).toHaveClass('search-trigger--sidebar');
+    expect(button).not.toHaveClass('search-trigger');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.keyDown(document, { key: 'k', metaKey: true });
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('keeps the centered palette outside the phone shell', async () => {

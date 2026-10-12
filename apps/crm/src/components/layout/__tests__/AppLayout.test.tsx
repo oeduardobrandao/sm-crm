@@ -15,12 +15,14 @@ vi.mock('../Sidebar', () => ({
     collapsible,
     pinned,
     onTogglePinned,
+    vidroShell,
   }: {
     isDrawer?: boolean;
     isOpen?: boolean;
     collapsible?: boolean;
     pinned?: boolean;
     onTogglePinned?: () => void;
+    vidroShell?: boolean;
   }) => (
     <div
       data-testid="sidebar"
@@ -28,6 +30,7 @@ vi.mock('../Sidebar', () => ({
       data-open={String(Boolean(isOpen))}
       data-collapsible={String(Boolean(collapsible))}
       data-pinned={String(Boolean(pinned))}
+      data-vidro-shell={String(Boolean(vidroShell))}
     >
       Sidebar
       <button type="button" onClick={onTogglePinned}>
@@ -63,6 +66,26 @@ vi.mock('../TopBar', () => ({
       )}
     </div>
   ),
+}));
+
+const vidroState = vi.hoisted(() => ({
+  active: false,
+  enabled: false,
+  optedOut: false,
+  setOptedOut: (() => {}) as (v: boolean) => void,
+}));
+
+// The real hook reads useWorkspaceLimits (useQuery), which this suite has no QueryClient for.
+vi.mock('../../../hooks/useVidro', () => ({
+  useVidro: () => vidroState,
+}));
+
+vi.mock('../PageToolbar', () => ({
+  default: () => <div data-testid="page-toolbar" />,
+}));
+
+vi.mock('../TopBarActions', () => ({
+  default: ({ variant }: { variant?: string }) => <div data-testid={'actions-' + variant} />,
 }));
 
 vi.mock('../PhoneShellHeader', () => ({
@@ -157,6 +180,9 @@ function setCanSeeFinancials(
 
 beforeEach(() => {
   localStorage.clear();
+  vidroState.active = false;
+  vidroState.enabled = false;
+  vidroState.optedOut = false;
   // Default: unrestricted. Non-financial routes render regardless of this
   // value, so only the financial-guard tests below need to vary it.
   setCanSeeFinancials(true);
@@ -536,5 +562,50 @@ describe('AppLayout contract guard wiring', () => {
     expect(screen.queryByText('Contratos screen')).not.toBeInTheDocument();
     expect(screen.queryByText('Acesso a contratos restrito')).not.toBeInTheDocument();
     expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
+  });
+});
+
+describe('AppLayout Vidro shell', () => {
+  it('replaces the TopBar with the glass panel and page toolbar at desktop width', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
+    const panel = document.querySelector('.vidro-panel');
+    expect(panel).not.toBeNull();
+    expect(panel).toContainElement(screen.getByTestId('page-toolbar'));
+    expect(panel).toContainElement(document.getElementById('app'));
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-vidro-shell', 'true');
+  });
+
+  it('keeps the classic TopBar at tablet width even when vidro is active', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(900);
+    mockMatchMedia(true);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-vidro-shell', 'false');
+  });
+
+  it('keeps the classic TopBar at desktop width when vidro is inactive', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(screen.queryByTestId('page-toolbar')).not.toBeInTheDocument();
   });
 });

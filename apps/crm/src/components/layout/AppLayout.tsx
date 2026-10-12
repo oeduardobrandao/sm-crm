@@ -15,6 +15,11 @@ import { PageSkeleton } from '../ui/skeletons';
 import { GuideProvider } from '../guide/GuideContext';
 import { GuidePill } from '../guide/GuidePill';
 import { PhoneLayoutContext, usePhoneChromeController } from './PhoneLayoutContext';
+import { useVidro } from '../../hooks/useVidro';
+import { PageToolbarProvider } from './PageToolbarContext';
+import PageToolbar from './PageToolbar';
+import TopBarActions from './TopBarActions';
+import NavigationProgress from './NavigationProgress';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 const GuideDialog = lazy(() => import('../guide/GuideDialog'));
@@ -170,6 +175,9 @@ export default function AppLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarPinned, toggleSidebarPinned] = useSidebarPinned();
   const sidebarCollapsible = !isTablet && !isMobile;
+  // Desktop "Vidro" look: only where the static sidebar exists (>=1101px).
+  const vidro = useVidro();
+  const vidroShell = vidro.active && sidebarCollapsible;
   // Pages opt into phone chrome changes (own page header, hidden tab bar) through
   // usePhoneChrome; the attributes on .app-container drive the CSS (phone only).
   const phoneChrome = usePhoneChromeController(isMobile);
@@ -201,69 +209,89 @@ export default function AppLayout() {
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
+  const mainContent = (
+    <main className="main-content" id="app">
+      {/* On phones the related-articles button lives in PhoneShellHeader. */}
+      {!isMobile && <ContextHelpLinks />}
+      {/* The page chunks are lazy: on a cold load the shell stays up and only the
+        content area waits. In-app navigations run in a transition, so they keep the
+        previous page on screen instead of falling back here. */}
+      {outcome === 'content' && (
+        <Suspense fallback={<PageSkeleton />}>
+          <Outlet />
+        </Suspense>
+      )}
+      {outcome === 'loading' && <PageSkeleton />}
+      {outcome === 'denied' && <FinancialRestrictionScreen variant={deniedScreen} />}
+    </main>
+  );
+
   return (
     <GuideProvider>
       <PhoneLayoutContext.Provider value={phoneChrome.contextValue}>
-        <div
-          className="app-container"
-          data-sidebar-collapsed={(sidebarCollapsible && !sidebarPinned) || undefined}
-          {...phoneChrome.attributes}
-        >
-          {isMobile ? (
-            // A page with its own PhonePageHeader carries the bell and help links itself.
-            !phoneChrome.chrome.pageHeader && <PhoneShellHeader />
-          ) : (
-            <TopBar
-              showHamburger={isTablet}
-              isDrawerOpen={drawerOpen}
-              onHamburgerClick={() => setDrawerOpen((v) => !v)}
-            />
-          )}
-
-          <Suspense fallback={null}>
-            <GlobalBannerContainer>
-              <DunningBanner />
-              <IncidentBanner />
-            </GlobalBannerContainer>
-          </Suspense>
-
-          <Sidebar
-            isDrawer={isTablet}
-            isOpen={drawerOpen}
-            onClose={closeDrawer}
-            collapsible={sidebarCollapsible}
-            pinned={sidebarPinned}
-            onTogglePinned={toggleSidebarPinned}
-          />
-
-          {isTablet && drawerOpen && (
-            <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
-          )}
-
-          <main className="main-content" id="app">
-            {/* On phones the related-articles button lives in PhoneShellHeader. */}
-            {!isMobile && <ContextHelpLinks />}
-            {/* The page chunks are lazy: on a cold load the shell stays up and only the
-              content area waits. In-app navigations run in a transition, so they keep the
-              previous page on screen instead of falling back here. */}
-            {outcome === 'content' && (
-              <Suspense fallback={<PageSkeleton />}>
-                <Outlet />
-              </Suspense>
+        <PageToolbarProvider vidroShell={vidroShell}>
+          <div
+            className="app-container"
+            data-sidebar-collapsed={(sidebarCollapsible && !sidebarPinned) || undefined}
+            {...phoneChrome.attributes}
+          >
+            {isMobile ? (
+              // A page with its own PhonePageHeader carries the bell and help links itself.
+              !phoneChrome.chrome.pageHeader && <PhoneShellHeader />
+            ) : vidroShell ? null : (
+              <TopBar
+                showHamburger={isTablet}
+                isDrawerOpen={drawerOpen}
+                onHamburgerClick={() => setDrawerOpen((v) => !v)}
+              />
             )}
-            {outcome === 'loading' && <PageSkeleton />}
-            {outcome === 'denied' && <FinancialRestrictionScreen variant={deniedScreen} />}
-          </main>
 
-          <MobileNav />
-          <GuidePill />
-          <Suspense fallback={null}>
-            <GuideDialog />
-          </Suspense>
-          <Suspense fallback={null}>
-            <GlobalPopupHost />
-          </Suspense>
-        </div>
+            <Suspense fallback={null}>
+              <GlobalBannerContainer>
+                <DunningBanner />
+                <IncidentBanner />
+              </GlobalBannerContainer>
+            </Suspense>
+
+            <Sidebar
+              isDrawer={isTablet}
+              isOpen={drawerOpen}
+              onClose={closeDrawer}
+              collapsible={sidebarCollapsible}
+              pinned={sidebarPinned}
+              onTogglePinned={toggleSidebarPinned}
+              vidroShell={vidroShell}
+              look={{
+                enabled: vidro.enabled,
+                optedOut: vidro.optedOut,
+                onToggle: () => vidro.setOptedOut(!vidro.optedOut),
+              }}
+            />
+
+            {isTablet && drawerOpen && (
+              <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
+            )}
+
+            {vidroShell ? (
+              <div className="vidro-panel">
+                <NavigationProgress />
+                <PageToolbar capsule={<TopBarActions variant="capsule" />} />
+                {mainContent}
+              </div>
+            ) : (
+              mainContent
+            )}
+
+            <MobileNav />
+            <GuidePill />
+            <Suspense fallback={null}>
+              <GuideDialog />
+            </Suspense>
+            <Suspense fallback={null}>
+              <GlobalPopupHost />
+            </Suspense>
+          </div>
+        </PageToolbarProvider>
       </PhoneLayoutContext.Provider>
     </GuideProvider>
   );

@@ -25,6 +25,15 @@ vi.mock('../../../hooks/useMensagensUnread', () => ({
 
 vi.mock('../../../lib/supabase');
 
+// No QueryClientProvider in this tree: the real palette runs useQuery.
+vi.mock('../GlobalSearchDialog', () => ({
+  default: ({ open }: { open: boolean }) => (open ? <div role="dialog" /> : null),
+}));
+
+vi.mock('@/store/workspace', () => ({
+  switchWorkspace: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { useAuth } from '../../../context/AuthContext';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
@@ -97,6 +106,8 @@ function renderSidebar(
     collapsible?: boolean;
     pinned?: boolean;
     onTogglePinned?: () => void;
+    vidroShell?: boolean;
+    look?: { enabled: boolean; optedOut: boolean; onToggle: () => void };
   } = {},
 ) {
   return render(
@@ -475,5 +486,156 @@ describe('Sidebar', () => {
     const badge = screen.getByTestId('mensagens-nav-badge');
     expect(badge).toBeInTheDocument();
     expect(badge).toHaveTextContent('99+');
+  });
+
+  describe('Vidro shell', () => {
+    const realLocation = window.location;
+
+    afterEach(() => {
+      Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+    });
+
+    it('shows the workspace name and plan in the glass header', async () => {
+      setAuth();
+      setLimits({ planName: 'Pro' });
+      mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+        data: [
+          { workspace_id: 'w-1', role: 'owner', workspaces: { id: 'w-1', name: 'Agência Norte' } },
+        ],
+        error: null,
+      });
+
+      renderSidebar('/dashboard', { collapsible: true, vidroShell: true });
+
+      expect(await screen.findByText('Agência Norte')).toBeInTheDocument();
+      expect(screen.getByText('Pro')).toBeInTheDocument();
+      expect(document.querySelector('.vidro-sidebar-head')).not.toBeNull();
+
+      // One workspace: the account menu still has no switcher section.
+      fireEvent.click(screen.getByText('Ana Maria'));
+      expect(await screen.findByText('Opções da Conta')).toBeInTheDocument();
+      expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
+    });
+
+    it('renders no glass header or sidebar search without vidroShell', async () => {
+      setAuth();
+      setLimits({ planName: 'Pro' });
+      mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+        data: [
+          { workspace_id: 'w-1', role: 'owner', workspaces: { id: 'w-1', name: 'Agência Norte' } },
+          { workspace_id: 'w-2', role: 'owner', workspaces: { id: 'w-2', name: 'Outra Agência' } },
+        ],
+        error: null,
+      });
+
+      renderSidebar('/dashboard', { collapsible: true });
+      fireEvent.click(screen.getByText('Ana Maria'));
+      expect(await screen.findByText('Outra Agência')).toBeInTheDocument();
+
+      // The active workspace's name shows only in the account-menu switcher.
+      expect(screen.getAllByText('Agência Norte')).toHaveLength(1);
+      expect(document.querySelector('.vidro-sidebar-head')).toBeNull();
+      expect(screen.queryByText('Pro')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Buscar' })).not.toBeInTheDocument();
+    });
+
+    it('carries one search button that opens the palette', () => {
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true, vidroShell: true });
+
+      const buttons = screen.getAllByRole('button', { name: 'Buscar' });
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]).toHaveClass('search-trigger--sidebar');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+      fireEvent.click(buttons[0]);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('offers "Visual clássico" in the account menu and toggles the look', () => {
+      setAuth();
+      const onToggle = vi.fn();
+      renderSidebar('/dashboard', {
+        collapsible: true,
+        look: { enabled: true, optedOut: false, onToggle },
+      });
+
+      fireEvent.click(screen.getByText('Ana Maria'));
+      fireEvent.click(screen.getByText('Visual clássico'));
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers "Visual novo" once the user opted out', () => {
+      setAuth();
+      renderSidebar('/dashboard', {
+        collapsible: true,
+        look: { enabled: true, optedOut: true, onToggle: vi.fn() },
+      });
+
+      fireEvent.click(screen.getByText('Ana Maria'));
+      expect(screen.getByText('Visual novo')).toBeInTheDocument();
+      expect(screen.queryByText('Visual clássico')).not.toBeInTheDocument();
+    });
+
+    it('has no look item in the drawer', () => {
+      setAuth();
+      renderSidebar('/dashboard', {
+        isDrawer: true,
+        isOpen: true,
+        look: { enabled: true, optedOut: false, onToggle: vi.fn() },
+      });
+
+      fireEvent.click(screen.getByText('Ana Maria'));
+      expect(screen.getByText('Opções da Conta')).toBeInTheDocument();
+      expect(screen.queryByText('Visual clássico')).not.toBeInTheDocument();
+      expect(screen.queryByText('Visual novo')).not.toBeInTheDocument();
+    });
+
+    it('has no look item when the workspace flag is off', () => {
+      setAuth();
+      renderSidebar('/dashboard', {
+        collapsible: true,
+        look: { enabled: false, optedOut: false, onToggle: vi.fn() },
+      });
+
+      fireEvent.click(screen.getByText('Ana Maria'));
+      expect(screen.getByText('Opções da Conta')).toBeInTheDocument();
+      expect(screen.queryByText('Visual clássico')).not.toBeInTheDocument();
+    });
+
+    it('clears the look cache before reloading into another workspace', async () => {
+      let keyAtReload: string | null | undefined;
+      const reload = vi.fn(() => {
+        keyAtReload = localStorage.getItem('look-vidro');
+      });
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...realLocation, reload },
+      });
+      localStorage.setItem('look-vidro', 'u1');
+      setAuth();
+      mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+        data: [
+          {
+            workspace_id: 'w-1',
+            role: 'owner',
+            workspaces: { id: 'w-1', name: 'Workspace Principal' },
+          },
+          {
+            workspace_id: 'w-2',
+            role: 'owner',
+            workspaces: { id: 'w-2', name: 'Workspace Secundario' },
+          },
+        ],
+        error: null,
+      });
+
+      renderSidebar('/dashboard');
+      fireEvent.click(screen.getByText('Ana Maria'));
+      fireEvent.click(await screen.findByText('Workspace Secundario'));
+
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+      expect(keyAtReload).toBeNull();
+    });
   });
 });
