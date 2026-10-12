@@ -55,13 +55,13 @@ describe('AdminsPage', () => {
     const table = within(await screen.findByRole('table'));
     expect(table.getByText('eu@mesaas.com.br')).toBeInTheDocument();
     expect(table.getByText('outra@mesaas.com.br')).toBeInTheDocument();
-    expect(table.getAllByRole('button', { name: 'Remover admin' })).toHaveLength(1);
+    expect(table.getAllByRole('button', { name: /^Remover/ })).toHaveLength(1);
   });
 
   it('removing calls the API with the admin id', async () => {
     renderPage();
     const table = within(await screen.findByRole('table'));
-    fireEvent.click(table.getByRole('button', { name: 'Remover admin' }));
+    fireEvent.click(table.getByRole('button', { name: 'Remover outra@mesaas.com.br' }));
     await waitFor(() => expect(removeAdmin).toHaveBeenCalledWith('a2'));
   });
 
@@ -71,7 +71,7 @@ describe('AdminsPage', () => {
     fireEvent.change(screen.getByLabelText('E-mail do novo admin'), {
       target: { value: 'nova@mesaas.com.br' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Convidar admin' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Convidar' }));
     await waitFor(() => expect(inviteAdmin).toHaveBeenCalledWith('nova@mesaas.com.br'));
   });
 
