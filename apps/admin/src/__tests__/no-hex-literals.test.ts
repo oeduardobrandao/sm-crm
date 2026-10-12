@@ -26,9 +26,7 @@ const FILES = [
 ];
 
 /** Brand colours that are data, not theme: the login splash gradient and the logo mark. */
-const ALLOW: Record<string, string[]> = {
-  'pages/LoginPage.tsx': ['#eaf0dc', '#eab308'],
-};
+const ALLOW: Record<string, string[]> = {};
 
 /** New-design files are hex-free by convention; collected by path so page work never edits this test. */
 function collect(dir: string, match: (rel: string) => boolean): string[] {

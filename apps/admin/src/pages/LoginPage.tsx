@@ -54,7 +54,7 @@ export default function LoginPage() {
   };
 
   const fieldRow = cn(
-    'flex items-center gap-3 px-4 transition-colors focus-within:bg-foreground/[0.06] focus-within:ring-2 focus-within:ring-inset focus-within:ring-foreground/40',
+    'flex items-center gap-3 px-4 transition-colors focus-within:bg-foreground/[0.06] focus-within:ring-2 focus-within:ring-inset focus-within:ring-foreground/70',
     isPhone ? 'min-h-[52px] text-[17px]' : 'min-h-[48px] px-3.5 text-[15px]',
   );
   const fieldLabel = cn('shrink-0', isPhone ? 'w-16' : 'w-[60px]');
@@ -127,7 +127,7 @@ export default function LoginPage() {
           role="alert"
           className={cn(
             'admin-login-error m-0',
-            isPhone ? 'mx-4 text-[13px]' : 'text-center text-sm',
+            isPhone ? 'admin-login-error--pill mx-1 text-[13px]' : 'text-center text-sm',
           )}
         >
           {error}
