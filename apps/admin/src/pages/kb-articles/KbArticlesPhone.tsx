@@ -30,9 +30,6 @@ import {
 } from './list-view';
 
 const articleCount = (n: number) => (n === 1 ? '1 artigo' : `${n} artigos`);
-const selectedCount = (n: number) =>
-  n === 0 ? 'Nenhum selecionado' : n === 1 ? '1 selecionado' : `${n} selecionados`;
-
 function SelectCircle({ checked }: { checked: boolean }) {
   return checked ? (
     <span
@@ -194,11 +191,8 @@ export function KbArticlesPhone(p: KbArticlesViewProps) {
     <>
       <PageHeader
         title="Artigos"
-        description={
-          selecting
-            ? selectedCount(p.actionableCount)
-            : `Central de Ajuda do CRM · ${articleCount(p.total)}`
-        }
+        // The selection count lives in the bottom bar; the subtitle keeps the article count.
+        description={`Central de Ajuda do CRM · ${articleCount(p.total)}`}
         phoneActions={
           <>
             <button

@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -62,6 +62,24 @@ export default function KbArticleEditorPage() {
     json: null,
     plain: '',
   });
+  // Crossing 768px swaps the phone and desktop views, which remounts the TipTap editor with
+  // `initialContent`. Left alone that is the loaded document, so the remount would drop (and undo
+  // would revert past) whatever was typed. So the flip render itself, by comparing against the
+  // isPhone it last saw, picks the latest typed document as the seed: the new editor mounts with
+  // it as its initial content. Reloading the article (load or post-save refetch) clears the seed.
+  const editedRef = useRef(false);
+  const seedRef = useRef<{ isPhone: boolean; seed: Record<string, unknown> | null }>({
+    isPhone,
+    seed: null,
+  });
+  if (seedRef.current.isPhone !== isPhone) {
+    seedRef.current = {
+      isPhone,
+      seed: editedRef.current ? contentRef.current.json : seedRef.current.seed,
+    };
+  }
+  const remountSeed = seedRef.current.seed;
+
   const [resolvedContent, setResolvedContent] = useState<Record<string, unknown> | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState('');
@@ -93,6 +111,8 @@ export default function KbArticleEditorPage() {
     setStatus(article.status);
     setCoverUrl(article.cover_image_url ?? '');
     contentRef.current = { json: article.content, plain: article.content_plain };
+    editedRef.current = false;
+    seedRef.current = { ...seedRef.current, seed: null };
 
     if (article.content) {
       const r2Keys = extractR2Keys(article.content);
@@ -148,19 +168,6 @@ export default function KbArticleEditorPage() {
       setSlug(slugify(title));
     }
   }, [title, isEdit]);
-
-  // Crossing 768px swaps the phone and desktop views, which remounts the TipTap editor. It would
-  // come back with the loaded content and silently drop what was typed since, so once the admin
-  // has edited, the remount is seeded with the latest document instead. A layout effect, so the
-  // snapshot is taken before the new editor's own passive effect can setContent() the stale doc.
-  const editedRef = useRef(false);
-  const lastIsPhone = useRef(isPhone);
-  const [remountSeed, setRemountSeed] = useState<Record<string, unknown> | null>(null);
-  useLayoutEffect(() => {
-    if (lastIsPhone.current === isPhone) return;
-    lastIsPhone.current = isPhone;
-    if (editedRef.current && contentRef.current.json) setRemountSeed(contentRef.current.json);
-  }, [isPhone]);
 
   const handleEditorUpdate = useCallback((json: Record<string, unknown>, plain: string) => {
     editedRef.current = true;

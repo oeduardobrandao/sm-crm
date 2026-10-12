@@ -53,7 +53,7 @@ export type ArticleFieldSetters = {
 /** What both editor views receive from KbArticleEditorPage, which owns every query and mutation. */
 export interface KbArticleEditorViewProps {
   isEdit: boolean;
-  /** "Salvo há 2 minutos · Rascunho" / "Salvando…" / "Novo rascunho". */
+  /** "Salvo há 2 minutos · Rascunho" (saved status), "Salvando…" or "Ainda não salvo". */
   saveState: string;
   values: ArticleFieldValues;
   set: ArticleFieldSetters;

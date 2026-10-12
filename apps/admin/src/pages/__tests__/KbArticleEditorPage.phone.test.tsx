@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -19,10 +19,34 @@ vi.mock('../../lib/inline-image', () => ({
   resolveInlineImageUrls: vi.fn().mockResolvedValue({}),
   injectSignedUrls: (c: unknown) => c,
 }));
-// TipTap in jsdom is slow and timer-flaky; the page only needs the editor's contract.
-vi.mock('../../components/editor/ArticleEditor', () => ({
-  ArticleEditor: () => <div data-testid="article-editor">Editor de conteúdo</div>,
-}));
+// TipTap in jsdom is slow and timer-flaky; the page only needs the editor's contract. The stub
+// records the initial content of each mount and can play back a typed document through onUpdate.
+const editorProbe = vi.hoisted(() => ({ mounts: [] as unknown[] }));
+const TYPED = { type: 'doc', content: [{ type: 'paragraph', text: 'digitado' }] };
+vi.mock('../../components/editor/ArticleEditor', async () => {
+  const { useState } = await import('react');
+  return {
+    ArticleEditor: ({
+      initialContent,
+      onUpdate,
+    }: {
+      initialContent: unknown;
+      onUpdate: (json: Record<string, unknown>, plain: string) => void;
+    }) => {
+      useState(() => {
+        editorProbe.mounts.push(initialContent);
+        return 0;
+      });
+      return (
+        <div data-testid="article-editor">
+          <button type="button" onClick={() => onUpdate(TYPED, 'typed')}>
+            Simular digitação
+          </button>
+        </div>
+      );
+    },
+  };
+});
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import {
@@ -52,6 +76,35 @@ const article = {
 };
 
 let restore: (() => void) | null = null;
+
+/** matchMedia whose phone answer can be flipped mid-test (an iPhone rotating past 768pt). */
+function controllableMatchMedia() {
+  const original = window.matchMedia;
+  const listeners: Array<() => void> = [];
+  let matches = true;
+  window.matchMedia = ((query: string) => ({
+    get matches() {
+      return matches;
+    },
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: (_: string, cb: () => void) => listeners.push(cb),
+    removeEventListener: (_: string, cb: () => void) => {
+      const i = listeners.indexOf(cb);
+      if (i >= 0) listeners.splice(i, 1);
+    },
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+  restore = () => {
+    window.matchMedia = original;
+  };
+  return (phone: boolean) => {
+    matches = phone;
+    listeners.slice().forEach((l) => l());
+  };
+}
 
 beforeEach(() => {
   vi.mocked(getKbArticle).mockResolvedValue({ article } as never);
@@ -165,6 +218,27 @@ describe('KbArticleEditorPage on phones', () => {
     await waitFor(() => expect(deleteKbArticle).toHaveBeenCalledWith('k1'));
     expect(await screen.findByText('Lista de artigos')).toBeInTheDocument();
     confirmSpy.mockRestore();
+  });
+});
+
+describe('KbArticleEditorPage across the 768px breakpoint', () => {
+  it('remounts the editor with the typed document and keeps the fields', async () => {
+    const flip = controllableMatchMedia();
+    editorProbe.mounts.length = 0;
+    renderEditor();
+    const title = await screen.findByRole('textbox', { name: 'Título' });
+    await waitFor(() => expect(title).toHaveValue('Primeiro post'));
+    expect(editorProbe.mounts).toEqual([null]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Simular digitação' }));
+    fireEvent.change(title, { target: { value: 'Título editado no iPhone' } });
+
+    await act(async () => flip(false));
+
+    // Desktop now: the wide layout, a fresh editor seeded with what was typed.
+    expect(document.querySelector('[data-admin-wide]')).not.toBeNull();
+    expect(editorProbe.mounts).toEqual([null, TYPED]);
+    expect(screen.getByRole('textbox', { name: 'Título' })).toHaveValue('Título editado no iPhone');
   });
 });
 
