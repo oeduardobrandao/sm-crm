@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_PARAMS,
+  clearSheetFiltersPatch,
+  countSheetFilters,
   hasActiveFilters,
   nextSort,
   parseWorkspacesParams,
@@ -77,6 +79,20 @@ describe('workspaces-params', () => {
     expect(hasActiveFilters({ ...DEFAULT_PARAMS, pag: 4, ord: 'name', por: 100 })).toBe(false);
     expect(hasActiveFilters({ ...DEFAULT_PARAMS, q: 'a' })).toBe(true);
     expect(hasActiveFilters({ ...DEFAULT_PARAMS, criado: '7d' })).toBe(true);
+  });
+
+  it('countSheetFilters counts the sheet filters and ignores search, sort and paging', () => {
+    expect(countSheetFilters(DEFAULT_PARAMS)).toBe(0);
+    expect(countSheetFilters({ ...DEFAULT_PARAMS, q: 'a', pag: 3, ord: 'name' })).toBe(0);
+    expect(
+      countSheetFilters({ ...DEFAULT_PARAMS, q: 'a', status: 'teste', criado: '7d', plano: 'pro' }),
+    ).toBe(3);
+  });
+
+  it('clearSheetFiltersPatch resets the sheet filters but not the search text', () => {
+    const cleared = { ...FULL, ...clearSheetFiltersPatch() };
+    expect(countSheetFilters(cleared)).toBe(0);
+    expect(cleared.q).toBe(FULL.q);
   });
 
   it('nextSort flips direction on the same key and uses the column default otherwise', () => {

@@ -18,14 +18,15 @@ interface WorkspacesFilterChipsProps {
   onClear: () => void;
 }
 
-interface Chip {
+export interface FilterChip {
   key: keyof WorkspacesListParams;
   label: string;
   value: string;
 }
 
-function chipsFor(params: WorkspacesListParams, plans: Plan[]): Chip[] {
-  const chips: Chip[] = [];
+/** One chip per active filter, in the order the toolbar lists them. */
+export function filterChipsFor(params: WorkspacesListParams, plans: Plan[]): FilterChip[] {
+  const chips: FilterChip[] = [];
   if (params.q) chips.push({ key: 'q', label: 'Busca', value: params.q });
   if (params.plano) {
     chips.push({
@@ -53,14 +54,14 @@ export function WorkspacesFilterChips({
   onClear,
 }: WorkspacesFilterChipsProps) {
   if (!hasActiveFilters(params)) return null;
-  const chips = chipsFor(params, plans);
+  const chips = filterChipsFor(params, plans);
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       {chips.map((chip) => (
         <span
           key={chip.key}
-          className="inline-flex h-6 items-center gap-1 rounded-full bg-secondary pl-2.5 pr-1 text-foreground"
+          className="inline-flex h-7 items-center gap-1 rounded-full bg-primary/15 pl-3 pr-1.5 text-foreground"
         >
           <span className="text-muted-foreground">
             {chip.label}: <span className="font-medium text-foreground">{chip.value}</span>
@@ -69,7 +70,7 @@ export function WorkspacesFilterChips({
             type="button"
             aria-label={`Remover filtro ${chip.label}`}
             onClick={() => onChange({ [chip.key]: '' } as Partial<WorkspacesListParams>)}
-            className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+            className="rounded-full p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X size={12} />
           </button>

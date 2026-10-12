@@ -74,11 +74,10 @@ describe('WorkspacesTable', () => {
     expect(table.queryByText('rafa@agencianorte.com')).toBeNull();
   });
 
-  it('mobile card ignores column visibility and always shows the secondary fields', () => {
+  it('has no separate mobile card list: phones get their own view (WorkspacesPhone)', () => {
     renderTable({ visible: ['name'] });
-    const card = within(screen.getByRole('list'));
-    expect(card.getByText('rafa@agencianorte.com')).toBeInTheDocument();
-    expect(card.getByText('42 clientes')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(screen.getAllByText('Agência Norte')).toHaveLength(1);
   });
 
   it('marks the active sort column with aria-sort and calls onSort on click', () => {
@@ -115,11 +114,6 @@ describe('WorkspacesTable', () => {
     expect(link).toHaveAttribute('href', '/admin/workspaces/ws-1');
     fireEvent.click(link);
     expect(onOpen).not.toHaveBeenCalled();
-    const card = within(screen.getByRole('list'));
-    expect(card.getByRole('link', { name: 'Agência Norte' })).toHaveAttribute(
-      'href',
-      '/admin/workspaces/ws-1',
-    );
   });
 
   it('marks the table busy while refetching', () => {
@@ -152,9 +146,6 @@ describe('WorkspacesTable', () => {
       ],
       visible: ['name', 'subscription'],
     });
-    // The subscription cell renders once in the desktop table (per `visible`)
-    // and again, unconditionally, in the mobile card -- see the "mobile card
-    // ignores column visibility" test above. getAllByText, not getByText.
     expect(screen.getAllByText('Pagar.me').length).toBeGreaterThan(0);
   });
 

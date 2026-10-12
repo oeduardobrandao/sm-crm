@@ -1,8 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { JSX } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   listPlans,
@@ -11,26 +8,19 @@ import {
   type WorkspaceSummary,
 } from '../lib/api';
 import { downloadCSV, toCSV } from '../lib/csv-export';
-import { Button } from '../components/ui/button';
-import { Card } from '../components/ui/card';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorState } from '../components/ErrorState';
-import { PageHeader } from '../components/PageHeader';
+import { useIsPhone } from '../hooks/useIsPhone';
 import { useWorkspacesParams } from '../hooks/useWorkspacesParams';
-import { WorkspacesFilterChips } from './workspaces/WorkspacesFilterChips';
-import { WorkspacesPagination } from './workspaces/WorkspacesPagination';
-import { WorkspacesTable, WorkspacesTableSkeleton } from './workspaces/WorkspacesTable';
+import { WorkspacesDesktop } from './workspaces/WorkspacesDesktop';
+import { WorkspacesPhone } from './workspaces/WorkspacesPhone';
 import { readColumnPrefs, writeColumnPrefs, type ColumnPrefs } from './workspaces-columns';
 import { WORKSPACE_EXPORT_COLUMNS, buildWorkspaceExportRows } from './workspaces-export';
 import { hasActiveFilters, nextSort, toListWorkspacesRequest } from './workspaces-params';
-import { WorkspacesToolbar } from './workspaces/WorkspacesToolbar';
-import { workspaceDetailPath } from '../lib/routes';
 
 const EXPORT_PAGE_SIZE = 200;
 const EXPORT_MAX_ROWS = 2000;
 
 export default function WorkspacesPage() {
-  const navigate = useNavigate();
+  const isPhone = useIsPhone();
   const { params, set, reset } = useWorkspacesParams();
   const [prefs, setPrefs] = useState<ColumnPrefs>(() => readColumnPrefs());
   const [exporting, setExporting] = useState(false);
@@ -114,90 +104,33 @@ export default function WorkspacesPage() {
         ? '1 workspace cadastrado'
         : `${total} workspaces cadastrados`;
 
-  let body: JSX.Element;
-  if (list.isPending) {
-    body = <WorkspacesTableSkeleton visible={prefs.visible} />;
-  } else if (list.isError) {
-    body = (
-      <ErrorState
-        message="Não foi possível carregar os workspaces."
-        onRetry={() => list.refetch()}
-      />
-    );
-  } else if (workspaces.length === 0) {
-    // Zero rows with a non-zero total means the requested page is past the end of the result
-    // set -- nothing clamps `pag` against the page count, and both "nenhum workspace" states
-    // would be a dead end here, since neither offers a way back to a page that has rows.
-    body =
-      (total ?? 0) > 0 ? (
-        <EmptyState
-          icon={Building2}
-          title="Página fora do intervalo"
-          description="Esta página não existe mais para os filtros atuais."
-          action={
-            <Button variant="outline" size="sm" onClick={() => set({ pag: 1 })}>
-              Voltar à primeira página
-            </Button>
-          }
-        />
-      ) : filtered ? (
-        <EmptyState
-          icon={Building2}
-          title="Nenhum workspace com esses filtros"
-          description="Tente ampliar a busca ou remover um dos filtros ativos."
-          action={
-            <Button variant="outline" size="sm" onClick={reset}>
-              Limpar filtros
-            </Button>
-          }
-        />
-      ) : (
-        <EmptyState icon={Building2} title="Nenhum workspace cadastrado ainda." />
-      );
-  } else {
-    body = (
-      <>
-        <WorkspacesTable
-          workspaces={workspaces}
-          visible={prefs.visible}
-          density={prefs.density}
-          sort={{ ord: params.ord, dir: params.dir }}
-          onSort={onSort}
-          onOpen={(id) => navigate(workspaceDetailPath(id))}
-          now={displayNow}
-          busy={list.isFetching}
-        />
-        <WorkspacesPagination
-          total={total ?? 0}
-          pag={params.pag}
-          por={params.por}
-          onPage={(pag) => set({ pag })}
-          onPageSize={(por) => set({ por })}
-        />
-      </>
-    );
-  }
+  const state = list.isPending ? 'pending' : list.isError ? 'error' : 'ready';
 
-  return (
-    <div>
-      <PageHeader title="Workspaces" description={headerDescription} />
-      <WorkspacesToolbar
-        params={params}
-        plans={plans}
-        prefs={prefs}
-        onChange={set}
-        onPrefs={onPrefs}
-        onExport={handleExportCsv}
-        exporting={exporting}
-      />
-      <WorkspacesFilterChips
-        params={params}
-        plans={plans}
-        total={total}
-        onChange={set}
-        onClear={reset}
-      />
-      <Card className="overflow-hidden">{body}</Card>
-    </div>
+  const view = {
+    params,
+    set,
+    reset,
+    plans,
+    workspaces,
+    total,
+    filtered,
+    state,
+    fetching: list.isFetching,
+    onRetry: () => list.refetch(),
+    onSort,
+    now: displayNow,
+    headerDescription,
+  } as const;
+
+  return isPhone ? (
+    <WorkspacesPhone {...view} />
+  ) : (
+    <WorkspacesDesktop
+      {...view}
+      prefs={prefs}
+      onPrefs={onPrefs}
+      onExport={handleExportCsv}
+      exporting={exporting}
+    />
   );
 }
