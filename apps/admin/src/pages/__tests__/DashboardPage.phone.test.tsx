@@ -202,4 +202,38 @@ describe('DashboardPage on phones', () => {
     await screen.findByRole('link', { name: /DK Marketing Médico/ });
     expect(screen.queryByRole('button', { name: /Exportar CSV/ })).toBeNull();
   });
+  it('shows the risk counts on the segmented labels', async () => {
+    renderPage();
+    const risk = within(await screen.findByTestId('risk-card'));
+    expect(await risk.findByRole('tab', { name: 'Testes · 1' })).toBeInTheDocument();
+    expect(risk.getByRole('tab', { name: 'Pendentes · 1' })).toBeInTheDocument();
+  });
+
+  it('shows how long ago each recent workspace was created', async () => {
+    renderPage();
+    const link = await screen.findByRole('link', { name: /Ateliê Digital/ });
+    expect(within(link).getByText('há 10 dias')).toBeInTheDocument();
+  });
+
+  it('previews 5 paying workspaces and expands the rest in place', async () => {
+    const user = userEvent.setup();
+    const base = (await getMrr()) as unknown as { workspaces: Record<string, unknown>[] };
+    const workspaces = Array.from({ length: 7 }, (_, n) => ({
+      ...base.workspaces[0],
+      workspace_id: `w${n}`,
+      name: `Pagante ${n}`,
+    }));
+    vi.mocked(getMrr).mockResolvedValue({
+      mrr_cents: 1,
+      paying_count: 7,
+      currency: 'brl',
+      workspaces,
+    } as never);
+    renderPage();
+    expect(await screen.findByRole('link', { name: /Pagante 4/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Pagante 5/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Ver todos os 7/ }));
+    expect(screen.getByRole('link', { name: /Pagante 6/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Ver todos os 7/ })).toBeNull();
+  });
 });

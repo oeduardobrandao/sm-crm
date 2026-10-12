@@ -33,6 +33,7 @@ export interface RiskCardProps {
   now: Date;
   /** Phone layout: segmented control + inset grouped lists instead of the glass panel. */
   phone?: boolean;
+  className?: string;
 }
 
 type View = 'todos' | 'testes' | 'pendentes';
@@ -99,7 +100,7 @@ function GroupSkeleton() {
   );
 }
 
-export function RiskCard({ trials, pending, now, phone = false }: RiskCardProps) {
+export function RiskCard({ trials, pending, now, phone = false, className }: RiskCardProps) {
   const navigate = useNavigate();
   const [view, setView] = useState<View>('todos');
 
@@ -140,7 +141,15 @@ export function RiskCard({ trials, pending, now, phone = false }: RiskCardProps)
 
   const filter = (
     <SegmentedControl
-      options={VIEW_OPTIONS}
+      options={
+        phone
+          ? [
+              VIEW_OPTIONS[0],
+              { value: 'testes', label: `Testes · ${trialsCount}` },
+              { value: 'pendentes', label: `Pendentes · ${pendingCount}` },
+            ]
+          : VIEW_OPTIONS
+      }
       value={view}
       onChange={setView}
       aria-label="Filtro de risco"
@@ -205,7 +214,9 @@ export function RiskCard({ trials, pending, now, phone = false }: RiskCardProps)
 
     return (
       <div data-testid="risk-card" className="mb-2">
-        <h2 className="phone-kit mb-2 text-[22px] font-bold">Atenção</h2>
+        <div className="phone-kit">
+          <h2 className="phone-group__header">Atenção</h2>
+        </div>
         <div className="mb-4">{filter}</div>
         {allClear ? (
           <GroupedList aria-label="Atenção">
@@ -244,17 +255,12 @@ export function RiskCard({ trials, pending, now, phone = false }: RiskCardProps)
   }
 
   return (
-    <div data-testid="risk-card" className="mb-5">
+    <div data-testid="risk-card" className={cn('min-w-0', className)}>
       <GlassPanel title="Atenção" actions={filter} flush>
         {allClear ? (
           <p className="px-[18px] pb-4 text-sm text-muted-foreground">{allClearText}</p>
         ) : (
-          <div
-            className={cn(
-              'grid',
-              showTrials && showPending && 'md:grid-cols-2 md:divide-x md:divide-border',
-            )}
-          >
+          <div className="flex flex-col divide-y divide-border">
             {showTrials ? (
               <section className="px-[18px] pb-4">
                 <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Cell, GroupedList } from '@mesaas/ios-kit';
 import { formatMoney, intervalLabel, statusMeta } from '../../lib/subscription';
 import { workspaceDetailPath } from '../../lib/routes';
@@ -9,7 +9,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { KpiGrid, KpiTile } from '../../components/shell/KpiTile';
 import { cn } from '../../lib/utils';
 import { RiskCard } from './RiskCard';
-import { activity, trialEndInfo, type DashboardViewProps } from './shared';
+import { activity, trialEndInfo, relativeCreated, type DashboardPhoneProps } from './shared';
 
 function ListSkeleton() {
   return (
@@ -31,14 +31,18 @@ function GroupMessage({ header, children }: { header: string; children: ReactNod
   );
 }
 
+const PAYING_PREVIEW = 5;
+
 const toneClass = {
   danger: 'text-destructive',
   warning: 'text-warning',
   muted: 'text-muted-foreground',
 } as const;
 
-export function DashboardPhone({ kpis, risk, mrr, trials, recent }: DashboardViewProps) {
+export function DashboardPhone({ kpis, risk, mrr, trials, recent }: DashboardPhoneProps) {
+  const [showAllPaying, setShowAllPaying] = useState(false);
   const mrrData = mrr.data;
+  const payingRows = mrrData?.workspaces ?? [];
   const trialsData = trials.data;
   const payingHeader = mrr.loading
     ? 'Workspaces pagantes'
@@ -76,7 +80,7 @@ export function DashboardPhone({ kpis, risk, mrr, trials, recent }: DashboardVie
         </GroupMessage>
       ) : (
         <GroupedList header={payingHeader}>
-          {(mrrData?.workspaces ?? []).map((ws) => {
+          {(showAllPaying ? payingRows : payingRows.slice(0, PAYING_PREVIEW)).map((ws) => {
             const a = activity(ws);
             const meta = statusMeta(ws.status);
             return (
@@ -96,6 +100,13 @@ export function DashboardPhone({ kpis, risk, mrr, trials, recent }: DashboardVie
               />
             );
           })}
+          {!showAllPaying && payingRows.length > PAYING_PREVIEW ? (
+            <Cell
+              label={`Ver todos os ${payingRows.length}`}
+              onClick={() => setShowAllPaying(true)}
+              chevron
+            />
+          ) : null}
         </GroupedList>
       )}
 
@@ -158,6 +169,7 @@ export function DashboardPhone({ kpis, risk, mrr, trials, recent }: DashboardVie
               ]
                 .filter(Boolean)
                 .join(' · ')}
+              value={relativeCreated(ws.created_at)}
               to={workspaceDetailPath(ws.id)}
             />
           ))}

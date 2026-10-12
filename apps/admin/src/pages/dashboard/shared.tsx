@@ -1,3 +1,4 @@
+import { differenceInCalendarDays } from 'date-fns';
 import { Badge } from '../../components/ui/badge';
 import { getPlanColor } from '../../lib/plan-colors';
 import { describeActivity } from '../workspace-activity';
@@ -54,6 +55,14 @@ export function trialEndInfo(trialEndsAt: string | null): TrialEndInfo {
   return { endLabel, daysLabel, daysTone };
 }
 
+/** "hoje", "ontem" or "há N dias" for a creation date. */
+export function relativeCreated(iso: string, now: Date = new Date()): string {
+  const days = Math.max(0, differenceInCalendarDays(now, new Date(iso)));
+  if (days === 0) return 'hoje';
+  if (days === 1) return 'ontem';
+  return `há ${days} dias`;
+}
+
 export interface DashboardKpi {
   label: string;
   value: string | number;
@@ -78,3 +87,6 @@ export interface DashboardViewProps {
   onExportPaying: () => void;
   onExportTrials: () => void;
 }
+
+/** The phone layout has no CSV export. */
+export type DashboardPhoneProps = Omit<DashboardViewProps, 'onExportPaying' | 'onExportTrials'>;

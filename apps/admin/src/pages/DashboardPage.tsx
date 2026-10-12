@@ -183,9 +183,15 @@ export default function DashboardPage() {
     mrr: { loading: mrrLoading, data: mrrData },
     trials: { loading: trialsLoading, data: trialsData, mrrCents: trialMrrCents, currency },
     recent: { loading: wsLoading, workspaces: workspacesData?.workspaces ?? [] },
-    onExportPaying: exportPayingWorkspacesCsv,
-    onExportTrials: exportTrialsCsv,
   };
 
-  return isPhone ? <DashboardPhone {...view} /> : <DashboardDesktop {...view} />;
+  return isPhone ? (
+    <DashboardPhone {...view} />
+  ) : (
+    <DashboardDesktop
+      {...view}
+      onExportPaying={exportPayingWorkspacesCsv}
+      onExportTrials={exportTrialsCsv}
+    />
+  );
 }

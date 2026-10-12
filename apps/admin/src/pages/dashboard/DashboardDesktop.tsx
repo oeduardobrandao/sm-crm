@@ -97,97 +97,103 @@ export function DashboardDesktop({
         ))}
       </KpiGrid>
 
-      <RiskCard {...risk} />
+      <div className="mb-5 flex flex-wrap items-start gap-4">
+        <RiskCard {...risk} className="flex-[1_1_340px]" />
 
-      <GlassPanel
-        title="Workspaces pagantes"
-        className="mb-5"
-        flush
-        actions={
-          <>
-            <span className="text-sm text-muted-foreground">
-              {mrr.loading
-                ? '—'
-                : `${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`}
-            </span>
-            <Button variant="secondary" size="sm" onClick={onExportPaying}>
-              <Download size={14} aria-hidden="true" />
-              Exportar CSV
-            </Button>
-          </>
-        }
-      >
-        {mrr.loading ? (
-          <ListSkeleton />
-        ) : (mrrData?.workspaces?.length ?? 0) === 0 ? (
-          <EmptyState title="Nenhum workspace pagante ainda" />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Workspace</TableHead>
-                <TableHead>Plano</TableHead>
-                <TableHead>Cobrança</TableHead>
-                <TableHead>Última atividade</TableHead>
-                <TableHead className="text-right">MRR</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(mrrData?.workspaces ?? []).map((ws) => {
-                const meta = statusMeta(ws.status);
-                return (
-                  <TableRow
-                    key={ws.workspace_id}
-                    onClick={() => navigate(workspaceDetailPath(ws.workspace_id))}
-                    className={rowClass}
-                  >
-                    <TableCell>
-                      <span className="flex min-w-0 items-center gap-2">
-                        <RowLink
-                          to={workspaceDetailPath(ws.workspace_id)}
-                          className="block truncate text-sm"
-                        >
-                          {ws.name}
-                        </RowLink>
-                        {ws.status !== 'active' && (
-                          <Badge
-                            variant={STATUS_BADGE_VARIANT[meta.tone]}
-                            className="shrink-0 whitespace-nowrap"
+        <GlassPanel
+          title={
+            <>
+              Workspaces pagantes
+              <span className="font-normal text-muted-foreground">
+                {mrr.loading
+                  ? ''
+                  : ` · ${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`}
+              </span>
+            </>
+          }
+          className="flex-[1.5_1_480px]"
+          flush
+          actions={
+            <>
+              <Button variant="secondary" size="sm" onClick={onExportPaying}>
+                <Download size={14} aria-hidden="true" />
+                Exportar CSV
+              </Button>
+            </>
+          }
+        >
+          {mrr.loading ? (
+            <ListSkeleton />
+          ) : (mrrData?.workspaces?.length ?? 0) === 0 ? (
+            <EmptyState title="Nenhum workspace pagante ainda" />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Workspace</TableHead>
+                  <TableHead>Plano</TableHead>
+                  <TableHead>Cobrança</TableHead>
+                  <TableHead>Última atividade</TableHead>
+                  <TableHead className="text-right">MRR</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(mrrData?.workspaces ?? []).map((ws) => {
+                  const meta = statusMeta(ws.status);
+                  return (
+                    <TableRow
+                      key={ws.workspace_id}
+                      onClick={() => navigate(workspaceDetailPath(ws.workspace_id))}
+                      className={rowClass}
+                    >
+                      <TableCell>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <RowLink
+                            to={workspaceDetailPath(ws.workspace_id)}
+                            className="block truncate text-sm"
                           >
-                            {meta.label}
-                          </Badge>
-                        )}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <PlanBadge name={ws.plan_name} />
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-                        <span className="shrink-0">{intervalLabel(ws.interval) || '—'}</span>
-                        {ws.discount_label && (
-                          <span
-                            className="truncate text-[0.7rem] text-success"
-                            title={ws.discount_label}
-                          >
-                            {ws.discount_label}
-                          </span>
-                        )}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <ActivityCell ws={ws} />
-                    </TableCell>
-                    <TableCell className="text-right font-sf text-sm">
-                      {formatMoney(ws.monthly_cents, mrrData?.currency)}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </GlassPanel>
+                            {ws.name}
+                          </RowLink>
+                          {ws.status !== 'active' && (
+                            <Badge
+                              variant={STATUS_BADGE_VARIANT[meta.tone]}
+                              className="shrink-0 whitespace-nowrap"
+                            >
+                              {meta.label}
+                            </Badge>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <PlanBadge name={ws.plan_name} />
+                      </TableCell>
+                      <TableCell>
+                        <span className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                          <span className="shrink-0">{intervalLabel(ws.interval) || '—'}</span>
+                          {ws.discount_label && (
+                            <span
+                              className="truncate text-[0.7rem] text-success"
+                              title={ws.discount_label}
+                            >
+                              {ws.discount_label}
+                            </span>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <ActivityCell ws={ws} />
+                      </TableCell>
+                      <TableCell className="text-right font-sf text-sm">
+                        {formatMoney(ws.monthly_cents, mrrData?.currency)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </GlassPanel>
+      </div>
 
       <GlassPanel
         title="Testes"
