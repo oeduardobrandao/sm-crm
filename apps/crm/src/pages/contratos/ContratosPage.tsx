@@ -594,7 +594,8 @@ export default function ContratosPage() {
   }
 
   return (
-    <div style={{ padding: '1.5rem' }}>
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
       {!inToolbar && (
         <div className="header">
           <div

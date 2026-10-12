@@ -24,9 +24,13 @@ export default function PageToolbar({ capsule }: { capsule: ReactNode }) {
       </div>
       <div className="vidro-toolbar-right">
         {spec?.segmented}
-        {spec?.actions}
-        {capsule}
-        {spec?.primary}
+        {/* Actions, capsule and primary wrap as one group, so a narrow toolbar breaks after the
+            segmented control instead of orphaning the primary button on a row of its own. */}
+        <div className="vidro-toolbar-end">
+          {spec?.actions}
+          {capsule}
+          {spec?.primary}
+        </div>
       </div>
     </header>
   );

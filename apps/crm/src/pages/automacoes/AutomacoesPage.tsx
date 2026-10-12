@@ -368,7 +368,7 @@ export default function AutomacoesPage() {
     return isPhone ? (
       phoneFrame(<CardListSkeleton rows={4} />)
     ) : (
-      <PageSkeleton body="table" style={{ padding: '1.5rem' }} />
+      <PageSkeleton body="table" style={inToolbar ? undefined : { padding: '1.5rem' }} />
     );
   }
   if (showGateError) {

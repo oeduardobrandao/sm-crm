@@ -510,7 +510,11 @@ export default function ExpressPostPage() {
   }
 
   return (
-    <div className="animate-up" style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}>
+    // Under Vidro the panel already pads the content.
+    <div
+      className="animate-up"
+      style={inToolbar ? undefined : { padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}
+    >
       <div style={{ maxWidth: '720px', margin: '0 auto' }}>
         {/* Header */}
         {!inToolbar && (

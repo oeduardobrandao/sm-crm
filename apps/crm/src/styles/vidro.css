@@ -256,7 +256,8 @@
 
   /* .page-content's own 1.5rem would double the panel's padding: without this, pages that
      use it sit 24px further in (and down) than pages that do not, and than the toolbar. */
-  html[data-look='vidro'] .app-container .vidro-panel > .main-content > .page-content {
+  html[data-look='vidro'] .app-container .vidro-panel > .main-content > .page-content,
+  html[data-look='vidro'] .app-container .vidro-panel > .main-content > .cliente-detalhe-page {
     padding: 0;
   }
 
@@ -325,6 +326,16 @@
     margin-left: auto;
   }
 
+  html[data-look='vidro'] .app-container .vidro-toolbar-end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    max-width: 100%;
+    margin-left: auto;
+  }
+
   html[data-look='vidro'] .app-container .vidro-toolbar [data-slot='button'] {
     margin-bottom: 0;
   }
@@ -347,6 +358,12 @@
     right: auto;
     top: calc(100% + 15px);
     transform: translateY(-10px);
+    /* Wrap long hints instead of running past the panel's right edge (1101px, pinned
+       sidebar). An explicit width: the trigger is the containing block and is often an icon. */
+    width: max-content;
+    max-width: 320px;
+    white-space: normal;
+    line-height: 1.4;
   }
 
   html[data-look='vidro'] .app-container .vidro-toolbar [data-tooltip]:hover::before {
@@ -420,7 +437,14 @@
 
   html[data-look='vidro'] .app-container .vidro-toolbar-subtitle .cliente-detalhe-header__badges {
     margin-top: 0;
-    flex-wrap: nowrap;
+  }
+
+  /* Badges wrap onto a second line rather than being cut by the subtitle's clip. */
+  html[data-look='vidro']
+    .app-container
+    .vidro-toolbar-subtitle:has(.cliente-detalhe-header__badges) {
+    overflow: visible;
+    white-space: normal;
   }
 
   /* ---------- Shell capsule ---------- */
@@ -588,6 +612,12 @@
     display: none;
   }
 
+  /* The track scrolls (overflow clips), so an outer focus ring would be cut: ring inside. */
+  html[data-look='vidro'] .app-container .vidro-seg-btn:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--primary-color);
+  }
+
   html[data-look='vidro'] .app-container .vidro-seg-btn {
     display: inline-flex;
     align-items: center;
@@ -649,8 +679,18 @@
     display: none;
   }
 
+  /* Title and content share the classic 1.5rem left edge on paper. The page's own padding is
+     restated because the >=1101px rules zero it (a wide print layout would otherwise misalign). */
   html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar {
-    padding: 0 0 12px;
+    padding: 0 1.5rem 12px;
+  }
+
+  html[data-look='vidro']
+    body:has(.analytics-fluxos-page)
+    .vidro-panel
+    > .main-content
+    > .analytics-fluxos-page {
+    padding: 1.5rem;
   }
 
   /* The title and subtitle live in the toolbar under Vidro: print them like the classic
