@@ -48,9 +48,15 @@ plan argues from it.
 - **Migration version:** `20261017000001`. Before the PR, re-check that it is above main's tail.
 - **Commits:** end every commit message with
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- **Worktree:** run commands from the worktree root
-  `/Users/eduardosouza/projects/sm-crm/.claude/worktrees/desktop-ios-macos-previews-ce1e35`. Before the
-  first edit, check `pwd` and that `git branch --show-current` is `claude/desktop-ios-macos-previews-ce1e35`.
+- **Lanes.** Each task runs in its own nested worktree (the dispatch gives the literal path and branch;
+  the controller creates it from the integrated feature branch and symlinks `node_modules` and
+  `packages/import-parsers/node_modules`). Start **every** shell command with `cd <lane path> &&`, and
+  before the first edit check `pwd` and `git branch --show-current`. Commit only in your lane. The
+  controller cherry-picks reviewed lanes onto `claude/desktop-ios-macos-previews-ce1e35`.
+- **Scoped checks.** Run only the test files your task names, and `npx eslint <your files>`.
+  `npx tsc -p apps/crm/tsconfig.json --noEmit` in your lane is fine (it sees only your lane). Repo-wide
+  `npm run lint`, `npm run test` and the four `tsc` projects run in T14 on the integrated branch.
+  Failures that trace to `node_modules/.deno` pollution are environmental; report, do not "fix".
 
 ## Review Focus
 
@@ -58,8 +64,9 @@ plan argues from it.
    tab signs in) or a workspace switch to an unflagged workspace. The next load must not pre-paint the
    previous user's or workspace's look. Test: Task 2 pre-paint cases (match, mismatch, no session,
    malformed session); Task 6 Step 1 (the switch clears the cache).
-2. **`workspace-limits` fails** (offline, 5xx) on a vidro workspace. The shell must not flip to classic
-   mid-session, and the cache must survive. Test: Task 6 `useVidro` "error keeps state".
+2. **`workspace-limits` fails** (offline, 5xx), including a background refetch after a success. The
+   shell must not flip mid-session (a flip remounts the page subtree and loses unsaved state), and the
+   cache must survive. Test: Task 6 `useVidro` "keeps vidro when a later refetch fails".
 3. **A page re-renders often** (Entregas live counts, a typing filter). The toolbar must update without
    re-rendering AppLayout or looping. Test: Task 3 render-count test.
 4. **Window resized across 1101px** with the flag on. The shell swaps cleanly, and the Crisp listeners
@@ -77,6 +84,9 @@ own files.
 | 1 | T1 flag plumbing · T2 look module + pre-paint + cache clearing · T3 page toolbar store + component · T4 support chat store + capsule variant · T5 `vidro.css` + `data-slot` hooks | none |
 | 2 | T6 shell integration (AppLayout, Sidebar, `useVidro`, search variant, i18n) · T7-T13 page migrations | T6 needs T1-T5; T7-T13 need T3 only |
 | 3 | T14 verification: browser checks, pre-paint matrix, flag-off parity, gates, PR | all |
+
+Wave 2 lanes are cut from the feature branch after T1-T5 are cherry-picked, so every Wave 2 task sees
+all Wave 1 interfaces.
 
 **Shared-file rule:** only T6 edits `AppLayout.tsx`, `Sidebar.tsx`, `GlobalSearchTrigger.tsx` and the
 i18n JSON. Only T5 edits `vidro.css`; later CSS fixes found in T14 go to `vidro.css` in T14. Only T2
@@ -378,6 +388,14 @@ describe('index.html pre-paint', () => {
     expect(document.documentElement.hasAttribute('data-look')).toBe(false);
   });
 
+  it('matches any project session (dev may hold both prod and staging keys)', () => {
+    localStorage.setItem('sb-aaaaaaaa-auth-token', session('other'));
+    localStorage.setItem('sb-zzzzzzzz-auth-token', session('u1'));
+    localStorage.setItem('look-vidro', 'u1');
+    runPrePaint();
+    expect(document.documentElement.getAttribute('data-look')).toBe('vidro');
+  });
+
   it('leaves the attribute alone without the cache', () => {
     localStorage.setItem(SESSION_KEY, session('u1'));
     runPrePaint();
@@ -474,8 +492,8 @@ In `apps/crm/index.html`, inside the existing IIFE, add these lines right after 
                 var sess = JSON.parse(localStorage.getItem(k) || 'null');
                 if (sess && sess.user && sess.user.id === lookUser) {
                   document.documentElement.setAttribute('data-look', 'vidro');
+                  break;
                 }
-                break;
               }
             }
           }
@@ -492,6 +510,10 @@ In `apps/crm/src/lib/supabase.ts`, add `import { clearVidroCache } from './vidro
 `clearVidroCache();` as the first line of `signOut`. No AuthContext change: the user key covers
 sign-in, sign-up, recovery links and other tabs.
 
+Add a `signOut` case: if `apps/crm/src/lib/__tests__/supabase.test.ts` exists, extend it; otherwise
+create it with `vi.mock('@supabase/supabase-js', …)` returning an `auth.signOut` that resolves. Set
+`localStorage['look-vidro']='u1'`, call `signOut()`, assert the key is gone.
+
 In `apps/crm/src/lib/analytics.ts`, add to the `AnalyticsEvent` union:
 
 ```ts
@@ -502,7 +524,7 @@ In `apps/crm/src/lib/analytics.ts`, add to the `AnalyticsEvent` union:
 - [ ] **Step 4: Run everything**
 
 ```bash
-npx vitest run apps/crm/src/lib/__tests__/vidroLook.test.ts apps/crm/src/__tests__/vidroPrePaint.test.ts apps/crm/src/lib
+npx vitest run apps/crm/src/lib/__tests__/vidroLook.test.ts apps/crm/src/__tests__/vidroPrePaint.test.ts apps/crm/src/lib/__tests__/supabase.test.ts
 npx tsc -p apps/crm/tsconfig.json --noEmit
 ```
 
@@ -511,7 +533,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/crm/src/lib/vidroLook.ts apps/crm/src/lib/__tests__/vidroLook.test.ts apps/crm/src/__tests__/vidroPrePaint.test.ts apps/crm/index.html apps/crm/src/lib/supabase.ts apps/crm/src/lib/analytics.ts
+git add apps/crm/src/lib/vidroLook.ts apps/crm/src/lib/__tests__/vidroLook.test.ts apps/crm/src/lib/__tests__/supabase.test.ts apps/crm/src/__tests__/vidroPrePaint.test.ts apps/crm/index.html apps/crm/src/lib/supabase.ts apps/crm/src/lib/analytics.ts
 git commit -m "feat(crm): vidro look module and user-keyed pre-paint cache"
 ```
 
@@ -570,7 +592,12 @@ export function usePageToolbarStore(): PageToolbarStore | null;
 import { act, render, screen } from '@testing-library/react';
 import { useState, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PageToolbarProvider, createPageToolbarStore, usePageToolbar } from '../PageToolbarContext';
+import {
+  PageToolbarProvider,
+  createPageToolbarStore,
+  usePageToolbar,
+  useVidroShell,
+} from '../PageToolbarContext';
 import PageToolbar from '../PageToolbar';
 import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
@@ -636,9 +663,11 @@ describe('usePageToolbar', () => {
     expect(screen.queryByRole('button', { name: 'Novo' })).toBeNull();
   });
 
-  it('updates the toolbar on page re-render without re-rendering the provider subtree', () => {
+  it('updates the toolbar on page re-render without changing the context value', () => {
     let shellRenders = 0;
+    // Reads the context: it re-renders only if the Provider value changes.
     function ShellSibling() {
+      useVidroShell();
       shellRenders += 1;
       return null;
     }
@@ -1393,7 +1422,7 @@ sweep, inside the same guards.
       var(--vd-shadow);
     -webkit-backdrop-filter: blur(26px) saturate(1.6);
     backdrop-filter: blur(26px) saturate(1.6);
-    overflow: hidden;
+    /* No overflow: hidden here: it would clip .user-menu-popover (width calc(100% + 1.5rem)). */
   }
 
   html[data-look='vidro'] .app-container .vidro-sidebar-head {
@@ -1760,7 +1789,7 @@ sweep, inside the same guards.
   html[data-look='vidro'] .app-container .page-tab,
   html[data-look='vidro'] .app-container .calendar-tab,
   html[data-look='vidro'] .app-container .board-tab:not(.board-tab-add),
-  html[data-look='vidro'] .app-container .agenda-segmented button,
+  html[data-look='vidro'] .app-container .agenda-segmented__item,
   html[data-look='vidro'] .app-container .vidro-seg-btn,
   html[data-look='vidro'] .app-container [data-slot='tabs-trigger'] {
     border: 0;
@@ -1780,7 +1809,7 @@ sweep, inside the same guards.
   html[data-look='vidro'] .app-container .page-tab.active,
   html[data-look='vidro'] .app-container .calendar-tab.active,
   html[data-look='vidro'] .app-container .board-tab.active:not(.board-tab-add),
-  html[data-look='vidro'] .app-container .agenda-segmented button[aria-pressed='true'],
+  html[data-look='vidro'] .app-container .agenda-segmented__item[data-state='on'],
   html[data-look='vidro'] .app-container .vidro-seg-btn[aria-pressed='true'],
   html[data-look='vidro'] .app-container .vidro-seg-btn[aria-selected='true'],
   html[data-look='vidro'] .app-container [data-slot='tabs-trigger'][data-state='active'] {
@@ -1833,14 +1862,37 @@ sweep, inside the same guards.
   html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar {
     padding: 0 0 12px;
   }
+
+  /* The panel is fixed + overflow hidden with .main-content as the scroller: reset all of it so the
+     whole report prints, not the first screen. */
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .app-container {
+    background: #fff;
+    height: auto;
+    overflow: visible;
+  }
+
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-panel {
+    position: static;
+    display: block;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+  }
+
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-panel > .main-content {
+    overflow: visible;
+    height: auto;
+  }
 }
 ```
 
 The contract test's 1101px check matches `/min-width:\s*1101px/` in any enclosing `@media`, so the
-reduced-transparency block and the `@supports > @media` block pass. If the `.agenda-segmented` buttons
-turn out not to use `aria-pressed` (read `apps/crm/src/pages/calendario/agenda/AgendaView.tsx:244`),
-change that one selector to the active marker the component really uses. T5 owns this file, so the
-change belongs here.
+reduced-transparency block and the `@supports > @media` block pass. The Agenda control is a Radix
+ToggleGroup: items are `.agenda-segmented__item` with `data-state='on'` (AgendaView.tsx:244-262), hence
+those selectors. Add a contract-test case asserting the print block contains a `.vidro-panel` rule with
+`position: static`.
 
 - [ ] **Step 4: Run the tests and confirm they pass**
 
@@ -1934,13 +1986,28 @@ describe('useVidro', () => {
     expect(localStorage.getItem('look-vidro')).toBe('u1');
   });
 
-  it('keeps state and cache when the request failed (isSuccess false, not loading)', () => {
-    document.documentElement.setAttribute('data-look', 'vidro');
-    localStorage.setItem('look-vidro', 'u1');
-    const { result } = renderHook(() => useVidro());
+  it('keeps vidro when a later refetch fails (success, then error with data kept)', () => {
+    limits.isSuccess = true;
+    limits.features = { feature_crm_vidro: true };
+    const { result, rerender } = renderHook(() => useVidro());
+    expect(result.current.active).toBe(true);
+    // TanStack v5: a failed refetch sets status 'error' (isSuccess false) even with data present.
+    limits.isSuccess = false;
+    rerender();
     expect(result.current.active).toBe(true);
     expect(document.documentElement.getAttribute('data-look')).toBe('vidro');
     expect(localStorage.getItem('look-vidro')).toBe('u1');
+  });
+
+  it('keeps classic when a later refetch fails after resolving off', () => {
+    limits.isSuccess = true;
+    limits.features = {};
+    const { result, rerender } = renderHook(() => useVidro());
+    limits.isSuccess = false;
+    limits.features = null;
+    rerender();
+    expect(result.current.active).toBe(false);
+    expect(document.documentElement.hasAttribute('data-look')).toBe(false);
   });
 
   it('opt-out turns it off, stores per user and fires the event', () => {
@@ -1972,17 +2039,24 @@ The AppLayout test file already mocks TopBar, Sidebar and the rest. Extend it:
 
 `Sidebar.test.tsx` gets new cases, using the file's existing render helper and mocks:
 - **`vidroShell` header:** with `vidroShell` and `collapsible`, plus a workspace query returning one
-  row `{ workspace_id: <the mocked profile.conta_id>, workspaces: { id, name: 'Agência Norte' } }`, the
+  row `{ workspace_id: <id>, workspaces: { id: <the mocked profile.conta_id>, name: 'Agência Norte' } }`
+  (the header uses the switcher's own active test, Sidebar.tsx:364-365), the
   text "Agência Norte" renders. Mock `useWorkspaceLimits` with `planName: 'Pro'`; "Pro" renders. The
   account-menu workspace switcher section does not render (one row).
-- **Search:** with `vidroShell`, there is exactly one button named "Buscar", and clicking it opens the
-  dialog. Mock `GlobalSearchDialog` like the existing GlobalSearchTrigger test does.
+- **Search:** with `vidroShell`, `getAllByRole('button', { name: 'Buscar' })` (exact string) has length
+  1, and clicking it opens the dialog. Sidebar.test.tsx has no QueryClientProvider, so mock the dialog:
+  `vi.mock('../GlobalSearchDialog', () => ({ default: ({ open }: { open: boolean }) => (open ? <div role="dialog" /> : null) }))`.
 - **Look item:** with `look={{ enabled: true, optedOut: false, onToggle }}` and `collapsible`, opening
   the account menu shows "Visual clássico"; clicking it calls `onToggle`. With `optedOut: true` it shows
   "Visual novo". With `collapsible` false (drawer), the item is absent. With `enabled: false`, it is
   absent.
-- **Workspace switch:** with two rows, set `localStorage['look-vidro']='u1'`, click the other workspace
-  and assert the key is removed before the mocked `window.location.reload` is called.
+- **Workspace switch:** the file has neither a `switchWorkspace` mock nor a `reload` stub, and jsdom
+  does not implement `location.reload`. Add
+  `vi.mock('@/store/workspace', () => ({ switchWorkspace: vi.fn().mockResolvedValue(undefined) }))`
+  (match the import path Sidebar.tsx really uses) and stub `window.location` with
+  `Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, reload: vi.fn(() => { keyAtReload = localStorage.getItem('look-vidro'); }) } })`,
+  restoring it in `afterEach`. With two rows and `localStorage['look-vidro']='u1'`, click the other
+  workspace; assert `reload` was called and `keyAtReload` is `null`.
 
 In `GlobalSearchTrigger.test.tsx`, add one case: `variant="sidebar"` renders a button with class
 `search-trigger--sidebar` and without class `search-trigger`, and the ⌘K keydown
@@ -2016,14 +2090,21 @@ export function useVidro() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const { features, isSuccess } = useWorkspaceLimits();
-  const [prePainted] = useState(isVidroAttributeSet);
+  // Last resolved value: seeded from the pre-paint attribute, updated on every successful response.
+  // A failed (re)fetch keeps it, so the shell never flips (and never remounts the page) on a 5xx.
+  const [resolved, setResolved] = useState(isVidroAttributeSet);
   const [optedOut, setOptedOutState] = useState(() => readOptOut(userId));
 
   useEffect(() => {
     setOptedOutState(readOptOut(userId));
   }, [userId]);
 
-  const enabled = isSuccess ? features?.feature_crm_vidro === true : prePainted;
+  const flag = features?.feature_crm_vidro === true;
+  useEffect(() => {
+    if (isSuccess) setResolved(flag);
+  }, [isSuccess, flag]);
+
+  const enabled = isSuccess ? flag : resolved;
   const active = enabled && !optedOut;
 
   useEffect(() => {
@@ -2064,19 +2145,15 @@ Check the import path `@/context/AuthContext`: Sidebar imports `useAuth` from
    - `PageToolbar` from `./PageToolbar`;
    - `TopBarActions` from `./TopBarActions`;
    - `NavigationProgress` from `./NavigationProgress`;
-   - `ensureCrispListeners` from `../../lib/supportChatUnread`.
 2. After `const sidebarCollapsible = ...` add:
    ```ts
    const vidro = useVidro();
    const vidroShell = vidro.active && sidebarCollapsible;
    ```
-3. Change the Crisp effect to:
-   ```ts
-   useEffect(() => {
-     ensureCrispListeners();
-     window.$crisp?.push(['do', 'chat:hide']);
-   }, []);
-   ```
+3. Leave the Crisp `chat:hide` effect as it is. Do **not** call `ensureCrispListeners()` here: today
+   the listeners are registered only where `TopBarActions` mounts (never on phones), and registering
+   them in AppLayout would change phone behaviour (closing Crisp would hide the bubble). `TopBarActions`
+   calls it on mount in both variants; the once-guard covers shell swaps.
 4. Move the existing `<main className="main-content" id="app">…</main>` JSX, unchanged, into
    `const mainContent = (…)` above the `return`.
 5. Wrap `<div className="app-container" …>` in `<PageToolbarProvider vidroShell={vidroShell}>`, inside
@@ -2115,7 +2192,9 @@ Check the import path `@/context/AuthContext`: Sidebar imports `useAuth` from
    unchanged. Derive:
    ```ts
    const activeWorkspaceName =
-     workspaces.find((m: any) => m.workspace_id === profile?.conta_id)?.workspaces?.name ?? null;
+     workspaces.find(
+       (m: any) => m.workspaces?.id === (profile?.active_workspace_id || profile?.conta_id),
+     )?.workspaces?.name ?? null;
    ```
    Check that `profile` is already read from `useAuth()` in this file. If not, add it to the existing
    destructuring.
@@ -2166,7 +2245,7 @@ i18n, `sidebar` object:
 ```bash
 npx vitest run apps/crm/src/hooks/__tests__/useVidro.test.tsx apps/crm/src/components/layout
 npx tsc -p apps/crm/tsconfig.json --noEmit
-npm run lint
+npx eslint apps/crm/src/hooks/useVidro.ts apps/crm/src/components/layout
 ```
 
 Expected: PASS, including every pre-existing AppLayout, Sidebar and TopBarActions assertion.
@@ -2219,7 +2298,12 @@ Each page task applies this recipe to the pages it lists.
    when `!inToolbar`.
 6. **Test.** In the page's existing test file (or a new `__tests__/<Page>.vidro.test.tsx` beside it,
    reusing that file's mocks and render helper), wrap the render in `VidroToolbarHarness` from
-   `@/test/vidroToolbar` and assert:
+   `@/test/vidroToolbar`.
+   **Mock desktop width first.** `test/vitest.setup.ts` stubs `matchMedia` to `matches: false`, so
+   `useIsDesktop` returns false and the page renders its phone branch. In the vidro cases make
+   `window.matchMedia` return `matches: true` for `min-width` queries (copy the desktop setup from
+   `ClientesPage.test.tsx:42` or `EntregasPage.test.tsx:22`; pages with only a `.phone.test.tsx`, such as
+   Financeiro and Contratos, need this written). Then assert:
    ```tsx
    const h1s = await screen.findAllByRole('heading', { level: 1 });
    expect(h1s).toHaveLength(1);
@@ -2253,7 +2337,8 @@ Each page task applies this recipe to the pages it lists.
 **Interfaces:** consumes `usePageToolbar` and `VidroToolbarHarness` (T3).
 
 - [ ] **Step 1: Write the failing tests** (recipe step 6) for all three pages. Add a ClientHealthMonitor
-  assertion: "Saúde dos clientes" is a level-2 heading.
+  assertion in `dashboard/components/__tests__/ClientHealthMonitor.test.tsx` (DashboardPage.test.tsx
+  mocks the component): "Saúde dos clientes" is a level-2 heading.
 - [ ] **Step 2: Run the tests and confirm they fail.**
 - [ ] **Step 3: Implement**
   - **Início:** `usePageToolbar({ title: 'Início', subtitle: <today's date> })`. Build the subtitle with
@@ -2416,8 +2501,12 @@ Each page task applies this recipe to the pages it lists.
     - actions: "Voltar" and the sync icon button;
     - primary: "Gerar Relatório";
     - the period `.page-tabs--inline` and the custom days input stay in content;
-    - the not-connected branch (:3347) registers `{ title: 'Analytics', actions: <Voltar/> }`.
-    - Call the hook once at the top, choosing the spec by branch.
+    - the page is two components: the default export (:3274-3371) renders the not-connected header
+      (:3347) or `<AnalyticsContent/>`, whose header is at :1832-1878 (early return :1534). The outer
+      component must **not** call the hook. Register the main spec inside `AnalyticsContent` (above its
+      early return, `null` while loading), and the not-connected spec
+      `{ title: 'Analytics', actions: <Voltar/> }` from a small `NotConnectedToolbar` child that calls
+      the hook and renders `null`, mounted only in that branch. Exactly one registration is ever live.
   - **Analytics de Fluxos:**
     - title "Analytics de Fluxos"; subtitle: "Fluxos concluídos no período" with its tooltip;
     - segmented: the period `.page-tabs--inline`;
@@ -2459,9 +2548,10 @@ Each page task applies this recipe to the pages it lists.
     branches that never render at ≥1101px.
   - **Configurações:** the layout registers `{ title: 'Configurações' }` and hides `config-shell-header`
     under `inToolbar`. The skeleton header at :64 also hides under `inToolbar`. The `config-nav` stays.
-  - **Mensagens:** `MensagensPage` registers `{ title: 'Mensagens', titleAccessory: <the info tooltip> }`.
-    It passes `hideTitle={inToolbar}` to `ConversationList`, which then skips only its `h1` + info row
-    (:41-50). Search and sort stay.
+  - **Mensagens:** the info tooltip lives in `ConversationList.tsx:43-49`. Extract it into an exported
+    `MensagensInfoTooltip` in that file and use it in both places. `MensagensPage` registers
+    `{ title: 'Mensagens', titleAccessory: <MensagensInfoTooltip /> }` and passes `hideTitle={inToolbar}`
+    to `ConversationList`, which then skips only its `h1` + info row (:41-50). Search and sort stay.
   - **Arquivos:** registers `{ title: 'Arquivos' }` and skips the aside's `h1` (:810) under `inToolbar`.
     The pane toolbar is untouched.
 - [ ] **Step 4: Run the tests and confirm they pass**, plus tsc.
@@ -2506,6 +2596,10 @@ Each page task applies this recipe to the pages it lists.
     with the look item, rail versus pinned, and the Analytics de Fluxos print preview
     (`page.emulateMedia({ media: 'print' })`).
   - At 1100px and 800px with the flag on: today's shell.
+  - Known sweep items: `.rb-layers-rail` top assumes a one-line (60px) toolbar, so check a report editor
+    at 1101px where the toolbar may wrap; the rail logo shows the wordmark's left 22px (there is no
+    mark-only asset in `apps/crm/public`), so judge it and, if it reads badly, use the favicon mark
+    instead; the account popover must not be clipped by the glass sidebar.
   - Fix any CSS gap in `vidro.css`, re-run `vidroContracts.test.ts`, and commit
     `fix(crm): vidro sweep fixes`.
 - [ ] **Step 4: Flag-off parity.**
