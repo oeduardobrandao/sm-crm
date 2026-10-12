@@ -313,11 +313,108 @@
     justify-content: flex-end;
     gap: 8px;
     flex: 0 0 auto;
+    /* Without the cap a cluster wider than the toolbar overflows (it never shrinks) instead
+       of wrapping its own items onto a second line. */
+    max-width: 100%;
     margin-left: auto;
   }
 
   html[data-look='vidro'] .app-container .vidro-toolbar [data-slot='button'] {
     margin-bottom: 0;
+  }
+
+  /* Slotted elements keep the classic `animate-up`; the toolbar row does not re-enter. */
+  html[data-look='vidro'] .app-container .vidro-toolbar .animate-up {
+    animation: none;
+  }
+
+  /* The subtitle clips overflow for its ellipsis, which would cut a data-tooltip off. */
+  html[data-look='vidro'] .app-container .vidro-toolbar-subtitle:has([data-tooltip]) {
+    overflow: visible;
+  }
+
+  /* Toolbar tooltips open downward, into the content, never toward the panel's top edge.
+     Anchored to the start of their trigger (the end, in the right cluster) so a long nowrap
+     line never crosses the panel's clipped side. Size and colours stay the classic ones. */
+  html[data-look='vidro'] .app-container .vidro-toolbar [data-tooltip]::before {
+    left: -8px;
+    right: auto;
+    top: calc(100% + 15px);
+    transform: translateY(-10px);
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar [data-tooltip]:hover::before {
+    transform: translateY(0);
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar [data-tooltip]::after,
+  html[data-look='vidro'] .app-container .vidro-toolbar [data-tooltip]:hover::after {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    border-color: transparent transparent var(--text-main) transparent;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar [data-tooltip]::after {
+    top: calc(100% + 10px);
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar [data-tooltip]:hover::after {
+    top: calc(100% + 5px);
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar-right [data-tooltip]::before {
+    left: auto;
+    right: -8px;
+  }
+
+  /* Analytics de conta: the avatar leads the toolbar, outside .conta-identity, which is where
+     --conta-avatar lives. */
+  html[data-look='vidro'] .app-container .vidro-toolbar-left > .conta-identity__avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar-subtitle .conta-identity__handle-link {
+    color: inherit;
+    font-weight: 500;
+  }
+
+  html[data-look='vidro']
+    .app-container
+    .vidro-toolbar-subtitle
+    .conta-identity__handle-link:hover {
+    color: var(--text-main);
+  }
+
+  /* Cliente detalhe: back button and avatar at the toolbar's control size. */
+  html[data-look='vidro'] .app-container .vidro-toolbar .cliente-detalhe-header__back {
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar .cliente-avatar-upload,
+  html[data-look='vidro'] .app-container .vidro-toolbar .cliente-avatar-upload__trigger,
+  html[data-look='vidro'] .app-container .vidro-toolbar .cliente-detalhe-header__avatar {
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar .cliente-detalhe-header__initials {
+    font-size: 13px;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar .cliente-avatar-upload__remove {
+    z-index: 1;
+    width: 16px;
+    height: 16px;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-toolbar-subtitle .cliente-detalhe-header__badges {
+    margin-top: 0;
+    flex-wrap: nowrap;
   }
 
   /* ---------- Shell capsule ---------- */
@@ -475,6 +572,24 @@
     cursor: pointer;
   }
 
+  /* Too many segments for the width: scroll, never squeeze the labels. */
+  html[data-look='vidro'] .app-container .vidro-seg {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-seg::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-look='vidro'] .app-container .vidro-seg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
   html[data-look='vidro'] .app-container .page-tab.active,
   html[data-look='vidro'] .app-container .calendar-tab.active,
   html[data-look='vidro'] .app-container .board-tab.active:not(.board-tab-add),
@@ -532,6 +647,42 @@
     padding: 0 0 12px;
   }
 
+  /* The title and subtitle live in the toolbar under Vidro: print them like the classic
+     header (h1 over a muted line), whatever width the sheet is laid out at. */
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.375rem;
+  }
+
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar-title {
+    margin: 0;
+    font-family: var(--font-heading);
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-main);
+    white-space: normal;
+    overflow: visible;
+  }
+
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar-subtitle {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    white-space: normal;
+    overflow: visible;
+  }
+
+  /* Entrance animations: when the sheet is laid out mid-animation (fadeInUp starts at
+     opacity 0), the page header prints blank and every card prints washed out. Paper gets
+     the end state. */
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .animate-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
   /* The panel is fixed + overflow hidden with .main-content as the scroller: reset all of it so the
      whole report prints, not the first screen. */
   html[data-look='vidro'] body:has(.analytics-fluxos-page) .app-container {
@@ -548,6 +699,11 @@
     border-radius: 0;
     box-shadow: none;
     background: #fff;
+    /* .app-container stays a row flexbox: as a plain block item the panel would shrink to
+       its content's width instead of taking the sheet's (classic .main-content grows). */
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
   }
 
   html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-panel > .main-content {

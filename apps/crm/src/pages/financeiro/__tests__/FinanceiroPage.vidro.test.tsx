@@ -87,4 +87,15 @@ describe('FinanceiroPage in the Vidro toolbar', () => {
     const labels = Array.from(actions.querySelectorAll('button')).map((b) => b.textContent?.trim());
     expect(labels.slice(-3)).toEqual(['Importar CSV', 'Entrada', 'Saída']);
   });
+
+  it('keeps the classic order Importar, Entrada, Saída in the toolbar', async () => {
+    renderPage(true);
+
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Financeiro' });
+    const right = h1
+      .closest('.vidro-toolbar')
+      ?.querySelector('.vidro-toolbar-right') as HTMLElement;
+    const labels = Array.from(right.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(labels.slice(-3)).toEqual(['Importar CSV', 'Entrada', 'Saída']);
+  });
 });

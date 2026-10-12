@@ -452,7 +452,9 @@ export default function ImportarPage() {
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div>
         {!inToolbar && <h1 className="text-2xl font-bold">Importar dados</h1>}
-        <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted-foreground">
+        <ol
+          className={`${inToolbar ? '' : 'mt-2 '}flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted-foreground`}
+        >
           {STEP_TITLES.map(([id, label], i) => (
             <li
               key={id}

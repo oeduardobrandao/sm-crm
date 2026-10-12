@@ -353,7 +353,7 @@ export default function TarefasPage() {
               <button
                 key={tab.id}
                 type="button"
-                className="vidro-seg-btn inline-flex items-center gap-1.5"
+                className="vidro-seg-btn"
                 aria-pressed={activeView === tab.id}
                 onClick={() => setActiveView(tab.id)}
               >

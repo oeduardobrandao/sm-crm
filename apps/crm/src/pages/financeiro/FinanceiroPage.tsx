@@ -655,18 +655,17 @@ export default function FinanceiroPage() {
       <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Saída
     </Button>
   );
-  const headerActions = (
-    <>
-      {csvActions}
-      {saidaAction}
-    </>
-  );
-
+  // Toolbar: classic order, Entrada then Saída, both after the shell capsule.
   const inToolbar = usePageToolbar({
     title: 'Financeiro',
     titleAccessory: infoTooltip,
-    actions: headerActions,
-    primary: primaryAction,
+    actions: csvActions,
+    primary: (
+      <>
+        {primaryAction}
+        {saidaAction}
+      </>
+    ),
   });
 
   if (isPhone) {
