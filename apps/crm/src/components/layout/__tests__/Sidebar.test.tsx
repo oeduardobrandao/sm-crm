@@ -30,11 +30,14 @@ vi.mock('../../../lib/supabase');
 vi.mock('../GlobalSearchDialog', async () => {
   const { createPortal } = await import('react-dom');
   return {
-    default: ({ open }: { open: boolean }) =>
+    default: ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) =>
       open
         ? createPortal(
             <div role="dialog">
               <input aria-label="Campo de busca" autoFocus />
+              <button type="button" onClick={() => onOpenChange(false)}>
+                Fechar busca
+              </button>
             </div>,
             document.body,
           )
@@ -505,6 +508,7 @@ describe('Sidebar', () => {
 
     afterEach(() => {
       Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+      vi.useRealTimers();
     });
 
     it('shows the workspace name and plan in the glass header', async () => {
@@ -595,6 +599,52 @@ describe('Sidebar', () => {
       fireEvent.click(trigger);
 
       expect(screen.getByRole('textbox', { name: 'Campo de busca' })).toHaveFocus();
+      expect(nav).toHaveClass('sidebar--rail');
+    });
+
+    it('does not expand the rail when the pointer is over the portaled search overlay', () => {
+      vi.useFakeTimers();
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true, vidroShell: true });
+      const nav = document.getElementById('sidebar')!;
+
+      // ⌘K opens the palette without the pointer ever touching the nav.
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      const dialog = screen.getByRole('dialog');
+      expect(nav).not.toContainElement(dialog);
+
+      // The overlay appears under a stationary pointer: React bubbles this to the nav.
+      fireEvent.mouseEnter(dialog);
+      fireEvent.mouseOver(dialog);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(nav).toHaveClass('sidebar--rail');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar busca' }));
+      expect(nav).toHaveClass('sidebar--rail');
+    });
+
+    it('collapses the hover overlay when the search opened from the rail closes', () => {
+      vi.useFakeTimers();
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true, vidroShell: true });
+      const nav = document.getElementById('sidebar')!;
+
+      // Hover the rail, then click its search button.
+      fireEvent.mouseEnter(nav);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(nav).toHaveClass('sidebar--overlay');
+      fireEvent.click(screen.getByRole('button', { name: 'Buscar' }));
+
+      // The pointer moves off the nav onto the modal overlay: in React's tree that is still
+      // inside the nav, so no mouseleave ever reaches it, and closing removes the overlay
+      // without one either.
+      fireEvent.mouseOver(screen.getByRole('dialog'), { relatedTarget: nav });
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar busca' }));
+
       expect(nav).toHaveClass('sidebar--rail');
     });
 

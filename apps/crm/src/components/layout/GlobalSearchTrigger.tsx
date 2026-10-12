@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import GlobalSearchDialog from './GlobalSearchDialog';
@@ -9,11 +9,20 @@ import GlobalSearchDialog from './GlobalSearchDialog';
  */
 export default function GlobalSearchTrigger({
   variant = 'topbar',
+  onClose,
 }: {
   variant?: 'topbar' | 'sidebar';
+  /** Called once each time the palette closes, whichever way it closed. */
+  onClose?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
+  const wasOpen = useRef(false);
+
+  useEffect(() => {
+    if (wasOpen.current && !open) onClose?.();
+    wasOpen.current = open;
+  }, [open, onClose]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

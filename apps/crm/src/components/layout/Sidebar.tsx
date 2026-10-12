@@ -90,8 +90,12 @@ export default function Sidebar({
   const isRail = collapsible && !expanded;
   const isOverlay = collapsible && expanded && !pinned;
 
-  const handleMouseEnter = () => {
-    if (!collapsible) return;
+  // Portaled content (the search dialog and its full-screen overlay) is a descendant of the nav
+  // in React's tree, so its pointer and focus events bubble here although it is not in the nav's
+  // DOM. Only events from the nav's own DOM may expand the rail. Leaves stay unguarded: a leave
+  // toward portal content should still collapse.
+  const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+    if (!collapsible || !e.currentTarget.contains(e.target as Node)) return;
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => setHovered(true), HOVER_EXPAND_DELAY_MS);
   };
@@ -104,8 +108,7 @@ export default function Sidebar({
 
   // Only keyboard focus expands the rail. A mouse click leaves focus on the
   // clicked link, and expanding on any focus would then keep the overlay open
-  // after the pointer leaves. Focus inside portaled content (the search dialog) bubbles here
-  // through React too, but is not in the nav's DOM and must not expand the rail behind it.
+  // after the pointer leaves. Focus from portaled content is ignored for the reason above.
   const handleFocus = (e: React.FocusEvent<HTMLElement>) => {
     if (
       collapsible &&
@@ -355,7 +358,9 @@ export default function Sidebar({
             </button>
           </div>
         )}
-        {vidroShell && <GlobalSearchTrigger variant="sidebar" />}
+        {/* Closing the palette removes its overlay without a mouseleave reaching the nav, so a
+          hover-expanded rail would stay open over the content: collapse it on close. */}
+        {vidroShell && <GlobalSearchTrigger variant="sidebar" onClose={handleMouseLeave} />}
         <div
           className="sidebar-scrollable"
           style={{ paddingTop: collapsible ? '0.25rem' : '1rem' }}
