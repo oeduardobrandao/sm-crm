@@ -1,5 +1,7 @@
 # Desktop "Visual novo" Level 1 Implementation Plan
 
+> **Superseded 2026-10-12:** the owner chose level 3 instead. See `docs/superpowers/specs/2026-10-12-desktop-vidro-design.md`. Not to be built.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** An opt-in, per-browser "Visual novo (beta)" toggle that gives desktop CRM pages (≥1101px) the iOS look of the phone redesign (grey canvas, borderless white groups, large titles, segmented controls, pill buttons) while toggle-off stays pixel-identical to today.

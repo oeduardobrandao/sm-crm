@@ -1,5 +1,7 @@
 # Desktop "Visual novo" (level 1): iOS look in page content, behind a per-browser toggle
 
+> **Superseded 2026-10-12:** the owner chose level 3 instead. See `docs/superpowers/specs/2026-10-12-desktop-vidro-design.md`. Not to be built.
+
 Date: 2026-10-12. Status: approved in chat; revised after a Fable review and a Codex review.
 
 Mockups: https://claude.ai/artifact/Bt1KGGC2PLjqyH2QmVKGUo (board "Início · Nível 1: toque leve"; the
