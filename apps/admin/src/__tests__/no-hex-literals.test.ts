@@ -28,16 +28,6 @@ const FILES = [
 /** Brand colours that are data, not theme: the login splash gradient and the logo mark. */
 const ALLOW: Record<string, string[]> = {
   'pages/LoginPage.tsx': ['#eaf0dc', '#eab308'],
-  'layouts/AdminLayout.tsx': [
-    '#3984FF',
-    '#FF3F3F',
-    '#6AC9D0',
-    '#C6229B',
-    '#EA0E78',
-    '#FE3452',
-    '#FE7340',
-    '#FFC32E',
-  ],
 };
 
 /** New-design files are hex-free by convention; collected by path so page work never edits this test. */

@@ -27,7 +27,7 @@ export function DesktopSidebar({
   return (
     <aside className="admin-sidebar admin-glass glass-surface--sidebar bg-card text-card-foreground">
       <div className="flex items-center gap-2.5 px-2 pb-[18px]">
-        <BrandMark />
+        <BrandMark alt="" />
         <span className="font-sf text-[17px] font-bold">Mesaas</span>
         <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
           admin

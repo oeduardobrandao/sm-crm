@@ -45,7 +45,7 @@ function MaisContent({
         </GroupedList>
       ))}
       <GroupedList header="Conta">
-        <Cell label={email ?? ''} subtitle="Admin da plataforma" />
+        {email && <Cell label={email} subtitle="Admin da plataforma" />}
         <Cell
           label="Liquid Glass"
           switch={{ checked: glassEnabled, onCheckedChange: onToggleGlass }}
@@ -77,6 +77,8 @@ export function MaisSheet({ open, onOpenChange, returnFocusRef, ...rest }: MaisS
       hideTitle
       returnFocusRef={returnFocusRef}
       detents={['large']}
+      // Crossing 768px unmounts the whole tab bar with the sheet open: pop its entry then.
+      popOnUnmount
     >
       <MaisContent {...rest} />
     </BottomSheet>

@@ -53,6 +53,11 @@ export interface BottomSheetProps {
    * targets the sheet instead of leaving the page. Default off.
    */
   repushIfStillOpen?: boolean;
+  /**
+   * Pop the sheet's history entry when the whole sheet unmounts while open (a parent that
+   * disappears, such as a tab bar swapped out when the viewport crosses 768px). Default off.
+   */
+  popOnUnmount?: boolean;
   children: ReactNode;
 }
 
@@ -81,13 +86,14 @@ export function BottomSheet({
   overlayClassName,
   id,
   repushIfStillOpen,
+  popOnUnmount,
   children,
 }: BottomSheetProps) {
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   const { closeThen } = useSheetHistory(
     open,
     close,
-    repushIfStillOpen ? { repushIfStillOpen: true } : undefined,
+    repushIfStillOpen || popOnUnmount ? { repushIfStillOpen, popOnUnmount } : undefined,
   );
   const onCloseAutoFocus = useReturnFocus(open, returnFocusRef);
   const startDetent = initialDetent && detents.includes(initialDetent) ? initialDetent : detents[0];
