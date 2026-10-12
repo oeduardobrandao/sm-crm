@@ -32,6 +32,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { PickerCell } from '@/components/mobile/PickerSheet';
@@ -599,6 +600,75 @@ export default function FinanceiroPage() {
     </>
   );
 
+  const infoTooltip = (
+    <span
+      data-tooltip="Visão das finanças, receitas projetadas e despesas."
+      data-tooltip-dir="right"
+      style={{ display: 'flex' }}
+    >
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const csvActions = (
+    <>
+      <HelpTooltip
+        content={
+          <div className="space-y-1.5">
+            <p>
+              <strong>Colunas CSV:</strong> descricao*, valor*, data* (AAAA-MM-DD), tipo
+              (entrada|saida), categoria, detalhe
+            </p>
+            <p>
+              <strong>Categorias válidas:</strong> Mensalidade, Produção, Tráfego, Salário, Imposto,
+              Ferramenta, Outro
+            </p>
+          </div>
+        }
+      >
+        <span style={{ display: 'flex' }}>
+          <HelpCircle
+            className="h-4 w-4"
+            style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+          />
+        </span>
+      </HelpTooltip>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={handleCSVImport}
+        className="header-actions-icon-only"
+      >
+        <Upload className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
+        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <Button onClick={() => openAdd('entrada')}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Entrada
+    </Button>
+  );
+  const saidaAction = (
+    <Button variant="outline" onClick={() => openAdd('saida')}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Saída
+    </Button>
+  );
+  const headerActions = (
+    <>
+      {csvActions}
+      {saidaAction}
+    </>
+  );
+
+  const inToolbar = usePageToolbar({
+    title: 'Financeiro',
+    titleAccessory: infoTooltip,
+    actions: headerActions,
+    primary: primaryAction,
+  });
+
   if (isPhone) {
     return (
       <>
@@ -635,61 +705,22 @@ export default function FinanceiroPage() {
 
   return (
     <div className="page-content">
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Financeiro</h1>
-          <span
-            data-tooltip="Visão das finanças, receitas projetadas e despesas."
-            data-tooltip-dir="right"
-            style={{ display: 'flex' }}
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
+            <h1>Financeiro</h1>
+            {infoTooltip}
+          </div>
+          <div className="header-actions">
+            {csvActions}
+            {primaryAction}
+            {saidaAction}
+          </div>
         </div>
-        <div className="header-actions">
-          <HelpTooltip
-            content={
-              <div className="space-y-1.5">
-                <p>
-                  <strong>Colunas CSV:</strong> descricao*, valor*, data* (AAAA-MM-DD), tipo
-                  (entrada|saida), categoria, detalhe
-                </p>
-                <p>
-                  <strong>Categorias válidas:</strong> Mensalidade, Produção, Tráfego, Salário,
-                  Imposto, Ferramenta, Outro
-                </p>
-              </div>
-            }
-          >
-            <span style={{ display: 'flex' }}>
-              <HelpCircle
-                className="h-4 w-4"
-                style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-              />
-            </span>
-          </HelpTooltip>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleCSVImport}
-            className="header-actions-icon-only"
-          >
-            <Upload className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
-            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
-          </Button>
-          <Button onClick={() => openAdd('entrada')}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Entrada
-          </Button>
-          <Button variant="outline" onClick={() => openAdd('saida')}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Saída
-          </Button>
-        </div>
-      </div>
+      )}
 
       <StatCardGrid style={{ marginBottom: '1.5rem' }}>
         {(

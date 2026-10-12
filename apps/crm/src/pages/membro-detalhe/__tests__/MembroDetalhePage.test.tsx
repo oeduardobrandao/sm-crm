@@ -2,6 +2,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 
 // Regression test for the FIX 1(b) fetch-gate: getTransacoes returns raw
@@ -112,6 +113,7 @@ function setup(
   can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck = makeCan(
     fakeMembership({ role: 'admin' }),
   ),
+  vidroShell?: boolean,
 ) {
   useAuthMock.mockReturnValue({
     canSeeFinancials,
@@ -128,7 +130,15 @@ function setup(
   queryState.transacoes = { data: transacoes, isLoading: false };
   queryState['workspace-users'] = { data: [], isLoading: false };
   queryState.invites = { data: [], isLoading: false };
-  render(<MembroDetalhePage />);
+  render(
+    vidroShell === undefined ? (
+      <MembroDetalhePage />
+    ) : (
+      <VidroToolbarHarness vidroShell={vidroShell}>
+        <MembroDetalhePage />
+      </VidroToolbarHarness>
+    ),
+  );
 }
 
 describe('MembroDetalhePage financial query gate', () => {
@@ -308,5 +318,53 @@ describe('MembroDetalhePage member editing', () => {
     await waitFor(() => expect(mockedUpdateMembro).toHaveBeenCalledTimes(1));
     const [, payload] = mockedUpdateMembro.mock.calls[0];
     expect(payload).not.toHaveProperty('avatar_url');
+  });
+});
+
+describe('MembroDetalhePage in the Vidro toolbar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = true;
+    transacoes = [];
+  });
+
+  it('puts Voltar, the member name and Editar in the toolbar', async () => {
+    setup(true, undefined, true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Ana Editora');
+    const toolbar = h1s[0].closest('.vidro-toolbar') as HTMLElement;
+    expect(within(toolbar).getAllByRole('button', { name: 'Voltar' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Voltar' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Editar' })).toHaveLength(1);
+    expect(within(toolbar).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    // The content heading stays.
+    expect(screen.getByRole('heading', { level: 2, name: 'Ana Editora' })).toBeInTheDocument();
+    expect(document.querySelector('.header')).toBeNull();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    setup(true, undefined, false);
+
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    expect(document.querySelector('.header')).not.toBeNull();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Voltar' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Editar' })).toHaveLength(1);
+  });
+
+  it('registers nothing for a member that does not exist, keeping its own Voltar', async () => {
+    paramsState.id = '999';
+    try {
+      setup(true, undefined, true);
+
+      expect(await screen.findByText('Membro não encontrado.')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(screen.getAllByRole('button', { name: 'Voltar' })).toHaveLength(1);
+    } finally {
+      paramsState.id = '1';
+    }
   });
 });
