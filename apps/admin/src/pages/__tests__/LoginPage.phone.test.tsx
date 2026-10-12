@@ -86,4 +86,17 @@ describe('LoginPage (phone)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Acesso não autorizado.');
     expect(screen.queryByText('Painel admin')).not.toBeInTheDocument();
   });
+
+  it('is pinned to the light scope even when the Admin theme is dark', () => {
+    document.documentElement.dataset.theme = 'dark';
+    try {
+      const { container } = renderPage();
+      const root = container.firstElementChild as HTMLElement;
+      expect(root).toHaveClass('admin-login-light');
+      expect(screen.getByRole('button', { name: 'Entrar' }).className).toContain('bg-foreground');
+      expect(document.documentElement.dataset.theme).toBe('dark');
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
+  });
 });

@@ -6,6 +6,7 @@ import { describeSignInError } from './login-error';
 import { Button } from '../components/ui/button';
 import { useIsPhone } from '../hooks/useIsPhone';
 import { cn } from '../lib/utils';
+import './login.css';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -53,7 +54,7 @@ export default function LoginPage() {
   };
 
   const fieldRow = cn(
-    'flex items-center gap-3 px-4',
+    'flex items-center gap-3 px-4 transition-colors focus-within:bg-foreground/[0.06] focus-within:ring-2 focus-within:ring-inset focus-within:ring-foreground/40',
     isPhone ? 'min-h-[52px] text-[17px]' : 'min-h-[48px] px-3.5 text-[15px]',
   );
   const fieldLabel = cn('shrink-0', isPhone ? 'w-16' : 'w-[60px]');
@@ -62,12 +63,16 @@ export default function LoginPage() {
 
   const header = (
     <div className={cn('flex flex-col items-center', isPhone ? 'gap-2.5' : 'mb-6 gap-2')}>
-      <img src="/logo-black.svg" alt="Mesaas" className="h-7 w-auto dark:hidden" />
+      <img
+        src="/logo-black.svg"
+        alt="Mesaas"
+        className="admin-login-logo-black h-7 w-auto dark:hidden"
+      />
       <img
         src="/logo-white.svg"
         alt=""
         aria-hidden="true"
-        className="hidden h-7 w-auto dark:block"
+        className="admin-login-logo-white hidden h-7 w-auto dark:block"
       />
       <h1
         className={cn('m-0 font-bold text-foreground', isPhone ? 'text-[28px]' : 'text-[26px]')}
@@ -121,7 +126,7 @@ export default function LoginPage() {
         <p
           role="alert"
           className={cn(
-            'm-0 text-destructive',
+            'admin-login-error m-0',
             isPhone ? 'mx-4 text-[13px]' : 'text-center text-sm',
           )}
         >
@@ -131,9 +136,10 @@ export default function LoginPage() {
 
       <Button
         type="submit"
+        variant="ink"
         disabled={loading}
         className={cn(
-          'w-full bg-foreground text-background hover:bg-foreground/90',
+          'w-full',
           isPhone ? 'h-[52px] rounded-[14px] text-[17px]' : 'h-[46px] rounded-xl text-[15px]',
         )}
       >
@@ -145,12 +151,11 @@ export default function LoginPage() {
   return (
     <div
       className={cn(
-        'flex min-h-screen items-center justify-center',
+        'admin-login-light flex min-h-[100dvh] items-center justify-center',
         isPhone
           ? 'px-4 pb-[max(34px,env(safe-area-inset-bottom))] pt-[max(54px,env(safe-area-inset-top))]'
           : 'p-6',
       )}
-      style={{ background: 'linear-gradient(160deg, #eaf0dc 0%, #eab308 100%)' }}
     >
       {isPhone ? (
         <div className="flex w-full flex-col gap-7">
@@ -158,10 +163,7 @@ export default function LoginPage() {
           {form}
         </div>
       ) : (
-        <div
-          className="w-full max-w-[400px] rounded-[28px] border border-white/60 bg-card/75 px-8 pb-8 pt-9 text-card-foreground backdrop-blur-2xl"
-          style={{ boxShadow: '0 20px 50px rgba(0, 0, 0, 0.16)' }}
-        >
+        <div className="admin-login-card w-full max-w-[400px] rounded-[28px] border border-white/60 bg-card/75 px-8 pb-8 pt-9 text-card-foreground backdrop-blur-2xl">
           {header}
           {form}
         </div>
