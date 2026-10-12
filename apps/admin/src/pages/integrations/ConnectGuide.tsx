@@ -18,7 +18,7 @@ const CLIENTS: { value: Client; label: string }[] = [
 const STEPS: Record<Client, Step[]> = {
   'claude-ai': [
     { text: 'Abra Configurações › Conectores.' },
-    { text: 'Toque em Adicionar conector personalizado e cole a URL acima.' },
+    { text: 'Escolha Adicionar conector personalizado e cole a URL acima.' },
     { text: 'Autorize o acesso e escolha Administração da plataforma.' },
   ],
   'claude-code': [
@@ -62,31 +62,28 @@ export function ConnectGuide() {
           controls: panelId,
         }))}
       />
-      <ol
-        id={panelId}
-        role="tabpanel"
-        aria-labelledby={tabId(client)}
-        className="m-0 flex list-none flex-col gap-3 p-0"
-      >
-        {STEPS[client].map((step, index) => (
-          <li key={index} className="flex gap-3 text-sm text-foreground">
-            <span
-              aria-hidden="true"
-              className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-foreground/[0.12] text-xs font-bold"
-            >
-              {index + 1}
-            </span>
-            <span className="min-w-0 flex-1">
-              {step.text}
-              {step.code ? (
-                <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-background p-3 font-mono text-xs">
-                  {step.code}
-                </pre>
-              ) : null}
-            </span>
-          </li>
-        ))}
-      </ol>
+      <div id={panelId} role="tabpanel" aria-labelledby={tabId(client)}>
+        <ol className="m-0 flex list-none flex-col gap-3 p-0">
+          {STEPS[client].map((step, index) => (
+            <li key={index} className="flex gap-3 text-sm text-foreground">
+              <span
+                aria-hidden="true"
+                className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-foreground/[0.12] text-xs font-bold"
+              >
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1">
+                {step.text}
+                {step.code ? (
+                  <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-background p-3 font-mono text-xs">
+                    {step.code}
+                  </pre>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }

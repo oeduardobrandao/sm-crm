@@ -66,7 +66,11 @@ describe('IntegrationsPage (phone)', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Integrações' })).toBeInTheDocument();
     expect(screen.getByDisplayValue(/\/functions\/v1\/mcp-admin$/)).toBeInTheDocument();
     expect(screen.getByText('banners:read')).toBeInTheDocument();
+    expect(screen.getByText('Banners (leitura)')).toBeVisible();
     await screen.findByText('admin1@mesaas.com.br');
+    expect(
+      screen.getByText('Deslize uma conexão ativa para a esquerda para revogar.'),
+    ).toBeVisible();
   });
 
   it('lists connections as rows, no table, and only the active one has Revogar', async () => {

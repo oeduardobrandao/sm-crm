@@ -1,5 +1,6 @@
 import { Plug, Trash2 } from 'lucide-react';
 import { Cell, GroupedList, SwipeRow } from '@mesaas/ios-kit';
+import { ADMIN_SCOPES } from '../../lib/mcp-admin-scopes';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
@@ -7,7 +8,6 @@ import { GlassPanel } from '../../components/shell/GlassPanel';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
 import { ConnectGuide } from './ConnectGuide';
-import { ScopeChips } from './ScopeChips';
 import {
   CONNECTOR_URL,
   OAUTH_HELP,
@@ -60,10 +60,15 @@ export function IntegrationsPhone({
         </div>
       </section>
 
-      <section className="phone-kit phone-group">
-        <h2 className="phone-group__header">Permissões</h2>
-        <ScopeChips />
-      </section>
+      <GroupedList header="Permissões">
+        {ADMIN_SCOPES.map((scope) => (
+          <Cell
+            key={scope.value}
+            label={scope.label}
+            subtitle={<span className="font-mono">{scope.value}</span>}
+          />
+        ))}
+      </GroupedList>
 
       {isLoading ? (
         <GlassPanel title="Conexões autorizadas">
@@ -82,7 +87,14 @@ export function IntegrationsPhone({
           <EmptyState icon={Plug} title="Nenhuma conexão autorizada" />
         </GlassPanel>
       ) : (
-        <GroupedList header="Conexões autorizadas">
+        <GroupedList
+          header="Conexões autorizadas"
+          footer={
+            grants.some((grant) => !grant.revoked_at)
+              ? 'Deslize uma conexão ativa para a esquerda para revogar.'
+              : undefined
+          }
+        >
           {grants.map((grant) => {
             const isActive = !grant.revoked_at;
             const label = grant.email ?? '—';
