@@ -43,7 +43,18 @@ const OC_HOOKS = [
 
 describe('badges.css', () => {
   it('tg geometry', () => {
-    expect(decl('.badge', 'font-size')).toContain('11px');
+    const anchored = (prop: string) => {
+      const out: string[] = [];
+      root.walkRules((r) => {
+        if (!r.selectors.some((x) => /\.badge(,|$)/.test(x.trim()) || /\.badge\)$/.test(x.trim())))
+          return;
+        r.walkDecls(prop, (d) => {
+          out.push(d.value);
+        });
+      });
+      return out;
+    };
+    expect(anchored('font-size')).toContain('11px');
     expect(decl('.badge', 'border-radius')).toContain('999px');
     expect(decl('.badge', 'border-color')).toContain('transparent');
     expect(decl('.badge', 'padding')).toContain('2px 9px');
@@ -164,5 +175,45 @@ describe('badges.css', () => {
 
   it('mirrors badge-primary for dark', () => {
     expect(hasAll(["html[data-theme='dark'][data-look='vidro']", '.badge-primary'])).toBe(true);
+  });
+  it('leaves badges that colour themselves through inline --badge-bg alone', () => {
+    let seen = 0;
+    root.walkRules((r) => {
+      for (const s of r.selectors) {
+        if (!s.includes('.badge-neutral')) continue;
+        seen += 1;
+        expect(s, s).toContain("[style*='--badge-bg']");
+      }
+    });
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('gives the clickable fluxo tag a visible hover, not the static or avulso ones', () => {
+    const hovers: string[] = [];
+    root.walkRules((r) => {
+      for (const raw of r.selectors) {
+        const s = raw.replace(/\s+/g, ' ').trim();
+        if (!s.includes('.post-fluxo-tag') || !s.endsWith(':hover')) continue;
+        hovers.push(s);
+        expect(s, s).toContain(':not(.post-fluxo-tag--avulso)');
+        expect(s, s).toContain(':not(.post-fluxo-tag--static)');
+        r.walkDecls('background', (d) => {
+          expect(d.value).toBe('var(--surface-3)');
+        });
+      }
+    });
+    expect(hovers.some((s) => s.startsWith(PB))).toBe(true);
+    expect(hovers.some((s) => !s.startsWith(PB))).toBe(true);
+  });
+
+  it('writes the overlay side as grouped :is() selectors, not one selector per class', () => {
+    let overlayGeometry = 0;
+    root.walkRules((r) => {
+      for (const s of r.selectors) {
+        if (s.startsWith(PB)) continue;
+        if (s.includes('.post-status-chip') && s.includes('.post-tipo-badge')) overlayGeometry += 1;
+      }
+    });
+    expect(overlayGeometry).toBeGreaterThan(0);
   });
 });
