@@ -219,6 +219,7 @@ export function ConversationThread({
         )}
         <div className="flex gap-2">
           <input
+            data-variant="bare"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {

@@ -19,29 +19,85 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ),
   html[data-look='vidro']
     body:has(.app-container)
@@ -55,29 +111,85 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ) {
     border: 1px solid transparent;
     border-radius: 10px;
@@ -91,26 +203,70 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ),
   html[data-look='vidro']
     body:has(.app-container)
@@ -124,69 +280,92 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ) {
     background: var(--vd-fill);
   }
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.drawer-select, .form-input, select:not([data-slot])),
-  html[data-look='vidro']
-    body:has(.app-container)
     :is(
-      [data-slot='dialog-content'],
-      [data-slot='alert-dialog-content'],
-      [data-slot='sheet-content'],
-      [data-slot='popover-content'],
-      .comment-popover,
-      .comment-add-popover,
-      .mention-suggestion-list
-    )
-    :is(.drawer-select, .form-input, select:not([data-slot])) {
-    background-color: var(--vd-fill);
-  }
-  html[data-look='vidro']
-    body:has(.app-container)
-    .vidro-panel
-    :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ),
   html[data-look='vidro']
     body:has(.app-container)
@@ -200,24 +379,149 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
+    ) {
+    background-color: var(--vd-fill);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ) {
     height: 34px;
     min-height: 34px;
@@ -226,11 +530,31 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot])
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ),
   html[data-look='vidro']
     body:has(.app-container)
@@ -244,11 +568,31 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot])
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ) {
     height: auto;
     padding: 8px 12px;
@@ -257,29 +601,85 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     )::placeholder,
   html[data-look='vidro']
     body:has(.app-container)
@@ -293,29 +693,85 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     )::placeholder {
     color: var(--vd-txt3);
     font-family: inherit;
@@ -325,7 +781,13 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is([data-slot='select-trigger'][data-placeholder]),
+    :is(
+      [data-slot='select-trigger'][data-placeholder]:where(
+          :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+              .rb-section-input
+            ):not([data-variant='bare'])
+        )
+    ),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -337,10 +799,20 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    :is([data-slot='select-trigger'][data-placeholder]) {
+    :is(
+      [data-slot='select-trigger'][data-placeholder]:where(
+          :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+              .rb-section-input
+            ):not([data-variant='bare'])
+        )
+    ) {
     color: var(--vd-txt3);
   }
-  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='select-trigger'] svg,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='select-trigger']
+    > svg:last-child,
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -353,7 +825,7 @@
       .mention-suggestion-list
     )
     [data-slot='select-trigger']
-    svg {
+    > svg:last-child {
     color: var(--vd-txt3);
     opacity: 1;
   }
@@ -361,9 +833,23 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):hover:not(
-      :disabled
-    ):not(:focus):not(:focus-visible),
+    :is(
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      )
+    ):hover:not(:disabled):not(:focus):not(:focus-visible):not([aria-invalid='true']),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -375,9 +861,23 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    :is([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):hover:not(
-      :disabled
-    ):not(:focus):not(:focus-visible) {
+    :is(
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      )
+    ):hover:not(:disabled):not(:focus):not(:focus-visible):not([aria-invalid='true']) {
     background: var(--vd-fill);
     border-color: transparent;
   }
@@ -386,29 +886,85 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ):is(:focus, :focus-visible),
   html[data-look='vidro']
     body:has(.app-container)
@@ -422,34 +978,94 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ):is(:focus, :focus-visible),
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    [data-slot='select-trigger'][data-state='open'],
+    [data-slot='select-trigger'][data-state='open']:where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare'])
+    ),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -461,7 +1077,11 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    [data-slot='select-trigger'][data-state='open'] {
+    [data-slot='select-trigger'][data-state='open']:where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare'])
+    ) {
     border-color: var(--vd-sep);
     outline: none;
     box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.45);
@@ -470,26 +1090,70 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ):is(:focus, :focus-visible),
   html[data-look='vidro']
     body:has(.app-container)
@@ -503,31 +1167,79 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ):is(:focus, :focus-visible),
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    [data-slot='select-trigger'][data-state='open'],
+    [data-slot='select-trigger'][data-state='open']:where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare'])
+    ),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -539,13 +1251,33 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    [data-slot='select-trigger'][data-state='open'] {
+    [data-slot='select-trigger'][data-state='open']:where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare'])
+    ) {
     background: var(--vd-group);
   }
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.drawer-select, .form-input, select:not([data-slot])):is(:focus, :focus-visible),
+    :is(
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
+    ):is(:focus, :focus-visible),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -557,7 +1289,23 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    :is(.drawer-select, .form-input, select:not([data-slot])):is(:focus, :focus-visible) {
+    :is(
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
+    ):is(:focus, :focus-visible) {
     background-color: var(--vd-group);
   }
   /* Fields: invalid keeps its red border while focused (after the focus rule) */
@@ -565,29 +1313,85 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     )[aria-invalid='true'],
   html[data-look='vidro']
     body:has(.app-container)
@@ -601,29 +1405,85 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     )[aria-invalid='true'] {
     border-color: var(--vd-tg-bad);
   }
@@ -631,29 +1491,85 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     )[aria-invalid='true']:is(:focus, :focus-visible),
   html[data-look='vidro']
     body:has(.app-container)
@@ -667,29 +1583,85 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     )[aria-invalid='true']:is(:focus, :focus-visible) {
     border-color: var(--vd-tg-bad);
   }
@@ -698,29 +1670,85 @@
     body:has(.app-container)
     .vidro-panel
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ):disabled,
   html[data-look='vidro']
     body:has(.app-container)
@@ -734,104 +1762,98 @@
       .mention-suggestion-list
     )
     :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
+      [data-slot='input']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      [data-slot='select-trigger']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .drawer-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .time-picker-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .post-editor-link-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        input:is(
+            [type='text'],
+            [type='search'],
+            [type='email'],
+            [type='url'],
+            [type='number'],
+            [type='date'],
+            [type='tel'],
+            :not([type])
+          ):not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      [data-slot='textarea']:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-reply-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-add-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .comment-edit-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        textarea:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      ),
+      .drawer-select:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      .form-input:where(
+        :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+            .rb-section-input
+          ):not([data-variant='bare'])
+      ),
+      :where(
+        select:not([data-slot]):not(.border-0):not(.agenda-rapido__titulo):not(
+            .rb-editor-title-input
+          ):not(.rb-section-input):not([data-variant='bare']):not(.bg-transparent)
+      )
     ):disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-  html[data-look='vidro']
-    body:has(.app-container)
-    .vidro-panel
-    :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
-    ):disabled:hover,
-  html[data-look='vidro']
-    body:has(.app-container)
-    :is(
-      [data-slot='dialog-content'],
-      [data-slot='alert-dialog-content'],
-      [data-slot='sheet-content'],
-      [data-slot='popover-content'],
-      .comment-popover,
-      .comment-add-popover,
-      .mention-suggestion-list
-    )
-    :is(
-      [data-slot='input'],
-      [data-slot='select-trigger'],
-      .drawer-input,
-      .time-picker-select,
-      .post-editor-link-input,
-      input:is(
-          [type='text'],
-          [type='search'],
-          [type='email'],
-          [type='url'],
-          [type='number'],
-          [type='date'],
-          [type='tel'],
-          :not([type])
-        ):not([data-slot]),
-      [data-slot='textarea'],
-      .comment-reply-input,
-      .comment-add-input,
-      .comment-edit-input,
-      textarea:not([data-slot]),
-      .drawer-select,
-      .form-input,
-      select:not([data-slot])
-    ):disabled:hover {
-    border-color: transparent;
   }
   /* Search pill (after the field rules: same specificity, later wins) */
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    input[type='search']:not([data-slot]),
+    input[type='search']:not([data-slot]):where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare']):not(.bg-transparent)
+    ),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -843,11 +1865,19 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    input[type='search']:not([data-slot]),
+    input[type='search']:not([data-slot]):where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare']):not(.bg-transparent)
+    ),
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    input[type='search'][data-slot='input'],
+    input[type='search'][data-slot='input']:where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare'])
+    ),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -859,7 +1889,11 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    input[type='search'][data-slot='input'] {
+    input[type='search'][data-slot='input']:where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare'])
+    ) {
     border-radius: 999px;
     height: 30px;
     min-height: 30px;

@@ -2,13 +2,16 @@ import { readFileSync } from 'node:fs';
 import postcss, { type Rule } from 'postcss';
 import { describe, expect, it } from 'vitest';
 
+// prettier wraps long :is() lists; selector assertions compare with whitespace removed
+const squash = (x: string) => x.replace(/\s+/g, '');
+
 function loadFamily(name: string) {
   const root = postcss.parse(readFileSync(`apps/crm/src/styles/vidro-body/${name}.css`, 'utf8'));
   const decl = (parts: string | string[], prop: string): string[] => {
-    const ps = Array.isArray(parts) ? parts : [parts];
+    const ps = (Array.isArray(parts) ? parts : [parts]).map(squash);
     const out: string[] = [];
     root.walkRules((r: Rule) => {
-      if (!r.selectors.some((s) => ps.every((p) => s.includes(p)))) return;
+      if (!r.selectors.some((s) => ps.every((p) => squash(s).includes(p)))) return;
       r.walkDecls(prop, (d) => {
         out.push(d.value);
       });
@@ -18,10 +21,10 @@ function loadFamily(name: string) {
   // A selector matches when it contains EVERY part (in any order). This is what makes :is() groupings
   // testable: `:is(.a, .b):is(:hover, [data-state='open'])` satisfies hasAll(['.b', ':hover']).
   const hasAll = (parts: string | string[]) => {
-    const ps = Array.isArray(parts) ? parts : [parts];
+    const ps = (Array.isArray(parts) ? parts : [parts]).map(squash);
     let found = false;
     root.walkRules((r) => {
-      if (r.selectors.some((s) => ps.every((p) => s.includes(p)))) found = true;
+      if (r.selectors.some((s) => ps.every((p) => squash(s).includes(p)))) found = true;
     });
     return found;
   };
@@ -120,8 +123,10 @@ describe('forms.css', () => {
     expect(decl("input[type='search']", 'border-radius')).toContain('999px');
     expect(decl("input[type='search']", 'height')).toContain('30px');
     expect(decl("input[type='search']", 'padding')).toContain('0 12px');
-    expect(decl("[data-slot='select-trigger'] svg", 'color').join()).toContain('var(--vd-txt3)');
-    expect(decl("[data-slot='select-trigger'] svg", 'opacity')).toContain('1');
+    expect(decl("[data-slot='select-trigger'] > svg:last-child", 'color').join()).toContain(
+      'var(--vd-txt3)',
+    );
+    expect(decl("[data-slot='select-trigger'] > svg:last-child", 'opacity')).toContain('1');
   });
 
   it('form-input loses its monospace and letter spacing', () => {
@@ -171,7 +176,6 @@ describe('forms.css', () => {
   });
 
   it('duplicates the field, checkbox and switch rules under the overlay-content list', () => {
-    const squash = (x: string) => x.replace(/\s+/g, '');
     const OC = squash(
       "body:has(.app-container) :is([data-slot='dialog-content'], [data-slot='alert-dialog-content'], [data-slot='sheet-content'], [data-slot='popover-content'], .comment-popover, .comment-add-popover, .mention-suggestion-list)",
     );
@@ -215,5 +219,89 @@ describe('forms.css', () => {
     const fieldHeight = order.findIndex((s) => s.includes("[data-slot='input']"));
     expect(search).toBeGreaterThan(fieldHeight);
     expect(search).toBeGreaterThan(-1);
+  });
+
+  it('wraps raw-element arms and the exclusion chain in :where(), so they add no specificity', () => {
+    let sawRaw = false;
+    root.walkRules((r) => {
+      for (const sel of r.selectors) {
+        const flat = squash(sel);
+        // every raw-element arm sits right after `:where(`
+        for (const m of flat.matchAll(
+          /(input:is\(|select:not\(\[data-slot\]|textarea:not\(\[data-slot\])/g,
+        )) {
+          sawRaw = true;
+          expect(flat.slice(m.index! - 7, m.index!), sel).toBe(':where(');
+        }
+        // the :not(.border-0) chain never appears outside :where()
+        for (const m of flat.matchAll(/:not\(\.border-0\)/g)) {
+          const before = flat.slice(0, m.index!);
+          const open = before.lastIndexOf(':where(');
+          expect(open, sel).toBeGreaterThan(-1);
+          // the :where( that encloses it has not been closed yet
+          let depth = 0;
+          for (const ch of before.slice(open + 6)) {
+            if (ch === '(') depth += 1;
+            if (ch === ')') depth -= 1;
+          }
+          expect(depth, sel).toBeGreaterThanOrEqual(1);
+        }
+      }
+    });
+    expect(sawRaw).toBe(true);
+  });
+
+  it('placeholder and open-state selectors outrank the resting list', () => {
+    // resting arms are (0,1,0) or less; these are (0,2,0): a [data-placeholder] / [data-state] attribute
+    // beside the hook, with no un-:where()d element+attribute pair in the resting list
+    expect(hasAll(["[data-slot='select-trigger'][data-placeholder]"])).toBe(true);
+    expect(hasAll(["[data-slot='select-trigger'][data-state='open']"])).toBe(true);
+  });
+
+  it('bare and inline editors are excluded from the field skin', () => {
+    for (const ex of [
+      ':not(.border-0)',
+      ':not(.agenda-rapido__titulo)',
+      ':not(.rb-editor-title-input)',
+      ':not(.rb-section-input)',
+      ":not([data-variant='bare'])",
+    ]) {
+      for (const h of ["[data-slot='input']", "[data-slot='select-trigger']", '.drawer-input']) {
+        expect(hasAll([h, ex]), `${h} ${ex}`).toBe(true);
+      }
+    }
+    // .bg-transparent is excluded on raw elements only: shadcn Input / SelectTrigger carry it in their base
+    const excl = squash(
+      ":not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(.rb-section-input):not([data-variant='bare'])",
+    );
+    expect(hasAll(["input:is([type='text']", `${excl}:not(.bg-transparent)`])).toBe(true);
+    for (const h of [
+      "[data-slot='input']",
+      "[data-slot='select-trigger']",
+      "[data-slot='textarea']",
+    ]) {
+      let withHook = false;
+      let withBg = false;
+      root.walkRules((r) => {
+        for (const sel of r.selectors) {
+          const flat = squash(sel);
+          if (flat.includes(`${h}:where(${excl})`)) withHook = true;
+          if (flat.includes(`${h}:where(${excl}:not(.bg-transparent))`)) withBg = true;
+        }
+      });
+      expect(withHook, h).toBe(true);
+      expect(withBg, `${h} must keep bg-transparent`).toBe(false);
+    }
+  });
+
+  it('hover never hides an invalid border', () => {
+    expect(hasAll(["[data-slot='input']", ':hover', "[aria-invalid='true']"])).toBe(true);
+    root.walkRules((r) => {
+      if (!r.selectors.some((s) => s.includes(':hover') && s.includes("[data-slot='input']")))
+        return;
+      for (const sel of r.selectors) {
+        if (sel.includes(':hover')) expect(sel, sel).toContain("not([aria-invalid='true'])");
+      }
+    });
   });
 });
