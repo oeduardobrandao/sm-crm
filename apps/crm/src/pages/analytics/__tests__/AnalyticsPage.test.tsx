@@ -788,9 +788,14 @@ describe('AnalyticsPage', () => {
 });
 
 describe('AnalyticsPage in the Vidro toolbar', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     analyticsTestState.queryFixtures.clear();
     mockedUseQuery.mockClear();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-18T12:00:00.000Z'));
   });
 
   it('puts the title and the Sincronizar button in the toolbar, once', () => {
@@ -830,6 +835,67 @@ describe('AnalyticsPage in the Vidro toolbar', () => {
     expect(h1s[0].closest('header.header')).not.toBeNull();
     expect(container.querySelector('.vidro-toolbar')).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Sincronizar' })).toHaveLength(1);
+    expect(screen.getAllByLabelText('select')).toHaveLength(2);
+    expect(container.querySelector('.analytics-highlights')).toBeNull();
+    expect(container.querySelector('.analytics-silent-line')).toBeNull();
+    expect(container.querySelector('.analytics-callout')).not.toBeNull();
+  });
+
+  it('moves the client and period filters into the toolbar', () => {
+    setQueryFixture(28, makeSummary(buildBaseAccounts()));
+
+    render(
+      <VidroToolbarHarness>
+        <MemoryRouter initialEntries={['/analytics']}>
+          <AnalyticsPage />
+        </MemoryRouter>
+      </VidroToolbarHarness>,
+    );
+
+    const selects = screen.getAllByLabelText('select');
+    expect(selects).toHaveLength(2);
+    for (const s of selects) expect(s.closest('.vidro-toolbar')).not.toBeNull();
+  });
+
+  it('folds the highlight cards into one Destaques card', () => {
+    setQueryFixture(28, makeSummary(buildBaseAccounts()));
+
+    const { container } = render(
+      <VidroToolbarHarness>
+        <MemoryRouter initialEntries={['/analytics']}>
+          <AnalyticsPage />
+        </MemoryRouter>
+      </VidroToolbarHarness>,
+    );
+
+    const card = container.querySelector('.analytics-highlights') as HTMLElement;
+    expect(card).not.toBeNull();
+    expect(card).toHaveTextContent('Destaques');
+    const engagement = within(card).getByText('Melhor engajamento').closest('li') as HTMLElement;
+    expect(engagement).toHaveTextContent('Bravo Health');
+  });
+
+  it('shows silent accounts as one line that expands to the account chips', () => {
+    setQueryFixture(28, makeSummary(buildBaseAccounts()));
+
+    const { container } = render(
+      <VidroToolbarHarness>
+        <MemoryRouter initialEntries={['/analytics']}>
+          <AnalyticsPage />
+        </MemoryRouter>
+      </VidroToolbarHarness>,
+    );
+
+    const line = container.querySelector('.analytics-silent-line') as HTMLElement;
+    expect(line).toHaveTextContent('1 conta silenciosa');
+    expect(container.querySelector('.analytics-callout')).toBeNull();
+    expect(screen.queryByText('9d sem postar')).toBeNull();
+
+    const toggle = within(line).getByRole('button', { name: /Ver contas/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('9d sem postar')).toBeInTheDocument();
   });
 });
 

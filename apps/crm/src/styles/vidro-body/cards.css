@@ -281,6 +281,232 @@
   html[data-look='vidro'] body:has(.app-container) .vidro-empty > p.text-xs {
     color: var(--vd-txt3);
   }
+
+  /* ===== Analytics: Destaques (the leader cards folded into one KPI cell) ===== */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .kpi-grid:has(> .analytics-highlights) {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.9fr);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-highlights
+    .kpi-card-head {
+    margin: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__label {
+    overflow: hidden;
+    font-size: 11px;
+    color: var(--vd-txt3);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__name {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__metric {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Below 1440px six columns get too tight (the content is about 1080px at 1440 with the sidebar
+     pinned): Destaques takes its own row under the five KPIs, its leaders side by side. */
+  @media (max-width: 1439px) {
+    html[data-look='vidro']
+      body:has(.app-container)
+      .vidro-panel
+      .kpi-grid:has(> .analytics-highlights) {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights {
+      grid-column: 1 / -1;
+      flex-direction: row;
+      align-items: center;
+      gap: 24px;
+    }
+
+    html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__list {
+      flex: 1 1 auto;
+      flex-direction: row;
+      gap: 24px;
+      min-width: 0;
+    }
+
+    html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__row {
+      flex: 1 1 0;
+    }
+  }
+
+  /* ===== Analytics: "Contas silenciosas" as one line ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: var(--vd-tg-warn-bg);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__icon {
+    flex-shrink: 0;
+    color: var(--vd-tg-warn);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__title {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__names {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    color: var(--vd-txt2);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__toggle {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-silent-line__toggle:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+
+  /* ===== Analytics: Todas as Contas fits the panel; names stay on one line ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .card.analytics-desktop-table {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-desktop-table
+    :is([data-slot='table-cell'], [data-slot='table-head']) {
+    padding-left: 8px;
+    padding-right: 8px;
+    white-space: nowrap;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-desktop-table
+    [data-slot='table-cell']:first-child
+    * {
+    white-space: nowrap;
+  }
+
+  /* Narrower panels scroll the table sideways: the client column stays pinned. Opaque, so the
+     scrolled cells never show through: the card's fill (--vd-group) over the translucent panel
+     (--vd-panel) over the page colour rebuilds the shade the card shows (the hover pill layers
+     over the same stack). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .card.analytics-desktop-table
+    :is(thead, tbody)
+    > tr
+    > :first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background:
+      linear-gradient(var(--vd-group), var(--vd-group)),
+      linear-gradient(var(--vd-panel), var(--vd-panel)), var(--bg-color);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .card.analytics-desktop-table
+    tbody
+    > tr:is(:hover, [data-state='selected'])
+    > td:first-child {
+    background:
+      linear-gradient(var(--vd-fill), var(--vd-fill)),
+      linear-gradient(var(--vd-group), var(--vd-group)),
+      linear-gradient(var(--vd-panel), var(--vd-panel)), var(--bg-color);
+  }
 }
 
 /* ===== Dark mirrors (the --vd-* tokens flip on their own; only literal colours need restating) ===== */
