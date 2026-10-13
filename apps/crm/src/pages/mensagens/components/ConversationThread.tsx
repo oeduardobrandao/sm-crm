@@ -1,5 +1,6 @@
 import { ArrowLeft, CheckCircle2, FilePen, Send, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
 import type { useMensagensData } from '../hooks/useMensagensData';
@@ -30,6 +31,7 @@ export function ConversationThread({
 }: ConversationThreadProps) {
   const { tipo, setTipo, draft, setDraft, replyTo, setReplyTo, itens, scrollRef, enviar } =
     useConversationThread({ conversa, feed, sendGeneral, replyToPost });
+  const vidroShell = useVidroShell();
 
   return (
     <div className="flex-1 min-w-0 flex flex-col overflow-hidden mensagens-thread-root">
@@ -143,11 +145,15 @@ export function ConversationThread({
                 className={`flex min-w-0 flex-col gap-1 ${daEquipe ? 'items-end' : 'items-start'}`}
               >
                 <div
-                  className="max-w-full rounded-2xl px-3.5 py-2.5 text-sm"
-                  style={{
-                    background: daEquipe ? 'var(--surface-hover)' : 'var(--card-bg)',
-                    boxShadow: 'inset 0 0 0 1px var(--border-color)',
-                  }}
+                  className={`max-w-full rounded-2xl px-3.5 py-2.5 text-sm vidro-bubble ${daEquipe ? 'vidro-bubble--me' : 'vidro-bubble--them'}`}
+                  style={
+                    vidroShell
+                      ? undefined
+                      : {
+                          background: daEquipe ? 'var(--surface-hover)' : 'var(--card-bg)',
+                          boxShadow: 'inset 0 0 0 1px var(--border-color)',
+                        }
+                  }
                 >
                   {daEquipe && (
                     <div className="mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
