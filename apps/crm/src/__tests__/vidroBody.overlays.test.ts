@@ -148,14 +148,25 @@ describe('overlays.css', () => {
     expect(hasAll(["[data-slot='command-item']", "[aria-selected='true']"])).toBe(true);
   });
 
-  it('clears the Command background only inside a non-fullscreen dialog', () => {
+  it('clears the Command background inside a non-fullscreen dialog or a popover', () => {
+    // CommandDialog sits on the dialog glass; PessoasCombobox's Command sits on the popover glass.
+    // The fullscreen (phone search) dialog keeps its own surface.
     root.walkRules((r) => {
       for (const s of r.selectors) {
         if (!s.includes("[data-slot='command']")) continue;
         expect(s, s).toContain("[data-slot='dialog-content']:not([data-layout='fullscreen'])");
+        expect(s, s).toContain("[data-slot='popover-content']");
+        expect(s.replace(/:not\(\[data-layout='fullscreen'\]\)/g, ''), s).not.toContain(
+          'fullscreen',
+        );
       }
     });
-    expect(decl("[data-slot='command']", 'background')).toContain('transparent');
+    expect(
+      decl(["[data-slot='popover-content']", "[data-slot='command']"], 'background'),
+    ).toContain('transparent');
+    expect(decl(["[data-slot='dialog-content']", "[data-slot='command']"], 'background')).toContain(
+      'transparent',
+    );
   });
 
   it('toasts and fallbacks', () => {

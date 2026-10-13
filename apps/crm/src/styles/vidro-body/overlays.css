@@ -130,10 +130,11 @@
     padding: 5px;
   }
 
-  /* The command palette sits on the dialog glass; the fullscreen (phone search) layout keeps its own. */
+  /* A Command sits on the glass it lives in: the command palette on the dialog panel, a combobox
+     (PessoasCombobox) on the popover menu. The fullscreen (phone search) layout keeps its own. */
   html[data-look='vidro']
     body:has(.app-container)
-    [data-slot='dialog-content']:not([data-layout='fullscreen'])
+    :is([data-slot='dialog-content']:not([data-layout='fullscreen']), [data-slot='popover-content'])
     [data-slot='command'] {
     background: transparent;
   }
