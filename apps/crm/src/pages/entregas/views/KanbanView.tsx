@@ -1448,7 +1448,7 @@ export function KanbanView({
             </div>
           )}
         </div>
-        <DragOverlay>
+        <DragOverlay className="vidro-drag-clone">
           {activeEntity?.kind === 'workflow' && (
             <WorkflowCard
               card={activeEntity.card}

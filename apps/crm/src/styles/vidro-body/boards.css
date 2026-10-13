@@ -25,6 +25,7 @@
     border-bottom: 0;
     min-height: 0;
     padding: 2px 4px 8px;
+    border-radius: 10px;
   }
 
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-title {
@@ -60,7 +61,7 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.board-card, .board-post-card):focus-within {
+    :is(.board-card, .board-post-card):has(:focus-visible) {
     outline: none;
     box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
   }
@@ -68,15 +69,21 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.board-card, .board-post-card):focus-within:hover {
+    :is(.board-card, .board-post-card):has(:focus-visible):hover {
     box-shadow:
       0 6px 16px -10px rgba(18, 21, 26, 0.3),
       0 0 0 3px rgba(255, 191, 48, 0.55);
   }
 
-  /* The DragOverlay clone keeps its floating shadow. */
+  /* DragOverlay clones float: keep the shadow and an opaque surface (--vd-group is translucent in dark).
+     .vidro-drag-clone is the inert class KanbanView puts on its DragOverlay wrapper. */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-post-card--overlay {
+    background: var(--vd-solid);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-drag-clone > * {
+    background: var(--vd-solid);
   }
 
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-drop-slot {
@@ -92,8 +99,28 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    .calendar-day:hover:not(.empty):not(.today):not(.selected) {
+    .calendar-day:hover:not(.empty):not(.today):not(.selected):not(:disabled):not(
+      [aria-disabled='true']
+    ) {
     border-color: rgba(234, 179, 8, 0.4);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .calendar-cell {
+    padding: 7px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:is(.today, .selected) {
+    padding: calc(0.75rem - 1px);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-cell:is(.today, .selected) {
+    padding: 6px;
   }
 
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .calendar-day:focus-visible {
@@ -107,13 +134,6 @@
     .calendar-day:is(:disabled, [aria-disabled='true']) {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-
-  html[data-look='vidro']
-    body:has(.app-container)
-    .vidro-panel
-    .calendar-day:is(:disabled, [aria-disabled='true']):hover {
-    border-color: var(--vd-sep);
   }
 
   html[data-look='vidro']
@@ -146,13 +166,19 @@
     .vidro-panel
     :is(.calendar-post-card, .sidebar-post-card) {
     border-radius: 8px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-post-card:not(.foreign), .sidebar-post-card) {
     border-color: var(--vd-sep);
   }
 
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.calendar-post-card, .sidebar-post-card):hover {
+    :is(.calendar-post-card:not(.foreign), .sidebar-post-card):hover {
     border-color: color-mix(in srgb, var(--primary-color), transparent 50%);
   }
 
@@ -184,7 +210,7 @@
   html[data-theme='dark'][data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.board-card, .board-post-card):focus-within:hover {
+    :is(.board-card, .board-post-card):has(:focus-visible):hover {
     box-shadow:
       0 6px 16px -10px rgba(0, 0, 0, 0.6),
       0 0 0 3px rgba(255, 191, 48, 0.55);

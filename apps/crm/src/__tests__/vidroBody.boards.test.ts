@@ -57,10 +57,30 @@ describe('boards.css', () => {
     expect(decl('.board-card', 'transform')).toEqual([]);
     expect(decl('.board-post-card', 'transform')).toEqual([]);
     expect(hasAll(['.board-card', ':hover'])).toBe(true);
-    expect(hasAll(['.board-card', ':focus-within'])).toBe(true);
-    expect(decl(['.board-card', ':focus-within'], 'box-shadow').join()).toContain(
+    expect(hasAll(['.board-card', ':has(:focus-visible)'])).toBe(true);
+    expect(decl(['.board-card', ':has(:focus-visible)'], 'box-shadow').join()).toContain(
       '0 0 0 3px rgba(255, 191, 48, 0.55)',
     );
+  });
+
+  it('drag clones are opaque and keep their shadow', () => {
+    expect(decl('.board-post-card--overlay', 'background')).toContain('var(--vd-solid)');
+    expect(decl('.vidro-drag-clone', 'background')).toContain('var(--vd-solid)');
+    const kanban = readFileSync('apps/crm/src/pages/entregas/views/KanbanView.tsx', 'utf8');
+    expect(kanban).toContain('<DragOverlay className="vidro-drag-clone">');
+  });
+
+  it('column header rounds its inline tint', () => {
+    expect(decl('.board-column-header', 'border-radius')).toContain('10px');
+  });
+
+  it('today and selected compensate the thicker border; foreign cards keep their own border', () => {
+    expect(decl(['.calendar-day', '.today'], 'padding').join()).toContain('calc(0.75rem - 1px)');
+    expect(decl('.calendar-cell', 'padding')).toEqual(['7px', '6px']);
+    expect(hasAll([':not(.foreign)', '.calendar-post-card', ':hover'])).toBe(true);
+    expect(hasAll(['.calendar-day', ':hover:not(.empty)', ':not(:disabled):not('])).toBe(true);
+    expect(hasAll(['.board-card', ':has(:focus-visible)'])).toBe(true);
+    expect(hasAll([':focus-within'])).toBe(false);
   });
 
   it('keeps the floating overlay clone shadow', () => {
