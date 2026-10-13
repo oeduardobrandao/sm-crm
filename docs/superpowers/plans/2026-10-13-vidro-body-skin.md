@@ -35,6 +35,10 @@ it). The shell spec is `docs/superpowers/specs/2026-10-12-desktop-vidro-design.m
   - Page-body rules use **`PB`** = `html[data-look='vidro'] body:has(.app-container) .vidro-panel`.
     The sidebar is not inside `.vidro-panel`, so it is never touched. Drawers and toolbars are inside it.
   - Overlay rules (portaled to `body`) use **`PO`** = `html[data-look='vidro'] body:has(.app-container)`.
+  - Controls that live inside portaled content (buttons, fields, badges, segmented items in dialogs,
+    sheets, popovers and the createPortal'd comment/mention popovers) are duplicated under **`OC`** =
+    `html[data-look='vidro'] body:has(.app-container) :is([data-slot='dialog-content'], [data-slot='alert-dialog-content'], [data-slot='sheet-content'], [data-slot='popover-content'], .comment-popover, .comment-add-popover, .mention-suggestion-list)`.
+    Tasks 2, 5, 6 and 7 use exactly this list; do not invent a subset.
   - Dark mirrors: `html[data-theme='dark'][data-look='vidro'] body:has(.app-container) …`.
 - **Flag off is pixel-identical.**
   - Markup may only gain inert hooks: `data-slot`, `data-variant`, `data-size`, `data-layout`, or a class
@@ -78,18 +82,18 @@ it). The shell spec is `docs/superpowers/specs/2026-10-12-desktop-vidro-design.m
 |---|---|---|
 | `apps/crm/src/components/ui/{button,alert-dialog,card,input,textarea,table,select,checkbox,switch,dialog,sheet,popover,dropdown-menu,command,toggle-group,tooltip,calendar}.tsx` | inert hooks | 1 |
 | `apps/crm/src/components/ui/__tests__/dataSlots.test.tsx` | hook pins | 1 |
-| `apps/crm/src/pages/arquivos/components/FileGrid.tsx`, `apps/crm/src/pages/ideias/*` (card roots) | hand-placed hooks | 1 |
-| `apps/crm/src/hooks/useVidro.ts`, `apps/crm/src/components/layout/AppLayout.tsx` | `isResolved`, sidebar tri-state | 1 |
+| `apps/crm/src/pages/arquivos/components/FileGrid.tsx`, `apps/crm/src/pages/ideias/IdeiasPage.tsx` | hand-placed hooks | 1 |
+| `apps/crm/src/components/layout/AppLayout.tsx` | sidebar tri-state | 1 |
 | `apps/crm/src/styles/vidro.css` | token block moved; button-radius rule deleted | 1 |
 | `apps/crm/src/styles/vidro-body/tokens.css` | new and remapped tokens | 1 |
 | `apps/crm/src/styles/vidro-body/{buttons,tables,cards,badges,forms,controls,boards,overlays,chat,compositions}.css` | created empty with headers in Task 1, filled by Tasks 2-11 | 1 → 2-11 |
-| `apps/crm/src/main.tsx` | ten imports | 1 |
+| `apps/crm/src/main.tsx` | eleven imports | 1 |
 | `apps/crm/src/__tests__/vidroContracts.test.ts` | guards over all vidro files | 1 |
 | `apps/crm/src/__tests__/vidroBody.<family>.test.ts` | per-family declaration pins | 2-10 |
 | Escapes: `pages/entregas/components/{WorkflowCard,PostProcessCard}.tsx`, `components/ui/date-time-picker.tsx` | buttons escapes | 2 |
 | `components/help/EmptyStateGuide.tsx`, `pages/entregas/components/{ModeToggle,EntidadeToggle,PropertyPanel}.tsx`, `pages/analytics-conta/AnalyticsContaPage.tsx` | cards escapes | 4 |
 | `pages/calendario/agenda/{EventoPopover,EventoRapidoCard}.tsx`, `pages/calendario/camadas/CamadaPopover.tsx` | overlays escapes | 9 |
-| `pages/mensagens/components/ConversationThread.tsx` | chat hook classes | 10 |
+| `pages/mensagens/components/ConversationThread.tsx` | chat hook classes + inline escape | 10 |
 
 Locate the exact paths of `ModeToggle`, `EntidadeToggle` and `PropertyPanel` with
 `git ls-files apps/crm/src | grep -E 'ModeToggle|EntidadeToggle|PropertyPanel'`.
@@ -101,7 +105,7 @@ Locate the exact paths of `ModeToggle`, `EntidadeToggle` and `PropertyPanel` wit
 ### Task 1: Scaffold: hooks, tokens, file split, contracts, sidebar default
 
 **Files:**
-- Modify: the 17 primitives listed above, `FileGrid.tsx`, the Ideias card component(s), `useVidro.ts`,
+- Modify: the 17 primitives listed above, `FileGrid.tsx`, `IdeiasPage.tsx`,
   `AppLayout.tsx`, `vidro.css`, `main.tsx`, `vidroContracts.test.ts`, `dataSlots.test.tsx`,
   `AppLayout.test.tsx`
 - Create: `apps/crm/src/styles/vidro-body/*.css` (eleven files)
@@ -111,8 +115,8 @@ Locate the exact paths of `ModeToggle`, `EntidadeToggle` and `PropertyPanel` wit
   `data-variant` (default `'default'`) and `data-size` (default `'default'`); DialogContent desktop
   branch adds `data-layout` (`'default'` | `'fullscreen'`); Calendar `classNames` adds the classes
   `vidro-cal-nav` / `vidro-cal-day`.
-- **Produces, `useVidro()`:** returns `{ enabled, active, optedOut, setOptedOut, isResolved }`, where
-  `isResolved: boolean` is the limits query's `isSuccess`.
+- **`useVidro()` is unchanged.** Its `active` is already seeded from the pre-paint attribute before the
+  limits query resolves, so the sidebar default reads `vidro.active` directly (no `isResolved`).
 - **Produces, tokens in `tokens.css`:**
   - new: `--vd-txt2`, `--vd-icon`, `--vd-cta`, `--vd-cta-fg`, `--vd-cta-hover`, `--vd-ok`,
     `--vd-warn`, `--vd-tg-{info,warn,ok,neutral,bad}` and their `-bg`, `--vd-switch-on`,
@@ -131,6 +135,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Checkbox } from '../checkbox';
 import { Switch } from '../switch';
 import { buttonVariants } from '../button';
+import { cn } from '@/lib/utils';
 
 describe('vidro body hooks', () => {
   it('Button carries variant and size, defaulting to default', () => {
@@ -148,7 +153,8 @@ describe('vidro body hooks', () => {
     const b = screen.getByRole('button', { name: 'B' });
     expect(b).toHaveAttribute('data-variant', 'outline');
     expect(b).toHaveAttribute('data-size', 'sm');
-    expect(b.className).toBe(buttonVariants({ variant: 'outline', size: 'sm' }));
+    // Button wraps buttonVariants in cn (twMerge), so compare against the same.
+    expect(b.className).toBe(cn(buttonVariants({ variant: 'outline', size: 'sm' })));
   });
 
   it('marks Card, Input, Textarea, Table parts, Checkbox, Switch', () => {
@@ -253,9 +259,11 @@ describe('vidro body hooks', () => {
 
 - [ ] **Step 4: Hand-placed hooks.**
   - `FileGrid.tsx:255` `<table className="w-full text-sm">` → add `data-slot="table"`.
-  - The grid-mode tile root elements in the same file → `data-slot="card"`.
-  - Ideias: find the card root(s) with `grep -n "rounded" apps/crm/src/pages/ideias/*.tsx apps/crm/src/components/ideias/*.tsx`;
-    on the element that renders one idea card, add `data-slot="card"`.
+  - The grid-mode tile root in the same file is the
+    `<button className="group flex flex-col rounded-sm bg-[var(--card-bg)] …">` near `FileGrid.tsx:597-609`
+    → add `data-slot="card"`. Do **not** touch the loading skeleton near line 222.
+  - Ideias: desktop `pages/ideias/IdeiasPage.tsx:465` `<div className="border rounded-xl bg-card overflow-hidden">`
+    (the wrapper around the shadcn `<Table>`) → add `data-slot="card"`. Nothing in `IdeiasPhoneView.tsx`.
   - Add one test per file in the existing page test suites, asserting the attribute is present. If a
     page has no test file, add the assertion to a new `__tests__/<Page>.hooks.test.tsx` that renders
     with the suite's existing mocks.
@@ -267,7 +275,8 @@ describe('vidro body hooks', () => {
 
 - [ ] **Step 6: Write the failing sidebar-default test.** In
   `apps/crm/src/components/layout/__tests__/AppLayout.test.tsx`:
-  - Extend the `useVidro` mock (around line 72) with `isResolved: true`.
+  - `vidroState` is a `vi.hoisted` const: mutate it with `Object.assign`, as the suite's `beforeEach`
+    (lines 186-188) does, never reassign it.
   - Add these cases at ≥1101px (the suite's existing width helper):
 
 ```tsx
@@ -275,41 +284,41 @@ describe('sidebar default under Vidro', () => {
   beforeEach(() => localStorage.removeItem('sidebar-pinned'));
 
   it('starts pinned when nothing is stored and the look is active', () => {
-    vidroState = { ...vidroState, enabled: true, active: true, isResolved: true };
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
     renderLayout();
     expect(document.querySelector('.app-container')).not.toHaveAttribute('data-sidebar-collapsed');
   });
 
   it('keeps the rail when the user stored 0', () => {
     localStorage.setItem('sidebar-pinned', '0');
-    vidroState = { ...vidroState, enabled: true, active: true, isResolved: true };
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
     renderLayout();
     expect(document.querySelector('.app-container')).toHaveAttribute('data-sidebar-collapsed');
   });
 
   it('rail when nothing is stored and the look is classic', () => {
-    vidroState = { ...vidroState, enabled: true, active: false, optedOut: true, isResolved: true };
+    Object.assign(vidroState, { enabled: true, active: false, optedOut: true });
     renderLayout();
     expect(document.querySelector('.app-container')).toHaveAttribute('data-sidebar-collapsed');
   });
 
   it('never writes storage on its own', () => {
-    vidroState = { ...vidroState, enabled: true, active: true, isResolved: true };
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
     renderLayout();
     expect(localStorage.getItem('sidebar-pinned')).toBeNull();
   });
 });
 ```
 
-  Adapt `vidroState` / `renderLayout` to the names the suite actually uses. Read lines 1-120 first.
-  Also add a `useVidro` hook test (`apps/crm/src/hooks/__tests__/useVidro.test.tsx` exists; extend
-  it) asserting that `isResolved` mirrors the limits mock's `isSuccess`.
+  Adapt `renderLayout` to the helper name the suite actually uses. Read lines 1-200 first. Add a fifth
+  case: from unset under Vidro, clicking the pin toggle writes `'0'` and shows the rail. The existing
+  rail-default test (around line 374, `active=false`) stays as is.
 
 - [ ] **Step 7: Run them to verify they fail.**
-  Run: `npx vitest run apps/crm/src/components/layout/__tests__/AppLayout.test.tsx apps/crm/src/hooks/__tests__/useVidro.test.tsx`
+  Run: `npx vitest run apps/crm/src/components/layout/__tests__/AppLayout.test.tsx`
   Expected: FAIL in the new cases only.
 
-- [ ] **Step 8: Implement.** In `useVidro.ts`, return `isResolved: isSuccess`. In `AppLayout.tsx`,
+- [ ] **Step 8: Implement.** In `AppLayout.tsx`,
   replace `useSidebarPinned` with this tri-state version and derive the effective value after
   `useVidro()`:
 
@@ -341,16 +350,14 @@ function useSidebarPinPref() {
 
 // inside AppLayout, after `const vidro = useVidro();`
 const [pinPref, choosePinned] = useSidebarPinPref();
-const [vidroSeed] = useState(isVidroAttributeSet);
 // Unset preference follows the look (spec: Sidebar default open): pinned under Vidro, rail in classic.
-const sidebarPinned =
-  pinPref === '1' ? true : pinPref === '0' ? false : vidro.isResolved ? vidro.active : vidroSeed || vidro.active;
+// vidro.active is already seeded from the pre-paint attribute, so no first-paint flash.
+const sidebarPinned = pinPref === '1' ? true : pinPref === '0' ? false : vidro.active;
 const toggleSidebarPinned = useCallback(() => choosePinned(!sidebarPinned), [choosePinned, sidebarPinned]);
 ```
 
   Move the hook call order so `useVidro()` runs before `sidebarPinned` is computed; it currently runs
-  after `useSidebarPinned()`. Keep the existing comment block above it, updated. Import
-  `isVidroAttributeSet` from `@/lib/vidroLook`.
+  after `useSidebarPinned()`. Keep the existing comment block above it, updated.
 
 - [ ] **Step 9: Run them to verify they pass.** Same command as Step 7, then
   `npx vitest run apps/crm/src/components/layout` (all of it). Expected: PASS.
@@ -386,7 +393,8 @@ const BODY_ORDER = [
 
   Wrap the existing guard tests (`@layer`/`!important`, the 1101px block, the `html[data-look]` start,
   no bare `.app-container`) in `describe.each(parsed)`. Keep the `.card` `:not()` chain test and the
-  print test pointed at `vidro.css` and `cards.css` only. Add:
+  print test pointed at `vidro.css` only (they assert presence). For the body files add a conditional
+  guard: any selector containing `.card .card` must carry the same `:not()` chain. Add:
 
 ```ts
 it('imports every vidro-body file after vidro.css, in order', () => {
@@ -465,7 +473,7 @@ it('vidro.css declares the shared tokens on body:has(.app-container), not .app-c
   });
 });
 
-const STICKY = ['.scheduled-panel', '.rb-editor-header'];
+const STICKY = ['.scheduled-panel', '.rb-editor-header', '.rb-layers-rail', '.callout-emoji-picker'];
 it.each(parsed)('$file keeps sticky surfaces opaque', ({ root }) => {
   root.walkRules((rule) => {
     if (!STICKY.some((c) => rule.selector.includes(c))) return;
@@ -478,8 +486,8 @@ it.each(parsed)('$file keeps sticky surfaces opaque', ({ root }) => {
 
 - [ ] **Step 11: Run them to verify they fail.**
   Run: `npx vitest run apps/crm/src/__tests__/vidroContracts.test.ts`
-  Expected: FAIL. The `vidro-body` directory and the imports are missing, and `--vd-panel` is still on
-  `.app-container`.
+  Expected: the whole file FAILS at module load (`readdirSync` throws on the missing directory), not
+  only the new tests. That is the expected red.
 
 - [ ] **Step 12: Create the CSS files.**
   - Each of the eleven `vidro-body/*.css` files starts with this header (family name filled in) and an
@@ -583,7 +591,7 @@ it.each(parsed)('$file keeps sticky surfaces opaque', ({ root }) => {
     --muted: 223 8% 17%;
     --accent: 223 8% 17%;
     --popover: 222 16% 13%;
-    --card: 220 13% 9%;
+    --card: 220 13% 9%; /* computed composite; the spec's 220 15% 10% is rounded */
   }
 ```
 
@@ -601,7 +609,7 @@ it.each(parsed)('$file keeps sticky surfaces opaque', ({ root }) => {
 - [ ] **Step 15: Commit.**
 
 ```bash
-git add apps/crm/src/components/ui apps/crm/src/pages/arquivos apps/crm/src/pages/ideias apps/crm/src/components/ideias apps/crm/src/hooks apps/crm/src/components/layout apps/crm/src/styles apps/crm/src/main.tsx apps/crm/src/__tests__/vidroContracts.test.ts
+git add apps/crm/src/components/ui apps/crm/src/pages/arquivos apps/crm/src/pages/ideias apps/crm/src/hooks apps/crm/src/components/layout apps/crm/src/styles apps/crm/src/main.tsx apps/crm/src/__tests__/vidroContracts.test.ts
 git commit -m "feat(crm): Vidro body skin scaffold: primitive hooks, tokens, family files, sidebar default
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -628,37 +636,42 @@ import { expect } from 'vitest';
 
 export function loadFamily(name: string) {
   const root = postcss.parse(readFileSync(`apps/crm/src/styles/vidro-body/${name}.css`, 'utf8'));
-  const decl = (selectorPart: string, prop: string): string[] => {
+  const decl = (parts: string | string[], prop: string): string[] => {
+    const ps = Array.isArray(parts) ? parts : [parts];
     const out: string[] = [];
     root.walkRules((r: Rule) => {
-      if (!r.selectors.some((s) => s.includes(selectorPart))) return;
+      if (!r.selectors.some((s) => ps.every((p) => s.includes(p)))) return;
       r.walkDecls(prop, (d) => {
         out.push(d.value);
       });
     });
     return out;
   };
-  const hasSelector = (part: string) => {
+  // A selector matches when it contains EVERY part (in any order). This is what makes :is() groupings
+  // testable: `:is(.a, .b):is(:hover, [data-state='open'])` satisfies hasAll(['.b', ':hover']).
+  const hasAll = (parts: string | string[]) => {
+    const ps = Array.isArray(parts) ? parts : [parts];
     let found = false;
     root.walkRules((r) => {
-      if (r.selectors.some((s) => s.includes(part))) found = true;
+      if (r.selectors.some((s) => ps.every((p) => s.includes(p)))) found = true;
     });
     return found;
   };
-  return { root, decl, hasSelector };
+  return { root, decl, hasAll };
 }
 
 export function expectStates(
-  hasSelector: (p: string) => boolean,
+  hasAll: (p: string[]) => boolean,
   hook: string,
   states = [':hover', ':focus-visible', ':disabled'],
 ) {
-  for (const st of states) expect(hasSelector(`${hook}${st}`) || hasSelector(`${hook}):is(`), `${hook}${st}`).toBe(true);
+  for (const st of states) expect(hasAll([hook, st]), `${hook} ${st}`).toBe(true);
 }
 ```
 
-A family that uses `:is(...)` groupings may assert the state on the grouped selector string instead.
-Make the assertion match how the file is written; the point is that every state exists.
+`decl` and `hasAll` take `string | string[]`; all parts must appear in one selector. Write every
+compound assertion as an array of parts, never as a concatenated selector string, so the CSS can use
+`:is()` groupings freely.
 
 ### Task 2: Buttons (`buttons.css`)
 
@@ -672,15 +685,15 @@ Make the assertion match how the file is written; the point is that every state 
 - Consumes: the Task 1 hooks (`data-variant`, `data-size`, `vidro-cal-nav`, `vidro-cal-day`) and the
   tokens `--vd-cta`, `--vd-cta-fg`, `--vd-cta-hover`, `--vd-cap`, `--vd-cap-bd`, `--vd-fill`,
   `--vd-tg-bad`, `--vd-tg-bad-bg`, `--vd-group`.
-- Produces: the classes `vidro-board-action`, `vidro-board-action--complete`,
-  `vidro-board-action--revert` (rendered only under Vidro).
+- Produces: the class `vidro-board-action` (rendered only under Vidro). `--complete` / `--revert`
+  CSS may stay for parity with the spec but has no markup.
 
 - [ ] **Step 1: Failing test.**
 
 ```ts
 import { describe, expect, it } from 'vitest';
 // paste loadFamily + expectStates here
-const { decl, hasSelector } = loadFamily('buttons');
+const { decl, hasAll } = loadFamily('buttons');
 describe('buttons.css', () => {
   it('CTA: ink pill', () => {
     expect(decl("[data-variant='default']", 'background').join()).toContain('var(--vd-cta)');
@@ -694,20 +707,21 @@ describe('buttons.css', () => {
   });
   it('restates hover, focus-visible, disabled on every look', () => {
     for (const h of ["[data-variant='default']", "[data-variant='outline']", "[data-variant='ghost']", "[data-variant='destructive']", '.btn-primary', '.btn-secondary', '.post-editor-btn', '.vidro-cal-day']) {
-      expectStates(hasSelector, h);
+      expectStates(hasAll, h);
     }
   });
   it('keeps the toolbar button margin rule out of this file', () => {
-    expect(hasSelector('.sidebar')).toBe(false);
+    expect(hasAll('.sidebar')).toBe(false);
+    expect(hasAll('.vidro-capsule')).toBe(false);
   });
 });
 ```
 
   Add `vitest` cases to `WorkflowCard` / `PostProcessCard` tests:
-  - With the flag off (default mocks), the action button has `btn-edit-workflow` (or
-    `btn-complete-etapa` / `btn-revert-etapa`).
-  - Inside `VidroToolbarHarness` (`apps/crm/src/test/vidroToolbar.tsx`, which sets `vidroShell`), it
-    has `vidro-board-action` (plus `--complete` / `--revert`) and **not** the `!important` class.
+  - With the flag off (default mocks), the action buttons have `btn-edit-workflow` (plus their sibling
+    class `board-card-kebab` / `btn-forward-etapa`).
+  - Inside `VidroToolbarHarness` (`apps/crm/src/test/vidroToolbar.tsx`, which sets `vidroShell`), they
+    have `vidro-board-action` and the sibling class, and **not** `btn-edit-workflow` (an `!important` class).
   - Same pattern for `date-time-picker`: under the harness, the trigger has no inline `borderRadius`;
     without it, the inline style is unchanged.
 
@@ -717,9 +731,8 @@ describe('buttons.css', () => {
 - [ ] **Step 3: Implement `buttons.css`.**
   - **Scope:**
     - page-body rules use `PB`;
-    - add the same selectors under
-      `html[data-look='vidro'] body:has(.app-container) :is([data-slot='dialog-content'], [data-slot='alert-dialog-content'], [data-slot='sheet-content'], [data-slot='popover-content'])`
-      so buttons inside overlays match;
+    - add the same selectors under `OC` (Global Constraints) so buttons inside overlays and the
+      createPortal'd comment/mention popovers match;
     - **do not** style anything inside `.vidro-capsule` or `.sidebar`.
   - **Toolbar check:** `.vidro-toolbar [data-slot='button']` keeps `margin-bottom: 0` from `vidro.css`.
     Its CTA must be 36px tall, which matches.
@@ -771,31 +784,34 @@ describe('buttons.css', () => {
     - resting: the CTA geometry with `background: var(--vd-tg-bad-bg); color: var(--vd-tg-bad); box-shadow: none`;
     - hover: `background: var(--danger-text); color: #fff`, plus the dark mirror with `var(--danger)`;
     - `.btn-danger-outline`: `background: transparent; border: 1px solid var(--vd-tg-bad)`.
-  - **Day picker:**
-    - selected (`.vidro-cal-day[aria-selected='true']`, or DayPicker's selected modifier class in
-      `calendar.tsx`'s `classNames.selected` applied to the day cell, so use `:is([aria-selected='true'], .rdp-selected *)`
-      after checking the real DOM in `calendar.tsx`):
-      `background: var(--vd-cta); color: var(--vd-cta-fg)`;
-    - today (`classNames.today` cell): `box-shadow: inset 0 0 0 2px #ffbf30`;
-    - outside: `color: var(--vd-txt3)`.
+  - **Day picker** (react-day-picker 9.14: the modifiers sit on the `td`, not on `day_button`):
+    - selected `td[data-selected='true'] > .vidro-cal-day`: `background: var(--vd-cta); color: var(--vd-cta-fg)`;
+    - today `td[data-today='true'] > .vidro-cal-day`: `box-shadow: inset 0 0 0 2px #ffbf30`;
+    - outside `td[data-outside='true'] > .vidro-cal-day`: `color: var(--vd-txt3)`;
+    - `td:is([data-selected='true'], [data-today='true'])`: `background: transparent` (removes the
+      Tailwind `bg-primary`/`bg-accent` square behind the circle).
+    - Duplicate the day-picker rules under `PO [data-slot='popover-content']` (date pickers are portaled).
   - **Sizes:**
     - `[data-size='sm']`: `height: 30px; font-size: 12px; padding: 0 12px`;
     - `[data-size='lg']`: `height: 40px`;
-    - the `[data-size='icon']` circle as above.
+    - `[data-size='icon']` (every variant, not only ghost): the 32px circle with `padding: 0`. The two
+      toolbar icon buttons are restored to 36px in compositions.css (Task 11).
   - **Dashed adders** (`.board-add-card`, `.drawer-add-post-btn`):
     `border-radius: 12px; border-color: var(--vd-sep)`, and hover `background: var(--vd-fill)`.
-  - **Parent-scoped buttons:**
-    - Run `grep -nE '^[^/]*[a-z0-9_-]+\s+button\s*[{,:]' apps/crm/style.css` and add every desktop
-      body result (skip `.sidebar`, `.topbar`, `phone-`, `hub-`, `lp`) to the ghost selector list as
-      `.<parent> button`;
-    - list them in the task report.
+  - **Parent-scoped buttons** go in the ghost list, exactly these: `.calendar-nav button`,
+    `.agenda-mini td button`, `.latest-instagram-posts__pagination button`, `.board-card-actions button`,
+    `.drawer-post-field--platform button`, plus the two cliente-card ones from spec §1.
+  - **Dead selectors:** drop `.sidebar-action-btn` (no usage) and `.user-dropdown-item` (sidebar user
+    menu, outside `.vidro-panel`) from the spec §1 ghost list.
 
 - [ ] **Step 4: TSX escapes.**
   - `WorkflowCard.tsx` / `PostProcessCard.tsx`: `const vidroShell = useVidroShell();` (import from
     `@/components/layout/PageToolbarContext`). For each action button:
-    `className={vidroShell ? 'vidro-board-action vidro-board-action--complete' : 'btn-complete-etapa'}`.
-    Map `btn-edit-workflow` to `vidro-board-action`, `btn-revert-etapa` to `vidro-board-action--revert`
-    and `btn-complete-etapa` to `--complete`, keeping any other classes the element already has.
+    swap only `btn-edit-workflow` → `vidro-board-action`, keeping the sibling classes
+    (`board-card-kebab`, `btn-forward-etapa`). Call sites: `WorkflowCard.tsx:665,744`,
+    `PostProcessCard.tsx:438,519`. `btn-complete-etapa` / `btn-revert-etapa` have no call sites; leave them.
+  - The ghost rule must set `border: 0` and `padding` so `.board-card-actions button` (style.css:7202)
+    loses, and must not change its `flex`.
   - `date-time-picker.tsx:156-166`: `style={vidroShell ? undefined : { …existing… }}`.
 
 - [ ] **Step 5: Run, expect PASS** (the Step 2 command + `vidroContracts.test.ts`). Then eslint and
@@ -813,7 +829,7 @@ nothing.
 - [ ] **Step 1: Failing test.**
 
 ```ts
-const { decl, hasSelector } = loadFamily('tables');
+const { decl, hasAll } = loadFamily('tables');
 describe('tables.css', () => {
   it('header cells: 11px/600 txt3, no uppercase', () => {
     expect(decl("[data-slot='table-head']", 'font-size')).toContain('11px');
@@ -825,13 +841,13 @@ describe('tables.css', () => {
     expect(decl("[data-slot='table-cell']", 'border-bottom').join()).toContain('var(--vd-sep)');
   });
   it('row hover, selected and last-row states', () => {
-    expect(hasSelector("[data-slot='table-row']:hover")).toBe(true);
-    expect(hasSelector("[data-state='selected']")).toBe(true);
-    expect(hasSelector(':last-child')).toBe(true);
+    expect(hasAll(["[data-slot='table-row']", ':hover'])).toBe(true);
+    expect(hasAll(["[data-slot='table-row']", "[data-state='selected']"])).toBe(true);
+    expect(hasAll(['tr', ':last-child'])).toBe(true);
   });
   it('list rows', () => {
     for (const c of ['.today-row', '.fila-row', '.config-member-row', '.concluded-wf-row', '.rb-layers-row']) {
-      expect(hasSelector(c), c).toBe(true);
+      expect(hasAll(c), c).toBe(true);
     }
   });
 });
@@ -879,12 +895,12 @@ describe('tables.css', () => {
   html[data-look='vidro'] body:has(.app-container) .vidro-panel :is([data-slot='table-body'], .data-table tbody, [data-slot='table'] tbody) > tr:is(:hover, [data-state='selected']) > td:last-child {
     border-radius: 0 10px 10px 0;
   }
-  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='table-row']:hover {
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='table-row']:is(:hover, [data-state='selected']) {
     background: transparent;
   }
 ```
 
-  The last rule neutralises shadcn's `hover:bg-muted/50` on the `<tr>`, so the rounded cell fill
+  The last rule neutralises shadcn's `hover:bg-muted/50` and `data-[state=selected]:bg-muted` on the `<tr>`, so the rounded cell fill
   shows. List rows (`.today-row`, `.fila-row`, `.config-member-row`, `.concluded-wf-row`,
   `.rb-layers-row`) get `border-radius: 12px; border-color: var(--vd-sep);`, and hover
   `background: var(--vd-fill)`. `.fila-row.is-top` keeps its inset rail (do not set `box-shadow`
@@ -909,7 +925,7 @@ describe('tables.css', () => {
 - [ ] **Step 1: Failing test.**
 
 ```ts
-const { decl, hasSelector } = loadFamily('cards');
+const { decl, hasAll } = loadFamily('cards');
 describe('cards.css', () => {
   it('groups, tiles and inner items', () => {
     expect(decl("[data-slot='card']", 'background').join()).toContain('var(--vd-group)');
@@ -921,7 +937,7 @@ describe('cards.css', () => {
   });
   it('report editor chrome and empty states are covered', () => {
     for (const c of ['.rb-edit-toolbar', '.rb-text-toolbar', '.rb-img-panel', '.rb-layers-rail', '.vidro-empty', '.board-empty', '.drawer-empty', '.cliente-finance-empty']) {
-      expect(hasSelector(c), c).toBe(true);
+      expect(hasAll(c), c).toBe(true);
     }
   });
 });
@@ -946,8 +962,15 @@ describe('cards.css', () => {
     border-radius: 16px;
     box-shadow: none;
   }
-  html[data-look='vidro'] body:has(.app-container) .vidro-panel :is(.config-shell, .post-production, .rb-layers-rail) {
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel :is(.config-shell, .post-production) {
     background: var(--vd-tile);
+    border: 0;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+  /* .rb-layers-rail is position: fixed; the report scrolls under it, so it stays opaque. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-layers-rail {
+    background: var(--vd-solid);
     border: 0;
     border-radius: 16px;
     box-shadow: none;
@@ -987,7 +1010,8 @@ describe('cards.css', () => {
     - Run `grep -nE '^\.analytics-[a-z_-]+\s*\{' apps/crm/style.css`.
     - For each class whose rule sets a `background` plus a `border` or `border-radius`, assign it to
       the group list (bordered card-like) or the tile list (filled panel-like).
-    - List each decision in the report.
+    - List each decision in the report. Tests pin only the named classes; per-agent variance on the
+      rest is accepted and reviewed in Task 11's sweep.
     - `.latest-instagram-posts` and `.analytics-callout__item` are tiles.
   - **Empty states:**
     - `:is(.board-empty, .drawer-empty)`: `font-size: 13px; color: var(--vd-txt3); opacity: 1; font-family: inherit; letter-spacing: 0;`.
@@ -1013,7 +1037,7 @@ describe('cards.css', () => {
 - [ ] **Step 1: Failing test.**
 
 ```ts
-const { decl, hasSelector } = loadFamily('badges');
+const { decl, hasAll } = loadFamily('badges');
 describe('badges.css', () => {
   it('tg geometry', () => {
     expect(decl('.badge', 'font-size')).toContain('11px');
@@ -1028,7 +1052,7 @@ describe('badges.css', () => {
   });
   it('geometry-only pills and plain counts', () => {
     for (const c of ['.post-status-chip', '.post-tipo-badge', '.board-card-deadline', '.post-fluxo-tag', '.fila-pill', '.auto-schedule-badge', '.event-pill']) {
-      expect(hasSelector(c), c).toBe(true);
+      expect(hasAll(c), c).toBe(true);
     }
     expect(decl('.board-column-count', 'background').join()).toMatch(/transparent|none/);
   });
@@ -1071,35 +1095,35 @@ describe('badges.css', () => {
 - [ ] **Step 1: Failing test.**
 
 ```ts
-const { decl, hasSelector } = loadFamily('forms');
+const { decl, hasAll } = loadFamily('forms');
 describe('forms.css', () => {
   it('fields: fill, transparent border, radius 10', () => {
     expect(decl("[data-slot='input']", 'background').join()).toContain('var(--vd-fill)');
     expect(decl("[data-slot='input']", 'border-radius')).toContain('10px');
-    expect(hasSelector("[data-slot='input']:focus-visible") || hasSelector(':focus-visible')).toBe(true);
+    expect(hasAll(["[data-slot='input']", ':focus-visible'])).toBe(true);
   });
   it('select placeholder and search pill', () => {
-    expect(hasSelector("[data-slot='select-trigger'][data-placeholder]")).toBe(true);
+    expect(hasAll(["[data-slot='select-trigger']", '[data-placeholder]'])).toBe(true);
     expect(decl("input[type='search']", 'border-radius')).toContain('999px');
   });
   it('checkbox ink and switch geometry', () => {
-    expect(decl("[data-slot='checkbox'][data-state='checked']", 'background').join()).toContain('var(--vd-cta)');
+    expect(decl(["[data-slot='checkbox']", "[data-state='checked']"], 'background').join()).toContain('var(--vd-cta)');
     expect(decl("[data-slot='switch']", 'width')).toContain('38px');
-    expect(decl("[data-slot='switch'][data-state='checked']", 'background').join()).toContain('var(--vd-switch-on)');
+    expect(decl(["[data-slot='switch']", "[data-state='checked']"], 'background').join()).toContain('var(--vd-switch-on)');
     expect(decl("[data-slot='switch-thumb']", 'width')).toContain('18px');
   });
   it('restates disabled and focus on switch and checkbox', () => {
     for (const h of ["[data-slot='switch']", "[data-slot='checkbox']"]) {
-      expect(hasSelector(`${h}:focus-visible`), h).toBe(true);
-      expect(hasSelector(`${h}:disabled`), h).toBe(true);
+      expect(hasAll([h, ':focus-visible']), h).toBe(true);
+      expect(hasAll([h, ':disabled']), h).toBe(true);
     }
   });
 });
 ```
 
 - [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement.** Prefix `PB`, also duplicated under the overlay-content prefix (as in
-  Task 5) so fields inside dialogs match.
+- [ ] **Step 3: Implement.** Prefix `PB`, also duplicated under `OC` (Global Constraints) so fields
+  inside dialogs and the comment popovers match.
   - **Fields:** the spec §5 list, including the raw elements
     `.vidro-panel :is(input:is([type='text'], [type='search'], [type='email'], [type='url'], [type='number'], [type='date'], [type='tel'], :not([type])), select, textarea):not([data-slot])`.
     - Resting:
@@ -1111,7 +1135,7 @@ describe('forms.css', () => {
       `background: var(--vd-group); border-color: var(--vd-sep); outline: none; box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.45);`.
     - `:disabled`: `opacity: 0.5; cursor: not-allowed`.
     - `[aria-invalid='true']`: `border-color: var(--vd-tg-bad)`.
-  - **Search:** `input[type='search']` and `.search-input-pill` get
+  - **Search:** `input[type='search']` gets
     `border-radius: 999px; height: 30px; padding: 0 12px;`. The `!rounded-full` call sites already match.
   - **Select trigger chevron:** `[data-slot='select-trigger'] svg { color: var(--vd-txt3); opacity: 1; }`.
   - **Checkbox:**
@@ -1140,27 +1164,32 @@ describe('forms.css', () => {
 - [ ] **Step 1: Failing test.**
 
 ```ts
-const { decl, hasSelector } = loadFamily('controls');
+const { decl, hasAll } = loadFamily('controls');
 describe('controls.css', () => {
   it('segmented capsule for vista-tabs, icon-seg, toggle-group', () => {
     expect(decl('.vista-tabs', 'border-radius')).toContain('999px');
-    expect(decl("[data-slot='toggle-group-item'][data-state='on']", 'background').join()).toContain('var(--vd-sel)');
-    expect(hasSelector('.icon-seg__item')).toBe(true);
+    expect(decl(["[data-slot='toggle-group']:not(.agenda-segmented) > [data-slot='toggle-group-item']", "[data-state='on']"], 'background').join()).toContain('var(--vd-sel)');
+    expect(hasAll('.icon-seg__item')).toBe(true);
+    // The shell owns .agenda-segmented; no item rule may reach its items.
+    loadFamily('controls').root.walkRules((r) => {
+      for (const sel of r.selectors) {
+        if (sel.includes("[data-slot='toggle-group-item']")) expect(sel, sel).toContain(':not(.agenda-segmented)');
+      }
+    });
   });
   it('chips', () => {
     expect(decl('.today-chip', 'height')).toContain('28px');
-    expect(hasSelector(".today-chip[aria-pressed='true']")).toBe(true);
-    expect(hasSelector('.platform-chip--on')).toBe(true);
+    expect(hasAll(['.today-chip', "[aria-pressed='true']"])).toBe(true);
+    expect(hasAll('.platform-chip--on')).toBe(true);
   });
   it('side navs take the quiet fill', () => {
-    expect(decl('.cliente-tabs-nav__item.active', 'background').join() + decl('.config-nav-item.active', 'background').join()).toContain('var(--vd-fill)');
+    expect(decl(['.cliente-tabs-nav__item', '.active'], 'background').join()).toContain('var(--vd-fill)');
+    expect(decl(['.config-nav-item', '.active'], 'background').join()).toContain('var(--vd-fill)');
   });
 });
 ```
 
-  Before writing the side-nav assertion, check the real active-state selector of `.cliente-tabs-nav__item`
-  and `.config-nav-item` in `style.css` (`grep -n "cliente-tabs-nav__item\|config-nav-item" apps/crm/style.css`).
-  Use it, whether it is `.active`, `[aria-current]` or `--active`.
+  Both side navs mark the active item with `.active` (verified in `style.css`).
 
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement** (prefix `PB`):
@@ -1172,8 +1201,13 @@ describe('controls.css', () => {
     - Focus ring and disabled as usual.
     - Underline pseudo-elements on `.vista-tab::after`: `display: none`.
     - `.vista-tab--add` and `.vista-tab-more` are ghost: transparent background, hover fill.
-    - Exclude `.agenda-segmented`, which `vidro.css` already covers:
-      `[data-slot='toggle-group']:not(.agenda-segmented)`.
+    - Exclude `.agenda-segmented`, which `vidro.css` already covers. Write **every** toggle-group rule,
+      track and item, as `[data-slot='toggle-group']:not(.agenda-segmented)` /
+      `[data-slot='toggle-group']:not(.agenda-segmented) > [data-slot='toggle-group-item']` (Radix renders
+      items as direct children). Otherwise the item rule at (0,5,2) beats vidro.css's
+      `.agenda-segmented__item` (0,3,1).
+    - Duplicate the segmented and chip rules under `OC` (ToggleGroups in `AutomationFormDialog` and
+      `EventoRapidoCard` are portaled).
   - **Chips** (spec §6 list): `height: 28px; border-radius: 999px; background: var(--vd-fill); border: 0; font-size: 12px; font-weight: 500; padding: 0 12px; color: var(--text-main); box-shadow: none;`.
     - `:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on)`: `background: var(--vd-sel); color: var(--vd-sel-fg);`.
     - `.today-chip.is-danger[aria-pressed='true']`: keep the danger colour,
@@ -1202,7 +1236,7 @@ describe('boards.css', () => {
   });
   it('calendar cells', () => {
     expect(decl('.calendar-day', 'border-radius')).toContain('12px');
-    expect(decl('.calendar-day.today', 'border').join() + decl('.calendar-day.today', 'border-color').join()).toContain('#ffbf30');
+    expect(decl(['.calendar-day', '.today'], 'border').join() + decl(['.calendar-day', '.today'], 'border-color').join()).toContain('#ffbf30');
     expect(decl('.agenda-fc', '--fc-border-color').join()).toContain('var(--vd-sep)');
   });
 });
@@ -1240,32 +1274,35 @@ describe('boards.css', () => {
 - [ ] **Step 1: Failing test.**
 
 ```ts
-const { decl, hasSelector } = loadFamily('overlays');
+const { decl, hasAll } = loadFamily('overlays');
 describe('overlays.css', () => {
   it('dialogs: panel glass, radius 20, fullscreen excluded', () => {
     expect(decl("[data-slot='dialog-content']", 'border-radius')).toContain('20px');
-    expect(hasSelector(":not([data-layout='fullscreen'])")).toBe(true);
+    expect(hasAll(":not([data-layout='fullscreen'])")).toBe(true);
     expect(decl('.drawer-panel', 'background').join()).toContain('var(--vd-panel)');
   });
   it('menus and items', () => {
     expect(decl("[data-slot='dropdown-menu-content']", 'background').join()).toContain('var(--vd-menu)');
-    expect(hasSelector("[data-slot='dropdown-menu-sub-trigger'][data-state='open']")).toBe(true);
-    expect(hasSelector('[data-highlighted]')).toBe(true);
-    expect(hasSelector('[data-disabled]')).toBe(true);
+    expect(hasAll(["[data-slot='dropdown-menu-sub-trigger']", "[data-state='open']"])).toBe(true);
+    expect(hasAll('[data-highlighted]')).toBe(true);
+    expect(hasAll('[data-disabled]')).toBe(true);
+    expect(decl('.callout-emoji-picker', 'background').join()).toContain('var(--vd-solid)');
   });
   it('toasts and fallbacks', () => {
-    expect(hasSelector('[data-sonner-toast]')).toBe(true);
-    let fallback = false;
+    expect(hasAll('[data-sonner-toast]')).toBe(true);
+    let reduced = false;
+    let supports = false;
     loadFamily('overlays').root.walkAtRules((a) => {
-      if (/prefers-reduced-transparency|supports not/.test(a.params)) fallback = true;
+      if (a.name === 'media' && a.params.includes('prefers-reduced-transparency')) reduced = true;
+      if (a.name === 'supports' && a.params.startsWith('not')) supports = true;
     });
-    expect(fallback).toBe(true);
+    expect(reduced && supports).toBe(true);
   });
 });
 ```
 
   For the three popovers, add a test: under `VidroToolbarHarness` the content has no inline
-  `background` / `borderColor` / `borderRadius`; without it they are unchanged.
+  `background` / `borderColor` / `borderRadius` / `boxShadow`; without it they are unchanged.
 
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement** (prefix `PO`; `.drawer-panel` / `.drawer-overlay` also under `PO`, since a
@@ -1304,8 +1341,10 @@ describe('overlays.css', () => {
     `@media (min-width: 1101px) and (prefers-reduced-transparency: reduce)` and a separate
     `@supports not (backdrop-filter: blur(1px)) { @media (min-width: 1101px) { … } }`, the dialog,
     sheet, menu and toast selectors get `background: var(--vd-solid); backdrop-filter: none;`.
+  - **Emoji picker:** `.callout-emoji-picker` is `position: fixed` with `background: var(--surface-1)`, which
+    the dark remap makes translucent: `PO .callout-emoji-picker { background: var(--vd-solid); }`.
 - [ ] **Step 4: TSX escapes.** In the three popovers, drop the inline `background` / `borderColor` /
-  `borderRadius` while `useVidroShell()` is true, and keep the other inline properties.
+  `borderRadius` / `boxShadow` while `useVidroShell()` is true, and keep the other inline properties.
   `useVidroShell` reads context, so it works inside the portal; this was verified in the shell review.
 - [ ] **Step 5: Run, expect PASS.** Lint and format.
 - [ ] **Step 6: Commit** `feat(crm): Vidro body skin: overlays, menus, toasts`.
@@ -1318,7 +1357,9 @@ describe('overlays.css', () => {
   `pages/mensagens/components/__tests__/ConversationThread.vidro.test.tsx` with the suite's mocks).
 
 **Interfaces:** Produces the classes `vidro-bubble`, `vidro-bubble--me` and `vidro-bubble--them`.
-They are always rendered (inert, with no CSS outside the vidro files).
+They are always rendered (inert, with no CSS outside the vidro files). The bubble also carries an
+inline `style={{ background: daEquipe ? 'var(--surface-hover)' : 'var(--card-bg)', boxShadow: 'inset 0 0 0 1px var(--border-color)' }}`
+(`ConversationThread.tsx:146-150`), which would beat any CSS: it is an escape like Tasks 2/4/9.
 
 - [ ] **Step 1: Failing test.**
 
@@ -1336,11 +1377,15 @@ describe('chat.css', () => {
 
   TSX test: render a thread with one own and one received message. The own bubble element has
   `vidro-bubble vidro-bubble--me`; the other has `--them`; the existing Tailwind classes are unchanged.
+  Under `VidroToolbarHarness` the bubbles have no inline `background` / `boxShadow`; without it the inline
+  style is unchanged.
 
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement.**
   - In `ConversationThread.tsx` (~146), append ` vidro-bubble vidro-bubble--me` / `--them` to the
-    bubble's className by message ownership, keeping everything else.
+    bubble's className by message ownership (`daEquipe` = own team message = `--me`), keeping everything
+    else. Gate the inline style: `style={vidroShell ? undefined : { …existing… }}` with
+    `const vidroShell = useVidroShell();` from `@/components/layout/PageToolbarContext`.
   - CSS (prefix `PB`):
     - `.vidro-bubble`: `border-radius: 18px; padding: 9px 13px; font-size: 13px; line-height: 1.4;`.
     - `--me`: `background: var(--vd-sel); color: var(--vd-sel-fg); border-bottom-right-radius: 6px;`.
@@ -1367,20 +1412,23 @@ describe('chat.css', () => {
 - [ ] **Step 1: Failing test.**
 
 ```ts
-const { hasSelector } = loadFamily('compositions');
+const { hasAll } = loadFamily('compositions');
 describe('compositions.css', () => {
   it('tables inside cards, buttons in rows, badges in kanban, cards in dialogs', () => {
-    expect(hasSelector(".card:has(> [data-slot='table-container'])")).toBe(true);
-    expect(hasSelector("[data-slot='table-cell'] [data-slot='button']")).toBe(true);
-    expect(hasSelector('.board-card .badge')).toBe(true);
-    expect(hasSelector("[data-slot='dialog-content'] [data-slot='card']")).toBe(true);
+    expect(hasAll(["[data-slot='card']", ":has(> [data-slot='table-container'])"])).toBe(true);
+    expect(hasAll(["[data-slot='table-cell']", "[data-slot='button']"])).toBe(true);
+    expect(hasAll(['.board-card', '.badge'])).toBe(true);
+    expect(hasAll(["[data-slot='dialog-content']", "[data-slot='card']"])).toBe(true);
+    expect(hasAll(['.vidro-toolbar', '.cliente-detalhe-header__back'])).toBe(true);
   });
 });
 ```
 
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement the compositions.**
-  - `PB .card:is(:has(> [data-slot='table-container']), :has(.data-table))`: `padding: 4px`.
+  - `PB :is(.card, [data-slot='card']):is(:has(> [data-slot='table-container']), :has(.data-table))`: `padding: 4px`.
+  - Shell toolbar icon buttons keep their 36px (buttons.css's `[data-size='icon']` 32px circle would
+    otherwise shrink them): `PB .vidro-toolbar :is(.cliente-detalhe-header__back, .cliente-avatar-upload__trigger) { width: 36px; height: 36px; padding: 0; }`.
   - `PB [data-slot='table-cell'] [data-slot='button'][data-size='icon']`: `width: 28px; height: 28px`.
   - `PB :is(.board-card, .board-post-card) .badge`: `font-size: 10px; padding: 1px 7px`.
   - `PO [data-slot='dialog-content'] [data-slot='card']`: `background: var(--vd-tile); border: 0`.
@@ -1432,9 +1480,8 @@ describe('compositions.css', () => {
   - Verification → Task 11.
   - Residuals need no task.
 - **Interface names used across tasks:**
-  - Classes: `vidro-board-action{,--complete,--revert}`, `vidro-empty`, `vidro-bubble{,--me,--them}`,
+  - Classes: `vidro-board-action`, `vidro-empty`, `vidro-bubble{,--me,--them}`,
     `vidro-cal-nav`, `vidro-cal-day`.
-  - `useVidro().isResolved`.
   - The `data-slot` values in the spec table.
   - `data-layout='fullscreen'|'default'`.
   - Each name is defined in exactly one task.
