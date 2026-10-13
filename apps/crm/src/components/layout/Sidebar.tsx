@@ -310,6 +310,19 @@ export default function Sidebar({
     );
   };
 
+  const pinButton = (
+    <button
+      type="button"
+      className="sidebar-pin-btn"
+      onClick={onTogglePinned}
+      aria-pressed={pinned}
+      aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+      title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+    >
+      <i className="ph ph-sidebar-simple" />
+    </button>
+  );
+
   return (
     <nav
       className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}${isRail ? ' sidebar--rail' : ''}${isOverlay ? ' sidebar--overlay' : ''}`}
@@ -322,18 +335,22 @@ export default function Sidebar({
       <div className="sidebar-wrapper">
         {vidroShell && (
           <div className="vidro-sidebar-head">
-            <Link
-              to="/dashboard"
-              className="vidro-sidebar-logo"
-              aria-label="Mesaas, ir para o início"
-            >
-              <img
-                className="vidro-sidebar-wordmark"
-                src={isDark ? '/logo-white.svg' : '/logo-black.svg'}
-                alt=""
-              />
-              <img className="vidro-sidebar-mark" src="/icon.svg" alt="" />
-            </Link>
+            {/* Logo and the open/close toggle on the first row, workspace and plan under it. */}
+            <div className="vidro-sidebar-head-row">
+              <Link
+                to="/dashboard"
+                className="vidro-sidebar-logo"
+                aria-label="Mesaas, ir para o início"
+              >
+                <img
+                  className="vidro-sidebar-wordmark"
+                  src={isDark ? '/logo-white.svg' : '/logo-black.svg'}
+                  alt=""
+                />
+                <img className="vidro-sidebar-mark" src="/icon.svg" alt="" />
+              </Link>
+              {collapsible && pinButton}
+            </div>
             {(activeWorkspaceName || planName) && (
               <div className="vidro-sidebar-ws">
                 {activeWorkspaceName && (
@@ -344,20 +361,7 @@ export default function Sidebar({
             )}
           </div>
         )}
-        {collapsible && (
-          <div className="sidebar-pin-row">
-            <button
-              type="button"
-              className="sidebar-pin-btn"
-              onClick={onTogglePinned}
-              aria-pressed={pinned}
-              aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
-              title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
-            >
-              <i className="ph ph-sidebar-simple" />
-            </button>
-          </div>
-        )}
+        {collapsible && !vidroShell && <div className="sidebar-pin-row">{pinButton}</div>}
         {/* Closing the palette removes its overlay without a mouseleave reaching the nav, so a
           hover-expanded rail would stay open over the content: collapse it on close. */}
         {vidroShell && <GlobalSearchTrigger variant="sidebar" onClose={handleMouseLeave} />}

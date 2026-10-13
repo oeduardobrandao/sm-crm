@@ -525,7 +525,17 @@ describe('Sidebar', () => {
 
       expect(await screen.findByText('Agência Norte')).toBeInTheDocument();
       expect(screen.getByText('Pro')).toBeInTheDocument();
-      expect(document.querySelector('.vidro-sidebar-head')).not.toBeNull();
+      const head = document.querySelector('.vidro-sidebar-head')!;
+      expect(head).not.toBeNull();
+
+      // Logo and the open/close toggle share the first row; workspace and plan sit under it.
+      const row = head.querySelector('.vidro-sidebar-head-row')!;
+      expect(row.querySelector('.vidro-sidebar-logo')).not.toBeNull();
+      expect(row.querySelector('.sidebar-pin-btn')).not.toBeNull();
+      expect(row.querySelector('.vidro-sidebar-ws')).toBeNull();
+      expect(head.lastElementChild).toHaveClass('vidro-sidebar-ws');
+      expect(screen.getAllByRole('button', { name: /menu lateral/ })).toHaveLength(1);
+      expect(document.querySelector('.sidebar-pin-row')).toBeNull();
 
       // One workspace: the account menu still has no switcher section.
       fireEvent.click(screen.getByText('Ana Maria'));
@@ -551,6 +561,7 @@ describe('Sidebar', () => {
       // The active workspace's name shows only in the account-menu switcher.
       expect(screen.getAllByText('Agência Norte')).toHaveLength(1);
       expect(document.querySelector('.vidro-sidebar-head')).toBeNull();
+      expect(document.querySelector('.sidebar-pin-row .sidebar-pin-btn')).not.toBeNull();
       expect(screen.queryByText('Pro')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Buscar' })).not.toBeInTheDocument();
     });
