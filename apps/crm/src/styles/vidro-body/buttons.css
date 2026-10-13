@@ -693,6 +693,54 @@
     color: var(--vd-txt3);
   }
 
+  /* A muted ghost Button darkens under the pointer, as shadcn's hover:text-accent-foreground did
+     (the muted rule above out-ranks that utility). Task 11. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='ghost'].text-muted-foreground:is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='ghost'].text-muted-foreground:is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']) {
+    color: var(--text-main);
+  }
+
+  /* Kanban card footer actions keep the classic muted icon and darken on hover (the ghost list paints
+     them color: inherit, i.e. full ink). The forward button's inline green still wins. Task 11. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-card-actions
+    button:not(.vidro-board-action--complete, .vidro-board-action--revert) {
+    color: var(--vd-icon);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-card-actions
+    button:not(.vidro-board-action--complete, .vidro-board-action--revert):is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']) {
+    color: var(--text-main);
+  }
+
   /* Outline toggles in their on state take the selected fill. */
   html[data-look='vidro']
     body:has(.app-container)
@@ -1442,11 +1490,12 @@
     background: transparent;
   }
 
-  /* Range middle: a soft band on the cell, no ink circle. */
+  /* Range middle: a soft band on the cell, no ink circle. Keyed on the inert vidro-cal-range-middle class
+     calendar.tsx adds to DayPicker's range_middle modifier (Task 11), not on a Tailwind token. */
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    td[data-selected='true'][class~='aria-selected:bg-accent']:has(> .vidro-cal-day),
+    td.vidro-cal-range-middle[data-selected='true']:has(> .vidro-cal-day),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -1458,14 +1507,14 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    td[data-selected='true'][class~='aria-selected:bg-accent']:has(> .vidro-cal-day) {
+    td.vidro-cal-range-middle[data-selected='true']:has(> .vidro-cal-day) {
     background: var(--vd-fill);
   }
 
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    td[data-selected='true'][class~='aria-selected:bg-accent']
+    td.vidro-cal-range-middle[data-selected='true']
     > .vidro-cal-day,
   html[data-look='vidro']
     body:has(.app-container)
@@ -1478,7 +1527,7 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    td[data-selected='true'][class~='aria-selected:bg-accent']
+    td.vidro-cal-range-middle[data-selected='true']
     > .vidro-cal-day {
     background: transparent;
     color: var(--text-main);
@@ -1487,7 +1536,7 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    td[data-selected='true'][class~='aria-selected:bg-accent']
+    td.vidro-cal-range-middle[data-selected='true']
     > .vidro-cal-day:is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
   html[data-look='vidro']
     body:has(.app-container)
@@ -1500,7 +1549,7 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    td[data-selected='true'][class~='aria-selected:bg-accent']
+    td.vidro-cal-range-middle[data-selected='true']
     > .vidro-cal-day:is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
     background: var(--vd-fill);
     color: var(--text-main);

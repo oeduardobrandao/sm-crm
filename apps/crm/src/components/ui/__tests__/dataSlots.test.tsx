@@ -157,4 +157,21 @@ describe('vidro body hooks', () => {
     expect(container.querySelectorAll('.vidro-cal-day').length).toBeGreaterThan(27);
     expect(container.querySelector('.vidro-cal-day')?.tagName).toBe('BUTTON');
   });
+
+  it('marks range-middle days with the inert vidro-cal-range-middle class, next to the classic tokens', () => {
+    const { container } = render(
+      <Calendar
+        mode="range"
+        defaultMonth={new Date(2026, 9, 1)}
+        selected={{ from: new Date(2026, 9, 5), to: new Date(2026, 9, 9) }}
+      />,
+    );
+    const middles = container.querySelectorAll('.vidro-cal-range-middle');
+    expect(middles).toHaveLength(3);
+    for (const td of middles) {
+      expect(td.className).toContain(
+        'aria-selected:bg-accent aria-selected:text-accent-foreground',
+      );
+    }
+  });
 });

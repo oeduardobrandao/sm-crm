@@ -88,6 +88,7 @@ export function WorkflowCard({
   const navigate = useNavigate();
   // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
   // vidro-board-action and drop their inline radius/padding, so buttons.css can paint them.
+  // The card root drops its inline padding/radius too, so boards.css's 12px card radius applies.
   const vidroShell = useVidroShell();
   const boardAction = vidroShell ? 'vidro-board-action' : 'btn-edit-workflow';
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
@@ -128,9 +129,9 @@ export function WorkflowCard({
         opacity: isDragOverlay ? 0.85 : 1,
         position: 'relative',
         zIndex: assignDropdownOpen ? 50 : 1,
-        padding: '0.7rem',
+        ...(vidroShell ? null : { padding: '0.7rem' }),
         gap: '0.45rem',
-        borderRadius: '10px',
+        ...(vidroShell ? null : { borderRadius: '10px' }),
       }}
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
     >

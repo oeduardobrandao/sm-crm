@@ -261,7 +261,7 @@ describe('buttons.css fix round 1', () => {
   });
 
   it('paints range middle days as a soft band, not ink circles', () => {
-    const MID = "td[data-selected='true'][class~='aria-selected:bg-accent']";
+    const MID = "td.vidro-cal-range-middle[data-selected='true']";
     expect(declFlat([MID, '> .vidro-cal-day'], 'background')).toContain('transparent');
     expect(declFlat([MID, '> .vidro-cal-day'], 'color')).toContain('var(--text-main)');
     expect(declFlat([MID + ':has(> .vidro-cal-day)'], 'background')).toContain('var(--vd-fill)');
@@ -271,6 +271,15 @@ describe('buttons.css fix round 1', () => {
     // Later than the selected-day ink rule, so the middle wins where both match.
     expect(ruleIndexFlat([MID, '> .vidro-cal-day'])).toBeGreaterThan(
       ruleIndexFlat(["td[data-selected='true'] > .vidro-cal-day"]),
+    );
+  });
+  it('muted ghost Buttons and kanban footer actions darken on hover (Task 11)', () => {
+    expect(decl(["[data-variant='ghost'].text-muted-foreground", ':hover'], 'color')).toContain(
+      'var(--text-main)',
+    );
+    expect(decl(['.board-card-actions', 'button:not('], 'color')).toContain('var(--vd-icon)');
+    expect(decl(['.board-card-actions', 'button:not(', ':hover'], 'color')).toContain(
+      'var(--text-main)',
     );
   });
 });

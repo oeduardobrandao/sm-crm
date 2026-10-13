@@ -811,7 +811,11 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    [data-slot='select-trigger']
+    [data-slot='select-trigger']:where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare'])
+    )
     > svg:last-child,
   html[data-look='vidro']
     body:has(.app-container)
@@ -824,12 +828,17 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    [data-slot='select-trigger']
+    [data-slot='select-trigger']:where(
+      :not(.border-0):not(.agenda-rapido__titulo):not(.rb-editor-title-input):not(
+          .rb-section-input
+        ):not([data-variant='bare'])
+    )
     > svg:last-child {
     color: var(--vd-txt3);
     opacity: 1;
   }
-  /* Fields: hover restates the resting look on the shadcn hooks (no classic hover exists on the class hooks) */
+  /* Fields: hover restates the resting look on the shadcn hooks (no classic hover exists on the class hooks).
+     An open select trigger keeps its focus look (border + ring) under the pointer. */
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
@@ -849,7 +858,9 @@
             .rb-section-input
           ):not([data-variant='bare'])
       )
-    ):hover:not(:disabled):not(:focus):not(:focus-visible):not([aria-invalid='true']),
+    ):hover:not(:disabled):not(:focus):not(:focus-visible):not([aria-invalid='true']):not(
+      [data-state='open']
+    ),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -877,7 +888,9 @@
             .rb-section-input
           ):not([data-variant='bare'])
       )
-    ):hover:not(:disabled):not(:focus):not(:focus-visible):not([aria-invalid='true']) {
+    ):hover:not(:disabled):not(:focus):not(:focus-visible):not([aria-invalid='true']):not(
+      [data-state='open']
+    ) {
     background: var(--vd-fill);
     border-color: transparent;
   }

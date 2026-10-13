@@ -78,6 +78,9 @@
     > tr:is(:hover, [data-state='selected'])
     > td {
     background: var(--vd-fill);
+    /* The pill's rounded corners would bend the separator up at both ends; hide it under the pill
+       (colour only, so the row keeps its height). */
+    border-bottom-color: transparent;
   }
 
   html[data-look='vidro']
@@ -133,5 +136,12 @@
     .vidro-panel
     :is(.today-row, .fila-row, .config-member-row, .concluded-wf-row, .rb-layers-row):hover {
     background: var(--vd-fill);
+  }
+
+  /* .today-row is the one list row that is itself a link (Início "Hoje" and "Minha fila"); it had only
+     the browser's default ring. .fila-row keeps style.css's inset ring (its group clips overflow). */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .today-row:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
   }
 }

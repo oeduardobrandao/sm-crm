@@ -81,4 +81,12 @@ describe('tables.css', () => {
     expect(decl(['.today-row', ':hover'], 'background').join()).toContain('var(--vd-fill)');
     expect(decl('.fila-row', 'box-shadow')).toEqual([]);
   });
+  it('hides the separator under the hover pill and rings the focusable today-row', () => {
+    expect(
+      decl(["tr:is(:hover, [data-state='selected'])", '> td'], 'border-bottom-color'),
+    ).toContain('transparent');
+    expect(decl(['.today-row', ':focus-visible'], 'box-shadow')).toContain(
+      '0 0 0 3px rgba(255, 191, 48, 0.55)',
+    );
+  });
 });

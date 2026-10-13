@@ -150,4 +150,33 @@ describe('WorkflowCard: ações do card sob o Vidro', () => {
     expect(forward.style.marginLeft).toBe('auto');
     expect(forward.style.color).toBe('rgb(62, 207, 142)');
   });
+
+  it('flag desligada: o card mantém o estilo inline, byte a byte', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <WorkflowCard card={card} />
+      </MemoryRouter>,
+    );
+    const root = container.querySelector('.board-card') as HTMLElement;
+    expect(root.getAttribute('style')).toBe(
+      'opacity: 1; position: relative; z-index: 1; padding: 0.7rem; gap: 0.45rem; border-radius: 10px;',
+    );
+  });
+
+  it('Vidro: o card solta padding e raio inline (boards.css pinta 10px 12px e 12px)', () => {
+    const { container } = render(
+      <VidroToolbarHarness>
+        <MemoryRouter>
+          <WorkflowCard card={card} />
+        </MemoryRouter>
+      </VidroToolbarHarness>,
+    );
+    const root = container.querySelector('.board-card') as HTMLElement;
+    expect(root.style.padding).toBe('');
+    expect(root.style.borderRadius).toBe('');
+    expect(root.style.gap).toBe('0.45rem');
+    expect(root.getAttribute('style')).toBe(
+      'opacity: 1; position: relative; z-index: 1; gap: 0.45rem;',
+    );
+  });
 });

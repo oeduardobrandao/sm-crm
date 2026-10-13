@@ -397,7 +397,10 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    .post-fluxo-tag:not(.post-fluxo-tag--avulso):not(.post-fluxo-tag--static):hover,
+    .post-fluxo-tag:not(.post-fluxo-tag--avulso):not(.post-fluxo-tag--static):not(
+      :disabled,
+      [aria-disabled='true']
+    ):hover,
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -409,7 +412,10 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    .post-fluxo-tag:not(.post-fluxo-tag--avulso):not(.post-fluxo-tag--static):hover {
+    .post-fluxo-tag:not(.post-fluxo-tag--avulso):not(.post-fluxo-tag--static):not(
+      :disabled,
+      [aria-disabled='true']
+    ):hover {
     background: var(--surface-3);
   }
 

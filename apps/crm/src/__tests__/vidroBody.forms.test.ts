@@ -123,10 +123,25 @@ describe('forms.css', () => {
     expect(decl("input[type='search']", 'border-radius')).toContain('999px');
     expect(decl("input[type='search']", 'height')).toContain('30px');
     expect(decl("input[type='search']", 'padding')).toContain('0 12px');
-    expect(decl("[data-slot='select-trigger'] > svg:last-child", 'color').join()).toContain(
-      'var(--vd-txt3)',
-    );
-    expect(decl("[data-slot='select-trigger'] > svg:last-child", 'opacity')).toContain('1');
+    const chevron = ["[data-slot='select-trigger']", '> svg:last-child'];
+    expect(decl(chevron, 'color').join()).toContain('var(--vd-txt3)');
+    expect(decl(chevron, 'opacity')).toContain('1');
+    // Bare triggers (border-0, data-variant='bare') keep their own chevron colour.
+    root.walkRules((r) => {
+      for (const sel of r.selectors) {
+        if (sel.includes('> svg:last-child') && sel.includes("[data-slot='select-trigger']"))
+          expect(sel, sel).toContain(':not(.border-0)');
+      }
+    });
+  });
+
+  it('an open select trigger keeps its focus border under the pointer', () => {
+    root.walkRules((r) => {
+      for (const sel of r.selectors) {
+        if (sel.includes(':hover') && sel.includes("[data-slot='select-trigger']"))
+          expect(sel.replace(/\s+/g, ''), sel).toContain(":not([data-state='open'])");
+      }
+    });
   });
 
   it('form-input loses its monospace and letter spacing', () => {
