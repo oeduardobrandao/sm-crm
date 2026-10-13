@@ -83,7 +83,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 10px 10px 4px 16px;
+    padding: 10px 10px 4px 19px;
     min-width: 0;
   }
 
@@ -128,7 +128,6 @@
 
   html[data-look='vidro'] .app-container .vidro-sidebar-logo .vidro-sidebar-mark {
     display: none;
-    height: 22px;
   }
 
   html[data-look='vidro'] .app-container .vidro-sidebar-ws {
@@ -155,21 +154,10 @@
     flex-shrink: 0;
   }
 
-  /* Rail: the mark (public/icon.svg) instead of the wordmark, no workspace text. */
-  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-head {
-    align-items: center;
-    padding: 12px 0 8px;
-  }
-
-  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-head-row {
-    justify-content: center;
-  }
-
-  /* Rail (64px): only the mark. Hovering widens the bar, which brings the toggle back. */
-  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-head .sidebar-pin-btn {
-    display: none;
-  }
-
+  /* Rail (64px): the expanded layout clipped, like the classic rail, so nothing
+     moves when the bar opens. The mark (public/icon.svg) sits where the
+     wordmark's glyph starts, and the toggle and workspace keep their space
+     while hidden; hovering or focusing widens the bar and shows them. */
   html[data-look='vidro']
     .app-container
     .sidebar--rail
@@ -182,8 +170,9 @@
     display: block;
   }
 
+  html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-head .sidebar-pin-btn,
   html[data-look='vidro'] .app-container .sidebar--rail .vidro-sidebar-ws {
-    display: none;
+    visibility: hidden;
   }
 
   html[data-look='vidro'] .app-container .search-trigger--sidebar {
@@ -223,11 +212,7 @@
   }
 
   html[data-look='vidro'] .app-container .sidebar--rail .search-trigger--sidebar {
-    width: 36px;
-    height: 36px;
-    margin: 4px auto 6px;
-    padding: 0;
-    justify-content: center;
+    padding-right: 0;
   }
 
   html[data-look='vidro']
@@ -256,8 +241,7 @@
 
   html[data-look='vidro'] .app-container .sidebar-sub-link {
     min-height: 25px;
-    padding-top: 0;
-    padding-bottom: 0;
+    padding: 0 0.75rem 0 10px;
     border-radius: 9px;
     font-size: 13px;
     color: var(--text-main);
@@ -270,7 +254,6 @@
   html[data-look='vidro'] .app-container .sidebar-sub-link.active {
     background: var(--vd-sel);
     color: var(--vd-sel-fg);
-    box-shadow: 0 4px 12px -4px rgba(18, 21, 26, 0.35);
   }
 
   html[data-look='vidro'] .app-container .sidebar-sub-link.active i {
