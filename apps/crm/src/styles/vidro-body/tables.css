@@ -12,7 +12,8 @@
     .vidro-panel
     :is([data-slot='table'], .data-table) {
     font-size: 13px;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
   }
 
   html[data-look='vidro']
@@ -34,9 +35,24 @@
     body:has(.app-container)
     .vidro-panel
     :is([data-slot='table-cell'], .data-table td, [data-slot='table'] td) {
-    padding: 0 12px;
+    padding: 8px 12px;
     height: 46px;
     border-bottom: 1px solid var(--vd-sep);
+  }
+
+  /* Restores shadcn's pr-0 on checkbox columns (the cell padding above would win). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='table-cell'],
+      [data-slot='table-head'],
+      .data-table th,
+      .data-table td,
+      [data-slot='table'] th,
+      [data-slot='table'] td
+    ):has([role='checkbox']) {
+    padding-right: 0;
   }
 
   html[data-look='vidro']

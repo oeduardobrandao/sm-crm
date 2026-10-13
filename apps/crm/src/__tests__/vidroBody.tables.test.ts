@@ -43,12 +43,25 @@ describe('tables.css', () => {
   it('row hover, selected and last-row states', () => {
     expect(hasAll(["[data-slot='table-row']", ':hover'])).toBe(true);
     expect(hasAll(["[data-slot='table-row']", "[data-state='selected']"])).toBe(true);
-    expect(hasAll(['tr', ':last-child'])).toBe(true);
+    expect(hasAll(['tr:last-child', '> td'])).toBe(true);
+    expect(decl(['tr:last-child', '> td'], 'border-bottom')).toContain('0');
   });
   it('pairs the shadcn Table with the legacy .data-table', () => {
     expect(hasAll(["[data-slot='table']", '.data-table'])).toBe(true);
     expect(hasAll(["[data-slot='table'] th", '.data-table th'])).toBe(true);
     expect(hasAll(["[data-slot='table'] td", '.data-table td'])).toBe(true);
+  });
+  it('tables use separate borders so the rounded hover pill renders', () => {
+    const collapse = decl("[data-slot='table']", 'border-collapse');
+    expect(collapse).toContain('separate');
+    expect(collapse).not.toContain('collapse');
+    expect(decl("[data-slot='table']", 'border-spacing')).toContain('0');
+    expect(decl('td:first-child', 'border-radius')).toContain('10px 0 0 10px');
+    expect(decl('td:last-child', 'border-radius')).toContain('0 10px 10px 0');
+  });
+  it('cell padding breathes vertically and checkbox columns keep padding-right 0', () => {
+    expect(decl("[data-slot='table-cell']", 'padding')).toContain('8px 12px');
+    expect(decl("[role='checkbox']", 'padding-right')).toContain('0');
   });
   it('list rows', () => {
     for (const c of [
@@ -66,6 +79,6 @@ describe('tables.css', () => {
     expect(decl('.today-row', 'border-radius')).toContain('12px');
     expect(decl('.today-row', 'border-color').join()).toContain('var(--vd-sep)');
     expect(decl(['.today-row', ':hover'], 'background').join()).toContain('var(--vd-fill)');
-    expect(decl('.is-top', 'box-shadow')).toEqual([]);
+    expect(decl('.fila-row', 'box-shadow')).toEqual([]);
   });
 });
