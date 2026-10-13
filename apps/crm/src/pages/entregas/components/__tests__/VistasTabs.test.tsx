@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import { VistasTabs } from '../VistasTabs';
 
 const { toastMock } = vi.hoisted(() => ({
@@ -350,5 +351,39 @@ describe('VistasTabs', () => {
     expect(localStorage.getItem(`entregas_saved_views_imported_${CONTA}`)).not.toBeNull();
     // The old key stays (an older build would still read it).
     expect(localStorage.getItem(`entregas_saved_views_${CONTA}`)).not.toBeNull();
+  });
+
+  describe('Vidro capsule hook', () => {
+    const trailing = <input aria-label="Buscar" />;
+
+    it('flag off: no capsule wrapper, tabs and trailing are direct children of the row', async () => {
+      seed([{ name: 'X', query: 'view=list' }]);
+      const { container } = renderTabs({ trailing });
+      await screen.findByText('X');
+      const row = container.querySelector('.vista-tabs')!;
+      expect(container.querySelector('.vista-tabs__group')).toBeNull();
+      expect(row.querySelector(':scope > .vista-tab')).not.toBeNull();
+      expect(row.querySelector(':scope > .ml-auto')).not.toBeNull();
+    });
+
+    it('under the Vidro shell the capsule wraps only the tabs; trailing stays a row item', async () => {
+      seed([{ name: 'X', query: 'view=list' }]);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = render(
+        <QueryClientProvider client={qc}>
+          <VidroToolbarHarness>
+            <VistasTabs contaId={CONTA} currentQuery="" onApply={vi.fn()} trailing={trailing} />
+          </VidroToolbarHarness>
+        </QueryClientProvider>,
+      );
+      await screen.findByText('X');
+      const row = container.querySelector('.vista-tabs')!;
+      const group = row.querySelector(':scope > .vista-tabs__group')!;
+      expect(group).not.toBeNull();
+      expect(group.querySelectorAll(':scope > .vista-tab').length).toBeGreaterThanOrEqual(3);
+      expect(group.querySelector('.ml-auto')).toBeNull();
+      expect(row.querySelector(':scope > .ml-auto')).not.toBeNull();
+      expect(row.querySelector(':scope > .vista-tab')).toBeNull();
+    });
   });
 });

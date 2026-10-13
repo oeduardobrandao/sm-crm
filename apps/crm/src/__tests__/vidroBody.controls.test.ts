@@ -38,14 +38,15 @@ function expectStates(
 const { root, decl, hasAll } = loadFamily('controls');
 const TG_ITEM = [
   "[data-slot='toggle-group']:not(.agenda-segmented)",
-  "> [data-slot='toggle-group-item']",
+  "[data-slot='toggle-group-item']",
 ];
 const OC_MARK = "[data-slot='popover-content']";
 const PB_MARK = '.vidro-panel';
 
 describe('controls.css', () => {
   it('segmented capsule for vista-tabs, icon-seg, toggle-group', () => {
-    expect(decl('.vista-tabs', 'border-radius')).toContain('999px');
+    expect(decl('.vista-tabs__group', 'border-radius')).toContain('999px');
+    expect(decl('.vista-tabs__group', 'background')).toContain('var(--vd-fill)');
     expect(decl('.icon-seg', 'border-radius')).toContain('999px');
     expect(decl("[data-slot='toggle-group']:not(.agenda-segmented)", 'background')).toContain(
       'var(--vd-fill)',
@@ -77,6 +78,36 @@ describe('controls.css', () => {
       }
     });
     expect(toggleRules).toBeGreaterThan(0);
+  });
+
+  it('matches toggle-group items at any depth, never only as direct children', () => {
+    let seen = 0;
+    root.walkRules((r) => {
+      for (const sel of r.selectors) {
+        if (!sel.includes("[data-slot='toggle-group-item']")) continue;
+        seen += 1;
+        expect(sel, sel).not.toMatch(/>\s*\[data-slot='toggle-group-item'\]/);
+        expect(sel, sel).toContain(':not(.agenda-segmented)');
+      }
+    });
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('the .vista-tabs row itself is a plain transparent row, only the group is the capsule', () => {
+    let seen = 0;
+    root.walkRules((r) => {
+      for (const sel of r.selectors) {
+        if (!/\.vista-tabs(?![\w-])/.test(sel)) continue;
+        seen += 1;
+        r.walkDecls((d) => {
+          if (d.prop === 'background') expect(d.value, sel).toBe('transparent');
+          if (d.prop === 'width') expect(d.value, sel).not.toBe('fit-content');
+          expect(d.prop === 'display' && d.value === 'inline-flex', sel).toBe(false);
+        });
+      }
+    });
+    expect(seen).toBeGreaterThan(0);
+    expect(decl('.vista-tabs__group', 'overflow-x')).toContain('auto');
   });
 
   it('keeps the agenda-rapido chips out of the capsule track', () => {
@@ -144,7 +175,7 @@ describe('controls.css', () => {
   it('duplicates segmented and chip rules for portaled content, side navs stay in the page body', () => {
     const under = (hook: string, mark: string) => hasAll([hook, mark]);
     for (const hook of [
-      '.vista-tabs',
+      '.vista-tabs__group',
       '.icon-seg__item',
       TG_ITEM[1],
       '.today-chip',

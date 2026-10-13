@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu,
@@ -64,6 +65,7 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
     removeVista,
     renameVista,
   } = useSavedViewSelection(contaId, currentQuery);
+  const vidroShell = useVidroShell();
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -105,8 +107,8 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
     if (fromId != null) await renameVista(fromId, renameDraft);
   };
 
-  return (
-    <div className="vista-tabs no-scrollbar animate-up">
+  const tabs = (
+    <>
       <button
         type="button"
         className={`vista-tab ${activeId == null ? 'vista-tab--active' : ''}`}
@@ -233,8 +235,27 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
           </div>
         </PopoverContent>
       </Popover>
+    </>
+  );
+  const trailingSlot = trailing != null && (
+    <span className="ml-auto shrink-0 pl-3 py-1">{trailing}</span>
+  );
 
-      {trailing != null && <span className="ml-auto shrink-0 pl-3 py-1">{trailing}</span>}
+  // Under the Vidro shell the capsule wraps only the tabs, so the trailing slot (search input,
+  // Fila pickers) stays a plain right-aligned item of the row. Flag off: the DOM is unchanged.
+  if (vidroShell) {
+    return (
+      <div className="vista-tabs no-scrollbar animate-up">
+        <div className="vista-tabs__group">{tabs}</div>
+        {trailingSlot}
+      </div>
+    );
+  }
+
+  return (
+    <div className="vista-tabs no-scrollbar animate-up">
+      {tabs}
+      {trailingSlot}
     </div>
   );
 }

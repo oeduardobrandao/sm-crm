@@ -13,7 +13,7 @@
  */
 @media (min-width: 1101px) {
   /* ---------- Segmented capsule: track ---------- */
-  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__group,
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-seg,
   html[data-look='vidro']
     body:has(.app-container)
@@ -32,7 +32,7 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    .vista-tabs,
+    .vista-tabs__group,
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -82,12 +82,17 @@
       .mention-suggestion-list
     )
     .vista-tabs {
-    width: fit-content;
-    max-width: 100%;
-    overflow-x: auto;
-    scrollbar-width: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
   }
-  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs::-webkit-scrollbar,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__group,
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -99,7 +104,29 @@
       .comment-add-popover,
       .mention-suggestion-list
     )
-    .vista-tabs::-webkit-scrollbar {
+    .vista-tabs__group {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vista-tabs__group::-webkit-scrollbar,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tabs__group::-webkit-scrollbar {
     display: none;
   }
 
@@ -112,7 +139,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item'],
+    [data-slot='toggle-group-item'],
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -151,7 +178,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item'] {
+    [data-slot='toggle-group-item'] {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -257,7 +284,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
+    [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
       :disabled
     ):not([aria-disabled='true']),
   html[data-look='vidro']
@@ -312,7 +339,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
+    [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
       :disabled
     ):not([aria-disabled='true']) {
     background: rgba(118, 118, 128, 0.12);
@@ -338,7 +365,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
+    [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
       :disabled
     ):not([aria-disabled='true']),
   html[data-theme='dark'][data-look='vidro']
@@ -393,7 +420,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
+    [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
       :disabled
     ):not([aria-disabled='true']) {
     background: rgba(255, 255, 255, 0.08);
@@ -416,14 +443,14 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']),
+    [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']),
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']):hover,
+    [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']):hover,
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -486,7 +513,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']),
+    [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -501,7 +528,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']):hover {
+    [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']):hover {
     background: var(--vd-sel);
     color: var(--vd-sel-fg);
   }
@@ -514,7 +541,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:focus-visible,
+    [data-slot='toggle-group-item']:focus-visible,
   html[data-look='vidro']
     body:has(.app-container)
     :is(
@@ -541,7 +568,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:focus-visible {
+    [data-slot='toggle-group-item']:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
   }
@@ -604,7 +631,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:is(:disabled, [aria-disabled='true']),
+    [data-slot='toggle-group-item']:is(:disabled, [aria-disabled='true']),
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab.pointer-events-none,
   html[data-look='vidro']
     body:has(.app-container)
@@ -644,7 +671,7 @@
     [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
       .flex-col
     )
-    > [data-slot='toggle-group-item']:is(:disabled, [aria-disabled='true']),
+    [data-slot='toggle-group-item']:is(:disabled, [aria-disabled='true']),
   html[data-look='vidro']
     body:has(.app-container)
     :is(
