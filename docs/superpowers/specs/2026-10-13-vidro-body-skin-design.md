@@ -1,6 +1,6 @@
 # Vidro body skin: design
 
-**Status:** spec. The owner's approval gates are replaced by a Fable review.
+**Status:** spec, revised after the Fable review (approved with changes) and the Codex review; all points folded in.
 **Builds on:** `docs/superpowers/specs/2026-10-12-desktop-vidro-design.md` (the Vidro shell, PR #695).
 **Mockups:** https://claude.ai/artifact/Bt1KGGC2PLjqyH2QmVKGUo. The `V3-*` boards are the target. All of
 them share one stylesheet, quoted in the token tables below.
@@ -22,6 +22,19 @@ Same constraints as the shell:
 
 Also in scope, because the screenshots made it obvious: **under Vidro the sidebar starts pinned open**
 when the user has never chosen a pin state.
+
+**What "every button" means here.** The skin reaches:
+- every shadcn primitive;
+- every hand-written button class used on desktop (listed in §1);
+- the parent-scoped `.x button` rules in `style.css`.
+
+A scan of desktop `<button>` elements found 45 that are styled only by Tailwind utilities with no class
+hook. Those are the only buttons left on colour-only (through the token remap). The final sweep lists
+any that are visibly off-look as a follow-up.
+
+**Selector notation.** In this spec `[data-variant='a'|'b']` and `input[type='x'|'y']` are shorthand for
+alternatives. The CSS must spell them as `:is([data-variant='a'], [data-variant='b'])` or as
+comma-separated selectors; a literal `|` inside an attribute value matches nothing.
 
 ## Decisions
 
@@ -46,8 +59,9 @@ when the user has never chosen a pin state.
   - Outline and secondary become a **glass pill** (`.btn2`).
   - Ghost becomes transparent with a fill hover.
   - Destructive becomes a danger pill.
-  - Switch checked becomes `#34c759`.
-  - Checkbox checked becomes ink.
+  - Switch checked becomes `#34c759` in both themes, as in the mockup.
+  - Checkbox checked becomes ink: `--vd-cta` with a `--vd-cta-fg` check, so light is `#12151a` and dark
+    is `#e8eaf0`. Not `--vd-sel`, which is translucent in dark.
   - Yellow `#ffbf30` stays for the sidebar's active icon, count badges, the `primary` badge tone and focus
     rings.
 - **D5. One CSS file per family** under `apps/crm/src/styles/vidro-body/`, so parallel implementers never
@@ -78,7 +92,8 @@ when the user has never chosen a pin state.
 | `--vd-tg-ok` / `-bg` | `#15803d` / `#e6f8ee` | `#5fd4a0` / `rgba(62,207,142,.16)` | `.tg.ok` |
 | `--vd-tg-neutral` / `-bg` | `#374151` / `#eceef1` | `#c3c8d1` / `rgba(255,255,255,.09)` | `.tg.neutral` |
 | `--vd-tg-bad` / `-bg` | `#b91c1c` / `#fdecec` | `#ff8a7a` / `rgba(245,90,66,.18)` | `.tg.bad` |
-| `--vd-switch-on` | `#34c759` | `#30d158` | `.tgl` |
+| `--vd-switch-on` | `#34c759` | `#34c759` | `.tgl` |
+| `--vd-cta-hover` | `var(--cta-hover)` (`#272d39`) | `var(--cta-hover)` | existing `style.css:118` |
 | `--vd-overlay` | `rgba(18,21,26,.32)` | `rgba(0,0,0,.55)` | new |
 | `--vd-menu` | `rgba(255,255,255,.86)` | `rgba(30,34,42,.86)` | new (glass menus) |
 
@@ -92,6 +107,7 @@ The existing tokens (`--vd-panel`, `--vd-tile`, `--vd-group`, `--vd-sep`, `--vd-
 | Token | Light | Dark |
 |---|---|---|
 | `--border-color` | `var(--vd-sep)` | `var(--vd-sep)` |
+| `--surface-main` | `var(--vd-group)` | `var(--vd-group)`; only ever a surface, with 30 rules and 16 inline uses |
 | `--surface-hover` | `var(--vd-fill)` | `var(--vd-fill)` |
 | `--surface-1` | `#f4f4f6` | `rgba(255,255,255,.05)` |
 | `--surface-2` | `rgba(118,118,128,.12)` | `rgba(118,118,128,.24)` |
@@ -101,7 +117,12 @@ The existing tokens (`--vd-panel`, `--vd-tile`, `--vd-group`, `--vd-sep`, `--vd-
 | shadcn `--popover`, `--card` | light `0 0% 100%`, dark `220 15% 10%` | |
 
 The HSL values must be bare channel triplets, as the design system requires. The implementer computes
-the exact composite and records the arithmetic in a comment.
+the exact composite and records the arithmetic in a comment. In dark, the panel is itself translucent
+(`rgba(15,17,21,.86)` over `#0a0c0f`, which comes to about `#0e1014`). Composite the panel over the
+body first, then the token over that.
+
+**Global rule:** a `position: sticky` or `fixed` element never takes a translucent token. It takes
+`--vd-solid` or an opaque composite, so content cannot scroll visibly underneath.
 
 **Not remapped:**
 
@@ -111,6 +132,10 @@ the exact composite and records the arithmetic in a comment.
 | `--text-main`, `--text-muted`, `--text-light`, `--danger*`, `--primary*` | Text contrast was audited. |
 | shadcn `--background`, `--foreground`, `--ring`, `--primary` | `--background` paints the body behind the panel. |
 | `--radius` | Component rules own the radii. |
+| `--bg-color`, `--surface-light`, `--surface-darker` | Five or fewer uses each. `--bg-color` paints the body and the fullscreen dialog. The other two are only used inside covered families, which set their own surface. |
+
+**Report editor internals** (the block canvas, `ImageBlockEditor` loading frames, editor notices) take the
+token remap: colours only, no component rules. They are in the visual sweep.
 
 ## Hooks (D2)
 
@@ -125,15 +150,17 @@ Each hook is added to the primitive's root (or the named part), with no visual c
 | Table | wrapper `table-container`, `table`, `table-header`, `table-body`, `table-row`, `table-head`, `table-cell`, `table-footer` |
 | Select | `select-trigger`, `select-content`, `select-item`, `select-separator` |
 | Checkbox, Switch | `checkbox`; `switch` and `switch-thumb` |
-| Dialog | `dialog-overlay`, `dialog-content` (desktop branch only; the phone branch is untouched) |
+| Dialog | `dialog-overlay`; `dialog-content` on the desktop branch only (the phone branch is untouched); `data-layout={layout ?? 'default'}` on the content, so rules can exclude `[data-layout='fullscreen']`. `CommandDialog` passes its `layout` through. |
 | AlertDialog | `alert-dialog-overlay`, `alert-dialog-content` |
 | Sheet | `sheet-overlay`, `sheet-content` |
 | Popover | `popover-content` |
-| DropdownMenu | `dropdown-menu-content`, `dropdown-menu-sub-content`, `dropdown-menu-item` (also on checkbox and radio items), `dropdown-menu-separator`, `dropdown-menu-label` |
+| DropdownMenu | `dropdown-menu-content`, `dropdown-menu-sub-content`, `dropdown-menu-item` (also on checkbox and radio items), `dropdown-menu-sub-trigger`, `dropdown-menu-separator`, `dropdown-menu-label` |
 | Command | `command`, `command-input`, `command-item` |
 | ToggleGroup | `toggle-group`, `toggle-group-item` |
 | Tooltip | `tooltip-content` |
-| Calendar | `calendar` on the root |
+| Calendar (DayPicker) | It builds its controls from `buttonVariants()` class strings, so there is no `data-slot`. Add inert classes through its `classNames` map: `vidro-cal-nav` on the previous/next buttons, `vidro-cal-day` on the day button. Selected, today and outside keep DayPicker's own modifier classes (`day-range-*`, `day-outside`, and the selected/today entries), which the rules key on. |
+| Sonner Toaster | `toast` classes already exist (`.toaster [data-sonner-toast]`); no new hook |
+| Hand-placed (not primitives) | `data-slot="table"` on the raw `<table>` in `pages/arquivos/components/FileGrid.tsx:255`; `data-slot="card"` on Ideias cards (`pages/ideias/IdeiasPage.tsx` and its card component) and on the Arquivos grid tiles (`FileGrid.tsx:222` children). Attribute only, the class strings unchanged. |
 
 A unit test per primitive pins the attributes, and pins that the class string is unchanged.
 
@@ -149,6 +176,8 @@ gaps) stay.
 | `components/ui/date-time-picker.tsx:156-166` | trigger `borderRadius`, `background`, `padding` | inline style dropped |
 | `pages/calendario/agenda/EventoPopover.tsx:859`, `EventoRapidoCard.tsx:135`, `pages/calendario/camadas/CamadaPopover.tsx:377` | PopoverContent `background`, `borderColor`, `borderRadius` | these three dropped |
 | `pages/mensagens/components/ConversationThread.tsx` bubbles | Tailwind look | add classes `vidro-bubble vidro-bubble--me` / `--them` |
+| Entregas `ModeToggle`, `EntidadeToggle`, `PropertyPanel`; `AnalyticsContaPage.tsx` (four surfaces) | inline `background: var(--card-bg)` | inline background dropped (the family rule paints it) |
+| Board-card actions using `.btn-edit-workflow`, `.btn-complete-etapa`, `.btn-revert-etapa` (all `!important` in style.css, which vidro CSS cannot beat) | classic | under Vidro, render the classes `vidro-board-action` / `--complete` / `--revert` **instead of** the `!important` class. Flag-off keeps the original class. `buttons.css` styles them as ghost, CTA and glass pills. |
 
 ## Family rules
 
@@ -167,29 +196,40 @@ has.
 
 - **Focus:** a visible ring, `box-shadow: 0 0 0 3px rgba(255,191,48,.55)` or the element's own existing
   ring, plus `outline: none`. When the element also has a resting shadow, both shadows are listed.
-- **Disabled:** `opacity: .5; cursor: not-allowed`, with hover suppressed.
+- **Disabled:** `opacity: .5; cursor: not-allowed`, with hover suppressed. Menu items restate
+  `[data-disabled]` the same way.
+- **Open triggers:** a Button that triggers a menu (`[data-state='open']`) shows the hover fill while the
+  menu is open.
+- **Select placeholder:** `[data-slot='select-trigger'][data-placeholder]` is coloured `--vd-txt3`,
+  because a `<button>` has no `::placeholder`.
 
 ### 1. Buttons (`buttons.css`)
 
 | Hook | Look |
 |---|---|
-| `[data-slot='button'][data-variant='default'|'ink']`, `.btn-primary`, `.btn-confirmar`, `.drawer-send-btn`, `.drawer-reply-btn`, `.comment-reply-submit`, `.comment-add-submit`, `.calendar-detail-btn--primary` | **CTA:** height 36px, radius 999px, background `--vd-cta`, colour `--vd-cta-fg`, 13px/600, padding 0 16px, `box-shadow: 0 8px 18px -8px rgba(18,21,26,.5)`. Hover: `filter: brightness(1.12)` on light, `.92` on dark. |
-| `[data-variant='outline'|'secondary']`, `.btn-secondary`, `.drawer-close-btn` (when text), `.drawer-selection-bar-btn`, `.drawer-calendar-btn`, `.time-picker-cancel`, `.scheduled-item__open`, `.btn-instagram-action` | **Glass (`.btn2`):** height 36px, radius 999px, 1px `--vd-cap-bd` border, background `--vd-cap`, colour `--text-main`, 13px/600, padding 0 14px, `box-shadow: 0 6px 16px -8px rgba(18,21,26,.2)`. Hover: background `--vd-group`. |
-| `[data-variant='ghost']`, `.btn-icon`, `.agenda-icon-btn`, `.calendar-nav button`, `.month-grid-nav-btn`, `.concluded-reopen-btn`, `.drawer-post-history-btn`, `.drawer-kebab-btn` | **Ghost:** transparent, radius 999px, no border. Hover background `--vd-fill`. Icon-only (`[data-size='icon']` or a square class) is a 32px circle. |
-| `[data-variant='destructive']`, `.btn-danger`, `.calendar-detail-btn--danger`, `.btn-instagram-action--danger` | **Danger pill:** the CTA geometry, background `--vd-tg-bad-bg`, colour `--vd-tg-bad`. Hover: background `--danger`, colour `#fff`. |
+| `[data-slot='button']` with `[data-variant='default'|'ink']`, `.btn-primary`, `.btn-upgrade`, `.btn-confirmar`, `.drawer-send-btn`, `.drawer-reply-btn`, `.comment-reply-submit`, `.comment-add-submit`, `.calendar-detail-btn--primary`, `.time-picker-confirm`, `.vidro-board-action--complete` | **CTA:** height 36px, radius 999px, background `--vd-cta`, colour `--vd-cta-fg`, 13px/600, padding 0 16px, `box-shadow: 0 8px 18px -8px rgba(18,21,26,.5)`. Hover: background `--vd-cta-hover`. |
+| `[data-variant='outline'|'secondary']`, `.btn-secondary`, `.btn-integration`, `.calendar-detail-btn` (base), `.drawer-selection-bar-btn`, `.drawer-calendar-btn`, `.time-picker-cancel`, `.scheduled-item__open`, `.btn-instagram-action`, `.vidro-board-action--revert` | **Glass (`.btn2`):** height 36px, radius 999px, 1px `--vd-cap-bd` border, background `--vd-cap`, colour `--text-main`, 13px/600, padding 0 14px, `box-shadow: 0 6px 16px -8px rgba(18,21,26,.2)`. Hover: background `--vd-group`. `.drawer-calendar-btn.active` takes `--vd-sel`. |
+| `[data-variant='ghost']`, `.btn-icon`, `.btn-icon--danger` (danger colour on hover), `.agenda-icon-btn`, `.calendar-nav button`, `.month-grid-nav-btn`, `.concluded-reopen-btn`, `.drawer-post-history-btn`, `.drawer-kebab-btn`, `.drawer-close-btn`, `.drawer-delete-btn`, `.drawer-selection-bar-btn--ghost`, `.post-editor-btn`, `.rb-edit-btn` (`-danger` hovers danger), `.rb-img-seg-btn`, `.callout-emoji-btn`, `.sidebar-action-btn`, `.comment-popover-action-btn`, `.user-dropdown-item`, `.status-cycle-btn`, `.btn-remove-member`, `.vidro-board-action`, `.vidro-cal-nav` | **Ghost:** transparent, radius 999px, no border. Hover background `--vd-fill`. Icon-only (`[data-size='icon']` or a square class) is a 32px circle. `.post-editor-btn.is-active` / `[aria-pressed='true']` takes `--vd-fill` at weight 600. |
+| Parent-scoped button rules in style.css: `.board-card-actions button`, `.cliente-date-card button`, `.cliente-address-card button`, `.drawer-post-field--platform button`, `.latest-instagram-posts__pagination button`, `.agenda-mini td button`, and the rest of the `.x button` rules the scaffold task lists by grepping `style.css` for `button\s*[{,:]` | **Ghost.** The pagination and day buttons are circles. |
+| `[data-variant='destructive']`, `.btn-danger`, `.btn-danger-outline` (outline: transparent background, `--vd-tg-bad` 1px border), `.calendar-detail-btn--danger`, `.btn-instagram-action--danger` | **Danger pill:** the CTA geometry, background `--vd-tg-bad-bg`, colour `--vd-tg-bad`. Hover: background `--danger-text` (`#b91c1c` light; in dark `--danger`, which clears AA), colour `#fff`. |
+| `.vidro-cal-day` (DayPicker) | 32px circle, ghost. Selected becomes `--vd-cta` on `--vd-cta-fg`; today a 2px `#ffbf30` ring; outside days `--vd-txt3`. |
 | `[data-variant='link']` | Unchanged. |
 | `[data-size='sm']` | height 30px, 12px, padding 0 12px. |
 | `[data-size='lg']` | height 40px. |
 | `.board-add-card`, `.drawer-add-post-btn` | Dashed outline kept, radius 12px, border `--vd-sep`. |
-| `.btn-edit-workflow` | Stays classic: it is `!important`, a residual. |
+
+The Button base `mb-2` is kept: changing a margin would change layout.
 
 The shell spec's radius-only button rule in `vidro.css` (`border-radius: 999px` on the button classes) is
 deleted; `buttons.css` owns buttons now.
 
 ### 2. Tables and list rows (`tables.css`)
 
-- **`[data-slot='table']`, `.data-table`, `.list-view table`** (Entregas ListView/PostsListView: scope by
-  their wrapper class) and the Arquivos FileGrid table: `font-size: 13px`.
+- **`[data-slot='table']` and `.data-table`:** `font-size: 13px`.
+  - Entregas ListView and PostsListView already use the shadcn `Table` inside `.card`, so they are
+    covered.
+  - The Arquivos FileGrid table gets a hand-placed `data-slot="table"`. Its rows and cells are raw, so
+    the head and cell rules also match `[data-slot='table'] th` and `[data-slot='table'] td`.
 - **Header cell** (`th`, `[data-slot='table-head']`): 11px/600, colour `--vd-txt3`, no uppercase, no
   letter-spacing, padding 10px 12px, 1px `--vd-sep` bottom border, background transparent.
 - **Body cell** (`td`, `[data-slot='table-cell']`): padding 0 12px, height 46px, 1px `--vd-sep` bottom
@@ -208,8 +248,19 @@ deleted; `buttons.css` owns buttons now.
     `.latest-instagram-post-card`, `.agenda-view`, `.agenda-sidebar__card`, `.concluded-client-card`,
     `.fila-group`, `.fila-top` (keeps its primary border).
 - **Tile** (background `--vd-tile`, no border, radius 16px):
-  - `.scheduled-panel`, `.config-shell`, `.post-production`, `.analytics-callout` (keeps its amber wash
-    and left rail).
+  - `.config-shell`, `.post-production`, `.analytics-callout` (keeps its amber wash and left rail).
+  - `.scheduled-panel` is sticky, so it takes an opaque tile: `--vd-solid`, radius 16px. Its dark
+    `#0d1117` override exists for exactly this reason.
+- **Analytics surfaces.** The scaffold task greps the `.analytics-*` classes in `style.css` that paint a
+  surface (`background` with a border or radius) and assigns each to group or tile in this file.
+  Examples are the chart wrappers, `.analytics-callout__item` and `.latest-instagram-posts`.
+  `AnalyticsContaPage.tsx`'s four inline `var(--card-bg)` backgrounds join the escape table.
+- **Report editor chrome:**
+  - `.rb-edit-toolbar`, `.rb-text-toolbar` and `.rb-img-panel` become menus (the `--vd-menu` glass, from
+    `overlays.css`'s tokens, in this file).
+  - `.rb-layers-rail` becomes a tile, and `.rb-layers-row` gets the list-row rule.
+  - `.rb-editor-header[data-stuck]` stays opaque (sticky rule): `--vd-solid` at 92%.
+- **Ideias cards and Arquivos grid tiles** (`[data-slot='card']`, hand-placed): group.
 - **Inner item** (`--vd-group`, `--vd-sep` border, radius 12px):
   - `.scheduled-item`, `.cliente-date-card`, `.cliente-address-card`, `.niche-month-card`,
     `.drawer-post-item`, `.concluded-wf-row`.
@@ -241,8 +292,8 @@ Mockup `.tg`: 11px/600, radius 999px, padding 2px 9px, no border (`border-color:
   dashed variant keeps its dash), `.fila-pill`, `.fila-tag`, `.auto-schedule-badge`, `.tag-pill`,
   `.board-card-approval-badge`, `.history-step-badge--*`, `.post-production-state`,
   `.board-card-type-status-chip`, `.board-card-posts-chip`, `.comment-summary-chip`.
-- **Count pills** (`.board-column-count`, `.today-group-count`, `.list-group-count`): `--vd-fill`, no
-  border, 11px/600, no monospace.
+- **Counts** (`.board-column-count`, `.today-group-count`, `.list-group-count`): as the mockup `.count`,
+  plain `--vd-txt3` 11px/600 with no background, no border and no monospace.
 - **`.event-pill`:** radius 6px, 11px, no monospace. It stays a compact bar inside calendar cells.
 
 ### 5. Form fields (`forms.css`)
@@ -261,8 +312,9 @@ Mockup `.tg`: 11px/600, radius 999px, padding 2px 9px, no border (`border-color:
 - **Search fields** (`input[type='search']`, and inputs with a leading search icon wrapper): pill radius
   999px, height 30px, like the mockup `.search`. The `!rounded-full !text-xs` call sites already match.
 - **`[data-slot='select-trigger']`:** the chevron icon colour is `--vd-txt3`.
-- **Checkbox `[data-slot='checkbox']`:** 16px, radius 5px, 1.5px border `--vd-txt3`. Checked or
-  indeterminate: background and border `--vd-sel`, check colour `--vd-sel-fg`. Restate the focus ring.
+- **Checkbox `[data-slot='checkbox']`:** 16px, radius 5px (deliberately square: the mockup's round
+  `.box` is a to-do marker, not a checkbox), 1.5px border `--vd-txt3`. Checked or indeterminate:
+  background and border `--vd-cta`, check colour `--vd-cta-fg`. Restate the focus ring.
 - **Switch `[data-slot='switch']`:** 38×22, radius 999px. Unchecked background `--vd-fill`, checked
   `--vd-switch-on`. Thumb (`[data-slot='switch-thumb']`) 18×18, white, `0 1px 2px rgba(0,0,0,.25)`. The
   translate comes from the existing `data-[state=checked]:translate-x-4` (16px); the geometry is
@@ -275,6 +327,9 @@ Mockup `.tg`: 11px/600, radius 999px, padding 2px 9px, no border (`border-color:
   - **Segmented capsule** (same look): `.vista-tabs` / `.vista-tab` (`--active` is the selected state;
     `--add` and `-more` stay ghost), `.icon-seg` / `__item`, `[data-slot='toggle-group']` /
     `[data-slot='toggle-group-item']` when not already `.agenda-segmented`.
+    - `controls.css` restates the whole track, item and selected set; it cannot append selectors to the
+      rule in `vidro.css`.
+    - The item rule must beat `toggle.tsx`'s `hover:bg-muted` and `data-[state=on]:bg-accent`.
   - **Chips** (mockup `.chip`: height 28px, radius 999px, `--vd-fill`, 12px/500, padding 0 12px;
     `.on` / `[aria-pressed='true']` / `[data-state='on']` take `--vd-sel` on `--vd-sel-fg`):
     `.today-chip`, `.platform-chip` (`--on`), `.icon-chip`, `.agenda-rapido__tipo`, `.list-groups-toggle`.
@@ -304,7 +359,8 @@ Mockup `.tg`: 11px/600, radius 999px, padding 2px 9px, no border (`border-color:
 - **Dialogs** (`[data-slot='dialog-content']`, `[data-slot='alert-dialog-content']`, `.drawer-panel`):
   background `--vd-panel` with `backdrop-filter: blur(30px) saturate(1.6)`, 1px `--vd-glass-bd`
   border, radius 20px, shadow `--vd-shadow`.
-  - The fullscreen dialog variant and the phone branch are untouched.
+  - The fullscreen dialog variant is excluded with `:not([data-layout='fullscreen'])`.
+  - The phone branch has no hook.
 - **Overlays** (`[data-slot='dialog-overlay']`, `alert-dialog-overlay`, `sheet-overlay`,
   `.drawer-overlay`): background `--vd-overlay`, `backdrop-filter: blur(2px)`.
 - **`[data-slot='sheet-content']`:** background `--vd-panel` with blur; radius 20px on the inner edge
@@ -315,10 +371,15 @@ Mockup `.tg`: 11px/600, radius 999px, padding 2px 9px, no border (`border-color:
   `.context-help__popover`, `.time-picker-popover`, `.mention-suggestion-list`, `.color-dropdown`):
   background `--vd-menu` with `backdrop-filter: blur(24px) saturate(1.6)`, 1px `--vd-cap-bd`
   border, radius 14px, shadow `0 18px 40px -16px rgba(18,21,26,.35)`, padding 5px.
-  - **Items** (`dropdown-menu-item`, `select-item`, `command-item`): radius 8px, height 30px, 13px.
-    Highlighted (`[data-highlighted]`, `[aria-selected='true']`) gets `--vd-fill`.
+  - **Items** (`dropdown-menu-item`, `dropdown-menu-sub-trigger`, `select-item`, `command-item`): radius
+    8px, height 30px, 13px.
+    - Highlighted (`[data-highlighted]`, `[aria-selected='true']`) and an open sub-trigger
+      (`[data-state='open']`) get `--vd-fill`.
+    - `[data-disabled]` items are at `.5` opacity.
   - Separators: `--vd-sep`.
 - **Tooltip:** unchanged (it is already ink).
+- **Toasts** (`.toaster [data-sonner-toast]`): menu glass, radius 14px. The action and cancel buttons
+  take the CTA and ghost looks.
 - **Fallbacks:** under `prefers-reduced-transparency: reduce` and
   `@supports not (backdrop-filter: blur(1px))`, `--vd-menu` and the dialog panel use `--vd-solid`.
 
@@ -337,13 +398,24 @@ This is the only place where rules combine families. Examples: a button inside a
 
 ### Sidebar default open (TSX, `AppLayout.tsx` `useSidebarPinned`)
 
-- **Initial value:**
-  - A stored `'1'` or `'0'` wins, as today.
-  - When nothing is stored, start pinned exactly when `isVidroAttributeSet()` is true. The pre-paint
-    has already set the attribute, so there is no rail-to-pinned shift on load.
-- **When the flag resolves later:** if nothing is stored and the resolved `vidroShell` disagrees with the
-  initial value, follow `vidroShell` once. Do not write storage until the user clicks the toggle.
-- **Classic and flag-off:** unchanged (nothing stored means the rail).
+- **Tri-state storage:** `useSidebarPinned` reads `'1'`, `'0'` or unset. A storage read that throws
+  counts as unset. Only a click on the pin toggle writes storage, as today.
+- **Effective value:**
+  - `'1'` means pinned and `'0'` means rail, whatever the look. This is today's behaviour.
+  - Unset follows the **look**, meaning `vidro.active` (flag on and not opted out). It does not follow
+    `vidroShell`, which is also false at tablet widths, where pinning is irrelevant anyway.
+  - It is a derived value, not a one-shot effect. While storage is unset:
+    `pinned = vidroAttributeSeed || vidro.active` before the limits query resolves, and
+    `pinned = vidro.active` after.
+  - `useVidro` exposes a new `isResolved` (= the limits query's `isSuccess`) for this.
+    `vidroAttributeSeed` is `isVidroAttributeSet()` read once at mount.
+- **Consequences:**
+  - Opting out with nothing stored returns the rail; opting back in returns the pinned sidebar.
+  - A late flag flip follows the look.
+  - No storage is written until the user chooses.
+- **Classic and flag-off:** unchanged, because unset means the rail.
+- **Tests:** the `useVidro` mock in `AppLayout.test.tsx` gains `isResolved`. The flag-off matrix there
+  is unaffected, because `active` is false.
 
 ## File layout
 
@@ -363,23 +435,46 @@ apps/crm/src/styles/
 **Ownership rule:** a family file only holds selectors for its own family. A rule that needs two
 families goes in `compositions.css`.
 
+**Serial scaffold first.** One task runs before any family task and does every shared edit, so the
+family tasks only fill their own CSS file and the TSX escapes they own:
+- all primitive hooks and their unit tests;
+- the hand-placed hooks;
+- the inert hook classes (`vidro-cal-*`);
+- the ten `main.tsx` imports;
+- the empty family files with headers;
+- both `vidro.css` edits (the token move and the button-radius rule deletion);
+- `tokens.css` filled in;
+- the contract-test extension;
+- the sidebar default.
+
 ## Contract test
 
 `vidroContracts.test.ts` iterates over `vidro.css` and every `vidro-body/*.css`:
 - each file keeps the existing guards;
-- new rule: every selector containing an overlay hook (`dialog-`, `sheet-`, `popover-`,
-  `dropdown-menu-`, `select-content`, `select-item`, `command`, `.drawer-overlay`, `.drawer-panel`, the
-  popover classes) must contain `body:has(.app-container)`;
+- new rule: every selector containing an exact overlay hook must contain `body:has(.app-container)`.
+  The hooks are `[data-slot='dialog-overlay']`, `dialog-content`, `alert-dialog-overlay`,
+  `alert-dialog-content`, `sheet-overlay`, `sheet-content`, `popover-content`, `dropdown-menu-content`,
+  `dropdown-menu-sub-content`, `select-content` and `command`, plus `[data-sonner-toast]`;
+- the `.card :not()`-chain assertion stays specific to `vidro.css` and `cards.css`, and is not run over
+  the other files;
 - `tokens.css` declares every new token in both the light and the dark block;
 - `main.tsx` imports every `vidro-body` file after `vidro.css`.
 
 ## Residuals (accepted)
 
-- **About 700 raw Tailwind `<button>`s with no hook** (261 in Entregas) change colour through the token
-  remap only, not shape. Their radius stays whatever the class string says.
+- **45 Tailwind-only `<button>`s with no class hook** change colour through the token remap only. The
+  final sweep lists any that are visibly off-look.
 - **Call-site inline `TableCell` / `TableHead` padding** (Clientes, Equipe, Financeiro, Automações,
   LeadsPage headers) keeps its padding. Row height still applies.
-- **`.btn-edit-workflow`** and the other `!important` classes in style.css stay classic.
+- **Remaining inline `var(--card-bg)` / `var(--surface-main)` backgrounds:**
+  - In light they are invisible (`#fff` on a 94% white panel). In dark they show as a faint `#12151a`
+    patch.
+  - Not escaped: `ExpressPostPage.tsx` ×4, `PapeisTab.tsx` ×2, `EventoFormDialog.tsx` ×2,
+    `shared/ColorPicker.tsx` ×2, `TarefaDetailSheet`, `AddWidgetDrawer`, `ConversationList`,
+    `TikTokSettingsPanel`, `PostAutomationSection`, `EntregasPage`, `AgentPendingSection`.
+  - Escaped: the Entregas trio and AnalyticsConta.
+- **`.post-detail-row td`** (`!important` background) and the remaining `!important` classes in
+  style.css stay classic. The board-card actions are escaped.
 - **PapeisTab segment inline styles** stay.
 - **Mensagens bubbles** need the class hook (listed above). Any other Tailwind-only bubble stays.
 - **Avatars** are unchanged (the mockup uses the same circles).
@@ -407,4 +502,4 @@ families goes in `compositions.css`.
 - Tablet and phone.
 - The Hub and the Admin.
 - The marketing pages and the auth routes.
-- Report editor internals (the block canvas). The editor chrome takes the families like any page.
+- Report editor block canvas: token remap only (see Tokens). The editor chrome is covered in §3.
