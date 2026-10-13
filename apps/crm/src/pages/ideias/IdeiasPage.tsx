@@ -462,7 +462,7 @@ export default function IdeiasPage() {
           </p>
         </div>
       ) : (
-        <div className="border rounded-xl bg-card overflow-hidden">
+        <div data-slot="card" className="border rounded-xl bg-card overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>

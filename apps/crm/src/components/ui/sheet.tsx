@@ -18,6 +18,7 @@ const SheetOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
+    data-slot="sheet-overlay"
     className={cn(
       // tailwindcss-animate is not registered, so the animate-in utilities are
       // inert; the sheet-overlay class carries the real fade (style.css).
@@ -69,6 +70,7 @@ const SheetContent = React.forwardRef<
       <SheetOverlay className={overlayClassName} />
       <SheetPrimitive.Content
         ref={ref}
+        data-slot="sheet-content"
         className={cn(sheetVariants({ side }), className)}
         style={
           needsTopSafeArea

@@ -115,6 +115,15 @@ async function renderPage(initialEntry = '/ideias') {
 }
 
 describe('IdeiasPage', () => {
+  it('marks the desktop table wrapper as a Vidro card', async () => {
+    await renderPage();
+    const row = await screen.findByText('Ideia antiga');
+    const wrapper = row.closest("[data-slot='card']");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper).toHaveClass('border', 'rounded-xl', 'bg-card', 'overflow-hidden');
+    expect(wrapper?.querySelector("[data-slot='table']")).not.toBeNull();
+  });
+
   it('opens the drawer for ?ideia=<id> once the list loads, then clears the param', async () => {
     await renderPage('/ideias?ideia=old-1');
 
