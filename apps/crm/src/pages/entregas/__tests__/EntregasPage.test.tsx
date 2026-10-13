@@ -81,6 +81,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   // VistasTabs' per-vista menu (only rendered once a saved vista exists).
   DropdownMenuSeparator: () => <hr />,
+  DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuItem: ({
     children,
     onClick,
@@ -3254,12 +3255,16 @@ describe('EntregasPage: Vidro toolbar', () => {
     });
   });
 
-  function renderInShell(vidroShell: boolean, entry = '/entregas') {
+  function renderInShell(
+    vidroShell: boolean,
+    entry = '/entregas',
+    cards: unknown[] = [makeCard({ deadline: { estourado: true, urgente: false } })],
+  ) {
     mockedUseEntregasData.mockReturnValue({
       clientes: [],
       membros: [],
       templates: [],
-      cards: [makeCard({ deadline: { estourado: true, urgente: false } })],
+      cards,
       activeWorkflows: [wfFixture],
       postEntities: [],
       processByPostId: new Map(),
@@ -3282,11 +3287,28 @@ describe('EntregasPage: Vidro toolbar', () => {
     expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
     expect(h1s[0]).toHaveTextContent('Entregas');
 
-    const counts = screen.getByText(/fluxos ativos: 1/);
-    expect(counts.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    // Title row on top, the counts line under it: the title never has to share its row with them.
+    const heading = h1s[0].closest('.vidro-toolbar-heading');
+    expect(heading).not.toBeNull();
+    const counts = screen.getByText('1 fluxo');
+    expect(counts.closest('.vidro-toolbar-subtitle')?.parentElement).toBe(heading);
     // Native tooltip: a data-tooltip would be clipped by the subtitle's overflow.
     expect(counts.closest('[title="Totais gerais, sem filtros"]')).not.toBeNull();
-    expect(screen.getByText(/1 atrasado/).closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    // Overdue leads the line as a pill that filters the board.
+    const atrasados = screen.getByRole('button', { name: '1 atrasado' });
+    expect(atrasados.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    expect(atrasados).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText(/fluxos ativos:/)).toBeNull();
+
+    // One help button holds the description, the explainer and the tour.
+    const help = screen.getByRole('button', { name: 'Ajuda' });
+    expect(help.closest('.vidro-toolbar')).not.toBeNull();
+    expect(
+      screen
+        .getByText('Acompanhe o andamento das entregas e fluxos ativos.')
+        .closest('.vidro-toolbar'),
+    ).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar [data-tooltip]')).toBeNull();
 
     const comoFunciona = screen.getAllByRole('button', { name: /como funciona/i });
     expect(comoFunciona).toHaveLength(1);
@@ -3315,6 +3337,53 @@ describe('EntregasPage: Vidro toolbar', () => {
     // The in-page header is gone; the mode toggle stays in the content.
     expect(document.querySelector('header.header')).toBeNull();
     expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vidro-toolbar')).toBeNull();
+  });
+
+  it('filters the board to overdue from the pill and clears it on a second click', async () => {
+    renderInShell(true, '/entregas', [
+      makeCard({
+        workflow: { id: 1, titulo: 'Atrasado A', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: true, urgente: false },
+      }),
+      makeCard({
+        workflow: { id: 2, titulo: 'Em dia B', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: false, urgente: false },
+      }),
+      makeCard({
+        workflow: { id: 3, titulo: 'Urgente C', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: false, urgente: true },
+      }),
+    ]);
+    expect(
+      await screen.findByText('Kanban view: Atrasado A, Em dia B, Urgente C'),
+    ).toBeInTheDocument();
+
+    const pill = screen.getByRole('button', { name: '1 atrasado' });
+    fireEvent.click(pill);
+    expect(screen.getByText('Kanban view: Atrasado A')).toBeInTheDocument();
+    expect(pill).toHaveAttribute('aria-pressed', 'true');
+
+    // The other pill swaps the filter instead of stacking on it.
+    fireEvent.click(screen.getByRole('button', { name: '1 urgente' }));
+    expect(screen.getByText('Kanban view: Urgente C')).toBeInTheDocument();
+    expect(pill).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: '1 urgente' }));
+    expect(screen.getByText('Kanban view: Atrasado A, Em dia B, Urgente C')).toBeInTheDocument();
+  });
+
+  it('opens the fluxos kanban from a view that cannot show the filter', async () => {
+    renderInShell(true, '/entregas?view=fila');
+    expect(await screen.findByText(/^Fila view:/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '1 atrasado' }));
+
+    expect(await screen.findByText(/^Kanban view:/)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Kanban/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: '1 atrasado' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it('switches the view from the toolbar tabs and drops the replay link off the kanban', async () => {
@@ -3360,6 +3429,9 @@ describe('EntregasPage: Vidro toolbar', () => {
     expect(tablist).not.toHaveClass('vidro-seg');
     expect(screen.getByText(/fluxos ativos: 1/).tagName).toBe('P');
     expect(document.querySelector('[title="Totais gerais, sem filtros"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: '1 atrasado' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ajuda' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ver tour novamente' })).toBeInTheDocument();
     expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
   });
 });

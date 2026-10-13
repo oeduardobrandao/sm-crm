@@ -12,6 +12,8 @@ import {
 export interface PageToolbarSpec {
   title: ReactNode;
   subtitle?: ReactNode;
+  /** Stack the subtitle under the title row instead of beside it (title never shares its row). */
+  subtitleBelow?: boolean;
   leading?: ReactNode;
   titleAccessory?: ReactNode;
   segmented?: ReactNode;

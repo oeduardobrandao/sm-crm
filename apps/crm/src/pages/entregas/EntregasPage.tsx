@@ -15,6 +15,8 @@ import {
   Route,
   CircleDashed,
   ListChecks,
+  CircleHelp,
+  PlayCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +25,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -46,7 +49,7 @@ import { shouldAutoStartTour } from './tour/tourGating';
 import { shouldShowExample } from './tour/exampleGate';
 import { ComoFuncionaPanel, explainerStorageKey } from './components/ComoFuncionaPanel';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
-import { EntregasFilters, type FilterState } from './components/EntregasFilters';
+import { EntregasFilters, type FilterState, type StatusFilter } from './components/EntregasFilters';
 import {
   EditWorkflowModal,
   TemplatesModal,
@@ -1309,8 +1312,7 @@ export default function EntregasPage() {
     refresh();
   };
 
-  // Header pieces, shared by the in-page header and the Vidro toolbar so the classic
-  // markup stays the same.
+  // Classic in-page header pieces. The Vidro toolbar has its own (toolbarHelp, toolbarCounts).
   const headerTitleAccessory = (
     <>
       <span
@@ -1364,6 +1366,86 @@ export default function EntregasPage() {
           • {urgent} urgente{urgent > 1 ? 's' : ''}
         </span>
       )}
+    </>
+  );
+  // Vidro toolbar only (the classic header keeps the pieces above): one help menu instead of
+  // three side-by-side controls, and the counts as a line under the title, led by pills that
+  // filter the board to overdue or urgent.
+  const statusFilterOnly = (status: StatusFilter) =>
+    filters.filterStatus.length === 1 && filters.filterStatus[0] === status;
+  const toggleStatusFilter = (status: StatusFilter) => {
+    const active = statusFilterOnly(status);
+    setFilters({ ...filters, filterStatus: active ? [] : [status] });
+    // Only the fluxos views apply the deadline filter; anywhere else, land on the fluxos kanban.
+    const showsFilter =
+      mode === 'entregas' &&
+      (activeView === 'kanban' ||
+        activeView === 'list' ||
+        activeView === 'calendar' ||
+        activeView === 'chart');
+    if (!active && !showsFilter) {
+      setActiveView('kanban');
+      setMode('entregas');
+    }
+  };
+  const toolbarHelp = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Ajuda" className="vidro-toolbar-help">
+          <CircleHelp className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuLabel className="font-normal text-muted-foreground">
+          Acompanhe o andamento das entregas e fluxos ativos.
+        </DropdownMenuLabel>
+        {!explainerOpen && (
+          <DropdownMenuItem onClick={reopenExplainer}>
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
+            Como funciona
+          </DropdownMenuItem>
+        )}
+        {/* Same gate as the classic link: the tour's anchors only exist on this board. */}
+        {activeView === 'kanban' && mode === 'entregas' && (
+          <DropdownMenuItem onClick={handleReplay}>
+            <PlayCircle className="h-4 w-4" aria-hidden="true" />
+            Ver tour novamente
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const toolbarCounts = (
+    <>
+      {overdue > 0 && (
+        <button
+          type="button"
+          className="vidro-status-pill vidro-status-pill--bad"
+          aria-pressed={statusFilterOnly('atrasado')}
+          onClick={() => toggleStatusFilter('atrasado')}
+        >
+          {overdue} atrasado{overdue > 1 ? 's' : ''}
+        </button>
+      )}
+      {urgent > 0 && (
+        <button
+          type="button"
+          className="vidro-status-pill vidro-status-pill--warn"
+          aria-pressed={statusFilterOnly('urgente')}
+          onClick={() => toggleStatusFilter('urgente')}
+        >
+          {urgent} urgente{urgent > 1 ? 's' : ''}
+        </button>
+      )}
+      <span title="Totais gerais, sem filtros">
+        {activeWorkflows.length} fluxo{activeWorkflows.length === 1 ? '' : 's'}
+        {postProcessesVisible && (
+          <>
+            {' · '}
+            {activePostProcessCount} post{activePostProcessCount === 1 ? '' : 's'}
+          </>
+        )}
+      </span>
     </>
   );
   const headerActions = (
@@ -1431,10 +1513,11 @@ export default function EntregasPage() {
       ? null
       : {
           title: 'Entregas',
-          titleAccessory: headerTitleAccessory,
-          // Same unfiltered totals as the classic header's line (see the note there). A native
-          // title, since the subtitle clips overflow and would cut a data-tooltip off.
-          subtitle: <span title="Totais gerais, sem filtros">{headerCounts}</span>,
+          titleAccessory: toolbarHelp,
+          // Same unfiltered totals as the classic header's line (see the note there), under the
+          // title so neither gets cut. The neutral totals carry a native title tooltip.
+          subtitle: toolbarCounts,
+          subtitleBelow: true,
           segmented: toolbarViewTabs,
           actions: headerActions,
           primary: primaryAction,

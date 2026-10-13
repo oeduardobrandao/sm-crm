@@ -18,9 +18,23 @@ export default function PageToolbar({ capsule }: { capsule: ReactNode }) {
     <header className="vidro-toolbar">
       <div className="vidro-toolbar-left">
         {spec?.leading}
-        {spec?.title != null && <h1 className="vidro-toolbar-title">{spec.title}</h1>}
-        {spec?.titleAccessory}
-        {spec?.subtitle != null && <div className="vidro-toolbar-subtitle">{spec.subtitle}</div>}
+        {spec?.subtitleBelow ? (
+          <div className="vidro-toolbar-heading">
+            <div className="vidro-toolbar-heading-row">
+              {spec.title != null && <h1 className="vidro-toolbar-title">{spec.title}</h1>}
+              {spec.titleAccessory}
+            </div>
+            {spec.subtitle != null && <div className="vidro-toolbar-subtitle">{spec.subtitle}</div>}
+          </div>
+        ) : (
+          <>
+            {spec?.title != null && <h1 className="vidro-toolbar-title">{spec.title}</h1>}
+            {spec?.titleAccessory}
+            {spec?.subtitle != null && (
+              <div className="vidro-toolbar-subtitle">{spec.subtitle}</div>
+            )}
+          </>
+        )}
       </div>
       <div className="vidro-toolbar-right">
         {spec?.segmented}
