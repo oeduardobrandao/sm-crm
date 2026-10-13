@@ -7,7 +7,7 @@
  */
 @media (min-width: 1101px) {
   /* ---------- Tokens + backdrop ---------- */
-  html[data-look='vidro'] .app-container {
+  html[data-look='vidro'] body:has(.app-container) {
     --vd-panel: rgba(255, 255, 255, 0.94);
     --vd-glass: rgba(255, 255, 255, 0.55);
     --vd-glass-bd: rgba(255, 255, 255, 0.75);
@@ -23,6 +23,9 @@
     --vd-txt3: #6b7280;
     --vd-shadow: 0 20px 50px -20px rgba(18, 21, 26, 0.25);
     --vd-solid: #f7f7f9;
+  }
+
+  html[data-look='vidro'] .app-container {
     --topbar-height: 70px;
     background-color: #eceef3;
     background-image:
@@ -32,7 +35,7 @@
       radial-gradient(36rem 36rem at 12% 92%, rgba(106, 201, 208, 0.22), transparent 62%);
   }
 
-  html[data-theme='dark'][data-look='vidro'] .app-container {
+  html[data-theme='dark'][data-look='vidro'] body:has(.app-container) {
     --vd-panel: rgba(15, 17, 21, 0.86);
     --vd-glass: rgba(17, 21, 28, 0.5);
     --vd-glass-bd: rgba(255, 255, 255, 0.09);
@@ -48,6 +51,9 @@
     --vd-txt3: #8b93a1;
     --vd-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
     --vd-solid: #12151a;
+  }
+
+  html[data-theme='dark'][data-look='vidro'] .app-container {
     background-color: #0a0c0f;
     background-image:
       radial-gradient(42rem 42rem at 6% 8%, rgba(234, 179, 8, 0.32), transparent 60%),
@@ -655,17 +661,6 @@
   html[data-look='vidro'] .app-container .calendar-tab.active::after,
   html[data-look='vidro'] .app-container .board-tab.active::after {
     display: none;
-  }
-
-  html[data-look='vidro'] .app-container [data-slot='button'],
-  html[data-look='vidro'] .app-container .btn-primary,
-  html[data-look='vidro'] .app-container .btn-secondary,
-  html[data-look='vidro'] .app-container .btn-danger,
-  html[data-look='vidro'] .app-container .btn-danger-outline,
-  html[data-look='vidro'] .app-container .btn-icon,
-  html[data-look='vidro'] .app-container .btn-icon--danger,
-  html[data-look='vidro'] .app-container .btn-upgrade {
-    border-radius: 999px;
   }
 }
 

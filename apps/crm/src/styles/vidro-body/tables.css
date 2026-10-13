@@ -1,0 +1,10 @@
+/*
+ * Vidro body skin: tables.
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
+ * Only selectors for this family (cross-family rules go in compositions.css).
+ * Guards: every selector starts with html[data-look='vidro']; everything inside
+ * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ */
+@media (min-width: 1101px) {
+}
