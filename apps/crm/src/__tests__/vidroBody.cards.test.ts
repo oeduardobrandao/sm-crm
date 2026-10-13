@@ -164,4 +164,29 @@ describe('cards.css', () => {
       }
     });
   });
+
+  it('makes the report toolbars solid under both glass fallbacks', () => {
+    const hits = { reduced: 0, supports: 0 };
+    root.walkAtRules((a) => {
+      const kind =
+        a.name === 'media' && a.params.includes('prefers-reduced-transparency')
+          ? 'reduced'
+          : a.name === 'supports' && a.params.startsWith('not')
+            ? 'supports'
+            : null;
+      if (!kind) return;
+      a.walkRules((r) => {
+        const sel = r.selectors.join(' ');
+        if (!sel.includes('.rb-edit-toolbar') || !sel.includes('.rb-text-toolbar')) return;
+        let solid = false;
+        let unblurred = false;
+        r.walkDecls((d) => {
+          if (d.prop === 'background' && d.value === 'var(--vd-solid)') solid = true;
+          if (d.prop === 'backdrop-filter' && d.value === 'none') unblurred = true;
+        });
+        if (solid && unblurred) hits[kind] += 1;
+      });
+    });
+    expect(hits).toEqual({ reduced: 1, supports: 1 });
+  });
 });

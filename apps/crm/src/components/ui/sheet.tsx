@@ -59,6 +59,8 @@ interface SheetContentProps
   overlayClassName?: string;
 }
 
+// Under the Vidro look, [data-slot='sheet-content'] gets backdrop-filter, which makes it the containing
+// block for position: fixed descendants: a DragOverlay or any other fixed element inside a sheet must be portaled.
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps

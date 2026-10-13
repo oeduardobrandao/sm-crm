@@ -160,6 +160,12 @@ describe('buttons.css', () => {
     ).toContain('var(--danger)');
   });
 
+  it('puts dark ink on the dark danger hover fill (white on --danger is about 3.3:1)', () => {
+    expect(
+      decl(["html[data-theme='dark'][data-look='vidro']", '.btn-danger', ':hover'], 'color'),
+    ).toEqual(['#12151a']);
+  });
+
   it('keeps the modifier classes out of their base look', () => {
     expect(hasAll('.calendar-detail-btn:not(.calendar-detail-btn--primary')).toBe(true);
     expect(hasAll('.btn-instagram-action:not(.btn-instagram-action--danger)')).toBe(true);

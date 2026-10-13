@@ -102,11 +102,15 @@
   }
 
   /* Neutralises shadcn hover:bg-muted/50 and data-[state=selected]:bg-muted on the <tr>
-     (and the legacy .data-table tr:hover wash) so the rounded cell fill shows. */
+     (and the legacy .data-table tr:hover wash, and the raw rows' hover:bg-[var(--surface-hover)] in
+     FileGrid's <table data-slot='table'>) so the rounded cell fill shows. */
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is([data-slot='table-row'], .data-table tr):is(:hover, [data-state='selected']) {
+    :is([data-slot='table-row'], .data-table tr, [data-slot='table'] tr):is(
+      :hover,
+      [data-state='selected']
+    ) {
     background: transparent;
   }
 

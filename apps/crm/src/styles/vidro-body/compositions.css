@@ -63,11 +63,13 @@
      .vidro-panel. A position: fixed panel is a stacking context at z-index auto, below the sidebar's
      z-index 100, so their 9000+ z-indexes only count inside the panel and the sidebar painted over the
      drawer's left side and its scrim. While one is open the panel goes above the sidebar (the drawer's
-     own scrim covers the sidebar anyway, as on the classic look). */
+     own scrim covers the sidebar anyway, as on the classic look). 200 also clears .banner-container
+     (z-index 115, rendered outside the panel), which otherwise painted over the scrim and the header of
+     a fullscreen drawer, and stays below the lowest portaled layer (AutomationFormDialog, 9005). */
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel:has(:is(.drawer-overlay, .drawer-panel, .time-picker-overlay)) {
-    z-index: 101;
+    z-index: 200;
   }
 
   /* A card inside a dialog becomes a tile on the dialog's glass. */
@@ -119,6 +121,26 @@
     input.h-7.border-input.bg-transparent {
     background: var(--vd-fill);
     border-color: transparent;
+  }
+
+  /* Hover restates the fill so the field contract (rest, hover, focus, disabled) is explicit. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    input.h-7.border-input.bg-transparent:hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    input.h-7.border-input.bg-transparent:hover {
+    background: var(--vd-fill);
   }
 
   html[data-look='vidro']

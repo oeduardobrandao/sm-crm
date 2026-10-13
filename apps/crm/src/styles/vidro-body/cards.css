@@ -290,3 +290,29 @@
     --vd-cards-shadow-lift: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
   }
 }
+
+/* ---------- Report toolbars: solid when transparency is reduced or backdrop-filter is missing ---------- */
+/* Mirrors overlays.css's fallbacks for the two glass toolbars this file owns (same selector, later). */
+@media (min-width: 1101px) and (prefers-reduced-transparency: reduce) {
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.rb-edit-toolbar, .rb-text-toolbar) {
+    background: var(--vd-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (min-width: 1101px) {
+    html[data-look='vidro']
+      body:has(.app-container)
+      .vidro-panel
+      :is(.rb-edit-toolbar, .rb-text-toolbar) {
+      background: var(--vd-solid);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+}

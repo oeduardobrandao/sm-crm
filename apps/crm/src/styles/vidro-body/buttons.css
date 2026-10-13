@@ -1105,7 +1105,9 @@
     color: #fff;
   }
 
-  /* Dark: --danger clears AA against white, --danger-text does not. */
+  /* Dark: the hover fill moves to --danger, the brighter red that reads on the dark glass. White on
+     it is only about 3.3:1, so the label turns ink (#12151a, about 5.6:1). DESIGN_SYSTEM.md's 5.60:1
+     is --danger as text on the dark card, not white text on a --danger fill. */
   html[data-theme='dark'][data-look='vidro']
     body:has(.app-container)
     .vidro-panel
@@ -1137,6 +1139,7 @@
       .btn-instagram-action--danger
     ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
     background: var(--danger);
+    color: #12151a;
   }
 
   html[data-look='vidro']

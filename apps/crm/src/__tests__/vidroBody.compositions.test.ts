@@ -63,9 +63,19 @@ describe('compositions.css', () => {
     expect(hasAll(':has(.data-table)')).toBe(false);
   });
 
-  it('lifts the panel over the sidebar while an unportaled drawer is open', () => {
+  it('lifts the panel over the sidebar and the banner while an unportaled drawer is open', () => {
     expect(hasAll(['.vidro-panel:has(', '.drawer-panel', '.drawer-overlay'])).toBe(true);
-    expect(decl(['.vidro-panel:has(', '.drawer-panel'], 'z-index')).toContain('101');
+    // Above .banner-container (115, rendered outside the panel), below the lowest portaled layer (9005).
+    const z = decl(['.vidro-panel:has(', '.drawer-panel'], 'z-index');
+    expect(z).toEqual(['200']);
+    expect(Number(z[0])).toBeGreaterThan(115);
+    expect(Number(z[0])).toBeLessThan(9005);
+  });
+
+  it('restates the field fill on hover for the raw h-7 input', () => {
+    expect(decl(['input.h-7.border-input.bg-transparent:hover'], 'background')).toContain(
+      'var(--vd-fill)',
+    );
   });
 
   it('compact h-7 fields keep 28px and the raw ones take the field look with every state', () => {

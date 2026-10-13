@@ -89,4 +89,8 @@ describe('tables.css', () => {
       '0 0 0 3px rgba(255, 191, 48, 0.55)',
     );
   });
+
+  it('neutralises the raw <tr> hover wash on data-slot tables (FileGrid)', () => {
+    expect(decl(["[data-slot='table'] tr", ':hover'], 'background')).toContain('transparent');
+  });
 });
