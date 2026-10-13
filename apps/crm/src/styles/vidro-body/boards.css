@@ -1,10 +1,192 @@
 /*
  * Vidro body skin: boards.
- * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md (section 7)
  * Only selectors for this family (cross-family rules go in compositions.css).
  * Guards: every selector starts with html[data-look='vidro']; everything inside
  * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ *
+ * Cards never set `transform` (dnd-kit owns it while dragging; style.css keeps the hover lift).
+ * Calendar cells set no `background`: --surface-main already maps to --vd-group (tokens.css), and
+ * the has-events / today / selected / out-of-month / weekend tints in style.css must survive.
  */
 @media (min-width: 1101px) {
+  /* ===== Kanban columns: tiles ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column {
+    background: var(--vd-tile);
+    border: 0;
+    box-shadow: none;
+    border-radius: 16px;
+    padding: 10px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-header {
+    background: transparent;
+    border-bottom: 0;
+    min-height: 0;
+    padding: 2px 4px 8px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: inherit;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-body {
+    background: transparent;
+    padding: 0;
+  }
+
+  /* ===== Kanban cards: kcard ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel :is(.board-card, .board-post-card) {
+    background: var(--vd-group);
+    border: 1px solid var(--vd-sep);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: none;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):hover {
+    border-color: var(--vd-sep);
+    box-shadow: 0 6px 16px -10px rgba(18, 21, 26, 0.3);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):focus-within {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):focus-within:hover {
+    box-shadow:
+      0 6px 16px -10px rgba(18, 21, 26, 0.3),
+      0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  /* The DragOverlay clone keeps its floating shadow. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-post-card--overlay {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-drop-slot {
+    border-radius: 12px;
+  }
+
+  /* ===== Calendar: day buttons (cliente post calendar) and month-grid cells (Entregas) ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel :is(.calendar-day, .calendar-cell) {
+    border: 1px solid var(--vd-sep);
+    border-radius: 12px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:hover:not(.empty):not(.today):not(.selected) {
+    border-color: rgba(234, 179, 8, 0.4);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .calendar-day:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:is(:disabled, [aria-disabled='true']):hover {
+    border-color: var(--vd-sep);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-day, .calendar-cell):is(.today, .selected),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-day, .calendar-cell):is(.today, .selected):hover {
+    border: 2px solid #ffbf30;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:is(.today, .selected):focus-visible {
+    border: 2px solid #ffbf30;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .calendar-day.empty {
+    background: transparent;
+    border-color: transparent;
+  }
+
+  /* ===== Calendar and sidebar post cards ===== */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-post-card, .sidebar-post-card) {
+    border-radius: 8px;
+    border-color: var(--vd-sep);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-post-card, .sidebar-post-card):hover {
+    border-color: color-mix(in srgb, var(--primary-color), transparent 50%);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-post-card:is(.selected, :focus-visible) {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  /* ===== Agenda (FullCalendar) ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .agenda-fc {
+    --fc-border-color: var(--vd-sep);
+    --fc-page-bg-color: transparent;
+    --fc-neutral-bg-color: var(--vd-fill);
+  }
+}
+
+/* ===== Dark mirrors (the --vd-* tokens flip on their own; only literal colours need restating) ===== */
+@media (min-width: 1101px) {
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):hover {
+    box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.6);
+  }
+
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):focus-within:hover {
+    box-shadow:
+      0 6px 16px -10px rgba(0, 0, 0, 0.6),
+      0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
 }
