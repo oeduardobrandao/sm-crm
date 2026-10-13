@@ -59,6 +59,29 @@ describe('overlays.css', () => {
     });
   });
 
+  it('blurs the post drawer through ::before, never on .drawer-panel itself', () => {
+    // backdrop-filter makes an element the containing block of position: fixed descendants, and the
+    // drawer hosts a non-portaled dnd-kit DragOverlay and .time-picker-overlay (WorkflowCalendarView).
+    root.walkRules((r) => {
+      for (const s of r.selectors) {
+        if (!/\.drawer-panel(?![\w-])/.test(s) || s.includes('::before')) continue;
+        r.walkDecls(/backdrop-filter$/, (d) => {
+          throw new Error(`${d.prop} on .drawer-panel itself: ${s}`);
+        });
+      }
+    });
+    expect(decl('.drawer-panel::before', 'backdrop-filter').join()).toContain('blur(30px)');
+    expect(decl('.drawer-panel.fullscreen', 'border-radius')).toContain('0');
+  });
+
+  it('never puts a pseudo-element inside :is() (it would drop the whole selector list)', () => {
+    root.walkRules((r) => {
+      for (const s of r.selectors) {
+        expect(/:is\([^)]*::/.test(s.replace(/\s+/g, ' ')), s).toBe(false);
+      }
+    });
+  });
+
   it('overlays: dim + light blur', () => {
     for (const hook of [
       "[data-slot='dialog-overlay']",

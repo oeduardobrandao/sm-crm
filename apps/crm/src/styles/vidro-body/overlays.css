@@ -17,8 +17,7 @@
     body:has(.app-container)
     :is(
       [data-slot='dialog-content']:not([data-layout='fullscreen']),
-      [data-slot='alert-dialog-content'],
-      .drawer-panel
+      [data-slot='alert-dialog-content']
     ) {
     background: var(--vd-panel);
     -webkit-backdrop-filter: blur(30px) saturate(1.6);
@@ -26,6 +25,35 @@
     border: 1px solid var(--vd-glass-bd);
     border-radius: 20px;
     box-shadow: var(--vd-shadow);
+  }
+
+  /* The post/workflow drawer hosts position: fixed children that are not portaled (dnd-kit's
+     DragOverlay and .time-picker-overlay in WorkflowCalendarView). backdrop-filter on the panel would
+     make it their containing block and misplace them, so the glass lives on a ::before layer. The
+     panel is a fixed, z-indexed stacking context with overflow: hidden, so z-index -1 paints the layer
+     under the content and the radius clips it. */
+  html[data-look='vidro'] body:has(.app-container) .drawer-panel {
+    background: transparent;
+    border: 1px solid var(--vd-glass-bd);
+    border-radius: 20px;
+    box-shadow: var(--vd-shadow);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .drawer-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--vd-panel);
+    -webkit-backdrop-filter: blur(30px) saturate(1.6);
+    backdrop-filter: blur(30px) saturate(1.6);
+    pointer-events: none;
+  }
+
+  /* The drawer's fullscreen mode keeps its square edges. */
+  html[data-look='vidro'] body:has(.app-container) .drawer-panel.fullscreen {
+    border-radius: 0;
   }
 
   /* ---------- Overlays (scrims) ---------- */
@@ -279,7 +307,6 @@
     :is(
       [data-slot='dialog-content']:not([data-layout='fullscreen']),
       [data-slot='alert-dialog-content'],
-      .drawer-panel,
       [data-slot='sheet-content'],
       [data-slot='popover-content'],
       [data-slot='dropdown-menu-content'],
@@ -294,6 +321,7 @@
       .mention-suggestion-list,
       .color-dropdown
     ),
+  html[data-look='vidro'] body:has(.app-container) .drawer-panel::before,
   html[data-look='vidro'] body:has(.app-container) .toaster [data-sonner-toast] {
     background: var(--vd-solid);
     -webkit-backdrop-filter: none;
@@ -308,7 +336,6 @@
       :is(
         [data-slot='dialog-content']:not([data-layout='fullscreen']),
         [data-slot='alert-dialog-content'],
-        .drawer-panel,
         [data-slot='sheet-content'],
         [data-slot='popover-content'],
         [data-slot='dropdown-menu-content'],
@@ -323,6 +350,7 @@
         .mention-suggestion-list,
         .color-dropdown
       ),
+    html[data-look='vidro'] body:has(.app-container) .drawer-panel::before,
     html[data-look='vidro'] body:has(.app-container) .toaster [data-sonner-toast] {
       background: var(--vd-solid);
       -webkit-backdrop-filter: none;

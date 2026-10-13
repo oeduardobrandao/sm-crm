@@ -366,8 +366,10 @@ describe('EventoRapidoCard under the Vidro look', () => {
   it('keeps its own surface inline styles without the Vidro shell', () => {
     abrir();
     const dialog = screen.getByRole('dialog', { name: 'Novo evento' });
-    expect(dialog.getAttribute('style')).toMatchInlineSnapshot(
-      `"background: var(--card-bg); border-color: var(--border-color); border-radius: 12px; color: var(--text-main); box-shadow: var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16)); --radix-popover-content-transform-origin: var(--radix-popper-transform-origin); --radix-popover-content-available-width: var(--radix-popper-available-width); --radix-popover-content-available-height: var(--radix-popper-available-height); --radix-popover-trigger-width: var(--radix-popper-anchor-width); --radix-popover-trigger-height: var(--radix-popper-anchor-height); animation: none;"`,
+    // Only the component's own declarations: Radix appends its popper variables and, until
+    // floating-ui settles, a timing-dependent `animation: none`.
+    expect(dialog.getAttribute('style')!.split('; --radix-')[0]).toMatchInlineSnapshot(
+      `"background: var(--card-bg); border-color: var(--border-color); border-radius: 12px; color: var(--text-main); box-shadow: var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))"`,
     );
   });
 
