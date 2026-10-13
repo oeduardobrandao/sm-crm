@@ -286,10 +286,14 @@ const STICKY = [
   '.rb-editor-header',
   '.rb-layers-rail',
   '.callout-emoji-picker',
+  '.drawer-selection-bar',
 ];
 it.each(parsed)('$file keeps sticky surfaces opaque', ({ root }) => {
   root.walkRules((rule) => {
-    if (!STICKY.some((c) => rule.selector.includes(c))) return;
+    // Whole class tokens only: `.drawer-selection-bar` must not match `.drawer-selection-bar-btn`.
+    const hasClass = (c: string) =>
+      new RegExp(`${c.replace(/[.-]/g, '\\$&')}(?![\\w-])`).test(rule.selector);
+    if (!STICKY.some(hasClass)) return;
     rule.walkDecls(/^background(-color)?$/, (d) => {
       expect(d.value, rule.selector).not.toMatch(/--vd-(tile|fill|group|glass|panel|menu)/);
     });

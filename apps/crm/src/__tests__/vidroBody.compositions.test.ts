@@ -72,6 +72,13 @@ describe('compositions.css', () => {
     expect(Number(z[0])).toBeLessThan(9005);
   });
 
+  it('keeps the sticky fluxo selection bar opaque in dark (main remaps --surface-2 translucent)', () => {
+    const { decl } = loadFamily('compositions');
+    expect(decl(["[data-theme='dark']", '.drawer-selection-bar'], 'background')).toEqual([
+      'var(--vd-solid)',
+    ]);
+  });
+
   it('restates the field fill on hover for the raw h-7 input', () => {
     expect(decl(['input.h-7.border-input.bg-transparent:hover'], 'background')).toContain(
       'var(--vd-fill)',

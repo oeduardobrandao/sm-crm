@@ -212,4 +212,12 @@
     width: 28px;
     padding: 0;
   }
+
+  /* Entregas fluxo drawer: the bulk selection bar is sticky at the bottom of the scrolling drawer
+     body. Dark paints it with --surface-2, which the Vidro tokens remap to a translucent fill, so the
+     list would show through it while scrolling. Sticky surfaces stay opaque. Light uses --card-bg,
+     which is not remapped. */
+  html[data-theme='dark'][data-look='vidro'] body:has(.app-container) .drawer-selection-bar {
+    background: var(--vd-solid);
+  }
 }
