@@ -156,12 +156,12 @@ export function ConversationThread({
                   }
                 >
                   {daEquipe && (
-                    <div className="mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
+                    <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
                       {m.author_name ?? 'Equipe'}
                     </div>
                   )}
                   {m.action === 'correcao' && (
-                    <div className="mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
+                    <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
                       Pediu correção
                     </div>
                   )}

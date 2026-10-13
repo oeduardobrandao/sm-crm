@@ -275,6 +275,11 @@ describe('ConversationThread Vidro bubbles', () => {
     expect(them).not.toHaveClass('vidro-bubble--me');
   });
 
+  it('marks the author line with the inert meta hook', () => {
+    renderThread({ feed: feed() });
+    expect(screen.getByText('Ana')).toHaveClass('vidro-bubble__meta', 'text-[11px]');
+  });
+
   it('keeps the inline style without the Vidro shell', () => {
     renderThread({ feed: feed() });
     expect(bubbleOf('Mensagem da equipe').style.background).toBe('var(--surface-hover)');

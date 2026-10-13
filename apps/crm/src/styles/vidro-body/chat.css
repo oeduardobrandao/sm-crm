@@ -40,4 +40,16 @@
     color: var(--text-main);
     border-bottom-left-radius: 6px;
   }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vidro-bubble--me
+    .vidro-bubble__meta {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-bubble--me a {
+    color: var(--text-main);
+  }
 }

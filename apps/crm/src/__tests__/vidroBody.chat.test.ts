@@ -26,7 +26,7 @@ function loadFamily(name: string) {
   return { root, decl, hasAll };
 }
 
-const { decl, hasAll } = loadFamily('chat');
+const { root, decl, hasAll } = loadFamily('chat');
 
 describe('chat.css', () => {
   it('bubbles', () => {
@@ -53,6 +53,23 @@ describe('chat.css', () => {
     expect(decl('.approval-bubble--client', 'border-radius')).toContain('18px');
     expect(decl('.approval-bubble--team', 'margin-left')).toEqual([]);
     expect(decl('.approval-bubble--client', 'margin-right')).toEqual([]);
+  });
+
+  it('keeps nested text legible on the ink own bubble', () => {
+    expect(decl(['.vidro-bubble--me', '.vidro-bubble__meta'], 'color')).toContain(
+      'rgba(255, 255, 255, 0.72)',
+    );
+    expect(decl(['.vidro-bubble--me', ' a'], 'color')).toContain('var(--text-main)');
+  });
+
+  it('puts the shared approval rule before the me/them tails', () => {
+    const order: string[] = [];
+    root.walkRules((r) => {
+      if (r.selector.includes(':is(.approval-bubble--team')) order.push('shared');
+      else if (r.selector.includes('.vidro-bubble--me,')) order.push('me');
+      else if (r.selector.includes('.vidro-bubble--them,')) order.push('them');
+    });
+    expect(order).toEqual(['shared', 'me', 'them']);
   });
 
   it('is scoped to the panel body', () => {
