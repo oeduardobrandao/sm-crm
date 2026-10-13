@@ -5,6 +5,767 @@
  * Guards: every selector starts with html[data-look='vidro']; everything inside
  * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ *
+ * Every rule is emitted twice: under .vidro-panel (page body) and under the overlay-content
+ * prefix (dialog, alert-dialog, sheet, popover and the createPortal'd comment/mention popovers).
+ * Tones read the --vd-tg-* tokens, which already swap in dark; only badge-primary has a dark mirror.
+ * Order matters: the size restorations (sm, lg, fila-pill--lg, icon-only) sit after the shared
+ * geometry at equal specificity. Known limit: .instagram-overview__token-badge has !important
+ * padding / font-size in style.css, so the geometry cannot reach it.
  */
 @media (min-width: 1101px) {
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .post-status-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .post-tipo-badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-card-deadline,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .post-fluxo-tag,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-pill,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-tag,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .auto-schedule-badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .tag-pill,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-card-approval-badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .history-step-badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .post-production-state,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-card-type-status-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-card-posts-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .comment-summary-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-status-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-tipo-badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-deadline,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-fluxo-tag,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .fila-pill,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .fila-tag,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .auto-schedule-badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .tag-pill,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-approval-badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .history-step-badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-production-state,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-type-status-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-posts-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .comment-summary-chip {
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 2px 9px;
+    white-space: nowrap;
+    line-height: 1.5;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .post-status-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .post-tipo-badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-card-deadline,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .post-fluxo-tag:not(.post-fluxo-tag--avulso),
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-pill,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-tag,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .auto-schedule-badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .tag-pill,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-card-approval-badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .history-step-badge,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .post-production-state,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-card-type-status-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-card-posts-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .comment-summary-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-status-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-tipo-badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-deadline,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-fluxo-tag:not(.post-fluxo-tag--avulso),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .fila-pill,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .fila-tag,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .auto-schedule-badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .tag-pill,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-approval-badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .history-step-badge,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-production-state,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-type-status-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-posts-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .comment-summary-chip {
+    border-color: transparent;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge--sm,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge--sm {
+    font-size: 10px;
+    padding: 1px 7px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge--lg,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge--lg {
+    font-size: 0.8125rem;
+    padding: 0.3rem 0.8rem;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-pill--lg,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .fila-pill--lg {
+    font-size: 0.82rem;
+    padding: 0.2rem 0.7rem;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .post-fluxo-tag--icon-only,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .post-fluxo-tag--icon-only {
+    padding: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge-success:not(.badge--solid),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge-success:not(.badge--solid) {
+    background: var(--vd-tg-ok-bg);
+    color: var(--vd-tg-ok);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge-warning:not(.badge--solid),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge-warning:not(.badge--solid) {
+    background: var(--vd-tg-warn-bg);
+    color: var(--vd-tg-warn);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge-danger:not(.badge--solid),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge-danger:not(.badge--solid) {
+    background: var(--vd-tg-bad-bg);
+    color: var(--vd-tg-bad);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge-info:not(.badge--solid),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge-info:not(.badge--solid) {
+    background: var(--vd-tg-info-bg);
+    color: var(--vd-tg-info);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.badge, .badge-neutral):not(
+      .badge-success,
+      .badge-warning,
+      .badge-danger,
+      .badge-info,
+      .badge-primary,
+      .badge-outline,
+      .badge--solid
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.badge, .badge-neutral):not(
+      .badge-success,
+      .badge-warning,
+      .badge-danger,
+      .badge-info,
+      .badge-primary,
+      .badge-outline,
+      .badge--solid
+    ) {
+    background: var(--vd-tg-neutral-bg);
+    color: var(--vd-tg-neutral);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge-primary:not(.badge--solid),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge-primary:not(.badge--solid) {
+    background: #fff3dc;
+    color: #92400e;
+  }
+
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .badge-primary:not(.badge--solid),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge-primary:not(.badge--solid) {
+    background: rgba(245, 163, 66, 0.18);
+    color: #f5b041;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .badge-outline,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .badge-outline {
+    border-color: var(--vd-sep);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-count,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .today-group-count,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .list-group-count,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-column-count,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-group-count,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-group-count {
+    background: transparent;
+    border: 0;
+    color: var(--vd-txt3);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .event-pill,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .event-pill {
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      .post-fluxo-tag,
+      .board-card-posts-chip,
+      .board-card-deadline-toggle,
+      .auto-schedule-badge--action
+    ):focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      .post-fluxo-tag,
+      .board-card-posts-chip,
+      .board-card-deadline-toggle,
+      .auto-schedule-badge--action
+    ):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      .post-fluxo-tag,
+      .board-card-posts-chip,
+      .board-card-deadline-toggle,
+      .auto-schedule-badge--action
+    ):is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      .post-fluxo-tag,
+      .board-card-posts-chip,
+      .board-card-deadline-toggle,
+      .auto-schedule-badge--action
+    ):is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
