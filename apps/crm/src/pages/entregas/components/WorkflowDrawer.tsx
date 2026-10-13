@@ -66,6 +66,8 @@ import {
   removeWorkflowPost,
   reorderWorkflowPosts,
   sendPostsToCliente,
+  sendSelectedPostsToCliente,
+  isSendableFromSelection,
   getPostApprovals,
   getPostStatusEvents,
   replyToPostApproval,
@@ -242,6 +244,9 @@ export function WorkflowDrawer({
   const [replyText, setReplyText] = useState<Record<number, string>>({});
   const [sendingReply, setSendingReply] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
+  // "Enviar ao cliente" from the selection bar: ids awaiting the confirm dialog.
+  const [sendSelectedTarget, setSendSelectedTarget] = useState<number[] | null>(null);
+  const [isSendingSelected, setIsSendingSelected] = useState(false);
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
   useUnsavedWork(savingIds.size > 0);
@@ -663,6 +668,22 @@ export function WorkflowDrawer({
     refresh();
   };
 
+  /** Block sending if any of these posts has a video without a thumbnail. Shared by the
+   *  header button and the selection bar so neither path bypasses the other's guard. */
+  const blockedByMissingThumbnail = async (toSend: WorkflowPost[]): Promise<boolean> => {
+    const mediaByPost = await Promise.all(
+      toSend.map(async (p) => ({ post: p, media: await listPostMedia(p.id!) })),
+    );
+    const blocked = mediaByPost.filter((m) => hasVideoMissingThumbnail(m.media));
+    if (blocked.length > 0) {
+      toast.error(
+        `Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`,
+      );
+      return true;
+    }
+    return false;
+  };
+
   const handleSendToCliente = async () => {
     const readyPosts = posts.filter((p) => p.status === 'aprovado_interno');
     if (readyPosts.length === 0) {
@@ -670,17 +691,7 @@ export function WorkflowDrawer({
       return;
     }
 
-    // Block sending if any ready post has a video without a thumbnail.
-    const mediaByPost = await Promise.all(
-      readyPosts.map(async (p) => ({ post: p, media: await listPostMedia(p.id!) })),
-    );
-    const blocked = mediaByPost.filter((m) => hasVideoMissingThumbnail(m.media));
-    if (blocked.length > 0) {
-      toast.error(
-        `Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`,
-      );
-      return;
-    }
+    if (await blockedByMissingThumbnail(readyPosts)) return;
 
     setIsSending(true);
     try {
@@ -694,6 +705,51 @@ export function WorkflowDrawer({
       toast.error('Erro ao enviar posts ao cliente');
     } finally {
       setIsSending(false);
+    }
+  };
+
+  /** Selection bar: sends the selected posts from any team-owned status, not only
+   *  aprovado_interno. Posts already in the portal, approved or scheduled are skipped. */
+  const openSendSelected = () => {
+    const sendable = posts.filter(
+      (p) => p.id != null && selectedPostIds.has(p.id) && isSendableFromSelection(p.status),
+    );
+    if (sendable.length === 0) {
+      toast.error(
+        'Nenhum dos posts selecionados pode ser enviado. Eles já estão no portal, aprovados ou agendados.',
+      );
+      return;
+    }
+    setSendSelectedTarget(sendable.map((p) => p.id!));
+  };
+
+  const confirmSendSelected = async () => {
+    const ids = sendSelectedTarget;
+    setSendSelectedTarget(null);
+    if (!ids || ids.length === 0) return;
+    const toSend = posts.filter((p) => p.id != null && ids.includes(p.id));
+    setIsSendingSelected(true);
+    try {
+      if (await blockedByMissingThumbnail(toSend)) return;
+      const sent = await sendSelectedPostsToCliente(workflowId, ids);
+      const skipped = selectedPostIds.size - sent;
+      if (sent === 0) {
+        toast.error('Nenhum post foi enviado. Eles mudaram de status, atualize e tente de novo.');
+      } else {
+        toast.success(
+          `${sent} post${sent > 1 ? 's' : ''} enviado${sent > 1 ? 's' : ''} ao cliente!` +
+            (skipped > 0
+              ? ` ${skipped} ${skipped > 1 ? 'ficaram' : 'ficou'} de fora (já no portal, aprovado ou agendado).`
+              : ''),
+        );
+        setSelectedPostIds(new Set());
+      }
+      refresh();
+      onRefresh();
+    } catch {
+      toast.error('Erro ao enviar posts ao cliente');
+    } finally {
+      setIsSendingSelected(false);
     }
   };
 
@@ -1198,6 +1254,14 @@ export function WorkflowDrawer({
                   <div className="drawer-selection-bar-actions">
                     <button
                       type="button"
+                      className="drawer-selection-bar-btn drawer-selection-bar-btn--primary"
+                      onClick={openSendSelected}
+                      disabled={isSendingSelected}
+                    >
+                      <Send className="h-3.5 w-3.5" /> Enviar ao cliente
+                    </button>
+                    <button
+                      type="button"
                       className="drawer-selection-bar-btn"
                       onClick={() => setMoveTarget(Array.from(selectedPostIds))}
                     >
@@ -1319,6 +1383,8 @@ export function WorkflowDrawer({
                   count={selectedPostIds.size}
                   onMove={() => setMoveTarget(Array.from(selectedPostIds))}
                   onDetach={() => openDetachConfirm(Array.from(selectedPostIds))}
+                  onSend={openSendSelected}
+                  sending={isSendingSelected}
                 />
               )}
             </>
@@ -1514,6 +1580,38 @@ export function WorkflowDrawer({
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmRejectSuggestion}>Rejeitar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation dialog for "Enviar ao cliente" from the selection bar */}
+      <AlertDialog
+        open={!!sendSelectedTarget}
+        onOpenChange={(open) => {
+          if (!open) setSendSelectedTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Enviar {sendSelectedTarget?.length ?? 0} post
+              {(sendSelectedTarget?.length ?? 0) === 1 ? '' : 's'} ao cliente?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {(sendSelectedTarget?.length ?? 0) === 1
+                ? 'O post fica visível'
+                : 'Os posts ficam visíveis'}{' '}
+              no portal do cliente, aguardando aprovação.
+              {sendSelectedTarget && selectedPostIds.size > sendSelectedTarget.length
+                ? selectedPostIds.size - sendSelectedTarget.length === 1
+                  ? ' 1 dos selecionados já está no portal, aprovado ou agendado, e fica como está.'
+                  : ` ${selectedPostIds.size - sendSelectedTarget.length} dos selecionados já estão no portal, aprovados ou agendados, e ficam como estão.`
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSendSelected}>Enviar ao cliente</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

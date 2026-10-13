@@ -1339,6 +1339,46 @@ export async function sendPostsToCliente(workflowId: number): Promise<void> {
 }
 
 /**
+ * Statuses a selection send leaves alone: already in the portal, already
+ * approved by the client (re-sending would silently drop that approval) or
+ * owned by the publish pipeline.
+ */
+export const SELECTION_SEND_SKIPPED_STATUSES = [
+  'enviado_cliente',
+  'aprovado_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+] as const satisfies readonly WorkflowPost['status'][];
+
+export function isSendableFromSelection(status: WorkflowPost['status']): boolean {
+  return !(SELECTION_SEND_SKIPPED_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Sends the SELECTED posts of a fluxo to the client portal from any team-owned
+ * status (rascunho, revisão, aprovado interno, correção). Unlike
+ * `sendPostsToCliente` it does not require `aprovado_interno`. Clears
+ * `custom_status_id` like the status picker does: a custom status must behave
+ * as the canonical one it points at. Returns how many posts actually moved.
+ */
+export async function sendSelectedPostsToCliente(
+  workflowId: number,
+  postIds: number[],
+): Promise<number> {
+  if (postIds.length === 0) return 0;
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'enviado_cliente', custom_status_id: null })
+    .eq('workflow_id', workflowId)
+    .in('id', postIds)
+    .not('status', 'in', `(${SELECTION_SEND_SKIPPED_STATUSES.join(',')})`)
+    .select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+/**
  * Sends ONE post to the client portal from whatever status the caller saw
  * (`fromStatus`), so a draft can go straight to the client. The UPDATE is
  * conditional on that status: a zero-row result means it already moved --
