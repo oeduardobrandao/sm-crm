@@ -360,6 +360,15 @@
 .phone-ent-fluxo__bar-btn:active {
   background: var(--phone-fill-pressed);
 }
+.phone-ent-fluxo__bar-btn--primary {
+  flex: none;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+.phone-ent-fluxo__bar-btn--primary:active {
+  background: var(--phone-ink);
+  opacity: 0.85;
+}
 .phone-ent-fluxo__bar-btn:disabled {
   opacity: 0.45;
   cursor: default;

@@ -292,14 +292,30 @@ export interface FluxoPhoneSelectionBarProps {
   count: number;
   onMove: () => void;
   onDetach: () => void;
+  onSend: () => void;
+  sending?: boolean;
 }
 
-export function FluxoPhoneSelectionBar({ count, onMove, onDetach }: FluxoPhoneSelectionBarProps) {
+export function FluxoPhoneSelectionBar({
+  count,
+  onMove,
+  onDetach,
+  onSend,
+  sending = false,
+}: FluxoPhoneSelectionBarProps) {
   return (
     <BottomActionBar className="phone-ent-fluxo__bar" data-testid="phone-ent-fluxo-selection-bar">
       <span className="phone-ent-fluxo__bar-count" aria-live="polite">
         {count} {plural(count, 'selecionado', 'selecionados')}
       </span>
+      <button
+        type="button"
+        className="phone-ent-fluxo__bar-btn phone-ent-fluxo__bar-btn--primary"
+        disabled={count === 0 || sending}
+        onClick={onSend}
+      >
+        Enviar ao cliente
+      </button>
       <div className="phone-ent-fluxo__bar-actions">
         <button
           type="button"

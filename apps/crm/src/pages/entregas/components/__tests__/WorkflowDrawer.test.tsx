@@ -96,6 +96,9 @@ vi.mock('@/store', () => ({
   removeWorkflowPost: vi.fn(),
   reorderWorkflowPosts: vi.fn(),
   sendPostsToCliente: vi.fn(),
+  sendSelectedPostsToCliente: vi.fn(),
+  isSendableFromSelection: (s: string) =>
+    !['enviado_cliente', 'aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'].includes(s),
   getPostApprovals: vi.fn(async () => []),
   getPostStatusEvents: vi.fn(async () => []),
   getPostProcessEvents: vi.fn(async () => []),
@@ -244,6 +247,7 @@ import {
   detachPostsKeepingProcess,
   movePostsToNewFlow,
   addWorkflowPost,
+  sendSelectedPostsToCliente,
 } from '@/store';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
 
@@ -257,6 +261,7 @@ const mockDetach = vi.mocked(detachPostsFromWorkflow);
 const mockDetachKeepingProcess = vi.mocked(detachPostsKeepingProcess);
 const mockMoveToNewFlow = vi.mocked(movePostsToNewFlow);
 const mockAddPost = vi.mocked(addWorkflowPost);
+const mockSendSelected = vi.mocked(sendSelectedPostsToCliente);
 
 function renderDrawer(
   qc: QueryClient,
@@ -833,6 +838,57 @@ describe('WorkflowDrawer desmembrar do fluxo (Task 15)', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('drawer-selection-bar')).not.toBeInTheDocument(),
     );
+  });
+
+  it('"Enviar ao cliente" na barra envia os selecionados (mesmo em rascunho) após confirmar', async () => {
+    mockSendSelected.mockResolvedValue(2);
+    const onRefresh = vi.fn();
+    const { toast } = await import('sonner');
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined, onRefresh });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar todos' }));
+    await screen.findByText('2 selecionados');
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Enviar ao cliente',
+      }),
+    );
+
+    await screen.findByText('Enviar 2 posts ao cliente?');
+    expect(mockSendSelected).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar ao cliente' }));
+
+    await waitFor(() => expect(mockSendSelected).toHaveBeenCalledWith(10, [1, 2]));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+    expect(toast.success).toHaveBeenCalledWith('2 posts enviados ao cliente!');
+    expect(screen.queryByTestId('drawer-selection-bar')).not.toBeInTheDocument();
+  });
+
+  it('"Enviar ao cliente" pula posts já no portal e avisa quando nenhum selecionado pode ir', async () => {
+    mockGetPosts.mockResolvedValue([
+      { ...(postA as object), status: 'enviado_cliente' },
+      { ...(postB as object), status: 'aprovado_cliente' },
+    ] as never);
+    const { toast } = await import('sonner');
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar todos' }));
+    await screen.findByText('2 selecionados');
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Enviar ao cliente',
+      }),
+    );
+
+    expect(toast.error).toHaveBeenCalledWith(
+      'Nenhum dos posts selecionados pode ser enviado. Eles já estão no portal, aprovados ou agendados.',
+    );
+    expect(screen.queryByText(/ao cliente\?$/)).not.toBeInTheDocument();
+    expect(mockSendSelected).not.toHaveBeenCalled();
   });
 
   it('o confirm só mostra o checkbox de arquivar quando a seleção cobre todos os posts do fluxo', async () => {

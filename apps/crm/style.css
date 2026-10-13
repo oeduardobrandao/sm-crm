@@ -7720,6 +7720,26 @@ body.role-agent input[name='valor_total'] {
   color: var(--primary-color);
 }
 
+.drawer-selection-bar-btn--primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--dark);
+}
+
+.drawer-selection-bar-btn--primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--dark);
+}
+
+.drawer-selection-bar-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .drawer-selection-bar-btn--ghost {
   background: transparent;
   border-color: transparent;

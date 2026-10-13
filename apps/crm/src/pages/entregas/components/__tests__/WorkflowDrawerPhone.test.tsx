@@ -77,6 +77,9 @@ vi.mock('@/store', () => ({
   removeWorkflowPost: vi.fn(),
   reorderWorkflowPosts: vi.fn(),
   sendPostsToCliente: vi.fn(),
+  sendSelectedPostsToCliente: vi.fn(),
+  isSendableFromSelection: (s: string) =>
+    !['enviado_cliente', 'aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'].includes(s),
   getPostApprovals: vi.fn(async () => []),
   getPostStatusEvents: vi.fn(async () => []),
   getPostProcessEvents: vi.fn(async () => []),
