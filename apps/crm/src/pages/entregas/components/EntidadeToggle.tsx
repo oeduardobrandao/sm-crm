@@ -16,6 +16,27 @@ const OPTIONS: { id: EntidadeFilter; label: string }[] = [
  *  ModeToggle. */
 export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
   const vidroShell = useVidroShell();
+  // Under the Vidro shell the toggle takes the skin's segmented-capsule styles
+  // (data-slot hooks) and drops its inline styles, which would win over them.
+  if (vidroShell) {
+    return (
+      <div role="radiogroup" aria-label="Entidades do quadro" data-slot="toggle-group">
+        {OPTIONS.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={value === o.id}
+            data-slot="toggle-group-item"
+            data-state={value === o.id ? 'on' : 'off'}
+            onClick={() => onChange(o.id)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div
       role="radiogroup"
@@ -23,8 +44,7 @@ export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
       style={{
         display: 'flex',
         gap: '0.25rem',
-        // Under the Vidro shell the panel shows through (spec: inline-style escapes).
-        background: vidroShell ? undefined : 'var(--card-bg)',
+        background: 'var(--card-bg)',
         border: '1px solid var(--border-color)',
         padding: '0.25rem',
         borderRadius: 8,

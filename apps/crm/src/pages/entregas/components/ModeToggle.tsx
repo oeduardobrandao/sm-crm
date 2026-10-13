@@ -18,25 +18,43 @@ interface ModeToggleProps {
  *  silently reset every shared link. */
 export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
   const vidroShell = useVidroShell();
+  const options = [
+    ['entregas', 'Etapas'],
+    ['publicacoes', 'Status'],
+  ] as const;
+  // Under the Vidro shell the toggle takes the skin's segmented-capsule styles
+  // (data-slot hooks) and drops its inline styles, which would win over them.
+  if (vidroShell) {
+    return (
+      <div data-slot="toggle-group">
+        {options.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={mode === id}
+            data-slot="toggle-group-item"
+            data-state={mode === id ? 'on' : 'off'}
+            onClick={() => onModeChange(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div
       style={{
         display: 'flex',
         gap: '0.25rem',
-        // Under the Vidro shell the panel shows through (spec: inline-style escapes).
-        background: vidroShell ? undefined : 'var(--card-bg)',
+        background: 'var(--card-bg)',
         border: '1px solid var(--border-color)',
         padding: '0.25rem',
         borderRadius: 8,
         width: 'fit-content',
       }}
     >
-      {(
-        [
-          ['entregas', 'Etapas'],
-          ['publicacoes', 'Status'],
-        ] as const
-      ).map(([id, label]) => (
+      {options.map(([id, label]) => (
         <button
           key={id}
           onClick={() => onModeChange(id)}

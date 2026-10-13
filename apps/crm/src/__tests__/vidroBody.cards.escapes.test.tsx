@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -87,8 +87,6 @@ describe('EmptyStateGuide under Vidro', () => {
 
 const TOGGLE_CLASSIC =
   'display: flex; gap: 0.25rem; background: var(--card-bg); border: 1px solid var(--border-color); padding: 0.25rem; border-radius: 8px; width: fit-content;';
-const TOGGLE_VIDRO =
-  'display: flex; gap: 0.25rem; border: 1px solid var(--border-color); padding: 0.25rem; border-radius: 8px; width: fit-content;';
 
 describe('Entregas ModeToggle / EntidadeToggle under Vidro', () => {
   const mode = (shell: boolean) => {
@@ -100,16 +98,36 @@ describe('Entregas ModeToggle / EntidadeToggle under Vidro', () => {
     return screen.getByRole('radiogroup', { name: 'Entidades do quadro' });
   };
 
-  it('ModeToggle drops only the inline background under the shell', () => {
-    expect(mode(true).getAttribute('style')).toBe(TOGGLE_VIDRO);
+  // Under the shell both toggles join the skin's segmented capsule via the toggle-group data-slot
+  // hooks and carry no inline style at all (inline styles would beat the skin).
+  const expectCapsule = (group: HTMLElement, selected: string) => {
+    expect(group.getAttribute('data-slot')).toBe('toggle-group');
+    expect(group.hasAttribute('style')).toBe(false);
+    const items = within(group).getAllByRole(
+      group.getAttribute('role') === 'radiogroup' ? 'radio' : 'button',
+    );
+    for (const item of items) {
+      expect(item.getAttribute('data-slot')).toBe('toggle-group-item');
+      expect(item.hasAttribute('style')).toBe(false);
+      expect(item.getAttribute('data-state')).toBe(item.textContent === selected ? 'on' : 'off');
+    }
+  };
+
+  it('ModeToggle renders as the Vidro segmented capsule under the shell', () => {
+    const group = mode(true);
+    expectCapsule(group, 'Etapas');
+    expect(screen.getByRole('button', { name: 'Etapas' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
   });
 
   it('ModeToggle keeps its inline style byte-identical with the shell off', () => {
     expect(mode(false).getAttribute('style')).toBe(TOGGLE_CLASSIC);
   });
 
-  it('EntidadeToggle drops only the inline background under the shell', () => {
-    expect(entidade(true).getAttribute('style')).toBe(TOGGLE_VIDRO);
+  it('EntidadeToggle renders as the Vidro segmented capsule under the shell', () => {
+    expectCapsule(entidade(true), 'Todos');
+    expect(screen.getByRole('radio', { name: 'Todos' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('EntidadeToggle keeps its inline style byte-identical with the shell off', () => {
