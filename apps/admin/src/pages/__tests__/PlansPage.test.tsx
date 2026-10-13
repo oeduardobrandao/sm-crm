@@ -12,7 +12,7 @@ vi.mock('../../lib/api', async (importOriginal) => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { createPlan, deletePlan, listPlans, updatePlan } from '../../lib/api';
+import { createPlan, deletePlan, FEATURE_FLAG_KEYS, listPlans, updatePlan } from '../../lib/api';
 import { PLANS_FIXTURE } from './plans-fixture';
 import PlansPage from '../PlansPage';
 
@@ -49,7 +49,9 @@ describe('PlansPage (desktop)', () => {
     expect(screen.getByText('INATIVO')).toBeInTheDocument();
     expect(screen.getByText('52 workspaces')).toBeInTheDocument();
     expect(screen.getByText('1 workspace')).toBeInTheDocument();
-    expect(screen.getByText('2 de 27 funcionalidades')).toBeInTheDocument();
+    expect(
+      screen.getByText(`2 de ${FEATURE_FLAG_KEYS.length} funcionalidades`),
+    ).toBeInTheDocument();
     expect(screen.getByText('∞ clientes')).toBeInTheDocument();
   });
 
