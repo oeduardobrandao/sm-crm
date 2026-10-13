@@ -75,7 +75,42 @@ vi.mock('sonner', () => ({
 // Real DropdownMenu needs Radix portal/pointer-capture machinery jsdom doesn't
 // implement; render it flat (same pattern as LeadsPage.atlimit.test.tsx) so the
 // Novo dropdown's items are directly clickable without opening anything first.
+// The Vidro toolbar's view picker is a radio group; the flat mock keeps its one live group's
+// value and handler here so each item renders as a clickable menuitemradio.
+const radioGroup = vi.hoisted(() => ({
+  value: undefined as string | undefined,
+  onValueChange: undefined as ((v: string) => void) | undefined,
+}));
 vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenuRadioGroup: ({
+    children,
+    value,
+    onValueChange,
+    'aria-label': label,
+  }: {
+    children: React.ReactNode;
+    value?: string;
+    onValueChange?: (v: string) => void;
+    'aria-label'?: string;
+  }) => {
+    radioGroup.value = value;
+    radioGroup.onValueChange = onValueChange;
+    return (
+      <div role="group" aria-label={label}>
+        {children}
+      </div>
+    );
+  },
+  DropdownMenuRadioItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={radioGroup.value === value}
+      onClick={() => radioGroup.onValueChange?.(value)}
+    >
+      {children}
+    </button>
+  ),
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -3326,13 +3361,17 @@ describe('EntregasPage: Vidro toolbar', () => {
     expect(novo[0].closest('.vidro-toolbar')).not.toBeNull();
     expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
 
-    const tablists = screen.getAllByRole('tablist', { name: 'Modos de visualização' });
-    expect(tablists).toHaveLength(1);
-    expect(tablists[0]).toHaveClass('vidro-seg');
-    expect(tablists[0].closest('.vidro-toolbar')).not.toBeNull();
-    const kanbanTab = screen.getByRole('tab', { name: /Kanban/ });
-    expect(kanbanTab).toHaveClass('vidro-seg-btn');
-    expect(kanbanTab).toHaveAttribute('aria-selected', 'true');
+    // The view switcher is one dropdown in the toolbar, naming the current view.
+    expect(screen.queryByRole('tablist', { name: 'Modos de visualização' })).toBeNull();
+    const viewPicker = document.querySelector('.vidro-view-picker') as HTMLElement;
+    expect(viewPicker.closest('.vidro-toolbar')).not.toBeNull();
+    expect(viewPicker).toHaveTextContent('Kanban');
+    const views = screen.getByRole('group', { name: 'Modos de visualização' });
+    expect(within(views).getAllByRole('menuitemradio')).toHaveLength(6);
+    expect(within(views).getByRole('menuitemradio', { name: /Kanban/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
 
     // The in-page header is gone; the mode toggle stays in the content.
     expect(document.querySelector('header.header')).toBeNull();
@@ -3379,7 +3418,7 @@ describe('EntregasPage: Vidro toolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: '1 atrasado' }));
 
     expect(await screen.findByText(/^Kanban view:/)).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Kanban/ })).toHaveAttribute('aria-selected', 'true');
+    expect(document.querySelector('.vidro-view-picker')).toHaveTextContent('Kanban');
     expect(screen.getByRole('button', { name: '1 atrasado' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -3404,16 +3443,16 @@ describe('EntregasPage: Vidro toolbar', () => {
     expect(document.querySelector('.vista-picker')).toBeNull();
   });
 
-  it('switches the view from the toolbar tabs and drops the replay link off the kanban', async () => {
+  it('switches the view from the toolbar dropdown and drops the replay link off the kanban', async () => {
     renderInShell(true);
     await screen.findAllByRole('heading', { level: 1 });
 
-    const lista = screen.getByRole('tab', { name: /Lista/ });
+    const lista = screen.getByRole('menuitemradio', { name: /Lista/ });
     expect(lista.closest('.vidro-toolbar')).not.toBeNull();
     fireEvent.click(lista);
 
     expect(await screen.findByText(/^List view:/)).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Lista/ })).toHaveAttribute('aria-selected', 'true');
+    expect(document.querySelector('.vidro-view-picker')).toHaveTextContent('Lista');
     expect(screen.queryByRole('button', { name: 'Ver tour novamente' })).toBeNull();
   });
 

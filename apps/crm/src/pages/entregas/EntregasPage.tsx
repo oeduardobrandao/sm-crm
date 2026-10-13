@@ -17,6 +17,7 @@ import {
   ListChecks,
   CircleHelp,
   PlayCircle,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +27,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -1489,23 +1492,32 @@ export default function EntregasPage() {
       </DropdownMenuContent>
     </DropdownMenu>
   );
-  // The view tabs as the toolbar's capsule segmented control. The classic tablist in
-  // the content keeps its inline styles.
+  // Under the Vidro shell the view switcher is one dropdown in the toolbar (like the vista picker
+  // below it). The classic tablist in the content keeps its inline styles.
+  const activeViewTab = VIEW_TABS.find((tab) => tab.id === activeView) ?? VIEW_TABS[0];
   const toolbarViewTabs = (
-    <div role="tablist" aria-label="Modos de visualização" className="vidro-seg">
-      {VIEW_TABS.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          aria-selected={activeView === tab.id}
-          onClick={() => setActiveView(tab.id)}
-          className="vidro-seg-btn"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="vidro-view-picker" title="Modo de visualização">
+          {activeViewTab.icon}
+          <span>{activeViewTab.label}</span>
+          <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-[200px]">
+        <DropdownMenuRadioGroup
+          value={activeView}
+          onValueChange={(view) => setActiveView(view as ActiveView)}
+          aria-label="Modos de visualização"
         >
-          {tab.icon} {tab.label}
-        </button>
-      ))}
-    </div>
+          {VIEW_TABS.map((tab) => (
+            <DropdownMenuRadioItem key={tab.id} value={tab.id} className="gap-2">
+              {tab.icon} {tab.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
   const inToolbar = usePageToolbar(
