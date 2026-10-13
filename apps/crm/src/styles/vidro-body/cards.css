@@ -7,6 +7,14 @@
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  */
 @media (min-width: 1101px) {
+  /* Hover shadows for this family, as panel-local variables so the dark mirror at the end of the file
+     only swaps the colour. Mirroring the hover rules themselves would add a [data-theme] attribute to
+     their specificity and let the dark :hover beat the light .ring-2 / :focus-visible combinations. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel {
+    --vd-cards-shadow-hover: 0 8px 18px -10px rgba(18, 21, 26, 0.25);
+    --vd-cards-shadow-lift: 0 8px 20px -8px rgba(18, 21, 26, 0.18);
+  }
+
   /* ---------- Groups: white, hairline, 16px ---------- */
   html[data-look='vidro']
     body:has(.app-container)
@@ -40,7 +48,7 @@
      ring-2 is a box-shadow, so the selection ring and the drag-over tint are restated here. */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel button[data-slot='card']:hover {
     border-color: var(--primary-color);
-    box-shadow: 0 8px 18px -10px rgba(18, 21, 26, 0.25);
+    box-shadow: var(--vd-cards-shadow-hover);
   }
   html[data-look='vidro']
     body:has(.app-container)
@@ -57,7 +65,7 @@
     button[data-slot='card'].ring-2:hover {
     box-shadow:
       0 0 0 2px var(--primary-color),
-      0 8px 18px -10px rgba(18, 21, 26, 0.25);
+      var(--vd-cards-shadow-hover);
   }
   html[data-look='vidro']
     body:has(.app-container)
@@ -85,8 +93,37 @@
     box-shadow: none;
   }
 
+  /* .analytics-post-card is an <a>: restate hover, focus, and both at once. */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-post-card:hover {
-    box-shadow: 0 8px 20px -8px rgba(18, 21, 26, 0.18);
+    box-shadow: var(--vd-cards-shadow-lift);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-post-card:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-post-card:hover:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px rgba(255, 191, 48, 0.55),
+      var(--vd-cards-shadow-lift);
+  }
+
+  /* Tinted shadcn cards (Importar StepOrigem: border-primary/30 bg-primary/5) keep a primary wash
+     inside the group look; the group rule would otherwise flatten them to white. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='card'][class*='bg-primary/'] {
+    background: hsl(var(--primary) / 0.05);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='card'][class*='border-primary/'] {
+    border-color: hsl(var(--primary) / 0.3);
   }
 
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .concluded-client-card:hover {
@@ -243,5 +280,13 @@
   }
   html[data-look='vidro'] body:has(.app-container) .vidro-empty > p.text-xs {
     color: var(--vd-txt3);
+  }
+}
+
+/* ===== Dark mirrors (the --vd-* tokens flip on their own; only literal colours need restating) ===== */
+@media (min-width: 1101px) {
+  html[data-theme='dark'][data-look='vidro'] body:has(.app-container) .vidro-panel {
+    --vd-cards-shadow-hover: 0 8px 18px -10px rgba(0, 0, 0, 0.6);
+    --vd-cards-shadow-lift: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
   }
 }

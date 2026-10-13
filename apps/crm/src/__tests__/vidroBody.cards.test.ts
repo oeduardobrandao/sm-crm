@@ -117,4 +117,51 @@ describe('cards.css', () => {
     });
     expect(rules).toBeGreaterThan(0);
   });
+
+  describe('fix round 1', () => {
+    it('gives the analytics post card link a focus ring, alone and combined with hover', () => {
+      expectStates(hasAll, '.analytics-post-card', [':hover', ':focus-visible']);
+      expect(decl(['.analytics-post-card', ':focus-visible'], 'box-shadow').join()).toContain(
+        '0 0 0 3px rgba(255, 191, 48, 0.55)',
+      );
+      const combined = decl(['.analytics-post-card', ':hover', ':focus-visible'], 'box-shadow');
+      expect(combined.length).toBeGreaterThan(0);
+      for (const v of combined) {
+        expect(v).toContain('0 0 0 3px rgba(255, 191, 48, 0.55)');
+        expect(v).toContain('var(--vd-cards-shadow-');
+      }
+    });
+
+    it('keeps the primary wash and border on tinted shadcn cards', () => {
+      expect(decl(["[data-slot='card']", "[class*='bg-primary/']"], 'background').join()).toContain(
+        'hsl(var(--primary) / 0.05)',
+      );
+      expect(
+        decl(["[data-slot='card']", "[class*='border-primary/']"], 'border-color').join(),
+      ).toContain('hsl(var(--primary) / 0.3)');
+    });
+
+    it('takes every hover shadow from a variable that has a dark mirror', () => {
+      const hoverShadows: string[] = [];
+      root.walkRules((r) => {
+        if (!r.selector.includes(':hover')) return;
+        r.walkDecls('box-shadow', (d) => {
+          hoverShadows.push(d.value);
+        });
+      });
+      expect(hoverShadows.length).toBeGreaterThan(0);
+      for (const v of hoverShadows) expect(v, v).not.toMatch(/rgba\(18, 21, 26/);
+      for (const token of ['--vd-cards-shadow-hover', '--vd-cards-shadow-lift']) {
+        const light: string[] = [];
+        const dark: string[] = [];
+        root.walkDecls(token, (d) => {
+          const sel = (d.parent as Rule).selector;
+          (sel.includes("[data-theme='dark']") ? dark : light).push(d.value);
+        });
+        expect(light, `light ${token}`).toHaveLength(1);
+        expect(dark, `dark ${token}`).toHaveLength(1);
+        expect(dark[0]).not.toBe(light[0]);
+      }
+    });
+  });
 });
