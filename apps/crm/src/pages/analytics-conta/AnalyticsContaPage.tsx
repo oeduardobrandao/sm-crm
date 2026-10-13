@@ -101,7 +101,7 @@ import { compareNullableNumber, type ActionSortKey } from '../../lib/post-action
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
 import { NewReportDialog } from './components/NewReportDialog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
-import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { usePageToolbar, useVidroShell } from '@/components/layout/PageToolbarContext';
 import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
 import {
   BEST_TIME_BUCKET_STARTS,
@@ -1016,6 +1016,9 @@ function AnalyticsContent({
   const qc = useQueryClient();
   const navigate = useNavigate();
   const isPhone = !useIsDesktop(768);
+  // Under the Vidro shell the four inline var(--card-bg) surfaces below drop their background so
+  // the Vidro family rules paint them (spec: inline-style escapes).
+  const vidroShell = useVidroShell();
 
   const [days, setDays] = useState(30);
   const [overviewDays, setOverviewDays] = useState(30);
@@ -2227,7 +2230,13 @@ function AnalyticsContent({
                     </tr>
                     {expandedPostId === p.id && (
                       <tr key={`detail-${p.id}`} className="post-detail-row">
-                        <td colSpan={12} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
+                        <td
+                          colSpan={12}
+                          style={{
+                            padding: '1rem',
+                            background: vidroShell ? undefined : 'var(--card-bg)',
+                          }}
+                        >
                           <p
                             style={{
                               fontSize: '0.85rem',
@@ -2751,7 +2760,7 @@ function AnalyticsContent({
                   height: 36,
                   borderRadius: 8,
                   border: '1px solid var(--border-color)',
-                  background: 'var(--card-bg)',
+                  background: vidroShell ? undefined : 'var(--card-bg)',
                   color: 'var(--text-main)',
                   padding: '0 0.6rem',
                   fontSize: '0.85rem',
@@ -2792,7 +2801,7 @@ function AnalyticsContent({
                   height: 36,
                   borderRadius: 8,
                   border: '1px solid var(--border-color)',
-                  background: 'var(--card-bg)',
+                  background: vidroShell ? undefined : 'var(--card-bg)',
                   color: 'var(--text-main)',
                   padding: '0 0.6rem',
                   fontSize: '0.85rem',
@@ -2877,7 +2886,7 @@ function AnalyticsContent({
                     padding: '0.65rem 0.75rem',
                     borderRadius: 10,
                     border: '1px solid var(--border-color)',
-                    background: 'var(--card-bg)',
+                    background: vidroShell ? undefined : 'var(--card-bg)',
                     textDecoration: 'none',
                     color: 'inherit',
                   }}

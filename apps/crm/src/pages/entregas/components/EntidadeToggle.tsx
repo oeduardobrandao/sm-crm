@@ -1,3 +1,4 @@
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import type { EntidadeFilter } from '../viewQuery';
 
 interface EntidadeToggleProps {
@@ -14,6 +15,7 @@ const OPTIONS: { id: EntidadeFilter; label: string }[] = [
 /** Filtro de entidade do quadro de Fluxos (spec §4.1), no mesmo desenho de
  *  ModeToggle. */
 export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
+  const vidroShell = useVidroShell();
   return (
     <div
       role="radiogroup"
@@ -21,7 +23,8 @@ export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
       style={{
         display: 'flex',
         gap: '0.25rem',
-        background: 'var(--card-bg)',
+        // Under the Vidro shell the panel shows through (spec: inline-style escapes).
+        background: vidroShell ? undefined : 'var(--card-bg)',
         border: '1px solid var(--border-color)',
         padding: '0.25rem',
         borderRadius: 8,

@@ -7,4 +7,241 @@
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  */
 @media (min-width: 1101px) {
+  /* ---------- Groups: white, hairline, 16px ---------- */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='card'],
+      .team-card,
+      .today-card,
+      .analytics-post-card,
+      .latest-instagram-post-card,
+      .agenda-view,
+      .agenda-sidebar__card,
+      .concluded-client-card,
+      .fila-group
+    ) {
+    background: var(--vd-group);
+    border: 1px solid var(--vd-sep);
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* .fila-top keeps its 2px primary border. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-top {
+    background: var(--vd-group);
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* ---------- Group states the rules above would otherwise kill ---------- */
+  /* Arquivos grid tiles are buttons with Tailwind hover/selection utilities (0,2,0), and Tailwind's
+     ring-2 is a box-shadow, so the selection ring and the drag-over tint are restated here. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel button[data-slot='card']:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 18px -10px rgba(18, 21, 26, 0.25);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card'][class*='bg-[rgba(234,179,8,0.08)]'] {
+    background: rgba(234, 179, 8, 0.08);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel button[data-slot='card'].ring-2 {
+    box-shadow: 0 0 0 2px var(--primary-color);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card'].ring-2:hover {
+    box-shadow:
+      0 0 0 2px var(--primary-color),
+      0 8px 18px -10px rgba(18, 21, 26, 0.25);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card']:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card'].ring-2:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--primary-color),
+      0 0 0 5px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card']:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: var(--vd-sep);
+    box-shadow: none;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-post-card:hover {
+    box-shadow: 0 8px 20px -8px rgba(18, 21, 26, 0.18);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .concluded-client-card:hover {
+    border-color: var(--primary-color);
+    background: var(--vd-fill);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.concluded-client-card, .fila-top):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .fila-top:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ---------- Tiles: filled, no border, 16px ---------- */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.config-shell, .post-production, .analytics-callout__item) {
+    background: var(--vd-tile);
+    border: 0;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* .rb-layers-rail is position: fixed; the report scrolls under it, so it stays opaque. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-layers-rail {
+    background: var(--vd-solid);
+    border: 0;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* List-row look for the layer rows; the active row keeps its primary outline. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-layers-row {
+    background: transparent;
+    border-color: var(--vd-sep);
+    border-radius: 12px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-layers-row:hover {
+    background: var(--vd-fill);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .rb-layers-row.rb-layers-row-active {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-color);
+  }
+
+  /* Keeps its amber wash, border and rail; only the radius joins the family. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-callout {
+    border-radius: 16px;
+  }
+
+  /* Sticky, so opaque. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .scheduled-panel {
+    background: var(--vd-solid);
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* ---------- Inner items: group look at 12px ---------- */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      .scheduled-item,
+      .cliente-date-card,
+      .cliente-address-card,
+      .niche-month-card,
+      .drawer-post-item
+    ) {
+    background: var(--vd-group);
+    border: 1px solid var(--vd-sep);
+    border-radius: 12px;
+    box-shadow: none;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .niche-month-card:hover {
+    border-color: rgba(234, 179, 8, 0.3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .drawer-post-item.expanded {
+    border-color: var(--primary-color);
+  }
+
+  /* ---------- Report editor chrome: glass menus ---------- */
+  /* style.css paints .rb-edit-toolbar ink (#fff on --dark); on the light glass the text turns ink. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.rb-edit-toolbar, .rb-text-toolbar) {
+    background: var(--vd-menu);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid var(--vd-cap-bd);
+    border-radius: 14px;
+    box-shadow: 0 18px 40px -16px rgba(18, 21, 26, 0.35);
+    color: var(--text-main);
+  }
+
+  /* .rb-img-panel renders inside a portaled Radix PopoverContent, which overlays.css already turns
+     into the --vd-menu glass. The panel itself stays bare so the glass is not stacked twice. */
+  html[data-look='vidro'] body:has(.app-container) [data-slot='popover-content'] .rb-img-panel {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-editor-header[data-stuck] {
+    background: var(--vd-solid);
+  }
+
+  /* ---------- Card title ---------- */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='card-title'] {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  /* ---------- Empty states ---------- */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel :is(.board-empty, .drawer-empty) {
+    font-size: 13px;
+    color: var(--vd-txt3);
+    opacity: 1;
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-finance-empty {
+    border-color: var(--vd-sep);
+    border-radius: 16px;
+  }
+  /* EmptyStateGuide under Vidro. Scoped to body:has(.app-container), not .vidro-panel: the guide also
+     renders inside portaled dialogs (NewWorkflowWizard, WorkflowModals), and the class only exists
+     while useVidroShell() is true. Structure: root div > (div > span icon + span.font-semibold title),
+     p.text-sm body (its Link keeps its inline ink), optional p.text-xs hint. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-empty {
+    background: var(--vd-tile);
+    border: 0;
+    border-radius: 16px;
+    padding: 20px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-empty span.font-semibold {
+    color: var(--text-main);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-empty > p {
+    color: var(--vd-txt2);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-empty > p.text-xs {
+    color: var(--vd-txt3);
+  }
 }

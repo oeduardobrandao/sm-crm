@@ -1,3 +1,5 @@
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+
 export type EntregasMode = 'entregas' | 'publicacoes';
 
 interface ModeToggleProps {
@@ -15,12 +17,14 @@ interface ModeToggleProps {
  *  serialized into the URL and into saved vistas, and renaming it would
  *  silently reset every shared link. */
 export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
+  const vidroShell = useVidroShell();
   return (
     <div
       style={{
         display: 'flex',
         gap: '0.25rem',
-        background: 'var(--card-bg)',
+        // Under the Vidro shell the panel shows through (spec: inline-style escapes).
+        background: vidroShell ? undefined : 'var(--card-bg)',
         border: '1px solid var(--border-color)',
         padding: '0.25rem',
         borderRadius: 8,

@@ -1222,3 +1222,80 @@ describe('AnalyticsContaPage in the Vidro toolbar', () => {
     expect(screen.getAllByRole('button', { name: /Voltar/ })).toHaveLength(1);
   });
 });
+
+// Inline-style escapes (spec "Inline-style escapes"): the four inline var(--card-bg) surfaces drop
+// their background under the Vidro shell, so cards.css / forms.css paint them; with the shell off
+// the inline style stays byte-identical.
+describe('AnalyticsContaPage card-bg escapes', () => {
+  function seedRankedPosts() {
+    seedCommonAnalyticsData();
+    queryState['analytics-posts'] = {
+      data: {
+        posts: Array.from({ length: 6 }, (_, index) => ({
+          id: index + 1,
+          instagram_post_id: `x${index}`,
+          posted_at: `2020-01-0${index + 1}T12:00:00Z`,
+          media_type: 'IMAGE',
+          reach: 1000 + index,
+          impressions: 1400,
+          views: 1400,
+          engagement_rate: 5,
+          likes: 10,
+          saved: 1,
+          saves_rate: 1,
+          comments: 1,
+          shares: 1,
+          caption: `Post ranqueado ${index + 1}`,
+          thumbnail_url: null,
+          permalink: `https://instagram.com/p/ranked-${index + 1}`,
+          unavailable_metrics: [],
+          tags: [],
+        })),
+      },
+    };
+  }
+
+  function surfaces(vidroShell: boolean) {
+    seedRankedPosts();
+    const { container } = render(
+      <VidroToolbarHarness vidroShell={vidroShell}>
+        <AnalyticsContaPage />
+      </VidroToolbarHarness>,
+    );
+    const table = container.querySelector('#posts-table') as HTMLTableElement;
+    fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
+    const detailCell = table.querySelector('tr.post-detail-row > td') as HTMLElement;
+    fireEvent.click(screen.getAllByText('Ver mais')[0]);
+    const drawer = screen.getByText(/de 6 posts de @clinicaaurora/).closest('aside')!;
+    const order = within(drawer).getByLabelText('Ordenar posts');
+    const format = within(drawer).getByLabelText('Filtrar formato');
+    const item = within(drawer)
+      .getAllByText(/Post ranqueado/)[0]
+      .closest('a') as HTMLElement;
+    return { detailCell, order, format, item };
+  }
+
+  const SELECT_TAIL =
+    'border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); padding: 0px 0.6rem; font-size: 0.85rem;';
+
+  it('drops the four inline backgrounds under the Vidro shell', () => {
+    const { detailCell, order, format, item } = surfaces(true);
+    for (const el of [detailCell, order, format, item]) {
+      expect(el.getAttribute('style'), el.tagName).not.toContain('background');
+    }
+    expect(detailCell.getAttribute('style')).toBe('padding: 1rem;');
+    expect(order.getAttribute('style')).toBe(
+      'height: 36px; border-radius: 8px; border: 1px solid var(--border-color); color: var(--text-main); padding: 0px 0.6rem; font-size: 0.85rem;',
+    );
+  });
+
+  it('keeps the inline backgrounds byte-identical with the shell off', () => {
+    const { detailCell, order, format, item } = surfaces(false);
+    expect(detailCell.getAttribute('style')).toBe('padding: 1rem; background: var(--card-bg);');
+    expect(order.getAttribute('style')).toBe(`height: 36px; border-radius: 8px; ${SELECT_TAIL}`);
+    expect(format.getAttribute('style')).toBe(`height: 36px; border-radius: 8px; ${SELECT_TAIL}`);
+    expect(item.getAttribute('style')).toContain(
+      'border: 1px solid var(--border-color); background: var(--card-bg); text-decoration: none;',
+    );
+  });
+});
