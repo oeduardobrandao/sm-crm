@@ -10473,6 +10473,12 @@ a.mention-chip:hover {
     display: none;
   }
 
+  /* The top bar's hamburger is the only way to open the drawer sidebar here
+     (no bottom nav), so re-show it over the <=900px display:none. */
+  .topbar {
+    display: flex;
+  }
+
   /* Hide old tablet top bar — replaced by .topbar */
   .tablet-top-bar {
     display: none;
