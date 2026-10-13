@@ -1603,7 +1603,9 @@ export function WorkflowDrawer({
                 : 'Os posts ficam visíveis'}{' '}
               no portal do cliente, aguardando aprovação.
               {sendSelectedTarget && selectedPostIds.size > sendSelectedTarget.length
-                ? ` ${selectedPostIds.size - sendSelectedTarget.length} dos selecionados já estão no portal, aprovados ou agendados e ficam como estão.`
+                ? selectedPostIds.size - sendSelectedTarget.length === 1
+                  ? ' 1 dos selecionados já está no portal, aprovado ou agendado, e fica como está.'
+                  : ` ${selectedPostIds.size - sendSelectedTarget.length} dos selecionados já estão no portal, aprovados ou agendados, e ficam como estão.`
                 : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
