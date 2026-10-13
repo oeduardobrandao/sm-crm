@@ -1238,53 +1238,6 @@ export function WorkflowDrawer({
                 </div>
               )}
 
-              {!isPhone && selectedPostIds.size > 0 && (
-                <div className="drawer-selection-bar" data-testid="drawer-selection-bar">
-                  <span className="drawer-selection-bar-count">
-                    {selectedPostIds.size} selecionado{selectedPostIds.size === 1 ? '' : 's'}
-                  </span>
-                  <span aria-hidden="true">&middot;</span>
-                  <button
-                    type="button"
-                    className="drawer-selection-bar-link"
-                    onClick={selectAllPosts}
-                  >
-                    Selecionar todos
-                  </button>
-                  <div className="drawer-selection-bar-actions">
-                    <button
-                      type="button"
-                      className="drawer-selection-bar-btn drawer-selection-bar-btn--primary"
-                      onClick={openSendSelected}
-                      disabled={isSendingSelected}
-                    >
-                      <Send className="h-3.5 w-3.5" /> Enviar ao cliente
-                    </button>
-                    <button
-                      type="button"
-                      className="drawer-selection-bar-btn"
-                      onClick={() => setMoveTarget(Array.from(selectedPostIds))}
-                    >
-                      Mover para outro fluxo
-                    </button>
-                    <button
-                      type="button"
-                      className="drawer-selection-bar-btn"
-                      onClick={() => openDetachConfirm(Array.from(selectedPostIds))}
-                    >
-                      Desmembrar do fluxo
-                    </button>
-                    <button
-                      type="button"
-                      className="drawer-selection-bar-btn drawer-selection-bar-btn--ghost"
-                      onClick={clearSelection}
-                    >
-                      Limpar
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {isLoading ? (
                 <CardListSkeleton rows={4} />
               ) : posts.length === 0 ? (
@@ -1376,6 +1329,60 @@ export function WorkflowDrawer({
                     </div>
                   </SortableContext>
                 </DndContext>
+              )}
+
+              {/* Floating: sticky to the bottom of the scrolling drawer body, so the
+                  actions stay in reach while the user scrolls a long list. */}
+              {!isPhone && selectedPostIds.size > 0 && (
+                <div
+                  className="drawer-selection-bar"
+                  role="toolbar"
+                  aria-label="Ações da seleção"
+                  data-testid="drawer-selection-bar"
+                >
+                  <span className="drawer-selection-bar-count">
+                    {selectedPostIds.size} selecionado{selectedPostIds.size === 1 ? '' : 's'}
+                  </span>
+                  <span aria-hidden="true">&middot;</span>
+                  <button
+                    type="button"
+                    className="drawer-selection-bar-link"
+                    onClick={selectAllPosts}
+                  >
+                    Selecionar todos
+                  </button>
+                  <div className="drawer-selection-bar-actions">
+                    <button
+                      type="button"
+                      className="drawer-selection-bar-btn drawer-selection-bar-btn--primary"
+                      onClick={openSendSelected}
+                      disabled={isSendingSelected}
+                    >
+                      <Send className="h-3.5 w-3.5" /> Enviar ao cliente
+                    </button>
+                    <button
+                      type="button"
+                      className="drawer-selection-bar-btn"
+                      onClick={() => setMoveTarget(Array.from(selectedPostIds))}
+                    >
+                      Mover para outro fluxo
+                    </button>
+                    <button
+                      type="button"
+                      className="drawer-selection-bar-btn"
+                      onClick={() => openDetachConfirm(Array.from(selectedPostIds))}
+                    >
+                      Desmembrar do fluxo
+                    </button>
+                    <button
+                      type="button"
+                      className="drawer-selection-bar-btn drawer-selection-bar-btn--ghost"
+                      onClick={clearSelection}
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
               )}
 
               {isPhone && phoneListMode === 'select' && (
