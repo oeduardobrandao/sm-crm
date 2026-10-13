@@ -89,6 +89,17 @@ describe('final mobile responsive CSS contracts', () => {
     expect(lastValue('.app-container', '--phone-bg', 768)).toBeUndefined();
   });
 
+  it('shows the top bar (and its drawer hamburger) across the whole tablet range', () => {
+    // Tablet (768-1100) has no bottom nav and an off-canvas sidebar: the TopBar
+    // hamburger is the only way to open it. The <=900px phone rule used to hide
+    // the bar at 768-900, leaving no nav trigger and an empty band at the top.
+    expect(lastValue('.topbar', 'display', 390)).toBe('none');
+    for (const width of [768, 820, 900, 1000, 1100]) {
+      expect(lastValue('.topbar', 'display', width)).toBe('flex');
+    }
+    expect(lastValue('.main-content', 'margin-top', 820)).toContain('--topbar-height');
+  });
+
   it('stacks the carousel header on phones while retaining touch-sized pagination', () => {
     expect(lastValue('.instagram-post-carousel__header', 'flex-direction', 390)).toBe('column');
     expect(lastValue('.latest-instagram-posts__pagination button', 'min-width', 390)).toBe('44px');
