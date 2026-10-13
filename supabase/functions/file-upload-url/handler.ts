@@ -15,6 +15,8 @@ interface FileUploadUrlDeps {
 }
 
 const MAX_SIZE = 400 * 1024 * 1024;
+// Vídeos sobem por PUT presignado direto no R2 (limite de 5 GiB por PUT).
+const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 
 function extFromMime(mime: string): string {
   const map: Record<string, string> = {
@@ -61,12 +63,13 @@ export function createFileUploadUrlHandler(deps: FileUploadUrlDeps) {
 
     const { folder_id, filename, mime_type, size_bytes, thumbnail } = body;
     if (!filename || !mime_type || !size_bytes) return json({ error: "Missing fields" }, 400);
+    const kind = classifyKind(mime_type);
+    const maxSize = kind === "video" ? MAX_VIDEO_SIZE : MAX_SIZE;
+
     // Inteiros: viram Content-Length assinado nas URLs de upload.
-    if (!Number.isSafeInteger(size_bytes) || size_bytes <= 0 || size_bytes > MAX_SIZE) {
+    if (!Number.isSafeInteger(size_bytes) || size_bytes <= 0 || size_bytes > maxSize) {
       return json({ error: "size_bytes out of range" }, 400);
     }
-
-    const kind = classifyKind(mime_type);
 
     const MIME_ALLOWLIST: Record<string, string[]> = {
       image: ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"],
