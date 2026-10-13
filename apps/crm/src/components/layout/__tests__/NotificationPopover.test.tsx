@@ -120,13 +120,14 @@ describe('NotificationPopover under the Vidro look', () => {
     );
   });
 
-  it('drops the card background, border, radius and shadow under the Vidro shell', () => {
+  it('drops the card background, border and shadow and inherits the radius under the Vidro shell', () => {
     // The bell's PopoverContent carries the menu glass (overlays.css); a second frame would nest.
     render(<VidroToolbarHarness>{popover}</VidroToolbarHarness>);
     const card = screen.getByRole('dialog', { name: 'Notificações' });
     expect(card.style.background).toBe('');
     expect(card.style.border).toBe('');
-    expect(card.style.borderRadius).toBe('');
+    // inherit, so overflow: hidden clips row hovers to the glass's 14px corners.
+    expect(card.style.borderRadius).toBe('inherit');
     expect(card.style.boxShadow).toBe('');
     expect(card.style.overflow).toBe('hidden');
     expect(card.style.maxHeight).toBe('480px');

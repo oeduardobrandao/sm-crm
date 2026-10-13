@@ -45,7 +45,8 @@ export default function NotificationPopover({
         width: 'min(380px, calc(100vw - 2rem))',
         maxHeight: 480,
         ...(vidro
-          ? undefined
+          ? // inherit the glass's radius so overflow: hidden clips row hovers to its corners.
+            { borderRadius: 'inherit' }
           : {
               background: 'var(--surface-main)',
               border: '1px solid var(--border-color)',
