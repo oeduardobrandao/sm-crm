@@ -7662,17 +7662,38 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* Bulk selection bar (desmembrar do fluxo) */
+/* Floating action bar: last child of the scrolling .drawer-body, stuck to its
+   bottom edge. margin-top: auto parks it at the bottom when the list is short. */
 .drawer-selection-bar {
+  position: sticky;
+  /* .drawer-body's 1rem bottom padding already insets the sticky edge. */
+  bottom: 0;
+  z-index: 5;
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.5rem;
-  background: var(--surface-2);
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow:
+    0 12px 32px -8px rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.06);
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+/* On dark, a shadow barely reads: lift the bar with a raised surface instead. */
+[data-theme='dark'] .drawer-selection-bar {
+  background: var(--surface-2);
+  border-color: var(--surface-3);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
 }
 
 .drawer-selection-bar-count {
