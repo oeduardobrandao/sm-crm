@@ -616,6 +616,184 @@
     font-weight: 600;
   }
 
+  /* Delete/trash Buttons coloured by their call site (text-destructive, text-[var(--danger-text)]):
+     the ghost/glass colour would erase the cue. Exact class tokens, so hover:text-* never matches. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button']:is(
+      .text-destructive,
+      [class~='text-[var(--danger-text)]'],
+      [class~='text-[var(--danger)]']
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button']:is(
+      .text-destructive,
+      [class~='text-[var(--danger-text)]'],
+      [class~='text-[var(--danger)]']
+    ) {
+    color: var(--vd-tg-bad);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button']:is(
+      .text-destructive,
+      [class~='text-[var(--danger-text)]'],
+      [class~='text-[var(--danger)]']
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button']:is(
+      .text-destructive,
+      [class~='text-[var(--danger-text)]'],
+      [class~='text-[var(--danger)]']
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-tg-bad-bg);
+    color: var(--vd-tg-bad);
+  }
+
+  /* Picker triggers show their placeholder state with text-muted-foreground. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'].text-muted-foreground,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'].text-muted-foreground {
+    color: var(--vd-txt3);
+  }
+
+  /* Outline toggles in their on state take the selected fill. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent) {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent):is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent):is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-sel);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='outline']:is(
+      [aria-pressed='true'],
+      .bg-accent
+    ):focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='outline']:is(
+      [aria-pressed='true'],
+      .bg-accent
+    ):focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px rgba(255, 191, 48, 0.55),
+      0 6px 16px -8px rgba(18, 21, 26, 0.2);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent):is(
+      :disabled,
+      [aria-disabled='true']
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent):is(
+      :disabled,
+      [aria-disabled='true']
+    ) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--vd-sel);
+  }
+
   /* CTA: ink pill. After glass/ghost so .calendar-detail-btn--primary and --complete win. */
   html[data-look='vidro']
     body:has(.app-container)
@@ -1115,6 +1293,30 @@
     justify-content: center;
   }
 
+  /* Kanban card footer: the history button keeps its classic 28px, or the footer row grows with it
+     (class doubled to tie the icon rule, which it follows). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-card-actions
+    .drawer-post-history-btn.drawer-post-history-btn,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-actions
+    .drawer-post-history-btn.drawer-post-history-btn {
+    width: 28px;
+    height: 28px;
+  }
+
   /* Day picker. Under OC this covers the portaled date pickers ([data-slot=popover-content]). */
   html[data-look='vidro']
     body:has(.app-container)
@@ -1238,6 +1440,70 @@
     )
     td:is([data-selected='true'], [data-today='true']):has(> .vidro-cal-day) {
     background: transparent;
+  }
+
+  /* Range middle: a soft band on the cell, no ink circle. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td[data-selected='true'][class~='aria-selected:bg-accent']:has(> .vidro-cal-day),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td[data-selected='true'][class~='aria-selected:bg-accent']:has(> .vidro-cal-day) {
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td[data-selected='true'][class~='aria-selected:bg-accent']
+    > .vidro-cal-day,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td[data-selected='true'][class~='aria-selected:bg-accent']
+    > .vidro-cal-day {
+    background: transparent;
+    color: var(--text-main);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td[data-selected='true'][class~='aria-selected:bg-accent']
+    > .vidro-cal-day:is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td[data-selected='true'][class~='aria-selected:bg-accent']
+    > .vidro-cal-day:is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-fill);
+    color: var(--text-main);
   }
 
   /* Dashed adders keep their dashed outline. */

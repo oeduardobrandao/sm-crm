@@ -270,5 +270,6 @@ describe('PostProcessCard: ações do card sob o Vidro', () => {
     expect(forward.style.borderRadius).toBe('');
     expect(forward.style.padding).toBe('');
     expect(forward.style.marginLeft).toBe('auto');
+    expect(forward.style.color).toBe('rgb(62, 207, 142)');
   });
 });

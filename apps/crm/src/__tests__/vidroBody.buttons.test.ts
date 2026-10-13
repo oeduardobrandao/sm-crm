@@ -42,16 +42,41 @@ const PB = "html[data-look='vidro'] body:has(.app-container) .vidro-panel";
 const OC =
   "html[data-look='vidro'] body:has(.app-container) :is([data-slot='dialog-content'], [data-slot='alert-dialog-content'], [data-slot='sheet-content'], [data-slot='popover-content'], .comment-popover, .comment-add-popover, .mention-suggestion-list)";
 
-/** hasAll over selectors with prettier's line breaks folded back to one line. */
+/** A selector with prettier's line breaks folded back to one line. */
+const flat = (sel: string) =>
+  sel
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/,?\s+\)/g, ')');
+
+/** hasAll over flattened selectors. */
 function hasAllFlat(parts: string[]): boolean {
-  const flat = (sel: string) =>
-    sel
-      .replace(/\s+/g, ' ')
-      .replace(/\(\s+/g, '(')
-      .replace(/,?\s+\)/g, ')');
   let found = false;
   root.walkRules((r) => {
     if (r.selectors.some((s) => parts.every((p) => flat(s).includes(p)))) found = true;
+  });
+  return found;
+}
+
+/** decl over flattened selectors. */
+function declFlat(parts: string[], prop: string): string[] {
+  const out: string[] = [];
+  root.walkRules((r) => {
+    if (!r.selectors.some((s) => parts.every((p) => flat(s).includes(p)))) return;
+    r.walkDecls(prop, (d) => {
+      out.push(d.value);
+    });
+  });
+  return out;
+}
+
+/** Source-order index of the first rule whose flattened selector contains every part. */
+function ruleIndexFlat(parts: string[]): number {
+  let i = 0;
+  let found = -1;
+  root.walkRules((r) => {
+    if (found === -1 && r.selectors.some((s) => parts.every((p) => flat(s).includes(p)))) found = i;
+    i += 1;
   });
   return found;
 }
@@ -168,5 +193,84 @@ describe('buttons.css', () => {
 
   it('keys the editor toolbar pressed state on the class the markup renders', () => {
     expect(decl(['.post-editor-btn', '.active'], 'background')).toContain('var(--vd-fill)');
+  });
+});
+
+describe('buttons.css fix round 1', () => {
+  const DANGER_TEXT = [
+    '.text-destructive',
+    "[class~='text-[var(--danger-text)]']",
+    "[class~='text-[var(--danger)]']",
+  ];
+  const GHOST_REST = ruleIndexFlat(["[data-slot='button'][data-variant='ghost']"]);
+  const GLASS_REST = ruleIndexFlat(["[data-variant='outline'], [data-variant='secondary']"]);
+  const CTA_REST = ruleIndexFlat(["[data-variant='default'], [data-variant='ink']"]);
+
+  it('keeps danger-coloured text on ghost and glass Buttons, in PB and OC', () => {
+    for (const hook of DANGER_TEXT) {
+      expect(declFlat(["[data-slot='button']:is(", hook], 'color'), hook).toContain(
+        'var(--vd-tg-bad)',
+      );
+      expect(hasAllFlat([PB, "[data-slot='button']:is(", hook]), `PB ${hook}`).toBe(true);
+      expect(hasAllFlat([OC, "[data-slot='button']:is(", hook]), `OC ${hook}`).toBe(true);
+    }
+    // Ties the ghost and glass lists at (0,2,0): it must come after both, and before the CTA and
+    // danger pills so those keep their own colours.
+    const at = ruleIndexFlat(["[data-slot='button']:is(.text-destructive"]);
+    expect(at).toBeGreaterThan(GHOST_REST);
+    expect(at).toBeGreaterThan(GLASS_REST);
+    expect(at).toBeLessThan(CTA_REST);
+  });
+
+  it('hovers danger-coloured Buttons in the danger tint, keeping the danger colour', () => {
+    expect(declFlat(['.text-destructive', ':hover'], 'background')).toContain(
+      'var(--vd-tg-bad-bg)',
+    );
+    expect(declFlat(['.text-destructive', ':hover'], 'color')).toContain('var(--vd-tg-bad)');
+  });
+
+  it('keeps the muted placeholder colour on picker triggers', () => {
+    expect(declFlat(["[data-slot='button'].text-muted-foreground"], 'color')).toContain(
+      'var(--vd-txt3)',
+    );
+    const at = ruleIndexFlat(["[data-slot='button'].text-muted-foreground"]);
+    expect(at).toBeGreaterThan(GLASS_REST);
+    expect(at).toBeGreaterThan(GHOST_REST);
+    expect(at).toBeLessThan(CTA_REST);
+  });
+
+  it('shows the on/open state of outline toggles (ListToolbar)', () => {
+    for (const hook of ["[aria-pressed='true']", '.bg-accent']) {
+      expectStates(hasAll, hook);
+      expect(
+        declFlat(["[data-slot='button'][data-variant='outline']:is(", hook], 'background'),
+      ).toContain('var(--vd-sel)');
+    }
+    expect(
+      declFlat(["[data-slot='button'][data-variant='outline']:is(", ':hover'], 'background'),
+    ).toContain('var(--vd-sel)');
+  });
+
+  it('keeps the kanban history button at its classic 28px, after the icon circle rule', () => {
+    const parts = ['.board-card-actions .drawer-post-history-btn'];
+    expect(declFlat(parts, 'width')).toContain('28px');
+    expect(declFlat(parts, 'height')).toContain('28px');
+    expect(ruleIndexFlat(parts)).toBeGreaterThan(
+      ruleIndexFlat(["[data-slot='button'][data-size='icon']"]),
+    );
+  });
+
+  it('paints range middle days as a soft band, not ink circles', () => {
+    const MID = "td[data-selected='true'][class~='aria-selected:bg-accent']";
+    expect(declFlat([MID, '> .vidro-cal-day'], 'background')).toContain('transparent');
+    expect(declFlat([MID, '> .vidro-cal-day'], 'color')).toContain('var(--text-main)');
+    expect(declFlat([MID + ':has(> .vidro-cal-day)'], 'background')).toContain('var(--vd-fill)');
+    // The selected-day hover sets the ink foreground; the middle hover must restate the colour.
+    expect(declFlat([MID, '> .vidro-cal-day', ':hover'], 'color')).toContain('var(--text-main)');
+    expect(hasAllFlat([OC, MID])).toBe(true);
+    // Later than the selected-day ink rule, so the middle wins where both match.
+    expect(ruleIndexFlat([MID, '> .vidro-cal-day'])).toBeGreaterThan(
+      ruleIndexFlat(["td[data-selected='true'] > .vidro-cal-day"]),
+    );
   });
 });
