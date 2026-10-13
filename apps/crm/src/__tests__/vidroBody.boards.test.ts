@@ -57,10 +57,10 @@ describe('boards.css', () => {
     expect(decl('.board-card', 'transform')).toEqual([]);
     expect(decl('.board-post-card', 'transform')).toEqual([]);
     expect(hasAll(['.board-card', ':hover'])).toBe(true);
-    expect(hasAll(['.board-card', ':has(:focus-visible)'])).toBe(true);
-    expect(decl(['.board-card', ':has(:focus-visible)'], 'box-shadow').join()).toContain(
-      '0 0 0 3px rgba(255, 191, 48, 0.55)',
-    );
+    expect(hasAll(['.board-card', ':is(:focus-visible, :has(:focus-visible))'])).toBe(true);
+    expect(
+      decl(['.board-card', ':is(:focus-visible, :has(:focus-visible))'], 'box-shadow').join(),
+    ).toContain('0 0 0 3px rgba(255, 191, 48, 0.55)');
   });
 
   it('drag clones are opaque and keep their shadow', () => {
@@ -79,8 +79,20 @@ describe('boards.css', () => {
     expect(decl('.calendar-cell', 'padding')).toEqual(['7px', '6px']);
     expect(hasAll([':not(.foreign)', '.calendar-post-card', ':hover'])).toBe(true);
     expect(hasAll(['.calendar-day', ':hover:not(.empty)', ':not(:disabled):not('])).toBe(true);
-    expect(hasAll(['.board-card', ':has(:focus-visible)'])).toBe(true);
+    expect(hasAll(['.board-card', ':is(:focus-visible, :has(:focus-visible))'])).toBe(true);
     expect(hasAll([':focus-within'])).toBe(false);
+  });
+
+  it('drag-clone rules come after the card rule, so source order makes them win', () => {
+    const order: string[] = [];
+    root.walkRules((r) => {
+      if (r.selectors.some((s) => /\.board-post-card--overlay|\.vidro-drag-clone/.test(s)))
+        order.push('clone');
+      else if (r.selectors.some((s) => /:is\(\.board-card, \.board-post-card\)$/.test(s.trim())))
+        order.push('card');
+    });
+    expect(order.indexOf('card')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('clone')).toBeGreaterThan(order.lastIndexOf('card'));
   });
 
   it('keeps the floating overlay clone shadow', () => {

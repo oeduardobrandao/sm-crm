@@ -61,7 +61,7 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.board-card, .board-post-card):has(:focus-visible) {
+    :is(.board-card, .board-post-card):is(:focus-visible, :has(:focus-visible)) {
     outline: none;
     box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
   }
@@ -69,7 +69,8 @@
   html[data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.board-card, .board-post-card):has(:focus-visible):hover {
+    :is(.board-card, .board-post-card):is(:focus-visible, :has(:focus-visible)):hover {
+    outline: none;
     box-shadow:
       0 6px 16px -10px rgba(18, 21, 26, 0.3),
       0 0 0 3px rgba(255, 191, 48, 0.55);
@@ -210,7 +211,8 @@
   html[data-theme='dark'][data-look='vidro']
     body:has(.app-container)
     .vidro-panel
-    :is(.board-card, .board-post-card):has(:focus-visible):hover {
+    :is(.board-card, .board-post-card):is(:focus-visible, :has(:focus-visible)):hover {
+    outline: none;
     box-shadow:
       0 6px 16px -10px rgba(0, 0, 0, 0.6),
       0 0 0 3px rgba(255, 191, 48, 0.55);
