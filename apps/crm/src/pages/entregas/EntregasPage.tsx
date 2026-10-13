@@ -1541,13 +1541,34 @@ export default function EntregasPage() {
   // With the view tabs in the Vidro toolbar, the filters row can end up empty (Minha fila)
   // or hold an empty scroll strip (Visão geral); skip them there so the column gap leaves
   // no blank band. Always true in the classic shell, whose markup stays as it was.
-  const showViewControls =
-    !inToolbar ||
-    activeView === 'kanban' ||
-    activeView === 'list' ||
-    activeView === 'calendar' ||
-    activeView === 'concluded';
+  // Under Vidro the Etapas/Status and entity toggles (and the Concluídas search) move up onto
+  // the VistasTabs row instead, so the filters row only holds the filter pills and the Lista bar.
+  const showViewControls = !inToolbar;
   const showFiltersRow = showFilters || showViewControls;
+  const showModeToggle =
+    activeView === 'kanban' || activeView === 'list' || activeView === 'calendar';
+  const showEntidadeToggle =
+    postProcessesVisible &&
+    (activeView === 'kanban' || activeView === 'list') &&
+    mode === 'entregas';
+  const concludedSearch = (
+    <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+      <Input
+        placeholder="Buscar cliente..."
+        value={concludedClientSearch}
+        onChange={(e) => setConcludedClientSearch(e.target.value)}
+        className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+      />
+    </div>
+  );
+  const vidroViewControls =
+    inToolbar && (showModeToggle || showEntidadeToggle) ? (
+      <>
+        {showModeToggle && <ModeToggle mode={mode} onModeChange={setMode} />}
+        {showEntidadeToggle && <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />}
+      </>
+    ) : undefined;
   const phoneResultCount =
     activeView === 'list' && mode === 'publicacoes'
       ? listPosts.length
@@ -1689,6 +1710,7 @@ export default function EntregasPage() {
               contaId={contaId}
               currentQuery={currentQuery}
               onApply={applySavedView}
+              controls={vidroViewControls}
               trailing={
                 activeView === 'fila' ? (
                   // Sempre lado a lado: a linha das abas rola na horizontal no celular,
@@ -1712,6 +1734,8 @@ export default function EntregasPage() {
                       className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
                     />
                   </div>
+                ) : inToolbar && activeView === 'concluded' ? (
+                  concludedSearch
                 ) : undefined
               }
             />
@@ -1809,36 +1833,19 @@ export default function EntregasPage() {
                         </div>
                       )}
 
-                      {(activeView === 'kanban' ||
-                        activeView === 'list' ||
-                        activeView === 'calendar') && (
+                      {showModeToggle && (
                         <div style={{ flexShrink: 0 }}>
                           <ModeToggle mode={mode} onModeChange={setMode} />
                         </div>
                       )}
 
-                      {postProcessesVisible &&
-                        (activeView === 'kanban' || activeView === 'list') &&
-                        mode === 'entregas' && (
-                          <div style={{ flexShrink: 0 }}>
-                            <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
-                          </div>
-                        )}
-
-                      {activeView === 'concluded' && (
-                        <div
-                          className="relative w-[220px]"
-                          style={{ marginLeft: 'auto', flexShrink: 0 }}
-                        >
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-                          <Input
-                            placeholder="Buscar cliente..."
-                            value={concludedClientSearch}
-                            onChange={(e) => setConcludedClientSearch(e.target.value)}
-                            className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
-                          />
+                      {showEntidadeToggle && (
+                        <div style={{ flexShrink: 0 }}>
+                          <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
                         </div>
                       )}
+
+                      {activeView === 'concluded' && concludedSearch}
                     </div>
                   </>
                 )}

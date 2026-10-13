@@ -3386,6 +3386,24 @@ describe('EntregasPage: Vidro toolbar', () => {
     );
   });
 
+  it('puts the Etapas/Status toggle on the vista picker row, not the filters row', async () => {
+    renderInShell(true);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    const etapas = screen.getByRole('button', { name: 'Etapas' });
+    expect(etapas.closest('.vista-tabs__controls')).not.toBeNull();
+    expect(document.querySelector('.vista-picker')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Etapas' })).toHaveLength(1);
+  });
+
+  it('classic shell keeps the Etapas/Status toggle out of the vista row', async () => {
+    renderInShell(false);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vista-tabs')).toBeNull();
+    expect(document.querySelector('.vista-picker')).toBeNull();
+  });
+
   it('switches the view from the toolbar tabs and drops the replay link off the kanban', async () => {
     renderInShell(true);
     await screen.findAllByRole('heading', { level: 1 });

@@ -83,6 +83,7 @@
     )
     .vista-tabs {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     padding: 0;
@@ -91,6 +92,13 @@
     background: transparent;
     box-shadow: none;
     overflow: visible;
+  }
+  /* Entregas: the view toggles that share the vista picker's row. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
   }
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__group,
   html[data-look='vidro']
