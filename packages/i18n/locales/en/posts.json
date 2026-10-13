@@ -72,6 +72,12 @@
     "captionHidden": "Stories don't use a caption.",
     "segments": "{{count}} segments"
   },
+  "readiness": {
+    "ready": "Ready to publish",
+    "readyApproval": "Ready to send",
+    "needMedia": "Add at least one media file.",
+    "needCaption": "Write the caption."
+  },
   "captionPlaceholder": "Write the post caption here...",
   "publish_action": "Publish",
   "warnings": {
