@@ -272,22 +272,19 @@ export default function AppLayout() {
               <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
             )}
 
-            {/* With the flag on, the wrapper stays mounted at every width and through the
-              opt-out toggle (display: contents when it is not the panel), so <main> keeps its
-              place in the tree and crossing 1101px never remounts the page. Flag off: today's
-              tree, no wrapper. */}
-            {vidro.enabled ? (
-              <div
-                className={vidroShell ? 'vidro-panel' : undefined}
-                style={vidroShell ? undefined : { display: 'contents' }}
-              >
-                {vidroShell && <NavigationProgress />}
-                {vidroShell && <PageToolbar capsule={<TopBarActions variant="capsule" />} />}
-                {mainContent}
-              </div>
-            ) : (
-              mainContent
-            )}
+            {/* The wrapper is always mounted (flag on or off, any width, opted out), so <main>
+              keeps its place in the tree: a flag flip on a refetch, crossing 1101px or the opt-out
+              toggle never remounts the page. Unless it is the glass panel it is out of the layout
+              through an inline display: contents, never a class whose CSS sits outside vidro's
+              guards. */}
+            <div
+              className={vidroShell ? 'vidro-panel' : undefined}
+              style={vidroShell ? undefined : { display: 'contents' }}
+            >
+              {vidroShell && <NavigationProgress />}
+              {vidroShell && <PageToolbar capsule={<TopBarActions variant="capsule" />} />}
+              {mainContent}
+            </div>
 
             <MobileNav />
             <GuidePill />

@@ -70,6 +70,27 @@ describe('vidro.css contracts', () => {
     expect(found).toBe(true);
   });
 
+  it('touches the print .app-container only when a Vidro panel is mounted', () => {
+    root.walkRules((rule) => {
+      if (!enclosingMedia(rule).some((m) => m.trim() === 'print')) return;
+      for (const s of rule.selectors) {
+        if (/\.app-container(\s*$|:(?!has\(\.vidro-panel\)))/.test(s.trim())) {
+          throw new Error(`print .app-container rule without :has(.vidro-panel): ${s}`);
+        }
+      }
+    });
+  });
+
+  it('gives the nested card rule the same :not() chain as the group rule, or the group rule wins', () => {
+    const chain = ':not(.card-blue):not(.card-yellow):not(.card-teal):not(.card-dark)';
+    const selectors: string[] = [];
+    root.walkRules((rule) => {
+      for (const s of rule.selectors) selectors.push(s.replace(/\s+/g, ' ').trim());
+    });
+    expect(selectors).toContain(`html[data-look='vidro'] .app-container .card${chain}`);
+    expect(selectors).toContain(`html[data-look='vidro'] .app-container .card .card${chain}`);
+  });
+
   it('is imported once, right after style.css', () => {
     expect(main).toMatch(/import '\.\.\/style\.css';\s*\nimport '\.\/styles\/vidro\.css';/);
   });

@@ -52,3 +52,15 @@ export function clearVidroCache(): void {
     // Nothing to clear.
   }
 }
+
+/**
+ * Sign-out: drop the attribute and the cache. Sign-out is an SPA redirect, not a reload, so the
+ * attribute would otherwise outlive the session and seed the next user's shell in this tab.
+ */
+export function resetVidroLook(): void {
+  try {
+    applyVidro(false, null);
+  } catch {
+    // No document to touch; nothing to reset.
+  }
+}

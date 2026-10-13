@@ -76,11 +76,16 @@ Success:
 - **Merging before the migration is safe.** The key is absent, so the CRM reads it as off.
 - **Deploy order (owner-run):**
   1. Migration on staging, then prod.
-  2. Redeploy `workspace-limits` and `platform-admin`. Plan writes spread every column, so
-     `platform-admin` must follow the migration. Also redeploy `paywall-report`, `mcp-admin` and
-     `data-import` for consistency.
+  2. Redeploy `workspace-limits` and `platform-admin`. The migration is a **hard prerequisite** for the
+     `platform-admin` redeploy: `plan-mutations.ts` spreads `FEATURE_COLUMNS` into plan inserts and
+     updates, so without the column every Admin plan save answers 400.
   3. Merge.
   4. Admin override on the pilot workspace.
+- **Who imports `_shared/entitlements.ts`:** `automation-media`, `data-import`, `mcp-keys`,
+  `mcp-oauth-consent`, `paywall-report`, `platform-admin` and `workspace-limits`. `mcp-admin` does not
+  (it uses `entitlements-rpc.ts`). Only `workspace-limits` and `platform-admin` need a redeploy for this
+  flag; the others never read it (`paywall-report`'s allowlist only matters for flags that block
+  something).
 
 ## The look module and hook
 
@@ -92,8 +97,11 @@ Success:
   - sets or removes `data-look="vidro"` on `<html>`;
   - writes the cache as `userId` (only when `userId` is non-null) or removes it;
   - applies the attribute even when storage throws.
-- `clearVidroCache(): void` removes the cache. It does not touch the attribute: the reload or redirect
-  that follows takes care of that.
+- `clearVidroCache(): void` removes the cache. It does not touch the attribute: the workspace-switch
+  reload that follows takes care of that.
+- `resetVidroLook(): void` removes the attribute and the cache (`applyVidro(false, null)` in a
+  try/catch). Sign-out is an SPA redirect, not a reload, so the attribute would otherwise outlive the
+  session and seed the next user's `useVidro` in the same tab.
 
 `apps/crm/src/hooks/useVidro.ts`, called **only in `AppLayout`**:
 
@@ -119,9 +127,12 @@ read `look-vidro`; if set, scan `localStorage` keys for `/^sb-[a-z0-9]+-auth-tok
 the entry and compare its `user.id` to the cache; set `data-look="vidro"` only on a match. The function's `#/` early return is dead under path routing, so this also runs on `/login`.
 That is harmless: every vidro selector is under `.app-container`.
 
-**Cache clearing** calls `clearVidroCache()` in two places (user changes are covered by the user key):
-- `signOut` (AuthContext.tsx:1017);
-- `Sidebar.tsx`'s `handleSwitchWorkspace`, before `window.location.reload()` (Sidebar.tsx:163).
+**Cache clearing:**
+- `signOut` in `lib/supabase.ts` calls `resetVidroLook()` (attribute and cache);
+- AuthContext's auth listener calls `resetVidroLook()` on an in-place identity change away from a
+  signed-in user (another tab signing in or out), which never runs `signOut`. Not on the first session
+  of the page: that attribute is the pre-paint's, for the same user;
+- `Sidebar.tsx`'s `handleWorkspaceSwitch` calls `clearVidroCache()` before `window.location.reload()`.
 
 ## The shell (flag on, ≥1101px)
 
@@ -203,6 +214,11 @@ When `vidroShell` is on, AppLayout renders the tree below and does not render `T
 </div>
 ```
 
+- The wrapper `<div>` around `<main>` is rendered in **every** state (flag on or off, any width, opted
+  out). When it is not the panel it carries only an inline `style="display: contents"` (no class, so no
+  CSS outside the vidro guards). The tree around `<main>` therefore never changes shape, and a flag flip
+  on a `workspace-limits` refetch, crossing 1101px or the opt-out toggle never remounts the page. With
+  the flag off the markup gains this one layout-neutral `<div>`; rendering is unchanged.
 - `#app` is still the scroller, so the scroll reset (AppLayout.tsx:193-196), `useAlturaAteOFim` and
   `useConfigSubScreen` keep working.
 - **No `filter`, `transform` or `backdrop-filter` on `.vidro-panel` or `.main-content`.** Any of them

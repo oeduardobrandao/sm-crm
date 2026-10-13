@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEffect, useState } from 'react';
 import type { FinancialAccess } from '../../../lib/financialAccess';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
@@ -637,16 +638,71 @@ describe('AppLayout Vidro shell', () => {
     expect(document.getElementById('app')).toBe(main);
   });
 
-  it('renders no wrapper around <main> when the flag is off', async () => {
+  it('wraps <main> in a layout-neutral div when the flag is off', async () => {
     setViewport(1280);
     mockMatchMedia(false);
 
     const { container } = renderLayout();
     await screen.findByTestId('global-banner');
 
-    expect(document.getElementById('app')?.parentElement).toBe(
-      container.querySelector('.app-container'),
+    // Same tree shape as with the flag on, so a flag flip never remounts the page. The wrapper is
+    // out of the layout through an inline style (no class, so no CSS outside the vidro guards).
+    const wrapper = document.getElementById('app')?.parentElement;
+    expect(wrapper?.parentElement).toBe(container.querySelector('.app-container'));
+    expect(wrapper).toHaveStyle({ display: 'contents' });
+    expect(wrapper).not.toHaveAttribute('class');
+  });
+
+  it('keeps the same <main> and page state when the flag flips on a refetch', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    let mounts = 0;
+    function CounterPage() {
+      const [n, setN] = useState(0);
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return (
+        <button type="button" onClick={() => setN((v) => v + 1)}>
+          count {n}
+        </button>
+      );
+    }
+    const tree = () => (
+      <MemoryRouter initialEntries={['/contador']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/contador" element={<CounterPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
     );
+
+    const { rerender, container } = render(tree());
+    await screen.findByTestId('global-banner');
+    const main = document.getElementById('app');
+    fireEvent.click(await screen.findByRole('button', { name: 'count 0' }));
+    expect(screen.getByRole('button', { name: 'count 1' })).toBeInTheDocument();
+    const appContainer = container.querySelector('.app-container');
+
+    // false -> true: the flag arrives on a successful refetch.
+    vidroState.enabled = true;
+    vidroState.active = true;
+    rerender(tree());
+    expect(document.querySelector('.vidro-panel')).toContainElement(main);
+    expect(document.getElementById('app')).toBe(main);
+    expect(main?.parentElement?.parentElement).toBe(appContainer);
+    expect(screen.getByRole('button', { name: 'count 1' })).toBeInTheDocument();
+
+    // true -> false: the kill switch lands on the next refetch.
+    vidroState.enabled = false;
+    vidroState.active = false;
+    rerender(tree());
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    expect(document.getElementById('app')).toBe(main);
+    expect(main?.parentElement?.parentElement).toBe(appContainer);
+    expect(screen.getByRole('button', { name: 'count 1' })).toBeInTheDocument();
+    expect(mounts).toBe(1);
   });
 
   it('keeps the classic TopBar at tablet width even when vidro is active', async () => {

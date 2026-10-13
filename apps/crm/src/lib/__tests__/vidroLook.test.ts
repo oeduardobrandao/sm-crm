@@ -5,6 +5,7 @@ import {
   clearVidroCache,
   isVidroAttributeSet,
   optOutKey,
+  resetVidroLook,
   readOptOut,
   writeOptOut,
 } from '../vidroLook';
@@ -60,6 +61,22 @@ describe('vidroLook', () => {
   it('does not remove a foreign data-look value', () => {
     document.documentElement.setAttribute('data-look', 'other');
     applyVidro(false, 'u1');
+    expect(document.documentElement.getAttribute('data-look')).toBe('other');
+  });
+
+  it('resets the attribute and the cache together (sign-out)', () => {
+    applyVidro(true, 'u1');
+    resetVidroLook();
+    expect(isVidroAttributeSet()).toBe(false);
+    expect(localStorage.getItem(LOOK_CACHE_KEY)).toBeNull();
+  });
+
+  it('reset keeps a foreign data-look value and survives throwing storage', () => {
+    document.documentElement.setAttribute('data-look', 'other');
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(() => resetVidroLook()).not.toThrow();
     expect(document.documentElement.getAttribute('data-look')).toBe('other');
   });
 });

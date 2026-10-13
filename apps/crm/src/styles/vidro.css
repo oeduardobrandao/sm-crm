@@ -87,6 +87,11 @@
     border-radius: 6px;
   }
 
+  html[data-look='vidro'] .app-container .vidro-sidebar-logo:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+
   html[data-look='vidro'] .app-container .vidro-sidebar-logo img {
     height: 16px;
     width: auto;
@@ -159,6 +164,11 @@
     font: inherit;
     font-size: 13px;
     cursor: pointer;
+  }
+
+  html[data-look='vidro'] .app-container .search-trigger--sidebar:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
   }
 
   html[data-look='vidro'] .app-container .search-trigger--sidebar .search-trigger-text {
@@ -531,7 +541,12 @@
     border-radius: 16px;
   }
 
-  html[data-look='vidro'] .app-container .card .card {
+  /* Same :not() chain as the group rule above, or its (0,7,1) specificity wins and this never
+     applies. Coloured inner cards keep their fills. */
+  html[data-look='vidro']
+    .app-container
+    .card
+    .card:not(.card-blue):not(.card-yellow):not(.card-teal):not(.card-dark) {
     background: var(--vd-fill);
     border-color: transparent;
   }
@@ -673,6 +688,20 @@
   }
 }
 
+/* No dvh: the sidebar's dvh height is dropped at parse time and style.css's fallback sizes it from
+   --topbar-height, which Vidro redefines to 70px. Restate the floating box in vh. */
+@supports not (height: 100dvh) {
+  @media (min-width: 1101px) {
+    html[data-look='vidro'] .app-container .sidebar {
+      height: calc(100vh - var(--banner-height, 0px) - 20px);
+    }
+
+    html[data-look='vidro'] .app-container .sidebar-wrapper {
+      height: 100%;
+    }
+  }
+}
+
 /* Analytics de Fluxos print: its actions and period tabs live in the toolbar under Vidro. */
 @media print {
   html[data-look='vidro'] body:has(.analytics-fluxos-page) .vidro-toolbar-right {
@@ -731,7 +760,7 @@
 
   /* The panel is fixed + overflow hidden with .main-content as the scroller: reset all of it so the
      whole report prints, not the first screen. */
-  html[data-look='vidro'] body:has(.analytics-fluxos-page) .app-container {
+  html[data-look='vidro'] body:has(.analytics-fluxos-page) .app-container:has(.vidro-panel) {
     background: #fff;
     height: auto;
     overflow: visible;
