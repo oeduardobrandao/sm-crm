@@ -261,4 +261,23 @@
       0 6px 16px -10px rgba(0, 0, 0, 0.6),
       0 0 0 3px rgba(255, 191, 48, 0.55);
   }
+
+  /* ===== Kanban: template tabs share their row with the busca input ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tabs-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 0.9rem;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tabs-row > .board-tabs {
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tabs-row__trailing {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
 }

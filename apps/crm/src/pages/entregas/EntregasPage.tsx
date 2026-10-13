@@ -1492,6 +1492,58 @@ export default function EntregasPage() {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+  const showModeToggle =
+    activeView === 'kanban' || activeView === 'list' || activeView === 'calendar';
+  const showEntidadeToggle =
+    postProcessesVisible &&
+    (activeView === 'kanban' || activeView === 'list') &&
+    mode === 'entregas';
+  const concludedSearch = (
+    <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+      <Input
+        placeholder="Buscar cliente..."
+        value={concludedClientSearch}
+        onChange={(e) => setConcludedClientSearch(e.target.value)}
+        className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+      />
+    </div>
+  );
+  const vidroViewControls =
+    showModeToggle || showEntidadeToggle ? (
+      <>
+        {showModeToggle && <ModeToggle mode={mode} onModeChange={setMode} />}
+        {showEntidadeToggle && <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />}
+      </>
+    ) : undefined;
+  // Sempre lado a lado: a linha das abas rola na horizontal no celular, então quebrar só a
+  // deixaria mais alta.
+  const filaPickers = (
+    <div className="flex items-center gap-2">
+      <FilaOrdemPicker ordem={filaOrdem} onChange={setFilaOrdem} />
+      <FilaMembroPicker
+        membros={membros}
+        membroId={filaMembroId}
+        currentMembroId={currentMembroId}
+        onChange={setFilaMembro}
+      />
+    </div>
+  );
+  const searchInput = (
+    <div className="relative w-[220px]">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+      <Input
+        placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
+        value={filters.filterSearch}
+        onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
+        className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+      />
+    </div>
+  );
+  // Vidro: the search sits at the end of the template tabs on the Fluxos board, and at the
+  // end of the filter pills everywhere else.
+  const searchOnBoardTabs = activeView === 'kanban' && mode === 'entregas';
+
   // Under the Vidro shell the view switcher is one dropdown in the toolbar (like the vista picker
   // below it). The classic tablist in the content keeps its inline styles.
   const activeViewTab = VIEW_TABS.find((tab) => tab.id === activeView) ?? VIEW_TABS[0];
@@ -1520,6 +1572,27 @@ export default function EntregasPage() {
     </DropdownMenu>
   );
 
+  // Vidro: the saved vistas, the board toggles and the view switcher all live in the toolbar,
+  // which takes a whole control row off the page body.
+  const toolbarControls = (
+    <div className="vidro-entregas-controls">
+      <VistasTabs
+        contaId={contaId}
+        currentQuery={currentQuery}
+        onApply={applySavedView}
+        controls={vidroViewControls}
+        trailing={
+          activeView === 'fila'
+            ? filaPickers
+            : activeView === 'concluded'
+              ? concludedSearch
+              : undefined
+        }
+      />
+      {toolbarViewTabs}
+    </div>
+  );
+
   const inToolbar = usePageToolbar(
     isLoading
       ? null
@@ -1530,7 +1603,7 @@ export default function EntregasPage() {
           // title so neither gets cut. The neutral totals carry a native title tooltip.
           subtitle: toolbarCounts,
           subtitleBelow: true,
-          segmented: toolbarViewTabs,
+          segmented: toolbarControls,
           actions: headerActions,
           primary: primaryAction,
         },
@@ -1557,30 +1630,6 @@ export default function EntregasPage() {
   // the VistasTabs row instead, so the filters row only holds the filter pills and the Lista bar.
   const showViewControls = !inToolbar;
   const showFiltersRow = showFilters || showViewControls;
-  const showModeToggle =
-    activeView === 'kanban' || activeView === 'list' || activeView === 'calendar';
-  const showEntidadeToggle =
-    postProcessesVisible &&
-    (activeView === 'kanban' || activeView === 'list') &&
-    mode === 'entregas';
-  const concludedSearch = (
-    <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-      <Input
-        placeholder="Buscar cliente..."
-        value={concludedClientSearch}
-        onChange={(e) => setConcludedClientSearch(e.target.value)}
-        className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
-      />
-    </div>
-  );
-  const vidroViewControls =
-    inToolbar && (showModeToggle || showEntidadeToggle) ? (
-      <>
-        {showModeToggle && <ModeToggle mode={mode} onModeChange={setMode} />}
-        {showEntidadeToggle && <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />}
-      </>
-    ) : undefined;
   const phoneResultCount =
     activeView === 'list' && mode === 'publicacoes'
       ? listPosts.length
@@ -1718,39 +1767,17 @@ export default function EntregasPage() {
               />
             )}
 
-            <VistasTabs
-              contaId={contaId}
-              currentQuery={currentQuery}
-              onApply={applySavedView}
-              controls={vidroViewControls}
-              trailing={
-                activeView === 'fila' ? (
-                  // Sempre lado a lado: a linha das abas rola na horizontal no celular,
-                  // então quebrar só a deixaria mais alta.
-                  <div className="flex items-center gap-2">
-                    <FilaOrdemPicker ordem={filaOrdem} onChange={setFilaOrdem} />
-                    <FilaMembroPicker
-                      membros={membros}
-                      membroId={filaMembroId}
-                      currentMembroId={currentMembroId}
-                      onChange={setFilaMembro}
-                    />
-                  </div>
-                ) : showFilters ? (
-                  <div className="relative w-[220px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-                    <Input
-                      placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
-                      value={filters.filterSearch}
-                      onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
-                      className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
-                    />
-                  </div>
-                ) : inToolbar && activeView === 'concluded' ? (
-                  concludedSearch
-                ) : undefined
-              }
-            />
+            {/* Under Vidro the vistas row lives in the toolbar (toolbarControls). */}
+            {!inToolbar && (
+              <VistasTabs
+                contaId={contaId}
+                currentQuery={currentQuery}
+                onApply={applySavedView}
+                trailing={
+                  activeView === 'fila' ? filaPickers : showFilters ? searchInput : undefined
+                }
+              />
+            )}
 
             {/* Below 901px the compact "Filtros" button and the view/mode/entity
           toggles share one row. From 901px up the full pill set takes its own
@@ -1768,6 +1795,7 @@ export default function EntregasPage() {
                     templates={templates}
                     etapaNames={etapaNames}
                     mode={postsMode ? 'posts' : 'entregas'}
+                    trailing={inToolbar && !searchOnBoardTabs ? searchInput : undefined}
                   />
                 )}
 
@@ -1921,6 +1949,7 @@ export default function EntregasPage() {
                   setNewWorkflowOpen(true);
                 }}
                 onCreateTemplate={() => setTemplatesOpen(true)}
+                tabsTrailing={inToolbar ? searchInput : undefined}
                 createTemplateDisabled={templatesAtLimit}
                 // Criar processo individual é CRIAÇÃO: gate na flag do plano
                 // (`postProcessesEnabled`), não em `postProcessesVisible` — ver o

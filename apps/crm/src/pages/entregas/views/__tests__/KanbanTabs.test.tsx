@@ -188,6 +188,26 @@ describe('KanbanView board tab strip', () => {
     expect(container.querySelectorAll('.board-tab-add')).toHaveLength(0);
   });
 
+  it('puts tabsTrailing on the tab strip row, after the tabs', () => {
+    const { container } = render(
+      <KanbanView
+        {...boardProps([makeCard('Posts Agosto', 1, 1)])}
+        tabsTrailing={<input aria-label="Busca" />}
+      />,
+    );
+
+    const row = container.querySelector('.board-tabs-row')!;
+    expect(row.querySelector(':scope > .board-tabs')).not.toBeNull();
+    expect(row.querySelector(':scope > .board-tabs-row__trailing input')).not.toBeNull();
+  });
+
+  it('renders the bare tab strip, with no row wrapper, when tabsTrailing is omitted', () => {
+    const { container } = render(<KanbanView {...boardProps([makeCard('Posts Agosto', 1, 1)])} />);
+
+    expect(container.querySelector('.board-tabs-row')).toBeNull();
+    expect(container.querySelector('.board-tabs')).not.toBeNull();
+  });
+
   it('the "+" button does not have role="tab"', () => {
     render(
       <KanbanView {...boardProps([makeCard('Posts Agosto', 1, 1)])} onCreateTemplate={() => {}} />,

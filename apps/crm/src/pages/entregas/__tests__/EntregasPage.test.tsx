@@ -225,6 +225,7 @@ vi.mock('../components/EntregasFilters', async (importOriginal) => ({
     clientes,
     membros,
     mode,
+    trailing,
   }: {
     filters: { filterClientes: number[]; filterMembros: number[]; filterStatus: string[] };
     onChange: (next: {
@@ -235,8 +236,10 @@ vi.mock('../components/EntregasFilters', async (importOriginal) => ({
     clientes: Array<{ id: number; nome: string }>;
     membros: Array<{ id: number; nome: string }>;
     mode?: string;
+    trailing?: React.ReactNode;
   }) => (
-    <div>
+    <div data-testid="entregas-filters">
+      {trailing}
       <div>Filters: {filters.filterStatus.join(',')}</div>
       <div>FiltersMode: {mode}</div>
       <div>Clientes: {clientes.length}</div>
@@ -3373,9 +3376,9 @@ describe('EntregasPage: Vidro toolbar', () => {
       'true',
     );
 
-    // The in-page header is gone; the mode toggle stays in the content.
+    // The in-page header is gone, and the vistas row (picker + board toggles) moved into the toolbar.
     expect(document.querySelector('header.header')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vidro-toolbar')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vidro-toolbar')).not.toBeNull();
   });
 
   it('filters the board to overdue from the pill and clears it on a second click', async () => {
@@ -3425,14 +3428,29 @@ describe('EntregasPage: Vidro toolbar', () => {
     );
   });
 
-  it('puts the Etapas/Status toggle on the vista picker row, not the filters row', async () => {
+  it('puts the vista picker and the Etapas/Status toggle in the toolbar, the busca out of it', async () => {
     renderInShell(true);
     await screen.findAllByRole('heading', { level: 1 });
 
     const etapas = screen.getByRole('button', { name: 'Etapas' });
     expect(etapas.closest('.vista-tabs__controls')).not.toBeNull();
-    expect(document.querySelector('.vista-picker')).not.toBeNull();
+    expect(etapas.closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelector('.vista-picker')?.closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelectorAll('.vista-tabs')).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Etapas' })).toHaveLength(1);
+    // The busca rides the template tabs row (KanbanView) on the Fluxos board, never the toolbar.
+    expect(
+      screen.queryByPlaceholderText('Buscar fluxo...')?.closest('.vidro-toolbar') ?? null,
+    ).toBeNull();
+  });
+
+  it('puts the busca at the end of the filter pills off the Fluxos board', async () => {
+    renderInShell(true, '/entregas?view=list');
+    expect(await screen.findByText(/^List view:/)).toBeInTheDocument();
+
+    const busca = screen.getByPlaceholderText('Buscar fluxo...');
+    expect(busca.closest('.vidro-toolbar')).toBeNull();
+    expect(busca.closest('[data-testid="entregas-filters"]')).not.toBeNull();
   });
 
   it('classic shell keeps the Etapas/Status toggle out of the vista row', async () => {

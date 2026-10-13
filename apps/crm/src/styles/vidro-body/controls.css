@@ -93,6 +93,28 @@
     box-shadow: none;
     overflow: visible;
   }
+  /* Entregas: the vistas row (picker + toggles) and the view picker, slotted in the toolbar. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-entregas-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* In the toolbar the vistas row's trailing slot (Fila pickers, Concluídas search) follows the
+     picker instead of being pushed to the far end. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vidro-entregas-controls
+    .vista-tabs
+    > .ml-auto {
+    margin-left: 0;
+    padding-left: 0;
+  }
+
   /* Entregas: the view toggles that share the vista picker's row. */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__controls {
     display: flex;
