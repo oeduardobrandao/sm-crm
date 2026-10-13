@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, expect, it, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { DateTimePicker } from '../date-time-picker';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 beforeAll(() => {
   (Element.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = () =>
@@ -142,5 +143,29 @@ describe('day marker legend', () => {
     fireEvent.click(screen.getByRole('button', { name: /20 jul 2026/i }));
     expect(container.querySelector('.dtp-legend')).not.toBeInTheDocument();
     expect(document.querySelector('.dtp-legend')).toBeNull();
+  });
+});
+
+describe('DateTimePicker trigger under the Vidro look', () => {
+  const value = new Date(2026, 6, 24, 10, 0);
+
+  it('keeps the inline trigger style with the flag off', () => {
+    render(<DateTimePicker value={value} />);
+    const trigger = screen.getByRole('button', { name: /24 jul 2026/i });
+    expect(trigger.style.borderRadius).toBe('6px');
+    expect(trigger.style.padding).toBe('0.4rem 0.6rem');
+    expect(trigger.style.fontSize).toBe('0.82rem');
+    expect(trigger.style.background).toBe('var(--card-bg)');
+  });
+
+  it('drops the inline trigger style inside the Vidro shell', () => {
+    render(
+      <VidroToolbarHarness>
+        <DateTimePicker value={value} />
+      </VidroToolbarHarness>,
+    );
+    const trigger = screen.getByRole('button', { name: /24 jul 2026/i });
+    expect(trigger.style.borderRadius).toBe('');
+    expect(trigger.getAttribute('style')).toBeNull();
   });
 });

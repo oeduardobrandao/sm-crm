@@ -1,0 +1,172 @@
+import { readFileSync } from 'node:fs';
+import postcss, { type Rule } from 'postcss';
+import { describe, expect, it } from 'vitest';
+
+function loadFamily(name: string) {
+  const root = postcss.parse(readFileSync(`apps/crm/src/styles/vidro-body/${name}.css`, 'utf8'));
+  const decl = (parts: string | string[], prop: string): string[] => {
+    const ps = Array.isArray(parts) ? parts : [parts];
+    const out: string[] = [];
+    root.walkRules((r: Rule) => {
+      if (!r.selectors.some((s) => ps.every((p) => s.includes(p)))) return;
+      r.walkDecls(prop, (d) => {
+        out.push(d.value);
+      });
+    });
+    return out;
+  };
+  // A selector matches when it contains EVERY part (in any order). This is what makes :is() groupings
+  // testable: `:is(.a, .b):is(:hover, [data-state='open'])` satisfies hasAll(['.b', ':hover']).
+  const hasAll = (parts: string | string[]) => {
+    const ps = Array.isArray(parts) ? parts : [parts];
+    let found = false;
+    root.walkRules((r) => {
+      if (r.selectors.some((s) => ps.every((p) => s.includes(p)))) found = true;
+    });
+    return found;
+  };
+  return { root, decl, hasAll };
+}
+
+function expectStates(
+  hasAll: (p: string[]) => boolean,
+  hook: string,
+  states = [':hover', ':focus-visible', ':disabled'],
+) {
+  for (const st of states) expect(hasAll([hook, st]), `${hook} ${st}`).toBe(true);
+}
+
+const { root, decl, hasAll } = loadFamily('buttons');
+
+const PB = "html[data-look='vidro'] body:has(.app-container) .vidro-panel";
+const OC =
+  "html[data-look='vidro'] body:has(.app-container) :is([data-slot='dialog-content'], [data-slot='alert-dialog-content'], [data-slot='sheet-content'], [data-slot='popover-content'], .comment-popover, .comment-add-popover, .mention-suggestion-list)";
+
+/** hasAll over selectors with prettier's line breaks folded back to one line. */
+function hasAllFlat(parts: string[]): boolean {
+  const flat = (sel: string) =>
+    sel
+      .replace(/\s+/g, ' ')
+      .replace(/\(\s+/g, '(')
+      .replace(/,?\s+\)/g, ')');
+  let found = false;
+  root.walkRules((r) => {
+    if (r.selectors.some((s) => parts.every((p) => flat(s).includes(p)))) found = true;
+  });
+  return found;
+}
+
+/** Source-order index of the first rule with a selector containing every part. */
+function ruleIndex(parts: string[]): number {
+  let i = 0;
+  let found = -1;
+  root.walkRules((r) => {
+    if (found === -1 && r.selectors.some((s) => parts.every((p) => s.includes(p)))) found = i;
+    i += 1;
+  });
+  return found;
+}
+
+describe('buttons.css', () => {
+  it('CTA: ink pill', () => {
+    expect(decl("[data-variant='default']", 'background').join()).toContain('var(--vd-cta)');
+    expect(decl('.btn-primary', 'border-radius')).toContain('999px');
+    expect(decl("[data-variant='default']", 'height')).toContain('36px');
+  });
+
+  it('glass, ghost, danger looks exist', () => {
+    expect(decl("[data-variant='outline']", 'background').join()).toContain('var(--vd-cap)');
+    expect(decl("[data-variant='ghost']", 'background').join()).toMatch(/transparent/);
+    expect(decl("[data-variant='destructive']", 'background').join()).toContain(
+      'var(--vd-tg-bad-bg)',
+    );
+  });
+
+  it('restates hover, focus-visible, disabled on every look', () => {
+    for (const h of [
+      "[data-variant='default']",
+      "[data-variant='outline']",
+      "[data-variant='ghost']",
+      "[data-variant='destructive']",
+      '.btn-primary',
+      '.btn-secondary',
+      '.post-editor-btn',
+      '.vidro-cal-day',
+    ]) {
+      expectStates(hasAll, h);
+    }
+  });
+
+  it('keeps the toolbar button margin rule out of this file', () => {
+    expect(hasAll('.sidebar')).toBe(false);
+    expect(hasAll('.vidro-capsule')).toBe(false);
+  });
+
+  it('duplicates the page-body rules for portaled overlay content', () => {
+    for (const h of [
+      "[data-variant='default']",
+      "[data-variant='outline']",
+      "[data-variant='ghost']",
+      "[data-variant='destructive']",
+      '.vidro-cal-day',
+    ]) {
+      expect(hasAllFlat([PB, h]), `PB ${h}`).toBe(true);
+      expect(hasAllFlat([OC, h]), `OC ${h}`).toBe(true);
+    }
+  });
+
+  it('paints the destructive AlertDialogAction call sites with the danger look, after the CTA', () => {
+    for (const hook of ['.bg-destructive', "[class*='bg-[var(--danger)]']"]) {
+      expect(hasAll(["[data-variant='destructive']", hook]), hook).toBe(true);
+      expect(hasAll(["[data-variant='destructive']", hook, ':hover']), `${hook} :hover`).toBe(true);
+      expect(decl(["[data-variant='destructive']", hook], 'background').join()).toContain(
+        'var(--vd-tg-bad-bg)',
+      );
+    }
+    // Both :is() lists peak at (0,2,0), so the danger rules win by coming later.
+    expect(ruleIndex(["[data-variant='destructive']", '.bg-destructive'])).toBeGreaterThan(
+      ruleIndex(["[data-variant='default']", ':focus-visible']),
+    );
+  });
+
+  it('gives danger a dark hover that clears AA', () => {
+    expect(
+      decl(["html[data-theme='dark'][data-look='vidro']", '.btn-danger', ':hover'], 'background'),
+    ).toContain('var(--danger)');
+  });
+
+  it('keeps the modifier classes out of their base look', () => {
+    expect(hasAll('.calendar-detail-btn:not(.calendar-detail-btn--primary')).toBe(true);
+    expect(hasAll('.btn-instagram-action:not(.btn-instagram-action--danger)')).toBe(true);
+    expect(hasAll('.drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost)')).toBe(true);
+    expect(hasAll('.vidro-board-action:not(.vidro-board-action--complete')).toBe(true);
+  });
+
+  it('sets border 0 and padding on board-card actions so style.css loses, without touching flex', () => {
+    expect(decl("[data-variant='ghost']", 'border')).toContain('0');
+    expect(decl('.board-card-actions button', 'padding').length).toBeGreaterThan(0);
+    expect(decl('.board-card-actions button', 'flex')).toEqual([]);
+  });
+
+  it('makes every icon-size Button a 32px circle with no padding', () => {
+    expect(decl("[data-size='icon']", 'width')).toContain('32px');
+    expect(decl("[data-size='icon']", 'padding')).toContain('0');
+  });
+
+  it('keys the day picker states on the DayPicker td modifiers', () => {
+    expect(decl(["td[data-selected='true']", '> .vidro-cal-day'], 'background')).toContain(
+      'var(--vd-cta)',
+    );
+    expect(decl(["td[data-today='true']", '> .vidro-cal-day'], 'box-shadow').join()).toContain(
+      'inset 0 0 0 2px #ffbf30',
+    );
+    expect(decl(["td[data-outside='true']", '> .vidro-cal-day'], 'color')).toContain(
+      'var(--vd-txt3)',
+    );
+    expect(hasAllFlat([OC, "td[data-selected='true'] > .vidro-cal-day"])).toBe(true);
+  });
+
+  it('keys the editor toolbar pressed state on the class the markup renders', () => {
+    expect(decl(['.post-editor-btn', '.active'], 'background')).toContain('var(--vd-fill)');
+  });
+});

@@ -34,6 +34,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 import { WorkflowCard } from '../WorkflowCard';
 import type { BoardCard } from '../../hooks/useEntregasData';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function render(ui: React.ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -107,5 +108,45 @@ describe('WorkflowCard: Duplicar fluxo', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByRole('menuitem', { name: /Duplicar fluxo/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkflowCard: ações do card sob o Vidro', () => {
+  function renderCard(vidro: boolean) {
+    const ui = (
+      <MemoryRouter>
+        <WorkflowCard card={card} onForwardClick={vi.fn()} />
+      </MemoryRouter>
+    );
+    render(vidro ? <VidroToolbarHarness>{ui}</VidroToolbarHarness> : ui);
+    return {
+      kebab: screen.getByRole('button', { name: 'Mais opções' }),
+      forward: screen.getByTitle('Concluir fluxo'),
+    };
+  }
+
+  it('flag desligada: mantém btn-edit-workflow e o estilo inline', () => {
+    const { kebab, forward } = renderCard(false);
+    expect(kebab).toHaveClass('btn-edit-workflow', 'board-card-kebab');
+    expect(forward).toHaveClass('btn-edit-workflow', 'btn-forward-etapa');
+    expect(kebab).not.toHaveClass('vidro-board-action');
+    expect(forward).not.toHaveClass('vidro-board-action');
+    expect(kebab.style.borderRadius).toBe('8px');
+    expect(kebab.style.padding).toBe('0.35rem 0.55rem');
+    expect(forward.style.borderRadius).toBe('8px');
+  });
+
+  it('Vidro: troca btn-edit-workflow por vidro-board-action e solta raio e padding inline', () => {
+    const { kebab, forward } = renderCard(true);
+    expect(kebab).toHaveClass('vidro-board-action', 'board-card-kebab');
+    expect(forward).toHaveClass('vidro-board-action', 'btn-forward-etapa');
+    expect(kebab).not.toHaveClass('btn-edit-workflow');
+    expect(forward).not.toHaveClass('btn-edit-workflow');
+    expect(kebab.style.borderRadius).toBe('');
+    expect(kebab.style.padding).toBe('');
+    expect(kebab.style.flexShrink).toBe('0');
+    expect(forward.style.borderRadius).toBe('');
+    expect(forward.style.padding).toBe('');
+    expect(forward.style.marginLeft).toBe('auto');
   });
 });

@@ -29,6 +29,7 @@ import { WorkflowTimelinePopover } from './WorkflowTimelinePopover';
 import { DeadlinePill } from './DeadlinePill';
 import { etapaDeadlineDate } from '../etapaPrazo';
 import { progressColor } from '../progressColor';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 
 interface WorkflowCardProps {
   card: BoardCard;
@@ -85,6 +86,10 @@ export function WorkflowCard({
   onDuplicateClick,
 }: WorkflowCardProps) {
   const navigate = useNavigate();
+  // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
+  // vidro-board-action and drop their inline radius/padding, so buttons.css can paint them.
+  const vidroShell = useVidroShell();
+  const boardAction = vidroShell ? 'vidro-board-action' : 'btn-edit-workflow';
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | undefined | null>(undefined);
   const dl = card.deadline;
@@ -662,10 +667,14 @@ export function WorkflowCard({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="btn-edit-workflow board-card-kebab"
+              className={`${boardAction} board-card-kebab`}
               aria-label="Mais opções"
               title="Mais opções"
-              style={{ padding: '0.35rem 0.55rem', borderRadius: '8px', flexShrink: 0 }}
+              style={
+                vidroShell
+                  ? { flexShrink: 0 }
+                  : { padding: '0.35rem 0.55rem', borderRadius: '8px', flexShrink: 0 }
+              }
               onClick={(e) => e.stopPropagation()}
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
@@ -741,13 +750,12 @@ export function WorkflowCard({
         </DropdownMenu>
         {onForwardClick && (
           <button
-            className="btn-edit-workflow btn-forward-etapa"
+            className={`${boardAction} btn-forward-etapa`}
             title={
               card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'
             }
             style={{
-              padding: '0.35rem 0.55rem',
-              borderRadius: '8px',
+              ...(vidroShell ? null : { padding: '0.35rem 0.55rem', borderRadius: '8px' }),
               flexShrink: 0,
               marginLeft: 'auto',
               color: '#3ecf8e',
