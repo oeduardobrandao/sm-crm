@@ -68,6 +68,13 @@ function createFile(name: string, type: string, size = 128) {
   return new File([new Uint8Array(size)], name, { type });
 }
 
+/** Reports `size` without allocating it, for limit checks in the GB range. */
+function sizedFile(name: string, type: string, size: number) {
+  const file = createFile(name, type);
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
+}
+
 describe('post media service', () => {
   beforeEach(() => {
     fetchHarness.reset();
@@ -125,7 +132,13 @@ describe('post media service', () => {
       'Tipo não suportado: application/pdf',
     );
     expect(() =>
-      validateFile(createFile('grande.mov', 'video/quicktime', 450 * 1024 * 1024), 'video'),
+      validateFile(sizedFile('grande.mov', 'video/quicktime', 450 * 1024 * 1024), 'video'),
+    ).not.toThrow();
+    expect(() =>
+      validateFile(sizedFile('enorme.mov', 'video/quicktime', 2 * 1024 * 1024 * 1024 + 1), 'video'),
+    ).toThrow('Vídeo maior que 2 GB');
+    expect(() =>
+      validateFile(sizedFile('grande.png', 'image/png', 450 * 1024 * 1024), 'image'),
     ).toThrow('Arquivo maior que 400 MB');
   });
 

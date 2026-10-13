@@ -108,8 +108,15 @@ Deno.test("file-upload-url: size_bytes out of range returns 400", async () => {
   const db2 = createSupabaseQueryMock();
   setupAuthAndProfile(db2);
   const handler2 = makeHandler(db2);
-  const resTooBig = await handler2(authedRequest({ filename: "f.mp4", mime_type: "video/mp4", size_bytes: 500 * 1024 * 1024, thumbnail: { mime_type: "image/png", size_bytes: 1000 } }));
+  const resTooBig = await handler2(authedRequest({ filename: "f.mp4", mime_type: "video/mp4", size_bytes: 2 * 1024 * 1024 * 1024 + 1, thumbnail: { mime_type: "image/png", size_bytes: 1000 } }));
   assertEquals(resTooBig.status, 400);
+
+  const db3 = createSupabaseQueryMock();
+  setupAuthAndProfile(db3);
+  const handler3 = makeHandler(db3);
+  const resImageTooBig = await handler3(authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 500 * 1024 * 1024 }));
+  assertEquals(resImageTooBig.status, 400);
+  assertEquals((await readJson(resImageTooBig)).error, "size_bytes out of range");
 });
 
 Deno.test("file-upload-url: video without thumbnail returns 400", async () => {
