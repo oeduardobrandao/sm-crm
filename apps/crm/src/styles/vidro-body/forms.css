@@ -5,6 +5,1122 @@
  * Guards: every selector starts with html[data-look='vidro']; everything inside
  * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ *
+ * Every rule is emitted twice: under .vidro-panel (page body) and under the portaled overlay-content
+ * list (dialogs, sheets, popovers, comment popovers), which render outside .vidro-panel. The sidebar
+ * is in neither, so its native search field is untouched.
+ *
+ * Selects with a classic chevron background-image (.drawer-select, .form-input, raw select) paint
+ * with background-color only: the `background` shorthand would wipe the chevron.
  */
 @media (min-width: 1101px) {
+  /* Fields: resting */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ) {
+    border: 1px solid transparent;
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-main);
+    box-shadow: none;
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot])
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot])
+    ) {
+    background: var(--vd-fill);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.drawer-select, .form-input, select:not([data-slot])),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.drawer-select, .form-input, select:not([data-slot])) {
+    background-color: var(--vd-fill);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ) {
+    height: 34px;
+    min-height: 34px;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot])
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot])
+    ) {
+    height: auto;
+    padding: 8px 12px;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    )::placeholder,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    )::placeholder {
+    color: var(--vd-txt3);
+    font-family: inherit;
+    font-size: inherit;
+    letter-spacing: 0;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is([data-slot='select-trigger'][data-placeholder]),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is([data-slot='select-trigger'][data-placeholder]) {
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='select-trigger'] svg,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='select-trigger']
+    svg {
+    color: var(--vd-txt3);
+    opacity: 1;
+  }
+  /* Fields: hover restates the resting look on the shadcn hooks (no classic hover exists on the class hooks) */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):hover:not(
+      :disabled
+    ):not(:focus):not(:focus-visible),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):hover:not(
+      :disabled
+    ):not(:focus):not(:focus-visible) {
+    background: var(--vd-fill);
+    border-color: transparent;
+  }
+  /* Fields: focus (native fields and Radix triggers), select trigger also while its list is open */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ):is(:focus, :focus-visible),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ):is(:focus, :focus-visible),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='select-trigger'][data-state='open'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='select-trigger'][data-state='open'] {
+    border-color: var(--vd-sep);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.45);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot])
+    ):is(:focus, :focus-visible),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot])
+    ):is(:focus, :focus-visible),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='select-trigger'][data-state='open'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='select-trigger'][data-state='open'] {
+    background: var(--vd-group);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.drawer-select, .form-input, select:not([data-slot])):is(:focus, :focus-visible),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.drawer-select, .form-input, select:not([data-slot])):is(:focus, :focus-visible) {
+    background-color: var(--vd-group);
+  }
+  /* Fields: invalid keeps its red border while focused (after the focus rule) */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    )[aria-invalid='true'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    )[aria-invalid='true'] {
+    border-color: var(--vd-tg-bad);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    )[aria-invalid='true']:is(:focus, :focus-visible),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    )[aria-invalid='true']:is(:focus, :focus-visible) {
+    border-color: var(--vd-tg-bad);
+  }
+  /* Fields: disabled */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ):disabled,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ):disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ):disabled:hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='input'],
+      [data-slot='select-trigger'],
+      .drawer-input,
+      .time-picker-select,
+      .post-editor-link-input,
+      input:is(
+          [type='text'],
+          [type='search'],
+          [type='email'],
+          [type='url'],
+          [type='number'],
+          [type='date'],
+          [type='tel'],
+          :not([type])
+        ):not([data-slot]),
+      [data-slot='textarea'],
+      .comment-reply-input,
+      .comment-add-input,
+      .comment-edit-input,
+      textarea:not([data-slot]),
+      .drawer-select,
+      .form-input,
+      select:not([data-slot])
+    ):disabled:hover {
+    border-color: transparent;
+  }
+  /* Search pill (after the field rules: same specificity, later wins) */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    input[type='search']:not([data-slot]),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    input[type='search']:not([data-slot]),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    input[type='search'][data-slot='input'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    input[type='search'][data-slot='input'] {
+    border-radius: 999px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 12px;
+  }
+  /* Checkbox: square ink box */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='checkbox'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='checkbox'] {
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+    border: 1.5px solid var(--vd-txt3);
+    background: transparent;
+    box-shadow: none;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='checkbox']:hover:not(:disabled),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='checkbox']:hover:not(:disabled) {
+    border-color: var(--vd-txt3);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='checkbox']:is([data-state='checked'], [data-state='indeterminate']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='checkbox']:is([data-state='checked'], [data-state='indeterminate']) {
+    background: var(--vd-cta);
+    border-color: var(--vd-cta);
+    color: var(--vd-cta-fg);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='checkbox']:is([data-state='checked'], [data-state='indeterminate']):hover:not(
+      :disabled
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='checkbox']:is([data-state='checked'], [data-state='indeterminate']):hover:not(
+      :disabled
+    ) {
+    background: var(--vd-cta);
+    border-color: var(--vd-cta);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='checkbox']:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='checkbox']:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='checkbox']:disabled,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='checkbox']:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  /* Switch: iOS toggle, 38x22 with a 2px border, 18px thumb; travel stays translate-x-4 (16px) */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='switch'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='switch'] {
+    width: 38px;
+    height: 22px;
+    border-radius: 999px;
+    border-width: 2px;
+    background: var(--vd-fill);
+    box-shadow: none;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='switch']:hover:not(:disabled),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='switch']:hover:not(:disabled) {
+    background: var(--vd-fill);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='switch'][data-state='checked'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='switch'][data-state='checked'] {
+    background: var(--vd-switch-on);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='switch'][data-state='checked']:hover:not(:disabled),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='switch'][data-state='checked']:hover:not(:disabled) {
+    background: var(--vd-switch-on);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='switch']:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='switch']:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='switch']:disabled,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='switch']:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='switch-thumb'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='switch-thumb'] {
+    width: 18px;
+    height: 18px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  }
+  /* Native radios */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel input[type='radio'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    input[type='radio'] {
+    accent-color: var(--vd-cta);
+  }
 }
