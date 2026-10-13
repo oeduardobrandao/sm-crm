@@ -70,8 +70,16 @@ describe('boards.css', () => {
     expect(kanban).toContain('<DragOverlay className="vidro-drag-clone">');
   });
 
-  it('column header rounds its inline tint', () => {
-    expect(decl('.board-column-header', 'border-radius')).toContain('10px');
+  it('column headers are neutral: an etapa dot from --col-tint, ink title, grey count', () => {
+    expect(decl(['.board-column-header', '.board-column-title::before'], 'background')).toEqual([
+      'var(--col-tint)',
+    ]);
+    expect(hasAll(["[style*='--col-tint']", '.board-column-title::before'])).toBe(true);
+    expect(decl('.board-column-title', 'color')).toContain('var(--text-main)');
+    expect(decl('.board-column-count', 'background')).toEqual(['var(--vd-tg-neutral-bg)']);
+    expect(decl('.board-column-count', 'color')).toEqual(['var(--vd-tg-neutral)']);
+    expect(hasAll(['.board-column-sort', ':hover'])).toBe(true);
+    expect(hasAll(['.board-column-sort', ':focus-visible'])).toBe(true);
   });
 
   it('today and selected compensate the thicker border; foreign cards keep their own border', () => {

@@ -200,4 +200,12 @@ describe('controls.css', () => {
       true,
     );
   });
+  it('the trailing "Novo template" reads as a quiet action inside the tab capsule', () => {
+    expect(decl('.board-tab-add', 'padding')).toContain('6px 12px');
+    expect(decl('.board-tab-add', 'color')).toContain('var(--vd-txt3)');
+    expect(decl('.board-tab-add', 'align-items')).toContain('center');
+    expect(hasAll(['.board-tab-add', ':hover'])).toBe(true);
+    expect(hasAll(['.board-tab-add', ':focus-visible'])).toBe(true);
+    expect(hasAll(['.board-tab-add', ':disabled'])).toBe(true);
+  });
 });

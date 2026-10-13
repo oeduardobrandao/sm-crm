@@ -20,20 +20,64 @@
     padding: 10px;
   }
 
+  /* Neutral header: KanbanView/PostsKanbanView drop their inline etapa tints under Vidro. The
+     fluxos board hands the etapa colour over as --col-tint, which paints a dot before the title;
+     Publicações keeps its own coloured status icon. */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-header {
     background: transparent;
     border-bottom: 0;
     min-height: 0;
-    padding: 2px 4px 8px;
+    padding: 4px 6px 10px;
     border-radius: 10px;
+    align-items: center;
   }
 
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-title {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     text-transform: none;
     letter-spacing: 0;
     font-family: inherit;
+    color: var(--text-main);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-column-header[style*='--col-tint']
+    .board-column-title::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--col-tint);
+    flex-shrink: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-count {
+    background: var(--vd-tg-neutral-bg);
+    color: var(--vd-tg-neutral);
+    border: 0;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    min-width: 20px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-sort {
+    color: var(--vd-txt3);
+    opacity: 1;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-sort:hover {
+    color: var(--text-main);
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-sort:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
   }
 
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-body {

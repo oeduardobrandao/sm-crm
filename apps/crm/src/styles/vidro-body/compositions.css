@@ -220,4 +220,15 @@
   html[data-theme='dark'][data-look='vidro'] body:has(.app-container) .drawer-selection-bar {
     background: var(--vd-solid);
   }
+
+  /* Header actions ship an icon-only twin that the classic CSS shows only on phones
+     (.header-actions-icon-only is display: none). buttons.css's 32px icon circle sets
+     display: inline-flex at (0,6,2) and re-showed it beside the full button (Entregas'
+     Templates, Clientes' Importar CSV, Equipe, Financeiro). This (0,7,2) hides it again. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-size='icon'][data-variant='outline'].header-actions-icon-only {
+    display: none;
+  }
 }

@@ -1,4 +1,12 @@
-import { Fragment, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Fragment,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type CSSProperties,
+} from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -75,6 +83,7 @@ import {
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { useWorkflowStageCommands } from '../hooks/useWorkflowStageCommands';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { PhoneKanbanBoard } from '../phone/PhoneKanbanBoard';
 
 interface KanbanViewBaseProps {
@@ -467,6 +476,9 @@ export function KanbanView({
   tiktokEnabled,
   recurringWfId,
 }: KanbanViewProps) {
+  // Vidro: the column headers drop their inline etapa tints (the CSS paints a neutral header
+  // with a coloured dot from --col-tint) and the tabs show template names as typed.
+  const vidroShell = useVidroShell();
   // Server data is canonical: the board always re-derives from the cards prop,
   // so any edit (título, responsável, prazo…) shows as soon as the refetch
   // lands — no reload needed. Optimistic changes (dnd moves and reorders) live
@@ -1222,7 +1234,11 @@ export function KanbanView({
           <div key={column.ordem} className="board-column" style={{ borderColor: `${tint}30` }}>
             <div
               className="board-column-header"
-              style={{ background: `${tint}30`, borderBottomColor: `${tint}30` }}
+              style={
+                vidroShell
+                  ? ({ '--col-tint': tint } as CSSProperties)
+                  : { background: `${tint}30`, borderBottomColor: `${tint}30` }
+              }
               {...(column.tipo === 'aprovacao_cliente' ? { 'data-tour': 'wf-col-aprovacao' } : {})}
             >
               <span
@@ -1233,7 +1249,10 @@ export function KanbanView({
                   minWidth: 0,
                 }}
               >
-                <span className="board-column-title" style={{ color: tint }}>
+                <span
+                  className="board-column-title"
+                  style={vidroShell ? undefined : { color: tint }}
+                >
                   {stepName}
                 </span>
                 <DropdownMenu>
@@ -1242,7 +1261,7 @@ export function KanbanView({
                       type="button"
                       aria-label={`Ordenar coluna ${stepName}`}
                       className="board-column-sort"
-                      style={{ color: tint }}
+                      style={vidroShell ? undefined : { color: tint }}
                     >
                       <ArrowUpDown size={12} aria-hidden="true" />
                     </button>
@@ -1271,12 +1290,19 @@ export function KanbanView({
               </span>
               <span
                 className="board-column-count"
-                style={{ background: `${tint}3d`, color: tint, borderColor: 'transparent' }}
+                style={
+                  vidroShell
+                    ? undefined
+                    : { background: `${tint}3d`, color: tint, borderColor: 'transparent' }
+                }
               >
                 {countLabel}
               </span>
             </div>
-            <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${colKeyStr}`}>
+            <DroppableColumnBody
+              tint={vidroShell ? undefined : tint}
+              id={`${COL_PREFIX}${colKeyStr}`}
+            >
               {colIdx === 0 &&
                 onAddWorkflow &&
                 (row.templateId != null && postProcessesEnabled && onAddPostIndividual ? (
@@ -1426,7 +1452,7 @@ export function KanbanView({
                     className={`board-tab${row.key === activeRow.key ? ' active' : ''}`}
                     onClick={() => setActiveRowKey(row.key)}
                   >
-                    {row.label}
+                    {vidroShell ? row.name : row.label}
                     <span className="board-tab-count">{rowCardCount(row)}</span>
                   </button>
                 ))}

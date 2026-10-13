@@ -79,6 +79,13 @@ describe('compositions.css', () => {
     ]);
   });
 
+  it('hides the icon-only twin of a header action (the full button shows beside it)', () => {
+    const { decl } = loadFamily('compositions');
+    expect(
+      decl(["[data-slot='button'][data-size='icon']", '.header-actions-icon-only'], 'display'),
+    ).toEqual(['none']);
+  });
+
   it('restates the field fill on hover for the raw h-7 input', () => {
     expect(decl(['input.h-7.border-input.bg-transparent:hover'], 'background')).toContain(
       'var(--vd-fill)',
