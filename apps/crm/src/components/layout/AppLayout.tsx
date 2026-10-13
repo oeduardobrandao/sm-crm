@@ -139,32 +139,34 @@ function useIsMobile() {
 
 const SIDEBAR_PINNED_STORAGE_KEY = 'sidebar-pinned';
 
-// Desktop sidebar: an icon rail by default that expands over the content on
-// hover. Pinning keeps it open and pushes the content over. Deliberately not
-// reset when the viewport drops into drawer/mobile range, so widening the
-// window again restores it.
-function useSidebarPinned() {
-  const [pinned, setPinned] = useState(() => {
+// Desktop sidebar: an icon rail that expands over the content on hover, or pinned open,
+// pushing the content over. The stored preference is tri-state: '1' pinned, '0' rail, unset
+// follows the look (pinned under Vidro, rail in classic; see AppLayout). Only an explicit click
+// writes it. Deliberately not reset when the viewport drops into drawer/mobile range, so
+// widening the window again restores it.
+type PinPref = '1' | '0' | null;
+
+function readPinPref(): PinPref {
+  try {
+    const v = localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY);
+    return v === '1' || v === '0' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function useSidebarPinPref() {
+  const [pref, setPref] = useState<PinPref>(readPinPref);
+  const choose = useCallback((next: boolean) => {
+    const v: PinPref = next ? '1' : '0';
     try {
-      return localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY) === '1';
+      localStorage.setItem(SIDEBAR_PINNED_STORAGE_KEY, v);
     } catch {
-      return false;
+      // localStorage unavailable (private mode, quota) -- preference just won't persist.
     }
-  });
-
-  const toggle = useCallback(() => {
-    setPinned((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(SIDEBAR_PINNED_STORAGE_KEY, next ? '1' : '0');
-      } catch {
-        // localStorage unavailable (private mode, quota) -- preference just won't persist.
-      }
-      return next;
-    });
+    setPref(v);
   }, []);
-
-  return [pinned, toggle] as const;
+  return [pref, choose] as const;
 }
 
 export default function AppLayout() {
@@ -173,11 +175,18 @@ export default function AppLayout() {
   const isTablet = useIsTablet();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sidebarPinned, toggleSidebarPinned] = useSidebarPinned();
   const sidebarCollapsible = !isTablet && !isMobile;
   // Desktop "Vidro" look: only where the static sidebar exists (>=1101px).
   const vidro = useVidro();
   const vidroShell = vidro.active && sidebarCollapsible;
+  const [pinPref, choosePinned] = useSidebarPinPref();
+  // Unset preference follows the look (spec: Sidebar default open): pinned under Vidro, rail in
+  // classic. vidro.active is already seeded from the pre-paint attribute, so no first-paint flash.
+  const sidebarPinned = pinPref === '1' ? true : pinPref === '0' ? false : vidro.active;
+  const toggleSidebarPinned = useCallback(
+    () => choosePinned(!sidebarPinned),
+    [choosePinned, sidebarPinned],
+  );
   // Pages opt into phone chrome changes (own page header, hidden tab bar) through
   // usePhoneChrome; the attributes on .app-container drive the CSS (phone only).
   const phoneChrome = usePhoneChromeController(isMobile);

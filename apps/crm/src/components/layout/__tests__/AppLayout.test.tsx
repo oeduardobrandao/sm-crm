@@ -731,3 +731,53 @@ describe('AppLayout Vidro shell', () => {
     expect(screen.queryByTestId('page-toolbar')).not.toBeInTheDocument();
   });
 });
+
+describe('sidebar default under Vidro', () => {
+  beforeEach(() => {
+    localStorage.removeItem('sidebar-pinned');
+    setViewport(1280);
+    mockMatchMedia(false);
+  });
+
+  it('starts pinned when nothing is stored and the look is active', async () => {
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(document.querySelector('.app-container')).not.toHaveAttribute('data-sidebar-collapsed');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
+  });
+
+  it('keeps the rail when the user stored 0', async () => {
+    localStorage.setItem('sidebar-pinned', '0');
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(document.querySelector('.app-container')).toHaveAttribute('data-sidebar-collapsed');
+  });
+
+  it('rail when nothing is stored and the look is classic', async () => {
+    Object.assign(vidroState, { enabled: true, active: false, optedOut: true });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(document.querySelector('.app-container')).toHaveAttribute('data-sidebar-collapsed');
+  });
+
+  it('never writes storage on its own', async () => {
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(localStorage.getItem('sidebar-pinned')).toBeNull();
+  });
+
+  it('from unset under Vidro, the pin toggle stores 0 and shows the rail', async () => {
+    Object.assign(vidroState, { enabled: true, active: true, optedOut: false });
+    renderLayout();
+    await screen.findByTestId('global-banner');
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+    expect(localStorage.getItem('sidebar-pinned')).toBe('0');
+    expect(document.querySelector('.app-container')).toHaveAttribute(
+      'data-sidebar-collapsed',
+      'true',
+    );
+  });
+});
