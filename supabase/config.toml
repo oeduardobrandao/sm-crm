@@ -257,3 +257,6 @@ verify_jwt = false
 
 [functions.affiliate-payout-cron]
 verify_jwt = false
+
+[functions.notification-push-cron]
+verify_jwt = false
