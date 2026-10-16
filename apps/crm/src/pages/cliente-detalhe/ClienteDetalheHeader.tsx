@@ -31,45 +31,87 @@ const STATUS_CLASS: Record<string, string> = {
   agendado: 'badge-neutral',
 };
 
-export function ClienteDetalheHeader(props: ClienteDetalheHeaderProps) {
-  const { t } = useTranslation('clients');
-  const { t: tc } = useTranslation();
+/*
+ * The header's pieces are exported so the desktop Vidro toolbar can compose the same
+ * elements (ClienteDetalhePage): back + avatar lead, the name is the title, the badges
+ * are the subtitle and "Editar" is the primary action.
+ */
 
+export function ClienteBackButton({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation('clients');
+  return (
+    <Button
+      variant="outline"
+      size="icon"
+      className="cliente-detalhe-header__back"
+      onClick={onBack}
+      aria-label={t('detail.nav.backToClients')}
+    >
+      <ArrowLeft className="h-4 w-4" />
+    </Button>
+  );
+}
+
+export function ClienteAvatar(props: {
+  clienteId: number;
+  nome: string;
+  initials: string;
+  cor: string;
+  imageUrl?: string | null;
+  canEditPhoto: boolean;
+}) {
+  return (
+    <ClienteAvatarUpload
+      clienteId={props.clienteId}
+      nome={props.nome}
+      cor={props.cor}
+      initials={props.initials}
+      imageUrl={props.imageUrl ?? null}
+      canEdit={props.canEditPhoto}
+    />
+  );
+}
+
+export function ClienteBadges({ plano, status }: { plano: string; status: string }) {
+  const { t: tc } = useTranslation();
+  return (
+    <div className="cliente-detalhe-header__badges">
+      <span className="badge badge-neutral">{plano}</span>
+      <span className={`badge ${STATUS_CLASS[status] ?? 'badge-neutral'}`}>
+        {tc(`status.${status}`, { defaultValue: status })}
+      </span>
+    </div>
+  );
+}
+
+export function ClienteEditButton({ onEdit }: { onEdit: () => void }) {
+  const { t: tc } = useTranslation();
+  return (
+    <Button variant="outline" className="cliente-detalhe-header__edit" onClick={onEdit}>
+      <Edit2 className="h-4 w-4" /> {tc('actions.edit')}
+    </Button>
+  );
+}
+
+export function ClienteDetalheHeader(props: ClienteDetalheHeaderProps) {
   return (
     <header className="cliente-detalhe-header">
       <div className="cliente-detalhe-header__identity">
-        <Button
-          variant="outline"
-          size="icon"
-          className="cliente-detalhe-header__back"
-          onClick={props.onBack}
-          aria-label={t('detail.nav.backToClients')}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <ClienteAvatarUpload
+        <ClienteBackButton onBack={props.onBack} />
+        <ClienteAvatar
           clienteId={props.clienteId}
           nome={props.nome}
-          cor={props.cor}
           initials={props.initials}
-          imageUrl={props.imageUrl ?? null}
-          canEdit={props.canEditPhoto}
+          cor={props.cor}
+          imageUrl={props.imageUrl}
+          canEditPhoto={props.canEditPhoto}
         />
         <div className="cliente-detalhe-header__text">
           <h2 className="cliente-detalhe-header__name">{props.nome}</h2>
-          <div className="cliente-detalhe-header__badges">
-            <span className="badge badge-neutral">{props.plano}</span>
-            <span className={`badge ${STATUS_CLASS[props.status] ?? 'badge-neutral'}`}>
-              {tc(`status.${props.status}`, { defaultValue: props.status })}
-            </span>
-          </div>
+          <ClienteBadges plano={props.plano} status={props.status} />
         </div>
       </div>
-      {props.canEdit && (
-        <Button variant="outline" className="cliente-detalhe-header__edit" onClick={props.onEdit}>
-          <Edit2 className="h-4 w-4" /> {tc('actions.edit')}
-        </Button>
-      )}
+      {props.canEdit && <ClienteEditButton onEdit={props.onEdit} />}
     </header>
   );
 }

@@ -36,6 +36,7 @@ const mockedToast = vi.mocked(toast);
 
 // Import the page component after mocks
 import ArquivosPage from '../ArquivosPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function makeFolder(overrides: Partial<Folder> = {}): Folder {
   return {
@@ -316,6 +317,37 @@ describe('ArquivosPage', () => {
       await waitFor(() => {
         expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
       });
+    });
+  });
+  describe('Vidro toolbar', () => {
+    function renderVidro(vidroShell: boolean) {
+      const Wrapper = createWrapper();
+      return render(
+        <Wrapper>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <ArquivosPage />
+          </VidroToolbarHarness>
+        </Wrapper>,
+      );
+    }
+
+    it('puts the title in the toolbar and keeps the folder tree and pane toolbar', async () => {
+      mockedGetFolderContents.mockResolvedValue(makeFolderContents());
+      const { container } = renderVidro(true);
+      const h1s = await screen.findAllByRole('heading', { level: 1 });
+      expect(h1s).toHaveLength(1);
+      expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+      expect(h1s[0]).toHaveTextContent('Arquivos');
+      expect(container.querySelector('aside h1')).toBeNull();
+      expect(screen.getAllByText('Enviar arquivo')).toHaveLength(1);
+    });
+
+    it('keeps the aside title when the Vidro shell is off', async () => {
+      mockedGetFolderContents.mockResolvedValue(makeFolderContents());
+      const { container } = renderVidro(false);
+      expect(container.querySelector('.vidro-toolbar')).toBeNull();
+      const h1 = screen.getByRole('heading', { level: 1, name: 'Arquivos' });
+      expect(h1.closest('aside')).not.toBeNull();
     });
   });
 });

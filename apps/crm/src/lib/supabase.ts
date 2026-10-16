@@ -2,6 +2,7 @@
 // Mesaas - Supabase Client
 // =============================================
 import { createClient } from '@supabase/supabase-js';
+import { resetVidroLook } from './vidroLook';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -252,6 +253,7 @@ export async function resetPassword(email: string) {
 }
 
 export async function signOut() {
+  resetVidroLook();
   cachedProfile = null;
   // scope: 'local' is deliberate. supabase-js defaults to 'global', which terminates EVERY session
   // for the user and destroys all their refresh tokens — including the OAuth session behind the

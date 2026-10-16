@@ -15,6 +15,11 @@ import { PageSkeleton } from '../ui/skeletons';
 import { GuideProvider } from '../guide/GuideContext';
 import { GuidePill } from '../guide/GuidePill';
 import { PhoneLayoutContext, usePhoneChromeController } from './PhoneLayoutContext';
+import { useVidro } from '../../hooks/useVidro';
+import { PageToolbarProvider } from './PageToolbarContext';
+import PageToolbar from './PageToolbar';
+import TopBarActions from './TopBarActions';
+import NavigationProgress from './NavigationProgress';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 const GuideDialog = lazy(() => import('../guide/GuideDialog'));
@@ -134,32 +139,34 @@ function useIsMobile() {
 
 const SIDEBAR_PINNED_STORAGE_KEY = 'sidebar-pinned';
 
-// Desktop sidebar: an icon rail by default that expands over the content on
-// hover. Pinning keeps it open and pushes the content over. Deliberately not
-// reset when the viewport drops into drawer/mobile range, so widening the
-// window again restores it.
-function useSidebarPinned() {
-  const [pinned, setPinned] = useState(() => {
+// Desktop sidebar: an icon rail that expands over the content on hover, or pinned open,
+// pushing the content over. The stored preference is tri-state: '1' pinned, '0' rail, unset
+// follows the look (pinned under Vidro, rail in classic; see AppLayout). Only an explicit click
+// writes it. Deliberately not reset when the viewport drops into drawer/mobile range, so
+// widening the window again restores it.
+type PinPref = '1' | '0' | null;
+
+function readPinPref(): PinPref {
+  try {
+    const v = localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY);
+    return v === '1' || v === '0' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function useSidebarPinPref() {
+  const [pref, setPref] = useState<PinPref>(readPinPref);
+  const choose = useCallback((next: boolean) => {
+    const v: PinPref = next ? '1' : '0';
     try {
-      return localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY) === '1';
+      localStorage.setItem(SIDEBAR_PINNED_STORAGE_KEY, v);
     } catch {
-      return false;
+      // localStorage unavailable (private mode, quota) -- preference just won't persist.
     }
-  });
-
-  const toggle = useCallback(() => {
-    setPinned((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(SIDEBAR_PINNED_STORAGE_KEY, next ? '1' : '0');
-      } catch {
-        // localStorage unavailable (private mode, quota) -- preference just won't persist.
-      }
-      return next;
-    });
+    setPref(v);
   }, []);
-
-  return [pinned, toggle] as const;
+  return [pref, choose] as const;
 }
 
 export default function AppLayout() {
@@ -168,8 +175,18 @@ export default function AppLayout() {
   const isTablet = useIsTablet();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sidebarPinned, toggleSidebarPinned] = useSidebarPinned();
   const sidebarCollapsible = !isTablet && !isMobile;
+  // Desktop "Vidro" look: only where the static sidebar exists (>=1101px).
+  const vidro = useVidro();
+  const vidroShell = vidro.active && sidebarCollapsible;
+  const [pinPref, choosePinned] = useSidebarPinPref();
+  // Unset preference follows the look (spec: Sidebar default open): pinned under Vidro, rail in
+  // classic. vidro.active is already seeded from the pre-paint attribute, so no first-paint flash.
+  const sidebarPinned = pinPref === '1' ? true : pinPref === '0' ? false : vidro.active;
+  const toggleSidebarPinned = useCallback(
+    () => choosePinned(!sidebarPinned),
+    [choosePinned, sidebarPinned],
+  );
   // Pages opt into phone chrome changes (own page header, hidden tab bar) through
   // usePhoneChrome; the attributes on .app-container drive the CSS (phone only).
   const phoneChrome = usePhoneChromeController(isMobile);
@@ -201,69 +218,93 @@ export default function AppLayout() {
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
+  const mainContent = (
+    <main className="main-content" id="app">
+      {/* On phones the related-articles button lives in PhoneShellHeader. */}
+      {!isMobile && <ContextHelpLinks />}
+      {/* The page chunks are lazy: on a cold load the shell stays up and only the
+        content area waits. In-app navigations run in a transition, so they keep the
+        previous page on screen instead of falling back here. */}
+      {outcome === 'content' && (
+        <Suspense fallback={<PageSkeleton />}>
+          <Outlet />
+        </Suspense>
+      )}
+      {outcome === 'loading' && <PageSkeleton />}
+      {outcome === 'denied' && <FinancialRestrictionScreen variant={deniedScreen} />}
+    </main>
+  );
+
   return (
     <GuideProvider>
       <PhoneLayoutContext.Provider value={phoneChrome.contextValue}>
-        <div
-          className="app-container"
-          data-sidebar-collapsed={(sidebarCollapsible && !sidebarPinned) || undefined}
-          {...phoneChrome.attributes}
-        >
-          {isMobile ? (
-            // A page with its own PhonePageHeader carries the bell and help links itself.
-            !phoneChrome.chrome.pageHeader && <PhoneShellHeader />
-          ) : (
-            <TopBar
-              showHamburger={isTablet}
-              isDrawerOpen={drawerOpen}
-              onHamburgerClick={() => setDrawerOpen((v) => !v)}
-            />
-          )}
-
-          <Suspense fallback={null}>
-            <GlobalBannerContainer>
-              <DunningBanner />
-              <IncidentBanner />
-            </GlobalBannerContainer>
-          </Suspense>
-
-          <Sidebar
-            isDrawer={isTablet}
-            isOpen={drawerOpen}
-            onClose={closeDrawer}
-            collapsible={sidebarCollapsible}
-            pinned={sidebarPinned}
-            onTogglePinned={toggleSidebarPinned}
-          />
-
-          {isTablet && drawerOpen && (
-            <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
-          )}
-
-          <main className="main-content" id="app">
-            {/* On phones the related-articles button lives in PhoneShellHeader. */}
-            {!isMobile && <ContextHelpLinks />}
-            {/* The page chunks are lazy: on a cold load the shell stays up and only the
-              content area waits. In-app navigations run in a transition, so they keep the
-              previous page on screen instead of falling back here. */}
-            {outcome === 'content' && (
-              <Suspense fallback={<PageSkeleton />}>
-                <Outlet />
-              </Suspense>
+        <PageToolbarProvider vidroShell={vidroShell}>
+          <div
+            className="app-container"
+            data-sidebar-collapsed={(sidebarCollapsible && !sidebarPinned) || undefined}
+            {...phoneChrome.attributes}
+          >
+            {isMobile ? (
+              // A page with its own PhonePageHeader carries the bell and help links itself.
+              !phoneChrome.chrome.pageHeader && <PhoneShellHeader />
+            ) : vidroShell ? null : (
+              <TopBar
+                showHamburger={isTablet}
+                isDrawerOpen={drawerOpen}
+                onHamburgerClick={() => setDrawerOpen((v) => !v)}
+              />
             )}
-            {outcome === 'loading' && <PageSkeleton />}
-            {outcome === 'denied' && <FinancialRestrictionScreen variant={deniedScreen} />}
-          </main>
 
-          <MobileNav />
-          <GuidePill />
-          <Suspense fallback={null}>
-            <GuideDialog />
-          </Suspense>
-          <Suspense fallback={null}>
-            <GlobalPopupHost />
-          </Suspense>
-        </div>
+            <Suspense fallback={null}>
+              <GlobalBannerContainer>
+                <DunningBanner />
+                <IncidentBanner />
+              </GlobalBannerContainer>
+            </Suspense>
+
+            <Sidebar
+              isDrawer={isTablet}
+              isOpen={drawerOpen}
+              onClose={closeDrawer}
+              collapsible={sidebarCollapsible}
+              pinned={sidebarPinned}
+              onTogglePinned={toggleSidebarPinned}
+              vidroShell={vidroShell}
+              look={{
+                enabled: vidro.enabled,
+                optedOut: vidro.optedOut,
+                onToggle: () => vidro.setOptedOut(!vidro.optedOut),
+              }}
+            />
+
+            {isTablet && drawerOpen && (
+              <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
+            )}
+
+            {/* The wrapper is always mounted (flag on or off, any width, opted out), so <main>
+              keeps its place in the tree: a flag flip on a refetch, crossing 1101px or the opt-out
+              toggle never remounts the page. Unless it is the glass panel it is out of the layout
+              through an inline display: contents, never a class whose CSS sits outside vidro's
+              guards. */}
+            <div
+              className={vidroShell ? 'vidro-panel' : undefined}
+              style={vidroShell ? undefined : { display: 'contents' }}
+            >
+              {vidroShell && <NavigationProgress />}
+              {vidroShell && <PageToolbar capsule={<TopBarActions variant="capsule" />} />}
+              {mainContent}
+            </div>
+
+            <MobileNav />
+            <GuidePill />
+            <Suspense fallback={null}>
+              <GuideDialog />
+            </Suspense>
+            <Suspense fallback={null}>
+              <GlobalPopupHost />
+            </Suspense>
+          </div>
+        </PageToolbarProvider>
       </PhoneLayoutContext.Provider>
     </GuideProvider>
   );

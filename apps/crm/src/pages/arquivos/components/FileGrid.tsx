@@ -252,7 +252,7 @@ export function FileGrid(props: FileGridProps) {
   if (viewMode === 'list') {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table data-slot="table" className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--border-color)] text-[var(--text-muted)] text-left">
               {selectionCount > 0 && <th className="pb-2 pr-2 w-8" />}
@@ -527,6 +527,7 @@ export function FileGrid(props: FileGridProps) {
                   } catch {}
                 }
               }}
+              data-slot="card"
               className={`group relative flex flex-col items-center gap-2 p-4 rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}${dragOverFolderId === folder.id ? ' ring-2 ring-[var(--primary-color)] bg-[rgba(234,179,8,0.08)]' : ''}${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
             >
               {/* Hover checkbox */}
@@ -606,6 +607,7 @@ export function FileGrid(props: FileGridProps) {
               draggable
               onDragStart={(e) => handleDragStart(e, file.id, 'file')}
               onDragEnd={handleDragEnd}
+              data-slot="card"
               className={`group flex flex-col rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}`}
             >
               {/* Thumbnail area */}

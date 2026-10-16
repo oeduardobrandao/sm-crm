@@ -8,6 +8,8 @@ import posthog from 'posthog-js';
  */
 export type AnalyticsEvent =
   | 'signup_completed'
+  // Desktop Vidro opt-out/opt-in from the account menu (src/hooks/useVidro.ts).
+  | 'vidro_look_toggled'
   | 'client_created'
   // Two distinct steps, deliberately not collapsed: `_started` fires when the user leaves for
   // Meta's consent screen, `instagram_connected` is the activation milestone and may only be

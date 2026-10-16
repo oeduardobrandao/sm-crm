@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { getDashboardStats, getClientes, type Cliente } from '../../store';
 import { useAuth } from '../../context/AuthContext';
@@ -14,6 +16,7 @@ import { MinhaFilaCard } from './components/MinhaFilaCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
 import { DashboardPhone } from './phone/DashboardPhone';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 
 export default function DashboardPage() {
   const { role, workspaceRole, canSeeFinancials } = useAuth();
@@ -87,6 +90,13 @@ export default function DashboardPage() {
       canSeeFinancials={canSeeFinancials}
     />
   );
+
+  // The Vidro toolbar carries the page title; the desktop dashboard has no in-page header to hide.
+  const today = format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR });
+  usePageToolbar({
+    title: 'Início',
+    subtitle: today.charAt(0).toUpperCase() + today.slice(1),
+  });
 
   if (isPhone) {
     return (

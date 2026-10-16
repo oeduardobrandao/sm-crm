@@ -1,4 +1,13 @@
-import { Fragment, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Fragment,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -75,6 +84,7 @@ import {
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import { useWorkflowStageCommands } from '../hooks/useWorkflowStageCommands';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { PhoneKanbanBoard } from '../phone/PhoneKanbanBoard';
 
 interface KanbanViewBaseProps {
@@ -151,6 +161,8 @@ interface KanbanViewBaseProps {
    *  ciclo tem precedência -- é um "nudge, não enforcement": os posts continuam
    *  aprovado_cliente e o indicador persistente da Task 5 ainda os oferece. */
   recurringWfId?: number | null;
+  /** Vidro shell: right-aligned item on the template tabs row (the busca input). */
+  tabsTrailing?: ReactNode;
 }
 
 // Discriminated union: a caller either passes neither prop, or passes both together.
@@ -444,6 +456,7 @@ export function KanbanView({
   onAddWorkflow,
   onCreateTemplate,
   createTemplateDisabled,
+  tabsTrailing,
   onAddPostIndividual,
   onDeleteWorkflowClick,
   onDeletePostClick,
@@ -467,6 +480,9 @@ export function KanbanView({
   tiktokEnabled,
   recurringWfId,
 }: KanbanViewProps) {
+  // Vidro: the column headers drop their inline etapa tints (the CSS paints a neutral header
+  // with a coloured dot from --col-tint) and the tabs show template names as typed.
+  const vidroShell = useVidroShell();
   // Server data is canonical: the board always re-derives from the cards prop,
   // so any edit (título, responsável, prazo…) shows as soon as the refetch
   // lands — no reload needed. Optimistic changes (dnd moves and reorders) live
@@ -1222,7 +1238,11 @@ export function KanbanView({
           <div key={column.ordem} className="board-column" style={{ borderColor: `${tint}30` }}>
             <div
               className="board-column-header"
-              style={{ background: `${tint}30`, borderBottomColor: `${tint}30` }}
+              style={
+                vidroShell
+                  ? ({ '--col-tint': tint } as CSSProperties)
+                  : { background: `${tint}30`, borderBottomColor: `${tint}30` }
+              }
               {...(column.tipo === 'aprovacao_cliente' ? { 'data-tour': 'wf-col-aprovacao' } : {})}
             >
               <span
@@ -1233,7 +1253,10 @@ export function KanbanView({
                   minWidth: 0,
                 }}
               >
-                <span className="board-column-title" style={{ color: tint }}>
+                <span
+                  className="board-column-title"
+                  style={vidroShell ? undefined : { color: tint }}
+                >
                   {stepName}
                 </span>
                 <DropdownMenu>
@@ -1242,7 +1265,7 @@ export function KanbanView({
                       type="button"
                       aria-label={`Ordenar coluna ${stepName}`}
                       className="board-column-sort"
-                      style={{ color: tint }}
+                      style={vidroShell ? undefined : { color: tint }}
                     >
                       <ArrowUpDown size={12} aria-hidden="true" />
                     </button>
@@ -1271,12 +1294,19 @@ export function KanbanView({
               </span>
               <span
                 className="board-column-count"
-                style={{ background: `${tint}3d`, color: tint, borderColor: 'transparent' }}
+                style={
+                  vidroShell
+                    ? undefined
+                    : { background: `${tint}3d`, color: tint, borderColor: 'transparent' }
+                }
               >
                 {countLabel}
               </span>
             </div>
-            <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${colKeyStr}`}>
+            <DroppableColumnBody
+              tint={vidroShell ? undefined : tint}
+              id={`${COL_PREFIX}${colKeyStr}`}
+            >
               {colIdx === 0 &&
                 onAddWorkflow &&
                 (row.templateId != null && postProcessesEnabled && onAddPostIndividual ? (
@@ -1399,6 +1429,36 @@ export function KanbanView({
   // "+", which is how a second template gets created.
   const useTabs = boardRows.length >= 1;
   const activeRow = boardRows.find((r) => r.key === activeRowKey) ?? boardRows[0];
+  const tabStrip = activeRow && (
+    <div className="board-tabs no-scrollbar" role="tablist">
+      {boardRows.map((row) => (
+        <button
+          key={row.key}
+          type="button"
+          role="tab"
+          aria-selected={row.key === activeRow.key}
+          className={`board-tab${row.key === activeRow.key ? ' active' : ''}`}
+          onClick={() => setActiveRowKey(row.key)}
+        >
+          {vidroShell ? row.name : row.label}
+          <span className="board-tab-count">{rowCardCount(row)}</span>
+        </button>
+      ))}
+      {onCreateTemplate && (
+        <button
+          type="button"
+          className="board-tab board-tab-add"
+          aria-label="Novo template"
+          title={createTemplateDisabled ? 'Limite do plano atingido' : 'Novo template'}
+          disabled={createTemplateDisabled}
+          onClick={onCreateTemplate}
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          Novo template
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -1414,41 +1474,26 @@ export function KanbanView({
         onDragEnd={handleDragEnd}
       >
         <div className="board-rows-wrapper animate-up">
+          {!(useTabs && activeRow) && tabsTrailing != null && (
+            <div className="board-tabs-row">
+              <div className="board-tabs-row__trailing">{tabsTrailing}</div>
+            </div>
+          )}
           {useTabs && activeRow && (
             <div>
-              <div className="board-tabs no-scrollbar" role="tablist">
-                {boardRows.map((row) => (
-                  <button
-                    key={row.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={row.key === activeRow.key}
-                    className={`board-tab${row.key === activeRow.key ? ' active' : ''}`}
-                    onClick={() => setActiveRowKey(row.key)}
-                  >
-                    {row.label}
-                    <span className="board-tab-count">{rowCardCount(row)}</span>
-                  </button>
-                ))}
-                {onCreateTemplate && (
-                  <button
-                    type="button"
-                    className="board-tab board-tab-add"
-                    aria-label="Novo template"
-                    title={createTemplateDisabled ? 'Limite do plano atingido' : 'Novo template'}
-                    disabled={createTemplateDisabled}
-                    onClick={onCreateTemplate}
-                  >
-                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                    Novo template
-                  </button>
-                )}
-              </div>
+              {tabsTrailing != null ? (
+                <div className="board-tabs-row">
+                  {tabStrip}
+                  <div className="board-tabs-row__trailing">{tabsTrailing}</div>
+                </div>
+              ) : (
+                tabStrip
+              )}
               {renderRowBoard(activeRow)}
             </div>
           )}
         </div>
-        <DragOverlay>
+        <DragOverlay className="vidro-drag-clone">
           {activeEntity?.kind === 'workflow' && (
             <WorkflowCard
               card={activeEntity.card}

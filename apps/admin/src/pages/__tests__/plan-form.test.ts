@@ -60,6 +60,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     feature_agenda: false,
     feature_multiplatform: false,
     feature_hub_pauta: false,
+    feature_crm_vidro: false,
     rate_instagram_syncs_per_day: 15,
     rate_ai_analyses_per_month: 15,
     rate_report_generations_per_month: 15,

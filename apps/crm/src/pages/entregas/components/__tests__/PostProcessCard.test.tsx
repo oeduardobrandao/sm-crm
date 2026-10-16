@@ -33,6 +33,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 import { PostProcessCard } from '../PostProcessCard';
 import type { PostEntity } from '../../boardEntity';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function render(ui: React.ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -227,5 +228,48 @@ describe('PostProcessCard: Duplicar post', () => {
   it('sem onDuplicateClick não mostra o item', () => {
     render(<PostProcessCard entity={makeEntity()} />);
     expect(screen.queryByRole('menuitem', { name: /Duplicar post/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('PostProcessCard: ações do card sob o Vidro', () => {
+  function renderCard(vidro: boolean) {
+    const ui = (
+      <PostProcessCard
+        entity={makeEntity()}
+        onForwardClick={vi.fn()}
+        forwardLabel="Avançar etapa"
+      />
+    );
+    render(vidro ? <VidroToolbarHarness>{ui}</VidroToolbarHarness> : ui);
+    return {
+      kebab: screen.getByRole('button', { name: 'Mais opções' }),
+      forward: screen.getByRole('button', { name: 'Avançar etapa' }),
+    };
+  }
+
+  it('flag desligada: mantém btn-edit-workflow e o estilo inline', () => {
+    const { kebab, forward } = renderCard(false);
+    expect(kebab).toHaveClass('btn-edit-workflow', 'board-card-kebab');
+    expect(forward).toHaveClass('btn-edit-workflow', 'btn-forward-etapa');
+    expect(kebab).not.toHaveClass('vidro-board-action');
+    expect(forward).not.toHaveClass('vidro-board-action');
+    expect(kebab.style.borderRadius).toBe('8px');
+    expect(kebab.style.padding).toBe('0px 0.5rem');
+    expect(forward.style.borderRadius).toBe('8px');
+  });
+
+  it('Vidro: troca btn-edit-workflow por vidro-board-action e solta raio e padding inline', () => {
+    const { kebab, forward } = renderCard(true);
+    expect(kebab).toHaveClass('vidro-board-action', 'board-card-kebab');
+    expect(forward).toHaveClass('vidro-board-action', 'btn-forward-etapa');
+    expect(kebab).not.toHaveClass('btn-edit-workflow');
+    expect(forward).not.toHaveClass('btn-edit-workflow');
+    expect(kebab.style.borderRadius).toBe('');
+    expect(kebab.style.padding).toBe('');
+    expect(kebab.style.height).toBe('26px');
+    expect(forward.style.borderRadius).toBe('');
+    expect(forward.style.padding).toBe('');
+    expect(forward.style.marginLeft).toBe('auto');
+    expect(forward.style.color).toBe('rgb(62, 207, 142)');
   });
 });

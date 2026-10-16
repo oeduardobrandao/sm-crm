@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import { VistasTabs } from '../VistasTabs';
 
 const { toastMock } = vi.hoisted(() => ({
@@ -350,5 +351,103 @@ describe('VistasTabs', () => {
     expect(localStorage.getItem(`entregas_saved_views_imported_${CONTA}`)).not.toBeNull();
     // The old key stays (an older build would still read it).
     expect(localStorage.getItem(`entregas_saved_views_${CONTA}`)).not.toBeNull();
+  });
+
+  describe('Vidro capsule hook', () => {
+    const trailing = <input aria-label="Buscar" />;
+
+    it('flag off: no capsule wrapper, tabs and trailing are direct children of the row', async () => {
+      seed([{ name: 'X', query: 'view=list' }]);
+      const { container } = renderTabs({ trailing });
+      await screen.findByText('X');
+      const row = container.querySelector('.vista-tabs')!;
+      expect(container.querySelector('.vista-tabs__group')).toBeNull();
+      expect(row.querySelector(':scope > .vista-tab')).not.toBeNull();
+      expect(row.querySelector(':scope > .ml-auto')).not.toBeNull();
+    });
+
+    const renderVidro = (props: Partial<React.ComponentProps<typeof VistasTabs>> = {}) => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const ui = (p: Partial<React.ComponentProps<typeof VistasTabs>>) => (
+        <QueryClientProvider client={qc}>
+          <VidroToolbarHarness>
+            <VistasTabs contaId={CONTA} currentQuery="" onApply={vi.fn()} {...props} {...p} />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      );
+      const utils = render(ui({}));
+      return {
+        ...utils,
+        rerenderVidro: (p: Partial<React.ComponentProps<typeof VistasTabs>>) =>
+          utils.rerender(ui(p)),
+      };
+    };
+    const picker = () => document.querySelector('.vista-picker') as HTMLElement;
+
+    it('under the Vidro shell the vistas collapse into one picker; controls and trailing share its row', async () => {
+      seed([{ name: 'X', query: 'view=list' }]);
+      const onApply = vi.fn();
+      const { container } = renderVidro({
+        onApply,
+        trailing,
+        controls: <button type="button">Etapas</button>,
+      });
+      await screen.findByText('X');
+      const row = container.querySelector('.vista-tabs')!;
+      expect(row.querySelector('.vista-tab')).toBeNull();
+      expect(within(picker()).getByText('Padrão')).toBeInTheDocument();
+      expect(
+        within(row.querySelector(':scope > .vista-tabs__controls')!).getByText('Etapas'),
+      ).toBeInTheDocument();
+      expect(row.querySelector(':scope > .ml-auto')).not.toBeNull();
+      // No saved vista active: the per-vista actions stay out of the menu.
+      expect(screen.queryByText('Renomear')).toBeNull();
+
+      fireEvent.click(screen.getByText('X'));
+      expect(onApply).toHaveBeenCalledWith('view=list');
+    });
+
+    it('the picker names the active vista and shows the modified dot', async () => {
+      seed([{ name: 'Viva', query: 'view=list' }]);
+      const { rerenderVidro } = renderVidro({ currentQuery: 'view=list' });
+      await waitFor(() => expect(within(picker()).getByText('Viva')).toBeInTheDocument());
+      expect(picker().querySelector('.vista-tab-dot')).toBeNull();
+
+      // The user tweaked a filter: currentQuery changes while Viva stays applied.
+      rerenderVidro({ currentQuery: 'view=list&prazo=hoje' });
+      expect(picker().querySelector('.vista-tab-dot')).not.toBeNull();
+    });
+
+    it('renames the active vista from the picker menu, sending one request', async () => {
+      seed([{ name: 'Antiga', query: 'view=list' }]);
+      renderVidro({ currentQuery: 'view=list' });
+      await waitFor(() => expect(within(picker()).getByText('Antiga')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Renomear'));
+      const input = await screen.findByLabelText('Nome da visualização');
+      expect(input).toHaveValue('Antiga');
+      fireEvent.change(input, { target: { value: 'Nova' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await waitFor(() => expect(stored()).toEqual([{ name: 'Nova', query: 'view=list' }]));
+      expect(store.renameSavedView).toHaveBeenCalledTimes(1);
+      expect(store.renameSavedView).toHaveBeenCalledWith('seed-0', 'Nova', null);
+    });
+
+    it('saves a new vista from the picker menu', async () => {
+      renderVidro({ currentQuery: 'mode=publicacoes' });
+      await waitFor(() => expect(screen.queryByTestId('vista-tabs-loading')).toBeNull());
+
+      fireEvent.click(screen.getByText('Nova visualização'));
+      fireEvent.change(await screen.findByPlaceholderText('Nome da visualização'), {
+        target: { value: 'Minha vista' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+      await waitFor(() =>
+        expect(stored()).toEqual([{ name: 'Minha vista', query: 'mode=publicacoes' }]),
+      );
+      await waitFor(() => expect(within(picker()).getByText('Minha vista')).toBeInTheDocument());
+    });
   });
 });

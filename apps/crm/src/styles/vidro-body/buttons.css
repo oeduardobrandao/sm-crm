@@ -1,0 +1,1646 @@
+/*
+ * Vidro body skin: buttons.
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
+ * Only selectors for this family (cross-family rules go in compositions.css).
+ * Guards: every selector starts with html[data-look='vidro']; everything inside
+ * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ *
+ * Every rule is written twice: once for the page body (.vidro-panel) and once for controls inside
+ * portaled content (dialogs, alert dialogs, sheets, popovers, comment and mention popovers).
+ *
+ * Cascade: each look's :is() list peaks at (0,2,0) ([data-slot='button'] plus a variant), so
+ * every look ties and source order decides. Order: glass, ghost, CTA, danger, sizes, day picker.
+ * Modifier classes that share an element with a base class of another look are excluded from the
+ * base with :not() (which keeps the peak at (0,2,0)).
+ */
+@media (min-width: 1101px) {
+  /* Glass pill (.btn2): outline/secondary Buttons and the hand-written secondary classes. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button']:is([data-variant='outline'], [data-variant='secondary']),
+      .btn-secondary,
+      .btn-integration,
+      .calendar-detail-btn:not(.calendar-detail-btn--primary, .calendar-detail-btn--danger),
+      .drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost),
+      .drawer-calendar-btn,
+      .time-picker-cancel,
+      .scheduled-item__open,
+      .btn-instagram-action:not(.btn-instagram-action--danger),
+      .vidro-board-action--revert
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button']:is([data-variant='outline'], [data-variant='secondary']),
+      .btn-secondary,
+      .btn-integration,
+      .calendar-detail-btn:not(.calendar-detail-btn--primary, .calendar-detail-btn--danger),
+      .drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost),
+      .drawer-calendar-btn,
+      .time-picker-cancel,
+      .scheduled-item__open,
+      .btn-instagram-action:not(.btn-instagram-action--danger),
+      .vidro-board-action--revert
+    ) {
+    height: 36px;
+    border-radius: 999px;
+    border: 1px solid var(--vd-cap-bd);
+    background: var(--vd-cap);
+    color: var(--text-main);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 14px;
+    box-shadow: 0 6px 16px -8px rgba(18, 21, 26, 0.2);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button']:is([data-variant='outline'], [data-variant='secondary']),
+      .btn-secondary,
+      .btn-integration,
+      .calendar-detail-btn:not(.calendar-detail-btn--primary, .calendar-detail-btn--danger),
+      .drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost),
+      .drawer-calendar-btn,
+      .time-picker-cancel,
+      .scheduled-item__open,
+      .btn-instagram-action:not(.btn-instagram-action--danger),
+      .vidro-board-action--revert
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button']:is([data-variant='outline'], [data-variant='secondary']),
+      .btn-secondary,
+      .btn-integration,
+      .calendar-detail-btn:not(.calendar-detail-btn--primary, .calendar-detail-btn--danger),
+      .drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost),
+      .drawer-calendar-btn,
+      .time-picker-cancel,
+      .scheduled-item__open,
+      .btn-instagram-action:not(.btn-instagram-action--danger),
+      .vidro-board-action--revert
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-group);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button']:is([data-variant='outline'], [data-variant='secondary']),
+      .btn-secondary,
+      .btn-integration,
+      .calendar-detail-btn:not(.calendar-detail-btn--primary, .calendar-detail-btn--danger),
+      .drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost),
+      .drawer-calendar-btn,
+      .time-picker-cancel,
+      .scheduled-item__open,
+      .btn-instagram-action:not(.btn-instagram-action--danger),
+      .vidro-board-action--revert
+    ):focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button']:is([data-variant='outline'], [data-variant='secondary']),
+      .btn-secondary,
+      .btn-integration,
+      .calendar-detail-btn:not(.calendar-detail-btn--primary, .calendar-detail-btn--danger),
+      .drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost),
+      .drawer-calendar-btn,
+      .time-picker-cancel,
+      .scheduled-item__open,
+      .btn-instagram-action:not(.btn-instagram-action--danger),
+      .vidro-board-action--revert
+    ):focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px rgba(255, 191, 48, 0.55),
+      0 6px 16px -8px rgba(18, 21, 26, 0.2);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button']:is([data-variant='outline'], [data-variant='secondary']),
+      .btn-secondary,
+      .btn-integration,
+      .calendar-detail-btn:not(.calendar-detail-btn--primary, .calendar-detail-btn--danger),
+      .drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost),
+      .drawer-calendar-btn,
+      .time-picker-cancel,
+      .scheduled-item__open,
+      .btn-instagram-action:not(.btn-instagram-action--danger),
+      .vidro-board-action--revert
+    ):is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button']:is([data-variant='outline'], [data-variant='secondary']),
+      .btn-secondary,
+      .btn-integration,
+      .calendar-detail-btn:not(.calendar-detail-btn--primary, .calendar-detail-btn--danger),
+      .drawer-selection-bar-btn:not(.drawer-selection-bar-btn--ghost),
+      .drawer-calendar-btn,
+      .time-picker-cancel,
+      .scheduled-item__open,
+      .btn-instagram-action:not(.btn-instagram-action--danger),
+      .vidro-board-action--revert
+    ):is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--vd-cap);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .drawer-calendar-btn.active,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .drawer-calendar-btn.active:is(:hover, [data-state='open']):not(
+      :disabled,
+      [aria-disabled='true']
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .drawer-calendar-btn.active,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .drawer-calendar-btn.active:is(:hover, [data-state='open']):not(
+      :disabled,
+      [aria-disabled='true']
+    ) {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+  }
+
+  /* Ghost: transparent, no border, fill on hover. Comes after glass so a ghost modifier wins over its glass base. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='ghost'],
+      .btn-icon,
+      .btn-icon--danger,
+      .agenda-icon-btn,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .drawer-selection-bar-btn--ghost,
+      .post-editor-btn,
+      .rb-edit-btn,
+      .rb-img-seg-btn,
+      .callout-emoji-btn,
+      .comment-popover-action-btn,
+      .status-cycle-btn,
+      .btn-remove-member,
+      .vidro-board-action:not(.vidro-board-action--complete, .vidro-board-action--revert),
+      .vidro-cal-nav,
+      .vidro-cal-day,
+      .calendar-nav button,
+      .agenda-mini td button,
+      .latest-instagram-posts__pagination button,
+      .board-card-actions button,
+      .drawer-post-field--platform button,
+      .cliente-date-card button,
+      .cliente-address-card button
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='ghost'],
+      .btn-icon,
+      .btn-icon--danger,
+      .agenda-icon-btn,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .drawer-selection-bar-btn--ghost,
+      .post-editor-btn,
+      .rb-edit-btn,
+      .rb-img-seg-btn,
+      .callout-emoji-btn,
+      .comment-popover-action-btn,
+      .status-cycle-btn,
+      .btn-remove-member,
+      .vidro-board-action:not(.vidro-board-action--complete, .vidro-board-action--revert),
+      .vidro-cal-nav,
+      .vidro-cal-day,
+      .calendar-nav button,
+      .agenda-mini td button,
+      .latest-instagram-posts__pagination button,
+      .board-card-actions button,
+      .drawer-post-field--platform button,
+      .cliente-date-card button,
+      .cliente-address-card button
+    ) {
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    box-shadow: none;
+    color: inherit;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='ghost'],
+      .btn-icon,
+      .btn-icon--danger,
+      .agenda-icon-btn,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .drawer-selection-bar-btn--ghost,
+      .post-editor-btn,
+      .rb-edit-btn,
+      .rb-img-seg-btn,
+      .callout-emoji-btn,
+      .comment-popover-action-btn,
+      .status-cycle-btn,
+      .btn-remove-member,
+      .vidro-board-action:not(.vidro-board-action--complete, .vidro-board-action--revert),
+      .vidro-cal-nav,
+      .vidro-cal-day,
+      .calendar-nav button,
+      .agenda-mini td button,
+      .latest-instagram-posts__pagination button,
+      .board-card-actions button,
+      .drawer-post-field--platform button,
+      .cliente-date-card button,
+      .cliente-address-card button
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='ghost'],
+      .btn-icon,
+      .btn-icon--danger,
+      .agenda-icon-btn,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .drawer-selection-bar-btn--ghost,
+      .post-editor-btn,
+      .rb-edit-btn,
+      .rb-img-seg-btn,
+      .callout-emoji-btn,
+      .comment-popover-action-btn,
+      .status-cycle-btn,
+      .btn-remove-member,
+      .vidro-board-action:not(.vidro-board-action--complete, .vidro-board-action--revert),
+      .vidro-cal-nav,
+      .vidro-cal-day,
+      .calendar-nav button,
+      .agenda-mini td button,
+      .latest-instagram-posts__pagination button,
+      .board-card-actions button,
+      .drawer-post-field--platform button,
+      .cliente-date-card button,
+      .cliente-address-card button
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='ghost'],
+      .btn-icon,
+      .btn-icon--danger,
+      .agenda-icon-btn,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .drawer-selection-bar-btn--ghost,
+      .post-editor-btn,
+      .rb-edit-btn,
+      .rb-img-seg-btn,
+      .callout-emoji-btn,
+      .comment-popover-action-btn,
+      .status-cycle-btn,
+      .btn-remove-member,
+      .vidro-board-action:not(.vidro-board-action--complete, .vidro-board-action--revert),
+      .vidro-cal-nav,
+      .vidro-cal-day,
+      .calendar-nav button,
+      .agenda-mini td button,
+      .latest-instagram-posts__pagination button,
+      .board-card-actions button,
+      .drawer-post-field--platform button,
+      .cliente-date-card button,
+      .cliente-address-card button
+    ):focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='ghost'],
+      .btn-icon,
+      .btn-icon--danger,
+      .agenda-icon-btn,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .drawer-selection-bar-btn--ghost,
+      .post-editor-btn,
+      .rb-edit-btn,
+      .rb-img-seg-btn,
+      .callout-emoji-btn,
+      .comment-popover-action-btn,
+      .status-cycle-btn,
+      .btn-remove-member,
+      .vidro-board-action:not(.vidro-board-action--complete, .vidro-board-action--revert),
+      .vidro-cal-nav,
+      .vidro-cal-day,
+      .calendar-nav button,
+      .agenda-mini td button,
+      .latest-instagram-posts__pagination button,
+      .board-card-actions button,
+      .drawer-post-field--platform button,
+      .cliente-date-card button,
+      .cliente-address-card button
+    ):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='ghost'],
+      .btn-icon,
+      .btn-icon--danger,
+      .agenda-icon-btn,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .drawer-selection-bar-btn--ghost,
+      .post-editor-btn,
+      .rb-edit-btn,
+      .rb-img-seg-btn,
+      .callout-emoji-btn,
+      .comment-popover-action-btn,
+      .status-cycle-btn,
+      .btn-remove-member,
+      .vidro-board-action:not(.vidro-board-action--complete, .vidro-board-action--revert),
+      .vidro-cal-nav,
+      .vidro-cal-day,
+      .calendar-nav button,
+      .agenda-mini td button,
+      .latest-instagram-posts__pagination button,
+      .board-card-actions button,
+      .drawer-post-field--platform button,
+      .cliente-date-card button,
+      .cliente-address-card button
+    ):is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='ghost'],
+      .btn-icon,
+      .btn-icon--danger,
+      .agenda-icon-btn,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .drawer-selection-bar-btn--ghost,
+      .post-editor-btn,
+      .rb-edit-btn,
+      .rb-img-seg-btn,
+      .callout-emoji-btn,
+      .comment-popover-action-btn,
+      .status-cycle-btn,
+      .btn-remove-member,
+      .vidro-board-action:not(.vidro-board-action--complete, .vidro-board-action--revert),
+      .vidro-cal-nav,
+      .vidro-cal-day,
+      .calendar-nav button,
+      .agenda-mini td button,
+      .latest-instagram-posts__pagination button,
+      .board-card-actions button,
+      .drawer-post-field--platform button,
+      .cliente-date-card button,
+      .cliente-address-card button
+    ):is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: transparent;
+  }
+
+  /* Kanban card actions: classic vertical padding (row height unchanged), pill-wide sides. No height, no flex. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card-actions button, .vidro-board-action),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.board-card-actions button, .vidro-board-action) {
+    padding: 0.35rem 0.75rem;
+  }
+
+  /* Ghost buttons that hover in danger. The compound entry lifts the list to the ghost hover specificity. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.btn-icon--danger, .rb-edit-btn.rb-edit-btn-danger, .drawer-delete-btn):is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.btn-icon--danger, .rb-edit-btn.rb-edit-btn-danger, .drawer-delete-btn):is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']) {
+    color: var(--vd-tg-bad);
+    background: var(--vd-tg-bad-bg);
+  }
+
+  /* Pressed editor buttons (the markup renders .active; .rb-img-seg-btn uses .is-on). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.post-editor-btn:is(.active, .is-active, [aria-pressed='true']), .rb-img-seg-btn.is-on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.post-editor-btn:is(.active, .is-active, [aria-pressed='true']), .rb-img-seg-btn.is-on) {
+    background: var(--vd-fill);
+    font-weight: 600;
+  }
+
+  /* Delete/trash Buttons coloured by their call site (text-destructive, text-[var(--danger-text)]):
+     the ghost/glass colour would erase the cue. Exact class tokens, so hover:text-* never matches. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button']:is(
+      .text-destructive,
+      [class~='text-[var(--danger-text)]'],
+      [class~='text-[var(--danger)]']
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button']:is(
+      .text-destructive,
+      [class~='text-[var(--danger-text)]'],
+      [class~='text-[var(--danger)]']
+    ) {
+    color: var(--vd-tg-bad);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button']:is(
+      .text-destructive,
+      [class~='text-[var(--danger-text)]'],
+      [class~='text-[var(--danger)]']
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button']:is(
+      .text-destructive,
+      [class~='text-[var(--danger-text)]'],
+      [class~='text-[var(--danger)]']
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-tg-bad-bg);
+    color: var(--vd-tg-bad);
+  }
+
+  /* Picker triggers show their placeholder state with text-muted-foreground. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'].text-muted-foreground,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'].text-muted-foreground {
+    color: var(--vd-txt3);
+  }
+
+  /* A muted ghost Button darkens under the pointer, as shadcn's hover:text-accent-foreground did
+     (the muted rule above out-ranks that utility). Task 11. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='ghost'].text-muted-foreground:is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='ghost'].text-muted-foreground:is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']) {
+    color: var(--text-main);
+  }
+
+  /* Kanban card footer actions keep the classic muted icon and darken on hover (the ghost list paints
+     them color: inherit, i.e. full ink). The forward button's inline green still wins. Task 11. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-card-actions
+    button:not(.vidro-board-action--complete, .vidro-board-action--revert) {
+    color: var(--vd-icon);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-card-actions
+    button:not(.vidro-board-action--complete, .vidro-board-action--revert):is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']) {
+    color: var(--text-main);
+  }
+
+  /* Outline toggles in their on state take the selected fill. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent) {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent):is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent):is(
+      :hover,
+      [data-state='open']
+    ):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-sel);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='outline']:is(
+      [aria-pressed='true'],
+      .bg-accent
+    ):focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='outline']:is(
+      [aria-pressed='true'],
+      .bg-accent
+    ):focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px rgba(255, 191, 48, 0.55),
+      0 6px 16px -8px rgba(18, 21, 26, 0.2);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent):is(
+      :disabled,
+      [aria-disabled='true']
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-variant='outline']:is([aria-pressed='true'], .bg-accent):is(
+      :disabled,
+      [aria-disabled='true']
+    ) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--vd-sel);
+  }
+
+  /* CTA: ink pill. After glass/ghost so .calendar-detail-btn--primary and --complete win. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button']:is([data-variant='default'], [data-variant='ink']),
+      .btn-primary,
+      .btn-upgrade,
+      .btn-confirmar,
+      .drawer-send-btn,
+      .drawer-reply-btn,
+      .comment-reply-submit,
+      .comment-add-submit,
+      .calendar-detail-btn--primary,
+      .time-picker-confirm,
+      .vidro-board-action--complete
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button']:is([data-variant='default'], [data-variant='ink']),
+      .btn-primary,
+      .btn-upgrade,
+      .btn-confirmar,
+      .drawer-send-btn,
+      .drawer-reply-btn,
+      .comment-reply-submit,
+      .comment-add-submit,
+      .calendar-detail-btn--primary,
+      .time-picker-confirm,
+      .vidro-board-action--complete
+    ) {
+    height: 36px;
+    border-radius: 999px;
+    border: 0;
+    background: var(--vd-cta);
+    color: var(--vd-cta-fg);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 16px;
+    box-shadow: 0 8px 18px -8px rgba(18, 21, 26, 0.5);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button']:is([data-variant='default'], [data-variant='ink']),
+      .btn-primary,
+      .btn-upgrade,
+      .btn-confirmar,
+      .drawer-send-btn,
+      .drawer-reply-btn,
+      .comment-reply-submit,
+      .comment-add-submit,
+      .calendar-detail-btn--primary,
+      .time-picker-confirm,
+      .vidro-board-action--complete
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button']:is([data-variant='default'], [data-variant='ink']),
+      .btn-primary,
+      .btn-upgrade,
+      .btn-confirmar,
+      .drawer-send-btn,
+      .drawer-reply-btn,
+      .comment-reply-submit,
+      .comment-add-submit,
+      .calendar-detail-btn--primary,
+      .time-picker-confirm,
+      .vidro-board-action--complete
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-cta-hover);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button']:is([data-variant='default'], [data-variant='ink']),
+      .btn-primary,
+      .btn-upgrade,
+      .btn-confirmar,
+      .drawer-send-btn,
+      .drawer-reply-btn,
+      .comment-reply-submit,
+      .comment-add-submit,
+      .calendar-detail-btn--primary,
+      .time-picker-confirm,
+      .vidro-board-action--complete
+    ):focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button']:is([data-variant='default'], [data-variant='ink']),
+      .btn-primary,
+      .btn-upgrade,
+      .btn-confirmar,
+      .drawer-send-btn,
+      .drawer-reply-btn,
+      .comment-reply-submit,
+      .comment-add-submit,
+      .calendar-detail-btn--primary,
+      .time-picker-confirm,
+      .vidro-board-action--complete
+    ):focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px rgba(255, 191, 48, 0.55),
+      0 8px 18px -8px rgba(18, 21, 26, 0.5);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button']:is([data-variant='default'], [data-variant='ink']),
+      .btn-primary,
+      .btn-upgrade,
+      .btn-confirmar,
+      .drawer-send-btn,
+      .drawer-reply-btn,
+      .comment-reply-submit,
+      .comment-add-submit,
+      .calendar-detail-btn--primary,
+      .time-picker-confirm,
+      .vidro-board-action--complete
+    ):is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button']:is([data-variant='default'], [data-variant='ink']),
+      .btn-primary,
+      .btn-upgrade,
+      .btn-confirmar,
+      .drawer-send-btn,
+      .drawer-reply-btn,
+      .comment-reply-submit,
+      .comment-add-submit,
+      .calendar-detail-btn--primary,
+      .time-picker-confirm,
+      .vidro-board-action--complete
+    ):is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--vd-cta);
+  }
+
+  /* Danger pill. The list peaks at (0,2,0) like the CTA list, and comes after it, so an AlertDialogAction
+     (data-variant="default") styled bg-destructive or bg-[var(--danger)] by its call site takes this look. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ) {
+    height: 36px;
+    border-radius: 999px;
+    border: 0;
+    background: var(--vd-tg-bad-bg);
+    color: var(--vd-tg-bad);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 16px;
+    box-shadow: none;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--danger-text);
+    color: #fff;
+  }
+
+  /* Dark: the hover fill moves to --danger, the brighter red that reads on the dark glass. White on
+     it is only about 3.3:1, so the label turns ink (#12151a, about 5.6:1). DESIGN_SYSTEM.md's 5.60:1
+     is --danger as text on the dark card, not white text on a --danger fill. */
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ):is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--danger);
+    color: #12151a;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ):focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ):is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-variant='destructive'],
+      [data-slot='button']:is(.bg-destructive, [class*='bg-[var(--danger)]']),
+      .btn-danger,
+      .btn-danger-outline,
+      .calendar-detail-btn--danger,
+      .btn-instagram-action--danger
+    ):is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--vd-tg-bad-bg);
+    color: var(--vd-tg-bad);
+  }
+
+  /* Outline danger (class doubled to match the danger list specificity). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .btn-danger-outline.btn-danger-outline,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .btn-danger-outline.btn-danger-outline {
+    background: transparent;
+    border: 1px solid var(--vd-tg-bad);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .btn-danger-outline.btn-danger-outline:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .btn-danger-outline.btn-danger-outline:is(:disabled, [aria-disabled='true']) {
+    background: transparent;
+  }
+
+  /* Sizes, after every look. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-size='sm']:not([data-variant='link']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-size='sm']:not([data-variant='link']) {
+    height: 30px;
+    font-size: 12px;
+    padding: 0 12px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-size='lg']:not([data-variant='link']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='button'][data-size='lg']:not([data-variant='link']) {
+    height: 40px;
+  }
+
+  /* Icon-only: a 32px circle (the radius comes from the look). Task 11 restores the two toolbar icon buttons to 36px. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='button'][data-size='icon']:not([data-variant='link']),
+      .btn-icon,
+      .agenda-icon-btn,
+      .calendar-nav button,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .vidro-cal-nav,
+      .vidro-cal-day
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(
+      [data-slot='button'][data-size='icon']:not([data-variant='link']),
+      .btn-icon,
+      .agenda-icon-btn,
+      .calendar-nav button,
+      .month-grid-nav-btn,
+      .concluded-reopen-btn,
+      .drawer-post-history-btn,
+      .drawer-kebab-btn,
+      .drawer-close-btn,
+      .drawer-delete-btn,
+      .vidro-cal-nav,
+      .vidro-cal-day
+    ) {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Kanban card footer: the history button keeps its classic 28px, or the footer row grows with it
+     (class doubled to tie the icon rule, which it follows). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-card-actions
+    .drawer-post-history-btn.drawer-post-history-btn,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .board-card-actions
+    .drawer-post-history-btn.drawer-post-history-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* Day picker. Under OC this covers the portaled date pickers ([data-slot=popover-content]). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td[data-selected='true']
+    > .vidro-cal-day,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td[data-selected='true']
+    > .vidro-cal-day:is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td[data-selected='true']
+    > .vidro-cal-day,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td[data-selected='true']
+    > .vidro-cal-day:is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-cta);
+    color: var(--vd-cta-fg);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td[data-today='true']
+    > .vidro-cal-day,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td[data-today='true']
+    > .vidro-cal-day {
+    box-shadow: inset 0 0 0 2px #ffbf30;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td[data-today='true']
+    > .vidro-cal-day:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td[data-today='true']
+    > .vidro-cal-day:focus-visible {
+    box-shadow:
+      0 0 0 3px rgba(255, 191, 48, 0.55),
+      inset 0 0 0 2px #ffbf30;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td[data-outside='true']
+    > .vidro-cal-day,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td[data-outside='true']
+    > .vidro-cal-day {
+    color: var(--vd-txt3);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td:is([data-selected='true'], [data-today='true']):has(> .vidro-cal-day),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td:is([data-selected='true'], [data-today='true']):has(> .vidro-cal-day) {
+    background: transparent;
+  }
+
+  /* Range middle: a soft band on the cell, no ink circle. Keyed on the inert vidro-cal-range-middle class
+     calendar.tsx adds to DayPicker's range_middle modifier (Task 11), not on a Tailwind token. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td.vidro-cal-range-middle[data-selected='true']:has(> .vidro-cal-day),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td.vidro-cal-range-middle[data-selected='true']:has(> .vidro-cal-day) {
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td.vidro-cal-range-middle[data-selected='true']
+    > .vidro-cal-day,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td.vidro-cal-range-middle[data-selected='true']
+    > .vidro-cal-day {
+    background: transparent;
+    color: var(--text-main);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    td.vidro-cal-range-middle[data-selected='true']
+    > .vidro-cal-day:is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    td.vidro-cal-range-middle[data-selected='true']
+    > .vidro-cal-day:is(:hover, [data-state='open']):not(:disabled, [aria-disabled='true']) {
+    background: var(--vd-fill);
+    color: var(--text-main);
+  }
+
+  /* Dashed adders keep their dashed outline. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-add-card, .drawer-add-post-btn),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.board-add-card, .drawer-add-post-btn) {
+    border-radius: 12px;
+    border-color: var(--vd-sep);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-add-card, .drawer-add-post-btn):is(:hover, [data-state='open']):not(
+      :disabled,
+      [aria-disabled='true']
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.board-add-card, .drawer-add-post-btn):is(:hover, [data-state='open']):not(
+      :disabled,
+      [aria-disabled='true']
+    ) {
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-add-card, .drawer-add-post-btn):focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.board-add-card, .drawer-add-post-btn):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-add-card, .drawer-add-post-btn):is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    :is(.board-add-card, .drawer-add-post-btn):is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

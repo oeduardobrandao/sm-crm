@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const {
   mockGetAutomations,
@@ -824,5 +825,73 @@ describe('AutomacoesPage', () => {
       expect(dialog).toHaveAttribute('data-tour-step', TOUR_STEPS[1].id);
       expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('AutomacoesPage in the Vidro toolbar', () => {
+  function renderInHarness(vidroShell: boolean) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/automacoes']}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <AutomacoesPage />
+          </VidroToolbarHarness>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    hasFeatureMock.mockReturnValue(true);
+    mockGetAutomations.mockResolvedValue(AUTOMATIONS);
+    mockGetClientes.mockResolvedValue(CLIENTES);
+    mockGetSends.mockResolvedValue(SENDS);
+    entitlementsMock.mockReturnValue({ isLoading: false, hasFeature: () => true });
+    mockHasReadyAccount.mockResolvedValue(false);
+    mockGetContactCounts.mockResolvedValue([]);
+    mockCountContacts.mockResolvedValue(0);
+    setAuth();
+  });
+
+  it('puts the title and the tour-tagged primary action in the toolbar, once', async () => {
+    renderInHarness(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('title');
+    expect(screen.getAllByRole('button', { name: /newAutomation/ })).toHaveLength(1);
+    expect(document.querySelectorAll('[data-tour="nova-automacao"]')).toHaveLength(1);
+    expect(document.querySelector('.vidro-toolbar [data-tour="nova-automacao"]')).not.toBeNull();
+    // The hint and the tabs stay in the content.
+    expect(screen.getByText('tiebreakHint').closest('.vidro-toolbar')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'contacts.tabAutomations' })).toBeInTheDocument();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.header')).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /newAutomation/ })).toHaveLength(1);
+    expect(document.querySelectorAll('[data-tour="nova-automacao"]')).toHaveLength(1);
+  });
+
+  it('registers nothing on the upgrade screen (flag off, no automations)', async () => {
+    entitlementsMock.mockReturnValue({
+      isLoading: false,
+      hasFeature: (f: string) => f !== 'feature_instagram_automation',
+    });
+    mockGetAutomations.mockResolvedValue([]);
+    renderInHarness(true);
+
+    expect(await screen.findByTestId('upgrade-locked-screen')).toBeInTheDocument();
+    expect(document.querySelector('.vidro-toolbar h1')).toBeNull();
+    expect(document.querySelector('[data-tour="nova-automacao"]')).toBeNull();
   });
 });

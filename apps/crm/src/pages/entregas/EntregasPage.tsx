@@ -15,6 +15,9 @@ import {
   Route,
   CircleDashed,
   ListChecks,
+  CircleHelp,
+  PlayCircle,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +26,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -40,12 +46,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { shouldAutoStartTour } from './tour/tourGating';
 import { shouldShowExample } from './tour/exampleGate';
 import { ComoFuncionaPanel, explainerStorageKey } from './components/ComoFuncionaPanel';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
-import { EntregasFilters, type FilterState } from './components/EntregasFilters';
+import { EntregasFilters, type FilterState, type StatusFilter } from './components/EntregasFilters';
 import {
   EditWorkflowModal,
   TemplatesModal,
@@ -1308,6 +1315,300 @@ export default function EntregasPage() {
     refresh();
   };
 
+  // Classic in-page header pieces. The Vidro toolbar has its own (toolbarHelp, toolbarCounts).
+  const headerTitleAccessory = (
+    <>
+      <span
+        data-tooltip="Acompanhe o andamento das entregas e fluxos ativos."
+        data-tooltip-dir="right"
+        style={{ display: 'flex' }}
+      >
+        <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+      </span>
+      {!explainerOpen && (
+        <button type="button" onClick={reopenExplainer} className="entregas-explainer-reopen">
+          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+          Como funciona
+        </button>
+      )}
+      {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
+    there, so a click elsewhere (other views, or the Publicações board) would fire
+    a "started" event and hit startEntregasTour's zero-anchor early return with no
+    visible tour. */}
+      {activeView === 'kanban' && mode === 'entregas' && (
+        <button
+          type="button"
+          onClick={handleReplay}
+          style={{
+            fontSize: '0.72rem',
+            color: 'var(--text-muted)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+          }}
+        >
+          Ver tour novamente
+        </button>
+      )}
+    </>
+  );
+  const headerCounts = (
+    <>
+      fluxos ativos: {activeWorkflows.length}
+      {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
+      {overdue > 0 && (
+        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+          {' '}
+          • {overdue} atrasado{overdue > 1 ? 's' : ''}
+        </span>
+      )}
+      {urgent > 0 && (
+        <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
+          {' '}
+          • {urgent} urgente{urgent > 1 ? 's' : ''}
+        </span>
+      )}
+    </>
+  );
+  // Vidro toolbar only (the classic header keeps the pieces above): one help menu instead of
+  // three side-by-side controls, and the counts as a line under the title, led by pills that
+  // filter the board to overdue or urgent.
+  const statusFilterOnly = (status: StatusFilter) =>
+    filters.filterStatus.length === 1 && filters.filterStatus[0] === status;
+  const toggleStatusFilter = (status: StatusFilter) => {
+    const active = statusFilterOnly(status);
+    setFilters({ ...filters, filterStatus: active ? [] : [status] });
+    // Only the fluxos views apply the deadline filter; anywhere else, land on the fluxos kanban.
+    const showsFilter =
+      mode === 'entregas' &&
+      (activeView === 'kanban' ||
+        activeView === 'list' ||
+        activeView === 'calendar' ||
+        activeView === 'chart');
+    if (!active && !showsFilter) {
+      setActiveView('kanban');
+      setMode('entregas');
+    }
+  };
+  const toolbarHelp = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Ajuda" className="vidro-toolbar-help">
+          <CircleHelp className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuLabel className="font-normal text-muted-foreground">
+          Acompanhe o andamento das entregas e fluxos ativos.
+        </DropdownMenuLabel>
+        {!explainerOpen && (
+          <DropdownMenuItem onClick={reopenExplainer}>
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
+            Como funciona
+          </DropdownMenuItem>
+        )}
+        {/* Same gate as the classic link: the tour's anchors only exist on this board. */}
+        {activeView === 'kanban' && mode === 'entregas' && (
+          <DropdownMenuItem onClick={handleReplay}>
+            <PlayCircle className="h-4 w-4" aria-hidden="true" />
+            Ver tour novamente
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const toolbarCounts = (
+    <>
+      {overdue > 0 && (
+        <button
+          type="button"
+          className="vidro-status-pill vidro-status-pill--bad"
+          aria-pressed={statusFilterOnly('atrasado')}
+          onClick={() => toggleStatusFilter('atrasado')}
+        >
+          {overdue} atrasado{overdue > 1 ? 's' : ''}
+        </button>
+      )}
+      {urgent > 0 && (
+        <button
+          type="button"
+          className="vidro-status-pill vidro-status-pill--warn"
+          aria-pressed={statusFilterOnly('urgente')}
+          onClick={() => toggleStatusFilter('urgente')}
+        >
+          {urgent} urgente{urgent > 1 ? 's' : ''}
+        </button>
+      )}
+      <span title="Totais gerais, sem filtros">
+        {activeWorkflows.length} fluxo{activeWorkflows.length === 1 ? '' : 's'}
+        {postProcessesVisible && (
+          <>
+            {' · '}
+            {activePostProcessCount} post{activePostProcessCount === 1 ? '' : 's'}
+          </>
+        )}
+      </span>
+    </>
+  );
+  const headerActions = (
+    <>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => setTemplatesOpen(true)}
+        className="header-actions-icon-only"
+      >
+        <LayoutGrid className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => setTemplatesOpen(true)}
+        className="header-actions-full-only"
+      >
+        <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button data-tour="novo-fluxo-btn">
+          <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
+          <Route aria-hidden="true" /> Novo fluxo
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setAvulsoTemplateId(null);
+            setNewAvulsoOpen(true);
+          }}
+        >
+          <CircleDashed aria-hidden="true" /> Post avulso
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const showModeToggle =
+    activeView === 'kanban' || activeView === 'list' || activeView === 'calendar';
+  const showEntidadeToggle =
+    postProcessesVisible &&
+    (activeView === 'kanban' || activeView === 'list') &&
+    mode === 'entregas';
+  const concludedSearch = (
+    <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+      <Input
+        placeholder="Buscar cliente..."
+        value={concludedClientSearch}
+        onChange={(e) => setConcludedClientSearch(e.target.value)}
+        className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+      />
+    </div>
+  );
+  const vidroViewControls =
+    showModeToggle || showEntidadeToggle ? (
+      <>
+        {showModeToggle && <ModeToggle mode={mode} onModeChange={setMode} />}
+        {showEntidadeToggle && <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />}
+      </>
+    ) : undefined;
+  // Sempre lado a lado: a linha das abas rola na horizontal no celular, então quebrar só a
+  // deixaria mais alta.
+  const filaPickers = (
+    <div className="flex items-center gap-2">
+      <FilaOrdemPicker ordem={filaOrdem} onChange={setFilaOrdem} />
+      <FilaMembroPicker
+        membros={membros}
+        membroId={filaMembroId}
+        currentMembroId={currentMembroId}
+        onChange={setFilaMembro}
+      />
+    </div>
+  );
+  const searchInput = (
+    <div className="relative w-[220px]">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+      <Input
+        placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
+        value={filters.filterSearch}
+        onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
+        className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+      />
+    </div>
+  );
+  // Vidro: the search sits at the end of the template tabs on the Fluxos board, and at the
+  // end of the filter pills everywhere else.
+  const searchOnBoardTabs = activeView === 'kanban' && mode === 'entregas';
+
+  // Under the Vidro shell the view switcher is one dropdown in the toolbar (like the vista picker
+  // below it). The classic tablist in the content keeps its inline styles.
+  const activeViewTab = VIEW_TABS.find((tab) => tab.id === activeView) ?? VIEW_TABS[0];
+  const toolbarViewTabs = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="vidro-view-picker" title="Modo de visualização">
+          {activeViewTab.icon}
+          <span>{activeViewTab.label}</span>
+          <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-[200px]">
+        <DropdownMenuRadioGroup
+          value={activeView}
+          onValueChange={(view) => setActiveView(view as ActiveView)}
+          aria-label="Modos de visualização"
+        >
+          {VIEW_TABS.map((tab) => (
+            <DropdownMenuRadioItem key={tab.id} value={tab.id} className="gap-2">
+              {tab.icon} {tab.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  // Vidro: the saved vistas, the board toggles and the view switcher all live in the toolbar,
+  // which takes a whole control row off the page body.
+  const toolbarControls = (
+    <div className="vidro-entregas-controls">
+      <VistasTabs
+        contaId={contaId}
+        currentQuery={currentQuery}
+        onApply={applySavedView}
+        controls={vidroViewControls}
+        trailing={
+          activeView === 'fila'
+            ? filaPickers
+            : activeView === 'concluded'
+              ? concludedSearch
+              : undefined
+        }
+      />
+      {toolbarViewTabs}
+    </div>
+  );
+
+  const inToolbar = usePageToolbar(
+    isLoading
+      ? null
+      : {
+          title: 'Entregas',
+          titleAccessory: toolbarHelp,
+          // Same unfiltered totals as the classic header's line (see the note there), under the
+          // title so neither gets cut. The neutral totals carry a native title tooltip.
+          subtitle: toolbarCounts,
+          subtitleBelow: true,
+          segmented: toolbarControls,
+          actions: headerActions,
+          primary: primaryAction,
+        },
+  );
+
   if (isLoading) {
     // Shaped like the view about to render (kanban by default, or the one in the URL).
     const body: PageSkeletonBody =
@@ -1322,6 +1623,13 @@ export default function EntregasPage() {
   }
 
   const filtersMode = postsMode ? 'posts' : 'entregas';
+  // With the view tabs in the Vidro toolbar, the filters row can end up empty (Minha fila)
+  // or hold an empty scroll strip (Visão geral); skip them there so the column gap leaves
+  // no blank band. Always true in the classic shell, whose markup stays as it was.
+  // Under Vidro the Etapas/Status and entity toggles (and the Concluídas search) move up onto
+  // the VistasTabs row instead, so the filters row only holds the filter pills and the Lista bar.
+  const showViewControls = !inToolbar;
+  const showFiltersRow = showFilters || showViewControls;
   const phoneResultCount =
     activeView === 'list' && mode === 'publicacoes'
       ? listPosts.length
@@ -1431,109 +1739,26 @@ export default function EntregasPage() {
           </>
         ) : (
           <>
-            <header className="header header--flush animate-up">
-              <div className="header-title">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <h1>Entregas</h1>
-                  <span
-                    data-tooltip="Acompanhe o andamento das entregas e fluxos ativos."
-                    data-tooltip-dir="right"
-                    style={{ display: 'flex' }}
-                  >
-                    <Info
-                      className="h-5 w-5 cursor-pointer"
-                      style={{ color: 'var(--text-muted)' }}
-                    />
-                  </span>
-                  {/* Only on the kanban view in Entregas mode — the tour's data-tour anchors live
-                there, so a click elsewhere (other views, or the Publicações board) would fire
-                a "started" event and hit startEntregasTour's zero-anchor early return with no
-                visible tour. */}
-                  {!explainerOpen && (
-                    <button
-                      type="button"
-                      onClick={reopenExplainer}
-                      className="entregas-explainer-reopen"
-                    >
-                      <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
-                      Como funciona
-                    </button>
-                  )}
-                  {activeView === 'kanban' && mode === 'entregas' && (
-                    <button
-                      type="button"
-                      onClick={handleReplay}
-                      style={{
-                        fontSize: '0.72rem',
-                        color: 'var(--text-muted)',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                      }}
-                    >
-                      Ver tour novamente
-                    </button>
-                  )}
-                </div>
-                {/* Deliberately unfiltered: the Visão geral's KPIs are the filtered
+            {!inToolbar && (
+              <header className="header header--flush animate-up">
+                <div className="header-title">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h1>Entregas</h1>
+                    {headerTitleAccessory}
+                  </div>
+                  {/* Deliberately unfiltered: the Visão geral's KPIs are the filtered
               read of the same numbers, and the two disagreeing looks like a bug
               unless the header says which one it is. */}
-                <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
-                  fluxos ativos: {activeWorkflows.length}
-                  {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
-                  {overdue > 0 && (
-                    <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                      {' '}
-                      • {overdue} atrasado{overdue > 1 ? 's' : ''}
-                    </span>
-                  )}
-                  {urgent > 0 && (
-                    <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
-                      {' '}
-                      • {urgent} urgente{urgent > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="header-actions">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setTemplatesOpen(true)}
-                  className="header-actions-icon-only"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setTemplatesOpen(true)}
-                  className="header-actions-full-only"
-                >
-                  <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button data-tour="novo-fluxo-btn">
-                      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
-                      <Route aria-hidden="true" /> Novo fluxo
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setAvulsoTemplateId(null);
-                        setNewAvulsoOpen(true);
-                      }}
-                    >
-                      <CircleDashed aria-hidden="true" /> Post avulso
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </header>
+                  <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
+                    {headerCounts}
+                  </p>
+                </div>
+                <div className="header-actions">
+                  {headerActions}
+                  {primaryAction}
+                </div>
+              </header>
+            )}
 
             {explainerOpen && (
               <ComoFuncionaPanel
@@ -1542,164 +1767,141 @@ export default function EntregasPage() {
               />
             )}
 
-            <VistasTabs
-              contaId={contaId}
-              currentQuery={currentQuery}
-              onApply={applySavedView}
-              trailing={
-                activeView === 'fila' ? (
-                  // Sempre lado a lado: a linha das abas rola na horizontal no celular,
-                  // então quebrar só a deixaria mais alta.
-                  <div className="flex items-center gap-2">
-                    <FilaOrdemPicker ordem={filaOrdem} onChange={setFilaOrdem} />
-                    <FilaMembroPicker
-                      membros={membros}
-                      membroId={filaMembroId}
-                      currentMembroId={currentMembroId}
-                      onChange={setFilaMembro}
-                    />
-                  </div>
-                ) : showFilters ? (
-                  <div className="relative w-[220px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-                    <Input
-                      placeholder={postsMode ? 'Buscar post...' : 'Buscar fluxo...'}
-                      value={filters.filterSearch}
-                      onChange={(e) => setFilters({ ...filters, filterSearch: e.target.value })}
-                      className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
-                    />
-                  </div>
-                ) : undefined
-              }
-            />
+            {/* Under Vidro the vistas row lives in the toolbar (toolbarControls). */}
+            {!inToolbar && (
+              <VistasTabs
+                contaId={contaId}
+                currentQuery={currentQuery}
+                onApply={applySavedView}
+                trailing={
+                  activeView === 'fila' ? filaPickers : showFilters ? searchInput : undefined
+                }
+              />
+            )}
 
             {/* Below 901px the compact "Filtros" button and the view/mode/entity
           toggles share one row. From 901px up the full pill set takes its own
           row (EntregasFilters is basis-full there) and the toggles wrap onto
           the next one -- without that they split the row 50/50 and the
           toggles get clipped. */}
-            <div className="flex flex-wrap items-center gap-3 min-[901px]:gap-y-6">
-              {showFilters && (
-                <EntregasFilters
-                  filters={filters}
-                  onChange={setFilters}
-                  clientes={clientes}
-                  membros={membros}
-                  templates={templates}
-                  etapaNames={etapaNames}
-                  mode={postsMode ? 'posts' : 'entregas'}
-                />
-              )}
+            {showFiltersRow && (
+              <div className="flex flex-wrap items-center gap-3 min-[901px]:gap-y-6">
+                {showFilters && (
+                  <EntregasFilters
+                    filters={filters}
+                    onChange={setFilters}
+                    clientes={clientes}
+                    membros={membros}
+                    templates={templates}
+                    etapaNames={etapaNames}
+                    mode={postsMode ? 'posts' : 'entregas'}
+                    trailing={inToolbar && !searchOnBoardTabs ? searchInput : undefined}
+                  />
+                )}
 
-              {/* View tabs + mode + entity toggles. Scrolls horizontally within its
+                {showViewControls && (
+                  <>
+                    {/* View tabs + mode + entity toggles. Scrolls horizontally within its
             own space instead of wrapping into several stacked control rows,
             which was eating the first fold on phones. */}
-              <div
-                // Below 901px, flex-basis 0% (flex-1, not 'auto') so the outer row's
-                // line-wrapping decision -- made from each item's hypothetical size
-                // BEFORE shrinking is applied -- doesn't see this item's full content
-                // width and wrap it onto its own line. minWidth:0 then lets it
-                // actually shrink to fit next to the Filtros button, and this
-                // element's own overflow-x:auto scrolls whatever doesn't fit. From
-                // 901px up the filters take a line of their own and the basis goes
-                // back to auto, so the Lista toolbar after this row wraps onto the
-                // next line when it doesn't fit beside the tabs, instead of
-                // squeezing them into a scroll.
-                className="no-scrollbar flex-1 min-[901px]:basis-auto"
-                style={{
-                  display: 'flex',
-                  flexWrap: 'nowrap',
-                  overflowX: 'auto',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  minWidth: 0,
-                }}
-              >
-                <div
-                  role="tablist"
-                  aria-label="Modos de visualização"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--border-color)',
-                    padding: '0.25rem',
-                    borderRadius: '8px',
-                    overflowX: 'auto',
-                    width: 'fit-content',
-                    maxWidth: '100%',
-                    flexShrink: 0,
-                  }}
-                  className="animate-up no-scrollbar"
-                >
-                  {VIEW_TABS.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={activeView === tab.id}
-                      onClick={() => setActiveView(tab.id)}
+                    <div
+                      // Below 901px, flex-basis 0% (flex-1, not 'auto') so the outer row's
+                      // line-wrapping decision -- made from each item's hypothetical size
+                      // BEFORE shrinking is applied -- doesn't see this item's full content
+                      // width and wrap it onto its own line. minWidth:0 then lets it
+                      // actually shrink to fit next to the Filtros button, and this
+                      // element's own overflow-x:auto scrolls whatever doesn't fit. From
+                      // 901px up the filters take a line of their own and the basis goes
+                      // back to auto, so the Lista toolbar after this row wraps onto the
+                      // next line when it doesn't fit beside the tabs, instead of
+                      // squeezing them into a scroll.
+                      className="no-scrollbar flex-1 min-[901px]:basis-auto"
                       style={{
                         display: 'flex',
+                        flexWrap: 'nowrap',
+                        overflowX: 'auto',
                         alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.3rem 0.65rem',
-                        borderRadius: '6px',
-                        border: 'none',
-                        background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
-                        color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
-                        fontSize: '0.8rem',
-                        fontWeight: activeView === tab.id ? 600 : 400,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
+                        gap: '0.5rem',
+                        minWidth: 0,
                       }}
                     >
-                      {tab.icon} {tab.label}
-                    </button>
-                  ))}
-                </div>
+                      {!inToolbar && (
+                        <div
+                          role="tablist"
+                          aria-label="Modos de visualização"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            background: 'var(--card-bg)',
+                            border: '1px solid var(--border-color)',
+                            padding: '0.25rem',
+                            borderRadius: '8px',
+                            overflowX: 'auto',
+                            width: 'fit-content',
+                            maxWidth: '100%',
+                            flexShrink: 0,
+                          }}
+                          className="animate-up no-scrollbar"
+                        >
+                          {VIEW_TABS.map((tab) => (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              role="tab"
+                              aria-selected={activeView === tab.id}
+                              onClick={() => setActiveView(tab.id)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                padding: '0.3rem 0.65rem',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
+                                color:
+                                  activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
+                                fontSize: '0.8rem',
+                                fontWeight: activeView === tab.id ? 600 : 400,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {tab.icon} {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
-                {(activeView === 'kanban' ||
-                  activeView === 'list' ||
-                  activeView === 'calendar') && (
-                  <div style={{ flexShrink: 0 }}>
-                    <ModeToggle mode={mode} onModeChange={setMode} />
-                  </div>
-                )}
+                      {showModeToggle && (
+                        <div style={{ flexShrink: 0 }}>
+                          <ModeToggle mode={mode} onModeChange={setMode} />
+                        </div>
+                      )}
 
-                {postProcessesVisible &&
-                  (activeView === 'kanban' || activeView === 'list') &&
-                  mode === 'entregas' && (
-                    <div style={{ flexShrink: 0 }}>
-                      <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+                      {showEntidadeToggle && (
+                        <div style={{ flexShrink: 0 }}>
+                          <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+                        </div>
+                      )}
+
+                      {activeView === 'concluded' && concludedSearch}
                     </div>
-                  )}
-
-                {activeView === 'concluded' && (
-                  <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
-                    <Input
-                      placeholder="Buscar cliente..."
-                      value={concludedClientSearch}
-                      onChange={(e) => setConcludedClientSearch(e.target.value)}
-                      className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
-                    />
-                  </div>
+                  </>
                 )}
-              </div>
 
-              {/* Barra da Lista (Agrupar por, Mostrar postados, Responsáveis) na linha
+                {/* Barra da Lista (Agrupar por, Mostrar postados, Responsáveis) na linha
             das abas quando cabe, alinhada à direita, sobre onde o painel lateral
             abre. Fica fora da rolagem das abas, que a escondia no fim da
             rolagem: abaixo de 901px tem linha própria, e a partir daí quebra
             para a linha de baixo quando não cabe ao lado das abas. */}
-              {activeView === 'list' && (
-                <div className="basis-full min-[901px]:basis-auto min-[901px]:ml-auto">
-                  {listToolbar}
-                </div>
-              )}
-            </div>
+                {activeView === 'list' && (
+                  <div className="basis-full min-[901px]:basis-auto min-[901px]:ml-auto">
+                    {listToolbar}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -1747,6 +1949,7 @@ export default function EntregasPage() {
                   setNewWorkflowOpen(true);
                 }}
                 onCreateTemplate={() => setTemplatesOpen(true)}
+                tabsTrailing={inToolbar ? searchInput : undefined}
                 createTemplateDisabled={templatesAtLimit}
                 // Criar processo individual é CRIAÇÃO: gate na flag do plano
                 // (`postProcessesEnabled`), não em `postProcessesVisible` — ver o

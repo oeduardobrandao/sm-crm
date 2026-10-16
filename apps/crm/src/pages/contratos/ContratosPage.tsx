@@ -77,6 +77,7 @@ import { formatFinancialBRL } from '@/lib/financialAccess';
 import { captureEvent } from '@/lib/analytics';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { PickerCell } from '@/components/mobile/PickerSheet';
@@ -534,6 +535,42 @@ export default function ContratosPage() {
     </>
   );
 
+  const infoTooltip = (
+    <span
+      data-tooltip="Gerencie os contratos dos seus clientes."
+      data-tooltip-dir="right"
+      style={{ display: 'flex' }}
+    >
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const headerActions = (
+    <>
+      <span
+        data-tooltip="Colunas: titulo*, cliente_nome, data_inicio* (AAAA-MM-DD), data_fim*, valor_total*, status"
+        data-tooltip-dir="bottom"
+        style={{ display: 'flex' }}
+      >
+        <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+      </span>
+      <Button variant="outline" onClick={handleCSVImport}>
+        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <Button onClick={openAdd}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Contrato
+    </Button>
+  );
+
+  const inToolbar = usePageToolbar({
+    title: 'Contratos',
+    titleAccessory: infoTooltip,
+    actions: headerActions,
+    primary: primaryAction,
+  });
+
   if (isPhone) {
     return (
       <>
@@ -557,40 +594,23 @@ export default function ContratosPage() {
   }
 
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Contratos</h1>
-          <span
-            data-tooltip="Gerencie os contratos dos seus clientes."
-            data-tooltip-dir="right"
-            style={{ display: 'flex' }}
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
+            <h1>Contratos</h1>
+            {infoTooltip}
+          </div>
+          <div className="header-actions">
+            {headerActions}
+            {primaryAction}
+          </div>
         </div>
-        <div className="header-actions">
-          <span
-            data-tooltip="Colunas: titulo*, cliente_nome, data_inicio* (AAAA-MM-DD), data_fim*, valor_total*, status"
-            data-tooltip-dir="bottom"
-            style={{ display: 'flex' }}
-          >
-            <HelpCircle
-              className="h-4 w-4"
-              style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-            />
-          </span>
-          <Button variant="outline" onClick={handleCSVImport}>
-            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
-          </Button>
-          <Button onClick={openAdd}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Contrato
-          </Button>
-        </div>
-      </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>

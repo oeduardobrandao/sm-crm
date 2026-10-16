@@ -22,6 +22,7 @@ import {
   type ClienteData,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { formatDeadlineStatus } from './deadlineStatus';
 import { itensDoDia, refPagamento } from './financeiroDia';
@@ -658,6 +659,30 @@ function CalendarioClassico() {
     [workflows, etapasPorWorkflow, clientes],
   );
 
+  const titulo = activeTab === 'financeiro' ? 'Calendário' : activeNiche.title;
+  const subtitulo = activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle;
+  const calendarTabs = (
+    <div className="calendar-tabs animate-up">
+      <button
+        className={`calendar-tab${activeTab === 'financeiro' ? ' active' : ''}`}
+        onClick={() => setActiveTab('financeiro')}
+      >
+        Calendário
+      </button>
+      <button
+        className={`calendar-tab${activeTab === 'comemorativas' ? ' active' : ''}`}
+        onClick={() => setActiveTab('comemorativas')}
+      >
+        Datas Comemorativas
+      </button>
+    </div>
+  );
+  const inToolbar = usePageToolbar({
+    title: titulo,
+    subtitle: subtitulo,
+    segmented: calendarTabs,
+  });
+
   if (isPhone) {
     return (
       <CalendarioClassicoPhone
@@ -677,29 +702,18 @@ function CalendarioClassico() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
-        <div className="header-title">
-          <h1>{activeTab === 'financeiro' ? 'Calendário' : activeNiche.title}</h1>
-          <p style={{ color: 'var(--text-muted)' }}>
-            {activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle}
-          </p>
-        </div>
-      </header>
+      {!inToolbar && (
+        <>
+          <header className="header animate-up">
+            <div className="header-title">
+              <h1>{titulo}</h1>
+              <p style={{ color: 'var(--text-muted)' }}>{subtitulo}</p>
+            </div>
+          </header>
 
-      <div className="calendar-tabs animate-up">
-        <button
-          className={`calendar-tab${activeTab === 'financeiro' ? ' active' : ''}`}
-          onClick={() => setActiveTab('financeiro')}
-        >
-          Calendário
-        </button>
-        <button
-          className={`calendar-tab${activeTab === 'comemorativas' ? ' active' : ''}`}
-          onClick={() => setActiveTab('comemorativas')}
-        >
-          Datas Comemorativas
-        </button>
-      </div>
+          {calendarTabs}
+        </>
+      )}
 
       <div className="animate-up">
         {activeTab === 'financeiro' ? (
@@ -744,6 +758,11 @@ function AgendaPagina() {
     document.title = 'Agenda | Mesaas';
   }, []);
 
+  const inToolbar = usePageToolbar({
+    title: 'Agenda',
+    subtitle: 'Eventos, reuniões e gravações da equipe.',
+  });
+
   // Phones: AgendaTab draws its own page header (title, period, filters, "+").
   if (isPhone) {
     return (
@@ -755,12 +774,14 @@ function AgendaPagina() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
-        <div className="header-title">
-          <h1>Agenda</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Eventos, reuniões e gravações da equipe.</p>
-        </div>
-      </header>
+      {!inToolbar && (
+        <header className="header animate-up">
+          <div className="header-title">
+            <h1>Agenda</h1>
+            <p style={{ color: 'var(--text-muted)' }}>Eventos, reuniões e gravações da equipe.</p>
+          </div>
+        </header>
+      )}
 
       <div className="animate-up">
         <Suspense fallback={<CalendarSkeleton />}>

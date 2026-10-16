@@ -72,6 +72,12 @@
     "captionHidden": "Stories não usam legenda.",
     "segments": "{{count}} segmentos"
   },
+  "readiness": {
+    "ready": "Pronto para publicar",
+    "readyApproval": "Pronto para enviar",
+    "needMedia": "Adicione ao menos uma mídia.",
+    "needCaption": "Escreva a legenda."
+  },
   "captionPlaceholder": "Escreva a legenda do post aqui...",
   "publish_action": "Publicar",
   "warnings": {

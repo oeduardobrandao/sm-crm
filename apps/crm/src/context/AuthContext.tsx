@@ -27,6 +27,7 @@ import {
 } from '../lib/permissions';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
 import { clearPopupSession } from '../hooks/popupSession';
+import { resetVidroLook } from '../lib/vidroLook';
 import {
   clearCrispSessionCache,
   readCrispSessionCache,
@@ -292,8 +293,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // rendering with A's profile/canSeeFinancials/query cache until B's
       // membership resolved: a brief cross-account exposure. Match `signOut`
       // below (clearProfileCache, all four resets, queryClient.clear()).
-      const userChanged = activeUserId.current !== nextUserId;
+      const previousUserId = activeUserId.current;
+      const userChanged = previousUserId !== nextUserId;
       if (userChanged) profileRequestId.current += 1;
+      // The Vidro attribute belongs to the outgoing user. An in-place change (another tab signing
+      // in or out) never runs signOut(), and AppLayout re-seeds useVidro from the attribute, so drop
+      // it here. Not on the first session (previousUserId null): that is the pre-paint's own user.
+      if (userChanged && previousUserId !== null) resetVidroLook();
       activeUserId.current = nextUserId;
       setUser(nextUser);
       setSessionReady(true);

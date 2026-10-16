@@ -14,6 +14,7 @@ vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), err
 import * as store from '../../../../store';
 import { CamadaPopover, situacaoDoPrazo } from '../CamadaPopover';
 import { useConfirmarPagamento } from '../useConfirmarPagamento';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function LocationProbe() {
   const loc = useLocation();
@@ -47,7 +48,7 @@ function Harness({
   );
 }
 
-function renderPopover(item: CamadaItem, sheet = false) {
+function renderPopover(item: CamadaItem, sheet = false, vidro = false) {
   document.getElementById('ancora')?.remove();
   const ancora = document.createElement('div');
   ancora.id = 'ancora';
@@ -57,7 +58,13 @@ function renderPopover(item: CamadaItem, sheet = false) {
   render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/calendario']}>
-        <Harness item={item} onClose={onClose} sheet={sheet} />
+        {vidro ? (
+          <VidroToolbarHarness>
+            <Harness item={item} onClose={onClose} sheet={sheet} />
+          </VidroToolbarHarness>
+        ) : (
+          <Harness item={item} onClose={onClose} sheet={sheet} />
+        )}
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -315,5 +322,28 @@ describe('CamadaPopover as a phone sheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar Clínica Sorriso' }));
     expect(onClose).toHaveBeenCalled();
     expect(await screen.findByText('Confirmar Agendamento')).toBeInTheDocument();
+  });
+});
+
+describe('CamadaPopover under the Vidro look', () => {
+  it('keeps its own surface inline styles without the Vidro shell', () => {
+    renderPopover(post());
+    const dialog = screen.getByRole('dialog', { name: 'Carrossel de dicas' });
+    // Only the component's own declarations: Radix appends its popper variables and, until
+    // floating-ui settles, a timing-dependent `animation: none`.
+    expect(dialog.getAttribute('style')!.split('; --radix-')[0]).toMatchInlineSnapshot(
+      `"background: var(--card-bg); border-color: var(--border-color); border-radius: 12px; color: var(--text-main); box-shadow: var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16)); max-height: min(560px, var(--radix-popover-content-available-height, 560px))"`,
+    );
+  });
+
+  it('drops background, border colour, radius and shadow under the Vidro shell', () => {
+    renderPopover(post(), false, true);
+    const dialog = screen.getByRole('dialog', { name: 'Carrossel de dicas' });
+    expect(dialog.style.background).toBe('');
+    expect(dialog.style.borderColor).toBe('');
+    expect(dialog.style.borderRadius).toBe('');
+    expect(dialog.style.boxShadow).toBe('');
+    expect(dialog.style.color).toBe('var(--text-main)');
+    expect(dialog.style.maxHeight).toContain('min(560px');
   });
 });

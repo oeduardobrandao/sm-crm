@@ -1,0 +1,234 @@
+/*
+ * Vidro body skin: compositions.
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
+ * The only file whose rules combine families (a button in a table cell, a badge in a kanban card, a
+ * card in a dialog). Imported last, but each rule also out-ranks the family rule it adjusts, so the
+ * result does not hang on source order alone.
+ * Guards: every selector starts with html[data-look='vidro']; everything inside
+ * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ */
+@media (min-width: 1101px) {
+  /* A group card that only frames a table: the table's own cell padding does the inset. Only when the
+     table is the card's sole content: a card with a heading above its table (cliente Financeiro tab,
+     Instagram "Performance de Conteúdo") keeps its padding, or the heading would touch the edge.
+     Cards with an inline padding (Clientes, Equipe, Automações) keep theirs either way. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.card, [data-slot='card']):is(
+      :has(> [data-slot='table-container']):not(:has(> :not([data-slot='table-container']))),
+      :has(> .data-table:only-child),
+      :has(> :only-child > .data-table)
+    ) {
+    padding: 4px;
+  }
+
+  /* Cliente detalhe toolbar: the back button (a Button size="icon") and the avatar keep the toolbar's
+     36px control size; buttons.css's 32px icon circle is (0,6,2), this is (0,7,2). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vidro-toolbar
+    :is(
+      .cliente-detalhe-header__back[data-slot='button'][data-size='icon'],
+      .cliente-avatar-upload__trigger
+    ) {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+
+  /* Row actions: icon buttons inside a table cell are a 28px circle, so the 46px row keeps its height. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='table-cell']
+    [data-slot='button'][data-size='icon']:not([data-variant='link']) {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* Kanban cards: every badge takes the small size. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card)
+    .badge {
+    font-size: 10px;
+    padding: 1px 7px;
+  }
+
+  /* Unportaled drawers (post, fluxo and history drawers, AutomationFormDialog) live inside the shell's
+     .vidro-panel. A position: fixed panel is a stacking context at z-index auto, below the sidebar's
+     z-index 100, so their 9000+ z-indexes only count inside the panel and the sidebar painted over the
+     drawer's left side and its scrim. While one is open the panel goes above the sidebar (the drawer's
+     own scrim covers the sidebar anyway, as on the classic look). 200 also clears .banner-container
+     (z-index 115, rendered outside the panel), which otherwise painted over the scrim and the header of
+     a fullscreen drawer, and stays below the lowest portaled layer (AutomationFormDialog, 9005). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel:has(:is(.drawer-overlay, .drawer-panel, .time-picker-overlay)) {
+    z-index: 200;
+  }
+
+  /* A card inside a dialog becomes a tile on the dialog's glass. */
+  html[data-look='vidro'] body:has(.app-container) [data-slot='dialog-content'] [data-slot='card'] {
+    background: var(--vd-tile);
+    border: 0;
+  }
+
+  /* Compact h-7 fields (Produção steps in the post drawer, ApplyProcessDialog). forms.css gives every
+     field 34px, so a compact select grew next to its 28px neighbours; it keeps 28px here, with a gap
+     so the w-auto trigger's chevron does not touch its label. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='select-trigger'].h-7,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='select-trigger'].h-7 {
+    height: 28px;
+    min-height: 28px;
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  /* The Produção steps' raw number/date inputs are bordered bg-transparent inputs, which forms.css
+     leaves classic (its raw-input arm skips .bg-transparent for the bare editors). Next to the filled
+     selects they take the same fill, focus ring and disabled look. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    input.h-7.border-input.bg-transparent,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    input.h-7.border-input.bg-transparent {
+    background: var(--vd-fill);
+    border-color: transparent;
+  }
+
+  /* Hover restates the fill so the field contract (rest, hover, focus, disabled) is explicit. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    input.h-7.border-input.bg-transparent:hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    input.h-7.border-input.bg-transparent:hover {
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    input.h-7.border-input.bg-transparent:is(:focus, :focus-visible),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    input.h-7.border-input.bg-transparent:is(:focus, :focus-visible) {
+    border-color: var(--vd-sep);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.45);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    input.h-7.border-input.bg-transparent:disabled,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    input.h-7.border-input.bg-transparent:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Circular toggle items (the Recorrência weekday chips in the Nova tarefa dialog, h-8 w-8
+     rounded-full): controls.css's 14px item padding and 28px height made 32x28 ovals. They stay 28px
+     circles inside the capsule. The :not() chain matches controls.css's so this out-ranks it. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    > [data-slot='toggle-group-item'].rounded-full,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    > [data-slot='toggle-group-item'].rounded-full {
+    width: 28px;
+    padding: 0;
+  }
+
+  /* Entregas fluxo drawer: the bulk selection bar is sticky at the bottom of the scrolling drawer
+     body. Dark paints it with --surface-2, which the Vidro tokens remap to a translucent fill, so the
+     list would show through it while scrolling. Sticky surfaces stay opaque. Light uses --card-bg,
+     which is not remapped. */
+  html[data-theme='dark'][data-look='vidro'] body:has(.app-container) .drawer-selection-bar {
+    background: var(--vd-solid);
+  }
+
+  /* Header actions ship an icon-only twin that the classic CSS shows only on phones
+     (.header-actions-icon-only is display: none). buttons.css's 32px icon circle sets
+     display: inline-flex at (0,6,2) and re-showed it beside the full button (Entregas'
+     Templates, Clientes' Importar CSV, Equipe, Financeiro). This (0,7,2) hides it again. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='button'][data-size='icon'][data-variant='outline'].header-actions-icon-only {
+    display: none;
+  }
+}

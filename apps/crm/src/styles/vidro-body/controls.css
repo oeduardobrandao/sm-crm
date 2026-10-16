@@ -1,0 +1,1587 @@
+/*
+ * Vidro body skin: controls (segmented capsules, filter chips, in-page side navs).
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md section 6.
+ * Guards: every selector starts with html[data-look='vidro']; everything inside
+ * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * html[data-look='vidro'] body:has(.app-container) .vidro-panel; segmented and chip rules are
+ * duplicated under the portaled-content prefix (dialogs, sheets, popovers, comment/mention popovers).
+ *
+ * Never reaches .agenda-segmented / .vidro-seg: vidro.css owns them, so every toggle-group
+ * selector carries :not(.agenda-segmented). Also excluded from the capsule treatment:
+ *  - .agenda-rapido__tipos: its items are chips (below), a capsule track behind them would double up.
+ *  - .grid / .flex-col groups (RecorrenciaFields, TrialReelPanel): stacked option lists, not segments.
+ */
+@media (min-width: 1101px) {
+  /* ---------- Segmented capsule: track ---------- */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__group,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-seg,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tabs__group,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    ) {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--vd-fill);
+    box-shadow: none;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  /* Entregas: the vistas row (picker + toggles) and the view picker, slotted in the toolbar. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-entregas-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* In the toolbar the vistas row's trailing slot (Fila pickers, Concluídas search) follows the
+     picker instead of being pushed to the far end. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vidro-entregas-controls
+    .vista-tabs
+    > .ml-auto {
+    margin-left: 0;
+    padding-left: 0;
+  }
+
+  /* Entregas: the view toggles that share the vista picker's row. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tabs__group,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tabs__group {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vista-tabs__group::-webkit-scrollbar,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tabs__group::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ---------- Segmented capsule: item ---------- */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-seg__item,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg__item,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 28px;
+    min-width: 0;
+    margin: 0;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+    box-shadow: none;
+    cursor: pointer;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-seg__item,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg__item {
+    width: 34px;
+    padding: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab {
+    padding: 0 8px 0 12px;
+    gap: 4px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab--add,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab--add {
+    padding: 0 12px;
+    gap: 6px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab::after,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab::after {
+    display: none;
+  }
+
+  /* hover (not selected, not disabled) */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vista-tab:hover:not(.vista-tab--active):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vista-tab--add:hover:not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-seg__item:hover:not([data-state='on']):not([aria-pressed='true']):not(:disabled):not(
+      [aria-disabled='true']
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
+      :disabled
+    ):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab:hover:not(.vista-tab--active):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab--add:hover:not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg__item:hover:not([data-state='on']):not([aria-pressed='true']):not(:disabled):not(
+      [aria-disabled='true']
+    ),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
+      :disabled
+    ):not([aria-disabled='true']) {
+    background: rgba(118, 118, 128, 0.12);
+    color: var(--text-main);
+  }
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vista-tab:hover:not(.vista-tab--active):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vista-tab--add:hover:not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-seg__item:hover:not([data-state='on']):not([aria-pressed='true']):not(:disabled):not(
+      [aria-disabled='true']
+    ),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
+      :disabled
+    ):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab:hover:not(.vista-tab--active):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab--add:hover:not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg__item:hover:not([data-state='on']):not([aria-pressed='true']):not(:disabled):not(
+      [aria-disabled='true']
+    ),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:hover:not([data-state='on']):not([aria-pressed='true']):not(
+      :disabled
+    ):not([aria-disabled='true']) {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* selected */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab--active,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab--active:hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-seg__item:is([data-state='on'], [aria-pressed='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-seg__item:is([data-state='on'], [aria-pressed='true']):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab--active,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab--active:hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg__item:is([data-state='on'], [aria-pressed='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg__item:is([data-state='on'], [aria-pressed='true']):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:is([data-state='on'], [aria-pressed='true']):hover {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+  }
+
+  /* focus ring (vista-tabs scrolls and clips an outer ring, so its tabs ring inside) */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-seg__item:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg__item:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab:focus-visible,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab-main:focus-visible,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab-more:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab-main:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab-more:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px rgba(255, 191, 48, 0.55);
+    border-radius: 999px;
+  }
+
+  /* disabled */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vista-tab:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-seg__item:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab.pointer-events-none,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-seg__item:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    [data-slot='toggle-group']:not(.agenda-segmented):not(.agenda-rapido__tipos):not(.grid):not(
+      .flex-col
+    )
+    [data-slot='toggle-group-item']:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab.pointer-events-none {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* vista tab inner parts */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab-main,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab-main {
+    color: inherit;
+    border-radius: 999px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab-more,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab-more {
+    background: transparent;
+    color: inherit;
+    border-radius: 999px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vista-tab-more:hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab-more:hover {
+    background: var(--vd-fill);
+    color: inherit;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vista-tab--active
+    .vista-tab-more:hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .vista-tab--active
+    .vista-tab-more:hover {
+    background: rgba(255, 255, 255, 0.18);
+    color: var(--vd-sel-fg);
+  }
+
+  /* ---------- Chips ---------- */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .today-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .platform-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-chip,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .agenda-rapido__tipo,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .list-groups-toggle,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .platform-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .agenda-rapido__tipo,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-groups-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 28px;
+    min-width: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--vd-fill);
+    color: var(--text-main);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    box-shadow: none;
+    cursor: pointer;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-chip,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-chip {
+    width: 34px;
+    padding: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .list-groups-toggle,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-groups-toggle {
+    margin-left: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .platform-chip--soon,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .platform-chip--soon {
+    color: var(--text-muted);
+  }
+
+  /* hover (not selected, not disabled) */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .today-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .platform-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .agenda-rapido__tipo:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .list-groups-toggle:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .platform-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .agenda-rapido__tipo:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-groups-toggle:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']) {
+    background: rgba(118, 118, 128, 0.2);
+    color: var(--text-main);
+  }
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .today-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .platform-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .agenda-rapido__tipo:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .list-groups-toggle:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .platform-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-chip:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .agenda-rapido__tipo:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']),
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-groups-toggle:hover:not(.on):not([aria-pressed='true']):not([data-state='on']):not(
+      .platform-chip--on
+    ):not(:disabled):not([aria-disabled='true']) {
+    background: rgba(118, 118, 128, 0.34);
+  }
+
+  /* selected */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .today-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .today-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .platform-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .platform-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .agenda-rapido__tipo:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .agenda-rapido__tipo:is(
+      .on,
+      [aria-pressed='true'],
+      [data-state='on'],
+      .platform-chip--on
+    ):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .list-groups-toggle:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .list-groups-toggle:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .platform-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .platform-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-chip:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .agenda-rapido__tipo:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .agenda-rapido__tipo:is(
+      .on,
+      [aria-pressed='true'],
+      [data-state='on'],
+      .platform-chip--on
+    ):hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-groups-toggle:is(.on, [aria-pressed='true'], [data-state='on'], .platform-chip--on),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-groups-toggle:is(
+      .on,
+      [aria-pressed='true'],
+      [data-state='on'],
+      .platform-chip--on
+    ):hover {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .today-chip.is-danger[aria-pressed='true'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .today-chip.is-danger[aria-pressed='true']:hover,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip.is-danger[aria-pressed='true'],
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip.is-danger[aria-pressed='true']:hover {
+    background: var(--vd-tg-bad-bg);
+    color: var(--vd-tg-bad);
+  }
+
+  /* focus ring */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .today-chip:focus-visible,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .platform-chip:focus-visible,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .icon-chip:focus-visible,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .agenda-rapido__tipo:focus-visible,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .list-groups-toggle:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .platform-chip:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-chip:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .agenda-rapido__tipo:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-groups-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  /* disabled */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .today-chip:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .platform-chip:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .icon-chip:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .agenda-rapido__tipo:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .list-groups-toggle:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .today-chip:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .platform-chip:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .icon-chip:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .agenda-rapido__tipo:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    :is(
+      [data-slot='dialog-content'],
+      [data-slot='alert-dialog-content'],
+      [data-slot='sheet-content'],
+      [data-slot='popover-content'],
+      .comment-popover,
+      .comment-add-popover,
+      .mention-suggestion-list
+    )
+    .list-groups-toggle:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ---------- In-page side navs (page body only) ---------- */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__item,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .config-nav-item {
+    height: 30px;
+    border: 0;
+    border-radius: 10px;
+    padding: 0 0.625rem;
+    font-size: 13px;
+    box-shadow: none;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .cliente-tabs-nav__item:hover:not(:disabled):not([aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .config-nav-item:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--vd-fill);
+    color: var(--text-main);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__item.active,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .cliente-tabs-nav__item.active:hover,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .config-nav-item.active,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .config-nav-item.active:hover {
+    background: var(--vd-fill);
+    color: var(--text-main);
+    font-weight: 600;
+    box-shadow: none;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .cliente-tabs-nav__item:focus-visible,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .config-nav-item:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .cliente-tabs-nav__item:is(:disabled, [aria-disabled='true']),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .config-nav-item:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Entregas tab strip: the trailing "Novo template" sits inside the capsule as a quiet action,
+     centred like the tabs (the classic rule gave it a bottom-only padding for its underline). */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tab-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    color: var(--vd-txt3);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-tab-add:hover:not(:disabled) {
+    color: var(--text-main);
+    background: var(--vd-cap);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tab-add:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--primary-color);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tab-add:disabled {
+    color: var(--vd-txt3);
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

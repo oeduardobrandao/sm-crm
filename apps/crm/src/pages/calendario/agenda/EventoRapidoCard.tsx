@@ -8,6 +8,7 @@ import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/context/AuthContext';
 import type { AgendaTipo } from '@/store/agenda';
@@ -76,6 +77,7 @@ export function EventoRapidoCard({
   onMaisOpcoes,
 }: EventoRapidoCardProps) {
   const { user } = useAuth();
+  const vidro = useVidroShell();
   const form = useForm<EventoFormValues>({
     resolver: zodResolver(eventoFormSchema),
     defaultValues: valoresIniciaisCriar(inicial),
@@ -140,12 +142,19 @@ export function EventoRapidoCard({
         updatePositionStrategy="always"
         aria-label="Novo evento"
         className="agenda-rapido w-[448px] max-w-[calc(100vw-32px)] p-0"
+        // Under Vidro, overlays.css paints the menu glass; these inline surface styles would beat it.
         style={{
-          background: 'var(--card-bg)',
-          borderColor: 'var(--border-color)',
-          borderRadius: 12,
+          ...(vidro
+            ? undefined
+            : {
+                background: 'var(--card-bg)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 12,
+              }),
           color: 'var(--text-main)',
-          boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))',
+          ...(vidro
+            ? undefined
+            : { boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))' }),
         }}
         // The title takes focus, not the close button that precedes it.
         onOpenAutoFocus={(e) => {

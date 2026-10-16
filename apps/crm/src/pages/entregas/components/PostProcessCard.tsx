@@ -27,6 +27,7 @@ import { TIPO_LABELS } from '../postLabels';
 import { PostStatusChip } from './PostStatusChip';
 import { DeadlinePill } from './DeadlinePill';
 import { progressColor } from '../progressColor';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import type { WorkflowPost } from '../../../store';
 
 interface PostProcessCardProps {
@@ -83,6 +84,10 @@ export function PostProcessCard({
   onDuplicateClick,
 }: PostProcessCardProps) {
   const navigate = useNavigate();
+  // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
+  // vidro-board-action and drop their inline radius/padding, so buttons.css can paint them.
+  const vidroShell = useVidroShell();
+  const boardAction = vidroShell ? 'vidro-board-action' : 'btn-edit-workflow';
   const registry = useStatusRegistry();
   const dl = entity.deadline;
   const deadlineClass = dl.estourado
@@ -435,10 +440,14 @@ export function PostProcessCard({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="btn-edit-workflow board-card-kebab"
+                  className={`${boardAction} board-card-kebab`}
                   aria-label="Mais opções"
                   title="Mais opções"
-                  style={{ height: 26, padding: '0 0.5rem', borderRadius: '8px', flexShrink: 0 }}
+                  style={
+                    vidroShell
+                      ? { height: 26, flexShrink: 0 }
+                      : { height: 26, padding: '0 0.5rem', borderRadius: '8px', flexShrink: 0 }
+                  }
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
@@ -516,13 +525,12 @@ export function PostProcessCard({
 
           {onForwardClick && (
             <button
-              className="btn-edit-workflow btn-forward-etapa"
+              className={`${boardAction} btn-forward-etapa`}
               aria-label={forwardLabel ?? 'Avançar etapa'}
               title={forwardLabel ?? 'Avançar etapa'}
               style={{
                 height: 26,
-                padding: '0 0.5rem',
-                borderRadius: '8px',
+                ...(vidroShell ? null : { padding: '0 0.5rem', borderRadius: '8px' }),
                 flexShrink: 0,
                 marginLeft: 'auto',
                 color: '#3ecf8e',

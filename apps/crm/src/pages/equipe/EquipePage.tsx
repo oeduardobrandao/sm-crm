@@ -31,6 +31,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import {
   Select,
   SelectContent,
@@ -233,6 +234,66 @@ export default function EquipePage() {
     </>
   );
 
+  const infoTooltip = (
+    <HelpTooltip
+      content={
+        <div className="space-y-2">
+          <p>
+            <strong>Membros</strong> = pessoas da equipe (designers, redatores, etc). Servem para
+            custos e atribuição de tarefas em fluxos.
+          </p>
+          <p>
+            <strong>Usuários do workspace</strong> = contas com acesso ao CRM. Gerencie em
+            Configurações → Workspace.
+          </p>
+          <p>
+            Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário de
+            edição.
+          </p>
+        </div>
+      }
+    >
+      <span style={{ display: 'flex' }}>
+        <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+      </span>
+    </HelpTooltip>
+  );
+  const headerActions = canEditTeam ? (
+    <>
+      <HelpTooltip content="Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento">
+        <span style={{ display: 'flex' }}>
+          <HelpCircle
+            className="h-4 w-4"
+            style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+          />
+        </span>
+      </HelpTooltip>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={handleCSVImport}
+        className="header-actions-icon-only"
+      >
+        <Upload className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
+        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+      </Button>
+    </>
+  ) : null;
+  const primaryAction = canEditTeam ? (
+    <Button onClick={openAdd}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Adicionar Membro
+    </Button>
+  ) : null;
+
+  const inToolbar = usePageToolbar({
+    title: 'Equipe',
+    titleAccessory: infoTooltip,
+    actions: headerActions,
+    primary: primaryAction,
+  });
+
   // Below 768px: the phone list (PLAN F2d). It replaces the old team-grid cards and the
   // shadcn filter sheet; 768px and up keep the table with Tipo and Ordenar inline.
   if (!isDesktop) {
@@ -264,73 +325,23 @@ export default function EquipePage() {
   }
 
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Equipe</h1>
-          <HelpTooltip
-            content={
-              <div className="space-y-2">
-                <p>
-                  <strong>Membros</strong> = pessoas da equipe (designers, redatores, etc). Servem
-                  para custos e atribuição de tarefas em fluxos.
-                </p>
-                <p>
-                  <strong>Usuários do workspace</strong> = contas com acesso ao CRM. Gerencie em
-                  Configurações → Workspace.
-                </p>
-                <p>
-                  Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário
-                  de edição.
-                </p>
-              </div>
-            }
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <span style={{ display: 'flex' }}>
-              <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-            </span>
-          </HelpTooltip>
+            <h1>Equipe</h1>
+            {infoTooltip}
+          </div>
+          <div className="header-actions">
+            {headerActions}
+            {primaryAction}
+          </div>
         </div>
-        <div className="header-actions">
-          {canEditTeam && (
-            <HelpTooltip content="Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento">
-              <span style={{ display: 'flex' }}>
-                <HelpCircle
-                  className="h-4 w-4"
-                  style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-                />
-              </span>
-            </HelpTooltip>
-          )}
-          {canEditTeam && (
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleCSVImport}
-              className="header-actions-icon-only"
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-          )}
-          {canEditTeam && (
-            <Button
-              variant="outline"
-              onClick={handleCSVImport}
-              className="header-actions-full-only"
-            >
-              <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
-            </Button>
-          )}
-          {canEditTeam && (
-            <Button onClick={openAdd}>
-              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Adicionar Membro
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
       {!canEditTeam && (
         <div style={{ marginBottom: '1rem' }}>

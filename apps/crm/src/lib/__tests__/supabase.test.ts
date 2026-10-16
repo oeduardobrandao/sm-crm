@@ -298,6 +298,27 @@ describe('supabase helpers', () => {
 
     expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
+
+  it('drops the vidro look cache on sign-out', async () => {
+    const { module } = await loadSupabaseModule({ id: 'user-1' });
+    localStorage.setItem('look-vidro', 'u1');
+
+    await module.signOut();
+
+    expect(localStorage.getItem('look-vidro')).toBeNull();
+  });
+
+  // Sign-out is an SPA redirect, not a reload: the attribute would outlive the session and the next
+  // user in this tab would seed useVidro from it (and keep the shell if their first
+  // workspace-limits call fails).
+  it('drops the vidro attribute on sign-out', async () => {
+    const { module } = await loadSupabaseModule({ id: 'user-1' });
+    document.documentElement.setAttribute('data-look', 'vidro');
+
+    await module.signOut();
+
+    expect(document.documentElement.hasAttribute('data-look')).toBe(false);
+  });
 });
 
 describe('healPendingInvite', () => {

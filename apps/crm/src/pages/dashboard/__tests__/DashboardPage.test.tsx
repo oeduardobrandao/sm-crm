@@ -75,6 +75,7 @@ vi.mock('../components/MinhaFilaCard', () => ({
 }));
 
 import DashboardPage from '../DashboardPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const mockedUseAuth = vi.mocked(useAuthMock);
 const mockedUseQueries = vi.mocked(useQueriesMock);
@@ -382,6 +383,39 @@ describe('DashboardPage', () => {
     renderDashboardPage();
     expect(screen.getAllByTestId('minha-fila-card')).toHaveLength(2);
     expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
+  });
+
+  describe('Vidro toolbar', () => {
+    function renderInVidro(vidroShell = true) {
+      return render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <DashboardPage />
+          </VidroToolbarHarness>
+        </MemoryRouter>,
+      );
+    }
+
+    it('puts Início and the capitalised day in the toolbar, as the only level-1 heading', () => {
+      renderInVidro();
+
+      const h1s = screen.getAllByRole('heading', { level: 1 });
+      expect(h1s).toHaveLength(1);
+      expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+      expect(h1s[0]).toHaveTextContent('Início');
+      expect(document.querySelector('.vidro-toolbar-subtitle')).toHaveTextContent(
+        'Sábado, 18 de abril',
+      );
+      expect(screen.getByTestId('today-card')).toBeInTheDocument();
+    });
+
+    it('renders no toolbar and no page heading when the Vidro shell is off', () => {
+      renderInVidro(false);
+
+      expect(document.querySelector('.vidro-toolbar')).toBeNull();
+      expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0);
+      expect(screen.getByTestId('today-card')).toBeInTheDocument();
+    });
   });
 
   describe('phone (below 768px)', () => {

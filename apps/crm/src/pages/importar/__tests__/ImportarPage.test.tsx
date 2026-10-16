@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ImportCollection } from '@mesaas/import-parsers';
 import type { CommitRow } from '@/services/dataImport';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 // --- mocks ------------------------------------------------------------------
 
@@ -625,5 +626,43 @@ describe('ImportarPage', () => {
 
     fireEvent.click(continuar);
     await screen.findByText('Prévia da importação');
+  });
+});
+
+describe('ImportarPage in the Vidro toolbar', () => {
+  function renderInHarness(vidroShell: boolean) {
+    return render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <MemoryRouter>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <ImportarPage />
+          </VidroToolbarHarness>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  test('puts the title in the toolbar and keeps the step list in the content', async () => {
+    renderInHarness(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Importar dados');
+    const current = document.querySelector('ol [aria-current="step"]');
+    expect(current).not.toBeNull();
+    expect(current?.closest('.vidro-toolbar')).toBeNull();
+  });
+
+  test('keeps the in-page heading when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Importar dados');
+    expect(h1s[0].closest('.vidro-toolbar')).toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
   });
 });

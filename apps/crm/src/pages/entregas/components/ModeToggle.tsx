@@ -1,3 +1,5 @@
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+
 export type EntregasMode = 'entregas' | 'publicacoes';
 
 interface ModeToggleProps {
@@ -15,6 +17,31 @@ interface ModeToggleProps {
  *  serialized into the URL and into saved vistas, and renaming it would
  *  silently reset every shared link. */
 export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
+  const vidroShell = useVidroShell();
+  const options = [
+    ['entregas', 'Etapas'],
+    ['publicacoes', 'Status'],
+  ] as const;
+  // Under the Vidro shell the toggle takes the skin's segmented-capsule styles
+  // (data-slot hooks) and drops its inline styles, which would win over them.
+  if (vidroShell) {
+    return (
+      <div data-slot="toggle-group">
+        {options.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={mode === id}
+            data-slot="toggle-group-item"
+            data-state={mode === id ? 'on' : 'off'}
+            onClick={() => onModeChange(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div
       style={{
@@ -27,12 +54,7 @@ export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
         width: 'fit-content',
       }}
     >
-      {(
-        [
-          ['entregas', 'Etapas'],
-          ['publicacoes', 'Status'],
-        ] as const
-      ).map(([id, label]) => (
+      {options.map(([id, label]) => (
         <button
           key={id}
           onClick={() => onModeChange(id)}

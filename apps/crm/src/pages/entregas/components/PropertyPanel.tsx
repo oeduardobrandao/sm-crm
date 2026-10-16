@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { getPropertyDefinitions, type PostPropertyValue, type Membro } from '../../../store';
 import { PropertyValue } from './PropertyValue';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 
 interface Props {
   templateId: number;
@@ -24,6 +25,7 @@ export function PropertyPanel({
 }: Props) {
   const qc = useQueryClient();
   const [showPanel, setShowPanel] = useState(false);
+  const vidroShell = useVidroShell();
 
   const { data: definitions = [] } = useQuery({
     queryKey: ['property-definitions', templateId],
@@ -59,7 +61,8 @@ export function PropertyPanel({
     <div style={{ marginBottom: '1rem' }}>
       <div
         style={{
-          background: 'var(--card-bg)',
+          // Under the Vidro shell the panel shows through (spec: inline-style escapes).
+          background: vidroShell ? undefined : 'var(--card-bg)',
           border: '1px solid var(--border-color)',
           borderRadius: 8,
           padding: '10px 12px',

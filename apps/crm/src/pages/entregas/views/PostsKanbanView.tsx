@@ -1,4 +1,5 @@
 import { Fragment, memo, useCallback, useMemo, useState } from 'react';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -506,6 +507,9 @@ const PostBoardColumn = memo(function PostBoardColumn({
 }) {
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
+  // Vidro: neutral header and count; the status icon keeps the colour cue.
+  const vidroShell = useVidroShell();
+  const tinted = vidroShell ? null : tint;
 
   return (
     <div
@@ -514,10 +518,10 @@ const PostBoardColumn = memo(function PostBoardColumn({
     >
       <div
         className="board-column-header"
-        style={tint ? { background: `${tint}30`, borderBottomColor: `${tint}30` } : undefined}
+        style={tinted ? { background: `${tinted}30`, borderBottomColor: `${tinted}30` } : undefined}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem', minWidth: 0 }}>
-          <span className="board-column-title" style={tint ? { color: tint } : undefined}>
+          <span className="board-column-title" style={tinted ? { color: tinted } : undefined}>
             {option.kind === 'custom'
               ? (() => {
                   const CustomIcon = getCustomStatusIcon(option.icone);
@@ -560,7 +564,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
                 type="button"
                 aria-label={`Ordenar coluna ${option.label}`}
                 className="board-column-sort"
-                style={tint ? { color: tint } : undefined}
+                style={tinted ? { color: tinted } : undefined}
               >
                 <ArrowUpDown size={12} aria-hidden="true" />
               </button>
@@ -585,7 +589,9 @@ const PostBoardColumn = memo(function PostBoardColumn({
         <span
           className="board-column-count"
           style={
-            tint ? { background: `${tint}3d`, color: tint, borderColor: 'transparent' } : undefined
+            tinted
+              ? { background: `${tinted}3d`, color: tinted, borderColor: 'transparent' }
+              : undefined
           }
         >
           {posts.length}
@@ -594,7 +600,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
       <div
         ref={setNodeRef}
         className="board-column-body"
-        style={tint ? { background: `${tint}0a` } : undefined}
+        style={tinted ? { background: `${tinted}0a` } : undefined}
       >
         <SortableContext
           items={posts.map((p) => String(p.id))}

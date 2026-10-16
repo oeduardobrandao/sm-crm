@@ -11,6 +11,7 @@ import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { BottomActionBar } from '@/components/mobile/BottomActionBar';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { getClientes } from '@/store';
 import {
   analyzeImport,
@@ -319,6 +320,8 @@ export default function ImportarPage() {
   const guide = sourceGuide(source ?? 'csv');
   const currentIndex = STEP_TITLES.findIndex(([s]) => s === step);
 
+  const inToolbar = usePageToolbar({ title: 'Importar dados' });
+
   if (isPhone) {
     // Same steps, same handlers and the same enable rules as the desktop footers below;
     // only the layout differs. The step's buttons live in one bottom bar.
@@ -446,10 +449,12 @@ export default function ImportarPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className={`mx-auto max-w-4xl space-y-6${inToolbar ? '' : ' p-6'}`}>
       <div>
-        <h1 className="text-2xl font-bold">Importar dados</h1>
-        <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted-foreground">
+        {!inToolbar && <h1 className="text-2xl font-bold">Importar dados</h1>}
+        <ol
+          className={`${inToolbar ? '' : 'mt-2 '}flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted-foreground`}
+        >
           {STEP_TITLES.map(([id, label], i) => (
             <li
               key={id}

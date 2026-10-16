@@ -110,6 +110,7 @@ vi.mock('@/components/ui/date-picker', () => ({
 }));
 
 import { EventoRapidoCard } from '../EventoRapidoCard';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const PESSOAS = [
   { id: 'me', nome: 'Eu Mesmo', avatar_url: null },
@@ -142,20 +143,23 @@ beforeEach(() => {
   document.body.appendChild(anchor);
 });
 
-function abrir(inicial = TERCA_9H) {
+function abrir(inicial = TERCA_9H, vidro = false) {
   const onClose = vi.fn();
   const onMaisOpcoes = vi.fn();
   const onRascunhoChange = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const card = (
+    <EventoRapidoCard
+      inicial={inicial}
+      anchor={anchor}
+      onClose={onClose}
+      onMaisOpcoes={onMaisOpcoes}
+      onRascunhoChange={onRascunhoChange}
+    />
+  );
   const utils = render(
     <QueryClientProvider client={qc}>
-      <EventoRapidoCard
-        inicial={inicial}
-        anchor={anchor}
-        onClose={onClose}
-        onMaisOpcoes={onMaisOpcoes}
-        onRascunhoChange={onRascunhoChange}
-      />
+      {vidro ? <VidroToolbarHarness>{card}</VidroToolbarHarness> : card}
     </QueryClientProvider>,
   );
   return { ...utils, onClose, onMaisOpcoes, onRascunhoChange };
@@ -355,5 +359,27 @@ describe('EventoRapidoCard', () => {
     document.body.appendChild(fora);
     fireEvent.pointerDown(fora);
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('EventoRapidoCard under the Vidro look', () => {
+  it('keeps its own surface inline styles without the Vidro shell', () => {
+    abrir();
+    const dialog = screen.getByRole('dialog', { name: 'Novo evento' });
+    // Only the component's own declarations: Radix appends its popper variables and, until
+    // floating-ui settles, a timing-dependent `animation: none`.
+    expect(dialog.getAttribute('style')!.split('; --radix-')[0]).toMatchInlineSnapshot(
+      `"background: var(--card-bg); border-color: var(--border-color); border-radius: 12px; color: var(--text-main); box-shadow: var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))"`,
+    );
+  });
+
+  it('drops background, border colour, radius and shadow under the Vidro shell', () => {
+    abrir(TERCA_9H, true);
+    const dialog = screen.getByRole('dialog', { name: 'Novo evento' });
+    expect(dialog.style.background).toBe('');
+    expect(dialog.style.borderColor).toBe('');
+    expect(dialog.style.borderRadius).toBe('');
+    expect(dialog.style.boxShadow).toBe('');
+    expect(dialog.style.color).toBe('var(--text-main)');
   });
 });

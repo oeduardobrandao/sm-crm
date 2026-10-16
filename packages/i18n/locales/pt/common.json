@@ -48,7 +48,9 @@
     "logout": "Sair",
     "myAccount": "Minha Conta",
     "comingSoon": "Em breve",
-    "upgradeToUnlock": "Disponível nos planos Pro e Max"
+    "upgradeToUnlock": "Disponível nos planos Pro e Max",
+    "lookClassic": "Visual clássico",
+    "lookNew": "Visual novo"
   },
   "language": {
     "pt": "Português",

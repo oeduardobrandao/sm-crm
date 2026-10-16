@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Calendar, Columns, List, ListChecks, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PageSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
@@ -128,6 +129,97 @@ export default function TarefasPage() {
     [membros, refresh],
   );
 
+  const subtitle = (
+    <>
+      {stats.abertas} aberta{stats.abertas === 1 ? '' : 's'}
+      {stats.atrasadas > 0 && (
+        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+          {' '}
+          · {stats.atrasadas} atrasada{stats.atrasadas === 1 ? '' : 's'}
+        </span>
+      )}
+      {stats.vencemHoje > 0 && (
+        <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
+          {' '}
+          · {stats.vencemHoje} vence{stats.vencemHoje === 1 ? '' : 'm'} hoje
+        </span>
+      )}
+    </>
+  );
+
+  const primaryAction = (
+    <Button onClick={() => openForm(null)}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova tarefa
+    </Button>
+  );
+
+  // The minhas/todas switch: the toolbar's segmented slot gets the Vidro pill, the in-page
+  // header keeps today's inline styles.
+  const escopoOptions = ['minhas', 'todas'] as const;
+  const escopoLabel = (option: TarefasEscopo) =>
+    option === 'minhas' ? 'Minhas tarefas' : 'Todas as tarefas';
+  const escopoSwitchVidro =
+    currentMembroId != null ? (
+      <div className="vidro-seg">
+        {escopoOptions.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className="vidro-seg-btn"
+            aria-pressed={escopo === option}
+            onClick={() => handleEscopoChange(option)}
+          >
+            {escopoLabel(option)}
+          </button>
+        ))}
+      </div>
+    ) : null;
+  const escopoSwitch =
+    currentMembroId != null ? (
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.25rem',
+          background: 'var(--surface-2)',
+          padding: '0.25rem',
+          borderRadius: '8px',
+          width: 'fit-content',
+        }}
+        className="animate-up"
+      >
+        {escopoOptions.map((option) => (
+          <button
+            key={option}
+            onClick={() => handleEscopoChange(option)}
+            style={{
+              padding: '0.4rem 0.9rem',
+              borderRadius: '6px',
+              border: 'none',
+              background: escopo === option ? '#000' : 'transparent',
+              color: escopo === option ? '#fff' : 'var(--text-secondary)',
+              fontSize: '0.8rem',
+              fontWeight: escopo === option ? 600 : 400,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {escopoLabel(option)}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
+  const inToolbar = usePageToolbar(
+    isLoading
+      ? null
+      : {
+          title: 'Tarefas',
+          subtitle,
+          segmented: escopoSwitchVidro,
+          primary: primaryAction,
+        },
+  );
+
   if (isLoading) {
     // The page always opens on the 'lista' view.
     return <PageSkeleton body="list" />;
@@ -234,31 +326,15 @@ export default function TarefasPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
-        <div className="header-title">
-          <h1>Tarefas</h1>
-          <p>
-            {stats.abertas} aberta{stats.abertas === 1 ? '' : 's'}
-            {stats.atrasadas > 0 && (
-              <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                {' '}
-                · {stats.atrasadas} atrasada{stats.atrasadas === 1 ? '' : 's'}
-              </span>
-            )}
-            {stats.vencemHoje > 0 && (
-              <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
-                {' '}
-                · {stats.vencemHoje} vence{stats.vencemHoje === 1 ? '' : 'm'} hoje
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="header-actions">
-          <Button onClick={() => openForm(null)}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova tarefa
-          </Button>
-        </div>
-      </header>
+      {!inToolbar && (
+        <header className="header animate-up">
+          <div className="header-title">
+            <h1>Tarefas</h1>
+            <p>{subtitle}</p>
+          </div>
+          <div className="header-actions">{primaryAction}</div>
+        </header>
+      )}
 
       <TarefasStatsHeader stats={stats} />
 
@@ -271,44 +347,21 @@ export default function TarefasPage() {
           gap: '0.5rem',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            gap: '0.25rem',
-            background: 'var(--surface-2)',
-            padding: '0.25rem',
-            borderRadius: '8px',
-            overflowX: 'auto',
-            width: 'fit-content',
-            maxWidth: '100%',
-          }}
-          className="animate-up no-scrollbar"
-        >
-          {VIEW_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveView(tab.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.4rem 0.9rem',
-                borderRadius: '6px',
-                border: 'none',
-                background: activeView === tab.id ? '#000' : 'transparent',
-                color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
-                fontSize: '0.8rem',
-                fontWeight: activeView === tab.id ? 600 : 400,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {currentMembroId != null && (
+        {inToolbar ? (
+          <div className="vidro-seg animate-up no-scrollbar">
+            {VIEW_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className="vidro-seg-btn"
+                aria-pressed={activeView === tab.id}
+                onClick={() => setActiveView(tab.id)}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : (
           <div
             style={{
               display: 'flex',
@@ -316,31 +369,38 @@ export default function TarefasPage() {
               background: 'var(--surface-2)',
               padding: '0.25rem',
               borderRadius: '8px',
+              overflowX: 'auto',
               width: 'fit-content',
+              maxWidth: '100%',
             }}
-            className="animate-up"
+            className="animate-up no-scrollbar"
           >
-            {(['minhas', 'todas'] as const).map((option) => (
+            {VIEW_TABS.map((tab) => (
               <button
-                key={option}
-                onClick={() => handleEscopoChange(option)}
+                key={tab.id}
+                onClick={() => setActiveView(tab.id)}
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                   padding: '0.4rem 0.9rem',
                   borderRadius: '6px',
                   border: 'none',
-                  background: escopo === option ? '#000' : 'transparent',
-                  color: escopo === option ? '#fff' : 'var(--text-secondary)',
+                  background: activeView === tab.id ? '#000' : 'transparent',
+                  color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
                   fontSize: '0.8rem',
-                  fontWeight: escopo === option ? 600 : 400,
+                  fontWeight: activeView === tab.id ? 600 : 400,
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
               >
-                {option === 'minhas' ? 'Minhas tarefas' : 'Todas as tarefas'}
+                {tab.icon} {tab.label}
               </button>
             ))}
           </div>
         )}
+
+        {!inToolbar && escopoSwitch}
       </div>
 
       <TarefasFilters
