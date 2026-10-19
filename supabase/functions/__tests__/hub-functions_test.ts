@@ -235,6 +235,55 @@ Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permali
   assert(!/(^|[ ,])tiktok_post_url/.test(select), "the frozen column is no longer selected");
 });
 
+Deno.test("hub-posts selects ig_collaborators but never the refused list", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Post",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        scheduled_at: "2026-04-20T10:00:00.000Z",
+        platform: "instagram",
+        workflow_id: 7,
+        ig_collaborators: ["dra.julia", "clinicaviva"],
+        workflows: { titulo: "Calendário Abril" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+
+  const postsSelect = db.calls.find((c) =>
+    c.table === "workflow_posts" && c.operation === "select" && String(c.selectArgs[0]?.[0]).includes("titulo")
+  )!;
+  const select = String(postsSelect.selectArgs[0][0]);
+  assert(/(^|[ ,])ig_collaborators(,|$)/.test(select), select);
+  assert(!select.includes("ig_collaborators_refused"), select);
+  const first = (body.posts as Array<Record<string, unknown>>)[0];
+  assertEquals(first.ig_collaborators, ["dra.julia", "clinicaviva"]);
+});
+
 Deno.test("hub-posts cover_media is the first slide by sort_order, not a stale is_cover flag", async () => {
   // Instagram shows a carousel's first slide in the feed. A slide moved to the
   // front keeps is_cover=false while the old first slide keeps the flag.

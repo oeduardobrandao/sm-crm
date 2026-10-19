@@ -637,6 +637,33 @@ describe('PostDetailDialog', () => {
     expect(screen.queryByText('Reel de teste')).not.toBeInTheDocument();
   });
 
+  describe('Instagram collaborators', () => {
+    const NOTE =
+      'No Instagram, o post vai aparecer também no perfil dessas contas, se elas aceitarem o convite.';
+
+    it.each([
+      [['a'], 'Em parceria com @a'],
+      [['a', 'b'], 'Em parceria com @a e @b'],
+      [['a', 'b', 'c'], 'Em parceria com @a, @b e @c'],
+    ])('shows the partnership line and note for %j', (names, line) => {
+      renderDialog(1, { posts: [post({ id: 1, ig_collaborators: names })] });
+      expect(screen.getByText(line)).toBeInTheDocument();
+      expect(screen.getByText(NOTE)).toBeInTheDocument();
+    });
+
+    it('shows nothing for an empty list', () => {
+      renderDialog(1, { posts: [post({ id: 1, ig_collaborators: [] })] });
+      expect(screen.queryByText(/Em parceria com/)).not.toBeInTheDocument();
+      expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    });
+
+    it('shows nothing when the field is missing (stale cached payload)', () => {
+      renderDialog(1);
+      expect(screen.queryByText(/Em parceria com/)).not.toBeInTheDocument();
+      expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    });
+  });
+
   // Storage auto-clean placeholder (spec 2026-08-10): a published post whose
   // media was deleted reads as a text post; the banner must say why and keep a
   // path to the live publication.

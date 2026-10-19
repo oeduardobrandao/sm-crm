@@ -108,6 +108,10 @@
     "mediaRemoved": "Media removed to free up space",
     "instagramCaptionLabel": "Instagram caption"
   },
+  "collab": {
+    "partnership": "In partnership with {{names}}",
+    "note": "On Instagram, the post will also appear on these accounts' profiles once they accept the invite."
+  },
   "posts": {
     "select": "Select",
     "done": "Done",
