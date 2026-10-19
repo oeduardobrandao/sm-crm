@@ -174,6 +174,35 @@ describe('ScheduleButton', () => {
       expect(defaultProps.onStatusChange).toHaveBeenCalled();
     });
 
+    it('waits for beforeServerAction (pending field write) before scheduling', async () => {
+      vi.mocked(scheduleInstagramPost).mockResolvedValueOnce({ ok: true, status: 'agendado' });
+      let release!: () => void;
+      const beforeServerAction = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      render(
+        <ScheduleButton
+          post={makePost()}
+          {...defaultProps}
+          beforeServerAction={beforeServerAction}
+        />,
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Agendar publicação'));
+      });
+      expect(beforeServerAction).toHaveBeenCalled();
+      expect(scheduleInstagramPost).not.toHaveBeenCalled();
+
+      await act(async () => {
+        release();
+      });
+      await waitFor(() => expect(scheduleInstagramPost).toHaveBeenCalledWith(1));
+    });
+
     it('shows error toast when schedule fails', async () => {
       vi.mocked(scheduleInstagramPost).mockRejectedValueOnce(
         new Error('Data de publicação não definida.'),

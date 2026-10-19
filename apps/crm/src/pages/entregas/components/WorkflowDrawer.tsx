@@ -574,8 +574,10 @@ export function WorkflowDrawer({
     try {
       await updateWorkflowPost(id, { [field]: value } as Partial<WorkflowPost>);
       refresh();
+      return true;
     } catch {
       toast.error('Erro ao atualizar post');
+      return false;
     }
   };
 
@@ -1702,7 +1704,7 @@ interface SortablePostItemProps {
   onDuplicateRequest?: () => void;
   onToggle: () => void;
   onDelete: () => void;
-  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
+  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void | Promise<unknown>;
   onContentUpdate: (json: Record<string, unknown>, plain: string) => void;
   onReplyChange: (text: string) => void;
   onReplySend: () => void;

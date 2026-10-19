@@ -543,12 +543,7 @@ function PostDetailContent({
           : getTipoLabel(t, post.tipo);
   // Collab post: a stale cached payload may lack the field, so null/undefined reads as [].
   const collaborators = post.ig_collaborators ?? [];
-  const collaboratorNames =
-    collaborators.length > 0
-      ? new Intl.ListFormat(i18n.language, { style: 'long', type: 'conjunction' }).format(
-          collaborators.map((name) => `@${name}`),
-        )
-      : '';
+  const collaboratorNames = formatCollaboratorNames(collaborators, i18n.language);
   const dot = (
     <span aria-hidden="true" className="mx-1.5 hub-tx3">
       ·
@@ -1048,4 +1043,15 @@ function PostDetailContent({
       )}
     </>
   );
+}
+
+/** "@a, @b e @c" no idioma do Hub. Intl.ListFormat falta em Safari < 14.5: cai para vírgulas. */
+function formatCollaboratorNames(collaborators: string[], language: string): string {
+  if (collaborators.length === 0) return '';
+  const handles = collaborators.map((name) => `@${name}`);
+  try {
+    return new Intl.ListFormat(language, { style: 'long', type: 'conjunction' }).format(handles);
+  } catch {
+    return handles.join(', ');
+  }
 }

@@ -15,6 +15,18 @@ describe('parseCollaboratorInput', () => {
     ).toEqual(['dra.julia', 'clinicaviva', 'nutri.ana']);
   });
 
+  it('keeps a post/reel URL whole so it fails validation instead of becoming @p or @reel', () => {
+    for (const url of [
+      'https://www.instagram.com/p/DAbc123/',
+      'instagram.com/reel/XYZ',
+      'https://instagram.com/explore/tags/verao',
+    ]) {
+      const [parsed] = parseCollaboratorInput(url);
+      expect(parsed).not.toMatch(/^(p|reel|explore)$/);
+      expect(validateCollaborator(parsed, [])).toBe('invalid');
+    }
+  });
+
   it('extracts the username from a bare profile URL', () => {
     expect(parseCollaboratorInput('instagram.com/clinicaviva')).toEqual(['clinicaviva']);
     expect(parseCollaboratorInput('http://instagram.com/clinicaviva/')).toEqual(['clinicaviva']);

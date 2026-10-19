@@ -84,6 +84,7 @@ import { DestinationStatusPill } from './DestinationStatusPill';
 import { PhoneEditorHeader } from './postEditorPhone/PhoneEditorHeader';
 import { PhoneEditorTabs, type PhoneEditorTab } from './postEditorPhone/PhoneEditorTabs';
 import { PhoneBottomBar, formatPhoneDateTime } from './postEditorPhone/PhoneBottomBar';
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { PhonePublishChecklist } from './postEditorPhone/PhonePublishChecklist';
 import { PhoneTextScreen } from './postEditorPhone/PhoneTextScreen';
 import { PhoneComments } from './postEditorPhone/PhoneComments';
@@ -156,7 +157,8 @@ export interface PostEditorBodyProps {
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   hasActiveTikTokAccount: boolean;
   ttAccountStatus: { revoked: boolean; expired: boolean } | null;
-  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
+  /** Pode devolver a promise da gravação; `false` = falhou (a fila de colaboradores usa). */
+  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void | Promise<unknown>;
   onContentUpdate: (json: Record<string, unknown>, plain: string) => void;
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
@@ -303,24 +305,44 @@ export function PostEditorBody({
   // Colaboradores: lista local otimista e gravações em fila. O post só volta com a lista
   // nova depois do PATCH + refresh; sem isso, dois @ adicionados em sequência partiam da
   // mesma lista antiga e o segundo apagava o primeiro. Enquanto há gravação pendente, o
-  // valor do servidor não sobrescreve o local.
+  // valor do servidor não sobrescreve o local. O reel de teste usa a mesma fila: os dois
+  // campos se excluem no banco, e PATCHes fora de ordem fariam o CHECK recusar um deles.
   const [collaborators, setCollaboratorsLocal] = useState<string[]>(post.ig_collaborators ?? []);
-  const collaboratorsPending = useRef(0);
-  const collaboratorsQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const serverCollaborators = useRef<string[]>(post.ig_collaborators ?? []);
+  const fieldWritesPending = useRef(0);
+  const fieldWriteQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const collaboratorsWriteFailed = useRef(false);
   useEffect(() => {
-    if (collaboratorsPending.current === 0) setCollaboratorsLocal(post.ig_collaborators ?? []);
+    serverCollaborators.current = post.ig_collaborators ?? [];
+    if (fieldWritesPending.current === 0) setCollaboratorsLocal(serverCollaborators.current);
   }, [post.ig_collaborators]);
-  const setCollaborators = (next: string[]) => {
-    setCollaboratorsLocal(next);
-    const write = () => Promise.resolve(onFieldChangeRef.current('ig_collaborators', next));
-    const idle = collaboratorsPending.current === 0;
-    collaboratorsPending.current += 1;
-    collaboratorsQueue.current = (idle ? write() : collaboratorsQueue.current.then(write))
+  const queueFieldWrite = (field: keyof WorkflowPost, value: unknown) => {
+    // Os drawers resolvem `false` quando o PATCH falha (já avisaram com toast).
+    const write = () =>
+      Promise.resolve(onFieldChangeRef.current(field, value)).then((ok) => {
+        if (ok === false && field === 'ig_collaborators') collaboratorsWriteFailed.current = true;
+      });
+    const idle = fieldWritesPending.current === 0;
+    fieldWritesPending.current += 1;
+    const chain = (idle ? write() : fieldWriteQueue.current.then(write))
       .catch(() => undefined)
       .finally(() => {
-        collaboratorsPending.current -= 1;
+        fieldWritesPending.current -= 1;
+        // Gravação recusada: sem refresh o post não muda, então volta ao valor salvo.
+        if (fieldWritesPending.current === 0 && collaboratorsWriteFailed.current) {
+          collaboratorsWriteFailed.current = false;
+          setCollaboratorsLocal(serverCollaborators.current);
+        }
       });
+    fieldWriteQueue.current = chain;
+    // Troca silenciosa de versão espera a fila; Agendar/Publicar também (flushFieldWrites).
+    void trackUnsavedWork(chain);
   };
+  const setCollaborators = (next: string[]) => {
+    setCollaboratorsLocal(next);
+    queueFieldWrite('ig_collaborators', next);
+  };
+  const flushFieldWrites = () => fieldWriteQueue.current;
   useEffect(() => {
     if (!tituloDirty.current) setTituloLocal(post.titulo ?? '');
   }, [post.titulo]);
@@ -455,6 +477,7 @@ export function PostEditorBody({
     onTikTokUnaudited: () => setTiktokTestModeBanner(true),
     onStatusChange: onRefresh,
     explainMissingInstagramAccount: multiplatform,
+    beforeServerAction: flushFieldWrites,
   });
 
   if (!isExpanded) return null;
@@ -1057,7 +1080,7 @@ export function PostEditorBody({
                 media={postMedia ?? []}
                 disabled={isScheduleLocked}
                 collaboratorsCount={collaborators.length}
-                onFieldChange={onFieldChange}
+                onFieldChange={queueFieldWrite}
               />
             </div>
           </section>
@@ -1551,7 +1574,7 @@ export function PostEditorBody({
           media={postMedia ?? []}
           disabled={isScheduleLocked}
           collaboratorsCount={collaborators.length}
-          onFieldChange={onFieldChange}
+          onFieldChange={queueFieldWrite}
         />
       )}
 
@@ -1577,6 +1600,7 @@ export function PostEditorBody({
         onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
         onStatusChange={onRefresh}
         explainMissingInstagramAccount={multiplatform}
+        beforeServerAction={flushFieldWrites}
       />
 
       {/* Self-gating: renders nothing without the plan feature, an Instagram

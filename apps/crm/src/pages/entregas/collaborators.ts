@@ -3,6 +3,8 @@ export const MAX_COLLABORATORS = 3;
 
 const USERNAME_RE = /^[a-z0-9._]{1,30}$/;
 const PROFILE_URL_RE = /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/([^/?#\s]+)/i;
+// Caminhos de post/reel/explorar, não de perfil: a URL inteira fica e cai em "inválido".
+const NON_PROFILE_PATHS = new Set(['p', 'reel', 'reels', 'explore', 'stories', 'tv']);
 
 /**
  * Quebra o texto digitado/colado em usernames normalizados: separa por vírgula,
@@ -15,7 +17,7 @@ export function parseCollaboratorInput(raw: string): string[] {
     let value = piece.trim();
     if (!value) continue;
     const url = PROFILE_URL_RE.exec(value);
-    if (url) value = url[1];
+    if (url && !NON_PROFILE_PATHS.has(url[1].toLowerCase())) value = url[1];
     if (value.startsWith('@')) value = value.slice(1);
     value = value.toLowerCase();
     if (value) out.push(value);

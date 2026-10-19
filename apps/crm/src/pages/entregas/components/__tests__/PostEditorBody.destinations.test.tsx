@@ -425,6 +425,21 @@ describe('PostEditorBody, colaboradores do Instagram (desktop, single-platform)'
     ]);
   });
 
+  it('gravação recusada: o chip otimista volta ao valor salvo', async () => {
+    const onFieldChange = vi.fn(() => Promise.resolve(false));
+    renderBody({
+      hasInstagramAccount: true,
+      onFieldChange,
+      post: { ...basePost, ig_collaborators: ['dra.julia'] },
+    });
+    const input = screen.getByPlaceholderText('Adicionar @usuário');
+    fireEvent.change(input, { target: { value: 'clinicaviva' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByTestId('collab-chip-clinicaviva')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('collab-chip-clinicaviva')).toBeNull());
+    expect(screen.getByTestId('collab-chip-dra.julia')).toBeInTheDocument();
+  });
+
   it('agendado: campo travado, sem input', () => {
     renderBody({
       hasInstagramAccount: true,

@@ -24,6 +24,11 @@
 -- ---------------------------------------------------------------------
 -- 1) Helper
 -- ---------------------------------------------------------------------
+-- ACCESS EXCLUSIVE em workflow_posts (ADD COLUMN + CHECKs que varrem a tabela):
+-- desiste em 5s em vez de enfileirar o tráfego atrás do ALTER. Mesma guarda de
+-- 20261010100002 e 20261014000001. SET LOCAL vale até o fim do arquivo.
+SET LOCAL lock_timeout = '5s';
+
 CREATE OR REPLACE FUNCTION public.ig_collaborators_valid(p text[])
 RETURNS boolean
 LANGUAGE sql IMMUTABLE
@@ -188,8 +193,8 @@ RETURNS TABLE (
 $$;
 -- service_role only; FROM public sozinho nao basta em hosted Supabase, onde os
 -- default privileges concedem EXECUTE direto a anon/authenticated (mesmo
--- gotcha documentado no bloco do sweep mais abaixo, 20260806000002) -- e o
--- DROP+CREATE acima reseta a ACL desta funcao para esses defaults.
+-- gotcha documentado em 20260806000002) -- e o DROP+CREATE acima reseta a ACL
+-- desta funcao para esses defaults.
 REVOKE ALL ON FUNCTION claim_posts_for_publishing(text, int) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION claim_posts_for_publishing(text, int) TO service_role;
 
