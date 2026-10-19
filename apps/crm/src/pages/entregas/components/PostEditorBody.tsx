@@ -41,6 +41,7 @@ import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import type { TikTokReadiness } from '../tiktokComposerRules';
 import { TrialReelPanel } from './TrialReelPanel';
+import { InstagramCollaboratorsField } from './InstagramCollaboratorsField';
 import {
   ScheduleButton,
   PlatformStatusRow,
@@ -122,6 +123,8 @@ import type { PhoneEditorChrome, PhoneMenuAction } from './postEditorPhone/types
 // Stable fallback so the per-bubble filter below never sees a new array identity while the
 // references query is disabled (collapsed row) or still loading.
 const EMPTY_REFERENCES: ReferenceItem[] = [];
+const COLLABORATORS_CLEARED_NOT_INSTAGRAM =
+  'Colaboradores removidos: o post não vai mais para o Instagram.';
 
 export interface PostEditorBodyProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
@@ -284,6 +287,10 @@ export function PostEditorBody({
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
   const captionRef = useRef<InstagramCaptionFieldHandle>(null);
+  // Campo de colaboradores: "Editar colaboradores" (bloco de erro) foca o input; sem input
+  // (travado ou com 3 chips) rola até o campo.
+  const collaboratorsInputRef = useRef<HTMLInputElement>(null);
+  const collaboratorsBoxRef = useRef<HTMLDivElement>(null);
   const tituloDirty = useRef(false);
   // Hold the latest onFieldChange in a ref so the debounce effect below does
   // not re-run (and reset its timer) every time the parent re-renders with a
@@ -450,6 +457,45 @@ export function PostEditorBody({
         ? 'Post já publicado'
         : null;
 
+  const collaborators = post.ig_collaborators ?? [];
+  const showCollaborators =
+    hasInstagramAccount && post.tipo !== 'stories' && isInstagramPost(post.platform);
+  // Mudança de tipo/plataforma que torna colaboradores impossíveis: o trigger do banco
+  // zera a lista; aqui o editor acompanha e avisa (só quando havia alguém na lista).
+  const clearCollaboratorsFor = (change: { tipo?: WorkflowPost['tipo']; platform?: string }) => {
+    if (collaborators.length === 0) return;
+    if (change.tipo === 'stories') {
+      onFieldChange('ig_collaborators', []);
+      toast.info('Colaboradores removidos: Stories não aceitam colaboradores.');
+    } else if (change.platform === 'tiktok') {
+      onFieldChange('ig_collaborators', []);
+      toast.info(COLLABORATORS_CLEARED_NOT_INSTAGRAM);
+    }
+  };
+  const focusCollaborators = () =>
+    requestAnimationFrame(() => {
+      const input = collaboratorsInputRef.current;
+      if (input && !input.disabled) input.focus();
+      else collaboratorsBoxRef.current?.scrollIntoView({ block: 'center' });
+    });
+  const collaboratorsField = (idPrefix: string, className?: string) => (
+    <div ref={collaboratorsBoxRef} className={className}>
+      <InstagramCollaboratorsField
+        value={collaborators}
+        onChange={(next) => onFieldChange('ig_collaborators', next)}
+        locked={isScheduleLocked}
+        trialOn={!!post.ig_trial_strategy}
+        refused={
+          post.status === 'falha_publicacao' && post.publish_error_code === 'COLLABORATOR_INVALID'
+            ? (post.ig_collaborators_refused ?? [])
+            : []
+        }
+        inputRef={collaboratorsInputRef}
+        idPrefix={idPrefix}
+      />
+    </div>
+  );
+
   const handleDestinationToggle = (platform: PlatformId, on: boolean) => {
     const ownCaption =
       platform === 'instagram'
@@ -503,6 +549,15 @@ export function PostEditorBody({
             });
           },
         },
+      );
+      return;
+    }
+    if (!on && platform === 'instagram' && collaborators.length > 0) {
+      // O banco zera ig_collaborators quando o post deixa de ir para o Instagram; o
+      // onSettled do hook recarrega o post, então o editor larga os chips velhos.
+      destinations.toggle.mutate(
+        { platform, on, seedCaption: null },
+        { onSuccess: () => toast.info(COLLABORATORS_CLEARED_NOT_INSTAGRAM) },
       );
       return;
     }
@@ -798,6 +853,7 @@ export function PostEditorBody({
                 if (v !== 'reels' && post.ig_trial_strategy) {
                   onFieldChange('ig_trial_strategy', null);
                 }
+                clearCollaboratorsFor({ tipo: v });
               }}
             />
           </li>
@@ -830,6 +886,7 @@ export function PostEditorBody({
                   if (platform === 'tiktok' && post.ig_trial_strategy) {
                     onFieldChange('ig_trial_strategy', null);
                   }
+                  clearCollaboratorsFor({ platform });
                 }}
               />
             )}
@@ -943,7 +1000,15 @@ export function PostEditorBody({
     const publicarPane = (
       <>
         {shouldShowPublishErrorBlock(post) && (
-          <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
+          <PublishErrorBlock
+            post={post}
+            clienteId={clienteId}
+            onStatusChange={onRefresh}
+            onEditCollaborators={() => {
+              setPhoneTab('publicar');
+              focusCollaborators();
+            }}
+          />
         )}
         {post.status === 'falha_publicacao' &&
           (post.platform === 'tiktok' || post.platform === 'both') &&
@@ -962,14 +1027,16 @@ export function PostEditorBody({
           </section>
         )}
 
-        {hasInstagramAccount && post.tipo === 'reels' && isInstagramPost(post.platform) && (
-          <section className="phone-editor-section" aria-label="Reel de teste">
+        {showCollaborators && (
+          <section className="phone-editor-section" aria-label="Instagram">
             <h2 className="phone-group__header">Instagram</h2>
-            <div className="phone-editor-card">
+            <div className="phone-editor-card flex flex-col gap-4">
+              {collaboratorsField(`phone-collab-${post.id}`)}
               <TrialReelPanel
                 post={post}
                 media={postMedia ?? []}
                 disabled={isScheduleLocked}
+                collaboratorsCount={collaborators.length}
                 onFieldChange={onFieldChange}
               />
             </div>
@@ -1151,6 +1218,7 @@ export function PostEditorBody({
             if (v !== 'reels' && post.ig_trial_strategy) {
               onFieldChange('ig_trial_strategy', null);
             }
+            clearCollaboratorsFor({ tipo: v });
           }}
         />
         {multiplatform ? (
@@ -1181,6 +1249,7 @@ export function PostEditorBody({
               if (platform === 'tiktok' && post.ig_trial_strategy) {
                 onFieldChange('ig_trial_strategy', null);
               }
+              clearCollaboratorsFor({ platform });
             }}
           />
         )}
@@ -1252,7 +1321,15 @@ export function PostEditorBody({
       {statusAutomationHint && <p className="drawer-status-hint">{statusAutomationHint}</p>}
 
       {shouldShowPublishErrorBlock(post) && (
-        <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
+        <PublishErrorBlock
+          post={post}
+          clienteId={clienteId}
+          onStatusChange={onRefresh}
+          onEditCollaborators={() => {
+            if (multiplatform) setCaptionTab('instagram');
+            focusCollaborators();
+          }}
+        />
       )}
 
       {isExternallyVisible && (
@@ -1425,7 +1502,16 @@ export function PostEditorBody({
           activeTab={captionTab}
           onActiveTabChange={setCaptionTab}
           locked={isScheduleLocked}
-          instagramCaption={isStoryPost ? storiesNote : instagramCaptionField(true)}
+          instagramCaption={
+            isStoryPost ? (
+              storiesNote
+            ) : (
+              <>
+                {instagramCaptionField(true)}
+                {showCollaborators && collaboratorsField(`collab-${post.id}`, 'mt-3')}
+              </>
+            )
+          }
           tiktokSettings={tiktokSettingsPanel(true)}
           tiktokFieldRef={tiktokCaptionRef}
           geralFieldRef={geralCaptionRef}
@@ -1437,11 +1523,14 @@ export function PostEditorBody({
         instagramCaptionField(false)
       ) : null}
 
+      {!multiplatform && showCollaborators && collaboratorsField(`collab-${post.id}`)}
+
       {hasInstagramAccount && (
         <TrialReelPanel
           post={post}
           media={postMedia ?? []}
           disabled={isScheduleLocked}
+          collaboratorsCount={collaborators.length}
           onFieldChange={onFieldChange}
         />
       )}
