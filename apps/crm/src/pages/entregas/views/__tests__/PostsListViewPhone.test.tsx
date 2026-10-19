@@ -158,6 +158,20 @@ describe('PostsListView no celular', () => {
     expect(row.getByText('Rascunho')).toBeInTheDocument();
   });
 
+  it('meta da linha inclui Collab N quando há colaboradores', () => {
+    renderList(
+      <PostsListView
+        {...baseProps}
+        posts={[
+          makePost({ titulo: 'Com collab', ig_collaborators: ['a', 'b'] }),
+          makePost({ titulo: 'Sem collab' }),
+        ]}
+      />,
+    );
+    expect(within(rowOf('Com collab')).getByText(/^Fluxo Base · Imagem · Collab 2/)).toBeTruthy();
+    expect(within(rowOf('Sem collab')).queryByText(/Collab/)).toBeNull();
+  });
+
   it('mantém os estados vazios, inclusive o aviso dos postados ocultos', () => {
     renderList(<PostsListView {...baseProps} posts={[]} hiddenPostados={2} />);
     expect(

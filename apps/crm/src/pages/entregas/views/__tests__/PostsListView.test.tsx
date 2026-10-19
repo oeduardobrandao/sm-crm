@@ -442,6 +442,26 @@ describe('PostsListView', () => {
     expect(screen.queryByText('Teste')).toBeNull();
   });
 
+  it('mostra o selo Collab N com a lista no title quando há colaboradores', () => {
+    render(<PostsListView {...baseProps} posts={[makePost({ ig_collaborators: ['a', 'b'] })]} />);
+    const badge = screen.getByText('Collab 2');
+    expect(badge.closest('.post-tipo-badge--collab')?.getAttribute('title')).toBe(
+      'Colaboradores: @a, @b',
+    );
+  });
+
+  it('não mostra o selo Collab com lista vazia ou ausente', () => {
+    const legacy = makePost();
+    delete (legacy as { ig_collaborators?: string[] }).ig_collaborators;
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[makePost({ titulo: 'Vazio', ig_collaborators: [] }), legacy]}
+      />,
+    );
+    expect(screen.queryByText(/^Collab/)).toBeNull();
+  });
+
   it('mostra "Individual · <etapa>" para um avulso com processo, quando o mapa traz a etapa', () => {
     const avulso = {
       id: 1,
