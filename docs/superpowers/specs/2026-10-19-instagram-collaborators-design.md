@@ -120,7 +120,7 @@ Migration (next free version above main's tail; main ends at `20261016000001`):
   column in the final `SELECT`, and `'COLLABORATOR_INVALID'` added to the retry
   phase's `NOT IN` list). Re-grant: `REVOKE ALL ... FROM public, anon, authenticated;
   GRANT EXECUTE ... TO service_role`.
-- `duplicate_post` (canonical body: `20261010100006_duplicate_post_targets.sql`):
+- `duplicate_post` → its worker `public._clone_post_row(...)` (canonical body: `20261010100006_duplicate_post_targets.sql`; `duplicate_post` in `20261002000020` delegates to it):
   copy `ig_collaborators` at **both** sites where the trial flag is copied: the
   `INSERT` column list (`:93-104`) and the re-apply `UPDATE ... SET platform =
   v_derived, ig_trial_strategy = s.ig_trial_strategy` (`:125`). The second one is
@@ -302,8 +302,9 @@ Multiplatform (`feature_multiplatform`): removing Instagram goes through
 `20261010100002:244-277`), so z5 clears the array server-side and the legacy sites
 above never run. In the toggle's success path, when Instagram was removed and the
 post had collaborators, show the same "o post não vai mais para o Instagram" toast
-and make sure the post is refetched/invalidated so the editor drops the stale list.
-(The trial flag has the same pre-existing gap; fix it in the same place.)
+and make sure the post is refetched/invalidated so the editor drops the stale list
+(`usePostDestinations`' `onSettled` already does). The trial flag has the same
+pre-existing toast gap; it stays out of scope.
 
 ### Indicators
 
@@ -424,3 +425,7 @@ treat it as `[]` (code defensively).
   server-side "Publicar sem colaboradores", the multiplatform self-heal path, a
   structured `ig_collaborators_refused` column instead of parsing `publish_error`,
   and `TrialReelPanel`'s prop and disabled-state precedence. Nothing rejected.
+- 2026-10-19, Fable plan review: `_clone_post_row` is the function to copy (not
+  `duplicate_post`), `99_duplicate_post.sql`'s column guard must classify both new
+  columns, the handler failure path writes `ig_collaborators_refused` in a separate
+  update, and the trial toast gap on the multiplatform toggle stays out of scope.
