@@ -3,6 +3,7 @@ import { CAROUSEL_MAX_ITEMS, validateMedia } from "./instagram-limits.ts";
 import type { MediaFile, ValidationError } from "./instagram-limits.ts";
 import { GRAPH_BASE, throwGraphError } from "./instagram-graph.ts";
 import { TRIAL_MEDIA_SHAPE_ERROR } from "./publish-error-codes.ts";
+import { normalizeCollaborators } from "./instagram-collaborators.ts";
 
 export { CAROUSEL_MAX_ITEMS, validateMedia };
 export type { MediaFile, ValidationError };
@@ -90,7 +91,7 @@ export async function validateForScheduling(
 
   const { data: post } = await db
     .from("workflow_posts")
-    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy, platform")
+    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy, ig_collaborators, platform")
     .eq("id", postId)
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
@@ -145,6 +146,15 @@ export async function validateForScheduling(
     if (post.tipo !== "reels" || !isSingleVideo) errors.push(TRIAL_MEDIA_SHAPE_ERROR);
   }
 
+  // Colaboradores (spec 2026-10-19): os CHECKs e o trigger do banco já tornam
+  // estas combinações impossíveis; a checagem aqui faz "Agendar" falhar na hora.
+  const collaboratorError = collaboratorsConflict(
+    normalizeCollaborators(post.ig_collaborators),
+    post.ig_trial_strategy,
+    post.tipo,
+  );
+  if (collaboratorError) errors.push(collaboratorError);
+
   // No workflow lookup: post.cliente_id (selected above) is authoritative for
   // both attached and avulso posts, so a workflow row is never required here.
   const { data: account } = await db
@@ -182,6 +192,30 @@ export async function validateForScheduling(
   };
 }
 
+// --- Collaborators (spec 2026-10-19) ---
+
+/** The Graph `collaborators` param goes in the JSON body as an array (as the
+ * spike sent it), and only when there is at least one name. Carousel children
+ * and stories never get it. */
+function withCollaborators(body: Record<string, unknown>, collaborators?: string[]): void {
+  if (collaborators && collaborators.length > 0) body.collaborators = collaborators;
+}
+
+/** Combinations Instagram does not accept (and the DB CHECK/trigger forbid):
+ * the error message, or null when the combination is fine. */
+function collaboratorsConflict(
+  collaborators: string[],
+  trialStrategy: string | null | undefined,
+  tipo: string | null | undefined,
+): string | null {
+  if (collaborators.length === 0) return null;
+  if (trialStrategy === "manual" || trialStrategy === "auto") {
+    return "Reels de teste não aceitam colaboradores.";
+  }
+  if (tipo === "stories") return "Stories não aceitam colaboradores.";
+  return null;
+}
+
 // --- Graph API Helpers ---
 
 export async function createSingleImageContainer(
@@ -189,13 +223,15 @@ export async function createSingleImageContainer(
   token: string,
   imageUrl: string,
   caption: string,
-  timeoutMs = GRAPH_TIMEOUT_MS,
+  opts?: { timeoutMs?: number; collaborators?: string[] },
 ): Promise<{ id: string }> {
+  const body: Record<string, unknown> = { image_url: imageUrl, caption, access_token: token };
+  withCollaborators(body, opts?.collaborators);
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image_url: imageUrl, caption, access_token: token }),
-    signal: AbortSignal.timeout(timeoutMs),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) {
@@ -211,27 +247,31 @@ export async function createVideoContainer(
   token: string,
   videoUrl: string,
   caption: string,
-  coverUrl?: string,
-  trialStrategy?: IgTrialStrategy | null,
-  timeoutMs = GRAPH_TIMEOUT_MS,
+  opts?: {
+    coverUrl?: string;
+    trialStrategy?: IgTrialStrategy | null;
+    timeoutMs?: number;
+    collaborators?: string[];
+  },
 ): Promise<{ id: string }> {
-  const body: Record<string, string> = {
+  const body: Record<string, unknown> = {
     video_url: videoUrl,
     caption,
     media_type: "REELS",
     access_token: token,
   };
-  if (coverUrl) body.cover_url = coverUrl;
-  if (trialStrategy) {
+  if (opts?.coverUrl) body.cover_url = opts.coverUrl;
+  if (opts?.trialStrategy) {
     body.trial_params = JSON.stringify({
-      graduation_strategy: trialStrategy === "auto" ? "SS_PERFORMANCE" : "MANUAL",
+      graduation_strategy: opts.trialStrategy === "auto" ? "SS_PERFORMANCE" : "MANUAL",
     });
   }
+  withCollaborators(body, opts?.collaborators);
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -313,18 +353,20 @@ export async function createCarouselParentContainer(
   token: string,
   childIds: string[],
   caption: string,
-  timeoutMs = GRAPH_TIMEOUT_MS,
+  opts?: { timeoutMs?: number; collaborators?: string[] },
 ): Promise<{ id: string }> {
+  const body: Record<string, unknown> = {
+    media_type: "CAROUSEL",
+    children: childIds.join(","),
+    caption,
+    access_token: token,
+  };
+  withCollaborators(body, opts?.collaborators);
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      media_type: "CAROUSEL",
-      children: childIds.join(","),
-      caption,
-      access_token: token,
-    }),
-    signal: AbortSignal.timeout(timeoutMs),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -698,12 +740,20 @@ export async function advanceCarouselContainer(
     token: string;
     caption: string;
     trialStrategy?: string | null;
+    collaborators?: string[] | null;
     maxPolls?: number;
     intervalMs?: number;
     timeoutMs?: number;
   },
 ): Promise<CarouselAdvanceResult> {
   const { postId, igUserId, token, caption, maxPolls, intervalMs, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
+  const collaborators = normalizeCollaborators(opts.collaborators);
+
+  // Defensive (the DB already forbids it): fail before any Graph call, and
+  // before the trial-shape throw below so the message names the real conflict.
+  // A carousel is never a story (isCarouselPost), so only the trial case applies.
+  const collaboratorError = collaboratorsConflict(collaborators, opts.trialStrategy, null);
+  if (collaboratorError) throw new Error(collaboratorError);
 
   // Reel de teste nunca degrada em silêncio: fora do formato exato (reels + 1
   // vídeo) falha alto com TRIAL_INELIGIBLE, igual a createContainerForPost.
@@ -722,7 +772,7 @@ export async function advanceCarouselContainer(
     token,
     children.map((c) => c.container_id as string),
     caption,
-    timeoutMs,
+    { timeoutMs, collaborators },
   );
   return { containerId: parent.id, children, allReady: true };
 }
@@ -755,10 +805,20 @@ export async function createContainerForPost(
     useCover: boolean;
     tipo?: string;
     trialStrategy?: string | null;
+    collaborators?: string[] | null;
     timeoutMs?: number;
   },
 ): Promise<ContainerCreationResult> {
   const { igUserId, token, postId, caption, useCover, tipo, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
+  // null/missing (e.g. a claim row from the old RPC) is []. Unlike the cover,
+  // collaborators are never dropped on a retry.
+  const collaborators = normalizeCollaborators(opts.collaborators);
+
+  // Defensive (the DB already forbids it): fail before reading media or
+  // calling Meta.
+  const collaboratorError = collaboratorsConflict(collaborators, opts.trialStrategy, tipo);
+  if (collaboratorError) throw new Error(collaboratorError);
+
   const media = await fetchPostMedia(db, postId);
 
   // Reel de teste nunca degrada em silêncio para post normal: o cliente
@@ -799,12 +859,17 @@ export async function createContainerForPost(
     const url = await signGetUrl(media[0].r2_key, 7200);
     const thumbKey = useCover ? media[0].thumbnail_r2_key : null;
     const coverUrl = thumbKey ? await signGetUrl(thumbKey, 7200) : undefined;
-    const container = await createVideoContainer(igUserId, token, url, caption, coverUrl, trial, timeoutMs);
+    const container = await createVideoContainer(igUserId, token, url, caption, {
+      coverUrl,
+      trialStrategy: trial,
+      timeoutMs,
+      collaborators,
+    });
     return { containerId: container.id, coverVideoUrl: coverUrl ? url : undefined };
   }
 
   const url = await signGetUrl(media[0].r2_key, 7200);
-  const container = await createSingleImageContainer(igUserId, token, url, caption, timeoutMs);
+  const container = await createSingleImageContainer(igUserId, token, url, caption, { timeoutMs, collaborators });
   return { containerId: container.id };
 }
 
