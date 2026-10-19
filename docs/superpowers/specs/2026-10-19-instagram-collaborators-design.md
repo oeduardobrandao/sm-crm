@@ -328,8 +328,12 @@ and make sure the post is refetched/invalidated so the editor drops the stale li
   "Publicar sem colaboradores"), then calls
   `retryInstagramPublish(postId, { clearCollaborators: true })`. **Atomic,
   server-side:** the `instagram-publish` `retry` action accepts
-  `clearCollaborators: boolean` and, in the same `UPDATE` that resets the post for
-  retry, sets `ig_collaborators = '{}'` and `ig_collaborators_refused = '{}'`. No
+  `clearCollaborators: boolean` and sets `ig_collaborators = '{}'` and
+  `ig_collaborators_refused = '{}'` **before** the `record_post_status_change`
+  reset, while the post is still `falha_publicacao` (no claim phase takes a
+  `COLLABORATOR_INVALID` post, so nothing can race it; `record_post_status_change`'s
+  `p_fields` allowlist does not include these columns). If the clear fails, the
+  handler returns an error and does not reset the status. No
   client-side clear followed by a retry (that races: the async field save and the
   retry reset are separate requests, and the retry could recreate the container with
   the old list). On failure the existing retry error toast shows and nothing changed.
