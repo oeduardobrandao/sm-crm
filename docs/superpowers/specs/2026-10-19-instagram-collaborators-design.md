@@ -394,7 +394,9 @@ and make sure the post is refetched/invalidated so the editor drops the stale li
    default.
 
 Ordering hazard: the new claim RPC's shape changes. A cron still on the old code
-reading the new RPC just ignores the extra column, so migration-first is safe. The
+reading the new RPC just ignores the extra column, so migration-first is safe (no
+post can hold collaborators before the frontend ships, so an old cron can never
+publish a collab post without them). The
 new cron against the old RPC would read `ig_collaborators` as undefined and must
 treat it as `[]` (code defensively).
 
