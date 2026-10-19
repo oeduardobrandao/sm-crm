@@ -300,6 +300,27 @@ export function PostEditorBody({
   useEffect(() => {
     onFieldChangeRef.current = onFieldChange;
   }, [onFieldChange]);
+  // Colaboradores: lista local otimista e gravações em fila. O post só volta com a lista
+  // nova depois do PATCH + refresh; sem isso, dois @ adicionados em sequência partiam da
+  // mesma lista antiga e o segundo apagava o primeiro. Enquanto há gravação pendente, o
+  // valor do servidor não sobrescreve o local.
+  const [collaborators, setCollaboratorsLocal] = useState<string[]>(post.ig_collaborators ?? []);
+  const collaboratorsPending = useRef(0);
+  const collaboratorsQueue = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => {
+    if (collaboratorsPending.current === 0) setCollaboratorsLocal(post.ig_collaborators ?? []);
+  }, [post.ig_collaborators]);
+  const setCollaborators = (next: string[]) => {
+    setCollaboratorsLocal(next);
+    const write = () => Promise.resolve(onFieldChangeRef.current('ig_collaborators', next));
+    const idle = collaboratorsPending.current === 0;
+    collaboratorsPending.current += 1;
+    collaboratorsQueue.current = (idle ? write() : collaboratorsQueue.current.then(write))
+      .catch(() => undefined)
+      .finally(() => {
+        collaboratorsPending.current -= 1;
+      });
+  };
   useEffect(() => {
     if (!tituloDirty.current) setTituloLocal(post.titulo ?? '');
   }, [post.titulo]);
@@ -457,7 +478,6 @@ export function PostEditorBody({
         ? 'Post já publicado'
         : null;
 
-  const collaborators = post.ig_collaborators ?? [];
   const showCollaborators =
     hasInstagramAccount && post.tipo !== 'stories' && isInstagramPost(post.platform);
   // Mudança de tipo/plataforma que torna colaboradores impossíveis: o trigger do banco
@@ -465,10 +485,10 @@ export function PostEditorBody({
   const clearCollaboratorsFor = (change: { tipo?: WorkflowPost['tipo']; platform?: string }) => {
     if (collaborators.length === 0) return;
     if (change.tipo === 'stories') {
-      onFieldChange('ig_collaborators', []);
+      setCollaborators([]);
       toast.info('Colaboradores removidos: Stories não aceitam colaboradores.');
     } else if (change.platform === 'tiktok') {
-      onFieldChange('ig_collaborators', []);
+      setCollaborators([]);
       toast.info(COLLABORATORS_CLEARED_NOT_INSTAGRAM);
     }
   };
@@ -482,7 +502,7 @@ export function PostEditorBody({
     <div ref={collaboratorsBoxRef} className={className}>
       <InstagramCollaboratorsField
         value={collaborators}
-        onChange={(next) => onFieldChange('ig_collaborators', next)}
+        onChange={setCollaborators}
         locked={isScheduleLocked}
         trialOn={!!post.ig_trial_strategy}
         refused={

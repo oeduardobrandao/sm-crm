@@ -400,6 +400,31 @@ describe('PostEditorBody, colaboradores do Instagram (desktop, single-platform)'
     expect(onFieldChange).toHaveBeenCalledWith('ig_collaborators', []);
   });
 
+  it('dois @ seguidos antes do servidor responder: o segundo mantém o primeiro', async () => {
+    let release!: () => void;
+    const onFieldChange = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderBody({ hasInstagramAccount: true, onFieldChange });
+    const input = screen.getByPlaceholderText('Adicionar @usuário');
+    fireEvent.change(input, { target: { value: 'dra.julia' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: 'clinicaviva' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByTestId('collab-chip-dra.julia')).toBeInTheDocument();
+    expect(screen.getByTestId('collab-chip-clinicaviva')).toBeInTheDocument();
+    expect(onFieldChange).toHaveBeenCalledTimes(1);
+    release();
+    await waitFor(() => expect(onFieldChange).toHaveBeenCalledTimes(2));
+    expect(onFieldChange).toHaveBeenLastCalledWith('ig_collaborators', [
+      'dra.julia',
+      'clinicaviva',
+    ]);
+  });
+
   it('agendado: campo travado, sem input', () => {
     renderBody({
       hasInstagramAccount: true,
