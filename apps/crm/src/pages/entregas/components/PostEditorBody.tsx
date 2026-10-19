@@ -319,9 +319,12 @@ export function PostEditorBody({
   const queueFieldWrite = (field: keyof WorkflowPost, value: unknown) => {
     // Os drawers resolvem `false` quando o PATCH falha (já avisaram com toast).
     const write = () =>
-      Promise.resolve(onFieldChangeRef.current(field, value)).then((ok) => {
-        if (ok === false && field === 'ig_collaborators') collaboratorsWriteFailed.current = true;
-      });
+      // Executor roda já (idle = gravação síncrona) e transforma throw em rejeição.
+      new Promise<unknown>((resolve) => resolve(onFieldChangeRef.current(field, value))).then(
+        (ok) => {
+          if (ok === false && field === 'ig_collaborators') collaboratorsWriteFailed.current = true;
+        },
+      );
     const idle = fieldWritesPending.current === 0;
     fieldWritesPending.current += 1;
     const chain = (idle ? write() : fieldWriteQueue.current.then(write))
