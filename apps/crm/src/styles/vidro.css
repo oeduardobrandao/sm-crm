@@ -240,9 +240,9 @@
   }
 
   html[data-look='vidro'] .app-container .sidebar-sub-link {
-    min-height: 25px;
+    min-height: 28px;
     padding: 0 0.75rem 0 10px;
-    border-radius: 9px;
+    border-radius: 6px;
     font-size: 13px;
     color: var(--text-main);
   }

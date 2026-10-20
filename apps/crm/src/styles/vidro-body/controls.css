@@ -1550,6 +1550,51 @@
     cursor: not-allowed;
   }
 
+  /* Client detail nav reads as a second copy of the sidebar: same row height, sentence-case
+     group labels and the dark selected pill with the yellow icon. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav {
+    gap: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__label {
+    padding: 10px 12px 2px;
+    line-height: 14px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .cliente-tabs-nav
+    > .cliente-tabs-nav__label:first-child {
+    padding-top: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__item {
+    height: 28px;
+    border-radius: 6px;
+    padding: 0 12px 0 10px;
+    font-weight: 500;
+    color: var(--text-main);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__item.active,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .cliente-tabs-nav__item.active:hover {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+    font-weight: 500;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .cliente-tabs-nav__item.active
+    .cliente-tabs-nav__icon {
+    color: #ffbf30;
+  }
+
   /* Entregas tab strip: the trailing "Novo template" sits inside the capsule as a quiet action,
      centred like the tabs (the classic rule gave it a bottom-only padding for its underline). */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tab-add {
