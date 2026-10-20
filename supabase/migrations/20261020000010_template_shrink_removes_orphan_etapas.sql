@@ -23,6 +23,10 @@
 --   unica linha naquela ordem
 -- e para na primeira que falha. So a cauda sai, entao a ordem nunca ganha buraco:
 -- o CRM procura a proxima etapa por ordem + 1 (useWorkflowStageCommands).
+-- Caso teorico: um fluxo ativo com todas as etapas do template concluidas e so a
+-- cauda pendente ficaria sem etapa aberta. O avanco normal ativa a proxima etapa ao
+-- concluir a anterior, entao uma cauda pendente sempre vem depois de uma ativa; nos
+-- 70 fluxos do incidente nenhum estava nesse estado.
 --
 -- O evento template_propagado ganha etapas_removidas e, em alteracoes, uma entrada
 -- campo 'removida' com o snapshot inteiro da etapa em 'de' (o evento continua sendo o
