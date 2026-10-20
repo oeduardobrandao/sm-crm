@@ -24,7 +24,7 @@ interface CompleteVars {
 export function useTodayCard() {
   const { t } = useTranslation('dashboard');
   const queryClient = useQueryClient();
-  const { status, scope, buckets, now } = useTodayAgenda();
+  const { status, scope, buckets, now, membroId } = useTodayAgenda();
   const [visible, setVisible] = useState<Set<AgendaBucket>>(
     () => new Set<AgendaBucket>(['atrasado', 'hoje']),
   );
@@ -101,6 +101,8 @@ export function useTodayCard() {
     t,
     status,
     scope,
+    membroId,
+    now,
     buckets,
     counts,
     total,

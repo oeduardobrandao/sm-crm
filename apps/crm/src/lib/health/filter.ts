@@ -1,10 +1,13 @@
 import type { ClientHealth } from '../../services/clientHealth';
 import type { HealthStatus } from './score';
 
-export type HealthFilterKey = 'todos' | 'atencao' | 'saudaveis' | 'estaveis' | 'conexao';
+export type HealthFilterKey = 'todos' | 'acao' | 'atencao' | 'saudaveis' | 'estaveis' | 'conexao';
 export type HealthSort = 'atencao' | 'engajamento' | 'ultimo_post' | 'seguidores' | 'nome';
 
 const GROUPS: Record<Exclude<HealthFilterKey, 'todos'>, HealthStatus[]> = {
+  // Same set as services/clientHealth PRECISAM, so the chip count (summary.precisamAtencao)
+  // matches the rows.
+  acao: ['em_queda', 'inativo', 'reconectar', 'sem_sincronizar', 'desconectado'],
   atencao: ['em_queda', 'atencao', 'inativo'],
   saudaveis: ['em_alta', 'saudavel'],
   estaveis: ['estavel'],

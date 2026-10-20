@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowDownLeft,
   ArrowRight,
@@ -46,6 +47,64 @@ export function firstName(nome: string): string {
   return nome.trim().split(/\s+/)[0] ?? nome;
 }
 
+type TodayComplete = ReturnType<typeof useTodayCard>['complete'];
+
+/** One agenda row (a link): tarefa checkbox or kind icon, title, context, who and the badge.
+ *  Shared by the classic "Hoje" card and the Vidro grouped list, which passes a `context`
+ *  without the group's own name and drops `who` when grouping by responsible. */
+export function TodayRow({
+  item,
+  complete,
+  context = item.context,
+  showWho = true,
+}: {
+  item: AgendaItem;
+  complete: TodayComplete;
+  context?: string;
+  showWho?: boolean;
+}) {
+  const { t } = useTranslation('dashboard');
+  const { Icon, color } = KIND_ICON[item.kind];
+  const stopNav = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  return (
+    <Link to={item.href} className="today-row">
+      {item.kind === 'tarefa' && item.tarefaId != null ? (
+        <span onClick={stopNav} className="today-row-check">
+          <Checkbox
+            aria-label={t('today.markDone', 'Concluir tarefa')}
+            checked={false}
+            disabled={complete.isPending}
+            onCheckedChange={() =>
+              complete.mutate({
+                id: item.tarefaId!,
+                previousStatus: item.tarefaStatus ?? 'pendente',
+              })
+            }
+          />
+        </span>
+      ) : (
+        <Icon className="today-row-icon" style={color ? { color } : undefined} aria-hidden />
+      )}
+      <span className="today-row-title">{item.title}</span>
+      {context && <span className="today-row-context">{context}</span>}
+      <span className="today-row-end">
+        {showWho && item.responsavel && (
+          <span className="today-row-who" title={item.responsavel.nome}>
+            <span className="today-row-avatar">{initials(item.responsavel.nome)}</span>
+            {firstName(item.responsavel.nome)}
+          </span>
+        )}
+        {item.badge && (
+          <span className={`board-card-deadline ${item.badge.className}`}>{item.badge.label}</span>
+        )}
+      </span>
+    </Link>
+  );
+}
+
 /**
  * Dashboard "Hoje": role-aware agenda of what needs attention (overdue, today,
  * next 7 days). Owners/admins see the whole workspace with who is responsible;
@@ -70,50 +129,9 @@ export function TodayCard() {
     complete,
   } = useTodayCard();
 
-  const stopNav = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const renderRow = (item: AgendaItem) => {
-    const { Icon, color } = KIND_ICON[item.kind];
-    return (
-      <Link key={item.key} to={item.href} className="today-row">
-        {item.kind === 'tarefa' && item.tarefaId != null ? (
-          <span onClick={stopNav} className="today-row-check">
-            <Checkbox
-              aria-label={t('today.markDone', 'Concluir tarefa')}
-              checked={false}
-              disabled={complete.isPending}
-              onCheckedChange={() =>
-                complete.mutate({
-                  id: item.tarefaId!,
-                  previousStatus: item.tarefaStatus ?? 'pendente',
-                })
-              }
-            />
-          </span>
-        ) : (
-          <Icon className="today-row-icon" style={color ? { color } : undefined} aria-hidden />
-        )}
-        <span className="today-row-title">{item.title}</span>
-        {item.context && <span className="today-row-context">{item.context}</span>}
-        <span className="today-row-end">
-          {item.responsavel && (
-            <span className="today-row-who" title={item.responsavel.nome}>
-              <span className="today-row-avatar">{initials(item.responsavel.nome)}</span>
-              {firstName(item.responsavel.nome)}
-            </span>
-          )}
-          {item.badge && (
-            <span className={`board-card-deadline ${item.badge.className}`}>
-              {item.badge.label}
-            </span>
-          )}
-        </span>
-      </Link>
-    );
-  };
+  const renderRow = (item: AgendaItem) => (
+    <TodayRow key={item.key} item={item} complete={complete} />
+  );
 
   return (
     <div className="card today-card animate-up" data-testid="today-card">
