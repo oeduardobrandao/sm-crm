@@ -119,6 +119,12 @@ export interface WorkflowPost {
    * app. Só válido em tipo 'reels' mirando Instagram; o trigger
    * workflow_posts_z5_clear_ig_trial limpa fora disso. */
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  /** Colaboradores do Instagram (usernames minúsculos, sem @, máx. 3). Só vale em
+   * feed/reels/carrossel mirando Instagram; ausente/NULL = []. */
+  ig_collaborators?: string[];
+  /** Subconjunto de ig_collaborators que o Instagram recusou na última falha.
+   * Só chega pelo select('*') do editor: nunca entra em lista explícita de colunas. */
+  ig_collaborators_refused?: string[];
 }
 
 export interface ClientePost {
@@ -136,10 +142,11 @@ export interface ClientePost {
   /** Target platform; absent on legacy rows (treat as 'instagram', the DB default). */
   platform?: WorkflowPost['platform'];
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  ig_collaborators?: string[];
 }
 
 const CLIENTE_POST_COLUMNS =
-  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy';
+  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy, ig_collaborators';
 
 function mapClientePostRow(row: any): ClientePost {
   return {
@@ -154,6 +161,7 @@ function mapClientePostRow(row: any): ClientePost {
     workflow_titulo: row.workflows?.titulo ?? null,
     platform: row.platform ?? undefined,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
+    ig_collaborators: row.ig_collaborators ?? [],
   };
 }
 
@@ -273,6 +281,8 @@ export interface ScheduledPost {
   tiktok_post_url: string | null;
   instagram_media_id: string | null;
   ig_trial_strategy: 'manual' | 'auto' | null;
+  /** Colaboradores do Instagram; linha antiga/cache sem o campo = []. */
+  ig_collaborators?: string[];
   /** Manual board rank for the Publicações kanban ("manual" column sort).
    * NULL = never manually positioned; sorts after every ranked post in that
    * column, in automatic order. */
@@ -362,7 +372,7 @@ export function applyTikTokTargetState<T extends object>(
  * migrations before the frontend, so by the time this code ships the column
  * already exists; do not reorder that deploy sequence.
  */
-export const POST_CONTEXT_COLUMNS = `id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, instagram_media_id, ig_trial_strategy, board_ordem, ${TIKTOK_TARGET_STATE_EMBED}`;
+export const POST_CONTEXT_COLUMNS = `id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, instagram_media_id, ig_trial_strategy, ig_collaborators, board_ordem, ${TIKTOK_TARGET_STATE_EMBED}`;
 
 // Exported for store/postProcesses.ts, which embeds a workflow_posts row (avulso arm shape).
 /**
@@ -397,6 +407,7 @@ export function mapPostContextRow(row: any): ActivePost {
     tiktok_post_url: tiktok.tiktok_post_url,
     instagram_media_id: row.instagram_media_id ?? null,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
+    ig_collaborators: row.ig_collaborators ?? [],
     board_ordem: row.board_ordem ?? null,
     targets: Array.isArray(row.post_targets) ? sortByPlatformOrder(row.post_targets) : undefined,
   };

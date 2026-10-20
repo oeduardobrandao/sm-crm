@@ -259,7 +259,10 @@ export async function publishInstagramPostNow(
   return data;
 }
 
-export async function retryInstagramPublish(postId: number): Promise<{ ok: boolean }> {
+export async function retryInstagramPublish(
+  postId: number,
+  opts?: { clearCollaborators?: boolean },
+): Promise<{ ok: boolean }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -273,6 +276,7 @@ export async function retryInstagramPublish(postId: number): Promise<{ ok: boole
         Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
+      ...(opts?.clearCollaborators ? { body: JSON.stringify({ clearCollaborators: true }) } : {}),
     },
   );
   const data = await res.json();

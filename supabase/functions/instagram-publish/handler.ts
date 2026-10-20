@@ -17,6 +17,7 @@ import {
   advanceCarouselContainer,
   INTERACTIVE_GRAPH_TIMEOUT_MS,
 } from "../_shared/instagram-publish-utils.ts";
+import { buildCollaboratorFailureFields, normalizeCollaborators } from "../_shared/instagram-collaborators.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -61,11 +62,14 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
       .from("workflow_posts")
-      .select("id, status, workflow_id, cliente_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy")
+      .select("id, status, workflow_id, cliente_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy, ig_collaborators")
       .eq("id", postId)
       .single();
 
     if (!post) return json({ error: "Post não encontrado." }, 404);
+    // null/missing is [] (spec 2026-10-19). Sent on every container-creating
+    // call, first attempt and retries alike.
+    const collaborators = normalizeCollaborators(post.ig_collaborators);
 
     // Resolve caller's workspace and guard feature_post_scheduling
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
@@ -122,6 +126,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             useCover: post.publish_retry_count === 0,
             tipo: post.tipo,
             trialStrategy: post.ig_trial_strategy,
+            collaborators,
             timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
           });
           await svcDb.from("workflow_posts").update({
@@ -165,6 +170,20 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       if (post.status !== "falha_publicacao") {
         return json({ error: "Apenas posts com falha podem ser reenviados." }, 422);
       }
+      // Optional body { clearCollaborators: true } ("Publicar sem colaboradores"
+      // after COLLABORATOR_INVALID). Cleared BEFORE the status flip: the post is
+      // still falha_publicacao, which no claim phase takes for this code, so the
+      // cron can never publish it with the old list in between.
+      const retryBody = await req.json().catch(() => ({}));
+      const clearCollaborators = typeof retryBody?.clearCollaborators === "boolean" &&
+        retryBody.clearCollaborators;
+      if (clearCollaborators) {
+        const { error: clearErr } = await svcDb.from("workflow_posts").update({
+          ig_collaborators: [],
+          ig_collaborators_refused: [],
+        }).eq("id", postId);
+        if (clearErr) return internalServerError(json, "instagram-publish:retry", clearErr);
+      }
       await svcDb.rpc("record_post_status_change", {
         p_post_id: postId,
         p_new_status: "agendado",
@@ -181,7 +200,11 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       // carousel_children is outside record_post_status_change's p_fields allowlist
       // (20260807000001): clear it separately so a re-scheduled carousel rebuilds
       // its children instead of assembling a parent from stale (possibly expired) ones.
-      await svcDb.from("workflow_posts").update({ carousel_children: null }).eq("id", postId);
+      // ig_collaborators_refused (same allowlist gap) is reset so no chip stays red.
+      await svcDb.from("workflow_posts").update({
+        carousel_children: null,
+        ig_collaborators_refused: [],
+      }).eq("id", postId);
       return json({ ok: true, status: "agendado" });
     }
 
@@ -295,6 +318,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             token,
             caption: post.ig_caption ?? "",
             trialStrategy: post.ig_trial_strategy,
+            collaborators,
             maxPolls: 12,
             intervalMs: 3000,
             timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
@@ -322,6 +346,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             useCover: true,
             tipo: post.tipo,
             trialStrategy: post.ig_trial_strategy,
+            collaborators,
             timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
           });
           containerId = created.containerId;
@@ -343,9 +368,12 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           const trial = post.ig_trial_strategy === "manual" || post.ig_trial_strategy === "auto"
             ? post.ig_trial_strategy
             : null;
-          const retry = await createVideoContainer(
-            igUserId, token, coverVideoUrl, post.ig_caption, undefined, trial, INTERACTIVE_GRAPH_TIMEOUT_MS,
-          );
+          // The cover is dropped; collaborators never are.
+          const retry = await createVideoContainer(igUserId, token, coverVideoUrl, post.ig_caption, {
+            trialStrategy: trial,
+            timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
+            collaborators,
+          });
           containerId = retry.id;
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
@@ -410,6 +438,15 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             ...(errorCode === "CONTAINER_EXPIRED" ? { instagram_container_id: null } : {}),
           },
         });
+
+        // ig_collaborators_refused is outside record_post_status_change's p_fields
+        // allowlist: written separately (possibly [] when Meta's text names no one).
+        const collaboratorFields = buildCollaboratorFailureFields(errorCode, collaborators, err?.graphUserMsg);
+        if (Object.keys(collaboratorFields).length > 0) {
+          try {
+            await svcDb.from("workflow_posts").update(collaboratorFields).eq("id", postId);
+          } catch (_) { /* best-effort */ }
+        }
 
         if (errorCode === "CONTAINER_EXPIRED" && post.tipo === "stories") {
           // Stories keep their containers per-segment in story_segments, not in the

@@ -7,6 +7,11 @@ import { reportCronFailure } from "../_shared/triage.ts";
 import type { CronFailureError } from "../_shared/notify.ts";
 import { classifyPublishError } from "../_shared/publish-error-codes.ts";
 import {
+  buildCollaboratorFailureFields,
+  normalizeCollaborators,
+  refusedCollaborators,
+} from "../_shared/instagram-collaborators.ts";
+import {
   decryptToken,
   createContainerForPost,
   pollContainerReady,
@@ -64,6 +69,9 @@ interface ClaimedPost {
   client_id: number;
   story_segments: Array<{ file_id: number; container_id: string | null; media_id: string | null }> | null;
   ig_trial_strategy: string | null;
+  // Absent when an old claim RPC answers (pre-20261019000001): read it through
+  // normalizeCollaborators, never directly.
+  ig_collaborators?: string[] | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -90,6 +98,7 @@ async function markFailed(
   retryCount: number,
   err: unknown,
   clientId?: number,
+  collaborators: string[] = [],
 ) {
   const errorCode = classifyPublishError(err);
   const message = err instanceof Error ? err.message : String(err);
@@ -107,6 +116,12 @@ async function markFailed(
     publish_error: message.slice(0, 500),
     publish_error_code: errorCode,
     publish_processing_at: null,
+    // COLLABORATOR_INVALID: as contas que a Meta recusou (pode ser []).
+    ...buildCollaboratorFailureFields(
+      errorCode,
+      collaborators,
+      (err as { graphUserMsg?: string } | null)?.graphUserMsg,
+    ),
   };
   // Um container expirado nunca volta a funcionar; sem limpar, o retry
   // automático (processRetry) reusaria o mesmo id e falharia 3x igual. O mesmo
@@ -185,6 +200,7 @@ async function processContainerCreation(
       token,
       caption: post.ig_caption,
       trialStrategy: post.ig_trial_strategy,
+      collaborators: normalizeCollaborators(post.ig_collaborators),
     });
     if (!allReady) {
       await clearLock(db, post.post_id);
@@ -210,6 +226,7 @@ async function processContainerCreation(
     useCover: post.publish_retry_count === 0,
     tipo: post.tipo,
     trialStrategy: post.ig_trial_strategy,
+    collaborators: normalizeCollaborators(post.ig_collaborators),
   });
 
   await db.from("workflow_posts").update({
@@ -404,7 +421,14 @@ Deno.serve(createPublishCronHandler({
 
     function collectFailure(post: ClaimedPost, err: unknown) {
       const errorCode = classifyPublishError(err);
-      const message = err instanceof Error ? err.message : String(err);
+      let message = err instanceof Error ? err.message : String(err);
+      if (errorCode === "COLLABORATOR_INVALID") {
+        const refused = refusedCollaborators(
+          normalizeCollaborators(post.ig_collaborators),
+          (err as { graphUserMsg?: string } | null)?.graphUserMsg,
+        );
+        if (refused.length > 0) message += ` (recusados: ${refused.map((u) => `@${u}`).join(", ")})`;
+      }
       failedPosts.push({
         postId: post.post_id,
         clientId: post.client_id,
@@ -424,7 +448,10 @@ Deno.serve(createPublishCronHandler({
           try {
             await processContainerCreation(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            await markFailed(
+              db, post.post_id, post.publish_retry_count, err, post.client_id,
+              normalizeCollaborators(post.ig_collaborators),
+            );
             collectFailure(post, err);
             throw err;
           }
@@ -440,7 +467,10 @@ Deno.serve(createPublishCronHandler({
           try {
             await processPublish(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            await markFailed(
+              db, post.post_id, post.publish_retry_count, err, post.client_id,
+              normalizeCollaborators(post.ig_collaborators),
+            );
             collectFailure(post, err);
             throw err;
           }
@@ -473,7 +503,10 @@ Deno.serve(createPublishCronHandler({
           try {
             await processRetry(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            await markFailed(
+              db, post.post_id, post.publish_retry_count, err, post.client_id,
+              normalizeCollaborators(post.ig_collaborators),
+            );
             collectFailure(post, err);
             throw err;
           }

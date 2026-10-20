@@ -186,6 +186,9 @@ interface ScheduleButtonProps {
   /** feature_multiplatform: a legenda aparece sem conta do Instagram, então o botão
    *  explica por que não há "Agendar" em vez de sumir calado. */
   explainMissingInstagramAccount?: boolean;
+  /** Awaited before any call to the publish edge functions: lets the editor flush a
+   *  field write still in flight (ex.: colaboradores) so the server reads the new value. */
+  beforeServerAction?: () => Promise<unknown>;
 }
 
 export type ScheduleButtonVisibility = 'hidden' | 'missing-ig-account-note' | 'shown';
@@ -208,6 +211,7 @@ export function useScheduleActions({
   onTikTokUnaudited,
   onStatusChange,
   explainMissingInstagramAccount = false,
+  beforeServerAction,
 }: Omit<ScheduleButtonProps, 'compact'>) {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -288,6 +292,7 @@ export function useScheduleActions({
     }, 300);
 
     try {
+      await beforeServerAction?.();
       if (platform === 'both') {
         let igError: string | undefined;
         let ttError: string | undefined;
@@ -359,6 +364,7 @@ export function useScheduleActions({
   const handleSchedule = async () => {
     setLoading(true);
     try {
+      await beforeServerAction?.();
       // Mesma regra de plataforma que os avisos de agendamento automático usam
       // (pages/entregas/scheduleApprovedPost.ts) -- uma fonte só.
       await scheduleApprovedPost(post);
@@ -375,6 +381,7 @@ export function useScheduleActions({
   const handleCancel = async () => {
     setLoading(true);
     try {
+      await beforeServerAction?.();
       if (targetsTikTok) {
         await cancelTikTokSchedule(post.id!);
       } else {
@@ -412,6 +419,7 @@ export function useScheduleActions({
   const handleRetry = async () => {
     setLoading(true);
     try {
+      await beforeServerAction?.();
       if (platform === 'both') {
         const igSkip = igFailed && igTokenBlocked;
         const ttSkip = ttFailed && ttTokenBlocked;

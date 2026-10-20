@@ -9,6 +9,8 @@ interface TrialReelPanelProps {
   /** isScheduleLocked do drawer: o cron cria o container até 1h antes do
    * horário, então a estratégia trava junto com data e legenda. */
   disabled: boolean;
+  /** Quantos colaboradores o post tem: Reel de teste e colaboradores se excluem. */
+  collaboratorsCount: number;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
 }
 
@@ -17,12 +19,27 @@ interface TrialReelPanelProps {
  * "graduação". Renderiza apenas em posts reels mirando Instagram; o trigger
  * workflow_posts_z5_clear_ig_trial garante a invariante no banco.
  */
-export function TrialReelPanel({ post, media, disabled, onFieldChange }: TrialReelPanelProps) {
+export function TrialReelPanel({
+  post,
+  media,
+  disabled,
+  collaboratorsCount,
+  onFieldChange,
+}: TrialReelPanelProps) {
   if (post.tipo !== 'reels' || !targetsInstagram(post.platform)) return null;
 
   const strategy = post.ig_trial_strategy ?? null;
   const enabled = strategy !== null;
   const mediaQualifies = media.length === 1 && media[0]?.kind === 'video';
+  // Com colaboradores o switch só trava se o teste estiver desligado: ligado (o CHECK do
+  // banco não deixa, mas por garantia) ele segue desligável.
+  const blockedByCollaborators = !enabled && collaboratorsCount > 0;
+  // Um motivo só, nesta ordem: agendamento vence colaboradores.
+  const reasonLine = disabled
+    ? 'Cancelar agendamento para editar'
+    : blockedByCollaborators
+      ? 'Indisponível com colaboradores no post. Remova os colaboradores para publicar como teste.'
+      : null;
 
   return (
     <div className="drawer-post-field drawer-post-field--trial">
@@ -31,13 +48,18 @@ export function TrialReelPanel({ post, media, disabled, onFieldChange }: TrialRe
         <Switch
           id="trial-reel-switch"
           checked={enabled}
-          disabled={disabled}
+          disabled={disabled || blockedByCollaborators}
           onCheckedChange={(on) => onFieldChange('ig_trial_strategy', on ? 'auto' : null)}
         />
       </div>
       <p className="text-xs" style={{ color: 'var(--text-light)' }}>
         Publica como teste, visível só para quem não segue a conta.
       </p>
+      {reasonLine && (
+        <p className="mt-1 text-xs" style={{ color: 'var(--text-light)' }}>
+          {reasonLine}
+        </p>
+      )}
       {enabled && (
         <>
           <ToggleGroup
@@ -63,11 +85,6 @@ export function TrialReelPanel({ post, media, disabled, onFieldChange }: TrialRe
           {!mediaQualifies && (
             <p className="mt-1 text-xs" style={{ color: 'var(--danger-text)' }}>
               Reel de teste exige exatamente um vídeo no post.
-            </p>
-          )}
-          {disabled && (
-            <p className="mt-1 text-xs" style={{ color: 'var(--text-light)' }}>
-              Cancelar agendamento para editar
             </p>
           )}
         </>

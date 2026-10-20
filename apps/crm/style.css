@@ -8672,6 +8672,19 @@ body.role-agent input[name='valor_total'] {
   --badge-border: rgba(225, 48, 108, 0.32);
 }
 
+/* Instagram collaborators ("Collab N"), next to the tipo badge. Teal tint from
+   --teal (#42c8f5); fg is a darker teal for >= 4.5:1 on the tinted pill. */
+.post-tipo-badge--collab {
+  --badge-bg: rgba(66, 200, 245, 0.16);
+  --badge-fg: #0c6a8a;
+  --badge-border: rgba(66, 200, 245, 0.4);
+}
+[data-theme='dark'] .post-tipo-badge--collab {
+  --badge-bg: rgba(66, 200, 245, 0.16);
+  --badge-fg: #7dd8f7;
+  --badge-border: rgba(66, 200, 245, 0.32);
+}
+
 .platform-chip {
   display: inline-flex;
   align-items: center;

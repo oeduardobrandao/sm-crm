@@ -52,7 +52,7 @@ begin
        -- copiadas
        'titulo','conteudo','conteudo_plain','tipo','platform','responsavel_id',
        'ig_caption','music_note','cover_url','tiktok_caption','tiktok_title',
-       'tiktok_settings','ig_trial_strategy','is_express','scheduled_at',
+       'tiktok_settings','ig_trial_strategy','ig_collaborators','is_express','scheduled_at',
        'cliente_id','conta_id','workflow_id','ordem','status','custom_status_id',
        'board_ordem','created_via',
        -- zeradas (default da coluna)
@@ -61,7 +61,7 @@ begin
        'publish_processing_at','story_segments','carousel_children',
        'tiktok_publish_id','tiktok_post_id','tiktok_post_url','tiktok_publish_status',
        'tiktok_publish_error','tiktok_publish_retry_count','tiktok_publish_processing_at',
-       'media_autocleaned_at',
+       'media_autocleaned_at','ig_collaborators_refused',
        -- geradas pelo banco
        'id','created_at','updated_at');
   assert v_missing is null, format('workflow_posts tem coluna nao classificada em _clone_post_row: %s', v_missing);

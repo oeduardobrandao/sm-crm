@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -64,7 +64,13 @@ vi.mock('@/pages/entregas/components/InstagramCaptionField', () => ({
   InstagramCaptionField: () => <textarea aria-label="Legenda do Instagram" />,
 }));
 vi.mock('@/pages/entregas/components/PlatformSelector', () => ({
-  PlatformSelector: () => <div data-testid="platform-selector-stub" />,
+  PlatformSelector: ({ onChange }: { onChange: (p: string) => void }) => (
+    <div data-testid="platform-selector-stub">
+      <button type="button" onClick={() => onChange('tiktok')}>
+        stub-only-tiktok
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
@@ -81,7 +87,14 @@ vi.mock('@/pages/entregas/components/TrialReelPanel', () => ({ TrialReelPanel: (
 vi.mock('@/pages/entregas/components/PostAutomationSection', () => ({
   PostAutomationSection: () => null,
 }));
-vi.mock('@/pages/entregas/components/PublishErrorBlock', () => ({ PublishErrorBlock: () => null }));
+vi.mock('@/pages/entregas/components/PublishErrorBlock', () => ({
+  PublishErrorBlock: ({ onEditCollaborators }: { onEditCollaborators?: () => void }) =>
+    onEditCollaborators ? (
+      <button type="button" onClick={onEditCollaborators}>
+        stub-editar-colaboradores
+      </button>
+    ) : null,
+}));
 vi.mock('@/pages/entregas/components/SuggestTimeButton', () => ({ SuggestTimeButton: () => null }));
 vi.mock('@/pages/entregas/components/PostVersionHistorySheet', () => ({
   PostVersionHistorySheet: ({ open }: { open: boolean }) =>
@@ -89,7 +102,9 @@ vi.mock('@/pages/entregas/components/PostVersionHistorySheet', () => ({
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({ DateTimePicker: () => null }));
 
+import { toast } from 'sonner';
 import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
+import { TIPO_LABELS } from '../../postLabels';
 import type { PhoneEditorChrome } from '../postEditorPhone/types';
 import type { WorkflowPost } from '@/store';
 
@@ -300,5 +315,81 @@ describe('PostEditorBody, phone layout', () => {
       fireEvent.click(screen.getByRole('radio', { name: /Equipe/ }));
       expect(screen.getByText(/Nenhum comentário interno/)).toBeInTheDocument();
     });
+  });
+});
+
+describe('PostEditorBody, phone layout: colaboradores do Instagram', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  const instagramSection = () => screen.queryByRole('region', { name: 'Instagram', hidden: true });
+
+  it('feed + Instagram: o campo fica na seção Instagram do Publicar (fixture sem ig_collaborators)', () => {
+    renderPhone();
+    const section = instagramSection();
+    expect(section).not.toBeNull();
+    expect(
+      within(section!).getByRole('group', { name: 'Colaboradores', hidden: true }),
+    ).toBeTruthy();
+    expect(within(section!).getByText('0 de 3')).toBeTruthy();
+    // Não duplica na aba Conteúdo.
+    expect(screen.getAllByRole('group', { name: 'Colaboradores', hidden: true })).toHaveLength(1);
+  });
+
+  it('sem seção Instagram em stories, só-TikTok ou sem conta', () => {
+    const a = renderPhone({ post: { ...basePost, tipo: 'stories' } });
+    expect(instagramSection()).toBeNull();
+    a.unmount();
+    const b = renderPhone({ post: { ...basePost, platform: 'tiktok' } });
+    expect(instagramSection()).toBeNull();
+    b.unmount();
+    renderPhone({ hasInstagramAccount: false });
+    expect(instagramSection()).toBeNull();
+  });
+
+  it('tipo → stories com colaboradores limpa a lista e avisa', () => {
+    const { props } = renderPhone({ post: { ...basePost, ig_collaborators: ['dra.julia'] } });
+    fireEvent.click(screen.getByRole('radio', { name: TIPO_LABELS.stories, hidden: true }));
+    expect(props.onFieldChange).toHaveBeenCalledWith('tipo', 'stories');
+    expect(props.onFieldChange).toHaveBeenCalledWith('ig_collaborators', []);
+    expect(toast.info).toHaveBeenCalledWith(
+      'Colaboradores removidos: Stories não aceitam colaboradores.',
+    );
+  });
+
+  it('plataforma → só TikTok com colaboradores limpa a lista e avisa', () => {
+    const { props } = renderPhone({ post: { ...basePost, ig_collaborators: ['dra.julia'] } });
+    fireEvent.click(screen.getByRole('button', { name: 'stub-only-tiktok', hidden: true }));
+    expect(props.onFieldChange).toHaveBeenCalledWith('platform', 'tiktok');
+    expect(props.onFieldChange).toHaveBeenCalledWith('ig_collaborators', []);
+    expect(toast.info).toHaveBeenCalledWith(
+      'Colaboradores removidos: o post não vai mais para o Instagram.',
+    );
+  });
+
+  it('Editar colaboradores abre o Publicar e foca o input', async () => {
+    renderPhone({
+      post: {
+        ...basePost,
+        status: 'falha_publicacao',
+        publish_error_code: 'COLLABORATOR_INVALID',
+        publish_error: 'x',
+        ig_collaborators: ['dra.julia'],
+        ig_collaborators_refused: ['dra.julia'],
+      },
+    });
+    expect(screen.getByTestId('collab-chip-dra.julia')).toHaveAttribute('data-refused', 'true');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'stub-editar-colaboradores', hidden: true }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Publicar' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    await waitFor(() => expect(screen.getByPlaceholderText('Adicionar @usuário')).toHaveFocus());
   });
 });

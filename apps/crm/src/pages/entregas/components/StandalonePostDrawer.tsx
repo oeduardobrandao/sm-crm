@@ -336,8 +336,10 @@ export function StandalonePostDrawer({
     try {
       await updateWorkflowPost(postId, { [field]: value } as Partial<WorkflowPost>);
       refresh();
+      return true;
     } catch {
       toast.error('Erro ao atualizar post');
+      return false;
     }
   };
 
