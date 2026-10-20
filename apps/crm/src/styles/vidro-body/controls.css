@@ -1550,8 +1550,8 @@
     cursor: not-allowed;
   }
 
-  /* Client detail nav reads as a second copy of the sidebar: same row height, sentence-case
-     group labels and the dark selected pill with the yellow icon. */
+  /* Client detail nav follows the sidebar's rows and sentence-case group labels, with a
+     quieter selected state than the sidebar's dark pill: a soft amber tint and an amber icon. */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav {
     gap: 0;
   }
@@ -1583,11 +1583,18 @@
     body:has(.app-container)
     .vidro-panel
     .cliente-tabs-nav__item.active:hover {
-    background: var(--vd-sel);
-    color: var(--vd-sel-fg);
-    font-weight: 500;
+    background: rgba(255, 191, 48, 0.16);
+    color: var(--text-main);
+    font-weight: 600;
   }
   html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .cliente-tabs-nav__item.active
+    .cliente-tabs-nav__icon {
+    color: #a16207;
+  }
+  html[data-look='vidro'][data-theme='dark']
     body:has(.app-container)
     .vidro-panel
     .cliente-tabs-nav__item.active
