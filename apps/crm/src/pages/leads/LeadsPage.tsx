@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
 import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import {
   Select,
   SelectContent,
@@ -416,6 +417,54 @@ export default function LeadsPage() {
 
   const STATUS_KEYS = LEAD_STATUS_KEYS;
 
+  const infoTooltip = (
+    <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const usageMeter =
+    leadsCount !== undefined && limits && limits.max_leads !== null ? (
+      <UsageMeter
+        size="compact"
+        label="leads"
+        used={usedLeads}
+        limit={limits.max_leads}
+        showUpgradeCta={isOwner}
+      />
+    ) : null;
+  const headerActions = (
+    <>
+      <span data-tooltip={t('csvTooltip')} data-tooltip-dir="bottom" style={{ display: 'flex' }}>
+        <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+      </span>
+      {canEditLeads && (
+        <FeatureGate flag="feature_csv_import" label="Importação CSV">
+          <Button variant="outline" onClick={handleCSVImport}>
+            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+            {tc('actions.importCsv')}
+          </Button>
+        </FeatureGate>
+      )}
+    </>
+  );
+  const primaryAction = canEditLeads ? (
+    <Button
+      onClick={openAdd}
+      disabled={leadsAtLimit}
+      title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
+    >
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
+    </Button>
+  ) : null;
+
+  const inToolbar = usePageToolbar({
+    title: t('title'),
+    titleAccessory: infoTooltip,
+    subtitle: usageMeter ?? undefined,
+    actions: headerActions,
+    primary: primaryAction,
+  });
+
   return (
     <div className="page-content">
       {isPhone ? (
@@ -446,63 +495,24 @@ export default function LeadsPage() {
         />
       ) : (
         <>
-          <div className="header">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-              <div
-                className="header-title"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                <h1>{t('title')}</h1>
-                <span
-                  data-tooltip={t('tooltip')}
-                  data-tooltip-dir="right"
-                  style={{ display: 'flex' }}
+          {!inToolbar && (
+            <div className="header">
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <div
+                  className="header-title"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
-                  <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-                </span>
-              </div>
-              {leadsCount !== undefined && limits && limits.max_leads !== null && (
-                <div style={{ marginTop: 6 }}>
-                  <UsageMeter
-                    size="compact"
-                    label="leads"
-                    used={usedLeads}
-                    limit={limits.max_leads}
-                    showUpgradeCta={isOwner}
-                  />
+                  <h1>{t('title')}</h1>
+                  {infoTooltip}
                 </div>
-              )}
+                {usageMeter && <div style={{ marginTop: 6 }}>{usageMeter}</div>}
+              </div>
+              <div className="header-actions">
+                {headerActions}
+                {primaryAction}
+              </div>
             </div>
-            <div className="header-actions">
-              <span
-                data-tooltip={t('csvTooltip')}
-                data-tooltip-dir="bottom"
-                style={{ display: 'flex' }}
-              >
-                <HelpCircle
-                  className="h-4 w-4"
-                  style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-                />
-              </span>
-              {canEditLeads && (
-                <FeatureGate flag="feature_csv_import" label="Importação CSV">
-                  <Button variant="outline" onClick={handleCSVImport}>
-                    <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
-                    {tc('actions.importCsv')}
-                  </Button>
-                </FeatureGate>
-              )}
-              {canEditLeads && (
-                <Button
-                  onClick={openAdd}
-                  disabled={leadsAtLimit}
-                  title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
-                >
-                  <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
-                </Button>
-              )}
-            </div>
-          </div>
+          )}
 
           <div
             style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}

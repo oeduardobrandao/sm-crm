@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale';
 import { Building2, Clock, Flag, Layers, Tag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { useSheetActions } from '@/components/mobile/sheetActions';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
@@ -131,6 +132,7 @@ export function CamadaPopover({
 }: CamadaPopoverProps) {
   const tituloId = useId();
   const navigate = useNavigate();
+  const vidro = useVidroShell();
   const virtualRef = useMemo(() => (anchor ? { current: ancoraVirtual(anchor) } : null), [anchor]);
   const cor = corDaCamada(item);
 
@@ -381,12 +383,19 @@ export function CamadaPopover({
         collisionPadding={16}
         aria-labelledby={tituloId}
         className="flex w-[360px] max-w-[calc(100vw-32px)] flex-col gap-4 overflow-y-auto p-5"
+        // Under Vidro, overlays.css paints the menu glass; these inline surface styles would beat it.
         style={{
-          background: 'var(--card-bg)',
-          borderColor: 'var(--border-color)',
-          borderRadius: 12,
+          ...(vidro
+            ? undefined
+            : {
+                background: 'var(--card-bg)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 12,
+              }),
           color: 'var(--text-main)',
-          boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))',
+          ...(vidro
+            ? undefined
+            : { boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))' }),
           maxHeight: 'min(560px, var(--radix-popover-content-available-height, 560px))',
         }}
       >

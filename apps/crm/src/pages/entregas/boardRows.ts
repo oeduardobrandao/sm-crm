@@ -22,7 +22,10 @@ export interface BoardColumn {
 
 export interface BoardRow {
   key: string;
+  /** Uppercase, as the classic tab strip shows it. */
   label: string;
+  /** The same name as typed (the Vidro tab strip, which does not shout). */
+  name: string;
   /** Template da linha, para o botão "Novo fluxo" da primeira coluna. */
   templateId: number | null;
   /** Ordenadas por `ordem` ascendente. */
@@ -74,7 +77,7 @@ export function rowKeyFor(entity: BoardEntity, signatureRows: boolean): string {
     : entity.steps.map((s) => s.nome).join(' → ');
 }
 
-function rowLabelFor(
+function rowNameFor(
   entity: BoardEntity,
   key: string,
   templates: WorkflowTemplate[],
@@ -82,12 +85,12 @@ function rowLabelFor(
 ): string {
   const t =
     entity.templateId != null ? templates.find((t) => t.id === entity.templateId) : undefined;
-  if (t) return t.nome.toUpperCase();
-  if (!signatureRows) return key.toUpperCase();
+  if (t) return t.nome;
+  if (!signatureRows) return key;
   if (entity.kind === 'post' && entity.process.template_nome) {
-    return entity.process.template_nome.toUpperCase();
+    return entity.process.template_nome;
   }
-  return 'ETAPAS PERSONALIZADAS';
+  return 'Etapas personalizadas';
 }
 
 export function buildBoardRows(
@@ -98,7 +101,13 @@ export function buildBoardRows(
   const signatureRows = opts.signatureRows === true;
   const rowMap = new Map<
     string,
-    { key: string; label: string; templateId: number | null; columns: Map<number, BoardColumn> }
+    {
+      key: string;
+      label: string;
+      name: string;
+      templateId: number | null;
+      columns: Map<number, BoardColumn>;
+    }
   >();
   for (const entity of entities) {
     const key = rowKeyFor(entity, signatureRows);
@@ -109,9 +118,11 @@ export function buildBoardRows(
       // template. Etapas que só o card tem entram depois, pelo laço abaixo.
       const tpl =
         entity.templateId != null ? templates.find((t) => t.id === entity.templateId) : undefined;
+      const name = rowNameFor(entity, key, templates, signatureRows);
       rowMap.set(key, {
         key,
-        label: rowLabelFor(entity, key, templates, signatureRows),
+        label: name.toUpperCase(),
+        name,
         templateId: entity.templateId,
         columns: new Map(
           (tpl?.etapas ?? []).map((e, i) => [
@@ -149,7 +160,7 @@ export function buildBoardRows(
       col.posts.sort((a, b) => a.posicao - b.posicao || entityNumericId(a) - entityNumericId(b));
     }
     if (columns.some((c) => c.cards.length > 0 || c.posts.length > 0))
-      rows.push({ key: r.key, label: r.label, templateId: r.templateId, columns });
+      rows.push({ key: r.key, label: r.label, name: r.name, templateId: r.templateId, columns });
   }
   // Every template gets a tab, even one with zero active fluxos right now (e.g. a
   // freshly created template, or the "Padrão" template seeded on signup) — otherwise
@@ -167,6 +178,7 @@ export function buildBoardRows(
     rows.push({
       key: `template:${t.id}`,
       label: t.nome.toUpperCase(),
+      name: t.nome,
       templateId: t.id,
       columns: steps.map((s) => ({
         ordem: s.ordem,

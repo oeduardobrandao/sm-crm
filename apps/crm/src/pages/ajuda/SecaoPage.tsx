@@ -8,6 +8,7 @@ import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
 import { ArticleCard } from './components/ArticleCard';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { GroupedList } from '@/components/mobile/GroupedList';
 import { ListSkeleton } from '@/components/ui/skeletons';
@@ -30,6 +31,8 @@ export default function SecaoPage() {
     () => articles.filter((a) => a.category === category),
     [articles, category],
   );
+
+  const inToolbar = usePageToolbar(isValidCategory ? { title: label } : null);
 
   if (isPhone) {
     return (
@@ -81,11 +84,13 @@ export default function SecaoPage() {
         </Link>
       </div>
 
-      <div className="header">
-        <div className="header-title">
-          <h1>{label}</h1>
+      {!inToolbar && (
+        <div className="header">
+          <div className="header-title">
+            <h1>{label}</h1>
+          </div>
         </div>
-      </div>
+      )}
 
       {isLoading ? (
         <CardGridSkeleton cards={6} />

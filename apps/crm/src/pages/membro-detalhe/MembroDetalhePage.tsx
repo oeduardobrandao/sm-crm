@@ -22,6 +22,7 @@ import { formatFinancialBRL } from '@/lib/financialAccess';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { MembroFormDialog } from '../equipe/MembroFormDialog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { MembroDetalhePhone } from './phone/MembroDetalhePhone';
 
 const TIPO_LABEL: Record<string, string> = {
@@ -72,6 +73,25 @@ export default function MembroDetalhePage() {
     setModalOpen(true);
   };
 
+  const backButton = (
+    <Button variant="outline" onClick={() => navigate('/equipe')}>
+      <ArrowLeft className="h-4 w-4" /> Voltar
+    </Button>
+  );
+  const primaryAction = canEditTeam ? (
+    <Button variant="outline" onClick={openEdit}>
+      <Edit2 className="h-4 w-4" /> Editar
+    </Button>
+  ) : undefined;
+
+  const inToolbar = usePageToolbar(
+    membro
+      ? { leading: backButton, title: membro.nome, primary: primaryAction }
+      : loadingMembros
+        ? { leading: backButton, title: null }
+        : null,
+  );
+
   if (isPhone) {
     return (
       <>
@@ -110,19 +130,14 @@ export default function MembroDetalhePage() {
   const avatarClass = avatarColorClass(membro?.id ?? membro?.nome);
 
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <Button variant="outline" onClick={() => navigate('/equipe')}>
-          <ArrowLeft className="h-4 w-4" /> Voltar
-        </Button>
-        {canEditTeam && (
-          <div className="header-actions">
-            <Button variant="outline" onClick={openEdit}>
-              <Edit2 className="h-4 w-4" /> Editar
-            </Button>
-          </div>
-        )}
-      </div>
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          {backButton}
+          {canEditTeam && <div className="header-actions">{primaryAction}</div>}
+        </div>
+      )}
 
       {loadingMembros && !membro && (
         <SkeletonStatus>

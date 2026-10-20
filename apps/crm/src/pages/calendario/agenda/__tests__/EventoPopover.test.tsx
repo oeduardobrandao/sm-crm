@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import type { AgendaOcorrencia } from '../../../../store/agenda';
 import { descreverRegra, emFuso } from '../agendaLogic';
 import { EventoPopover } from '../EventoPopover';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const {
   responderEventoMock,
@@ -108,12 +109,18 @@ const REGRA = {
 let qc: QueryClient;
 let anchor: HTMLElement;
 
-function abrir(o: AgendaOcorrencia, extra: { onClose?: () => void; onEditar?: () => void } = {}) {
+function abrir(
+  o: AgendaOcorrencia,
+  extra: { onClose?: () => void; onEditar?: () => void; vidro?: boolean } = {},
+) {
   const onClose = extra.onClose ?? vi.fn();
   const onEditar = extra.onEditar ?? vi.fn();
+  const popover = (
+    <EventoPopover ocorrencia={o} anchor={anchor} onClose={onClose} onEditar={onEditar} />
+  );
   const utils = render(
     <QueryClientProvider client={qc}>
-      <EventoPopover ocorrencia={o} anchor={anchor} onClose={onClose} onEditar={onEditar} />
+      {extra.vidro ? <VidroToolbarHarness>{popover}</VidroToolbarHarness> : popover}
     </QueryClientProvider>,
   );
   return { ...utils, onClose, onEditar };
@@ -907,5 +914,28 @@ describe('EventoPopover as a phone sheet', () => {
     expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mais ações' })).not.toBeInTheDocument();
     expect(screen.queryByText('Estúdio 2, Av. Paulista, 900')).not.toBeInTheDocument();
+  });
+});
+
+describe('EventoPopover under the Vidro look', () => {
+  it('keeps its own surface inline styles without the Vidro shell', async () => {
+    abrir(ocorrencia());
+    const dialog = await screen.findByRole('dialog', { name: 'Gravação: Clínica Sorriso' });
+    // Only the component's own declarations: Radix appends its popper variables and, until
+    // floating-ui settles, a timing-dependent `animation: none`.
+    expect(dialog.getAttribute('style')!.split('; --radix-')[0]).toMatchInlineSnapshot(
+      `"background: var(--card-bg); border-color: var(--border-color); border-radius: 12px; color: var(--text-main); box-shadow: var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16)); max-height: min(640px, var(--radix-popover-content-available-height, 640px))"`,
+    );
+  });
+
+  it('drops background, border colour, radius and shadow under the Vidro shell', async () => {
+    abrir(ocorrencia(), { vidro: true });
+    const dialog = await screen.findByRole('dialog', { name: 'Gravação: Clínica Sorriso' });
+    expect(dialog.style.background).toBe('');
+    expect(dialog.style.borderColor).toBe('');
+    expect(dialog.style.borderRadius).toBe('');
+    expect(dialog.style.boxShadow).toBe('');
+    expect(dialog.style.color).toBe('var(--text-main)');
+    expect(dialog.style.maxHeight).toContain('min(640px');
   });
 });

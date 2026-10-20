@@ -9,6 +9,8 @@ export interface ExpressPreviewProps {
   caption: string;
   /** Texto no lugar da mídia enquanto não há nenhuma. */
   emptyLabel: string;
+  /** Ocupa a largura do contêiner em vez dos 240px da prévia compacta (coluna do Vidro). */
+  fill?: boolean;
 }
 
 export function ExpressPreview({
@@ -17,11 +19,12 @@ export function ExpressPreview({
   mediaList,
   caption,
   emptyLabel,
+  fill,
 }: ExpressPreviewProps) {
   return (
     <div
       className="rounded-lg overflow-hidden"
-      style={{ background: '#000', padding: '0.75rem', maxWidth: '240px' }}
+      style={{ background: '#000', padding: '0.75rem', maxWidth: fill ? undefined : '240px' }}
     >
       <div className="flex items-center gap-2 mb-2">
         {igAccount.profile_picture_url ? (

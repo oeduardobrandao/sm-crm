@@ -8,8 +8,15 @@ import { Button } from '@/components/ui/button';
 import { getCliente, getInitials } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { ClientePhoneSectionShell, useClienteSectionBack } from './phone/ClientePhoneChrome';
-import { ClienteDetalheHeader } from './ClienteDetalheHeader';
+import {
+  ClienteAvatar,
+  ClienteBackButton,
+  ClienteBadges,
+  ClienteDetalheHeader,
+  ClienteEditButton,
+} from './ClienteDetalheHeader';
 import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ClienteEditDialog } from './ClienteEditDialog';
 import {
@@ -54,6 +61,38 @@ export default function ClienteDetalhePage() {
     queryFn: () => getCliente(clienteId),
     enabled: validId,
   });
+
+  // Shared by the photo-upload trigger and the header's "Editar" button
+  // (which opens ClienteEditDialog below) -- a custom role with only
+  // `clientes:ver` must not reach either mutation surface, even though it
+  // can view this page (Task 14, revisão externa round 4, P2).
+  const canEditClient = can('clientes', 'editar') === true;
+
+  // Desktop Vidro toolbar: this layout route registers for every tab under it (the
+  // tabs never register). Null until the session, the membership and the client are
+  // all in, so no state below (skeleton, access cards, not-found) shows a name.
+  const inToolbar = usePageToolbar(
+    !loading && user && workspaceRole !== null && !loadingCliente && cliente
+      ? {
+          leading: (
+            <>
+              <ClienteBackButton onBack={() => navigate('/clientes')} />
+              <ClienteAvatar
+                clienteId={clienteId}
+                nome={cliente.nome}
+                initials={getInitials(cliente.nome)}
+                cor={cliente.cor}
+                imageUrl={cliente.foto_url}
+                canEditPhoto={canEditClient}
+              />
+            </>
+          ),
+          title: cliente.nome,
+          subtitle: <ClienteBadges plano={cliente.plano} status={cliente.status} />,
+          primary: canEditClient ? <ClienteEditButton onEdit={() => setEditOpen(true)} /> : null,
+        }
+      : null,
+  );
 
   if (!validId) {
     return <Navigate to="/clientes" replace />;
@@ -158,11 +197,6 @@ export default function ClienteDetalhePage() {
     );
   }
 
-  // Shared by the photo-upload trigger and the header's "Editar" button
-  // (which opens ClienteEditDialog below) -- a custom role with only
-  // `clientes:ver` must not reach either mutation surface, even though it
-  // can view this page (Task 14, revisão externa round 4, P2).
-  const canEditClient = can('clientes', 'editar') === true;
   const outletContext = {
     clienteId,
     cliente,
@@ -192,19 +226,21 @@ export default function ClienteDetalhePage() {
 
   return (
     <div className="cliente-detalhe-page">
-      <ClienteDetalheHeader
-        clienteId={clienteId}
-        nome={cliente.nome}
-        initials={getInitials(cliente.nome)}
-        cor={cliente.cor}
-        plano={cliente.plano}
-        status={cliente.status}
-        imageUrl={cliente.foto_url}
-        canEditPhoto={canEditClient}
-        canEdit={canEditClient}
-        onBack={() => navigate('/clientes')}
-        onEdit={() => setEditOpen(true)}
-      />
+      {!inToolbar && (
+        <ClienteDetalheHeader
+          clienteId={clienteId}
+          nome={cliente.nome}
+          initials={getInitials(cliente.nome)}
+          cor={cliente.cor}
+          plano={cliente.plano}
+          status={cliente.status}
+          imageUrl={cliente.foto_url}
+          canEditPhoto={canEditClient}
+          canEdit={canEditClient}
+          onBack={() => navigate('/clientes')}
+          onEdit={() => setEditOpen(true)}
+        />
+      )}
 
       <div className="cliente-tabs-shell">
         <ClienteDetalheNav clienteId={clienteId} cliente={cliente} />

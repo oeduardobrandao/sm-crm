@@ -3,6 +3,7 @@ import { Bell, CheckCheck, Filter } from 'lucide-react';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import type { Notification } from '../../store';
 import NotificationList from './NotificationList';
+import { useVidroShell } from './PageToolbarContext';
 
 export interface NotificationPopoverProps {
   notifications: Notification[];
@@ -26,6 +27,7 @@ export default function NotificationPopover({
   onClose,
 }: NotificationPopoverProps) {
   const [filter, setFilter] = useState<FilterMode>('all');
+  const vidro = useVidroShell();
   const visible = filter === 'unread' ? notifications.filter((n) => !n.read_at) : notifications;
 
   const handleNavigate = (link: string) => {
@@ -37,13 +39,20 @@ export default function NotificationPopover({
     <div
       role="dialog"
       aria-label="Notificações"
+      // Under Vidro the bell's PopoverContent carries the menu glass (overlays.css); keeping this
+      // card's own surface would draw a second frame inside it.
       style={{
         width: 'min(380px, calc(100vw - 2rem))',
         maxHeight: 480,
-        background: 'var(--surface-main)',
-        border: '1px solid var(--border-color)',
-        borderRadius: 16,
-        boxShadow: 'var(--shadow)',
+        ...(vidro
+          ? // inherit the glass's radius so overflow: hidden clips row hovers to its corners.
+            { borderRadius: 'inherit' }
+          : {
+              background: 'var(--surface-main)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 16,
+              boxShadow: 'var(--shadow)',
+            }),
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',

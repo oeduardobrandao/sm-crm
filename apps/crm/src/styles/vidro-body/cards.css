@@ -1,0 +1,1205 @@
+/*
+ * Vidro body skin: cards.
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
+ * Only selectors for this family (cross-family rules go in compositions.css).
+ * Guards: every selector starts with html[data-look='vidro']; everything inside
+ * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ */
+@media (min-width: 1101px) {
+  /* Hover shadows for this family, as panel-local variables so the dark mirror at the end of the file
+     only swaps the colour. Mirroring the hover rules themselves would add a [data-theme] attribute to
+     their specificity and let the dark :hover beat the light .ring-2 / :focus-visible combinations. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel {
+    --vd-cards-shadow-hover: 0 8px 18px -10px rgba(18, 21, 26, 0.25);
+    --vd-cards-shadow-lift: 0 8px 20px -8px rgba(18, 21, 26, 0.18);
+  }
+
+  /* ---------- Groups: white, hairline, 16px ---------- */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      [data-slot='card'],
+      .team-card,
+      .today-card,
+      .analytics-post-card,
+      .latest-instagram-post-card,
+      .agenda-view,
+      .agenda-sidebar__card,
+      .concluded-client-card,
+      .fila-group
+    ) {
+    background: var(--vd-group);
+    border: 1px solid var(--vd-sep);
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* .fila-top keeps its 2px primary border. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-top {
+    background: var(--vd-group);
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* ---------- Group states the rules above would otherwise kill ---------- */
+  /* Arquivos grid tiles are buttons with Tailwind hover/selection utilities (0,2,0), and Tailwind's
+     ring-2 is a box-shadow, so the selection ring and the drag-over tint are restated here. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel button[data-slot='card']:hover {
+    border-color: var(--primary-color);
+    box-shadow: var(--vd-cards-shadow-hover);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card'][class*='bg-[rgba(234,179,8,0.08)]'] {
+    background: rgba(234, 179, 8, 0.08);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel button[data-slot='card'].ring-2 {
+    box-shadow: 0 0 0 2px var(--primary-color);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card'].ring-2:hover {
+    box-shadow:
+      0 0 0 2px var(--primary-color),
+      var(--vd-cards-shadow-hover);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card']:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card'].ring-2:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--primary-color),
+      0 0 0 5px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    button[data-slot='card']:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: var(--vd-sep);
+    box-shadow: none;
+  }
+
+  /* .analytics-post-card is an <a>: restate hover, focus, and both at once. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-post-card:hover {
+    box-shadow: var(--vd-cards-shadow-lift);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-post-card:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-post-card:hover:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px rgba(255, 191, 48, 0.55),
+      var(--vd-cards-shadow-lift);
+  }
+
+  /* Tinted shadcn cards (Importar StepOrigem: border-primary/30 bg-primary/5) keep a primary wash
+     inside the group look; the group rule would otherwise flatten them to white. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='card'][class*='bg-primary/'] {
+    background: hsl(var(--primary) / 0.05);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    [data-slot='card'][class*='border-primary/'] {
+    border-color: hsl(var(--primary) / 0.3);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .concluded-client-card:hover {
+    border-color: var(--primary-color);
+    background: var(--vd-fill);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.concluded-client-card, .fila-top):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .fila-top:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ---------- Tiles: filled, no border, 16px ---------- */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.config-shell, .post-production, .analytics-callout__item) {
+    background: var(--vd-tile);
+    border: 0;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* Minha fila sits straight on the panel, where white groups vanish: the four numbers, "Comece
+     por aqui" and the row groups are filled tiles instead (the top card keeps its primary border). */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-stats {
+    gap: 12px;
+    padding: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-stat {
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: var(--vd-tile);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-top {
+    background: var(--vd-tile);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-group.fila-group {
+    background: var(--vd-tile);
+    border: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-group .fila-row {
+    border-bottom-color: var(--vd-sep);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-group .fila-row:hover {
+    background: var(--vd-fill);
+  }
+
+  /* .rb-layers-rail is position: fixed; the report scrolls under it, so it stays opaque. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-layers-rail {
+    background: var(--vd-solid);
+    border: 0;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* List-row look for the layer rows; the active row keeps its primary outline. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-layers-row {
+    background: transparent;
+    border-color: var(--vd-sep);
+    border-radius: 12px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-layers-row:hover {
+    background: var(--vd-fill);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .rb-layers-row.rb-layers-row-active {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-color);
+  }
+
+  /* Keeps its amber wash, border and rail; only the radius joins the family. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-callout {
+    border-radius: 16px;
+  }
+
+  /* Sticky, so opaque. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .scheduled-panel {
+    background: var(--vd-solid);
+    border-radius: 16px;
+    box-shadow: none;
+  }
+
+  /* ---------- Inner items: group look at 12px ---------- */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(
+      .scheduled-item,
+      .cliente-date-card,
+      .cliente-address-card,
+      .niche-month-card,
+      .drawer-post-item
+    ) {
+    background: var(--vd-group);
+    border: 1px solid var(--vd-sep);
+    border-radius: 12px;
+    box-shadow: none;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .niche-month-card:hover {
+    border-color: rgba(234, 179, 8, 0.3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .drawer-post-item.expanded {
+    border-color: var(--primary-color);
+  }
+
+  /* ---------- Report editor chrome: glass menus ---------- */
+  /* style.css paints .rb-edit-toolbar ink (#fff on --dark); on the light glass the text turns ink. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.rb-edit-toolbar, .rb-text-toolbar) {
+    background: var(--vd-menu);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid var(--vd-cap-bd);
+    border-radius: 14px;
+    box-shadow: 0 18px 40px -16px rgba(18, 21, 26, 0.35);
+    color: var(--text-main);
+  }
+
+  /* .rb-img-panel renders inside a portaled Radix PopoverContent, which overlays.css already turns
+     into the --vd-menu glass. The panel itself stays bare so the glass is not stacked twice. */
+  html[data-look='vidro'] body:has(.app-container) [data-slot='popover-content'] .rb-img-panel {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-editor-header[data-stuck] {
+    background: var(--vd-solid);
+  }
+
+  /* ---------- Card title ---------- */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel [data-slot='card-title'] {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  /* ---------- Empty states ---------- */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel :is(.board-empty, .drawer-empty) {
+    font-size: 13px;
+    color: var(--vd-txt3);
+    opacity: 1;
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-finance-empty {
+    border-color: var(--vd-sep);
+    border-radius: 16px;
+  }
+  /* EmptyStateGuide under Vidro. Scoped to body:has(.app-container), not .vidro-panel: the guide also
+     renders inside portaled dialogs (NewWorkflowWizard, WorkflowModals), and the class only exists
+     while useVidroShell() is true. Structure: root div > (div > span icon + span.font-semibold title),
+     p.text-sm body (its Link keeps its inline ink), optional p.text-xs hint. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-empty {
+    background: var(--vd-tile);
+    border: 0;
+    border-radius: 16px;
+    padding: 20px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-empty span.font-semibold {
+    color: var(--text-main);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-empty > p {
+    color: var(--vd-txt2);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-empty > p.text-xs {
+    color: var(--vd-txt3);
+  }
+
+  /* ===== Analytics: Destaques (the leader cards folded into one KPI cell) ===== */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .kpi-grid:has(> .analytics-highlights) {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.9fr);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-highlights
+    .kpi-card-head {
+    margin: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__label {
+    overflow: hidden;
+    font-size: 11px;
+    color: var(--vd-txt3);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__name {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__metric {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Below 1440px six columns get too tight (the content is about 1080px at 1440 with the sidebar
+     pinned): Destaques takes its own row under the five KPIs, its leaders side by side. */
+  @media (max-width: 1439px) {
+    html[data-look='vidro']
+      body:has(.app-container)
+      .vidro-panel
+      .kpi-grid:has(> .analytics-highlights) {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights {
+      grid-column: 1 / -1;
+      flex-direction: row;
+      align-items: center;
+      gap: 24px;
+    }
+
+    html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__list {
+      flex: 1 1 auto;
+      flex-direction: row;
+      gap: 24px;
+      min-width: 0;
+    }
+
+    html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-highlights__row {
+      flex: 1 1 0;
+    }
+  }
+
+  /* ===== Analytics: "Contas silenciosas" as one line ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: var(--vd-tg-warn-bg);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__icon {
+    flex-shrink: 0;
+    color: var(--vd-tg-warn);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__title {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__names {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    color: var(--vd-txt2);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .analytics-silent-line__toggle {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-silent-line__toggle:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+
+  /* ===== Analytics: Todas as Contas fits the panel; names stay on one line ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .card.analytics-desktop-table {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-desktop-table
+    :is([data-slot='table-cell'], [data-slot='table-head']) {
+    padding-left: 8px;
+    padding-right: 8px;
+    white-space: nowrap;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-desktop-table
+    [data-slot='table-cell']:first-child
+    * {
+    white-space: nowrap;
+  }
+
+  /* Narrower panels scroll the table sideways: the client column stays pinned. Opaque, so the
+     scrolled cells never show through: the card's fill (--vd-group) over the translucent panel
+     (--vd-panel) over the page colour rebuilds the shade the card shows (the hover pill layers
+     over the same stack). */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .card.analytics-desktop-table
+    :is(thead, tbody)
+    > tr
+    > :first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background:
+      linear-gradient(var(--vd-group), var(--vd-group)),
+      linear-gradient(var(--vd-panel), var(--vd-panel)), var(--bg-color);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .card.analytics-desktop-table
+    tbody
+    > tr:is(:hover, [data-state='selected'])
+    > td:first-child {
+    background:
+      linear-gradient(var(--vd-fill), var(--vd-fill)),
+      linear-gradient(var(--vd-group), var(--vd-group)),
+      linear-gradient(var(--vd-panel), var(--vd-panel)), var(--bg-color);
+  }
+}
+
+/* ===== Dark mirrors (the --vd-* tokens flip on their own; only literal colours need restating) ===== */
+@media (min-width: 1101px) {
+  html[data-theme='dark'][data-look='vidro'] body:has(.app-container) .vidro-panel {
+    --vd-cards-shadow-hover: 0 8px 18px -10px rgba(0, 0, 0, 0.6);
+    --vd-cards-shadow-lift: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ---------- Report toolbars: solid when transparency is reduced or backdrop-filter is missing ---------- */
+/* Mirrors overlays.css's fallbacks for the two glass toolbars this file owns (same selector, later). */
+@media (min-width: 1101px) and (prefers-reduced-transparency: reduce) {
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.rb-edit-toolbar, .rb-text-toolbar) {
+    background: var(--vd-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (min-width: 1101px) {
+    html[data-look='vidro']
+      body:has(.app-container)
+      .vidro-panel
+      :is(.rb-edit-toolbar, .rb-text-toolbar) {
+      background: var(--vd-solid);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+}
+
+/* ===== Início (Vidro): Prazos tiles + grouped list beside Minha fila, health table below ===== */
+@media (min-width: 1101px) {
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-vidro {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-vidro__top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 1279px) {
+    html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-vidro__top {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-vidro__side {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-vidro__side > * {
+    margin: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__tiles {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__tile {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 112px;
+    box-sizing: border-box;
+    padding: 14px 16px;
+    border: 1.5px solid transparent;
+    border-radius: 16px;
+    background: var(--vd-tile);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__tile:hover {
+    border-color: var(--vd-sep);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__tile[aria-pressed='true'] {
+    background: var(--vd-group);
+    border-color: var(--text-main);
+    box-shadow: 0 6px 16px -10px rgba(18, 21, 26, 0.35);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__tile:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__group-row:focus-visible,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__chip:focus-visible,
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__action:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__tile-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__tile-label::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--vd-txt3);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__tile[data-bucket='atrasado']
+    .inicio-prazos__tile-label::before {
+    background: var(--vd-tg-bad);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__tile[data-bucket='hoje']
+    .inicio-prazos__tile-label::before {
+    background: var(--vd-tg-warn);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__tile-count {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__tile[data-bucket='atrasado']
+    .inicio-prazos__tile-count {
+    color: var(--vd-tg-bad);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__tile[data-bucket='hoje']
+    .inicio-prazos__tile-count {
+    color: var(--vd-tg-warn);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__tile-sub {
+    font-size: 12px;
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 36px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__bar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    width: 22px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__bar-fill {
+    width: 14px;
+    border-radius: 3px;
+    background: var(--vd-txt3);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__tile[aria-pressed='true']
+    .inicio-prazos__bar-fill {
+    background: var(--text-main);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__bar-fill[data-empty] {
+    background: var(--vd-sep);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__tile[aria-pressed='true']
+    .inicio-prazos__bar-fill[data-empty] {
+    background: var(--vd-sep);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__bar-day {
+    font-size: 9px;
+    color: var(--vd-txt3);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__list,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health {
+    background: var(--vd-group);
+    border: 1px solid var(--vd-sep);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__title,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__title {
+    flex: 1;
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__groupby {
+    font-size: 12px;
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-main);
+    text-decoration: none;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__note,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__note {
+    margin: 0;
+    padding: 16px;
+    border-top: 1px solid var(--vd-sep);
+    font-size: 13px;
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__group {
+    border-top: 1px solid var(--vd-sep);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__group-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__group-row:hover {
+    background: var(--vd-fill);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__lead {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--vd-tg-neutral);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__lead.is-day {
+    border-radius: 9px;
+    background: var(--vd-tile);
+    color: var(--text-main);
+    font-size: 13px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__group-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__group-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__group-meta {
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--vd-txt3);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__people {
+    display: flex;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__person {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin-left: -6px;
+    border: 2px solid var(--vd-group);
+    border-radius: 50%;
+    background: var(--vd-tg-neutral-bg);
+    color: var(--vd-tg-neutral);
+    font-size: 9px;
+    font-weight: 700;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__person:first-child {
+    margin-left: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__count {
+    min-width: 22px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--vd-tg-neutral-bg);
+    color: var(--vd-tg-neutral);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__count[data-bucket='atrasado'] {
+    background: var(--vd-tg-bad-bg);
+    color: var(--vd-tg-bad);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__count[data-bucket='hoje'] {
+    background: var(--vd-tg-warn-bg);
+    color: var(--vd-tg-warn);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__chevron {
+    flex-shrink: 0;
+    color: var(--vd-txt3);
+    transition: transform 0.15s ease;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-prazos__group[data-open]
+    .inicio-prazos__chevron {
+    transform: rotate(90deg);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 16px 10px 58px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__more,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__more {
+    align-self: flex-start;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-prazos__more:hover,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__more:hover {
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__title {
+    flex: 0 0 auto;
+    margin-right: 8px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__chips {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__chip {
+    padding: 5px 12px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--vd-fill);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__chip[aria-pressed='true'] {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+    font-weight: 600;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__chip-n {
+    margin-left: 2px;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 220px;
+    height: 30px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: var(--vd-fill);
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__search input {
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__scroll {
+    overflow-x: auto;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__table thead th {
+    padding: 8px;
+    border-top: 1px solid var(--vd-sep);
+    border-bottom: 1px solid var(--vd-sep);
+    background: transparent;
+    color: var(--vd-txt3);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: left;
+    text-transform: none;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__table
+    tbody
+    :is(th, td) {
+    padding: 8px;
+    border-bottom: 1px solid var(--vd-sep);
+    color: var(--text-main);
+    font-weight: 400;
+    text-align: left;
+    vertical-align: middle;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__table
+    tbody
+    tr:last-child
+    :is(th, td) {
+    border-bottom: 0;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__table
+    :is(th, td):first-child {
+    padding-left: 16px;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__table
+    :is(th, td):last-child {
+    padding-right: 16px;
+    text-align: right;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__table .is-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__table
+    td[data-stale] {
+    color: var(--vd-tg-warn);
+    font-weight: 600;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__client-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: inherit;
+    text-decoration: none;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__client-text,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__name {
+    font-weight: 600;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__user {
+    font-size: 11px;
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__pill {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--vd-tg-neutral-bg);
+    color: var(--vd-tg-neutral);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__pill[data-tone='bad'] {
+    background: var(--vd-tg-bad-bg);
+    color: var(--vd-tg-bad);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__pill[data-tone='warn'] {
+    background: var(--vd-tg-warn-bg);
+    color: var(--vd-tg-warn);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__pill[data-tone='info'] {
+    background: var(--vd-tg-info-bg);
+    color: var(--vd-tg-info);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__pill[data-tone='ok'] {
+    background: var(--vd-tg-ok-bg);
+    color: var(--vd-tg-ok);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__why {
+    font-size: 11px;
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__metric {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__delta {
+    font-size: 11px;
+    font-weight: 500;
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__delta[data-dir='up'] {
+    color: var(--vd-tg-ok);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__delta[data-dir='down'] {
+    color: var(--vd-tg-bad);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .inicio-health__table
+    td.inicio-health__pipe {
+    font-size: 12px;
+    color: var(--vd-txt3);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__action {
+    display: inline-block;
+    padding: 5px 12px;
+    border: 1px solid var(--vd-sep);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__action:hover {
+    background: var(--vd-fill);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__action.is-primary {
+    border-color: transparent;
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .inicio-health__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--vd-sep);
+    font-size: 12px;
+    color: var(--vd-txt3);
+  }
+}

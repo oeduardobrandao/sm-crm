@@ -67,6 +67,7 @@ import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { useAuth } from '../../context/AuthContext';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { useIsDesktop } from '../../hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { deleteAutomationMedia } from '../../services/automationMedia';
@@ -343,17 +344,34 @@ export default function AutomacoesPage() {
     </div>
   );
 
-  if (
+  const showGateSkeleton =
     flagOff &&
-    (automationsQuery.isPending || (automations.length === 0 && contactsCountQuery.isPending))
-  ) {
+    (automationsQuery.isPending || (automations.length === 0 && contactsCountQuery.isPending));
+  const showGateError = flagOff && automationsQuery.isError;
+  const showGateLocked = flagOff && automations.length === 0 && !hasContacts;
+
+  const primaryAction = (
+    <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
+      <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
+        <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
+      </Button>
+    </FeatureGate>
+  );
+  // The gate screens (skeleton, error, upgrade) have no header: they register null.
+  const inToolbar = usePageToolbar(
+    showGateSkeleton || showGateError || showGateLocked
+      ? null
+      : { title: t('title'), primary: primaryAction },
+  );
+
+  if (showGateSkeleton) {
     return isPhone ? (
       phoneFrame(<CardListSkeleton rows={4} />)
     ) : (
-      <PageSkeleton body="table" style={{ padding: '1.5rem' }} />
+      <PageSkeleton body="table" style={inToolbar ? undefined : { padding: '1.5rem' }} />
     );
   }
-  if (flagOff && automationsQuery.isError) {
+  if (showGateError) {
     const errorState = (
       <div style={{ padding: isPhone ? '2rem 0' : '4rem', textAlign: 'center' }}>
         <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('loadError')}</p>
@@ -364,7 +382,7 @@ export default function AutomacoesPage() {
     );
     return isPhone ? phoneFrame(errorState) : errorState;
   }
-  if (flagOff && automations.length === 0 && !hasContacts) {
+  if (showGateLocked) {
     const locked = (
       <UpgradeLockedScreen featureLabel={t('featureLabel')} feature="feature_instagram_automation">
         <p className="text-sm max-w-md" style={{ color: 'var(--text-muted)' }}>
@@ -536,22 +554,19 @@ export default function AutomacoesPage() {
   }
 
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>{t('title')}</h1>
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <h1>{t('title')}</h1>
+          </div>
+          <div className="header-actions">{primaryAction}</div>
         </div>
-        <div className="header-actions">
-          <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
-            <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
-              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
-            </Button>
-          </FeatureGate>
-        </div>
-      </div>
+      )}
 
       <p
         className="flex items-center gap-1.5"

@@ -1,0 +1,55 @@
+/*
+ * Vidro body skin: chat.
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
+ * Only selectors for this family (cross-family rules go in compositions.css).
+ * Guards: every selector starts with html[data-look='vidro']; everything inside
+ * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ */
+@media (min-width: 1101px) {
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-bubble {
+    border-radius: 18px;
+    padding: 9px 13px;
+    font-size: 13px;
+    line-height: 1.4;
+    border: 0;
+    box-shadow: none;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.approval-bubble--team, .approval-bubble--client) {
+    padding: 9px 13px;
+    font-size: 13px;
+    line-height: 1.4;
+    border-radius: 18px;
+    border: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-bubble--me,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .approval-bubble--team {
+    background: var(--vd-sel);
+    color: var(--vd-sel-fg);
+    border-bottom-right-radius: 6px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-bubble--them,
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .approval-bubble--client {
+    background: var(--vd-fill);
+    color: var(--text-main);
+    border-bottom-left-radius: 6px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .vidro-bubble--me
+    .vidro-bubble__meta {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-bubble--me a {
+    color: var(--text-main);
+  }
+}

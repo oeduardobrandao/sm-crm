@@ -35,6 +35,8 @@ export interface TodayAgenda {
   scope: AgendaScope;
   buckets: AgendaBuckets;
   now: Date;
+  /** The signed-in user's membro, when linked (the Vidro "Só meus" filter keys on it). */
+  membroId: number | null;
 }
 
 const EMPTY: AgendaBuckets = { atrasado: [], hoje: [], proximos: [] };
@@ -198,5 +200,5 @@ export function useTodayAgenda(): TodayAgenda {
     if (loading) status = 'loading';
   }
 
-  return { status, scope, buckets: status === 'ready' ? buckets : EMPTY, now };
+  return { status, scope, buckets: status === 'ready' ? buckets : EMPTY, now, membroId };
 }

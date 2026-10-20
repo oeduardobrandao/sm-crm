@@ -34,10 +34,12 @@ function Calendar({
         button_previous: cn(
           buttonVariants({ variant: 'outline' }),
           'pointer-events-auto mb-0 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100',
+          'vidro-cal-nav',
         ),
         button_next: cn(
           buttonVariants({ variant: 'outline' }),
           'pointer-events-auto mb-0 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100',
+          'vidro-cal-nav',
         ),
         month_grid: 'w-full border-collapse space-y-1',
         weekdays: 'flex',
@@ -52,6 +54,7 @@ function Calendar({
         day_button: cn(
           buttonVariants({ variant: 'ghost' }),
           'h-9 w-9 p-0 font-normal aria-selected:opacity-100',
+          'vidro-cal-day',
         ),
         range_start: 'day-range-start',
         range_end: 'day-range-end',
@@ -61,7 +64,8 @@ function Calendar({
         outside:
           'day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30',
         disabled: 'text-muted-foreground opacity-50',
-        range_middle: 'aria-selected:bg-accent aria-selected:text-accent-foreground',
+        range_middle:
+          'aria-selected:bg-accent aria-selected:text-accent-foreground vidro-cal-range-middle',
         hidden: 'invisible',
         ...classNames,
       }}

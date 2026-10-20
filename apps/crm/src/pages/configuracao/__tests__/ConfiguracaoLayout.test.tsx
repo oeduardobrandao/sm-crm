@@ -20,6 +20,7 @@ import { useAuth } from '../../../context/AuthContext';
 import ConfiguracaoLayout from '../ConfiguracaoLayout';
 import ConfiguracaoIndex from '../ConfiguracaoIndex';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const mockedUseAuth = vi.mocked(useAuth);
 
@@ -80,17 +81,24 @@ function PathProbe() {
   return <span data-testid="path">{useLocation().pathname}</span>;
 }
 
-function renderAt(path: string) {
+function renderAt(path: string, { vidroShell }: { vidroShell?: boolean } = {}) {
+  const routes = (
+    <Routes>
+      <Route path="/configuracao" element={<ConfiguracaoLayout />}>
+        <Route index element={<ConfiguracaoIndex />} />
+        <Route path="perfil" element={<div>conteudo perfil</div>} />
+        <Route path="membros" element={<div>conteudo membros</div>} />
+        <Route path="cobranca" element={<div>conteudo cobranca</div>} />
+      </Route>
+    </Routes>
+  );
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/configuracao" element={<ConfiguracaoLayout />}>
-          <Route index element={<ConfiguracaoIndex />} />
-          <Route path="perfil" element={<div>conteudo perfil</div>} />
-          <Route path="membros" element={<div>conteudo membros</div>} />
-          <Route path="cobranca" element={<div>conteudo cobranca</div>} />
-        </Route>
-      </Routes>
+      {vidroShell === undefined ? (
+        routes
+      ) : (
+        <VidroToolbarHarness vidroShell={vidroShell}>{routes}</VidroToolbarHarness>
+      )}
       <PathProbe />
     </MemoryRouter>,
   );
@@ -266,6 +274,44 @@ describe('ConfiguracaoLayout', () => {
     expect(tabLabels()).toEqual(['Perfil', 'Notificações']);
     expect(screen.queryByText('conteudo membros')).not.toBeInTheDocument();
     expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/perfil');
+  });
+});
+
+describe('ConfiguracaoLayout in the Vidro toolbar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = true;
+  });
+
+  it('puts the title in the toolbar and keeps the section nav in the content', () => {
+    setAuth('owner');
+    const { container } = renderAt('/configuracao/perfil', { vidroShell: true });
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Configurações');
+    expect(container.querySelector('.config-shell-header')).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Seções de configurações' })).toBeInTheDocument();
+    expect(screen.getByText('conteudo perfil')).toBeInTheDocument();
+  });
+
+  it('hides the skeleton header while auth loads, keeping the toolbar title', () => {
+    setAuth(null, { loading: true, membershipResolved: false });
+    const { container } = renderAt('/configuracao/membros', { vidroShell: true });
+    expect(container.querySelector('[data-testid="crm-skeleton"]')).toBeInTheDocument();
+    expect(container.querySelector('.config-shell-header')).toBeNull();
+    expect(container.querySelector('.config-nav')).not.toBeNull();
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', () => {
+    setAuth('owner');
+    const { container } = renderAt('/configuracao/perfil', { vidroShell: false });
+    expect(container.querySelector('.vidro-toolbar')).toBeNull();
+    const h1 = screen.getByRole('heading', { level: 1, name: 'Configurações' });
+    expect(h1.closest('.config-shell-header')).not.toBeNull();
   });
 });
 

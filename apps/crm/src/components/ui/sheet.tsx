@@ -18,6 +18,7 @@ const SheetOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
+    data-slot="sheet-overlay"
     className={cn(
       // tailwindcss-animate is not registered, so the animate-in utilities are
       // inert; the sheet-overlay class carries the real fade (style.css).
@@ -58,6 +59,8 @@ interface SheetContentProps
   overlayClassName?: string;
 }
 
+// Under the Vidro look, [data-slot='sheet-content'] gets backdrop-filter, which makes it the containing
+// block for position: fixed descendants: a DragOverlay or any other fixed element inside a sheet must be portaled.
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
@@ -69,6 +72,7 @@ const SheetContent = React.forwardRef<
       <SheetOverlay className={overlayClassName} />
       <SheetPrimitive.Content
         ref={ref}
+        data-slot="sheet-content"
         className={cn(sheetVariants({ side }), className)}
         style={
           needsTopSafeArea

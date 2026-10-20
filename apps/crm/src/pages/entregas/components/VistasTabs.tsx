@@ -3,6 +3,8 @@ import {
   Archive,
   BarChart2,
   Calendar,
+  Check,
+  ChevronDown,
   Columns,
   List,
   ListChecks,
@@ -12,7 +14,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +47,9 @@ interface VistasTabsProps {
   onApply: (query: string) => void;
   /** Right-aligned slot on the same row (the Entregas search input). */
   trailing?: React.ReactNode;
+  /** Vidro shell only: controls placed right after the vista picker (the Etapas/Status and
+   *  entity toggles), so the page keeps one control row instead of stacking them below. */
+  controls?: React.ReactNode;
 }
 
 /**
@@ -52,7 +58,13 @@ interface VistasTabsProps {
  * query string the URL carries. Stored on the server per user and workspace
  * (useSavedViews), with this browser's old localStorage list imported once.
  */
-export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasTabsProps) {
+export function VistasTabs({
+  contaId,
+  currentQuery,
+  onApply,
+  trailing,
+  controls,
+}: VistasTabsProps) {
   const {
     views,
     isLoading,
@@ -64,6 +76,7 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
     removeVista,
     renameVista,
   } = useSavedViewSelection(contaId, currentQuery);
+  const vidroShell = useVidroShell();
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -73,6 +86,9 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
   // Enter commits and unmounts the input, which can also fire its blur: the ref
   // makes the second commit a no-op instead of a second rename request.
   const renamingRef = useRef<string | null>(null);
+  // Vidro picker: a menu item that opens the name popover must keep the menu from handing focus
+  // back to its trigger on close, or the popover reads that as a focus-outside and closes.
+  const keepFocusRef = useRef(false);
 
   const saveNew = async () => {
     if (!newName.trim() || isLoading || saving) return;
@@ -105,8 +121,37 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
     if (fromId != null) await renameVista(fromId, renameDraft);
   };
 
-  return (
-    <div className="vista-tabs no-scrollbar animate-up">
+  const newForm = (
+    <>
+      <p className="px-1 pb-2 text-[0.7rem] text-muted-foreground">
+        Salva a exibição, o modo e os filtros atuais.
+      </p>
+      <div className="flex items-center gap-2">
+        <Input
+          autoFocus
+          value={newName}
+          maxLength={SAVED_VIEW_NAME_MAX}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void saveNew();
+          }}
+          placeholder="Nome da visualização"
+          className="h-8 flex-1 min-w-0 !text-xs mb-0 px-2"
+        />
+        <Button
+          onClick={() => void saveNew()}
+          disabled={!newName.trim() || isLoading || saving}
+          className="h-8 px-3 text-xs mb-0"
+          variant="outline"
+        >
+          Salvar
+        </Button>
+      </div>
+    </>
+  );
+
+  const tabs = (
+    <>
       <button
         type="button"
         className={`vista-tab ${activeId == null ? 'vista-tab--active' : ''}`}
@@ -207,34 +252,166 @@ export function VistasTabs({ contaId, currentQuery, onApply, trailing }: VistasT
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[260px] p-2">
-          <p className="px-1 pb-2 text-[0.7rem] text-muted-foreground">
-            Salva a exibição, o modo e os filtros atuais.
-          </p>
-          <div className="flex items-center gap-2">
-            <Input
-              autoFocus
-              value={newName}
-              maxLength={SAVED_VIEW_NAME_MAX}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void saveNew();
-              }}
-              placeholder="Nome da visualização"
-              className="h-8 flex-1 min-w-0 !text-xs mb-0 px-2"
-            />
-            <Button
-              onClick={() => void saveNew()}
-              disabled={!newName.trim() || isLoading || saving}
-              className="h-8 px-3 text-xs mb-0"
-              variant="outline"
-            >
-              Salvar
-            </Button>
-          </div>
+          {newForm}
         </PopoverContent>
       </Popover>
+    </>
+  );
+  const trailingSlot = trailing != null && (
+    <span className="ml-auto shrink-0 pl-3 py-1">{trailing}</span>
+  );
 
-      {trailing != null && <span className="ml-auto shrink-0 pl-3 py-1">{trailing}</span>}
+  // Under the Vidro shell the saved vistas collapse into one picker menu, and the page's view
+  // toggles (controls) share its row with the trailing slot (search input, Fila pickers).
+  // Flag off: the DOM is unchanged.
+  if (vidroShell) {
+    const active = views.find((v) => v.id === activeId) ?? null;
+    const openNameForm = (start: () => void) => {
+      keepFocusRef.current = true;
+      start();
+    };
+    const renameForm = (
+      <>
+        <p className="px-1 pb-2 text-[0.7rem] text-muted-foreground">Renomear visualização</p>
+        <div className="flex items-center gap-2">
+          <Input
+            autoFocus
+            value={renameDraft}
+            maxLength={SAVED_VIEW_NAME_MAX}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void commitRename();
+            }}
+            aria-label="Nome da visualização"
+            className="h-8 flex-1 min-w-0 !text-xs mb-0 px-2"
+          />
+          <Button
+            onClick={() => void commitRename()}
+            disabled={!renameDraft.trim()}
+            className="h-8 px-3 text-xs mb-0"
+            variant="outline"
+          >
+            Salvar
+          </Button>
+        </div>
+      </>
+    );
+    return (
+      <div className="vista-tabs no-scrollbar animate-up">
+        <Popover
+          open={addOpen || renaming != null}
+          onOpenChange={(open) => {
+            if (open) return;
+            setAddOpen(false);
+            cancelRename();
+          }}
+        >
+          <PopoverAnchor asChild>
+            <span className="inline-flex shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="vista-picker mb-0 h-8 max-w-[240px]"
+                    title="Visualizações salvas"
+                  >
+                    <span className="vista-tab-ico">
+                      {active ? viewIcon(active.query) : VIEW_ICONS.kanban}
+                    </span>
+                    <span className="truncate">{active ? active.name : 'Padrão'}</span>
+                    {active && modified && (
+                      <span
+                        className="vista-tab-dot"
+                        title="Visualização modificada: abra o menu para salvar as alterações"
+                      />
+                    )}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="min-w-[220px]"
+                  onCloseAutoFocus={(e) => {
+                    if (!keepFocusRef.current) return;
+                    keepFocusRef.current = false;
+                    e.preventDefault();
+                  }}
+                >
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      choose(null);
+                      onApply('');
+                    }}
+                  >
+                    <span className="vista-tab-ico">{VIEW_ICONS.kanban}</span>
+                    <span className="flex-1">Padrão</span>
+                    {activeId == null && <Check className="h-3.5 w-3.5" aria-hidden />}
+                  </DropdownMenuItem>
+                  {isLoading && (
+                    <DropdownMenuItem disabled data-testid="vista-tabs-loading">
+                      <Skeleton className="h-3.5 w-24" />
+                    </DropdownMenuItem>
+                  )}
+                  {views.map((v) => (
+                    <DropdownMenuItem
+                      key={v.id}
+                      onSelect={() => {
+                        choose(v.id);
+                        onApply(v.query);
+                      }}
+                    >
+                      <span className="vista-tab-ico">{viewIcon(v.query)}</span>
+                      <span className="flex-1 truncate">{v.name}</span>
+                      {v.id === activeId && <Check className="h-3.5 w-3.5" aria-hidden />}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  {active && (
+                    <>
+                      <DropdownMenuItem onSelect={() => updateWithCurrent(active)}>
+                        Atualizar com estado atual
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openNameForm(() => startRename(active))}>
+                        Renomear
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-[var(--danger-text)]"
+                        onSelect={() => removeVista(active)}
+                      >
+                        Excluir
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      openNameForm(() => {
+                        setNewName('');
+                        setAddOpen(true);
+                      })
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Nova visualização
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </span>
+          </PopoverAnchor>
+          <PopoverContent align="start" className="w-[260px] p-2">
+            {renaming != null ? renameForm : newForm}
+          </PopoverContent>
+        </Popover>
+        {controls != null && <div className="vista-tabs__controls">{controls}</div>}
+        {trailingSlot}
+      </div>
+    );
+  }
+
+  return (
+    <div className="vista-tabs no-scrollbar animate-up">
+      {tabs}
+      {trailingSlot}
     </div>
   );
 }

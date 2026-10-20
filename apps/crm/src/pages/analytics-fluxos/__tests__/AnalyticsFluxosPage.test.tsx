@@ -67,6 +67,7 @@ vi.mock('@/components/ui/select', async () => {
 });
 
 import AnalyticsFluxosPage from '../AnalyticsFluxosPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import { getWorkflowAnalytics, NotEntitledError } from '@/services/workflowAnalytics';
 import type { WorkflowAnalytics } from '@/services/workflowAnalytics';
 import { getClientes, getMembros, getWorkflowTemplates } from '../../../store';
@@ -863,5 +864,57 @@ describe('AnalyticsFluxosPage', () => {
       await screen.findByText('Analytics de Fluxos não está disponível no seu plano.'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Tentar novamente' })).toBeNull();
+  });
+});
+
+describe('AnalyticsFluxosPage in the Vidro toolbar', () => {
+  function renderInShell(vidroShell: boolean) {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    return render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/analytics-fluxos']}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <AnalyticsFluxosPage />
+          </VidroToolbarHarness>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('moves title, subtitle, period tabs and actions into the toolbar; selects stay in content', async () => {
+    const { container } = renderInShell(true);
+    await screen.findByTestId('ritmo-chart');
+
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Analytics de Fluxos');
+    const toolbar = container.querySelector('.vidro-toolbar') as HTMLElement;
+    expect(within(toolbar).getByText('Fluxos concluídos no período')).toBeTruthy();
+    expect(within(toolbar).getByRole('tablist', { name: 'Período' })).toBeTruthy();
+    expect(screen.getAllByRole('tablist', { name: 'Período' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /Exportar CSV/ })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /Imprimir/ })).toHaveLength(1);
+    expect(within(toolbar).getByRole('button', { name: /Exportar CSV/ })).toBeTruthy();
+    expect(container.querySelector('header.header')).toBeNull();
+    const selects = container.querySelector('.analytics-fluxos-toolbar') as HTMLElement;
+    expect(within(selects).getByLabelText('Cliente')).toBeTruthy();
+    expect(within(selects).getByLabelText('Template')).toBeTruthy();
+    expect(within(selects).queryByRole('tablist')).toBeNull();
+  });
+
+  it('keeps the in-page header and period tabs when the Vidro shell is off', async () => {
+    const { container } = renderInShell(false);
+    await screen.findByTestId('ritmo-chart');
+
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('header.header')).not.toBeNull();
+    expect(container.querySelector('.vidro-toolbar')).toBeNull();
+    const selects = container.querySelector('.analytics-fluxos-toolbar') as HTMLElement;
+    expect(within(selects).getByRole('tablist', { name: 'Período' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /Exportar CSV/ })).toHaveLength(1);
   });
 });

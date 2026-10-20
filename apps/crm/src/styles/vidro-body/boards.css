@@ -1,0 +1,289 @@
+/*
+ * Vidro body skin: boards.
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md (section 7)
+ * Only selectors for this family (cross-family rules go in compositions.css).
+ * Guards: every selector starts with html[data-look='vidro']; everything inside
+ * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ *
+ * Cards never set `transform` (dnd-kit owns it while dragging; style.css keeps the hover lift).
+ * Calendar cells set no `background`: --surface-main already maps to --vd-group (tokens.css), and
+ * the has-events / today / selected / out-of-month / weekend tints in style.css must survive.
+ */
+@media (min-width: 1101px) {
+  /* ===== Kanban columns: tiles ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column {
+    background: var(--vd-tile);
+    border: 0;
+    box-shadow: none;
+    border-radius: 16px;
+    padding: 10px;
+  }
+
+  /* Both boards hand the column colour (etapa or status) over as --col-tint: a light wash of it
+     on the tile keeps the columns telling apart at a glance. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column[style*='--col-tint'] {
+    background: color-mix(in srgb, var(--col-tint) 9%, var(--vd-tile));
+  }
+
+  /* Neutral header: KanbanView/PostsKanbanView drop their inline etapa tints under Vidro. The
+     fluxos board hands the etapa colour over as --col-tint, which paints a dot before the title;
+     Publicações keeps its own coloured status icon. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-header {
+    background: transparent;
+    border-bottom: 0;
+    min-height: 0;
+    padding: 4px 6px 10px;
+    border-radius: 10px;
+    align-items: center;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: inherit;
+    color: var(--text-main);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .board-column-header[style*='--col-tint']
+    .board-column-title::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--col-tint);
+    flex-shrink: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-count {
+    background: var(--vd-tg-neutral-bg);
+    color: var(--vd-tg-neutral);
+    border: 0;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    min-width: 20px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-sort {
+    color: var(--vd-txt3);
+    opacity: 1;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-sort:hover {
+    color: var(--text-main);
+    background: var(--vd-fill);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-sort:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column-body {
+    background: transparent;
+    padding: 0;
+  }
+
+  /* ===== Kanban cards: kcard ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel :is(.board-card, .board-post-card) {
+    background: var(--vd-group);
+    border: 1px solid var(--vd-sep);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: none;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):hover {
+    border-color: var(--vd-sep);
+    box-shadow: 0 6px 16px -10px rgba(18, 21, 26, 0.3);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):is(:focus-visible, :has(:focus-visible)) {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):is(:focus-visible, :has(:focus-visible)):hover {
+    outline: none;
+    box-shadow:
+      0 6px 16px -10px rgba(18, 21, 26, 0.3),
+      0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  /* DragOverlay clones float: keep the shadow and an opaque surface (--vd-group is translucent in dark).
+     .vidro-drag-clone is the inert class KanbanView puts on its DragOverlay wrapper. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-post-card--overlay {
+    background: var(--vd-solid);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-drag-clone > * {
+    background: var(--vd-solid);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-drop-slot {
+    border-radius: 12px;
+  }
+
+  /* ===== Calendar: day buttons (cliente post calendar) and month-grid cells (Entregas) ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel :is(.calendar-day, .calendar-cell) {
+    border: 1px solid var(--vd-sep);
+    border-radius: 12px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:hover:not(.empty):not(.today):not(.selected):not(:disabled):not(
+      [aria-disabled='true']
+    ) {
+    border-color: rgba(234, 179, 8, 0.4);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .calendar-cell {
+    padding: 7px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:is(.today, .selected) {
+    padding: calc(0.75rem - 1px);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-cell:is(.today, .selected) {
+    padding: 6px;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .calendar-day:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-day, .calendar-cell):is(.today, .selected),
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-day, .calendar-cell):is(.today, .selected):hover {
+    border: 2px solid #ffbf30;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-day:is(.today, .selected):focus-visible {
+    border: 2px solid #ffbf30;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .calendar-day.empty {
+    background: transparent;
+    border-color: transparent;
+  }
+
+  /* ===== Calendar and sidebar post cards ===== */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-post-card, .sidebar-post-card) {
+    border-radius: 8px;
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-post-card:not(.foreign), .sidebar-post-card) {
+    border-color: var(--vd-sep);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.calendar-post-card:not(.foreign), .sidebar-post-card):hover {
+    border-color: color-mix(in srgb, var(--primary-color), transparent 50%);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .calendar-post-card:is(.selected, :focus-visible) {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  /* ===== Agenda (FullCalendar) ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .agenda-fc {
+    --fc-border-color: var(--vd-sep);
+    --fc-page-bg-color: transparent;
+    --fc-neutral-bg-color: var(--vd-fill);
+  }
+}
+
+/* ===== Dark mirrors (the --vd-* tokens flip on their own; only literal colours need restating) ===== */
+@media (min-width: 1101px) {
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):hover {
+    box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.6);
+  }
+
+  html[data-theme='dark'][data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    :is(.board-card, .board-post-card):is(:focus-visible, :has(:focus-visible)):hover {
+    outline: none;
+    box-shadow:
+      0 6px 16px -10px rgba(0, 0, 0, 0.6),
+      0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+
+  /* ===== Kanban: template tabs share their row with the busca input ===== */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tabs-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 0.9rem;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tabs-row > .board-tabs {
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-tabs-row__trailing {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+}

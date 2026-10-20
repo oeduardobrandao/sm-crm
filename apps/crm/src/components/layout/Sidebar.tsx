@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +15,8 @@ import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { switchWorkspace } from '@/store/workspace';
 import { GuideNavItem } from '../guide/GuidePill';
+import { clearVidroCache } from '../../lib/vidroLook';
+import GlobalSearchTrigger from './GlobalSearchTrigger';
 
 interface SidebarProps {
   isDrawer?: boolean;
@@ -25,6 +27,10 @@ interface SidebarProps {
   /** Pinned open: always expanded, and the content sits beside it. */
   pinned?: boolean;
   onTogglePinned?: () => void;
+  /** Desktop "Vidro" shell: glass header (logo, workspace, plan) and the search above the nav. */
+  vidroShell?: boolean;
+  /** Account-menu switch between the Vidro and classic looks (desktop rail only). */
+  look?: { enabled: boolean; optedOut: boolean; onToggle: () => void };
 }
 
 // Hover intent: crossing the rail on the way to the content shouldn't flap it open.
@@ -50,12 +56,14 @@ export default function Sidebar({
   collapsible = false,
   pinned = false,
   onTogglePinned,
+  vidroShell,
+  look,
 }: SidebarProps) {
   const { user, profile, signOut, workspaceRole, can } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
-  const { features: rawFeatures } = useWorkspaceLimits();
+  const { features: rawFeatures, planName } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
   const [isDark, setIsDark] = useState(
@@ -82,8 +90,12 @@ export default function Sidebar({
   const isRail = collapsible && !expanded;
   const isOverlay = collapsible && expanded && !pinned;
 
-  const handleMouseEnter = () => {
-    if (!collapsible) return;
+  // Portaled content (the search dialog and its full-screen overlay) is a descendant of the nav
+  // in React's tree, so its pointer and focus events bubble here although it is not in the nav's
+  // DOM. Only events from the nav's own DOM may expand the rail. Leaves stay unguarded: a leave
+  // toward portal content should still collapse.
+  const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+    if (!collapsible || !e.currentTarget.contains(e.target as Node)) return;
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => setHovered(true), HOVER_EXPAND_DELAY_MS);
   };
@@ -96,9 +108,14 @@ export default function Sidebar({
 
   // Only keyboard focus expands the rail. A mouse click leaves focus on the
   // clicked link, and expanding on any focus would then keep the overlay open
-  // after the pointer leaves.
+  // after the pointer leaves. Focus from portaled content is ignored for the reason above.
   const handleFocus = (e: React.FocusEvent<HTMLElement>) => {
-    if (collapsible && e.target.matches(':focus-visible')) setKeyboardFocused(true);
+    if (
+      collapsible &&
+      e.currentTarget.contains(e.target as Node) &&
+      e.target.matches(':focus-visible')
+    )
+      setKeyboardFocused(true);
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLElement>) => {
@@ -130,9 +147,16 @@ export default function Sidebar({
       .select('workspace_id, role, workspaces!inner(id, name)')
       .eq('user_id', user.id)
       .then(({ data }) => {
-        if (data && data.length > 1) setWorkspaces(data);
+        // Every row is kept (the Vidro header names the active one); the account-menu switcher
+        // still renders only with more than one. An empty result leaves the initial [] as is.
+        if (data?.length) setWorkspaces(data);
       });
   }, [user?.id]);
+
+  const activeWorkspaceName =
+    workspaces.find(
+      (m: any) => m.workspaces?.id === (profile?.active_workspace_id || profile?.conta_id),
+    )?.workspaces?.name ?? null;
 
   useEffect(() => {
     if (!isDrawer || !isOpen) return;
@@ -160,6 +184,8 @@ export default function Sidebar({
     if (!user) return;
     try {
       await switchWorkspace(workspaceId);
+      // The pre-paint cache belongs to the workspace being left.
+      clearVidroCache();
       window.location.reload();
     } catch {
       // Previously the error was discarded and the page reloaded regardless, so
@@ -284,6 +310,19 @@ export default function Sidebar({
     );
   };
 
+  const pinButton = (
+    <button
+      type="button"
+      className="sidebar-pin-btn"
+      onClick={onTogglePinned}
+      aria-pressed={pinned}
+      aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+      title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+    >
+      <i className="ph ph-sidebar-simple" />
+    </button>
+  );
+
   return (
     <nav
       className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}${isRail ? ' sidebar--rail' : ''}${isOverlay ? ' sidebar--overlay' : ''}`}
@@ -294,20 +333,38 @@ export default function Sidebar({
       onBlur={handleBlur}
     >
       <div className="sidebar-wrapper">
-        {collapsible && (
-          <div className="sidebar-pin-row">
-            <button
-              type="button"
-              className="sidebar-pin-btn"
-              onClick={onTogglePinned}
-              aria-pressed={pinned}
-              aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
-              title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
-            >
-              <i className="ph ph-sidebar-simple" />
-            </button>
+        {vidroShell && (
+          <div className="vidro-sidebar-head">
+            {/* Logo and the open/close toggle on the first row, workspace and plan under it. */}
+            <div className="vidro-sidebar-head-row">
+              <Link
+                to="/dashboard"
+                className="vidro-sidebar-logo"
+                aria-label="Mesaas, ir para o início"
+              >
+                <img
+                  className="vidro-sidebar-wordmark"
+                  src={isDark ? '/logo-white.svg' : '/logo-black.svg'}
+                  alt=""
+                />
+                <img className="vidro-sidebar-mark" src="/icon.svg" alt="" />
+              </Link>
+              {collapsible && pinButton}
+            </div>
+            {(activeWorkspaceName || planName) && (
+              <div className="vidro-sidebar-ws">
+                {activeWorkspaceName && (
+                  <span className="vidro-sidebar-ws-name">{activeWorkspaceName}</span>
+                )}
+                {planName && <span className="vidro-sidebar-ws-plan">{planName}</span>}
+              </div>
+            )}
           </div>
         )}
+        {collapsible && !vidroShell && <div className="sidebar-pin-row">{pinButton}</div>}
+        {/* Closing the palette removes its overlay without a mouseleave reaching the nav, so a
+          hover-expanded rail would stay open over the content: collapse it on close. */}
+        {vidroShell && <GlobalSearchTrigger variant="sidebar" onClose={handleMouseLeave} />}
         <div
           className="sidebar-scrollable"
           style={{ paddingTop: collapsible ? '0.25rem' : '1rem' }}
@@ -468,6 +525,19 @@ export default function Sidebar({
                   <i className={`ph-bold ${isDark ? 'ph-sun' : 'ph-moon'}`} />
                   <span>{isDark ? t('sidebar.lightMode') : t('sidebar.darkMode')}</span>
                 </button>
+
+                {look?.enabled && collapsible && (
+                  <button
+                    className="user-dropdown-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      look.onToggle();
+                    }}
+                  >
+                    <i className={`ph-bold ${look.optedOut ? 'ph-sparkle' : 'ph-squares-four'}`} />
+                    <span>{look.optedOut ? t('sidebar.lookNew') : t('sidebar.lookClassic')}</span>
+                  </button>
+                )}
 
                 <button
                   id="btn-logout-flutuante"

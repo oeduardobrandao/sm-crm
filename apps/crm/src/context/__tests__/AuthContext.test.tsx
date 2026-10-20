@@ -1123,3 +1123,68 @@ describe('AuthProvider Crisp identification', () => {
     expect(crispPush).not.toHaveBeenCalledWith(['set', 'user:email', expect.anything()]);
   });
 });
+
+// The Vidro attribute on <html> belongs to the user the look resolved for. Sign-out drops it in
+// lib/supabase.ts; an in-place identity change (another tab signing in or out against shared
+// storage) never goes through signOut(), so the auth listener drops it there. AppLayout remounts
+// behind ProtectedRoute's skeleton and useVidro re-seeds from the attribute: a stale one would hand
+// the next user the previous user's shell whenever their first workspace-limits call fails.
+describe('AuthProvider Vidro look on identity change', () => {
+  function signedInAs(id: string) {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id });
+    mockedSupabase.__setCurrentProfile({ id, nome: 'Ana', role: 'owner', conta_id: 'conta-A' });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id } } });
+    mockGetContaId.mockResolvedValue('conta-A');
+    mockMaybeSingle.mockResolvedValue({
+      data: { role: 'owner', can_see_financials: true },
+      error: null,
+    });
+  }
+
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-look');
+    localStorage.clear();
+  });
+
+  it('keeps the pre-painted attribute through the initial session and a same-user event', async () => {
+    signedInAs('user-A');
+    document.documentElement.setAttribute('data-look', 'vidro');
+
+    renderWithAuth();
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('user-A'));
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('TOKEN_REFRESHED', { user: { id: 'user-A' } });
+    });
+
+    expect(document.documentElement.getAttribute('data-look')).toBe('vidro');
+  });
+
+  it('drops the attribute and the cache when another user signs in (A -> B)', async () => {
+    signedInAs('user-A');
+    document.documentElement.setAttribute('data-look', 'vidro');
+    localStorage.setItem('look-vidro', 'user-A');
+
+    renderWithAuth();
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('user-A'));
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('SIGNED_IN', { user: { id: 'user-B' } });
+    });
+
+    expect(document.documentElement.hasAttribute('data-look')).toBe(false);
+    expect(localStorage.getItem('look-vidro')).toBeNull();
+  });
+
+  it('drops the attribute when the session ends outside signOut() (A -> none)', async () => {
+    signedInAs('user-A');
+    document.documentElement.setAttribute('data-look', 'vidro');
+
+    renderWithAuth();
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('user-A'));
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('SIGNED_OUT', null);
+    });
+
+    expect(document.documentElement.hasAttribute('data-look')).toBe(false);
+  });
+});

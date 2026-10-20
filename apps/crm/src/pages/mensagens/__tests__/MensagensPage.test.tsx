@@ -26,6 +26,7 @@ vi.mock('@/store', () => ({
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn() }));
 
 import MensagensPage from '../MensagensPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const CONVERSAS = [
   {
@@ -113,31 +114,38 @@ function replyAboutPost(titulo: string) {
   fireEvent.click(screen.getByRole('menuitem', { name: 'Responder sobre este post' }));
 }
 
-function renderPage(initialPath = '/mensagens') {
+function renderPage(initialPath = '/mensagens', { vidroShell }: { vidroShell?: boolean } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const routes = (
+    <Routes>
+      <Route
+        path="/mensagens"
+        element={
+          <>
+            <MensagensPage />
+            <PathProbe />
+          </>
+        }
+      />
+      <Route
+        path="/mensagens/:clienteId"
+        element={
+          <>
+            <MensagensPage />
+            <PathProbe />
+          </>
+        }
+      />
+    </Routes>
+  );
   const utils = render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <Routes>
-          <Route
-            path="/mensagens"
-            element={
-              <>
-                <MensagensPage />
-                <PathProbe />
-              </>
-            }
-          />
-          <Route
-            path="/mensagens/:clienteId"
-            element={
-              <>
-                <MensagensPage />
-                <PathProbe />
-              </>
-            }
-          />
-        </Routes>
+        {vidroShell === undefined ? (
+          routes
+        ) : (
+          <VidroToolbarHarness vidroShell={vidroShell}>{routes}</VidroToolbarHarness>
+        )}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -359,6 +367,37 @@ describe('MensagensPage', () => {
       await Promise.resolve();
     });
     expect(screen.getByPlaceholderText('Responder sobre o post…')).toHaveValue('Feito');
+  });
+
+  describe('Vidro toolbar', () => {
+    it('puts the title and the info tooltip in the toolbar; the list keeps search and sort', async () => {
+      mockMatchMedia(true);
+      const { container } = renderPage('/mensagens', { vidroShell: true });
+      expect(await screen.findByText('ACME')).toBeInTheDocument();
+
+      const h1s = await screen.findAllByRole('heading', { level: 1 });
+      expect(h1s).toHaveLength(1);
+      expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+      expect(h1s[0]).toHaveTextContent('Mensagens');
+      expect(container.querySelector('.page-full-bleed h1')).toBeNull();
+
+      const tooltips = container.querySelectorAll('[data-tooltip^="Toda a comunicação"]');
+      expect(tooltips).toHaveLength(1);
+      expect(tooltips[0].closest('.vidro-toolbar')).not.toBeNull();
+
+      expect(screen.getByLabelText('Buscar cliente')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Mais recentes/ })).toBeInTheDocument();
+    });
+
+    it('keeps the in-list title when the Vidro shell is off', async () => {
+      mockMatchMedia(true);
+      const { container } = renderPage('/mensagens', { vidroShell: false });
+      expect(await screen.findByText('ACME')).toBeInTheDocument();
+      expect(container.querySelector('.vidro-toolbar')).toBeNull();
+      const h1 = screen.getByRole('heading', { level: 1, name: 'Mensagens' });
+      expect(container.querySelector('.page-full-bleed')).toContainElement(h1);
+      expect(container.querySelectorAll('[data-tooltip^="Toda a comunicação"]')).toHaveLength(1);
+    });
   });
 
   describe('phone layout (below 768px)', () => {

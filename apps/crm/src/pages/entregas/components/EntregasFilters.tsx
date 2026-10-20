@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -88,6 +88,8 @@ interface EntregasFiltersProps {
   templates: WorkflowTemplate[];
   etapaNames: string[];
   mode?: FiltersMode;
+  /** Vidro shell: right-aligned item at the end of the desktop pill row (the busca input). */
+  trailing?: ReactNode;
 }
 
 export const STATUS_OPTIONS: { value: StatusFilter; label: string; color: string }[] = [
@@ -424,6 +426,7 @@ export function EntregasFilters({
   templates,
   etapaNames,
   mode = 'entregas',
+  trailing,
 }: EntregasFiltersProps) {
   const isPosts = mode === 'posts';
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -576,6 +579,7 @@ export function EntregasFilters({
             Limpar filtros
           </Button>
         )}
+        {trailing != null && <div className="ml-auto shrink-0">{trailing}</div>}
       </div>
 
       {/* Mobile: a single "Filtros" button opening a bottom sheet, instead of

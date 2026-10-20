@@ -4,8 +4,10 @@ interface PipelineRowProps {
   pipeline: { agendados: number; em_producao: number; agente: number; falha: number };
 }
 
-export function PipelineRow({ pipeline }: PipelineRowProps) {
-  const { t } = useTranslation('dashboard');
+type Translate = ReturnType<typeof useTranslation<'dashboard'>>['t'];
+
+/** "N agendados · N em produção" (or "Pipeline parado"), plus agent and failure counts. */
+export function pipelineText(pipeline: PipelineRowProps['pipeline'], t: Translate): string {
   const { agendados, em_producao, agente, falha } = pipeline;
   const parts: string[] = [];
 
@@ -17,6 +19,11 @@ export function PipelineRow({ pipeline }: PipelineRowProps) {
   }
   if (agente > 0) parts.push('🤖 ' + t('health.pipeline.agente', { count: agente }));
   if (falha > 0) parts.push('⚠ ' + t('health.pipeline.falha', { count: falha }));
+  return parts.join(' · ');
+}
+
+export function PipelineRow({ pipeline }: PipelineRowProps) {
+  const { t } = useTranslation('dashboard');
 
   return (
     <div
@@ -29,7 +36,7 @@ export function PipelineRow({ pipeline }: PipelineRowProps) {
         marginTop: 8,
       }}
     >
-      {parts.join(' · ')}
+      {pipelineText(pipeline, t)}
     </div>
   );
 }

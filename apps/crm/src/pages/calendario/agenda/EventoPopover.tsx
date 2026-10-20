@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { Textarea } from '@/components/ui/textarea';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
@@ -557,6 +558,7 @@ export function EventoPopover({
   const meuId = user?.id ?? null;
   const tituloId = useId();
   const [sub, setSub] = useState<SubDialogo | null>(null);
+  const vidro = useVidroShell();
   const [enviando, setEnviando] = useState(false);
   const [recusando, setRecusando] = useState(false);
   const [mensagemRecusa, setMensagemRecusa] = useState('');
@@ -863,12 +865,19 @@ export function EventoPopover({
           collisionPadding={16}
           aria-labelledby={tituloId}
           className="flex w-[400px] max-w-[calc(100vw-32px)] flex-col gap-4 overflow-y-auto p-5"
+          // Under Vidro, overlays.css paints the menu glass; these inline surface styles would beat it.
           style={{
-            background: 'var(--card-bg)',
-            borderColor: 'var(--border-color)',
-            borderRadius: 12,
+            ...(vidro
+              ? undefined
+              : {
+                  background: 'var(--card-bg)',
+                  borderColor: 'var(--border-color)',
+                  borderRadius: 12,
+                }),
             color: 'var(--text-main)',
-            boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))',
+            ...(vidro
+              ? undefined
+              : { boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))' }),
             maxHeight: 'min(640px, var(--radix-popover-content-available-height, 640px))',
           }}
         >

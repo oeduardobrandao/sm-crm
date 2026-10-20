@@ -1,3 +1,4 @@
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import type { EntidadeFilter } from '../viewQuery';
 
 interface EntidadeToggleProps {
@@ -14,6 +15,28 @@ const OPTIONS: { id: EntidadeFilter; label: string }[] = [
 /** Filtro de entidade do quadro de Fluxos (spec §4.1), no mesmo desenho de
  *  ModeToggle. */
 export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
+  const vidroShell = useVidroShell();
+  // Under the Vidro shell the toggle takes the skin's segmented-capsule styles
+  // (data-slot hooks) and drops its inline styles, which would win over them.
+  if (vidroShell) {
+    return (
+      <div role="radiogroup" aria-label="Entidades do quadro" data-slot="toggle-group">
+        {OPTIONS.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={value === o.id}
+            data-slot="toggle-group-item"
+            data-state={value === o.id ? 'on' : 'off'}
+            onClick={() => onChange(o.id)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div
       role="radiogroup"

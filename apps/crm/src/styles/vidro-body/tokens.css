@@ -1,0 +1,89 @@
+/*
+ * Vidro body skin: tokens.
+ * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
+ * Only selectors for this family (cross-family rules go in compositions.css).
+ * Guards: every selector starts with html[data-look='vidro']; everything inside
+ * @media (min-width: 1101px); no @layer; no !important. Page-body prefix:
+ * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
+ *
+ * Declared on body:has(.app-container) (not .app-container) so portaled overlays, which render in
+ * body, read them too. Routes outside AppLayout have no .app-container and stay classic.
+ */
+@media (min-width: 1101px) {
+  html[data-look='vidro'] body:has(.app-container) {
+    --vd-txt2: #4b5563;
+    --vd-icon: #4b5563;
+    --vd-cta: #12151a;
+    --vd-cta-fg: #ffffff;
+    --vd-cta-hover: var(--cta-hover);
+    --vd-ok: #15803d;
+    --vd-warn: #b45309;
+    --vd-tg-info: #1d4ed8;
+    --vd-tg-info-bg: #eaf1ff;
+    --vd-tg-warn: #b45309;
+    --vd-tg-warn-bg: #fff3dc;
+    --vd-tg-ok: #15803d;
+    --vd-tg-ok-bg: #e6f8ee;
+    --vd-tg-neutral: #374151;
+    --vd-tg-neutral-bg: #eceef1;
+    --vd-tg-bad: #b91c1c;
+    --vd-tg-bad-bg: #fdecec;
+    --vd-switch-on: #34c759;
+    --vd-overlay: rgba(18, 21, 26, 0.32);
+    --vd-menu: rgba(255, 255, 255, 0.86);
+    /* Shared tokens remapped (spec: Remapped shared tokens). --card-bg, text, danger and primary stay. */
+    --border-color: var(--vd-sep);
+    --surface-main: var(--vd-group);
+    --surface-hover: var(--vd-fill);
+    --surface-1: #f4f4f6;
+    --surface-2: rgba(118, 118, 128, 0.12);
+    --surface-3: rgba(118, 118, 128, 0.2);
+    /* shadcn HSL triplets (bare channels). Panel rgba(255,255,255,.94) over #eceef3 = rgb(254,254,254).
+       --vd-sep over it = rgb(231,231,232) = hsl(235 2.5% 90.7%), kept as 240 2% 91% (< 1/255 apart).
+       --vd-fill over it = rgb(238,238,239) = hsl(236 4.7% 93.5%), kept as 240 5% 94%. */
+    --border: 240 2% 91%;
+    --input: 240 2% 91%;
+    --muted: 240 5% 94%;
+    --accent: 240 5% 94%;
+    --popover: 0 0% 100%;
+    --card: 0 0% 100%;
+  }
+
+  html[data-theme='dark'][data-look='vidro'] body:has(.app-container) {
+    --vd-txt2: #a1a8b5;
+    --vd-icon: #a1a8b5;
+    --vd-cta: #e8eaf0;
+    --vd-cta-fg: #12151a;
+    --vd-cta-hover: var(--cta-hover);
+    --vd-ok: #3ecf8e;
+    --vd-warn: #f5a342;
+    --vd-tg-info: #93b4ff;
+    --vd-tg-info-bg: rgba(57, 132, 255, 0.18);
+    --vd-tg-warn: #f5b041;
+    --vd-tg-warn-bg: rgba(245, 163, 66, 0.18);
+    --vd-tg-ok: #5fd4a0;
+    --vd-tg-ok-bg: rgba(62, 207, 142, 0.16);
+    --vd-tg-neutral: #c3c8d1;
+    --vd-tg-neutral-bg: rgba(255, 255, 255, 0.09);
+    --vd-tg-bad: #ff8a7a;
+    --vd-tg-bad-bg: rgba(245, 90, 66, 0.18);
+    --vd-switch-on: #34c759;
+    --vd-overlay: rgba(0, 0, 0, 0.55);
+    --vd-menu: rgba(30, 34, 42, 0.86);
+    --border-color: var(--vd-sep);
+    --surface-main: var(--vd-group);
+    --surface-hover: var(--vd-fill);
+    --surface-1: rgba(255, 255, 255, 0.05);
+    --surface-2: rgba(118, 118, 128, 0.24);
+    --surface-3: rgba(118, 118, 128, 0.32);
+    /* Panel rgba(15,17,21,.86) over #0a0c0f = rgb(14,16,20). --vd-sep over it = rgb(34,36,40)
+       = hsl(222 8.4% 14.6%); --vd-fill over it = rgb(39,41,46) = hsl(227 8% 16.7%); --vd-group
+       over it = rgb(22,23,27) = hsl(220 11.7% 9.6%). */
+    --border: 220 8% 15%;
+    --input: 220 8% 15%;
+    --muted: 223 8% 17%;
+    --accent: 223 8% 17%;
+    --popover: 222 16% 13%;
+    --card: 220 13% 9%; /* computed composite; the spec's 220 15% 10% is rounded */
+  }
+}

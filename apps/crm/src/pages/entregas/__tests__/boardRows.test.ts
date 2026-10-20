@@ -120,6 +120,8 @@ describe('buildBoardRows', () => {
     );
     expect(rows[0].key).toBe('template:7');
     expect(rows[0].label).toBe('REDES');
+    // The name as typed, for surfaces that do not shout (the Vidro tab strip).
+    expect(rows[0].name).toBe('Redes');
     expect(rows[0].columns[0].cards.map((c) => c.workflow.id)).toEqual([2, 1]);
   });
 
@@ -317,6 +319,7 @@ describe('buildBoardRows com signatureRows (flag ligada)', () => {
     });
     expect(rows[0].key).toBe(`custom#${SIG}`);
     expect(rows[0].label).toBe('ETAPAS PERSONALIZADAS');
+    expect(rows[0].name).toBe('Etapas personalizadas');
   });
 
   it('fluxo e post com a mesma assinatura e template compartilham a linha', () => {

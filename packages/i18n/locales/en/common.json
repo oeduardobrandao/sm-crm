@@ -48,7 +48,9 @@
     "logout": "Log out",
     "myAccount": "My Account",
     "comingSoon": "Coming soon",
-    "upgradeToUnlock": "Available on the Pro and Max plans"
+    "upgradeToUnlock": "Available on the Pro and Max plans",
+    "lookClassic": "Classic look",
+    "lookNew": "New look"
   },
   "language": {
     "pt": "Português",

@@ -24,6 +24,18 @@ import ptAutomations from '../../../packages/i18n/locales/pt/automations.json';
 import enAutomations from '../../../packages/i18n/locales/en/automations.json';
 import App, { queryClient } from './App';
 import '../style.css';
+import './styles/vidro.css';
+import './styles/vidro-body/tokens.css';
+import './styles/vidro-body/buttons.css';
+import './styles/vidro-body/tables.css';
+import './styles/vidro-body/cards.css';
+import './styles/vidro-body/badges.css';
+import './styles/vidro-body/forms.css';
+import './styles/vidro-body/controls.css';
+import './styles/vidro-body/boards.css';
+import './styles/vidro-body/overlays.css';
+import './styles/vidro-body/chat.css';
+import './styles/vidro-body/compositions.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();

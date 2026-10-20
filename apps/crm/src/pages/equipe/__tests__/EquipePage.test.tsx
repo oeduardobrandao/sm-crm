@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 // jsdom has no scrollIntoView; Radix's Select calls it when committing a
 // selection, which otherwise throws inside a passive effect.
@@ -607,5 +608,79 @@ describe('EquipePage on phones', () => {
 
     fireEvent.click(within(row).getByRole('button', { name: 'Remover' }));
     expect(await screen.findByRole('alertdialog')).toHaveTextContent('Remover este membro?');
+  });
+});
+
+describe('EquipePage in the Vidro toolbar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = true;
+    pendingInvites.rows = [];
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetMembros.mockResolvedValue([]);
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'admin' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+  });
+
+  function renderInHarness(vidroShell: boolean) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <MemoryRouter initialEntries={['/equipe']}>
+        <QueryClientProvider client={queryClient}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <EquipePage />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it('renders the title, the CSV actions and the primary action once, in the toolbar', async () => {
+    renderInHarness(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    const toolbar = h1s[0].closest('.vidro-toolbar') as HTMLElement;
+    expect(toolbar).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Equipe');
+    expect(screen.getAllByRole('button', { name: 'Adicionar Membro' })).toHaveLength(1);
+    expect(within(toolbar).getByRole('button', { name: 'Adicionar Membro' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Importar CSV' })).toHaveLength(1);
+    expect(within(toolbar).getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    expect(document.querySelector('.header')).toBeNull();
+  });
+
+  it('shows no actions in the toolbar for a role that cannot edit the team', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'agent' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    renderInHarness(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Adicionar Membro' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar CSV' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Equipe' });
+    expect(h1.closest('.header')).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Adicionar Membro' })).toHaveLength(1);
   });
 });
