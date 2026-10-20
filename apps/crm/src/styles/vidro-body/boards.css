@@ -20,6 +20,12 @@
     padding: 10px;
   }
 
+  /* Both boards hand the column colour (etapa or status) over as --col-tint: a light wash of it
+     on the tile keeps the columns telling apart at a glance. */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column[style*='--col-tint'] {
+    background: color-mix(in srgb, var(--col-tint) 9%, var(--vd-tile));
+  }
+
   /* Neutral header: KanbanView/PostsKanbanView drop their inline etapa tints under Vidro. The
      fluxos board hands the etapa colour over as --col-tint, which paints a dot before the title;
      Publicações keeps its own coloured status icon. */

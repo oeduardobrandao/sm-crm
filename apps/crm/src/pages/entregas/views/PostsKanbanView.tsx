@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useMemo, useState, type CSSProperties } from 'react';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -514,7 +514,13 @@ const PostBoardColumn = memo(function PostBoardColumn({
   return (
     <div
       className={`board-column${dragInvalid ? ' board-column--drag-invalid' : ''}`}
-      style={tint ? { borderColor: `${tint}30` } : undefined}
+      style={
+        tint
+          ? vidroShell
+            ? ({ '--col-tint': tint } as CSSProperties)
+            : { borderColor: `${tint}30` }
+          : undefined
+      }
     >
       <div
         className="board-column-header"

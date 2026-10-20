@@ -1235,7 +1235,13 @@ export function KanbanView({
             ? `${stepCards.length} ${stepCards.length === 1 ? 'fluxo' : 'fluxos'} · ${stepPosts.length} ${stepPosts.length === 1 ? 'post' : 'posts'}`
             : String(stepCards.length + stepPosts.length);
         return (
-          <div key={column.ordem} className="board-column" style={{ borderColor: `${tint}30` }}>
+          <div
+            key={column.ordem}
+            className="board-column"
+            style={
+              vidroShell ? ({ '--col-tint': tint } as CSSProperties) : { borderColor: `${tint}30` }
+            }
+          >
             <div
               className="board-column-header"
               style={

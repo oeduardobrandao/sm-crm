@@ -1643,4 +1643,26 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+
+  /* The floating "Artigos relacionados" pill is a ghost Button, but it floats over the page, so it
+     keeps its solid card, border and shadow instead of the ghost reset above. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .context-help
+    .context-help__trigger[data-slot='button'] {
+    background: var(--card-bg);
+    border: 1px solid var(--vd-sep);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    color: var(--text-muted);
+  }
+
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .context-help
+    .context-help__trigger[data-slot='button']:is(:hover, [data-state='open']) {
+    background: var(--card-bg);
+    color: var(--text-main);
+  }
 }
