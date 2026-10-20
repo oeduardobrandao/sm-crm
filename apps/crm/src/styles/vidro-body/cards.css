@@ -156,6 +156,31 @@
     box-shadow: none;
   }
 
+  /* Minha fila sits straight on the panel, where white groups vanish: the four numbers, "Comece
+     por aqui" and the row groups are filled tiles instead (the top card keeps its primary border). */
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-stats {
+    gap: 12px;
+    padding: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-stat {
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: var(--vd-tile);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-top {
+    background: var(--vd-tile);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-group.fila-group {
+    background: var(--vd-tile);
+    border: 0;
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-group .fila-row {
+    border-bottom-color: var(--vd-sep);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .fila-group .fila-row:hover {
+    background: var(--vd-fill);
+  }
+
   /* .rb-layers-rail is position: fixed; the report scrolls under it, so it stays opaque. */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .rb-layers-rail {
     background: var(--vd-solid);
