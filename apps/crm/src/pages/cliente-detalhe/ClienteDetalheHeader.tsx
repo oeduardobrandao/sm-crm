@@ -76,7 +76,7 @@ export function ClienteBadges({ plano, status }: { plano: string; status: string
   const { t: tc } = useTranslation();
   return (
     <div className="cliente-detalhe-header__badges">
-      <span className="badge badge-neutral">{plano}</span>
+      {plano?.trim() && <span className="badge badge-neutral">{plano}</span>}
       <span className={`badge ${STATUS_CLASS[status] ?? 'badge-neutral'}`}>
         {tc(`status.${status}`, { defaultValue: status })}
       </span>
