@@ -10,6 +10,7 @@ export type PublishErrorCode =
   | 'MEDIA_UNSUPPORTED'
   | 'TRIAL_INELIGIBLE'
   | 'CAPTION_TOO_LONG'
+  | 'COLLABORATOR_INVALID'
   | 'ACCOUNT_RESTRICTED'
   | 'CONTAINER_EXPIRED'
   | 'RATE_LIMIT'
@@ -17,7 +18,7 @@ export type PublishErrorCode =
   | 'INTERNAL'
   | 'UNKNOWN';
 
-export type PublishErrorAction = 'reconnect' | 'retry' | 'media' | 'support';
+export type PublishErrorAction = 'reconnect' | 'retry' | 'media' | 'support' | 'collaborators';
 
 export interface PublishErrorDisplay {
   titulo: string;
@@ -76,6 +77,13 @@ export const PUBLISH_ERROR_COPY: Record<PublishErrorCode, PublishErrorDisplay> =
       'O Instagram aceita no máximo 2.200 caracteres na legenda. Reduza o texto na galeria e tente novamente.',
     acao: 'media',
     mostrarDetalhes: true,
+  },
+  COLLABORATOR_INVALID: {
+    titulo: 'O Instagram recusou um colaborador',
+    explicacao:
+      'Confira se o @ está certo e se o perfil é público. Edite os colaboradores e tente novamente.',
+    acao: 'collaborators',
+    mostrarDetalhes: false,
   },
   ACCOUNT_RESTRICTED: {
     titulo: 'Acesso da conta restrito pelo Instagram',

@@ -1208,12 +1208,103 @@ describe('posts avulsos', () => {
         workflow_titulo: null,
         platform: undefined,
         ig_trial_strategy: null,
+        ig_collaborators: [],
       },
     ]);
 
     const calls = getCalls('workflow_posts', 'select');
     expect(calls[1].modifiers).toContainEqual({ method: 'eq', args: ['cliente_id', 9] });
     expect(calls[1].modifiers).toContainEqual({ method: 'is', args: ['workflow_id', null] });
+  });
+
+  it('getClientePosts selects ig_collaborators and maps a missing value to []', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'Com colab',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: null,
+            ordem: 0,
+            ig_collaborators: ['dra.julia', 'clinicaviva'],
+            workflows: { titulo: 'Fluxo' },
+          },
+          {
+            id: 2,
+            workflow_id: 5,
+            titulo: 'Cache antigo',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: null,
+            ordem: 1,
+            ig_collaborators: null,
+            workflows: { titulo: 'Fluxo' },
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    );
+    const result = await store.getClientePosts(9);
+    expect(result.find((p) => p.id === 1)?.ig_collaborators).toEqual(['dra.julia', 'clinicaviva']);
+    expect(result.find((p) => p.id === 2)?.ig_collaborators).toEqual([]);
+    const selects = getCalls('workflow_posts', 'select') as unknown as Array<{
+      selectArgs?: unknown[][];
+    }>;
+    for (const call of selects) {
+      expect(String(call.selectArgs?.[0]?.[0])).toContain('ig_collaborators');
+    }
+  });
+
+  it('getScheduledPosts selects ig_collaborators and maps undefined to []', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'A',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: '2026-06-16T17:00:00.000Z',
+            ordem: 0,
+            ig_collaborators: ['nutri.ana'],
+            workflows: { titulo: 'F', cliente_id: 7, status: 'ativo', clientes: { nome: 'Y' } },
+          },
+          {
+            id: 3,
+            workflow_id: 5,
+            titulo: 'B',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: '2026-06-17T17:00:00.000Z',
+            ordem: 1,
+            workflows: { titulo: 'F', cliente_id: 7, status: 'ativo', clientes: { nome: 'Y' } },
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    );
+    const result = await store.getScheduledPosts(
+      '2026-06-01T03:00:00.000Z',
+      '2026-07-01T03:00:00.000Z',
+    );
+    expect(result.find((p) => p.id === 1)?.ig_collaborators).toEqual(['nutri.ana']);
+    expect(result.find((p) => p.id === 3)?.ig_collaborators).toEqual([]);
+    const selects = getCalls('workflow_posts', 'select') as unknown as Array<{
+      selectArgs?: unknown[][];
+    }>;
+    for (const call of selects) {
+      expect(String(call.selectArgs?.[0]?.[0])).toContain('ig_collaborators');
+    }
   });
 
   it('getAssignedPendingPosts merges the wired arm with the avulso arm, sorted by created_at across both', async () => {

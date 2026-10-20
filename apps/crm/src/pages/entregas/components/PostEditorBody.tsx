@@ -41,6 +41,7 @@ import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import type { TikTokReadiness } from '../tiktokComposerRules';
 import { TrialReelPanel } from './TrialReelPanel';
+import { InstagramCollaboratorsField } from './InstagramCollaboratorsField';
 import {
   ScheduleButton,
   PlatformStatusRow,
@@ -83,6 +84,7 @@ import { DestinationStatusPill } from './DestinationStatusPill';
 import { PhoneEditorHeader } from './postEditorPhone/PhoneEditorHeader';
 import { PhoneEditorTabs, type PhoneEditorTab } from './postEditorPhone/PhoneEditorTabs';
 import { PhoneBottomBar, formatPhoneDateTime } from './postEditorPhone/PhoneBottomBar';
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { PhonePublishChecklist } from './postEditorPhone/PhonePublishChecklist';
 import { PhoneTextScreen } from './postEditorPhone/PhoneTextScreen';
 import { PhoneComments } from './postEditorPhone/PhoneComments';
@@ -122,6 +124,8 @@ import type { PhoneEditorChrome, PhoneMenuAction } from './postEditorPhone/types
 // Stable fallback so the per-bubble filter below never sees a new array identity while the
 // references query is disabled (collapsed row) or still loading.
 const EMPTY_REFERENCES: ReferenceItem[] = [];
+const COLLABORATORS_CLEARED_NOT_INSTAGRAM =
+  'Colaboradores removidos: o post não vai mais para o Instagram.';
 
 export interface PostEditorBodyProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
@@ -153,7 +157,8 @@ export interface PostEditorBodyProps {
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   hasActiveTikTokAccount: boolean;
   ttAccountStatus: { revoked: boolean; expired: boolean } | null;
-  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
+  /** Pode devolver a promise da gravação; `false` = falhou (a fila de colaboradores usa). */
+  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void | Promise<unknown>;
   onContentUpdate: (json: Record<string, unknown>, plain: string) => void;
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
@@ -284,6 +289,10 @@ export function PostEditorBody({
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
   const captionRef = useRef<InstagramCaptionFieldHandle>(null);
+  // Campo de colaboradores: "Editar colaboradores" (bloco de erro) foca o input; sem input
+  // (travado ou com 3 chips) rola até o campo.
+  const collaboratorsInputRef = useRef<HTMLInputElement>(null);
+  const collaboratorsBoxRef = useRef<HTMLDivElement>(null);
   const tituloDirty = useRef(false);
   // Hold the latest onFieldChange in a ref so the debounce effect below does
   // not re-run (and reset its timer) every time the parent re-renders with a
@@ -293,6 +302,50 @@ export function PostEditorBody({
   useEffect(() => {
     onFieldChangeRef.current = onFieldChange;
   }, [onFieldChange]);
+  // Colaboradores: lista local otimista e gravações em fila. O post só volta com a lista
+  // nova depois do PATCH + refresh; sem isso, dois @ adicionados em sequência partiam da
+  // mesma lista antiga e o segundo apagava o primeiro. Enquanto há gravação pendente, o
+  // valor do servidor não sobrescreve o local. O reel de teste usa a mesma fila: os dois
+  // campos se excluem no banco, e PATCHes fora de ordem fariam o CHECK recusar um deles.
+  const [collaborators, setCollaboratorsLocal] = useState<string[]>(post.ig_collaborators ?? []);
+  const serverCollaborators = useRef<string[]>(post.ig_collaborators ?? []);
+  const fieldWritesPending = useRef(0);
+  const fieldWriteQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const collaboratorsWriteFailed = useRef(false);
+  useEffect(() => {
+    serverCollaborators.current = post.ig_collaborators ?? [];
+    if (fieldWritesPending.current === 0) setCollaboratorsLocal(serverCollaborators.current);
+  }, [post.ig_collaborators]);
+  const queueFieldWrite = (field: keyof WorkflowPost, value: unknown) => {
+    // Os drawers resolvem `false` quando o PATCH falha (já avisaram com toast).
+    const write = () =>
+      // Executor roda já (idle = gravação síncrona) e transforma throw em rejeição.
+      new Promise<unknown>((resolve) => resolve(onFieldChangeRef.current(field, value))).then(
+        (ok) => {
+          if (ok === false && field === 'ig_collaborators') collaboratorsWriteFailed.current = true;
+        },
+      );
+    const idle = fieldWritesPending.current === 0;
+    fieldWritesPending.current += 1;
+    const chain = (idle ? write() : fieldWriteQueue.current.then(write))
+      .catch(() => undefined)
+      .finally(() => {
+        fieldWritesPending.current -= 1;
+        // Gravação recusada: sem refresh o post não muda, então volta ao valor salvo.
+        if (fieldWritesPending.current === 0 && collaboratorsWriteFailed.current) {
+          collaboratorsWriteFailed.current = false;
+          setCollaboratorsLocal(serverCollaborators.current);
+        }
+      });
+    fieldWriteQueue.current = chain;
+    // Troca silenciosa de versão espera a fila; Agendar/Publicar também (flushFieldWrites).
+    void trackUnsavedWork(chain);
+  };
+  const setCollaborators = (next: string[]) => {
+    setCollaboratorsLocal(next);
+    queueFieldWrite('ig_collaborators', next);
+  };
+  const flushFieldWrites = () => fieldWriteQueue.current;
   useEffect(() => {
     if (!tituloDirty.current) setTituloLocal(post.titulo ?? '');
   }, [post.titulo]);
@@ -427,6 +480,7 @@ export function PostEditorBody({
     onTikTokUnaudited: () => setTiktokTestModeBanner(true),
     onStatusChange: onRefresh,
     explainMissingInstagramAccount: multiplatform,
+    beforeServerAction: flushFieldWrites,
   });
 
   if (!isExpanded) return null;
@@ -449,6 +503,44 @@ export function PostEditorBody({
       : post.status === 'postado'
         ? 'Post já publicado'
         : null;
+
+  const showCollaborators =
+    hasInstagramAccount && post.tipo !== 'stories' && isInstagramPost(post.platform);
+  // Mudança de tipo/plataforma que torna colaboradores impossíveis: o trigger do banco
+  // zera a lista; aqui o editor acompanha e avisa (só quando havia alguém na lista).
+  const clearCollaboratorsFor = (change: { tipo?: WorkflowPost['tipo']; platform?: string }) => {
+    if (collaborators.length === 0) return;
+    if (change.tipo === 'stories') {
+      setCollaborators([]);
+      toast.info('Colaboradores removidos: Stories não aceitam colaboradores.');
+    } else if (change.platform === 'tiktok') {
+      setCollaborators([]);
+      toast.info(COLLABORATORS_CLEARED_NOT_INSTAGRAM);
+    }
+  };
+  const focusCollaborators = () =>
+    requestAnimationFrame(() => {
+      const input = collaboratorsInputRef.current;
+      if (input && !input.disabled) input.focus();
+      else collaboratorsBoxRef.current?.scrollIntoView({ block: 'center' });
+    });
+  const collaboratorsField = (idPrefix: string, className?: string) => (
+    <div ref={collaboratorsBoxRef} className={className}>
+      <InstagramCollaboratorsField
+        value={collaborators}
+        onChange={setCollaborators}
+        locked={isScheduleLocked}
+        trialOn={!!post.ig_trial_strategy}
+        refused={
+          post.status === 'falha_publicacao' && post.publish_error_code === 'COLLABORATOR_INVALID'
+            ? (post.ig_collaborators_refused ?? [])
+            : []
+        }
+        inputRef={collaboratorsInputRef}
+        idPrefix={idPrefix}
+      />
+    </div>
+  );
 
   const handleDestinationToggle = (platform: PlatformId, on: boolean) => {
     const ownCaption =
@@ -503,6 +595,15 @@ export function PostEditorBody({
             });
           },
         },
+      );
+      return;
+    }
+    if (!on && platform === 'instagram' && collaborators.length > 0) {
+      // O banco zera ig_collaborators quando o post deixa de ir para o Instagram; o
+      // onSettled do hook recarrega o post, então o editor larga os chips velhos.
+      destinations.toggle.mutate(
+        { platform, on, seedCaption: null },
+        { onSuccess: () => toast.info(COLLABORATORS_CLEARED_NOT_INSTAGRAM) },
       );
       return;
     }
@@ -798,6 +899,7 @@ export function PostEditorBody({
                 if (v !== 'reels' && post.ig_trial_strategy) {
                   onFieldChange('ig_trial_strategy', null);
                 }
+                clearCollaboratorsFor({ tipo: v });
               }}
             />
           </li>
@@ -830,6 +932,7 @@ export function PostEditorBody({
                   if (platform === 'tiktok' && post.ig_trial_strategy) {
                     onFieldChange('ig_trial_strategy', null);
                   }
+                  clearCollaboratorsFor({ platform });
                 }}
               />
             )}
@@ -943,7 +1046,15 @@ export function PostEditorBody({
     const publicarPane = (
       <>
         {shouldShowPublishErrorBlock(post) && (
-          <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
+          <PublishErrorBlock
+            post={post}
+            clienteId={clienteId}
+            onStatusChange={onRefresh}
+            onEditCollaborators={() => {
+              setPhoneTab('publicar');
+              focusCollaborators();
+            }}
+          />
         )}
         {post.status === 'falha_publicacao' &&
           (post.platform === 'tiktok' || post.platform === 'both') &&
@@ -962,15 +1073,17 @@ export function PostEditorBody({
           </section>
         )}
 
-        {hasInstagramAccount && post.tipo === 'reels' && isInstagramPost(post.platform) && (
-          <section className="phone-editor-section" aria-label="Reel de teste">
+        {showCollaborators && (
+          <section className="phone-editor-section" aria-label="Instagram">
             <h2 className="phone-group__header">Instagram</h2>
-            <div className="phone-editor-card">
+            <div className="phone-editor-card flex flex-col gap-4">
+              {collaboratorsField(`phone-collab-${post.id}`)}
               <TrialReelPanel
                 post={post}
                 media={postMedia ?? []}
                 disabled={isScheduleLocked}
-                onFieldChange={onFieldChange}
+                collaboratorsCount={collaborators.length}
+                onFieldChange={queueFieldWrite}
               />
             </div>
           </section>
@@ -1151,6 +1264,7 @@ export function PostEditorBody({
             if (v !== 'reels' && post.ig_trial_strategy) {
               onFieldChange('ig_trial_strategy', null);
             }
+            clearCollaboratorsFor({ tipo: v });
           }}
         />
         {multiplatform ? (
@@ -1181,6 +1295,7 @@ export function PostEditorBody({
               if (platform === 'tiktok' && post.ig_trial_strategy) {
                 onFieldChange('ig_trial_strategy', null);
               }
+              clearCollaboratorsFor({ platform });
             }}
           />
         )}
@@ -1252,7 +1367,15 @@ export function PostEditorBody({
       {statusAutomationHint && <p className="drawer-status-hint">{statusAutomationHint}</p>}
 
       {shouldShowPublishErrorBlock(post) && (
-        <PublishErrorBlock post={post} clienteId={clienteId} onStatusChange={onRefresh} />
+        <PublishErrorBlock
+          post={post}
+          clienteId={clienteId}
+          onStatusChange={onRefresh}
+          onEditCollaborators={() => {
+            if (multiplatform) setCaptionTab('instagram');
+            focusCollaborators();
+          }}
+        />
       )}
 
       {isExternallyVisible && (
@@ -1425,7 +1548,16 @@ export function PostEditorBody({
           activeTab={captionTab}
           onActiveTabChange={setCaptionTab}
           locked={isScheduleLocked}
-          instagramCaption={isStoryPost ? storiesNote : instagramCaptionField(true)}
+          instagramCaption={
+            isStoryPost ? (
+              storiesNote
+            ) : (
+              <>
+                {instagramCaptionField(true)}
+                {showCollaborators && collaboratorsField(`collab-${post.id}`, 'mt-3')}
+              </>
+            )
+          }
           tiktokSettings={tiktokSettingsPanel(true)}
           tiktokFieldRef={tiktokCaptionRef}
           geralFieldRef={geralCaptionRef}
@@ -1437,12 +1569,15 @@ export function PostEditorBody({
         instagramCaptionField(false)
       ) : null}
 
+      {!multiplatform && showCollaborators && collaboratorsField(`collab-${post.id}`)}
+
       {hasInstagramAccount && (
         <TrialReelPanel
           post={post}
           media={postMedia ?? []}
           disabled={isScheduleLocked}
-          onFieldChange={onFieldChange}
+          collaboratorsCount={collaborators.length}
+          onFieldChange={queueFieldWrite}
         />
       )}
 
@@ -1468,6 +1603,7 @@ export function PostEditorBody({
         onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
         onStatusChange={onRefresh}
         explainMissingInstagramAccount={multiplatform}
+        beforeServerAction={flushFieldWrites}
       />
 
       {/* Self-gating: renders nothing without the plan feature, an Instagram

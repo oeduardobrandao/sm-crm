@@ -79,6 +79,9 @@ export interface HubPost {
   /** Reel de teste (Instagram trial reel): publicado só para não-seguidores até
    * a graduação. Absent em payloads antigos em cache — tratar como null. */
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  /** Instagram collaborators (collab post), lowercase usernames without `@`. Absent em
+   * payloads antigos em cache — tratar como []. */
+  ig_collaborators?: string[];
   status:
     | 'rascunho'
     | 'revisao_interna'

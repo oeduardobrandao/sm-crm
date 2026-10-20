@@ -162,13 +162,16 @@ export function DashboardPhone({ kpis, risk, mrr, trials, recent }: DashboardPho
             <Cell
               key={ws.id}
               label={ws.name}
-              subtitle={[
-                ws.owner?.name || '—',
-                `${ws.member_count} ${ws.member_count === 1 ? 'membro' : 'membros'}`,
-                ws.plan_name,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+              subtitle={
+                // Only the owner's name truncates, so the member count and plan stay visible.
+                <span className="flex min-w-0">
+                  <span className="truncate">{ws.owner?.name || '—'}</span>
+                  <span className="shrink-0 whitespace-pre">
+                    {` · ${ws.member_count} ${ws.member_count === 1 ? 'membro' : 'membros'}`}
+                    {ws.plan_name ? ` · ${ws.plan_name}` : ''}
+                  </span>
+                </span>
+              }
               value={relativeCreated(ws.created_at)}
               to={workspaceDetailPath(ws.id)}
             />

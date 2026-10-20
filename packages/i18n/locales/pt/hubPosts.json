@@ -108,6 +108,10 @@
     "mediaRemoved": "Mídia removida para liberar espaço",
     "instagramCaptionLabel": "Legenda do Instagram"
   },
+  "collab": {
+    "partnership": "Em parceria com {{names}}",
+    "note": "No Instagram, o post vai aparecer também no perfil dessas contas, se elas aceitarem o convite."
+  },
   "posts": {
     "select": "Selecionar",
     "done": "Concluir",

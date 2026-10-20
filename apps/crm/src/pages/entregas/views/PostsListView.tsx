@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronUp, ChevronDown, CircleDashed, Plus, Route } from 'lucide-react';
+import { ChevronUp, ChevronDown, CircleDashed, Plus, Route, Users } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
@@ -233,6 +233,7 @@ export function PostsListView({
     const stage = stageOf(p);
     const processEtapa = workflowId == null ? postEntityByPostId?.get(p.id)?.etapaNome : undefined;
     const prazo = stage?.hasPrazo ? formatEtapaPrazo(stage.deadline) : null;
+    const collaborators = p.ig_collaborators ?? [];
     const prazoDate = stage?.prazoDate ?? null;
     return (
       <tr
@@ -310,6 +311,15 @@ export function PostsListView({
           <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
           {p.ig_trial_strategy && (
             <span className="post-tipo-badge post-tipo-badge--trial">Teste</span>
+          )}
+          {collaborators.length > 0 && (
+            <span
+              className="post-tipo-badge post-tipo-badge--collab"
+              title={`Colaboradores: ${collaborators.map((u) => `@${u}`).join(', ')}`}
+            >
+              <Users className="h-3 w-3" aria-hidden="true" />
+              Collab {collaborators.length}
+            </span>
           )}
         </td>
         <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
@@ -395,6 +405,7 @@ export function PostsListView({
           fluxo,
           TIPO_LABELS[p.tipo],
           p.ig_trial_strategy ? 'Teste' : null,
+          (p.ig_collaborators?.length ?? 0) > 0 ? `Collab ${p.ig_collaborators?.length}` : null,
           p.scheduled_at ? `Agendado ${formatPostDate(p.scheduled_at)}` : null,
         ]
           .filter(Boolean)

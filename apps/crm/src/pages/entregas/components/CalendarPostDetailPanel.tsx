@@ -7,6 +7,7 @@ import {
   Calendar as CalendarIcon,
   Folder,
   User,
+  Users,
   ExternalLink,
   Trash2,
   Lock,
@@ -79,6 +80,7 @@ export function CalendarPostDetailPanel({
   // rendering blank next to the Folder icon.
   const isAvulso = post.workflow_id === null;
   const workflowLabel = post.workflow_titulo ?? 'Avulso';
+  const collaborators = post.ig_collaborators ?? [];
   // Rescheduling follows lock status only; removing a date stays own-workflow, because the
   // calendar sidebar only lists this workflow's backlog. An avulso post has no own-workflow
   // slot to remove the date from here -- it goes through the standalone publication instead.
@@ -130,6 +132,15 @@ export function CalendarPostDetailPanel({
             <User className="h-4 w-4" />
             <span>{responsavel ?? 'Sem responsável'}</span>
           </div>
+          {collaborators.length > 0 && (
+            <div className="calendar-detail-meta-row">
+              <Users className="h-4 w-4" aria-hidden="true" />
+              <span>
+                <span style={{ color: 'var(--text-muted)' }}>Colaboradores</span>{' '}
+                <span>{collaborators.map((u) => `@${u}`).join(', ')}</span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="calendar-detail-section">

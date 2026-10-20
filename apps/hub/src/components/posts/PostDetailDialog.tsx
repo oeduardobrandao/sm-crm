@@ -19,6 +19,7 @@ import {
   ImageOff,
   Lock,
   PencilLine,
+  Users,
   X,
 } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -540,6 +541,9 @@ function PostDetailContent({
         : post.media.length > 1
           ? `${getTipoLabel(t, post.tipo)} · ${t('posts.slides', '{{count}} slides', { count: post.media.length })}`
           : getTipoLabel(t, post.tipo);
+  // Collab post: a stale cached payload may lack the field, so null/undefined reads as [].
+  const collaborators = post.ig_collaborators ?? [];
+  const collaboratorNames = formatCollaboratorNames(collaborators, i18n.language);
   const dot = (
     <span aria-hidden="true" className="mx-1.5 hub-tx3">
       ·
@@ -563,6 +567,22 @@ function PostDetailContent({
         {dot}
         {getPlatformLabel(tCard, post.platform ?? 'instagram')}
       </p>
+      {collaborators.length > 0 && (
+        <div className="space-y-0.5">
+          <p className="flex items-start gap-1.5 text-[12.5px] leading-snug hub-tx2">
+            <Users size={13} aria-hidden="true" className="shrink-0 mt-[2px] hub-tx3" />
+            <span>
+              {t('collab.partnership', 'Em parceria com {{names}}', { names: collaboratorNames })}
+            </span>
+          </p>
+          <p className="pl-[19px] text-[12px] leading-snug hub-tx3">
+            {t(
+              'collab.note',
+              'No Instagram, o post vai aparecer também no perfil dessas contas, se elas aceitarem o convite.',
+            )}
+          </p>
+        </div>
+      )}
       <p className="flex items-center gap-1.5 text-[12.5px] hub-tx2">
         <CalendarDays size={13} aria-hidden="true" className="shrink-0 hub-tx3" />
         {formatDate(post.scheduled_at, dateLang)}
@@ -1023,4 +1043,15 @@ function PostDetailContent({
       )}
     </>
   );
+}
+
+/** "@a, @b e @c" no idioma do Hub. Intl.ListFormat falta em Safari < 14.5: cai para vírgulas. */
+function formatCollaboratorNames(collaborators: string[], language: string): string {
+  if (collaborators.length === 0) return '';
+  const handles = collaborators.map((name) => `@${name}`);
+  try {
+    return new Intl.ListFormat(language, { style: 'long', type: 'conjunction' }).format(handles);
+  } catch {
+    return handles.join(', ');
+  }
 }

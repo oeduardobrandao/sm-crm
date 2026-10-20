@@ -132,13 +132,14 @@ Deno.test("CAPTION_TOO_LONG and ACCOUNT_RESTRICTED are non-retryable and have co
   }
 });
 
-Deno.test("NON_RETRYABLE_CODES: exatamente os 8 códigos que o cron não deve reprocessar", () => {
+Deno.test("NON_RETRYABLE_CODES: exatamente os 9 códigos que o cron não deve reprocessar", () => {
   assertEquals(
     [...NON_RETRYABLE_CODES].sort(),
     [
       "ACCOUNT_RESTRICTED",
       "CAPTION_TOO_LONG",
       "CAROUSEL_LIMIT",
+      "COLLABORATOR_INVALID",
       "MEDIA_TOO_LARGE",
       "MEDIA_UNSUPPORTED",
       "NO_MEDIA",

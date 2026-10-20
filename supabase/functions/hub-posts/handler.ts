@@ -164,7 +164,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     // older published posts come through ?before= (Postagens) and ?from=&to= (calendar).
     let postsQuery = db
       .from("workflow_posts")
-      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, targets_state:post_targets(platform, permalink), workflows(titulo, created_at)")
+      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, published_at, publish_error, platform, ig_trial_strategy, ig_collaborators, media_autocleaned_at, workflow_id, targets_state:post_targets(platform, permalink), workflows(titulo, created_at)")
       .eq("conta_id", hubToken.conta_id)
       .eq("cliente_id", hubToken.cliente_id);
     if (mode.kind === "shell") {
