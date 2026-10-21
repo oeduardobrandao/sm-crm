@@ -23,7 +23,7 @@ import { copyAppLink } from '@/lib/copyAppLink';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import { sanitizeUrl } from '@/utils/security';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { getInitials } from '@/lib/initials';
 import { WorkflowTimelinePopover } from './WorkflowTimelinePopover';
 import { DeadlinePill } from './DeadlinePill';
@@ -363,12 +363,13 @@ export function WorkflowCard({
               const displayMembro = localMembro !== undefined ? localMembro : card.membro;
               return displayMembro ? (
                 <>
-                  <div
-                    className={`avatar ${avatarColorClass(displayMembro.id ?? displayMembro.nome)}`}
-                    style={{ width: 20, height: 20, fontSize: '0.55rem', fontWeight: 800 }}
-                  >
-                    {getInitials(displayMembro.nome)}
-                  </div>
+                  <PessoaAvatar
+                    nome={displayMembro.nome}
+                    fotoUrl={displayMembro.avatar_url}
+                    seed={displayMembro.id}
+                    size={20}
+                    className="!text-[0.55rem] !font-extrabold"
+                  />
                   <span
                     style={{
                       fontSize: '0.75rem',
@@ -437,12 +438,13 @@ export function WorkflowCard({
                   fontSize: '0.75rem',
                 }}
               >
-                <div
-                  className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
-                  style={{ width: 16, height: 16, fontSize: '0.5rem' }}
-                >
-                  {getInitials(m.nome)}
-                </div>
+                <PessoaAvatar
+                  nome={m.nome}
+                  fotoUrl={m.avatar_url}
+                  seed={m.id}
+                  size={16}
+                  className="!text-[0.5rem]"
+                />
                 {m.nome}
               </DropdownMenuItem>
             ))}

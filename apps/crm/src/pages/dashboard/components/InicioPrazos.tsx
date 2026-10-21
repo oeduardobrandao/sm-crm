@@ -16,6 +16,7 @@ import {
   type AgendaGroupMode,
 } from '../todayGroups';
 import { TodayRow, initials } from './TodayCard';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 
 const BUCKETS: AgendaBucket[] = ['atrasado', 'hoje', 'proximos'];
 const GROUP_ROWS = 6;
@@ -160,8 +161,8 @@ export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
 
   const people = (g: AgendaGroup) => {
     if (mode === 'responsavel' || mine) return [];
-    const seen = new Map<number, string>();
-    for (const i of g.items) if (i.responsavel) seen.set(i.responsavel.id, i.responsavel.nome);
+    const seen = new Map<number, NonNullable<AgendaItem['responsavel']>>();
+    for (const i of g.items) if (i.responsavel) seen.set(i.responsavel.id, i.responsavel);
     return [...seen.values()].slice(0, 3);
   };
 
@@ -302,11 +303,21 @@ export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
                     <span className="inicio-prazos__group-meta">{groupMeta(g)}</span>
                   </span>
                   {who.length > 0 && (
-                    <span className="inicio-prazos__people" aria-hidden>
-                      {who.map((n) => (
-                        <span key={n} className="inicio-prazos__person" title={n}>
-                          {initials(n)}
-                        </span>
+                    // The names sit on the stack, not on each avatar: a wrapper per avatar
+                    // would break the vidro overlap, which keys off :first-child.
+                    <span
+                      className="inicio-prazos__people"
+                      title={who.map((p) => p.nome).join(', ')}
+                      aria-hidden
+                    >
+                      {who.map((p) => (
+                        <PessoaAvatar
+                          key={p.id}
+                          nome={p.nome}
+                          fotoUrl={p.avatar_url}
+                          seed={p.id}
+                          className="inicio-prazos__person"
+                        />
                       ))}
                     </span>
                   )}

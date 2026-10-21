@@ -101,10 +101,26 @@ describe('buildTodayAgenda · tarefas', () => {
   it('resolves the responsável in workspace scope and never in mine', () => {
     const t = tarefa({ id: 1, responsavel_id: 11 });
     const ws = buildTodayAgenda(base({ tarefas: [t] }));
-    expect(ws.hoje[0].responsavel).toEqual({ id: 11, nome: 'Caio Dias' });
+    expect(ws.hoje[0].responsavel).toEqual({ id: 11, nome: 'Caio Dias', avatar_url: null });
 
     const mine = buildTodayAgenda(base({ tarefas: [t], scope: 'mine', membroId: 11 }));
     expect(mine.hoje[0].responsavel).toBeNull();
+  });
+
+  it('todayAgenda: the responsável keeps avatar_url', () => {
+    const b = buildTodayAgenda(
+      base({
+        tarefas: [tarefa({ id: 1, responsavel_id: 11 })],
+        membros: [
+          { id: 11, nome: 'Caio Dias', avatar_url: 'https://x.test/a.jpg' },
+        ] as AgendaInput['membros'],
+      }),
+    );
+    expect(b.hoje[0].responsavel).toEqual({
+      id: 11,
+      nome: 'Caio Dias',
+      avatar_url: 'https://x.test/a.jpg',
+    });
   });
 
   it('mine scope keeps only tarefas assigned to membroId', () => {

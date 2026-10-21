@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { CheckSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials, type Membro, type TarefaWithRelations } from '../../../store';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { type Membro, type TarefaWithRelations } from '../../../store';
 import { DUE_BUCKETS, dueBadge, groupByDueBucket } from '../tarefasLogic';
 import { toggleTarefaConcluida } from '../tarefaCommands';
 import { TagPill } from '../components/TagPicker';
@@ -117,12 +117,15 @@ function TarefaRow({
         )}
         {badge && <span className={`board-card-deadline ${badge.className}`}>{badge.label}</span>}
         {membro ? (
-          <span
-            className={`avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
-            style={{ width: 22, height: 22, fontSize: '0.55rem', fontWeight: 800 }}
-            title={membro.nome}
-          >
-            {getInitials(membro.nome)}
+          // `contents` keeps the hover name without adding a box to the row's layout.
+          <span className="contents" title={membro.nome}>
+            <PessoaAvatar
+              nome={membro.nome}
+              fotoUrl={membro.avatar_url}
+              seed={membro.id}
+              size={22}
+              className="!font-extrabold"
+            />
           </span>
         ) : (
           <span style={{ width: 22 }} />

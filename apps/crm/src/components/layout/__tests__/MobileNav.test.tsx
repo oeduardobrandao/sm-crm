@@ -225,8 +225,16 @@ describe('MobileNav', () => {
     fireEvent.click(more);
     expect(more).toHaveAttribute('aria-expanded', 'true');
     expect(more).toHaveAttribute('aria-controls', 'mobile-more-sheet');
-    expect(document.getElementById('mobile-avatar')?.textContent).toBe('AM');
+    expect(document.querySelector('.mobile-more-profile .avatar')?.textContent).toBe('AM');
     expect(document.getElementById('mobile-user-name')?.textContent).toBe('Ana Maria');
+  });
+
+  it('MobileNav shows the user photo in the Mais sheet', () => {
+    setAuth({ avatar_url: 'https://x.test/a.jpg' });
+    renderMobileNav('/dashboard');
+    fireEvent.click(screen.getByRole('button', { name: 'Mais' }));
+    const photo = document.querySelector('.mobile-more-profile img.avatar--photo');
+    expect(photo).toHaveAttribute('src', 'https://x.test/a.jpg');
   });
 
   it('marks Mais as the current destination for More routes, including primary-prefix collisions', () => {

@@ -31,7 +31,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { getInitials } from '@/lib/initials';
 import type { Cliente, Membro, WorkflowPost, WorkflowTemplate } from '../../../store';
 import { TIPO_ORDER, TIPO_LABELS, TIPO_COLORS } from '../postLabels';
@@ -132,15 +132,15 @@ interface MultiSelectOption<T extends string | number> {
   avatar?: React.ReactNode;
 }
 
-function membroAvatar(m: { id?: number; nome: string }): React.ReactNode {
+function membroAvatar(m: Pick<Membro, 'id' | 'nome' | 'avatar_url'>): React.ReactNode {
   return (
-    <span
-      className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
-      style={{ width: 18, height: 18, fontSize: '0.5rem' }}
-      aria-hidden="true"
-    >
-      {getInitials(m.nome)}
-    </span>
+    <PessoaAvatar
+      nome={m.nome}
+      fotoUrl={m.avatar_url}
+      seed={m.id}
+      size={18}
+      className="!text-[0.5rem]"
+    />
   );
 }
 

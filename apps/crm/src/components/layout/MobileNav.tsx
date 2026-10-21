@@ -24,7 +24,7 @@ import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
 import { getPhoneNav, isNavRouteActive, type NavItem } from './nav-data';
 import GlobalSearchDialog from './GlobalSearchDialog';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { useGuide } from '../guide/GuideContext';
 import { openSupportChat } from '@/lib/supportChat';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
@@ -262,15 +262,6 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
     setIsDark(next === 'dark');
   };
 
-  const initials = profile?.nome
-    ? profile.nome
-        .split(' ')
-        .map((w: string) => w?.[0] || '')
-        .join('')
-        .substring(0, 2)
-        .toUpperCase()
-    : 'U';
-
   const navCell = (item: NavItem) => {
     const label = t(item.labelKey, item.label);
     const icon = <i className={`ph ${item.icon}`} />;
@@ -327,13 +318,12 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
   return (
     <>
       <div className="mobile-more-profile" id="mobile-profile">
-        <div
-          className={`avatar ${avatarColorClass(profile?.id ?? profile?.nome)}`}
-          id="mobile-avatar"
-          aria-hidden="true"
-        >
-          {initials}
-        </div>
+        {/* `.mobile-more-profile .avatar` sizes it (56px circle). */}
+        <PessoaAvatar
+          nome={profile?.nome || 'U'}
+          fotoUrl={profile?.avatar_url}
+          seed={profile?.id ?? profile?.nome}
+        />
         <div className="mobile-more-profile-info">
           <div className="mobile-more-profile-name" id="mobile-user-name">
             {profile?.nome || 'Minha Conta'}

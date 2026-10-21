@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ListSkeleton } from '@/components/ui/skeletons';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { EmptyStateGuide } from '../../../components/help/EmptyStateGuide';
 import {
   useTodayCard,
@@ -93,7 +94,14 @@ export function TodayRow({
       <span className="today-row-end">
         {showWho && item.responsavel && (
           <span className="today-row-who" title={item.responsavel.nome}>
-            <span className="today-row-avatar">{initials(item.responsavel.nome)}</span>
+            {/* .today-row-avatar keeps the neutral chip; the important font beats .avatar's breakpoint rule. */}
+            <PessoaAvatar
+              nome={item.responsavel.nome}
+              fotoUrl={item.responsavel.avatar_url}
+              seed={item.responsavel.id}
+              size={20}
+              className="today-row-avatar !text-[0.6rem]"
+            />
             {firstName(item.responsavel.nome)}
           </span>
         )}

@@ -13,7 +13,7 @@ import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { switchWorkspace } from '@/store/workspace';
 import { GuideNavItem } from '../guide/GuidePill';
 import { clearVidroCache } from '../../lib/vidroLook';
@@ -200,15 +200,6 @@ export default function Sidebar({
   const handleLanguageChange = (lang: Language) => {
     changeLanguage(lang);
   };
-
-  const initials = profile?.nome
-    ? profile.nome
-        .split(' ')
-        .map((w: string) => w?.[0] || '')
-        .join('')
-        .substring(0, 2)
-        .toUpperCase()
-    : 'U';
 
   const userName = profile?.nome || t('sidebar.myAccount');
 
@@ -400,12 +391,14 @@ export default function Sidebar({
             }}
           >
             <div className="sidebar-user-trigger">
-              <div
-                className={`avatar ${avatarColorClass(user?.id ?? profile?.nome)}`}
-                style={{ width: 32, height: 32, borderRadius: 8, fontSize: '0.8rem' }}
-              >
-                {initials}
-              </div>
+              {/* 'U' keeps the old placeholder initial while the profile loads. */}
+              <PessoaAvatar
+                nome={profile?.nome || 'U'}
+                fotoUrl={profile?.avatar_url}
+                seed={user?.id ?? profile?.nome}
+                size={32}
+                className="!rounded-[8px]"
+              />
               <span className="user-name-text">{userName}</span>
               <i
                 className={`ph ${userMenuOpen ? 'ph-caret-up' : 'ph-caret-down'}`}

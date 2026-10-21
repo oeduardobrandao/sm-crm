@@ -52,7 +52,7 @@ export interface AgendaItem {
   context: string;
   when: Date | null;
   href: string;
-  responsavel?: { id: number; nome: string } | null;
+  responsavel?: { id: number; nome: string; avatar_url?: string | null } | null;
   /** The client the item belongs to, when it has one (Vidro groups the list by it). */
   cliente?: { id: number | null; nome: string } | null;
   badge?: { label: string; className: AgendaBadgeClass } | null;
@@ -207,7 +207,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
   const responsavelOf = (id: number | null | undefined): AgendaItem['responsavel'] => {
     if (mine || id == null) return null;
     const m = membroById.get(id);
-    return m ? { id, nome: m.nome } : null;
+    return m ? { id, nome: m.nome, avatar_url: m.avatar_url ?? null } : null;
   };
   const clienteById = new Map<number, Cliente>();
   for (const c of input.clientes) if (c.id != null) clienteById.set(c.id, c);

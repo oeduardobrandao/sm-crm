@@ -147,6 +147,33 @@ describe('InicioPrazos', () => {
     expect(within(first as HTMLElement).queryByText('Copy')).not.toBeInTheDocument();
   });
 
+  it('InicioPrazos shows the photos of the people in a group', () => {
+    card.buckets = {
+      ...card.buckets,
+      atrasado: [
+        item({
+          key: 'a1',
+          cliente: { id: 1, nome: 'Clínica Vida' },
+          responsavel: { ...ana, avatar_url: 'https://x.test/a.jpg' },
+        }),
+        item({
+          key: 'a2',
+          cliente: { id: 1, nome: 'Clínica Vida' },
+          responsavel: { ...caio, avatar_url: null },
+        }),
+      ],
+    };
+    renderPrazos();
+
+    const people = document.querySelectorAll<HTMLElement>('.inicio-prazos__person');
+    expect(people).toHaveLength(2);
+    expect(people[0].tagName).toBe('IMG');
+    expect(people[0]).toHaveAttribute('src', 'https://x.test/a.jpg');
+    expect(people[1]).toHaveTextContent('CD');
+    // Siblings, not wrapped: the vidro overlap keys off :first-child.
+    expect(people[0].parentElement).toBe(people[1].parentElement);
+  });
+
   it('regroups by responsible and switches buckets from the tiles', () => {
     renderPrazos();
 
