@@ -1,18 +1,18 @@
--- supabase/migrations/20260903103000_team_message_inapp_pref.sql
+-- supabase/migrations/20261021103000_team_message_inapp_pref.sql
 -- Fecha tres lacunas do fix-wave de revisao do chat de equipe (branch
 -- claude/group-chats-team-c8f94a):
 -- (a) notification_inapp_prefs_type_check (20260903000001) foi criada ANTES
---     de 'team_message' existir (20260903100000 e posterior). Sem esta
+--     de 'team_message' existir (20261021100000 e posterior). Sem esta
 --     migration, tentar silenciar/preferir esse tipo (INSERT/UPDATE em
 --     notification_inapp_prefs) falha com violacao de CHECK.
--- (b) trg_notify_team_message (20260903100000) gravava o preview cru --
+-- (b) trg_notify_team_message (20261021100000) gravava o preview cru --
 --     tokens de mencao "@[Label](tipo:id)" vazavam pro card de notificacao
 --     em vez de renderizar como "@Label". CREATE OR REPLACE troca o preview
 --     por uma versao com os tokens ja substituidos, antes do left(...,280).
 -- (c) trg_notify_team_message selecionava destinatarios so por
 --     equipe_conversa_participantes, cuja linha SOBREVIVE deliberadamente a
 --     remocao do workspace (historico -- ver comentario da migration
---     20260903100000). notifications_select so filtra por user_id =
+--     20261021100000). notifications_select so filtra por user_id =
 --     auth.uid(), sem cruzar workspace_members: um ex-membro removido
 --     continuava recebendo team_message (author_name, conversa_nome,
 --     preview de 280 chars) pra cada mensagem nova em conversas de que
@@ -21,7 +21,7 @@
 --     parte de workspace_members) e por isso ja e naturalmente escopada;
 --     esta era a excecao. Fix: EXISTS contra workspace_members no WHERE do
 --     INSERT..SELECT, mesmo padrao de vinculo vigente que
---     is_equipe_conversa_member() ja aplica pra leitura (20260903100000) e
+--     is_equipe_conversa_member() ja aplica pra leitura (20261021100000) e
 --     que a policy notifications_select (20260903000001) aplica pros outros
 --     tipos via join com workspace_members.
 -- Este arquivo ainda nao foi aplicado em nenhum banco real -- editado in
@@ -51,7 +51,7 @@ alter table notification_inapp_prefs
   ));
 
 -- ============ (b) preview sem tokens de mencao crus ========================
--- Mesma definicao de 20260903100000_equipe_chat_core.sql (mesmo DECLARE,
+-- Mesma definicao de 20261021100000_equipe_chat_core.sql (mesmo DECLARE,
 -- mesmo BEGIN/EXCEPTION, mesmo INSERT/ON CONFLICT) -- so o campo 'preview'
 -- muda: regexp_replace troca "@[Label](tipo:id)" por "@Label" antes do
 -- left(...,280). Mesma forma de token que MENTION_TOKEN_RE no frontend
