@@ -2,7 +2,7 @@ import type { ContentFormat } from '@mesaas/platforms';
 import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
-import { fetchAllPagedByIds } from './paging';
+import { fetchAllPaged, fetchAllPagedByIds } from './paging';
 import { sortByPlatformOrder, type PostTargetSummary } from './postTargets';
 import type { Workflow, WorkflowEtapa } from './workflows';
 
@@ -847,6 +847,25 @@ export async function getWorkflowPostsCounts(workflowIds: number[]): Promise<Map
   for (const row of rows) {
     counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
   }
+  return counts;
+}
+
+export type PostStatusCounts = Partial<Record<WorkflowPost['status'], number>>;
+
+/** Contagem de posts do fluxo por status, agregada no cliente (paginada). */
+export async function getWorkflowPostStatusCounts(workflowId: number): Promise<PostStatusCounts> {
+  const rows = await fetchAllPaged(async (from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_posts')
+      .select('status')
+      .eq('workflow_id', workflowId)
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as { status: WorkflowPost['status'] }[];
+  });
+  const counts: PostStatusCounts = {};
+  for (const row of rows) counts[row.status] = (counts[row.status] ?? 0) + 1;
   return counts;
 }
 

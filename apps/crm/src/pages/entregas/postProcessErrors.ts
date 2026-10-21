@@ -59,6 +59,10 @@ export const POST_PROCESS_ERROR_MESSAGES: Record<string, string> = {
   pending_steps_remaining: 'Ainda há etapas pendentes. Avance até a última antes de concluir.',
   request_id_required: 'Não foi possível identificar a operação. Tente de novo.',
   request_not_found: 'Não foi possível identificar a operação. Tente de novo.',
+  etapa_changed: 'Este fluxo já foi movido por outra pessoa. Recarregue e confira.',
+  posts_changed: 'Os posts mudaram enquanto você escolhia. Confira os números e confirme de novo.',
+  ciclo_changed: 'Este aviso ficou desatualizado. Recarregue e confira.',
+  post_locked: 'Posts agendados, publicados ou com falha na publicação não voltam para rascunho.',
   request_mismatch: 'A seleção mudou desde a última tentativa. Feche o diálogo e tente de novo.',
 };
 
@@ -69,6 +73,9 @@ export const STALE_STATE_CODES: ReadonlySet<string> = new Set([
   'post_changed',
   'template_changed',
   'request_mismatch',
+  'etapa_changed',
+  'posts_changed',
+  'ciclo_changed',
   'post_has_active_process',
   'post_in_workflow',
   'post_already_in_flow',

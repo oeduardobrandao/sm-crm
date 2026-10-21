@@ -1,5 +1,10 @@
 import { supabase, getUserId, getContaId } from './core';
-import { getWorkflowPostsCounts, resetApprovedPostsForNextCycle } from './posts';
+import {
+  callRpcWithDeadlockRetry,
+  getWorkflowPostsCounts,
+  resetApprovedPostsForNextCycle,
+  type PostStatusCounts,
+} from './posts';
 import { fetchAllPaged, fetchAllPagedByIds } from './paging';
 import { toLocalISODate } from '../utils/postDate';
 import type { PlatformId } from '@mesaas/platforms';
@@ -123,6 +128,7 @@ export interface Workflow {
   plataformas?: PlatformId[];
   created_at?: string;
   created_via?: 'human' | 'agent';
+  aviso_rascunho_dispensado_em?: string | null;
 }
 
 export async function getWorkflows(): Promise<Workflow[]> {
@@ -825,4 +831,58 @@ export function getDeadlineInfo(etapa: WorkflowEtapa): {
     estourado: msRestantes < 0,
     urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
   };
+}
+
+export type WorkflowApprovalExitChoice = 'manter' | 'aprovar_todos' | 'voltar_rascunho';
+
+export interface AdvanceWorkflowFromApprovalResult {
+  workflowStatus: Workflow['status'];
+  etapaAtual: number;
+  postsChanged: number;
+}
+
+/**
+ * Sai de uma etapa de aprovação do cliente de forma atômica: confere a etapa e
+ * as contagens por status que a pessoa viu (`etapa_changed` / `posts_changed`)
+ * e aplica a escolha sobre os posts na mesma transação.
+ */
+export async function advanceWorkflowFromApproval(args: {
+  workflowId: number;
+  expectedEtapaId: number;
+  choice: WorkflowApprovalExitChoice;
+  expectedCounts: PostStatusCounts | null;
+}): Promise<AdvanceWorkflowFromApprovalResult> {
+  const data = await callRpcWithDeadlockRetry<{
+    ok: boolean;
+    workflow_status: Workflow['status'];
+    etapa_atual: number;
+    posts_changed: number;
+  }>(() =>
+    supabase.rpc('advance_workflow_from_approval', {
+      p_workflow_id: args.workflowId,
+      p_expected_etapa_id: args.expectedEtapaId,
+      p_choice: args.choice,
+      p_expected_counts: args.expectedCounts,
+    }),
+  );
+  return {
+    workflowStatus: data.workflow_status,
+    etapaAtual: data.etapa_atual,
+    postsChanged: data.posts_changed,
+  };
+}
+
+/** Dispensa (ou, com `reset`, devolve ao rascunho) o aviso de rascunho do fluxo. */
+export async function resolveWorkflowRascunhoBanner(
+  workflowId: number,
+  expectedCiclo: string,
+  reset: boolean,
+): Promise<number> {
+  return callRpcWithDeadlockRetry<number>(() =>
+    supabase.rpc('resolve_workflow_rascunho_banner', {
+      p_workflow_id: workflowId,
+      p_expected_ciclo: expectedCiclo,
+      p_reset: reset,
+    }),
+  );
 }
