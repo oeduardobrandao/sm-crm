@@ -43,6 +43,8 @@ interface Profile {
   role: 'owner' | 'admin' | 'agent';
   conta_id: string;
   active_workspace_id?: string;
+  /** Public URL or null. Written only by `set_member_photo`. */
+  avatar_url?: string | null;
   [key: string]: unknown;
 }
 

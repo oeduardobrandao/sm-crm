@@ -7,7 +7,7 @@ import type { CommentThreadWithComments, Membro } from '@/store';
 interface WorkspaceUser {
   id: string;
   nome: string;
-  avatar_url: string;
+  avatar_url: string | null;
 }
 
 interface PostCommentSummaryProps {

@@ -30,7 +30,7 @@ interface PhoneCommentsProps {
   onReplySend: () => void;
   threads: CommentThreadWithComments[];
   membros: Membro[];
-  workspaceUsers: { id: string; nome: string; avatar_url: string }[];
+  workspaceUsers: { id: string; nome: string; avatar_url: string | null }[];
   onThreadClick: (threadId: number) => void;
   /** Pending client edit suggestion: a card that opens the suggestion sheet. */
   suggestion?: { when: string; onOpen: () => void } | null;

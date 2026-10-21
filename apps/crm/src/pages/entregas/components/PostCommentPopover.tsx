@@ -39,13 +39,17 @@ function resolveAuthor(
   authorId: string,
   membros: Membro[],
   workspaceUsers: WorkspaceUser[],
-): { nome: string; avatar_url: string } | undefined {
+): { nome: string; avatar_url: string | null } | undefined {
   const wsUser = workspaceUsers.find((u) => u.id === authorId);
   if (wsUser) return { nome: wsUser.nome, avatar_url: wsUser.avatar_url };
   return membros.find((m) => m.user_id === authorId);
 }
 
-function AuthorAvatar({ membro }: { membro: { nome: string; avatar_url: string } | undefined }) {
+function AuthorAvatar({
+  membro,
+}: {
+  membro: { nome: string; avatar_url: string | null } | undefined;
+}) {
   const name = membro?.nome ?? 'Membro';
   const initials = name
     .split(' ')

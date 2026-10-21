@@ -1159,6 +1159,12 @@ html[data-standalone] {
   --avatar-fg: #0f766e;
 }
 
+/* PessoaAvatar's photo: the <img> carries `.avatar` itself, so crop it into the circle. */
+.avatar--photo {
+  object-fit: cover;
+  overflow: hidden;
+}
+
 [data-theme='dark'] .avatar--c1 {
   --avatar-bg: rgba(245, 158, 11, 0.18);
   --avatar-fg: #fbbf24;
