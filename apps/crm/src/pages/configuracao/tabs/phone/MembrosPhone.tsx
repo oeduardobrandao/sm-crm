@@ -90,7 +90,9 @@ export function MembrosPhone(props: MembrosPhoneProps) {
 
   const canManageMember = (m: Row) => canManageTeam && canActOnMember(m);
   const showFinancial = (m: Row) => isOwner && m.role === 'admin';
-  const isTappable = (m: Row) => canManageMember(m) || showFinancial(m);
+  // A visible e-mail opens the member screen too, even with nothing to edit:
+  // the list subtitle stays the role, the full address lives there.
+  const isTappable = (m: Row) => canManageMember(m) || showFinancial(m) || Boolean(m.email);
 
   if (selected) {
     return <MemberScreen {...props} member={selected} onBack={sub.close} />;
@@ -118,9 +120,11 @@ export function MembrosPhone(props: MembrosPhoneProps) {
         <GroupedList
           header="Membros do workspace"
           footer={
-            members.some(isTappable)
+            members.some((m) => canManageMember(m) || showFinancial(m))
               ? 'Toque em um membro para mudar a função, ligar o acesso ao financeiro ou remover.'
-              : undefined
+              : members.some(isTappable)
+                ? 'Toque em um membro para ver o e-mail.'
+                : undefined
           }
         >
           {members.map((m) => {
@@ -216,6 +220,14 @@ function MemberScreen({
           <Cell label="Função" value={memberRoleLabel(member)} />
         )}
       </GroupedList>
+
+      {member.email && (
+        // Header instead of a value cell: the trailing value is capped at half
+        // the row, which would cut most addresses.
+        <GroupedList header="E-mail">
+          <Cell className="phone-membros-email" label={member.email} />
+        </GroupedList>
+      )}
 
       {showFinancial && (
         <GroupedList aria-label="Acesso financeiro">

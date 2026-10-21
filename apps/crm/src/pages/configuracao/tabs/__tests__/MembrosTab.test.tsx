@@ -24,6 +24,13 @@ vi.mock('../../../../context/AuthContext', () => ({
 
 vi.mock('../../../../store', () => storeMock);
 
+// Login e-mails come from their own RPC through @/store/workspace (not the
+// mocked store barrel), so the hook's equipe:editar gate runs for real.
+const { emailsMock } = vi.hoisted(() => ({
+  emailsMock: vi.fn(async () => [] as { user_id: string; email: string }[]),
+}));
+vi.mock('@/store/workspace', () => ({ getWorkspaceMemberEmails: emailsMock }));
+
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
 
 vi.mock('sonner', () => ({
@@ -869,5 +876,40 @@ describe('MembrosTab — invite dialog role options follow the chassis rule', ()
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('MembrosTab — login e-mails', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'u1', nome: 'Ana Owner', role: 'owner', avatar_url: null, created_at: '2026-01-01' },
+      { id: 'u2', nome: 'Beto Admin', role: 'admin', avatar_url: null, created_at: '2026-01-02' },
+    ]);
+    emailsMock.mockResolvedValue([
+      { user_id: 'u1', email: 'ana@exemplo.com' },
+      { user_id: 'u2', email: 'beto@exemplo.com' },
+    ]);
+  });
+
+  it('shows each member e-mail on its own row for an admin', async () => {
+    setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
+    renderTab();
+
+    expect((await getRow('Ana Owner')).getByText('ana@exemplo.com')).toBeInTheDocument();
+    expect((await getRow('Beto Admin')).getByText('beto@exemplo.com')).toBeInTheDocument();
+  });
+
+  it('never fetches e-mails for a role with only equipe:ver', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: (module, action) => module === 'equipe' && action === 'ver',
+    });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(emailsMock).not.toHaveBeenCalled();
+    expect(screen.queryByText('ana@exemplo.com')).not.toBeInTheDocument();
   });
 });

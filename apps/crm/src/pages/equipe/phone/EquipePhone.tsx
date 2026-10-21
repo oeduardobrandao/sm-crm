@@ -179,7 +179,9 @@ export function EquipePhone({
             inputRef={searchToggle.inputRef}
             value={search}
             onChange={onSearchChange}
-            placeholder="Buscar por nome ou cargo..."
+            placeholder={
+              canEditTeam ? 'Buscar por nome, cargo ou e-mail...' : 'Buscar por nome ou cargo...'
+            }
           />
         )}
       </PhonePageHeader>
