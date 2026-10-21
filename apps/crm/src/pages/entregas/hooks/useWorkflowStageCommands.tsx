@@ -149,7 +149,8 @@ export function useWorkflowStageCommands<Ctx = unknown>(
     approvalWfId != null && !countsQuery.isFetching && !countsRefreshing && countsQuery.data
       ? countsQuery.data
       : null;
-  const countsError = approvalWfId != null && countsQuery.isError && !countsQuery.isFetching;
+  const countsError =
+    approvalWfId != null && countsQuery.isError && !countsQuery.isFetching && !countsRefreshing;
   const refetchCounts = countsQuery.refetch;
   const refreshCounts = () => {
     setCountsRefreshing(true);
@@ -331,7 +332,9 @@ export function useWorkflowStageCommands<Ctx = unknown>(
         busy={approvalBusy}
         countsError={countsError}
         onRetry={refreshCounts}
-        sessionKey={`${approvalWfId ?? ''}:${approvalSession}`}
+        // Session only, not the fluxo id: closing must keep the sheet mounted (it
+        // closes through `open`), and a new target already resets the sheet.
+        sessionKey={approvalSession}
         onConfirm={(option) => void handleApprovalConfirm(option)}
         onCancel={() => {
           // A confirm in flight owns the move hooks; ignore the dismissal.
