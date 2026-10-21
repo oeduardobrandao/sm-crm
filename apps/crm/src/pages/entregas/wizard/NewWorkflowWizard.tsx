@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  CONFIRM_CLOSE_DISCARD,
-  CONFIRM_CLOSE_KEEP_EDITING,
-  CONFIRM_CLOSE_MSG,
-  CONFIRM_CLOSE_TITLE,
+  useConfirmCloseCopy,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -90,6 +87,7 @@ export function NewWorkflowWizard(props: {
   /** Quick-add from a board row: preselects this template and opens on step 2. */
   initialTemplateId?: number;
 }) {
+  const confirmCopy = useConfirmCloseCopy();
   const { open, onClose, clientes, membros, templates, onCreated, initialTemplateId } = props;
   const [s, setS] = useState<WizardState>(INITIAL);
   const multiplatform = useWorkspaceLimits().features?.feature_multiplatform === true;
@@ -359,16 +357,16 @@ export function NewWorkflowWizard(props: {
       <AlertDialog open={cancelConfirm} onOpenChange={setCancelConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{CONFIRM_CLOSE_TITLE}</AlertDialogTitle>
-            <AlertDialogDescription>{CONFIRM_CLOSE_MSG}</AlertDialogDescription>
+            <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmCopy.message}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{CONFIRM_CLOSE_KEEP_EDITING}</AlertDialogCancel>
+            <AlertDialogCancel>{confirmCopy.keepEditing}</AlertDialogCancel>
             <AlertDialogAction
               onClick={requestClose}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {CONFIRM_CLOSE_DISCARD}
+              {confirmCopy.discard}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

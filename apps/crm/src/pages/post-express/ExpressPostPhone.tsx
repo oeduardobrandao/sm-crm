@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { AlertCircle, Eye, Link2, Send, type LucideIcon } from 'lucide-react';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
@@ -59,7 +60,7 @@ export interface ExpressPostPhoneProps {
   onSendForApproval: () => void;
 }
 
-const formatCount = (n: number) => n.toLocaleString('pt-BR');
+const formatCount = (n: number) => n.toLocaleString(getIntlLocale());
 
 export function ExpressPostPhone(props: ExpressPostPhoneProps) {
   const {

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
@@ -68,10 +69,15 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
  * confirm must read identically to the X/Escape one). Retyping the string instead of importing it
  * lets the two silently diverge on a future copy edit.
  */
-export const CONFIRM_CLOSE_MSG = 'Você tem alterações não salvas. Deseja fechar mesmo assim?';
-export const CONFIRM_CLOSE_TITLE = 'Fechar sem salvar?';
-export const CONFIRM_CLOSE_KEEP_EDITING = 'Continuar editando';
-export const CONFIRM_CLOSE_DISCARD = 'Fechar mesmo assim';
+export function useConfirmCloseCopy() {
+  const { t } = useTranslation();
+  return {
+    title: t('ui.confirmClose.title'),
+    message: t('ui.confirmClose.message'),
+    keepEditing: t('ui.confirmClose.keepEditing'),
+    discard: t('ui.confirmClose.discard'),
+  };
+}
 
 /**
  * Holds the unsaved-work registry while a dirty dialog is on screen. Rendered inside the
@@ -129,6 +135,8 @@ const DialogContent = React.forwardRef<
 
     // Guard is active only when the caller says there are unsaved changes
     const isDirty = confirmClose === true;
+    const { t } = useTranslation();
+    const confirmCopy = useConfirmCloseCopy();
     const fullscreen = layout === 'fullscreen';
     const { isPhone } = usePhoneLayout();
     const root = React.useContext(DialogRootContext);
@@ -193,11 +201,11 @@ const DialogContent = React.forwardRef<
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{CONFIRM_CLOSE_TITLE}</AlertDialogTitle>
-            <AlertDialogDescription>{CONFIRM_CLOSE_MSG}</AlertDialogDescription>
+            <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmCopy.message}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{CONFIRM_CLOSE_KEEP_EDITING}</AlertDialogCancel>
+            <AlertDialogCancel>{confirmCopy.keepEditing}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setConfirmOpen(false);
@@ -205,7 +213,7 @@ const DialogContent = React.forwardRef<
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {CONFIRM_CLOSE_DISCARD}
+              {confirmCopy.discard}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -252,7 +260,7 @@ const DialogContent = React.forwardRef<
                 ref={closeRef}
                 onClick={handleConfirmTrigger}
                 className="phone-sheet__close phone-dialog__close"
-                aria-label="Fechar"
+                aria-label={t('ui.close')}
               >
                 <X aria-hidden="true" />
               </DialogPrimitive.Close>

@@ -54,6 +54,7 @@ import { MediaAdjustmentDialog } from './MediaAdjustmentDialog';
 import { IMAGE_AR_MIN, validateMedia } from '../instagramLimits';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
 import { MediaUnavailable } from '../../../components/MediaUnavailable';
@@ -562,7 +563,7 @@ export function PostMediaGallery({
         </span>
         <span className="text-[12px] text-stone-500 dark:text-stone-400">
           {t('mediaGallery.autocleanedDesc', {
-            date: new Date(mediaAutocleanedAt).toLocaleDateString('pt-BR'),
+            date: new Date(mediaAutocleanedAt).toLocaleDateString(getIntlLocale()),
           })}
         </span>
         {publication && (

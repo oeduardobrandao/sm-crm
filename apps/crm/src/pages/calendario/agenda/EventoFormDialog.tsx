@@ -31,10 +31,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
-  CONFIRM_CLOSE_DISCARD,
-  CONFIRM_CLOSE_KEEP_EDITING,
-  CONFIRM_CLOSE_MSG,
-  CONFIRM_CLOSE_TITLE,
+  useConfirmCloseCopy,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -194,6 +191,7 @@ interface EscopoPendente {
 /** Criar / editar evento (spec: EventoFormDialog). On create, dates and times
  *  are the browser's wall clock; on edit, the series tz's (emFuso). */
 export function EventoFormDialog(props: EventoFormDialogProps) {
+  const confirmCopy = useConfirmCloseCopy();
   const { open, onOpenChange } = props;
   const ocorrencia = props.modo === 'editar' ? props.ocorrencia : null;
   const inicial = props.modo === 'criar' ? props.inicial : null;
@@ -894,11 +892,11 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
         <AlertDialog open={confirmarCancelar} onOpenChange={setConfirmarCancelar}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>{CONFIRM_CLOSE_TITLE}</AlertDialogTitle>
-              <AlertDialogDescription>{CONFIRM_CLOSE_MSG}</AlertDialogDescription>
+              <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
+              <AlertDialogDescription>{confirmCopy.message}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>{CONFIRM_CLOSE_KEEP_EDITING}</AlertDialogCancel>
+              <AlertDialogCancel>{confirmCopy.keepEditing}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => {
                   setConfirmarCancelar(false);
@@ -906,7 +904,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                 }}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                {CONFIRM_CLOSE_DISCARD}
+                {confirmCopy.discard}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

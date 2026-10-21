@@ -1,6 +1,9 @@
+import type { Locale as DateFnsLocale } from 'date-fns';
+import { enUS } from 'date-fns/locale/en-US';
+import { ptBR } from 'date-fns/locale/pt-BR';
 import i18n from 'i18next';
 import type { BackendModule, i18n as I18nInstance } from 'i18next';
-import { initReactI18next } from 'react-i18next';
+import { initReactI18next, useTranslation } from 'react-i18next';
 
 const STORAGE_KEY = 'mesaas-language';
 const SUPPORTED_LANGUAGES = ['pt', 'en'] as const;
@@ -21,6 +24,16 @@ function getSavedLanguage(): Language {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved && SUPPORTED_LANGUAGES.includes(saved as Language)) return saved as Language;
   return 'pt';
+}
+
+/** BCP 47 tag for `<html lang>`, so assistive tech and browser translation see the UI language. */
+export function htmlLangFor(lang: string): string {
+  return lang.startsWith('en') ? 'en' : 'pt-BR';
+}
+
+function syncDocumentLang(lang: string) {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = htmlLangFor(lang);
 }
 
 function createBackend(load: NamespaceLoader): BackendModule {
@@ -61,6 +74,11 @@ export function initI18n(
     instance.use(createBackend(lazy.load));
     lazyNamespacesByInstance.set(instance, lazy.namespaces);
   }
+
+  // Registered before init so the initial language also lands on <html lang>; `off` first
+  // keeps a repeated init (tests) from stacking listeners.
+  instance.off('languageChanged', syncDocumentLang);
+  instance.on('languageChanged', syncDocumentLang);
 
   instance.use(initReactI18next).init({
     lng: getSavedLanguage(),
@@ -104,5 +122,39 @@ export function changeLanguage(lang: Language) {
   i18n.changeLanguage(lang);
 }
 
+type IntlLocale = 'pt-BR' | 'en-US';
+
+/** `Intl` / `toLocale*` tag for a UI language. Anything not English stays Brazilian. */
+export function intlLocaleFor(lang: string | undefined): IntlLocale {
+  return lang?.toLowerCase().startsWith('en') ? 'en-US' : 'pt-BR';
+}
+
+function currentLanguage(instance: typeof i18n | undefined = i18n): string | undefined {
+  return instance?.resolvedLanguage ?? instance?.language;
+}
+
+/**
+ * Current display locale, read at call time. For plain functions (formatters, imperative
+ * renderers); a component should use `useIntlLocale()` so it re-renders on a switch.
+ * Defaults to pt-BR before i18n is initialized.
+ */
+export function getIntlLocale(): IntlLocale {
+  return intlLocaleFor(currentLanguage());
+}
+
+/** date-fns locale matching `getIntlLocale()`. */
+export function getDateFnsLocale(): DateFnsLocale {
+  return getIntlLocale() === 'en-US' ? enUS : ptBR;
+}
+
+export function useIntlLocale(): IntlLocale {
+  const { i18n: instance } = useTranslation();
+  return intlLocaleFor(currentLanguage(instance));
+}
+
+export function useDateFnsLocale(): DateFnsLocale {
+  return useIntlLocale() === 'en-US' ? enUS : ptBR;
+}
+
 export { i18n, SUPPORTED_LANGUAGES, STORAGE_KEY };
-export type { Language, NamespaceLoader };
+export type { Language, IntlLocale, NamespaceLoader };

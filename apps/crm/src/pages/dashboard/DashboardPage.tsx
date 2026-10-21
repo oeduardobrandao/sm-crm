@@ -3,7 +3,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { toast } from 'sonner';
 import { getDashboardStats, getClientes, type Cliente } from '../../store';
 import { useAuth } from '../../context/AuthContext';
@@ -95,8 +95,9 @@ export default function DashboardPage() {
   );
 
   // The Vidro toolbar carries the page title; the desktop dashboard has no in-page header to hide.
-  const today = format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR });
   const { t } = useTranslation('dashboard');
+  const dateLocale = useDateFnsLocale();
+  const today = format(new Date(), t('dateFormat.weekdayDayMonth'), { locale: dateLocale });
   // Vidro "Agência / Só meus": narrows the Prazos list to the user's own items. Agents only
   // ever see their own, so they get no toggle.
   const [onlyMine, setOnlyMine] = useState(false);

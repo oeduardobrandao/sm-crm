@@ -37,7 +37,9 @@
     "suporte": "Suporte",
     "novidades": "Novidades",
     "openMenuPending_one": "Abrir menu, 1 pendência",
-    "openMenuPending_other": "Abrir menu, {{count}} pendências"
+    "openMenuPending_other": "Abrir menu, {{count}} pendências",
+    "openMenu": "Abrir menu",
+    "menu": "Menu"
   },
   "sidebar": {
     "accountOptions": "Opções da Conta",
@@ -141,7 +143,8 @@
     "somethingWentWrong": "Algo deu errado",
     "reloadToRetry": "Recarregue a página para tentar novamente.",
     "reloadPage": "Recarregar página",
-    "loading": "Carregando…"
+    "loading": "Carregando…",
+    "clientPortal": "Hub do cliente"
   },
   "cookies": {
     "banner": {
@@ -167,5 +170,34 @@
       "cancel": "Cancelar"
     },
     "link": "Preferências de cookies"
+  },
+  "topbar": {
+    "search": "Buscar...",
+    "searchPlaceholder": "Buscar...",
+    "noResults": "Nenhum resultado."
+  },
+  "ui": {
+    "close": "Fechar",
+    "clear": "Limpar",
+    "previousMonth": "Mês anterior",
+    "nextMonth": "Próximo mês",
+    "previousYear": "Ano anterior",
+    "nextYear": "Próximo ano",
+    "selectDate": "Selecionar data",
+    "selectDateTime": "Selecionar data e hora",
+    "selectPeriod": "Selecionar período",
+    "selectMonth": "Selecionar mês",
+    "time": "Horário:",
+    "minScheduleAhead": "Mínimo {{minutes}} min no futuro",
+    "confirmClose": {
+      "title": "Fechar sem salvar?",
+      "message": "Você tem alterações não salvas. Deseja fechar mesmo assim?",
+      "keepEditing": "Continuar editando",
+      "discard": "Fechar mesmo assim"
+    }
+  },
+  "dateFormat": {
+    "monthYear": "MMMM 'de' yyyy",
+    "weekdayDayMonth": "EEEE, d 'de' MMMM"
   }
 }
