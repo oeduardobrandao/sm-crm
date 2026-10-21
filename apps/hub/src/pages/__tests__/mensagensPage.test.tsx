@@ -140,12 +140,17 @@ describe('MensagensPage', () => {
       expect(await screen.findByText('Podemos ajustar o CTA?')).toBeInTheDocument();
       expect(screen.getByText('Claro, ajustado!')).toBeInTheDocument();
       expect(screen.getByText('Ana')).toBeInTheDocument();
-      expect(screen.getByTestId('hub-author-avatar')).toHaveAttribute(
-        'src',
-        'https://cdn.example.com/ana.png',
-      );
       const chips = screen.getAllByRole('link', { name: /Post de julho/ });
       expect(chips[0]).toHaveAttribute('href', expect.stringContaining('/postagens/7'));
+    });
+
+    it('shows team initials even with author_avatar_url', async () => {
+      renderPage({ feature_mensagens: true });
+      expect(await screen.findByText('Claro, ajustado!')).toBeInTheDocument();
+      expect(screen.queryByTestId('hub-author-avatar')).not.toBeInTheDocument();
+      expect(document.querySelector('img[src="https://cdn.example.com/ana.png"]')).toBeNull();
+      const initials = screen.getAllByTestId('hub-author-initials');
+      expect(initials.map((el) => el.textContent)).toContain('A');
     });
 
     it('sends a general message via the composer', async () => {
