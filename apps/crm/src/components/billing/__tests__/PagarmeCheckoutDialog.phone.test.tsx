@@ -113,8 +113,8 @@ describe('PagarmeCheckoutDialog (phone)', () => {
     expect(dialog).toHaveClass('phone-pagarme-checkout');
     expect(dialog.className).not.toContain('sm:max-w-[540px]');
     // fullscreen layout: no built-in X, our own Fechar instead.
-    expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
+    // Exactly one Fechar: the nav bar's. The built-in X would be a second one.
+    expect(screen.getAllByRole('button', { name: 'Fechar' })).toHaveLength(1);
     expect(screen.getByText('Assinar o plano Pro')).toHaveClass(
       'phone-pagarme-checkout__nav-title',
     );

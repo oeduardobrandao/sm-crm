@@ -179,7 +179,7 @@ describe('ClienteLinksSection', () => {
     renderSection();
 
     const pristine = await openAddDialog();
-    fireEvent.click(within(pristine).getByRole('button', { name: 'Close' }));
+    fireEvent.click(within(pristine).getByRole('button', { name: 'Fechar' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 
@@ -187,7 +187,7 @@ describe('ClienteLinksSection', () => {
     fireEvent.change(within(dialog).getByPlaceholderText('Ex: Google Drive'), {
       target: { value: 'Rascunho' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
     expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
     // The alertdialog aria-hides the dialog behind it, so query with hidden: true.
     expect(screen.getByRole('dialog', { hidden: true })).toBeInTheDocument();
