@@ -20,8 +20,15 @@
 -- contagem por status que o dialogo mostrou; divergiu, posts_changed, antes de
 -- qualquer escrita. Chave ausente vale 0 nos dois lados.
 --
--- ORDEM DE LOCKS: advisory ':post_move' (mesma familia de mover posts, para a
--- contagem nao mudar por baixo), depois a linha do fluxo.
+-- ORDEM DE LOCKS: advisory ':post_move' (serializa contra as RPCs que mexem
+-- em posts com o mesmo lock), depois a linha do fluxo, depois a etapa ativa e,
+-- nas escolhas que conferem contagem, as linhas dos posts do fluxo FOR UPDATE
+-- em ordem de id, ANTES de contar. O advisory sozinho nao basta: escrita
+-- direta via PostgREST, hub-approve e o cron de publicacao nao o pegam, e sob
+-- READ COMMITTED um post poderia mudar entre a contagem e o UPDATE. Com as
+-- linhas travadas, quem escreve depois espera o commit, e quem escreveu antes
+-- ja aparece na contagem. Post inserido no fluxo depois do lock nao e visto
+-- (nao ha predicate lock); fica fora da contagem e do UPDATE.
 --
 -- resolve_workflow_rascunho_banner: o banner "posts aprovados no ciclo
 -- anterior" do fluxo. Ciclo = maior concluido_em entre as etapas
@@ -96,6 +103,12 @@ BEGIN
     IF p_expected_counts IS NULL OR jsonb_typeof(p_expected_counts) <> 'object' THEN
       RAISE EXCEPTION 'expected_counts_required' USING ERRCODE = 'P0001';
     END IF;
+
+    -- Trava os posts do fluxo antes de contar (ver ORDEM DE LOCKS no topo).
+    PERFORM 1 FROM workflow_posts wp
+     WHERE wp.workflow_id = p_workflow_id AND wp.conta_id = v_conta
+     ORDER BY wp.id
+       FOR UPDATE;
 
     SELECT coalesce(jsonb_object_agg(c.status, c.n), '{}'::jsonb) INTO v_actual
       FROM (SELECT wp.status, count(*) AS n FROM workflow_posts wp
