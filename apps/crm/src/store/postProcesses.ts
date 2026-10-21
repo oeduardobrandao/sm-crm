@@ -91,7 +91,8 @@ export type PostProcessEvento =
   | 'reaberto'
   | 'removido'
   | 'vinculado'
-  | 'etapa_editada';
+  | 'etapa_editada'
+  | 'voltou_rascunho';
 
 export interface PostProcessEvent {
   id: number;
