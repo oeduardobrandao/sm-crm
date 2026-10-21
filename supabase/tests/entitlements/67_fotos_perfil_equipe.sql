@@ -56,9 +56,14 @@ declare
   v_x  uuid := gen_random_uuid();   -- link cases: no photo, member of A and B
   v_y  uuid := gen_random_uuid();   -- link cases: no photo
   v_z  uuid := gen_random_uuid();   -- link cases: not a member of A
+  v_z2 uuid := gen_random_uuid();   -- link cases: not a member of A
+  v_zp uuid := gen_random_uuid();   -- link cases: not a member of A, has a profile photo
+  v_q  uuid := gen_random_uuid();   -- link cases: member of A, no photo (legacy url)
+  v_r  uuid := gen_random_uuid();   -- link cases: member of A, no photo (other folder)
   v_role uuid;
   v_m bigint; v_ma_u bigint; v_mb_u bigint;
   v_l1 bigint; v_l2 bigint; v_l4 bigint; v_xb bigint;
+  v_l3 bigint; v_l3b bigint; v_l5 bigint; v_url_l2 text;
   v_base text; v_pub text;
   v_ret text; v_got text; v_got2 text; v_got3 text;
   v_err text; v_state text;
@@ -70,7 +75,8 @@ begin
   v_ws_b := et_make_workspace('max');
 
   insert into auth.users (id) values
-    (v_oa), (v_ob), (v_u), (v_v), (v_ag), (v_cr), (v_w), (v_x), (v_y), (v_z);
+    (v_oa), (v_ob), (v_u), (v_v), (v_ag), (v_cr), (v_w), (v_x), (v_y), (v_z),
+    (v_z2), (v_zp), (v_q), (v_r);
 
   insert into workspace_roles (conta_id, nome, permissions)
     values (v_ws_a, 'ET67 equipe editar', '{"equipe":"editar"}'::jsonb)
@@ -81,14 +87,15 @@ begin
     (v_u, v_ws_a, 'agent'), (v_u, v_ws_b, 'agent'),
     (v_ag, v_ws_a, 'agent'),
     (v_w, v_ws_a, 'agent'), (v_x, v_ws_a, 'agent'), (v_x, v_ws_b, 'agent'),
-    (v_y, v_ws_a, 'agent');
+    (v_y, v_ws_a, 'agent'), (v_q, v_ws_a, 'agent'), (v_r, v_ws_a, 'agent');
   insert into workspace_members (user_id, workspace_id, role, role_id)
     values (v_cr, v_ws_a, 'agent', v_role);
 
   update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a
-   where id in (v_oa, v_u, v_ag, v_cr, v_w, v_x, v_y);
+   where id in (v_oa, v_u, v_ag, v_cr, v_w, v_x, v_y, v_q, v_r);
   update profiles set conta_id = v_ws_b, active_workspace_id = v_ws_b where id = v_ob;
   update profiles set avatar_url = v_pw where id = v_w;
+  update profiles set avatar_url = 'https://cdn.example/profile-zp.jpg' where id = v_zp;
 
   insert into membros (user_id, conta_id, nome) values (v_oa, v_ws_a, 'Sem login')
     returning id into v_m;
@@ -472,8 +479,13 @@ begin
   -- ---------------- link raises membro photo when profile empty
   insert into membros (user_id, conta_id, nome, crm_user_id)
     values (v_ob, v_ws_b, 'X em B', v_x) returning id into v_xb;
-  insert into membros (user_id, conta_id, nome, avatar_url)
-    values (v_oa, v_ws_a, 'L2', 'https://cdn.example/l2.jpg') returning id into v_l2;
+  -- Only a URL set_member_photo could have produced for THIS row
+  -- ({project_url}/storage/v1/object/public/avatars/membros/{id}/...) is
+  -- raised; seeded as postgres, since a client can no longer write it.
+  insert into membros (user_id, conta_id, nome)
+    values (v_oa, v_ws_a, 'L2') returning id into v_l2;
+  v_url_l2 := v_pub || 'membros/' || v_l2 || '/p.jpg';
+  update membros set avatar_url = v_url_l2 where id = v_l2;
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_oa, 'role', 'authenticated')::text, true);
@@ -483,20 +495,80 @@ begin
   select avatar_url into v_got from profiles where id = v_x;
   select avatar_url into v_got2 from membros where id = v_xb;
   select avatar_url into v_got3 from membros where id = v_l2;
-  if v_got is distinct from 'https://cdn.example/l2.jpg'
-     or v_got2 is distinct from 'https://cdn.example/l2.jpg'
-     or v_got3 is distinct from 'https://cdn.example/l2.jpg' then
+  if v_got is distinct from v_url_l2
+     or v_got2 is distinct from v_url_l2
+     or v_got3 is distinct from v_url_l2 then
     raise exception 'link raises membro photo: profile=% other membro=% membro=%', v_got, v_got2, v_got3;
   end if;
 
-  -- link to a login that is NOT a member of the membro's conta: the
-  -- membro photo must not reach that person's profile
+  -- ---------------- legacy external url not raised on link
+  -- A value written before this migration closed the UPDATE grant (any
+  -- agent could set any host) stays on the row and never reaches a profile.
   insert into membros (user_id, conta_id, nome, avatar_url)
-    values (v_oa, v_ws_a, 'L4', 'https://cdn.example/l4.jpg') returning id into v_l4;
+    values (v_oa, v_ws_a, 'L3 legado', 'https://evil.example/legacy.jpg') returning id into v_l3;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_oa, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  perform set_membro_crm_user(v_l3, v_q);
+  execute 'reset role';
+  select avatar_url into v_got from profiles where id = v_q;
+  select avatar_url into v_got2 from membros where id = v_l3;
+  if v_got is not null then
+    raise exception 'legacy external url not raised on link: profile got %', v_got;
+  end if;
+  if v_got2 is distinct from 'https://evil.example/legacy.jpg' then
+    raise exception 'legacy external url: the row''s own value changed to %', v_got2;
+  end if;
+
+  -- our own host, but another membro's folder: not raised either
+  insert into membros (user_id, conta_id, nome)
+    values (v_oa, v_ws_a, 'L3b outra pasta') returning id into v_l3b;
+  update membros set avatar_url = v_pub || 'membros/' || v_l2 || '/p.jpg' where id = v_l3b;
+  update membros set crm_user_id = v_r where id = v_l3b;
+  select avatar_url into v_got from profiles where id = v_r;
+  if v_got is not null then
+    raise exception 'url from another membro''s folder raised on link: profile got %', v_got;
+  end if;
+
+  -- ---------------- link to non-member copies nothing
+  -- Login not in the membro's conta (set_membro_crm_user does not check):
+  -- the membro photo does not reach their profile, and their profile photo
+  -- does not land in a conta they are not in.
+  insert into membros (user_id, conta_id, nome)
+    values (v_oa, v_ws_a, 'L4') returning id into v_l4;
+  update membros set avatar_url = v_pub || 'membros/' || v_l4 || '/own.jpg' where id = v_l4;
   update membros set crm_user_id = v_z where id = v_l4;
   select avatar_url into v_got from profiles where id = v_z;
+  select avatar_url into v_got2 from membros where id = v_l4;
   if v_got is not null then
     raise exception 'link to a non-member raised the membro photo to their profile (%)', v_got;
+  end if;
+  if v_got2 is distinct from v_pub || 'membros/' || v_l4 || '/own.jpg' then
+    raise exception 'link to a non-member: first link changed the row''s own photo to %', v_got2;
+  end if;
+
+  insert into membros (user_id, conta_id, nome)
+    values (v_oa, v_ws_a, 'L5') returning id into v_l5;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_oa, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  perform set_membro_crm_user(v_l5, v_zp);
+  execute 'reset role';
+  select avatar_url into v_got from membros where id = v_l5;
+  select avatar_url into v_got2 from profiles where id = v_zp;
+  if v_got is not null then
+    raise exception 'link to non-member copies nothing: membro got the profile photo %', v_got;
+  end if;
+  if v_got2 is distinct from 'https://cdn.example/profile-zp.jpg' then
+    raise exception 'link to non-member: their profile changed to %', v_got2;
+  end if;
+
+  -- relink to a non-member: NULL (neither the previous person's face nor
+  -- the new person's photo)
+  update membros set crm_user_id = v_z2 where id = v_l4;
+  select avatar_url into v_got from membros where id = v_l4;
+  if v_got is not null then
+    raise exception 'relink to non-member: membro kept %', v_got;
   end if;
 
   -- ------------------------------------- relink does not raise old photo

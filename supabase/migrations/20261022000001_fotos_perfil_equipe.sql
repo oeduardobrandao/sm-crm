@@ -30,6 +30,37 @@ UPDATE public.membros  SET avatar_url = NULL WHERE avatar_url = '';
 UPDATE public.profiles SET avatar_url = NULL WHERE avatar_url = '';
 
 -- -------------------------------------------------------------
+-- 1b. Drop untrusted legacy membro photos. Until this migration any agent
+--     could write membros.avatar_url to any string (step 2 below closes
+--     that), so a value that is not one of OUR public avatar URLs cannot be
+--     trusted: the link trigger would otherwise carry it to a profile and to
+--     every copy of that person. Only the base this project's own RPC builds
+--     (Vault project_url + /storage/v1/object/public/avatars/) survives.
+--     Without project_url there is no way to tell ours from theirs, so the
+--     step is skipped (the link trigger then never raises a membro photo
+--     either, see step 4).
+-- -------------------------------------------------------------
+DO $$
+DECLARE
+  v_base text;
+  v_n    int;
+BEGIN
+  SELECT rtrim(ds.decrypted_secret, '/') INTO v_base
+    FROM vault.decrypted_secrets ds WHERE ds.name = 'project_url';
+  IF v_base IS NULL OR v_base = '' THEN
+    RAISE NOTICE 'fotos_perfil_equipe: Vault project_url missing, legacy membros.avatar_url left as is';
+    RETURN;
+  END IF;
+
+  UPDATE public.membros
+     SET avatar_url = NULL
+   WHERE avatar_url IS NOT NULL
+     AND NOT starts_with(avatar_url, v_base || '/storage/v1/object/public/avatars/');
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RAISE NOTICE 'fotos_perfil_equipe: % legacy membros.avatar_url outside avatars/ set to NULL', v_n;
+END $$;
+
+-- -------------------------------------------------------------
 -- 2. Drop avatar_url from the membros UPDATE allowlist.
 --    Previous list (20260430000001_notifications.sql):
 --      (nome, cargo, tipo, custo_mensal, avatar_url, data_pagamento)
@@ -86,16 +117,25 @@ CREATE TRIGGER trg_membros_avatar_insert
 --
 --    * same value (set_membro_crm_user re-sets the current one): no-op.
 --    * unlink (NEW null): the membro keeps the copy it had.
---    * first link (OLD null): the profile photo wins; if the profile has none
---      and the membro has one, the membro photo is raised to the profile and
---      to the person's other membros in the contas they are still in (one
---      person, one photo). Raised ONLY when the login is a current member of
---      this membro's conta: set_membro_crm_user does not check that, and an
---      editor of a conta the person is not in must not reach their global
---      photo (same rule as set_member_photo's membro target).
---    * relink to a different person: the membro takes the new person's
---      photo, or NULL. The membro photo is NEVER raised here, or the previous
---      person's face would land on the new person's profile.
+--    * login NOT a current member of this membro's conta (set_membro_crm_user
+--      does not check membership): nothing crosses in either direction. The
+--      profile photo is not copied into a conta the person is not in, and the
+--      membro photo is not raised to their global profile (same rule as
+--      set_member_photo's membro target). First link keeps the row's own
+--      photo; relink sets NULL (the row must not keep the previous person's
+--      face under the new link).
+--    * first link (OLD null), member: the profile photo wins; if the profile
+--      has none and the membro has one, the membro photo is raised to the
+--      profile and to the person's other membros in the contas they are
+--      still in (one person, one photo). Raised ONLY when it is a URL that
+--      set_member_photo itself could have produced for THIS row:
+--      {project_url}/storage/v1/object/public/avatars/membros/{NEW.id}/...
+--      Anything else (legacy value written before this migration closed the
+--      UPDATE grant, another row's folder) stays on the row only. No Vault
+--      project_url means nothing is ever raised.
+--    * relink to a different person, member: the membro takes the new
+--      person's photo, or NULL. The membro photo is NEVER raised here, or the
+--      previous person's face would land on the new person's profile.
 --
 --    SECURITY DEFINER: it writes profiles (no client grant) and other membros
 --    rows. Nested UPDATEs only touch avatar_url, so they do not re-fire this
@@ -110,6 +150,8 @@ AS $$
 DECLARE
   v_profile_photo text;
   v_membro_photo  text;
+  v_is_member     boolean;
+  v_base          text;
 BEGIN
   IF OLD.crm_user_id IS NOT DISTINCT FROM NEW.crm_user_id THEN
     RETURN NEW;
@@ -119,17 +161,32 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  v_is_member := EXISTS (SELECT 1 FROM public.workspace_members wm
+                          WHERE wm.user_id = NEW.crm_user_id
+                            AND wm.workspace_id = NEW.conta_id);
+
+  IF NOT v_is_member THEN
+    IF OLD.crm_user_id IS NOT NULL THEN
+      NEW.avatar_url := NULL;
+    ELSE
+      NEW.avatar_url := NULLIF(NEW.avatar_url, '');
+    END IF;
+    RETURN NEW;
+  END IF;
+
   SELECT NULLIF(p.avatar_url, '') INTO v_profile_photo
     FROM public.profiles p WHERE p.id = NEW.crm_user_id;
 
   IF OLD.crm_user_id IS NULL THEN
     v_membro_photo := NULLIF(NEW.avatar_url, '');
+    SELECT rtrim(ds.decrypted_secret, '/') INTO v_base
+      FROM vault.decrypted_secrets ds WHERE ds.name = 'project_url';
     IF v_profile_photo IS NOT NULL THEN
       NEW.avatar_url := v_profile_photo;
     ELSIF v_membro_photo IS NOT NULL
-          AND EXISTS (SELECT 1 FROM public.workspace_members wm
-                       WHERE wm.user_id = NEW.crm_user_id
-                         AND wm.workspace_id = NEW.conta_id) THEN
+          AND v_base IS NOT NULL AND v_base <> ''
+          AND starts_with(v_membro_photo, v_base || '/storage/v1/object/public/avatars/membros/'
+                                          || NEW.id::text || '/') THEN
       UPDATE public.profiles
          SET avatar_url = v_membro_photo
        WHERE id = NEW.crm_user_id AND avatar_url IS NULL;
