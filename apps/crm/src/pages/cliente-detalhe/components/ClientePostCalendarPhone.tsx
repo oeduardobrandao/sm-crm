@@ -8,7 +8,7 @@ import {
   startOfMonth,
   subMonths,
 } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
@@ -62,6 +62,7 @@ export function ClientePostCalendarPhone({
   onOpenPost,
 }: ClientePostCalendarProps) {
   const { t } = useTranslation('clients');
+  const dateLocale = useDateFnsLocale();
 
   if (events.length === 0) return null;
 
@@ -74,7 +75,7 @@ export function ClientePostCalendarPhone({
 
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
-  const monthName = format(calendarMonth, 'MMMM', { locale: ptBR });
+  const monthName = format(calendarMonth, 'MMMM', { locale: dateLocale });
   const today = new Date();
   const selectedDate = selectedPostDay != null ? new Date(year, month, selectedPostDay) : null;
   const selectedEvents = selectedDate ? events.filter((e) => isSameDay(e.date, selectedDate)) : [];
@@ -84,7 +85,7 @@ export function ClientePostCalendarPhone({
       <div className="phone-ent-v-cal">
         <div className="phone-ent-v-cal__head">
           <h2 className="phone-ent-v-cal__month">
-            {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
+            {format(calendarMonth, 'MMMM yyyy', { locale: dateLocale })}
           </h2>
           <span className="phone-ent-v-cal__nav">
             <button
@@ -155,7 +156,11 @@ export function ClientePostCalendarPhone({
         </p>
       ) : (
         <GroupedList
-          header={selectedDate ? format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR }) : null}
+          header={
+            selectedDate
+              ? format(selectedDate, t('dateFormat.weekdayDayMonth'), { locale: dateLocale })
+              : null
+          }
           className="phone-ent-v-group"
         >
           {selectedEvents.map((ev) => {

@@ -83,7 +83,9 @@ vi.mock('../../../services/automationMedia', () => ({
 import { toast } from 'sonner';
 import AutomationFormDialog from '../AutomationFormDialog';
 import { TOUR_STEPS } from '../tour/tourSteps';
-import { CONFIRM_CLOSE_DISCARD, CONFIRM_CLOSE_TITLE } from '@/components/ui/dialog';
+// react-i18next is mocked to echo keys, so the shared close-confirm copy renders as its keys.
+const CONFIRM_CLOSE_TITLE = 'ui.confirmClose.title';
+const CONFIRM_CLOSE_DISCARD = 'ui.confirmClose.discard';
 
 const CLIENTES = [{ id: 7, nome: 'Clinica X', sigla: 'CX', cor: '#3ecf8e' }];
 
