@@ -18,6 +18,8 @@ const TIPO_LABEL: Record<string, string> = {
 
 export interface MembroDetalhePhoneProps {
   membro: Membro | undefined;
+  /** Login e-mail of the linked CRM account; empty when unlinked or not visible. */
+  email?: string;
   loadingMembro: boolean;
   canEditTeam: boolean;
   canSeeFinancials: FinancialAccess;
@@ -35,6 +37,7 @@ export interface MembroDetalhePhoneProps {
  */
 export function MembroDetalhePhone({
   membro,
+  email,
   loadingMembro,
   canEditTeam,
   canSeeFinancials,
@@ -102,6 +105,7 @@ export function MembroDetalhePhone({
         <div className="phone-membro-head__text">
           <h1 className="phone-membro-head__name">{membro.nome}</h1>
           {membro.cargo && <p className="phone-membro-head__role">{membro.cargo}</p>}
+          {email && <p className="phone-membro-head__role">{email}</p>}
         </div>
       </div>
 

@@ -66,6 +66,14 @@ vi.mock('@/store', async () => {
   };
 });
 
+const { emailsMock } = vi.hoisted(() => ({
+  emailsMock: vi.fn(async () => [] as { user_id: string; email: string }[]),
+}));
+vi.mock('@/store/workspace', async () => {
+  const actual = await vi.importActual<typeof import('@/store/workspace')>('@/store/workspace');
+  return { ...actual, getWorkspaceMemberEmails: emailsMock };
+});
+
 vi.mock('@/services/invite', () => ({
   inviteUser: vi.fn(),
 }));
@@ -472,6 +480,58 @@ describe('EquipePage — mutation actions gated on equipe:editar (phone)', () =>
     expect(within(sheet).getByRole('button', { name: 'Adicionar Membro' })).toBeInTheDocument();
     expect(within(sheet).getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
     expect(within(sheet).getByText(/Colunas CSV: nome\*, cargo\*/)).toBeInTheDocument();
+  });
+});
+
+describe('EquipePage — login e-mails (desktop)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    viewport.desktop = true;
+    pendingInvites.rows = [];
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetMembros.mockResolvedValue([
+      { id: 1, nome: 'Ana', cargo: 'Design', tipo: 'clt', crm_user_id: 'u1' },
+      { id: 2, nome: 'Bia', cargo: 'Redação', tipo: 'clt', crm_user_id: null },
+    ] as never);
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+    emailsMock.mockResolvedValue([{ user_id: 'u1', email: 'ana@exemplo.com' }]);
+  });
+
+  it('shows the linked account e-mail in Vínculo and matches it in the search', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'admin' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    renderPage();
+
+    const anaRow = (await screen.findByText('ana@exemplo.com')).closest('tr') as HTMLElement;
+    expect(within(anaRow).getByText('Ana')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Buscar por nome, cargo ou e-mail...'), {
+      target: { value: 'ana@exem' },
+    });
+    expect(screen.getByText('Ana')).toBeInTheDocument();
+    expect(screen.queryByText('Bia')).not.toBeInTheDocument();
+  });
+
+  it('never fetches e-mails for a legacy agent', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(fakeMembership({ role: 'agent' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    renderPage();
+
+    await screen.findByText('Ana');
+    expect(emailsMock).not.toHaveBeenCalled();
+    expect(screen.queryByText('ana@exemplo.com')).not.toBeInTheDocument();
   });
 });
 

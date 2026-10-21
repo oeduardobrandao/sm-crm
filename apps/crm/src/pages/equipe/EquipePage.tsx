@@ -66,6 +66,7 @@ import {
 } from '@/lib/financialAccess';
 import { derivePendingInvites } from './inviteSupport';
 import { useOpenParam } from '../../hooks/useOpenParam';
+import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { supabase } from '../../lib/supabase';
 import { MembroFormDialog } from './MembroFormDialog';
 import {
@@ -121,6 +122,8 @@ export default function EquipePage() {
     pendingInvites.filter((i) => i.membro_id != null).map((i) => [i.membro_id as number, i]),
   );
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
+  const memberEmails = useWorkspaceMemberEmails();
+  const emailOf = (m: Membro) => (m.crm_user_id ? memberEmails.get(m.crm_user_id) : undefined);
 
   const filtered = membros
     .filter((m) => filter === 'todos' || m.tipo === filter)
@@ -128,7 +131,8 @@ export default function EquipePage() {
       (m) =>
         !search ||
         m.nome.toLowerCase().includes(search.toLowerCase()) ||
-        m.cargo?.toLowerCase().includes(search.toLowerCase()),
+        m.cargo?.toLowerCase().includes(search.toLowerCase()) ||
+        emailOf(m)?.toLowerCase().includes(search.toLowerCase()),
     )
     .sort((a, b) => {
       if (sort === 'nome') return a.nome.localeCompare(b.nome);
@@ -379,7 +383,9 @@ export default function EquipePage() {
             }}
           />
           <Input
-            placeholder="Buscar por nome ou cargo..."
+            placeholder={
+              canEditTeam ? 'Buscar por nome, cargo ou e-mail...' : 'Buscar por nome ou cargo...'
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: '2rem' }}
@@ -478,7 +484,20 @@ export default function EquipePage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {m.crm_user_id || !canEditTeam ? (
+                      {emailOf(m) ? (
+                        <span
+                          style={{
+                            display: 'block',
+                            maxWidth: 260,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={emailOf(m)}
+                        >
+                          {emailOf(m)}
+                        </span>
+                      ) : m.crm_user_id || !canEditTeam ? (
                         <span style={{ color: 'var(--text-muted)' }}>—</span>
                       ) : pendingByMembroId.has(m.id!) ? (
                         <Badge variant="warning" size="sm">

@@ -48,6 +48,7 @@ import {
   type Membro,
 } from '@/store';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { inviteSuccessMessage } from '../configuracao/inviteHelpers';
 import { InviteSection } from './InviteSection';
 import { computeSeatState, derivePendingInvites, membroInviteErrorMessage } from './inviteSupport';
@@ -101,6 +102,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
       ),
     [membros, membro?.id],
   );
+  const memberEmails = useWorkspaceMemberEmails();
   const availableWorkspaceUsers = useMemo(
     () => workspaceUsers.filter((u: { id: string }) => !linkedElsewhere.has(u.id)),
     [workspaceUsers, linkedElsewhere],
@@ -335,6 +337,10 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                       options={availableWorkspaceUsers.map((u: { id: string; nome?: string }) => ({
                         value: u.id,
                         label: u.nome || u.id,
+                        subtitle: memberEmails.get(u.id),
+                        searchText: [u.nome || u.id, memberEmails.get(u.id)]
+                          .filter(Boolean)
+                          .join(' '),
                       }))}
                       value={crmUserId || null}
                       onChange={(v) => {
@@ -462,6 +468,12 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                             {availableWorkspaceUsers.map((user: { id: string; nome?: string }) => (
                               <SelectItem key={user.id} value={user.id}>
                                 {user.nome || user.id}
+                                {memberEmails.get(user.id) && (
+                                  <span style={{ color: 'var(--text-muted)' }}>
+                                    {' · '}
+                                    {memberEmails.get(user.id)}
+                                  </span>
+                                )}
                               </SelectItem>
                             ))}
                           </SelectContent>

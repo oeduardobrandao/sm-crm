@@ -22,6 +22,7 @@ import { formatFinancialBRL } from '@/lib/financialAccess';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { MembroFormDialog } from '../equipe/MembroFormDialog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { MembroDetalhePhone } from './phone/MembroDetalhePhone';
 
@@ -59,6 +60,8 @@ export default function MembroDetalhePage() {
   const transacoes = canSeeFinancials === true ? transacoesRaw : [];
 
   const membro = membros.find((m) => m.id?.toString() === id);
+  const memberEmails = useWorkspaceMemberEmails();
+  const email = membro?.crm_user_id ? memberEmails.get(membro.crm_user_id) : undefined;
 
   const membroTx = transacoes.filter(
     (t) =>
@@ -97,6 +100,7 @@ export default function MembroDetalhePage() {
       <>
         <MembroDetalhePhone
           membro={membro}
+          email={email}
           loadingMembro={loadingMembros}
           canEditTeam={canEditTeam}
           canSeeFinancials={canSeeFinancials}
@@ -174,6 +178,9 @@ export default function MembroDetalhePage() {
             <div>
               <h2 style={{ margin: 0 }}>{membro.nome}</h2>
               <div style={{ color: '#888' }}>{membro.cargo}</div>
+              {email && (
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{email}</div>
+              )}
             </div>
           </div>
 
