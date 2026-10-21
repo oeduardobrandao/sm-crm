@@ -459,5 +459,9 @@
     "contact": "Contact",
     "status": "Status"
   },
-  "emptyList": "No clients found."
+  "emptyList": "No clients found.",
+  "filters": {
+    "title": "Filters",
+    "description": "Filter and sort clients"
+  }
 }

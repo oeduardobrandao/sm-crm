@@ -540,8 +540,8 @@ export default function ClientesPage() {
               className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24"
             >
               <SheetHeader className="mb-4">
-                <SheetTitle className="text-base">Filtros</SheetTitle>
-                <SheetDescription className="sr-only">Filtre e ordene os clientes</SheetDescription>
+                <SheetTitle className="text-base">{t('filters.title')}</SheetTitle>
+                <SheetDescription className="sr-only">{t('filters.description')}</SheetDescription>
               </SheetHeader>
               <div className="flex flex-col gap-3">
                 <label

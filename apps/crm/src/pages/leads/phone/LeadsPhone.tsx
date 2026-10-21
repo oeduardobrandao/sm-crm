@@ -213,9 +213,9 @@ export function LeadsPhone(props: LeadsPhoneProps) {
 
   const addMessage = (
     <>
-      {atLimit && <span className="block">Limite do plano atingido.</span>}
+      {atLimit && <span className="block">{t('plan.limitReached')}</span>}
       {csvLocked ? (
-        <span className="block">Importação CSV não está disponível no seu plano.</span>
+        <span className="block">{t('plan.csvLocked')}</span>
       ) : (
         <span className="block">{t('csvTooltip')}</span>
       )}
