@@ -11,8 +11,23 @@ function getSavedLanguage(): Language {
   return 'pt';
 }
 
+/** BCP 47 tag for `<html lang>`, so assistive tech and browser translation see the UI language. */
+export function htmlLangFor(lang: string): string {
+  return lang.startsWith('en') ? 'en' : 'pt-BR';
+}
+
+function syncDocumentLang(lang: string) {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = htmlLangFor(lang);
+}
+
 export function initI18n(resources: Record<string, Record<string, Record<string, unknown>>>) {
   const namespaces = Object.keys(Object.values(resources)[0] ?? {});
+
+  // Registered before init so the initial language also lands on <html lang>; `off` first
+  // keeps a repeated init (tests) from stacking listeners.
+  i18n.off('languageChanged', syncDocumentLang);
+  i18n.on('languageChanged', syncDocumentLang);
 
   i18n.use(initReactI18next).init({
     lng: getSavedLanguage(),

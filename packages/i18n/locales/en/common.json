@@ -37,7 +37,9 @@
     "suporte": "Support",
     "novidades": "What's New",
     "openMenuPending_one": "Open menu, 1 pending item",
-    "openMenuPending_other": "Open menu, {{count}} pending items"
+    "openMenuPending_other": "Open menu, {{count}} pending items",
+    "openMenu": "Open menu",
+    "menu": "Menu"
   },
   "sidebar": {
     "accountOptions": "Account Options",
@@ -141,7 +143,8 @@
     "somethingWentWrong": "Something went wrong",
     "reloadToRetry": "Reload the page to try again.",
     "reloadPage": "Reload page",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "clientPortal": "Client hub"
   },
   "cookies": {
     "banner": {
@@ -167,5 +170,10 @@
       "cancel": "Cancel"
     },
     "link": "Cookie preferences"
+  },
+  "topbar": {
+    "search": "Search...",
+    "searchPlaceholder": "Search...",
+    "noResults": "No results."
   }
 }
