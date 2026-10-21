@@ -764,6 +764,16 @@
     color: var(--vd-sel-fg);
   }
 
+  /* The selected tab is ink-filled: the status pill inside it follows the tab's own
+     foreground instead of --text-muted on a translucent fill (~1.5:1 there). */
+  html[data-look='vidro']
+    .app-container
+    [data-slot='tabs-trigger'][data-state='active']
+    .destination-status-pill {
+    background: color-mix(in srgb, currentColor 16%, transparent);
+    color: inherit;
+  }
+
   html[data-look='vidro'] .app-container .calendar-tab.active::after,
   html[data-look='vidro'] .app-container .board-tab.active::after {
     display: none;

@@ -9528,6 +9528,13 @@ a.mention-chip:hover {
   background-color: rgba(255, 255, 255, 0.08);
 }
 
+/* Destination status pill (cards and caption tabs). Colours live here, not inline,
+   so Vidro can invert it inside its black selected tab. */
+.destination-status-pill {
+  background: var(--surface-hover);
+  color: var(--text-muted);
+}
+
 /* ── Instagram caption: comment highlight mirror ────────────── */
 /* Sits behind a transparent textarea and repeats its text so only the
    highlight backgrounds are visible; the textarea's own text shows through. */
