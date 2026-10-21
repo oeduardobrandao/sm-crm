@@ -8,6 +8,7 @@ import { BarList } from '@/components/mobile/BarList';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import type { WorkflowAnalytics } from '@/services/workflowAnalytics';
 import type { Cliente, Membro } from '../../../store';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { Avatar, PickerChip, SectionHead } from '../../analytics/phone/shared';
 import {
   formatDataCurta,
@@ -55,15 +56,6 @@ export interface FluxosPhoneProps {
   canExport: boolean;
   onExport: () => void;
 }
-
-const initialsOf = (nome: string) =>
-  nome
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join('')
-    .toUpperCase() || '?';
 
 /** /analytics-fluxos below 768px. Numbers and filters come from the page. */
 export function FluxosPhone({
@@ -366,7 +358,13 @@ function FluxosSections({
               <li key={linha.membro_id} className="phone-cell">
                 <div className="phone-cell__main">
                   <span className="phone-cell__icon">
-                    <Avatar src={membro?.avatar_url} initials={initialsOf(nome)} color="#6d28d9" />
+                    <PessoaAvatar
+                      nome={nome}
+                      fotoUrl={membro?.avatar_url}
+                      seed={linha.membro_id}
+                      size={28}
+                      className="![--avatar-bg:#6d28d9] ![--avatar-fg:#fff] !text-[11px] !font-bold"
+                    />
                   </span>
                   <span className="phone-cell__body">
                     <span className="phone-cell__text">

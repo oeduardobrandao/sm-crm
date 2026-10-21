@@ -1,5 +1,5 @@
 import type { Cliente, MensagemFeedItem } from '@/store';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 
 export function initialsOf(name: string): string {
   return name
@@ -66,25 +66,14 @@ export function AutorAvatar({
   clienteFotoUrl?: string | null;
 }) {
   if (item.is_workspace_user) {
-    if (item.author_avatar_url) {
-      return (
-        <img
-          src={item.author_avatar_url}
-          alt=""
-          className="avatar"
-          style={{ ...SMALL, objectFit: 'cover' }}
-        />
-      );
-    }
-    const name = item.author_name ?? 'Equipe';
     return (
-      <div
-        className={`avatar ${avatarColorClass(item.author_user_id ?? name)}`}
-        style={SMALL}
-        aria-hidden="true"
-      >
-        {initialsOf(name)}
-      </div>
+      <PessoaAvatar
+        nome={item.author_name ?? 'Equipe'}
+        fotoUrl={item.author_avatar_url}
+        seed={item.author_user_id}
+        size={28}
+        className="!text-[0.65rem]"
+      />
     );
   }
   return <ClienteAvatar nome={item.cliente_nome} fotoUrl={clienteFotoUrl} cliente={cliente} />;

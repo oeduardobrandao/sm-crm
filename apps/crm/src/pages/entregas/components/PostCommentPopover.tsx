@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Check, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { MentionText } from '@/components/mentions/MentionText';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { useAuth } from '@/context/AuthContext';
@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 interface WorkspaceUser {
   id: string;
   nome: string;
-  avatar_url: string;
+  avatar_url: string | null;
 }
 
 interface PostCommentPopoverProps {
@@ -42,7 +42,8 @@ function resolveAuthor(
 ): { nome: string; avatar_url: string | null } | undefined {
   const wsUser = workspaceUsers.find((u) => u.id === authorId);
   if (wsUser) return { nome: wsUser.nome, avatar_url: wsUser.avatar_url };
-  return membros.find((m) => m.user_id === authorId);
+  // `crm_user_id` is the membro's own login; `user_id` is whoever created the row.
+  return membros.find((m) => m.crm_user_id === authorId);
 }
 
 function AuthorAvatar({
@@ -51,21 +52,13 @@ function AuthorAvatar({
   membro: { nome: string; avatar_url: string | null } | undefined;
 }) {
   const name = membro?.nome ?? 'Membro';
-  const initials = name
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-
-  if (membro?.avatar_url) {
-    return <img src={membro.avatar_url} alt={name} className="comment-avatar" />;
-  }
-
   return (
-    <span className={`comment-avatar comment-avatar--initials ${avatarColorClass(name)}`}>
-      {initials}
-    </span>
+    <PessoaAvatar
+      nome={name}
+      fotoUrl={membro?.avatar_url}
+      alt={name}
+      className="comment-avatar comment-avatar--initials"
+    />
   );
 }
 

@@ -4,13 +4,13 @@ import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { MentionText } from '@/components/mentions/MentionText';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import type { EquipeConversa } from '@/store';
-import { initialsOf } from '../components/Avatars';
 import { ThreadSkeleton } from '../components/ConversationThread';
 import {
   AnexoChip,
   AnexoImagem,
   EQUIPE_ANEXO_ACCEPT,
   EquipeConversaAvatar,
+  EquipePessoaAvatar,
 } from '../components/EquipeShared';
 import { formatTime } from '../mensagensLogic';
 import type { useEquipeChatData } from '../hooks/useEquipeChatData';
@@ -29,8 +29,6 @@ interface Props {
   /** Rendered inside the screen (the details sheet). */
   children?: ReactNode;
 }
-
-const BUBBLE_AVATAR = { width: 28, height: 28, fontSize: '0.65rem', flexShrink: 0 } as const;
 
 /**
  * One team conversation below 768px: the same pushed screen as a client thread
@@ -111,18 +109,13 @@ export function EquipeThreadPhone({
               data-testid={`equipe-msg-${m.id}`}
               className={`phone-msg-bubble-row${minha ? ' phone-msg-bubble-row--mine' : ''}`}
             >
-              {m.author_avatar_url ? (
-                <img
-                  src={m.author_avatar_url}
-                  alt=""
-                  className="avatar"
-                  style={{ ...BUBBLE_AVATAR, objectFit: 'cover' }}
-                />
-              ) : (
-                <span className="avatar" style={BUBBLE_AVATAR} aria-hidden="true">
-                  {initialsOf(m.author_name)}
-                </span>
-              )}
+              <EquipePessoaAvatar
+                nome={m.author_name}
+                fotoUrl={m.author_avatar_url}
+                seed={m.author_user_id}
+                size={28}
+                fontSize="0.65rem"
+              />
               <div className="phone-msg-bubble-col">
                 <div className="phone-msg-bubble">
                   {!minha && <div className="phone-msg-bubble__author">{m.author_name}</div>}

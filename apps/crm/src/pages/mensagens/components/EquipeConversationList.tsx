@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ArrowDownUp, Plus, Search, Users } from 'lucide-react';
+import { ArrowDownUp, Plus, Search } from 'lucide-react';
 import type { EquipeConversa } from '@/store';
-import { initialsOf } from './Avatars';
+import { EquipeConversaAvatar } from './EquipeShared';
 import { formatTime } from '../mensagensLogic';
 import {
   equipeConversaPreview,
@@ -121,35 +121,7 @@ export function EquipeConversationList({
                   : { background: 'transparent' }),
               }}
             >
-              {c.tipo === 'dm' && c.avatar_url ? (
-                <img
-                  src={c.avatar_url}
-                  alt=""
-                  className="avatar"
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                  }}
-                />
-              ) : (
-                <span
-                  className="avatar"
-                  style={{
-                    width: 40,
-                    height: 40,
-                    fontSize: '0.8rem',
-                    flexShrink: 0,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {c.tipo === 'grupo' ? <Users size={18} /> : initialsOf(c.display_nome)}
-                </span>
-              )}
+              <EquipeConversaAvatar conversa={c} size={40} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-sm font-semibold">{c.display_nome}</span>

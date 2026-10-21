@@ -18,7 +18,7 @@ import {
   manageEquipeConversa,
   type EquipeConversa,
 } from '@/store';
-import { initialsOf } from './Avatars';
+import { EquipePessoaAvatar } from './EquipeShared';
 
 interface EquipeDetalhesSheetProps {
   conversa: EquipeConversa;
@@ -26,7 +26,6 @@ interface EquipeDetalhesSheetProps {
   onLeft: () => void;
 }
 
-const AVATAR = { width: 32, height: 32, fontSize: '0.7rem', flexShrink: 0 } as const;
 const PAPEL_LABELS: Record<string, string> = { owner: 'Dono', admin: 'Admin', agent: 'Agente' };
 
 /** Detalhes de uma conversa de equipe. Grupo: nome + participantes (com
@@ -181,27 +180,13 @@ export function EquipeDetalhesSheet({ conversa, onClose, onLeft }: EquipeDetalhe
               data-testid={`participante-${p.user_id}`}
               className="flex items-center gap-3 rounded-lg px-2 py-2"
             >
-              {p.avatar_url ? (
-                <img
-                  src={p.avatar_url}
-                  alt=""
-                  className="avatar"
-                  style={{ ...AVATAR, borderRadius: '50%', objectFit: 'cover' }}
-                />
-              ) : (
-                <span
-                  className="avatar"
-                  style={{
-                    ...AVATAR,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  aria-hidden="true"
-                >
-                  {initialsOf(p.nome)}
-                </span>
-              )}
+              <EquipePessoaAvatar
+                nome={p.nome}
+                fotoUrl={p.avatar_url}
+                seed={p.user_id}
+                size={32}
+                fontSize="0.7rem"
+              />
               <span className="flex-1 text-sm font-medium">{p.nome}</span>
               {p.role && (
                 <span className="text-xs text-[var(--text-muted)]">

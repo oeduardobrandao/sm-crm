@@ -4,8 +4,7 @@ import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { PickerCell } from '@/components/mobile/PickerSheet';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { useSheetActions } from '@/components/mobile/sheetActions';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { AgendaTipo } from '../../../../store/agenda';
 import type { CamadasGrupoProps } from '../../camadas/CamadasGrupo';
 import { CAMADAS_PADRAO } from '../../camadas/camadasStorage';
@@ -98,9 +97,12 @@ function Corpo({
             <Cell
               key={p.id}
               icon={
-                <span className={`avatar phone-agenda-filtros__avatar ${avatarColorClass(p.id)}`}>
-                  {p.avatarUrl ? <img src={p.avatarUrl} alt="" /> : getInitials(p.nome)}
-                </span>
+                <PessoaAvatar
+                  nome={p.nome}
+                  fotoUrl={p.avatarUrl}
+                  seed={p.id}
+                  className="phone-agenda-filtros__avatar"
+                />
               }
               label={p.id === meuId ? `${p.nome} (você)` : p.nome}
               switch={{

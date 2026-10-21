@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { User, FileText, Building2, CheckSquare } from 'lucide-react';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { MentionSection, MentionSuggestionItem } from './useMentionSearch';
 
 const MENTION_ICONS = {
@@ -43,21 +43,13 @@ function MentionAvatar({ item }: { item: MentionSuggestionItem }) {
     const Icon = MENTION_ICONS[item.entityType];
     return <Icon aria-hidden="true" className="mention-suggestion-item__icon" />;
   }
-  const initials = item.label
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-  if (item.avatarUrl) {
-    return <img src={item.avatarUrl} alt="" className="comment-avatar mention-suggestion-avatar" />;
-  }
   return (
-    <span
-      className={`comment-avatar comment-avatar--initials mention-suggestion-avatar ${avatarColorClass(item.id)}`}
-    >
-      {initials}
-    </span>
+    <PessoaAvatar
+      nome={item.label}
+      fotoUrl={item.avatarUrl}
+      seed={item.id}
+      className="comment-avatar comment-avatar--initials mention-suggestion-avatar"
+    />
   );
 }
 

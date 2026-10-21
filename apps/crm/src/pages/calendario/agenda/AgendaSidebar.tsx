@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { AgendaTipo } from '../../../store/agenda';
 import { CamadasGrupo, type CamadasGrupoProps } from '../camadas/CamadasGrupo';
 import { TIPO_COR, TIPO_LABEL } from './agendaLogic';
@@ -141,12 +140,12 @@ export default function AgendaSidebar({
                     checked={pessoaVisivel(filtro, meuId, p.id)}
                     onCheckedChange={(c) => alternarPessoa(p.id, c === true)}
                   />
-                  <span
-                    className={`avatar agenda-pessoa__avatar ${avatarColorClass(p.id)}`}
-                    aria-hidden="true"
-                  >
-                    {p.avatarUrl ? <img src={p.avatarUrl} alt="" /> : getInitials(p.nome)}
-                  </span>
+                  <PessoaAvatar
+                    nome={p.nome}
+                    fotoUrl={p.avatarUrl}
+                    seed={p.id}
+                    className="agenda-pessoa__avatar"
+                  />
                   <span className="agenda-pessoa__nome">{eu ? `${p.nome} (você)` : p.nome}</span>
                 </label>
               </li>

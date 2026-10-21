@@ -9,8 +9,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 
 export interface PessoaEquipe {
   /** auth uid (getWorkspaceUsers().id = profiles.id = auth.users.id). */
@@ -27,23 +26,15 @@ interface PessoasComboboxProps {
   disabled?: boolean;
 }
 
-const AVATAR = { width: 22, height: 22, fontSize: 10, flexShrink: 0 } as const;
-
 function Avatar({ pessoa }: { pessoa: PessoaEquipe }) {
-  if (pessoa.avatar_url) {
-    return (
-      <img
-        src={pessoa.avatar_url}
-        alt=""
-        className="avatar"
-        style={{ ...AVATAR, objectFit: 'cover' }}
-      />
-    );
-  }
   return (
-    <span className={`avatar ${avatarColorClass(pessoa.id)}`} style={AVATAR} aria-hidden="true">
-      {getInitials(pessoa.nome)}
-    </span>
+    <PessoaAvatar
+      nome={pessoa.nome}
+      fotoUrl={pessoa.avatar_url}
+      seed={pessoa.id}
+      size={22}
+      className="!text-[10px]"
+    />
   );
 }
 
