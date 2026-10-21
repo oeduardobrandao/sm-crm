@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Search, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -27,6 +27,7 @@ const AVATAR = { width: 32, height: 32, fontSize: '0.7rem', flexShrink: 0 } as c
  * DM direto). Modo 'grupo' (so owner/admin): nome + multi-select + Criar. */
 export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConversaDialogProps) {
   const { user, workspaceRole } = useAuth();
+  const qc = useQueryClient();
   // workspaceRole (workspace_members for the ACTIVE workspace), not the
   // profile-derived `role`: `role` goes stale on workspace switch (see
   // AuthContext.tsx) -- nav-data.ts's Financeiro/Contratos gate already
@@ -64,13 +65,21 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
     setEnviando(true);
     try {
       const id = await createEquipeConversa('dm', null, [userId]);
-      onCreated(id);
-      handleOpenChange(false);
+      await abrirCriada(id);
     } catch {
       toast.error('Não foi possível abrir a conversa.');
     } finally {
       setEnviando(false);
     }
+  }
+
+  /** The page finds the thread in the cached conversation list, so it has to hold
+   * the new conversation before the page navigates to it; otherwise the thread
+   * shows "Conversa não encontrada" until the next poll. */
+  async function abrirCriada(id: number) {
+    await qc.invalidateQueries({ queryKey: ['equipe-conversas'] });
+    onCreated(id);
+    handleOpenChange(false);
   }
 
   function toggleSelecionado(userId: string) {
@@ -85,8 +94,7 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
     setEnviando(true);
     try {
       const id = await createEquipeConversa('grupo', n, selecionados);
-      onCreated(id);
-      handleOpenChange(false);
+      await abrirCriada(id);
     } catch {
       toast.error('Não foi possível criar o grupo.');
     } finally {
