@@ -175,5 +175,29 @@
     "search": "Buscar...",
     "searchPlaceholder": "Buscar...",
     "noResults": "Nenhum resultado."
+  },
+  "ui": {
+    "close": "Fechar",
+    "clear": "Limpar",
+    "previousMonth": "Mês anterior",
+    "nextMonth": "Próximo mês",
+    "previousYear": "Ano anterior",
+    "nextYear": "Próximo ano",
+    "selectDate": "Selecionar data",
+    "selectDateTime": "Selecionar data e hora",
+    "selectPeriod": "Selecionar período",
+    "selectMonth": "Selecionar mês",
+    "time": "Horário:",
+    "minScheduleAhead": "Mínimo {{minutes}} min no futuro",
+    "confirmClose": {
+      "title": "Fechar sem salvar?",
+      "message": "Você tem alterações não salvas. Deseja fechar mesmo assim?",
+      "keepEditing": "Continuar editando",
+      "discard": "Fechar mesmo assim"
+    }
+  },
+  "dateFormat": {
+    "monthYear": "MMMM 'de' yyyy",
+    "weekdayDayMonth": "EEEE, d 'de' MMMM"
   }
 }

@@ -10,10 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
 import {
-  CONFIRM_CLOSE_DISCARD,
-  CONFIRM_CLOSE_KEEP_EDITING,
-  CONFIRM_CLOSE_MSG,
-  CONFIRM_CLOSE_TITLE,
+  useConfirmCloseCopy,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -233,6 +230,7 @@ export default function AutomationFormDialog({
    * conteúdo próprio. */
   tour?: Omit<TourOverlayProps, 'onCta'>;
 }) {
+  const confirmCopy = useConfirmCloseCopy();
   const { t } = useTranslation('automations');
   const { profile } = useAuth();
   const qc = useQueryClient();
@@ -1112,11 +1110,11 @@ export default function AutomationFormDialog({
             />
             <PhoneConfirmSheet
               open={confirmCloseOpen}
-              title={CONFIRM_CLOSE_TITLE}
-              message={CONFIRM_CLOSE_MSG}
-              cancelLabel={CONFIRM_CLOSE_KEEP_EDITING}
+              title={confirmCopy.title}
+              message={confirmCopy.message}
+              cancelLabel={confirmCopy.keepEditing}
               onCancel={() => setConfirmCloseOpen(false)}
-              actions={[{ label: CONFIRM_CLOSE_DISCARD, destructive: true, onSelect: closeDialog }]}
+              actions={[{ label: confirmCopy.discard, destructive: true, onSelect: closeDialog }]}
             />
           </>
         ) : (

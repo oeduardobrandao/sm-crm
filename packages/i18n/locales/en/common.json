@@ -175,5 +175,29 @@
     "search": "Search...",
     "searchPlaceholder": "Search...",
     "noResults": "No results."
+  },
+  "ui": {
+    "close": "Close",
+    "clear": "Clear",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "previousYear": "Previous year",
+    "nextYear": "Next year",
+    "selectDate": "Select date",
+    "selectDateTime": "Select date and time",
+    "selectPeriod": "Select period",
+    "selectMonth": "Select month",
+    "time": "Time:",
+    "minScheduleAhead": "At least {{minutes}} min in the future",
+    "confirmClose": {
+      "title": "Close without saving?",
+      "message": "You have unsaved changes. Close anyway?",
+      "keepEditing": "Keep editing",
+      "discard": "Close anyway"
+    }
+  },
+  "dateFormat": {
+    "monthYear": "MMMM yyyy",
+    "weekdayDayMonth": "EEEE, MMMM d"
   }
 }

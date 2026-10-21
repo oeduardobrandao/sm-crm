@@ -1,5 +1,8 @@
+import type { Locale as DateFnsLocale } from 'date-fns';
+import { enUS } from 'date-fns/locale/en-US';
+import { ptBR } from 'date-fns/locale/pt-BR';
 import i18n from 'i18next';
-import { initReactI18next } from 'react-i18next';
+import { initReactI18next, useTranslation } from 'react-i18next';
 
 const STORAGE_KEY = 'mesaas-language';
 const SUPPORTED_LANGUAGES = ['pt', 'en'] as const;
@@ -50,5 +53,39 @@ export function changeLanguage(lang: Language) {
   i18n.changeLanguage(lang);
 }
 
+type IntlLocale = 'pt-BR' | 'en-US';
+
+/** `Intl` / `toLocale*` tag for a UI language. Anything not English stays Brazilian. */
+export function intlLocaleFor(lang: string | undefined): IntlLocale {
+  return lang?.toLowerCase().startsWith('en') ? 'en-US' : 'pt-BR';
+}
+
+function currentLanguage(instance: typeof i18n | undefined = i18n): string | undefined {
+  return instance?.resolvedLanguage ?? instance?.language;
+}
+
+/**
+ * Current display locale, read at call time. For plain functions (formatters, imperative
+ * renderers); a component should use `useIntlLocale()` so it re-renders on a switch.
+ * Defaults to pt-BR before i18n is initialized.
+ */
+export function getIntlLocale(): IntlLocale {
+  return intlLocaleFor(currentLanguage());
+}
+
+/** date-fns locale matching `getIntlLocale()`. */
+export function getDateFnsLocale(): DateFnsLocale {
+  return getIntlLocale() === 'en-US' ? enUS : ptBR;
+}
+
+export function useIntlLocale(): IntlLocale {
+  const { i18n: instance } = useTranslation();
+  return intlLocaleFor(currentLanguage(instance));
+}
+
+export function useDateFnsLocale(): DateFnsLocale {
+  return useIntlLocale() === 'en-US' ? enUS : ptBR;
+}
+
 export { i18n, SUPPORTED_LANGUAGES, STORAGE_KEY };
-export type { Language };
+export type { Language, IntlLocale };
