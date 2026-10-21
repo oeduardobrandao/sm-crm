@@ -1,8 +1,7 @@
 import { useId } from 'react';
 import { X } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { Membro } from '../../../store';
 
 // Ordem alfabética pt-BR, sem diferenciar acento nem caixa (como FilaMembroPicker).
@@ -89,13 +88,7 @@ export function ResponsaveisPanel({
             return (
               <li key={id}>
                 <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--surface-hover)]">
-                  <span
-                    className={`avatar ${avatarColorClass(id)}`}
-                    style={{ width: 22, height: 22, fontSize: '0.55rem', flexShrink: 0 }}
-                    aria-hidden="true"
-                  >
-                    {getInitials(m.nome)}
-                  </span>
+                  <PessoaAvatar nome={m.nome} fotoUrl={m.avatar_url} seed={id} size={22} />
                   <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--text-main)' }}>
                     {m.nome}
                   </span>

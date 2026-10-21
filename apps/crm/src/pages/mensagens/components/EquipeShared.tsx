@@ -4,7 +4,7 @@ import { FileText, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { signEquipeChatAnexoView } from '@/services/equipeChatMedia';
 import type { EquipeConversa, EquipeMensagemAnexo } from '@/store';
-import { initialsOf } from './Avatars';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 
 /** Types the composer's file picker offers (the edge function's allowlist). */
 export const EQUIPE_ANEXO_ACCEPT =
@@ -78,6 +78,46 @@ export function AnexoChip({
   );
 }
 
+/**
+ * Initials font per chat avatar, as full class names so Tailwind sees them. `!` because
+ * PessoaAvatar's `size` sets an inline `size * 0.4` font and `.avatar` outranks plain
+ * utilities.
+ */
+const CHAT_INITIALS_FONT = {
+  '0.65rem': '!text-[0.65rem]',
+  '0.7rem': '!text-[0.7rem]',
+  '0.8rem': '!text-[0.8rem]',
+} as const;
+
+/**
+ * A colleague's avatar in the team chat: the photo, else the initials on the plain
+ * `.avatar` amber the chat has always used (not the seeded palette PessoaAvatar adds,
+ * hence the `!` overrides of `.avatar--cN`'s variables).
+ */
+export function EquipePessoaAvatar({
+  nome,
+  fotoUrl,
+  seed,
+  size,
+  fontSize,
+}: {
+  nome: string;
+  fotoUrl: string | null;
+  seed?: string | null;
+  size: number;
+  fontSize: keyof typeof CHAT_INITIALS_FONT;
+}) {
+  return (
+    <PessoaAvatar
+      nome={nome}
+      fotoUrl={fotoUrl}
+      seed={seed}
+      size={size}
+      className={CHAT_INITIALS_FONT[fontSize]}
+    />
+  );
+}
+
 /** Conversation avatar: the colleague's photo or initials for a DM, a group icon
  * for a group. `size` is the circle's side in px. */
 export function EquipeConversaAvatar({
@@ -87,33 +127,32 @@ export function EquipeConversaAvatar({
   conversa: Pick<EquipeConversa, 'tipo' | 'avatar_url' | 'display_nome'>;
   size: number;
 }) {
-  const dims = {
-    width: size,
-    height: size,
-    fontSize: size >= 40 ? '0.8rem' : '0.65rem',
-    flexShrink: 0,
-  } as const;
-  if (conversa.tipo === 'dm' && conversa.avatar_url) {
+  const fontSize = size >= 40 ? '0.8rem' : '0.65rem';
+  if (conversa.tipo === 'dm') {
     return (
-      <img
-        src={conversa.avatar_url}
-        alt=""
-        className="avatar"
-        style={{ ...dims, borderRadius: '50%', objectFit: 'cover' }}
+      <EquipePessoaAvatar
+        nome={conversa.display_nome}
+        fotoUrl={conversa.avatar_url}
+        size={size}
+        fontSize={fontSize}
       />
     );
   }
   return (
     <span
       className="avatar"
-      style={{ ...dims, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{
+        width: size,
+        height: size,
+        fontSize,
+        flexShrink: 0,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
       aria-hidden="true"
     >
-      {conversa.tipo === 'grupo' ? (
-        <Users size={Math.round(size * 0.45)} />
-      ) : (
-        initialsOf(conversa.display_nome)
-      )}
+      <Users size={Math.round(size * 0.45)} />
     </span>
   );
 }

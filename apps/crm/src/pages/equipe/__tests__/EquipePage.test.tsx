@@ -42,6 +42,12 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
 
+const csvRows = vi.hoisted(() => ({ rows: [] as Record<string, string>[] }));
+vi.mock('@/lib/csv', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/csv')>()),
+  openCSVSelector: (onUpload: (rows: Record<string, string>[]) => void) => onUpload(csvRows.rows),
+}));
+
 vi.mock('@/context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/context/AuthContext')>();
   return { ...actual, useAuth: mockUseAuth };
@@ -162,7 +168,7 @@ describe('EquipePage — onSubmit invite orchestration', () => {
       nome: 'Nova Pessoa',
       cargo: 'Redator',
       tipo: 'clt',
-      avatar_url: '',
+      avatar_url: null,
       crm_user_id: null,
     } as never);
     mockedInviteUser.mockRejectedValueOnce(new Error('rede caiu'));
@@ -190,6 +196,8 @@ describe('EquipePage — onSubmit invite orchestration', () => {
     await waitFor(() => {
       expect(mockedAddMembro).toHaveBeenCalledTimes(1);
     });
+    // The photo is set later, on the detail page: a new membro sends no avatar_url.
+    expect(mockedAddMembro.mock.calls[0][0]).not.toHaveProperty('avatar_url');
     await waitFor(() => {
       expect(mockedInviteUser).toHaveBeenCalledWith('nova@exemplo.com', 'agent', 42);
     });
@@ -217,7 +225,7 @@ describe('EquipePage — onSubmit invite orchestration', () => {
         nome: 'Pessoa Existente',
         cargo: 'Designer',
         tipo: 'clt',
-        avatar_url: '',
+        avatar_url: null,
         crm_user_id: null,
       },
     ] as never);
@@ -285,7 +293,7 @@ describe('EquipePage — função no workspace for a linked membro', () => {
         nome: 'Pessoa Vinculada',
         cargo: 'Designer',
         tipo: 'clt',
-        avatar_url: '',
+        avatar_url: null,
         crm_user_id: 'u1',
       },
     ] as never);
@@ -427,6 +435,72 @@ describe('EquipePage — mutation buttons gated on equipe:editar (desktop)', () 
   });
 });
 
+describe('EquipePage — member photos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    pendingInvites.rows = [];
+    csvRows.rows = [];
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'owner' })),
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+    mockedGetWorkspaceRoles.mockResolvedValue([]);
+    mockedGetMembros.mockResolvedValue([
+      {
+        id: 1,
+        nome: 'Ana',
+        cargo: 'Designer',
+        tipo: 'clt',
+        avatar_url: 'https://cdn.exemplo.com/ana.jpg',
+        crm_user_id: 'u1',
+      },
+      { id: 2, nome: 'Bruno', cargo: 'Redator', tipo: 'clt', avatar_url: null, crm_user_id: null },
+    ] as never);
+  });
+
+  it.each([
+    ['desktop', true],
+    ['phone', false],
+  ])('renders member photos (%s)', async (_label, desktop) => {
+    viewport.desktop = desktop;
+    renderPage();
+
+    await screen.findByText('Bruno');
+    const photos = document.querySelectorAll('img.avatar--photo');
+    expect(photos).toHaveLength(1);
+    expect(photos[0]).toHaveAttribute('src', 'https://cdn.exemplo.com/ana.jpg');
+    const initials = [...document.querySelectorAll('div.avatar, span.avatar')].map(
+      (el) => el.textContent,
+    );
+    expect(initials).toContain('B');
+  });
+
+  it('imports CSV rows without an avatar_url key', async () => {
+    viewport.desktop = true;
+    csvRows.rows = [{ nome: 'Carla', cargo: 'Social media', tipo: 'clt' }];
+    mockedAddMembro.mockResolvedValue({ id: 9 } as never);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Importar CSV' }));
+
+    await waitFor(() => expect(mockedAddMembro).toHaveBeenCalledTimes(1));
+    expect(mockedAddMembro.mock.calls[0][0]).toMatchObject({
+      nome: 'Carla',
+      cargo: 'Social media',
+    });
+    expect(mockedAddMembro.mock.calls[0][0]).not.toHaveProperty('avatar_url');
+  });
+});
+
 describe('EquipePage — mutation actions gated on equipe:editar (phone)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -440,7 +514,7 @@ describe('EquipePage — mutation actions gated on equipe:editar (phone)', () =>
       isUnlimited: false,
     });
     mockedGetMembros.mockResolvedValue([
-      { id: 3, nome: 'Bruno', cargo: 'Redator', tipo: 'clt', avatar_url: '', crm_user_id: null },
+      { id: 3, nome: 'Bruno', cargo: 'Redator', tipo: 'clt', avatar_url: null, crm_user_id: null },
     ] as never);
     mockedGetWorkspaceUsers.mockResolvedValue([]);
   });
@@ -560,7 +634,7 @@ describe('EquipePage on phones', () => {
         nome: 'Ana',
         cargo: 'Designer',
         tipo: 'clt',
-        avatar_url: '',
+        avatar_url: null,
         crm_user_id: 'u1',
         custo_mensal: 3000,
       },
@@ -569,7 +643,7 @@ describe('EquipePage on phones', () => {
         nome: 'Bruno',
         cargo: 'Redator',
         tipo: 'freelancer_mensal',
-        avatar_url: '',
+        avatar_url: null,
         crm_user_id: null,
         custo_mensal: 1800,
       },
@@ -578,7 +652,7 @@ describe('EquipePage on phones', () => {
         nome: 'Diego',
         cargo: 'Editor de vídeo',
         tipo: 'freelancer_demanda',
-        avatar_url: '',
+        avatar_url: null,
         crm_user_id: null,
         custo_mensal: 900,
       },

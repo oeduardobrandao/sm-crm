@@ -7,8 +7,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials, updateTarefa, type Membro, type TarefaWithRelations } from '../../../store';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { updateTarefa, type Membro, type TarefaWithRelations } from '../../../store';
 import { dueBadge } from '../tarefasLogic';
 import { describeRecorrencia } from '../recorrenciaLogic';
 import { TagPill } from './TagPicker';
@@ -117,6 +117,7 @@ export function TarefaCard({
             <DropdownMenuTrigger asChild>
               <span
                 style={{ flexShrink: 0, cursor: membros.length > 0 ? 'pointer' : 'default' }}
+                title={displayMembro?.nome}
                 onPointerDown={(e) => {
                   if (membros.length === 0) return;
                   e.stopPropagation();
@@ -127,13 +128,13 @@ export function TarefaCard({
                 }}
               >
                 {displayMembro ? (
-                  <span
-                    className={`avatar ${avatarColorClass(displayMembro.id ?? displayMembro.nome)}`}
-                    style={{ width: 20, height: 20, fontSize: '0.55rem', fontWeight: 800 }}
-                    title={displayMembro.nome}
-                  >
-                    {getInitials(displayMembro.nome)}
-                  </span>
+                  <PessoaAvatar
+                    nome={displayMembro.nome}
+                    fotoUrl={displayMembro.avatar_url}
+                    seed={displayMembro.id}
+                    size={20}
+                    className="!text-[0.55rem] !font-extrabold"
+                  />
                 ) : (
                   <span
                     title="Sem responsável"
@@ -179,12 +180,13 @@ export function TarefaCard({
                       fontSize: '0.75rem',
                     }}
                   >
-                    <span
-                      className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
-                      style={{ width: 16, height: 16, fontSize: '0.5rem' }}
-                    >
-                      {getInitials(m.nome)}
-                    </span>
+                    <PessoaAvatar
+                      nome={m.nome}
+                      fotoUrl={m.avatar_url}
+                      seed={m.id}
+                      size={16}
+                      className="!text-[0.5rem]"
+                    />
                     {m.nome}
                   </DropdownMenuItem>
                 ))}

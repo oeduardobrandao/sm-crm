@@ -50,6 +50,7 @@ const membros: Membro[] = [
     id: 1,
     conta_id: 'conta-1',
     user_id: 'user-1',
+    crm_user_id: 'user-1',
     nome: 'Eduardo Souza',
     email: 'edu@test.com',
     papel: 'owner',
@@ -60,6 +61,7 @@ const membros: Membro[] = [
     id: 2,
     conta_id: 'conta-1',
     user_id: 'user-2',
+    crm_user_id: 'user-2',
     nome: 'Ana Costa',
     email: 'ana@test.com',
     papel: 'agent',
@@ -162,6 +164,61 @@ describe('PostCommentPopover', () => {
     expect(img).toBeInTheDocument();
     expect(img.tagName).toBe('IMG');
     expect(img).toHaveAttribute('src', 'https://example.com/ana.jpg');
+  });
+
+  // `membros.user_id` is whoever created the row (usually the owner);
+  // `crm_user_id` is the login the membro belongs to. Comment authors are logins.
+  const comentarioDe = (authorId: string) =>
+    makeThread({
+      post_comments: [
+        {
+          id: 102,
+          thread_id: 1,
+          author_id: authorId,
+          content: 'Comentário',
+          created_at: '2026-04-20T11:00:00Z',
+          updated_at: null,
+        },
+      ],
+    });
+
+  it('PostCommentPopover resolves the membro by crm_user_id', () => {
+    const doLogin = {
+      id: 4,
+      conta_id: 'conta-1',
+      user_id: 'owner-1',
+      crm_user_id: 'autor-x',
+      nome: 'Autora Real',
+      avatar_url: 'https://x.test/real.jpg',
+    } as Membro;
+    render(
+      <PostCommentPopover thread={comentarioDe('autor-x')} {...defaultProps} membros={[doLogin]} />,
+    );
+
+    const img = screen.getByAltText('Autora Real');
+    expect(img).toHaveAttribute('src', 'https://x.test/real.jpg');
+  });
+
+  it('does not resolve the author through the membro creator (user_id)', () => {
+    const criadoPeloAutor = {
+      id: 3,
+      conta_id: 'conta-1',
+      user_id: 'autor-x',
+      crm_user_id: 'outra-pessoa',
+      nome: 'Outra Pessoa',
+      avatar_url: 'https://x.test/outra.jpg',
+    } as Membro;
+    render(
+      <PostCommentPopover
+        thread={comentarioDe('autor-x')}
+        {...defaultProps}
+        membros={[criadoPeloAutor]}
+      />,
+    );
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Outra Pessoa')).not.toBeInTheDocument();
+    expect(screen.queryByText('Outra Pessoa')).not.toBeInTheDocument();
   });
 
   it('shows author name and date in the header', () => {

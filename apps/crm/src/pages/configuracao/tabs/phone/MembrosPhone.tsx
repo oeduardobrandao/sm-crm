@@ -9,8 +9,7 @@ import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { ContextMenu, type ContextMenuAction } from '@/components/mobile/ContextMenu';
 import { SwipeRow, type SwipeAction } from '@/components/mobile/SwipeRow';
 import type { CheckListOption } from '@/components/mobile/CheckList';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '../../../../store';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { InviteStatusBadge } from '../../inviteHelpers';
 import { ConfigPhoneScreen, ConfigPhoneSkeleton } from '../../phone/ConfigPhoneScreen';
 import { useConfigSubScreen } from '../../phone/useConfigSubScreen';
@@ -62,11 +61,12 @@ export interface MembrosPhoneProps {
 
 function MemberAvatar({ member, large }: { member: Row; large?: boolean }) {
   return (
-    <span
-      className={`avatar phone-config-avatar${large ? ' phone-config-avatar--large' : ''} ${avatarColorClass(member.id ?? member.nome)}`}
-    >
-      {getInitials(member.nome || '?')}
-    </span>
+    <PessoaAvatar
+      nome={member.nome || '?'}
+      fotoUrl={member.avatar_url}
+      seed={member.id}
+      className={`phone-config-avatar${large ? ' phone-config-avatar--large' : ''}`}
+    />
   );
 }
 

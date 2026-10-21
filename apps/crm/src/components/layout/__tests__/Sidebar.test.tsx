@@ -182,6 +182,34 @@ describe('Sidebar', () => {
     expect(screen.getByText('Instagram').closest('a')).toHaveClass('active');
   });
 
+  it('Sidebar shows the user photo', () => {
+    setAuth({
+      profile: {
+        id: 'user-1',
+        nome: 'Ana Maria',
+        role: 'owner',
+        conta_id: 'w-1',
+        active_workspace_id: 'w-1',
+        avatar_url: 'https://x.test/a.jpg',
+      } as never,
+    });
+    const { container } = renderSidebar();
+    const photo = container.querySelector<HTMLImageElement>(
+      '.sidebar-user-trigger img.avatar--photo',
+    );
+    expect(photo).toHaveAttribute('src', 'https://x.test/a.jpg');
+    expect(photo!.style.width).toBe('32px');
+  });
+
+  it('Sidebar shows the user initials without a photo', () => {
+    setAuth();
+    const { container } = renderSidebar();
+    expect(container.querySelector('.sidebar-user-trigger img')).toBeNull();
+    const avatar = container.querySelector<HTMLElement>('.sidebar-user-trigger .avatar')!;
+    expect(avatar).toHaveTextContent('AM');
+    expect(avatar.style.width).toBe('32px');
+  });
+
   it('toggles the theme and closes the drawer with Escape when opened as a drawer', () => {
     const onClose = vi.fn();
     setAuth();

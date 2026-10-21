@@ -2,8 +2,13 @@ import { ArrowLeft, Paperclip, Send, Users, X } from 'lucide-react';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { MentionText } from '@/components/mentions/MentionText';
 import type { EquipeConversa } from '@/store';
-import { initialsOf } from './Avatars';
-import { AnexoChip, AnexoImagem, EQUIPE_ANEXO_ACCEPT, EquipeConversaAvatar } from './EquipeShared';
+import {
+  AnexoChip,
+  AnexoImagem,
+  EQUIPE_ANEXO_ACCEPT,
+  EquipeConversaAvatar,
+  EquipePessoaAvatar,
+} from './EquipeShared';
 import { horaMensagem } from '../equipeChatLogic';
 import type { useEquipeChatData } from '../hooks/useEquipeChatData';
 import { useEquipeThread } from '../hooks/useEquipeThread';
@@ -20,8 +25,6 @@ interface EquipeThreadProps {
   /** Opens the conversation-details sheet. */
   onOpenDetalhes?: () => void;
 }
-
-const BUBBLE_AVATAR = { width: 28, height: 28, fontSize: '0.65rem', flexShrink: 0 } as const;
 
 /** Desktop thread of a team conversation. Phones use EquipeThreadPhone. */
 export function EquipeThread({
@@ -136,18 +139,15 @@ export function EquipeThread({
               className={`flex max-w-[78%] items-end gap-2 ${minha ? 'flex-row-reverse self-end' : 'self-start'}${inicio ? '' : ' -mt-2'}`}
             >
               {!fim ? (
-                <span style={BUBBLE_AVATAR} aria-hidden="true" />
-              ) : m.author_avatar_url ? (
-                <img
-                  src={m.author_avatar_url}
-                  alt=""
-                  className="avatar"
-                  style={{ ...BUBBLE_AVATAR, objectFit: 'cover' }}
-                />
+                <span style={{ width: 28, height: 28, flexShrink: 0 }} aria-hidden="true" />
               ) : (
-                <span className="avatar" style={BUBBLE_AVATAR} aria-hidden="true">
-                  {initialsOf(m.author_name)}
-                </span>
+                <EquipePessoaAvatar
+                  nome={m.author_name}
+                  fotoUrl={m.author_avatar_url}
+                  seed={m.author_user_id}
+                  size={28}
+                  fontSize="0.65rem"
+                />
               )}
               <div className={`flex flex-col gap-1 ${minha ? 'items-end' : 'items-start'}`}>
                 <div

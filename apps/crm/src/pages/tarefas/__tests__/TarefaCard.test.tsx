@@ -250,4 +250,43 @@ describe('TarefaCard', () => {
       'Toda segunda',
     );
   });
+
+  it('TarefaCard shows the assignee photo', () => {
+    const ana = { id: 1, nome: 'Ana Silva', avatar_url: 'https://x.test/a.jpg' } as never;
+    const { container } = render(
+      <TarefaCard
+        tarefa={makeTarefa({ responsavel_id: 1 })}
+        membro={ana}
+        now={NOW}
+        onClick={() => {}}
+        membros={[ana, ...MEMBROS.slice(1)]}
+        onRefresh={() => {}}
+      />,
+    );
+    const photos = container.querySelectorAll<HTMLImageElement>('img.avatar--photo');
+    // The card's assignee chip plus Ana's row in the reassign menu.
+    expect(photos).toHaveLength(2);
+    expect(photos[0]).toHaveAttribute('src', 'https://x.test/a.jpg');
+    expect(photos[0].style.width).toBe('20px');
+    expect(photos[1].style.width).toBe('16px');
+    // The hover name survives the swap to PessoaAvatar.
+    expect(screen.getByTitle('Ana Silva')).toContainElement(photos[0]);
+  });
+
+  it('TarefaCard shows initials without a photo', () => {
+    const { container } = render(
+      <TarefaCard
+        tarefa={makeTarefa({ responsavel_id: 2 })}
+        membro={{ id: 2, nome: 'Bruno Costa', avatar_url: null } as never}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(container.querySelector('img.avatar--photo')).toBeNull();
+    const avatar = screen.getByTitle('Bruno Costa').querySelector<HTMLElement>('.avatar')!;
+    expect(avatar).toHaveTextContent('BC');
+    expect(avatar.style.width).toBe('20px');
+  });
 });

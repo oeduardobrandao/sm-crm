@@ -9,7 +9,8 @@ const membros: Membro[] = [
   {
     id: 1,
     conta_id: 'conta-1',
-    user_id: 'user-1',
+    user_id: 'creator-1',
+    crm_user_id: 'user-1',
     nome: 'Eduardo Souza',
     email: 'edu@test.com',
     papel: 'owner',

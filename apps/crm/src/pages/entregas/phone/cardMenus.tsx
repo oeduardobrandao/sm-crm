@@ -23,8 +23,7 @@ import {
   type ContextMenuTriggerProps,
 } from '@/components/mobile/ContextMenu';
 import { copyAppLink } from '@/lib/copyAppLink';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { sanitizeUrl } from '@/utils/security';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
@@ -228,12 +227,12 @@ function AssignResponsavelSheet({
             label={m.nome}
             current={m.id === card.membro?.id}
             icon={
-              <span
-                className={`avatar ${avatarColorClass(m.id ?? m.nome)} phone-ent-avatar`}
-                aria-hidden="true"
-              >
-                {getInitials(m.nome)}
-              </span>
+              <PessoaAvatar
+                nome={m.nome}
+                fotoUrl={m.avatar_url}
+                seed={m.id}
+                className="phone-ent-avatar"
+              />
             }
             accessory={
               m.id === card.membro?.id ? (

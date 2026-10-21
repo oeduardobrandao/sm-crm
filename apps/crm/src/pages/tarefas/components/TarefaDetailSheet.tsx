@@ -39,7 +39,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
 import {
   addSubtarefa,
@@ -47,7 +47,6 @@ import {
   deleteSubtarefa,
   deleteTarefa,
   deleteTarefaSerieCompleta,
-  getInitials,
   getSubtarefas,
   toggleSubtarefa,
   updateTarefa,
@@ -315,12 +314,13 @@ export function TarefaDetailSheet({
                   >
                     {membro ? (
                       <>
-                        <span
-                          className={`avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
-                          style={{ width: 20, height: 20, fontSize: '0.55rem', fontWeight: 800 }}
-                        >
-                          {getInitials(membro.nome)}
-                        </span>
+                        <PessoaAvatar
+                          nome={membro.nome}
+                          fotoUrl={membro.avatar_url}
+                          seed={membro.id}
+                          size={20}
+                          className="!text-[0.55rem] !font-extrabold"
+                        />
                         <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{membro.nome}</span>
                       </>
                     ) : (
@@ -368,12 +368,13 @@ export function TarefaDetailSheet({
                         onClick={() => handleAssign(m.id!)}
                         className="flex items-center gap-2 text-xs cursor-pointer"
                       >
-                        <span
-                          className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
-                          style={{ width: 16, height: 16, fontSize: '0.5rem' }}
-                        >
-                          {getInitials(m.nome)}
-                        </span>
+                        <PessoaAvatar
+                          nome={m.nome}
+                          fotoUrl={m.avatar_url}
+                          seed={m.id}
+                          size={16}
+                          className="!text-[0.5rem]"
+                        />
                         {m.nome}
                       </DropdownMenuItem>
                     ))}

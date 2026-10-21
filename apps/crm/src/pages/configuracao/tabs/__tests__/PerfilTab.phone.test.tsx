@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
@@ -11,6 +11,33 @@ const { useAuthMock, updateMock, updateUserMock, consentMock } = vi.hoisted(() =
 }));
 
 vi.mock('../../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
+
+// The upload hook needs a QueryClient; the page only cares which target it gets.
+const useFotoPessoaMock = vi.hoisted(() =>
+  vi.fn((_alvo: unknown) => ({
+    uploading: false,
+    pick: vi.fn(),
+    pickCamera: vi.fn(),
+    upload: vi.fn(async () => true),
+    remove: vi.fn(async () => {}),
+    inputProps: {
+      ref: { current: null },
+      type: 'file' as const,
+      accept: 'image/*',
+      disabled: false,
+      onChange: vi.fn(),
+    },
+    cameraInputProps: {
+      ref: { current: null },
+      type: 'file' as const,
+      accept: 'image/*',
+      capture: 'user' as const,
+      disabled: false,
+      onChange: vi.fn(),
+    },
+  })),
+);
+vi.mock('@/hooks/useFotoPessoa', () => ({ useFotoPessoa: useFotoPessoaMock }));
 
 vi.mock('../../../../store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../store')>()),
@@ -113,5 +140,18 @@ describe('PerfilTab on phones', () => {
     expect(consentMock).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Sair da conta' }));
     expect(signOut).toHaveBeenCalled();
+  });
+
+  it('shows the photo editor for self', () => {
+    setAuth();
+    renderTab();
+    expect(screen.getByRole('button', { name: 'Adicionar foto de Ana Souza' })).toBeInTheDocument();
+    expect(useFotoPessoaMock).toHaveBeenCalledWith({
+      kind: 'self',
+      userId: 'user-1-aaaaaaaaaaaaaaaaaaaa',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar foto' }));
+    const sheet = screen.getByRole('dialog', { name: 'Foto de perfil' });
+    expect(within(sheet).getByRole('button', { name: 'Escolher da galeria' })).toBeInTheDocument();
   });
 });

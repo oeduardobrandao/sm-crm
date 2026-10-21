@@ -13,15 +13,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { getEquipeChatMembers, createEquipeConversa } from '@/store';
-import { initialsOf } from './Avatars';
+import { EquipePessoaAvatar } from './EquipeShared';
 
 interface NovaConversaDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (conversaId: number) => void;
 }
-
-const AVATAR = { width: 32, height: 32, fontSize: '0.7rem', flexShrink: 0 } as const;
 
 /** Nova conversa (DM ou grupo). Modo 'lista': busca + colegas (clique abre
  * DM direto). Modo 'grupo' (so owner/admin): nome + multi-select + Criar. */
@@ -153,27 +151,13 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
                   className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-[var(--surface-hover)] disabled:opacity-50"
                   style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
                 >
-                  {m.avatar_url ? (
-                    <img
-                      src={m.avatar_url}
-                      alt=""
-                      className="avatar"
-                      style={{ ...AVATAR, borderRadius: '50%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <span
-                      className="avatar"
-                      style={{
-                        ...AVATAR,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                      aria-hidden="true"
-                    >
-                      {initialsOf(m.nome)}
-                    </span>
-                  )}
+                  <EquipePessoaAvatar
+                    nome={m.nome}
+                    fotoUrl={m.avatar_url}
+                    seed={m.user_id}
+                    size={32}
+                    fontSize="0.7rem"
+                  />
                   <span className="text-sm font-medium">{m.nome}</span>
                 </button>
               ))}
@@ -219,27 +203,13 @@ export function NovaConversaDialog({ open, onOpenChange, onCreated }: NovaConver
                     >
                       {marcado && <Check size={12} />}
                     </span>
-                    {m.avatar_url ? (
-                      <img
-                        src={m.avatar_url}
-                        alt=""
-                        className="avatar"
-                        style={{ ...AVATAR, borderRadius: '50%', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <span
-                        className="avatar"
-                        style={{
-                          ...AVATAR,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                        aria-hidden="true"
-                      >
-                        {initialsOf(m.nome)}
-                      </span>
-                    )}
+                    <EquipePessoaAvatar
+                      nome={m.nome}
+                      fotoUrl={m.avatar_url}
+                      seed={m.user_id}
+                      size={32}
+                      fontSize="0.7rem"
+                    />
                     <span className="text-sm font-medium">{m.nome}</span>
                   </button>
                 );

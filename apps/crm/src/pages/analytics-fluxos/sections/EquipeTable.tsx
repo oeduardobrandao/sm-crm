@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { Badge } from '@/components/ui/badge';
 import type { EquipeAgg } from '@/services/workflowAnalytics';
 import type { Membro } from '../../../store';
@@ -42,26 +43,13 @@ function MembroCell({
   size?: number;
 }): ReactNode {
   const nome = membro?.nome ?? 'Membro removido';
+  // No photo, no avatar: this table has always been name-only for those rows.
+  if (!membro?.avatar_url) return nome;
   return (
-    <>
-      {membro?.avatar_url && (
-        <img
-          src={membro.avatar_url}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          style={{
-            width: size,
-            height: size,
-            borderRadius: '50%',
-            objectFit: 'cover',
-            marginRight: '0.5rem',
-            verticalAlign: 'middle',
-          }}
-        />
-      )}
+    <span className="inline-flex items-center gap-2 align-middle">
+      <PessoaAvatar nome={nome} fotoUrl={membro.avatar_url} seed={membro.id} size={size} />
       {nome}
-    </>
+    </span>
   );
 }
 

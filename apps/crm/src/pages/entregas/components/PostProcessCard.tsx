@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
 import { copyAppLink } from '@/lib/copyAppLink';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { getInitials } from '@/lib/initials';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { PostEntity } from '../boardEntity';
@@ -394,18 +394,13 @@ export function PostProcessCard({
           >
             {entity.responsavel ? (
               <>
-                <div
-                  className={`avatar ${avatarColorClass(entity.responsavel.id ?? entity.responsavel.nome)}`}
-                  style={{
-                    width: 18,
-                    height: 18,
-                    fontSize: '0.5rem',
-                    fontWeight: 800,
-                    flexShrink: 0,
-                  }}
-                >
-                  {getInitials(entity.responsavel.nome)}
-                </div>
+                <PessoaAvatar
+                  nome={entity.responsavel.nome}
+                  fotoUrl={entity.responsavel.avatar_url}
+                  seed={entity.responsavel.id}
+                  size={18}
+                  className="!text-[0.5rem] !font-extrabold"
+                />
                 <span
                   style={{
                     fontSize: '0.7rem',

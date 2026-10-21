@@ -30,14 +30,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { captureEvent } from '@/lib/analytics';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import {
-  getInitials,
   getWorkspaceRoles,
   getWorkspaceUsers,
   removeWorkspaceUser,
@@ -390,12 +389,13 @@ export default function MembrosTab() {
         <div style={{ marginBottom: '1rem' }}>
           {memberEmails.map((u: Record<string, string>) => (
             <div key={u.id} className="config-member-row">
-              <div
-                className={`avatar ${avatarColorClass(u.id ?? u.nome)}`}
-                style={{ width: 36, height: 36, fontWeight: 700 }}
-              >
-                {getInitials(u.nome || '?')}
-              </div>
+              <PessoaAvatar
+                nome={u.nome || '?'}
+                fotoUrl={u.avatar_url}
+                seed={u.id}
+                size={36}
+                className="font-bold"
+              />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{

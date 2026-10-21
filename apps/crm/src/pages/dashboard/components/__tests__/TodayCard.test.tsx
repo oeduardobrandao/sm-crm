@@ -301,6 +301,31 @@ describe('TodayCard', () => {
     );
   });
 
+  it('TodayCard shows the responsável photo', async () => {
+    useAuthMock.mockReturnValue(OWNER_AUTH);
+    getMembrosMock.mockResolvedValue([
+      { ...MEMBROS[0], avatar_url: 'https://x.test/a.jpg' },
+      { ...MEMBROS[1], avatar_url: null },
+    ]);
+    getTarefasMock.mockResolvedValue([
+      tarefa({ id: 1, titulo: 'Com foto', data_limite: '2026-08-17', responsavel_id: 10 }),
+      tarefa({ id: 2, titulo: 'Sem foto', data_limite: '2026-08-17', responsavel_id: 11 }),
+    ]);
+    renderCard();
+
+    const comFoto = await screen.findByRole('link', { name: /Com foto/ });
+    const photo = comFoto.querySelector<HTMLImageElement>('img.avatar--photo');
+    expect(photo).toHaveAttribute('src', 'https://x.test/a.jpg');
+    expect(photo).toHaveClass('today-row-avatar');
+    expect(photo!.style.width).toBe('20px');
+
+    const semFoto = screen.getByRole('link', { name: /Sem foto/ });
+    expect(semFoto.querySelector('img')).toBeNull();
+    const initials = semFoto.querySelector<HTMLElement>('.today-row-avatar')!;
+    expect(initials).toHaveTextContent('CD');
+    expect(initials.style.width).toBe('20px');
+  });
+
   it('checkbox completes the task optimistically and undo restores the prior status', async () => {
     useAuthMock.mockReturnValue(OWNER_AUTH);
     const row42 = tarefa({

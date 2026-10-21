@@ -8,13 +8,16 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { FotoPessoaEditor } from '@/components/FotoPessoaEditor';
 import { openConsentPreferences } from '@/lib/consent';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
-import { getInitials } from '../../../store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { PerfilPhone } from './phone/PerfilPhone';
+
+/** Who sees the photo, under the editor (desktop and phone). */
+const PERFIL_FOTO_DESCRICAO =
+  'Aparece para a sua equipe em todo o CRM: Entregas, Tarefas, Agenda e Mensagens. Os clientes não veem.';
 
 /** Personal settings: profile, password, account details and sign-out. */
 export default function PerfilTab() {
@@ -102,14 +105,24 @@ export default function PerfilTab() {
 
   if (!user) return null;
 
-  const initials = profile?.nome ? getInitials(profile.nome) : '??';
+  const displayName = profile?.nome ?? user.email ?? '';
+  const fotoEditor = (variant: 'desktop' | 'phone') => (
+    <FotoPessoaEditor
+      alvo={{ kind: 'self', userId: user.id }}
+      nome={displayName}
+      seed={user.id}
+      fotoUrl={profile?.avatar_url ?? null}
+      variant={variant}
+      descricao={PERFIL_FOTO_DESCRICAO}
+    />
+  );
 
   if (isPhone) {
     return (
       <PerfilPhone
         user={user}
-        displayName={profile?.nome ?? user.email ?? ''}
-        initials={initials}
+        displayName={displayName}
+        fotoEditor={fotoEditor('phone')}
         nome={{ value: pNome, onChange: setPNome }}
         empresa={{ value: pEmpresa, onChange: setPEmpresa }}
         telefone={{ value: pTelefone, onChange: setPTelefone }}
@@ -141,12 +154,6 @@ export default function PerfilTab() {
             minWidth: 0,
           }}
         >
-          <div
-            className={`avatar ${avatarColorClass(user?.id ?? profile?.nome)}`}
-            style={{ width: 64, height: 64, fontWeight: 700, fontSize: '1.4rem' }}
-          >
-            {initials}
-          </div>
           <div style={{ minWidth: 0 }}>
             <h3
               style={{
@@ -172,6 +179,12 @@ export default function PerfilTab() {
             <span className="badge badge-success">Conta Ativa</span>
           </div>
         </div>
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h4 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 600 }}>Sua foto</h4>
+          {fotoEditor('desktop')}
+        </div>
+        <div style={{ height: 1, background: 'var(--border-color)', marginBottom: '1.5rem' }} />
 
         <div className="space-y-3">
           <div className="config-form-grid">

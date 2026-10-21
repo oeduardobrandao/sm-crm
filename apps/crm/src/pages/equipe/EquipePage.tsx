@@ -56,9 +56,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
-import { addMembro, getMembros, removeMembro, getInitials, type Membro } from '../../store';
+import { addMembro, getMembros, removeMembro, type Membro } from '../../store';
 import { useAuth } from '../../context/AuthContext';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import {
   assertNoFinancialColumns,
   formatFinancialBRL,
@@ -187,13 +187,12 @@ export default function EquipePage() {
               cargo: row.cargo,
               tipo,
               custo_mensal: row.custo_mensal ? Number(row.custo_mensal) : null,
-              avatar_url: '',
               data_pagamento: row.data_pagamento ? Number(row.data_pagamento) : undefined,
             };
             await addMembro(
               stripFinancialFields(rowPayload, canSeeFinancials, ['custo_mensal']) as Omit<
                 Membro,
-                'id' | 'user_id' | 'conta_id'
+                'id' | 'user_id' | 'conta_id' | 'avatar_url'
               >,
             );
             count++;
@@ -450,7 +449,6 @@ export default function EquipePage() {
             </TableHeader>
             <TableBody>
               {filtered.map((m) => {
-                const avatarClass = avatarColorClass(m.id ?? m.nome);
                 return (
                   <TableRow
                     key={m.id}
@@ -459,12 +457,13 @@ export default function EquipePage() {
                   >
                     <TableCell style={{ paddingLeft: '1rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <div
-                          className={`avatar ${avatarClass}`}
-                          style={{ width: 28, height: 28, fontSize: '0.7rem', fontWeight: 700 }}
-                        >
-                          {getInitials(m.nome)}
-                        </div>
+                        <PessoaAvatar
+                          nome={m.nome}
+                          fotoUrl={m.avatar_url}
+                          seed={m.id}
+                          size={28}
+                          className="font-bold"
+                        />
                         <button
                           className="client-link"
                           onClick={(e) => {

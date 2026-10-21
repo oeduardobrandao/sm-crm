@@ -184,31 +184,24 @@ export function MensagensPage() {
               <div key={itemKey(m)} className={`max-w-[78%] ${mine ? 'self-end' : 'self-start'}`}>
                 {!mine && (
                   <div className="mb-0.5 flex items-center gap-1.5 text-[12px] font-semibold hub-tx3">
-                    {m.author_avatar_url ? (
-                      <img
-                        src={m.author_avatar_url}
-                        alt=""
-                        data-testid="hub-author-avatar"
-                        className="h-[18px] w-[18px] rounded-full object-cover"
-                      />
-                    ) : (
-                      <span
-                        aria-hidden="true"
-                        className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[12px] font-bold hub-txt"
-                        style={{
-                          background: 'var(--hub-soft)',
-                          boxShadow: 'inset 0 0 0 1px var(--hub-bd)',
-                        }}
-                      >
-                        {(m.author_name ?? t('defaultAuthorName', 'Equipe'))
-                          .split(' ')
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .map((p) => p[0])
-                          .join('')
-                          .toUpperCase()}
-                      </span>
-                    )}
+                    {/* Team photos never reach the Hub: initials only, whatever the payload carries. */}
+                    <span
+                      aria-hidden="true"
+                      data-testid="hub-author-initials"
+                      className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[12px] font-bold hub-txt"
+                      style={{
+                        background: 'var(--hub-soft)',
+                        boxShadow: 'inset 0 0 0 1px var(--hub-bd)',
+                      }}
+                    >
+                      {(m.author_name ?? t('defaultAuthorName', 'Equipe'))
+                        .split(' ')
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((p) => p[0])
+                        .join('')
+                        .toUpperCase()}
+                    </span>
                     {m.author_name ?? t('defaultAuthorName', 'Equipe')}
                   </div>
                 )}

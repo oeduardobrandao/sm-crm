@@ -90,7 +90,13 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
         console.error("[hub-mensagens] feed error:", error);
         return json({ error: "Erro interno." }, 500);
       }
-      return json({ items: items ?? [], unread });
+      // The CRM reads team photos from the same RPC; the Hub never shows them.
+      const rows = Array.isArray(items) ? (items as Record<string, unknown>[]) : [];
+      const hubItems = rows.map((item) => ({
+        ...item,
+        author_avatar_url: null,
+      }));
+      return json({ items: hubItems, unread });
     }
 
     if (req.method === "POST" && isSeen) {

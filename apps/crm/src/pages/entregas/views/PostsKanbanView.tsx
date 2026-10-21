@@ -71,7 +71,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { formatPostDate } from '@/utils/postDate';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { getInitials } from '@/lib/initials';
 import { formatEtapaPrazo } from '../etapaPrazo';
 import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
@@ -349,11 +349,12 @@ function PostBoardCardContent({
               </TooltipProvider>
             )}
             {membro && (
-              <span
-                className={`avatar board-post-assignee-avatar ${avatarColorClass(membro.id ?? membro.nome)}`}
-              >
-                {getInitials(membro.nome)}
-              </span>
+              <PessoaAvatar
+                nome={membro.nome}
+                fotoUrl={membro.avatar_url}
+                seed={membro.id}
+                className="board-post-assignee-avatar"
+              />
             )}
           </span>
           {card && membro && (

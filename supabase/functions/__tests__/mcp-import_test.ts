@@ -194,10 +194,22 @@ Deno.test("mcp-import: createMember inserts with defaults and ctx stamps, no cus
   assertEquals(row.user_id, "user-1");
   assertEquals(row.tipo, "clt");
   assertEquals(row.cargo, "");
-  assertEquals(row.avatar_url, "");
   assertEquals(row.custo_mensal, 3000);
   assertEquals(out.already_existed, false);
   assert(!("custo_mensal" in out), "custo_mensal never echoed");
+});
+
+Deno.test("mcp-import: create_member does not send avatar_url", async () => {
+  const { db, calls } = makeFakeDb({
+    membros: [
+      { data: [], error: null },
+      { data: { id: 7, nome: "Bia", cargo: "", tipo: "clt", data_pagamento: null, crm_user_id: null, created_at: "2026-10-21" }, error: null },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  await createMember(deps, { nome: "Bia" });
+  const row = insertPayload(calls, "membros")!;
+  assert(!Object.hasOwn(row, "avatar_url"), "insert payload must not carry avatar_url");
 });
 
 Deno.test("mcp-import: createMember matches nome, fills empty cargo and NULL custo only", async () => {

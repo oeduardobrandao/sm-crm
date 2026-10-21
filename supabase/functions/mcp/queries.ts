@@ -286,7 +286,6 @@ export async function createMember(
       nome,
       cargo: args.cargo?.trim() ?? "",
       tipo: args.tipo ?? "clt",
-      avatar_url: "",
       custo_mensal: args.custo_mensal ?? null,
       data_pagamento: args.data_pagamento ?? null,
     })

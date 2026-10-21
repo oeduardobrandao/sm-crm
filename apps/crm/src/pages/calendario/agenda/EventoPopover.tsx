@@ -43,8 +43,7 @@ import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { useSheetActions } from '@/components/mobile/sheetActions';
 import { useAuth } from '@/context/AuthContext';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import {
   AGENDA_QUERY_KEY,
   ehAgendaNaoExiste,
@@ -253,23 +252,15 @@ export function ancoraVirtual(anchor: HTMLElement) {
 
 // ---- Pieces -------------------------------------------------------------------------
 
-const AVATAR = { width: 28, height: 28, fontSize: 11, flexShrink: 0 } as const;
-
 function Avatar({ pessoa }: { pessoa: Pessoa }) {
-  if (pessoa.avatar_url) {
-    return (
-      <img
-        src={pessoa.avatar_url}
-        alt=""
-        className="avatar"
-        style={{ ...AVATAR, objectFit: 'cover' }}
-      />
-    );
-  }
   return (
-    <span className={`avatar ${avatarColorClass(pessoa.id)}`} style={AVATAR} aria-hidden="true">
-      {getInitials(pessoa.nome)}
-    </span>
+    <PessoaAvatar
+      nome={pessoa.nome}
+      fotoUrl={pessoa.avatar_url}
+      seed={pessoa.id}
+      size={28}
+      className="!text-[11px]"
+    />
   );
 }
 

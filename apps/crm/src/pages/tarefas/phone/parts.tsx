@@ -1,7 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { Calendar as CalendarIcon, Check, CheckSquare, Repeat, User2 } from 'lucide-react';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { cn } from '@/lib/utils';
 import type { Membro, TarefaTag, TarefaWithRelations } from '../../../store';
 import { dueBadge, type DeadlineClass } from '../tarefasLogic';
@@ -99,16 +98,12 @@ export function MembroAvatar({ membro, large }: { membro: Membro | null; large?:
     );
   }
   return (
-    <span
-      className={cn(
-        'avatar phone-tar-avatar',
-        avatarColorClass(membro.id ?? membro.nome),
-        large && 'phone-tar-avatar--lg',
-      )}
-      aria-hidden="true"
-    >
-      {getInitials(membro.nome)}
-    </span>
+    <PessoaAvatar
+      nome={membro.nome}
+      fotoUrl={membro.avatar_url}
+      seed={membro.id}
+      className={cn('phone-tar-avatar', large && 'phone-tar-avatar--lg')}
+    />
   );
 }
 

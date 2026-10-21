@@ -211,6 +211,33 @@ describe('EquipeThread', () => {
     expect(bubbles[1]).toBe(minha);
   });
 
+  it('EquipeThread falls back to initials when the photo fails', () => {
+    renderThread({
+      mensagens: makeMensagens({
+        data: {
+          pages: [
+            [
+              {
+                ...MENSAGENS[0],
+                author_name: 'Ana Lima',
+                author_avatar_url: 'https://x.test/ana.jpg',
+              },
+            ],
+          ],
+        },
+      }),
+    });
+
+    const bolha = screen.getByTestId('equipe-msg-1');
+    const img = bolha.querySelector('img');
+    expect(img).toHaveAttribute('src', 'https://x.test/ana.jpg');
+
+    fireEvent.error(img!);
+
+    expect(bolha.querySelector('img')).not.toBeInTheDocument();
+    expect(bolha).toHaveTextContent('AL');
+  });
+
   it('sends a message on Enter and clears the draft', async () => {
     const { send } = renderThread();
     const input = screen.getByRole('textbox', { name: 'Mensagem para a equipe…' });

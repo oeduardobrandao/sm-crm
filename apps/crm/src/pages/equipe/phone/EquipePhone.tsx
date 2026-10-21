@@ -23,10 +23,9 @@ import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { CardListSkeleton } from '@/components/ui/skeletons';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { cn } from '@/lib/utils';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
-import { getInitials, type Membro } from '../../../store';
+import { type Membro } from '../../../store';
 
 export type EquipeFilter = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 export type EquipeSort = 'nome' | 'custo_maior' | 'custo_menor';
@@ -231,12 +230,12 @@ export function EquipePhone({
               <PhoneCrudRow
                 key={m.id ?? m.nome}
                 leading={
-                  <span
-                    className={cn('avatar phone-crud-avatar', avatarColorClass(m.id ?? m.nome))}
-                    aria-hidden="true"
-                  >
-                    {getInitials(m.nome)}
-                  </span>
+                  <PessoaAvatar
+                    nome={m.nome}
+                    fotoUrl={m.avatar_url}
+                    seed={m.id}
+                    className="phone-crud-avatar"
+                  />
                 }
                 title={m.nome}
                 subtitle={[m.cargo, TIPO_LABEL[m.tipo]].filter(Boolean).join(' · ')}

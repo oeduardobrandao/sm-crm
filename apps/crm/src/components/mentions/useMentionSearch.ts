@@ -65,7 +65,12 @@ export function useMentionSearch() {
     () =>
       (membrosQuery.data ?? [])
         .filter((m): m is typeof m & { id: number } => typeof m.id === 'number')
-        .map((m) => ({ entityType: 'membro', id: m.id, label: m.nome, avatarUrl: m.avatar_url })),
+        .map((m) => ({
+          entityType: 'membro',
+          id: m.id,
+          label: m.nome,
+          avatarUrl: m.avatar_url ?? undefined,
+        })),
     [membrosQuery.data],
   );
 

@@ -67,6 +67,27 @@ Deno.test("hub-mensagens: GET returns feed items + unread", async () => {
   assertEquals(unreadCall?.payload?.p_cliente_id, 14);
 });
 
+Deno.test("hub-mensagens: GET nulls author_avatar_url for every item", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("get_mensagens_feed", {
+    data: [
+      { ...FEED_ROW, author_avatar_url: "https://cdn.example.com/ana.jpg" },
+      { ...FEED_ROW, item_id: 2, author_avatar_url: null },
+      { ...FEED_ROW, item_id: 3, is_workspace_user: false, author_avatar_url: "https://cdn.example.com/cli.jpg" },
+    ],
+    error: null,
+  });
+  db.queueRpc("get_mensagens_unread", { data: [{ cliente_id: 14, unread_count: 0 }], error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-mensagens?token=t"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.items.length, 3);
+  for (const item of body.items) assertEquals(item.author_avatar_url, null);
+  assertEquals(body.items[0].author_name, "Ana");
+  assertEquals(body.items[2].item_id, 3);
+});
+
 Deno.test("hub-mensagens: GET forwards the composite cursor to get_mensagens_feed", async () => {
   const db = createSupabaseQueryMock();
   setupToken(db);
