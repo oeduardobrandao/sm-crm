@@ -46,7 +46,10 @@ ALTER TABLE public.post_process_events
 ALTER TABLE public.post_process_events
   ADD CONSTRAINT post_process_events_evento_check CHECK (evento IN (
     'desmembrado', 'aplicado', 'avancou', 'voltou', 'concluido',
-    'reaberto', 'removido', 'vinculado', 'etapa_editada', 'voltou_rascunho'));
+    'reaberto', 'removido', 'vinculado', 'etapa_editada', 'voltou_rascunho')) NOT VALID;
+-- NOT VALID + VALIDATE: a validacao so pega SHARE UPDATE EXCLUSIVE, sem travar escritas.
+ALTER TABLE public.post_process_events
+  VALIDATE CONSTRAINT post_process_events_evento_check;
 
 CREATE OR REPLACE FUNCTION public.transition_post_process(
   p_process_id           bigint,
