@@ -24,7 +24,12 @@ import {
 
 export type PostProcessEstado = 'ativo' | 'concluido' | 'encerrado';
 export type PostProcessStepEstado =
-  'pendente' | 'ativo' | 'concluido' | 'herdado' | 'ignorado' | 'interrompido';
+  | 'pendente'
+  | 'ativo'
+  | 'concluido'
+  | 'herdado'
+  | 'ignorado'
+  | 'interrompido';
 
 export interface PostProcessStep {
   id: number;
