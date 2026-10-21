@@ -432,6 +432,21 @@ describe('KanbanView saída de etapa de aprovação', () => {
     expect(store.advanceWorkflowFromApproval).not.toHaveBeenCalled();
     expect(store.getWorkflowPostStatusCounts).not.toHaveBeenCalled();
   });
+
+  it('falha no avanço de etapa padrão mostra a mensagem de erro crua', async () => {
+    store.completeEtapa.mockRejectedValue(new Error('db offline'));
+    const padraoEtapa = { ...approvalEtapa, tipo: 'padrao' as const, nome: 'Copy' };
+    const onRefresh = vi.fn();
+    renderBoard({
+      card: makeCard({ etapa: padraoEtapa, allEtapas: [padraoEtapa, nextEtapa] }),
+      onRefresh,
+    });
+    fireEvent.click(screen.getByText('forward'));
+    await screen.findByText('Avançar etapa?');
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('db offline'));
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
 });
 
 // The guided tour selects steps by [data-tour] presence at runtime, so a lost anchor

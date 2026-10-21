@@ -176,7 +176,7 @@ export function useWorkflowStageCommands<Ctx = unknown>(
         onRefresh();
       } catch (err: unknown) {
         onMoveFailed?.(card, ctx);
-        toast.error(getPostProcessErrorToast(err, 'Erro ao avançar etapa'));
+        toast.error((err as Error).message || 'Erro ao avançar etapa');
       }
     },
     [onRefresh, onBeforeMove, onMoveSucceeded, onMoveFailed, handleRecurringOrToast],
