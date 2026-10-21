@@ -9,10 +9,6 @@ import {
   getWorkflowEtapasByWorkflowIds,
   getDeadlineInfo,
   getMembros,
-  hasLaterApprovalEtapa,
-  revertEtapa,
-  approvePostsInternally,
-  sendPostsToCliente,
   duplicateWorkflow,
   getWorkflowPostStats,
   getConcludedWorkflowsByCliente,
@@ -33,12 +29,8 @@ import { WorkflowCard } from '@/pages/entregas/components/WorkflowCard';
 import { WorkflowDrawer } from '@/pages/entregas/components/WorkflowDrawer';
 import { PostProcessCard } from '@/pages/entregas/components/PostProcessCard';
 import { StandalonePostDrawer } from '@/pages/entregas/components/StandalonePostDrawer';
-import { AutoScheduleBatchDialog } from '@/pages/entregas/components/AutoScheduleBatchDialog';
 import {
   EditWorkflowModal,
-  ForwardConfirmDialog,
-  RevertConfirmDialog,
-  ClientApprovalChoiceDialog,
   RecurringWorkflowDialog,
 } from '@/pages/entregas/components/WorkflowModals';
 import { PostProcessCardMenu, WorkflowCardMenu } from '@/pages/entregas/phone/cardMenus';
@@ -51,8 +43,6 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useOverlayHistoryEntry } from '@/hooks/useOverlayHistoryEntry';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import type { BoardCard } from '@/pages/entregas/hooks/useEntregasData';
-import { completeEtapaForAdvance, notifyRearmOutcome } from '@/pages/entregas/advanceEtapa';
-import { decideApprovalAdvance } from '@/pages/entregas/approvalAdvance';
 import { toPostEntity, type PostEntity } from '@/pages/entregas/boardEntity';
 import {
   canConcluir,
@@ -61,6 +51,7 @@ import {
   type ProcessTarget,
 } from '@/pages/entregas/postProcessCommands';
 import { usePostProcessCommands } from '@/pages/entregas/hooks/usePostProcessCommands';
+import { useWorkflowStageCommands } from '@/pages/entregas/hooks/useWorkflowStageCommands';
 import { getWorkflowCovers, getPostCovers } from '@/services/postMedia';
 import {
   AlertDialog,
@@ -158,12 +149,12 @@ const EMPTY_COUNTS: Map<number, number> = new Map();
 /**
  * "Entregas" tab: active workflow board, post delivery calendar, and
  * concluded-workflow history — ported verbatim from the pre-split
- * ClienteDetalhePage (see git history at d30adeea). This is the highest-risk
- * extraction in the cliente-detalhe tabs split: the approval/advance/re-arm
- * logic has real operational consequences, so every handler below preserves
- * the historical call shape exactly (`completeEtapaForAdvance`,
- * `notifyRearmOutcome`, `{ rearm: false }` on the "sem alterar posts" path,
- * and the full historical set of `invalidateQueries` calls).
+ * ClienteDetalhePage (see git history at d30adeea). The fluxo stage chain
+ * (ForwardConfirm, the approval-exit dialog with its atomic
+ * `advanceWorkflowFromApproval`, RevertConfirm, the batch auto-schedule nudge)
+ * is the shared `useWorkflowStageCommands`, the same one the Fluxos board
+ * uses; this tab only supplies `refreshCards` (the full historical set of
+ * `invalidateQueries` calls) and its own recurring-cycle dialog.
  *
  * Query isolation: this tab only ever fires workflow/Entregas-domain queries
  * (`workflowsByCliente`, `membros`, the five posts-count queries,
@@ -205,29 +196,16 @@ export default function EntregasTab() {
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | undefined>(undefined);
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [editCardModal, setEditCardModal] = useState<BoardCard | null>(null);
-  const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
-  const [revertTarget, setRevertTarget] = useState<BoardCard | null>(null);
-  const [approvalChoice, setApprovalChoice] = useState<{
-    card: BoardCard;
-    willRearm: boolean;
-  } | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
   // Aviso de agendamento automático em lote (spec 2026-09-17, peça 2):
   // schedulingEnabled é o gate incondicional (feature_post_scheduling);
   // tiktokEnabled é o gate ADICIONAL só para post tiktok/both (decisão 5 da
-  // spec), aplicado por post DENTRO do AutoScheduleBatchDialog.
+  // spec), aplicado por post DENTRO do AutoScheduleBatchDialog (do hook
+  // useWorkflowStageCommands).
   const { features } = useWorkspaceLimits();
   const schedulingEnabled = features?.feature_post_scheduling === true;
   const tiktokEnabled = features?.feature_tiktok === true;
   const postProcessesEnabled = features?.feature_post_processes === true;
-  // Carrega o booleano do gate de segurança (fix B da revisão final) junto do
-  // id, capturado no momento em que !willRearm foi checado em
-  // handleApproveInternally -- AutoScheduleBatchDialog agora exige essa prop e
-  // a usa como seu próprio gate interno, não recalculado depois no render.
-  const [batchSchedule, setBatchSchedule] = useState<{
-    workflowId: number;
-    isFinalApprovalCycle: boolean;
-  } | null>(null);
 
   const { data: clienteWorkflowsRaw } = useQuery({
     queryKey: ['workflowsByCliente', clienteId],
@@ -458,6 +436,16 @@ export default function EntregasTab() {
   };
 
   const postProcessCommands = usePostProcessCommands({ onRefresh: refreshCards });
+  // No move hooks: like the list views, the tab just waits for the refetch.
+  const stageCommands = useWorkflowStageCommands({
+    onRefresh: refreshCards,
+    onRecurring: setRecurringWfId,
+    postsCounts,
+    clearedClienteCounts,
+    schedulingEnabled,
+    tiktokEnabled,
+    recurringWfId,
+  });
 
   // Phones: the concluded fluxo's history is a pushed screen (in place of the tab, under
   // its own nav bar) and the two drawers are full-screen; each gets a history entry so
@@ -491,133 +479,6 @@ export default function EntregasTab() {
       if (!updated) setEditCardModal(null);
     }
   }, [boardCards]);
-
-  const handleForwardClick = (card: BoardCard) => setForwardTarget(card);
-
-  const handleForwardConfirm = async () => {
-    const card = forwardTarget;
-    setForwardTarget(null);
-    if (!card) return;
-
-    const decision = decideApprovalAdvance({
-      tipo: card.etapa.tipo,
-      // "Cleared" (approved / scheduled / posted / publish-failed), not just
-      // aprovado_cliente — a workflow whose approved posts are already scheduled
-      // should advance without prompting the approval dialog.
-      total: postsCounts.get(card.workflow.id!) ?? 0,
-      cleared: clearedClienteCounts.get(card.workflow.id!) ?? 0,
-      temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, card.etapa.id!),
-    });
-
-    if (decision.kind === 'choose') {
-      setApprovalChoice({ card, willRearm: decision.willRearm });
-      return;
-    }
-
-    try {
-      const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!);
-      if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-        setRecurringWfId(card.workflow.id!);
-      } else {
-        refreshCards();
-        toast.success(t('detail.stepCompleted'));
-      }
-      notifyRearmOutcome(result);
-    } catch (err: unknown) {
-      toast.error(t('detail.stepError', { error: (err as Error).message }));
-    }
-  };
-
-  const handleApproveInternally = async () => {
-    const card = approvalChoice?.card;
-    const willRearm = approvalChoice?.willRearm === true;
-    setApprovalChoice(null);
-    if (!card) return;
-    try {
-      await approvePostsInternally(card.workflow.id!);
-      // Spec peça 2 / decisão 4: assim que a escrita de aprovação resolve. Fica
-      // ANTES do avanço de etapa de propósito -- se completeEtapaForAdvance
-      // lançar, o catch abaixo mostra o erro do avanço, mas os posts já estão
-      // aprovados e o aviso de agendamento continua válido.
-      //
-      // isFinalApprovalCycle: !willRearm -- capturado AQUI, no mesmo instante em
-      // que willRearm foi checado, e carregado junto do workflowId (fix B da
-      // revisão final). AutoScheduleBatchDialog agora exige essa prop como seu
-      // próprio gate interno.
-      if (!willRearm && schedulingEnabled && card.cliente?.auto_publish_on_approval === true) {
-        setBatchSchedule({ workflowId: card.workflow.id!, isFinalApprovalCycle: !willRearm });
-      }
-      const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!);
-      if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-        // Recurring-completion wins over the batch-schedule nudge (fix round 1's
-        // render-time gate). Fix round 2: also CLEAR batchSchedule here, not
-        // just suppress it -- otherwise, once the recurring dialog is dismissed
-        // (recurringWfId -> null again), the gate flips back open and the nudge
-        // resurfaces for a workflow already dealt with. Fix G (revisão final):
-        // id-guarded like KanbanView's equivalent clear, not unconditional --
-        // harmless here in practice (same card, same tick) but keeps the two
-        // call sites' clear semantics identical.
-        setBatchSchedule((prev) => (prev?.workflowId === card.workflow.id ? null : prev));
-        setRecurringWfId(card.workflow.id!);
-      } else {
-        refreshCards();
-        toast.success(t('detail.stepCompleted'));
-      }
-      notifyRearmOutcome(result);
-    } catch (err: unknown) {
-      toast.error(t('detail.stepError', { error: (err as Error).message }));
-    }
-  };
-
-  const handleSendToPortal = async () => {
-    const card = approvalChoice?.card;
-    setApprovalChoice(null);
-    if (!card) return;
-    try {
-      await sendPostsToCliente(card.workflow.id!);
-      toast.success(t('detail.sentToPortal'));
-      refreshCards();
-    } catch (err: unknown) {
-      toast.error((err as Error).message);
-    }
-  };
-
-  const handleAdvanceWithoutApproval = async () => {
-    const card = approvalChoice?.card;
-    setApprovalChoice(null);
-    if (!card) return;
-    try {
-      // Literal contract of this option: post statuses are left alone, so no re-arm.
-      const { workflow: updatedWf } = await completeEtapaForAdvance(
-        card.workflow.id!,
-        card.etapa.id!,
-        { rearm: false },
-      );
-      if (updatedWf.status === 'concluido' && card.workflow.recorrente) {
-        setRecurringWfId(card.workflow.id!);
-      } else {
-        refreshCards();
-        toast.success('Etapa avançada — status dos posts mantidos.');
-      }
-    } catch (err: unknown) {
-      toast.error(t('detail.stepError', { error: (err as Error).message }));
-    }
-  };
-
-  const handleRevertClick = (card: BoardCard) => setRevertTarget(card);
-
-  const handleRevertConfirm = async () => {
-    const card = revertTarget;
-    setRevertTarget(null);
-    if (!card) return;
-    try {
-      await revertEtapa(card.workflow.id!);
-      refreshCards();
-      toast.success(t('detail.stepReverted'));
-    } catch (err: unknown) {
-      toast.error((err as Error).message);
-    }
-  };
 
   const handleRecurringConfirm = async () => {
     if (!recurringWfId) return;
@@ -722,8 +583,8 @@ export default function EntregasTab() {
                   onRefresh={refreshCards}
                   onOpenPosts={() => openWorkflow(card)}
                   onEdit={() => setEditCardModal(card)}
-                  onForward={() => handleForwardClick(card)}
-                  onRevert={() => handleRevertClick(card)}
+                  onForward={() => stageCommands.forward(card)}
+                  onRevert={() => stageCommands.revert(card)}
                   preview={
                     <PhoneWorkflowCard card={card} counts={countsFor(card.workflow.id!)} preview />
                   }
@@ -733,7 +594,7 @@ export default function EntregasTab() {
                       card={card}
                       counts={countsFor(card.workflow.id!)}
                       onOpen={() => openWorkflow(card)}
-                      onForward={() => handleForwardClick(card)}
+                      onForward={() => stageCommands.forward(card)}
                       triggerProps={triggerProps}
                     />
                   )}
@@ -866,8 +727,8 @@ export default function EntregasTab() {
                         setDrawerInitialPostId(undefined);
                         setDrawerCard(card);
                       }}
-                      onForwardClick={() => handleForwardClick(card)}
-                      onRevertClick={() => handleRevertClick(card)}
+                      onForwardClick={() => stageCommands.forward(card)}
+                      onRevertClick={() => stageCommands.revert(card)}
                       onRefresh={refreshCards}
                       membros={membros}
                       postsCount={postsCounts.get(card.workflow.id!) ?? 0}
@@ -1050,48 +911,7 @@ export default function EntregasTab() {
         />
       )}
 
-      <ForwardConfirmDialog
-        open={!!forwardTarget}
-        entityTitle={forwardTarget?.workflow.titulo ?? ''}
-        nextEtapaName={
-          forwardTarget
-            ? (forwardTarget.allEtapas.find((e) => e.ordem === forwardTarget.etapaIdx + 1)?.nome ??
-              '')
-            : ''
-        }
-        onConfirm={handleForwardConfirm}
-        onCancel={() => setForwardTarget(null)}
-      />
-      <RevertConfirmDialog
-        open={!!revertTarget}
-        entityTitle={revertTarget?.workflow.titulo ?? ''}
-        onConfirm={handleRevertConfirm}
-        onCancel={() => setRevertTarget(null)}
-      />
-      <ClientApprovalChoiceDialog
-        open={!!approvalChoice}
-        entityTitle={approvalChoice?.card.workflow.titulo ?? ''}
-        willRearm={approvalChoice?.willRearm ?? false}
-        onApproveInternally={handleApproveInternally}
-        onSendToPortal={handleSendToPortal}
-        onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
-        onCancel={() => setApprovalChoice(null)}
-      />
-      <AutoScheduleBatchDialog
-        // Exclusão mútua com o AlertDialog "Recurring workflow confirm" acima
-        // (fix pós-review da Task 4): os dois vivem neste mesmo componente, e a
-        // mesma chamada de handleApproveInternally pode setar batchSchedule
-        // e depois, via completeEtapaForAdvance devolvendo concluido+recorrente,
-        // setar recurringWfId também -- o de conclusão de ciclo tem precedência.
-        workflowId={recurringWfId == null ? (batchSchedule?.workflowId ?? null) : null}
-        tiktokFeatureEnabled={tiktokEnabled}
-        isFinalApprovalCycle={batchSchedule?.isFinalApprovalCycle ?? false}
-        onClose={() => setBatchSchedule(null)}
-        onScheduled={() => {
-          setBatchSchedule(null);
-          refreshCards();
-        }}
-      />
+      {stageCommands.dialogs}
       {postProcessCommands.dialogs}
     </>
   );
