@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { equipeConversaPreview, sortEquipeConversas } from '../equipeChatLogic';
-import type { EquipeConversa } from '@/store';
+import {
+  agruparEquipeMensagens,
+  equipeConversaPreview,
+  sortEquipeConversas,
+} from '../equipeChatLogic';
+import type { EquipeConversa, EquipeMensagem } from '@/store';
 
 const conversaBase: EquipeConversa = {
   conversa_id: 1,
@@ -113,5 +117,62 @@ describe('equipeChatLogic', () => {
     expect(
       equipeConversaPreview({ ...conversaBase, last_created_at: null, last_message_id: null }),
     ).toBe('Sem mensagens ainda. Comece a conversa!');
+  });
+});
+
+describe('agruparEquipeMensagens', () => {
+  // Local-time instants, so the day boundaries hold in any TZ the suite runs in.
+  const at = (d: number, h: number, m: number) => new Date(2026, 9, d, h, m).toISOString();
+  const msg = (id: number, author: string, created_at: string) =>
+    ({ id, author_user_id: author, created_at }) as EquipeMensagem;
+  const now = new Date(2026, 9, 21, 15, 0);
+
+  it('stacks consecutive messages from one author and opens each day with a divider', () => {
+    const rows = agruparEquipeMensagens(
+      [
+        msg(1, 'ana', at(19, 9, 0)),
+        msg(2, 'eu', at(20, 18, 0)),
+        msg(3, 'eu', at(21, 11, 57)),
+        msg(4, 'eu', at(21, 11, 57)),
+        msg(5, 'eu', at(21, 11, 59)),
+        msg(6, 'ana', at(21, 12, 0)),
+      ],
+      now,
+    );
+    expect(
+      rows.map((r) => (r.kind === 'dia' ? r.label : `${r.mensagem.id}:${+r.inicio}${+r.fim}`)),
+    ).toEqual([
+      'Segunda-feira, 19 de outubro',
+      '1:11',
+      'Ontem',
+      '2:11',
+      'Hoje',
+      '3:10',
+      '4:00',
+      '5:01',
+      '6:11',
+    ]);
+  });
+
+  it('breaks a run after a 5 minute pause from the same author', () => {
+    const rows = agruparEquipeMensagens(
+      [msg(1, 'eu', at(21, 10, 0)), msg(2, 'eu', at(21, 10, 5)), msg(3, 'eu', at(21, 10, 11))],
+      now,
+    );
+    expect(
+      rows.filter((r) => r.kind === 'msg').map((r) => r.kind === 'msg' && [r.inicio, r.fim]),
+    ).toEqual([
+      [true, false],
+      [false, true],
+      [true, true],
+    ]);
+  });
+
+  it('labels another year with the year', () => {
+    const [dia] = agruparEquipeMensagens(
+      [msg(1, 'eu', new Date(2025, 11, 31, 9).toISOString())],
+      now,
+    );
+    expect(dia).toEqual({ kind: 'dia', key: 'dia-2025-12-31', label: '31 de dezembro de 2025' });
   });
 });

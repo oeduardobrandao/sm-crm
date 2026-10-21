@@ -532,3 +532,18 @@
 .phone-msg-composer__input--area:focus {
   border-color: var(--phone-accent);
 }
+
+/* Team chat: a run of messages from one author sits closer together (the
+   thread's 14px gap minus 10), and each day opens with a centred label. */
+.phone-msg-bubble-row--cont {
+  margin-top: -10px;
+}
+.phone-msg-day {
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--phone-cell);
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}

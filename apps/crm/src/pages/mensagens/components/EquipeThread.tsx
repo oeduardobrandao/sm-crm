@@ -9,7 +9,7 @@ import {
   EquipeConversaAvatar,
   EquipePessoaAvatar,
 } from './EquipeShared';
-import { formatTime } from '../mensagensLogic';
+import { horaMensagem } from '../equipeChatLogic';
 import type { useEquipeChatData } from '../hooks/useEquipeChatData';
 import { useEquipeThread } from '../hooks/useEquipeThread';
 
@@ -45,6 +45,7 @@ export function EquipeThread({
     fileInputRef,
     scrollRef,
     itens,
+    rows,
     anexar,
     podeEnviar,
     enviar,
@@ -116,21 +117,38 @@ export function EquipeThread({
             Nenhuma mensagem nesta conversa ainda.
           </p>
         )}
-        {itens.map((m) => {
+        {rows.map((row) => {
+          if (row.kind === 'dia') {
+            return (
+              <div
+                key={row.key}
+                role="separator"
+                className="self-center rounded-full px-3 py-1 text-[11px] font-semibold text-[var(--text-muted)]"
+                style={{ background: 'var(--surface-hover)' }}
+              >
+                {row.label}
+              </div>
+            );
+          }
+          const { mensagem: m, inicio, fim } = row;
           const minha = m.author_user_id === meuId;
           return (
             <div
               key={m.id}
               data-testid={`equipe-msg-${m.id}`}
-              className={`flex max-w-[78%] items-end gap-2 ${minha ? 'flex-row-reverse self-end' : 'self-start'}`}
+              className={`flex max-w-[78%] items-end gap-2 ${minha ? 'flex-row-reverse self-end' : 'self-start'}${inicio ? '' : ' -mt-2'}`}
             >
-              <EquipePessoaAvatar
-                nome={m.author_name}
-                fotoUrl={m.author_avatar_url}
-                seed={m.author_user_id}
-                size={28}
-                fontSize="0.65rem"
-              />
+              {!fim ? (
+                <span style={{ width: 28, height: 28, flexShrink: 0 }} aria-hidden="true" />
+              ) : (
+                <EquipePessoaAvatar
+                  nome={m.author_name}
+                  fotoUrl={m.author_avatar_url}
+                  seed={m.author_user_id}
+                  size={28}
+                  fontSize="0.65rem"
+                />
+              )}
               <div className={`flex flex-col gap-1 ${minha ? 'items-end' : 'items-start'}`}>
                 <div
                   className="rounded-2xl px-3.5 py-2.5 text-sm"
@@ -139,7 +157,7 @@ export function EquipeThread({
                     boxShadow: 'inset 0 0 0 1px var(--border-color)',
                   }}
                 >
-                  {!minha && (
+                  {!minha && inicio && (
                     <div className="mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
                       {m.author_name}
                     </div>
@@ -157,9 +175,11 @@ export function EquipeThread({
                     ),
                   )}
                 </div>
-                <span className="text-[11px] text-[var(--text-light)]">
-                  {formatTime(m.created_at)}
-                </span>
+                {fim && (
+                  <span className="text-[11px] text-[var(--text-light)]">
+                    {horaMensagem(m.created_at)}
+                  </span>
+                )}
               </div>
             </div>
           );

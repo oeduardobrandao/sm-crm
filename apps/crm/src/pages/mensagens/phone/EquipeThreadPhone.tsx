@@ -12,7 +12,7 @@ import {
   EquipeConversaAvatar,
   EquipePessoaAvatar,
 } from '../components/EquipeShared';
-import { formatTime } from '../mensagensLogic';
+import { horaMensagem } from '../equipeChatLogic';
 import type { useEquipeChatData } from '../hooks/useEquipeChatData';
 import { useEquipeThread } from '../hooks/useEquipeThread';
 import { ThreadPhoneShell } from './ThreadPhoneShell';
@@ -54,6 +54,7 @@ export function EquipeThreadPhone({
     fileInputRef,
     scrollRef,
     itens,
+    rows,
     anexar,
     podeEnviar,
     enviar,
@@ -101,24 +102,38 @@ export function EquipeThreadPhone({
         {!mensagens.isError && !mensagens.isLoading && itens.length === 0 && (
           <p className="phone-msg-thread__state">Nenhuma mensagem nesta conversa ainda.</p>
         )}
-        {itens.map((m) => {
+        {rows.map((row) => {
+          if (row.kind === 'dia') {
+            return (
+              <div key={row.key} role="separator" className="phone-msg-day">
+                {row.label}
+              </div>
+            );
+          }
+          const { mensagem: m, inicio, fim } = row;
           const minha = m.author_user_id === meuId;
           return (
             <div
               key={m.id}
               data-testid={`equipe-msg-${m.id}`}
-              className={`phone-msg-bubble-row${minha ? ' phone-msg-bubble-row--mine' : ''}`}
+              className={`phone-msg-bubble-row${minha ? ' phone-msg-bubble-row--mine' : ''}${inicio ? '' : ' phone-msg-bubble-row--cont'}`}
             >
-              <EquipePessoaAvatar
-                nome={m.author_name}
-                fotoUrl={m.author_avatar_url}
-                seed={m.author_user_id}
-                size={28}
-                fontSize="0.65rem"
-              />
+              {!fim ? (
+                <span style={{ width: 28, height: 28, flexShrink: 0 }} aria-hidden="true" />
+              ) : (
+                <EquipePessoaAvatar
+                  nome={m.author_name}
+                  fotoUrl={m.author_avatar_url}
+                  seed={m.author_user_id}
+                  size={28}
+                  fontSize="0.65rem"
+                />
+              )}
               <div className="phone-msg-bubble-col">
                 <div className="phone-msg-bubble">
-                  {!minha && <div className="phone-msg-bubble__author">{m.author_name}</div>}
+                  {!minha && inicio && (
+                    <div className="phone-msg-bubble__author">{m.author_name}</div>
+                  )}
                   {m.content && (
                     <p className="phone-msg-bubble__text">
                       <MentionText text={m.content} />
@@ -137,7 +152,7 @@ export function EquipeThreadPhone({
                     ),
                   )}
                 </div>
-                <span className="phone-msg-time">{formatTime(m.created_at)}</span>
+                {fim && <span className="phone-msg-time">{horaMensagem(m.created_at)}</span>}
               </div>
             </div>
           );

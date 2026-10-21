@@ -172,6 +172,23 @@ describe('EquipeThread', () => {
     );
   });
 
+  it('stacks a run from one author under a single name and time, with a day divider above', () => {
+    const run: EquipeMensagem[] = [
+      { ...MENSAGENS[0], id: 1, created_at: '2026-07-30T10:00:00.000Z' },
+      { ...MENSAGENS[0], id: 3, content: 'E o roteiro', created_at: '2026-07-30T10:01:00.000Z' },
+    ];
+    renderThread({ mensagens: makeMensagens({ data: { pages: [run] } }) });
+
+    expect(screen.getAllByRole('separator')).toHaveLength(1);
+    const primeira = screen.getByTestId('equipe-msg-1');
+    const segunda = screen.getByTestId('equipe-msg-3');
+    expect(primeira).toHaveTextContent('Ana');
+    expect(segunda).not.toHaveTextContent('Ana');
+    // Only the run's last bubble carries the time.
+    expect(primeira.textContent).not.toMatch(/\d{2}:\d{2}/);
+    expect(segunda.textContent).toMatch(/\d{2}:\d{2}/);
+  });
+
   it('renders messages in chronological order, author name on others, reversed alignment on the current user', () => {
     renderThread();
 

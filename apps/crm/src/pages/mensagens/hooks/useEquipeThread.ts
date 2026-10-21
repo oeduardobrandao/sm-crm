@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { uploadEquipeChatAnexo, validateEquipeChatFile } from '@/services/equipeChatMedia';
 import type { EquipeConversa, EquipeMensagemAnexo } from '@/store';
 import type { useEquipeChatData } from './useEquipeChatData';
+import { agruparEquipeMensagens } from '../equipeChatLogic';
 
 type EquipeData = ReturnType<typeof useEquipeChatData>;
 
@@ -42,6 +43,9 @@ export function useEquipeThread({ conversa, mensagens, send, markSeen }: Options
     const all = (mensagens.data?.pages ?? []).flat();
     return [...all].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
   }, [mensagens.data]);
+
+  // Day dividers and stacked runs (same author, a few minutes apart).
+  const rows = useMemo(() => agruparEquipeMensagens(itens), [itens]);
 
   useEffect(() => {
     if (!scrollPending.current || mensagens.isLoading) return;
@@ -118,6 +122,7 @@ export function useEquipeThread({ conversa, mensagens, send, markSeen }: Options
     fileInputRef,
     scrollRef,
     itens,
+    rows,
     anexar,
     podeEnviar,
     enviar,
