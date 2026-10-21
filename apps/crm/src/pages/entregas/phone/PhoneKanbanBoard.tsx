@@ -14,7 +14,11 @@ import { ArrowUpDown, ChevronDown, Plus } from 'lucide-react';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import type { Membro } from '../../../store';
-import type { FluxosColumnSort } from '../entregasPrefs';
+import {
+  FLUXOS_COLUMN_SORTS,
+  FLUXOS_COLUMN_SORT_LABELS,
+  type FluxosColumnSort,
+} from '../entregasPrefs';
 import { columnKey, type BoardColumn, type BoardRow } from '../boardRows';
 import type { BoardEntity, PostEntity } from '../boardEntity';
 import { sortableIdOf } from '../boardReorder';
@@ -302,11 +306,11 @@ export function PhoneKanbanBoard({
                 <button
                   type="button"
                   className="phone-ent-text-btn"
-                  aria-label={`Ordenar coluna ${column.nome}: ${sortMode === 'prazo' ? 'Prazo' : 'Manual'}`}
+                  aria-label={`Ordenar coluna ${column.nome}: ${FLUXOS_COLUMN_SORT_LABELS[sortMode]}`}
                   onClick={() => setSortSheet(true)}
                 >
                   <ArrowUpDown aria-hidden="true" />
-                  {sortMode === 'prazo' ? 'Prazo' : 'Manual'}
+                  {FLUXOS_COLUMN_SORT_LABELS[sortMode]}
                 </button>
               </>
             )}
@@ -402,13 +406,8 @@ export function PhoneKanbanBoard({
         open={sortSheet}
         onOpenChange={setSortSheet}
         title={`Ordenar coluna ${column.nome}`}
-        actions={(
-          [
-            ['prazo', 'Prazo'],
-            ['manual', 'Manual'],
-          ] as const
-        ).map(([mode, label]) => ({
-          label: `${sortMode === mode ? '✓ ' : ''}${label}`,
+        actions={FLUXOS_COLUMN_SORTS.map((mode) => ({
+          label: `${sortMode === mode ? '✓ ' : ''}${FLUXOS_COLUMN_SORT_LABELS[mode]}`,
           onSelect: () => setColumnSort(colKey, mode),
         }))}
       />

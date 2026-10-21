@@ -185,6 +185,22 @@ export function sortEntitiesByPrazo(entities: BoardEntity[]): BoardEntity[] {
   });
 }
 
+/** Data de publicação do post individual (scheduled_at) primeiro, sem data por
+ *  último; fluxos não têm data própria e caem no fim. Empate (inclusive entre
+ *  todos os sem data) mantém a ordem manual, como sortEntitiesByPosicao. */
+export function sortEntitiesByPublicacao(entities: BoardEntity[]): BoardEntity[] {
+  const publicacaoOf = (e: BoardEntity): number => {
+    const at = isPostEntity(e) ? e.process.post.scheduled_at : null;
+    return at ? new Date(at).getTime() : Infinity;
+  };
+  return [...entities].sort((a, b) => {
+    const ad = publicacaoOf(a);
+    const bd = publicacaoOf(b);
+    if (ad !== bd) return ad - bd;
+    return a.posicao - b.posicao || entityNumericId(a) - entityNumericId(b);
+  });
+}
+
 /** Ordem manual mista (spec §4.2): valor numérico dos dois campos, desempate por id. */
 export function sortEntitiesByPosicao(entities: BoardEntity[]): BoardEntity[] {
   return [...entities].sort(

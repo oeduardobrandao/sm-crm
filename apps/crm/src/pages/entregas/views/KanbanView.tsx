@@ -39,6 +39,8 @@ import { sortCardsByPrazo } from '../etapaPrazo';
 import {
   loadFluxosColumnSorts,
   persistFluxosColumnSort,
+  FLUXOS_COLUMN_SORTS,
+  FLUXOS_COLUMN_SORT_LABELS,
   type FluxosColumnSort,
 } from '../entregasPrefs';
 import { toast } from 'sonner';
@@ -56,6 +58,7 @@ import {
   toWorkflowEntities,
   sortEntitiesByPrazo,
   sortEntitiesByPosicao,
+  sortEntitiesByPublicacao,
   derivePostStepFields,
   type BoardEntity,
   type PostEntity,
@@ -257,9 +260,14 @@ export function fullMixedColumnOrder(
   const source: BoardEntity[] = column
     ? [...toWorkflowEntities(column.cards), ...column.posts]
     : [...toWorkflowEntities(visibleColumnCards), ...visibleColumnPosts];
-  const ordered =
-    sortMode === 'prazo' ? sortEntitiesByPrazo(source) : sortEntitiesByPosicao(source);
-  return ordered.map(sortableIdOf);
+  return sortMixedEntities(source, sortMode).map(sortableIdOf);
+}
+
+/** Ordem exibida de uma coluna mista pelo modo escolhido no header. */
+function sortMixedEntities(entities: BoardEntity[], sortMode: FluxosColumnSort): BoardEntity[] {
+  if (sortMode === 'prazo') return sortEntitiesByPrazo(entities);
+  if (sortMode === 'publicacao') return sortEntitiesByPublicacao(entities);
+  return sortEntitiesByPosicao(entities);
 }
 
 // Aplica os overlays otimistas (etapa e position pendentes de um drag ainda
@@ -528,9 +536,7 @@ export function KanbanView({
       const stepCards = displayCards(rowKey, ordem, column.cards);
       if (column.posts.length === 0) return toWorkflowEntities(stepCards);
       const all = [...toWorkflowEntities(stepCards), ...column.posts];
-      return sortModeFor(columnKey(rowKey, ordem)) === 'prazo'
-        ? sortEntitiesByPrazo(all)
-        : sortEntitiesByPosicao(all);
+      return sortMixedEntities(all, sortModeFor(columnKey(rowKey, ordem)));
     },
     [displayCards, sortModeFor],
   );
@@ -1006,7 +1012,7 @@ export function KanbanView({
         // Optimistic reorder overlay (fluxos e posts); rolled back if
         // persistence fails.
         applyOptimisticOrder(merged);
-        if (sortModeFor(colKeyStr) === 'prazo') setColumnSort(colKeyStr, 'manual');
+        if (sortModeFor(colKeyStr) !== 'manual') setColumnSort(colKeyStr, 'manual');
 
         try {
           await persistColumnOrder(merged);
@@ -1277,12 +1283,7 @@ export function KanbanView({
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="min-w-[150px]">
-                    {(
-                      [
-                        ['prazo', 'Prazo'],
-                        ['manual', 'Manual'],
-                      ] as const
-                    ).map(([mode, label]) => (
+                    {FLUXOS_COLUMN_SORTS.map((mode) => (
                       <DropdownMenuItem
                         key={mode}
                         className="gap-2 text-xs"
@@ -1292,7 +1293,7 @@ export function KanbanView({
                           className="h-3.5 w-3.5"
                           style={{ visibility: sortMode === mode ? 'visible' : 'hidden' }}
                         />
-                        {label}
+                        {FLUXOS_COLUMN_SORT_LABELS[mode]}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuContent>
