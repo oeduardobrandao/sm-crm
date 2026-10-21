@@ -20,6 +20,10 @@ vi.mock('../../../hooks/useMensagensUnread', () => ({
   useMensagensUnread: vi.fn(() => 0),
 }));
 
+vi.mock('../../../hooks/useEquipeChatUnread', () => ({
+  useEquipeChatUnread: vi.fn(() => 0),
+}));
+
 // The real dialog needs a QueryClientProvider and the store modules; here we
 // only care that the "Buscar" row hands control to it.
 vi.mock('../GlobalSearchDialog', () => ({
@@ -30,11 +34,13 @@ vi.mock('../GlobalSearchDialog', () => ({
 import MobileNav from '../MobileNav';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
+import { useEquipeChatUnread } from '../../../hooks/useEquipeChatUnread';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 const mockedUseMensagensUnread = vi.mocked(useMensagensUnread);
+const mockedUseEquipeChatUnread = vi.mocked(useEquipeChatUnread);
 
 function setLimits(overrides: Record<string, unknown> = {}) {
   mockedUseWorkspaceLimits.mockReturnValue({
@@ -157,6 +163,7 @@ describe('MobileNav', () => {
     localStorage.clear();
     setLimits();
     mockedUseMensagensUnread.mockReturnValue(0);
+    mockedUseEquipeChatUnread.mockReturnValue(0);
   });
 
   it('renders a stable active route without canvas chrome', () => {
@@ -458,6 +465,25 @@ describe('MobileNav', () => {
       renderMobileNav('/dashboard');
 
       expect(screen.getByTestId('mensagens-tab-badge')).toHaveTextContent('99+');
+    });
+
+    it('sums the clientes and equipe unread counts', () => {
+      setAuth();
+      setLimits({ features: { feature_mensagens: true, feature_team_chat: true } });
+      mockedUseMensagensUnread.mockReturnValue(3);
+      mockedUseEquipeChatUnread.mockReturnValue(4);
+      renderMobileNav('/dashboard');
+
+      expect(screen.getByTestId('mensagens-tab-badge')).toHaveTextContent('7');
+    });
+
+    it('keeps the Mensagens tab with only the team chat (feature_mensagens off)', () => {
+      setAuth();
+      setLimits({ features: { feature_mensagens: false, feature_team_chat: true } });
+      mockedUseEquipeChatUnread.mockReturnValue(4);
+      renderMobileNav('/dashboard');
+
+      expect(screen.getByTestId('mensagens-tab-badge')).toHaveTextContent('4');
     });
   });
 

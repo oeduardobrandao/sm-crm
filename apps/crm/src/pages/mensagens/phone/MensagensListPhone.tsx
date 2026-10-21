@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDownUp, Check, Search, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
 import { ListSkeleton } from '@/components/ui/skeletons';
@@ -24,6 +24,8 @@ interface Props {
   isError: boolean;
   clientesById: Map<number, Cliente>;
   onSelect: (clienteId: number) => void;
+  /** Rendered first under the large title (the Clientes | Equipe pills). */
+  headerExtra?: ReactNode;
 }
 
 /**
@@ -37,6 +39,7 @@ export function MensagensListPhone({
   isError,
   clientesById,
   onSelect,
+  headerExtra,
 }: Props) {
   const [sort, setSort] = useState<ConversasSort>('recentes');
   const [busca, setBusca] = useState('');
@@ -82,6 +85,7 @@ export function MensagensListPhone({
           </>
         }
       >
+        {headerExtra}
         {searchOpen && (
           <div className="phone-msg-search">
             <Search aria-hidden="true" />

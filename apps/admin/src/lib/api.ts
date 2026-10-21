@@ -111,6 +111,7 @@ export interface Plan {
   feature_multiplatform: boolean;
   feature_hub_pauta: boolean;
   feature_crm_vidro: boolean;
+  feature_team_chat: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -261,6 +262,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_multiplatform',
   'feature_hub_pauta',
   'feature_crm_vidro',
+  'feature_team_chat',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -292,6 +294,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_multiplatform: 'Plataformas por fluxo',
   feature_hub_pauta: 'Hub: visual Pauta',
   feature_crm_vidro: 'Visual vidro (CRM desktop)',
+  feature_team_chat: 'Chat da equipe',
 };
 
 export const RATE_LIMIT_KEYS = [

@@ -17,6 +17,25 @@ import { runStreamSweeps } from "./stream-steps.ts";
 import { runOrphanScan, type OrphanScanDeps } from "./orphan-scan.ts";
 import { runIntegrityCanary } from "./canary.ts";
 import { withWatchdog } from "./watchdog.ts";
+import { runEquipeChatCleanup } from "./equipe-chat-cleanup.ts";
+
+// equipe-chat's tmp/ prefix only holds presigned uploads still waiting for
+// finalize, swept every run, so a few listing pages cover it. The cap keeps a
+// runaway prefix from becoming another unbounded full listing (the shape the
+// paged, checkpointed orphan scan replaced); keys past it go on the next run.
+const EQUIPE_TMP_MAX_PAGES = 5;
+
+async function listEquipeTmpKeys(prefix: string, olderThanMs: number): Promise<string[]> {
+  const keys: string[] = [];
+  let token: string | null = null;
+  for (let page = 0; page < EQUIPE_TMP_MAX_PAGES; page++) {
+    const res = await listOrphanKeyPage(prefix, olderThanMs, token);
+    keys.push(...res.keys);
+    if (!res.nextToken) break;
+    token = res.nextToken;
+  }
+  return keys;
+}
 
 const CRON_NAME = "post-media-cleanup-cron";
 const PURGE_SCAN_KEY = "trash-purge:trash/";
@@ -213,6 +232,20 @@ Deno.serve(createPostMediaCleanupCronHandler({
       streamErrors = sweep.errors;
     }
 
+    // equipe-chat (team group chats): abandoned tmp uploads + staged attachments
+    // whose message was never sent. Independent of the R2 orphan scan below (own
+    // prefix, own table) — wrapped the same way so a failure here can't block
+    // purgeTrash/canary below, nor vice versa. Deliberately BEFORE the orphan scan,
+    // same relative position — and same reasoning — as the stream sweeps above:
+    // that full-bucket listing has hit WORKER_RESOURCE_LIMIT on prod, and dying
+    // there must not starve this small, bounded cleanup (staged attachments would
+    // otherwise keep their quota reserved indefinitely while never getting reaped).
+    const equipeChat = await runEquipeChatCleanup({
+      db: svc,
+      listOrphanKeys: listEquipeTmpKeys,
+      trashObject,
+    });
+
     // R2 orphan cleanup LAST: the most expensive, least urgent stage. A resource-limit
     // death here costs only this stage; everything above has already committed.
     // Hardened module (see orphan-scan.ts): chunked known-set queries, abort on any
@@ -279,6 +312,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
     }
     if (failed > 0) alerts.push({ error: `deletion drain: ${failed} rows failed this run` });
     if (streamErrors > 0) alerts.push({ error: `stream sweeps: ${streamErrors} step errors` });
+    if (equipeChat.failed > 0) {
+      alerts.push({ error: `equipe-chat cleanup: ${equipeChat.failed} steps failed this run` });
+    }
 
     // Dead-letter visibility: rows past their attempt cap are silently excluded
     // from the drains above forever (post_media_deletions: attempts < 6;
@@ -324,6 +360,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
       orphanScanCyclesCompleted: scan.cyclesCompleted, trashPurged, canaryChecked,
       canaryMissing: canaryMissing.length,
       streamIngested, streamSettled, streamReaped, streamErrors,
+      equipeChatTmpTrashed: equipeChat.tmpTrashed,
+      equipeChatStagedReleased: equipeChat.stagedReleased,
+      equipeChatFailed: equipeChat.failed,
     });
   },
 }));

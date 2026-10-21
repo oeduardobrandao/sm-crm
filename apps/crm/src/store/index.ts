@@ -27,3 +27,4 @@ export * from './kb';
 export * from './mentions';
 export * from './agenda';
 export * from './postTargets';
+export * from './equipeChat';

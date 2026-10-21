@@ -258,3 +258,45 @@ describe('getPhoneNav (D18 phone tab bar)', () => {
     expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes', 'mensagens']);
   });
 });
+
+describe('mensagens nav item: array flag (feature_mensagens OR feature_team_chat)', () => {
+  it('stays visible when only feature_team_chat is true (feature_mensagens explicitly false)', () => {
+    const got = ids(
+      getNavGroups({ feature_mensagens: false, feature_team_chat: true }, 'owner', ownerCan),
+    );
+    expect(got).toContain('mensagens');
+  });
+
+  it('is hidden when both feature_mensagens and feature_team_chat are false', () => {
+    const got = ids(
+      getNavGroups({ feature_mensagens: false, feature_team_chat: false }, 'owner', ownerCan),
+    );
+    expect(got).not.toContain('mensagens');
+  });
+
+  it('stays visible when feature_mensagens is true and feature_team_chat is undefined (legacy flag alone still governs)', () => {
+    const got = ids(getNavGroups({ feature_mensagens: true }, 'owner', ownerCan));
+    expect(got).toContain('mensagens');
+  });
+
+  // Rollout-window regression guard: before workspace-limits is redeployed
+  // with the new feature_team_chat column, BOTH flags are simply absent from
+  // the features map (not `false`). feature_mensagens is the legacy,
+  // fail-open flag in the pair, so its own absence must not hide the item.
+  it('stays visible when both flags are undefined (pre-redeploy legacy behaviour)', () => {
+    const got = ids(getNavGroups({}, 'owner', ownerCan));
+    expect(got).toContain('mensagens');
+  });
+
+  it('gives the phone tab bar its Mensagens tab with only the team chat', () => {
+    const nav = getPhoneNav(
+      { feature_mensagens: false, feature_team_chat: true },
+      'owner',
+      ownerCan,
+      {
+        agendaEnabled: true,
+      },
+    );
+    expect(nav.tabs.map((t) => t.navId)).toContain('mensagens');
+  });
+});

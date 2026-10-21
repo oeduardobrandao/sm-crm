@@ -31,7 +31,8 @@ export type NotificationType =
   | 'event_client_rsvp'
   | 'event_guest_rsvp'
   | 'event_reschedule_requested'
-  | 'event_reminder';
+  | 'event_reminder'
+  | 'team_message';
 
 export interface Notification {
   id: string;

@@ -60,6 +60,10 @@ export interface FeatureFlags {
   /** Rollout flag for the desktop Vidro shell. Optional on purpose: read only as
    *  `features?.feature_crm_vidro === true`. */
   feature_crm_vidro?: boolean;
+  /** Chat de equipe (spec 2026-09-02-team-group-chats). Optional: read it as
+   *  `features?.feature_team_chat === true` (fail-closed while workspace-limits
+   *  has not been redeployed with the column). */
+  feature_team_chat?: boolean;
 }
 
 interface WorkspaceLimitsResponse {

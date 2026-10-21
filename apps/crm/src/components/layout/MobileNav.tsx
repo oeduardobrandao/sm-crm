@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
+import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
 import { getPhoneNav, isNavRouteActive, type NavItem } from './nav-data';
 import GlobalSearchDialog from './GlobalSearchDialog';
 import { avatarColorClass } from '@/lib/avatarColor';
@@ -62,6 +63,8 @@ export default function MobileNav() {
   const { features: rawFeatures, isLoading: limitsLoading } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
+  const equipeUnread = useEquipeChatUnread();
+  const mensagensBadge = mensagensUnread + equipeUnread;
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -153,7 +156,7 @@ export default function MobileNav() {
             const active = activeTab === tab.navId;
             const Icon = TAB_ICON[tab.navId];
             const label = t(tab.labelKey, tab.label);
-            const unread = tab.navId === 'mensagens' ? mensagensUnread : 0;
+            const unread = tab.navId === 'mensagens' ? mensagensBadge : 0;
             return (
               <button
                 key={tab.navId}
