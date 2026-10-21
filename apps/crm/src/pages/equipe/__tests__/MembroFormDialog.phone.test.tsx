@@ -116,6 +116,7 @@ describe('MembroFormDialog in the phone shell', () => {
         expect.objectContaining({ nome: 'Nova', cargo: 'Redatora', tipo: 'freelancer_mensal' }),
       ),
     );
+    expect(vi.mocked(store.addMembro).mock.calls[0][0]).not.toHaveProperty('avatar_url');
     await waitFor(() =>
       expect(inviteService.inviteUser).toHaveBeenCalledWith('nova@exemplo.com', 'agent', 42),
     );
@@ -151,7 +152,7 @@ describe('MembroFormDialog in the phone shell', () => {
       nome: 'Pessoa Vinculada',
       cargo: 'Designer',
       tipo: 'clt',
-      avatar_url: '',
+      avatar_url: null,
       crm_user_id: 'u1',
     } as Membro;
     const dialog = renderDialog(linked, [linked]);
@@ -188,7 +189,7 @@ describe('MembroFormDialog in the phone shell', () => {
       nome: 'Diego',
       cargo: 'Editor',
       tipo: 'clt',
-      avatar_url: '',
+      avatar_url: null,
       crm_user_id: null,
     } as Membro;
     const dialog = renderDialog(membro, [membro]);

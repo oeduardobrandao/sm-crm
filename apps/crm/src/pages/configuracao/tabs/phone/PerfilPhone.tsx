@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Eye, EyeOff, KeyRound, Lock } from 'lucide-react';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { BottomActionBar } from '@/components/mobile/BottomActionBar';
-import { avatarColorClass } from '@/lib/avatarColor';
 import { openConsentPreferences } from '@/lib/consent';
 import { ConfigNavTextButton, ConfigPhoneScreen } from '../../phone/ConfigPhoneScreen';
 import { useConfigSubScreen } from '../../phone/useConfigSubScreen';
@@ -23,7 +22,8 @@ export interface PerfilPhoneProps {
     app_metadata?: { provider?: string };
   };
   displayName: string;
-  initials: string;
+  /** The photo editor (avatar, "Alterar foto", its sheet), built by PerfilTab. */
+  fotoEditor: ReactNode;
   nome: Field;
   empresa: Field;
   telefone: Field;
@@ -120,13 +120,9 @@ export function PerfilPhone(props: PerfilPhoneProps) {
         </ConfigNavTextButton>
       }
     >
+      <div className="mb-5 flex justify-center">{props.fotoEditor}</div>
+
       <div className="phone-perfil-card">
-        <span
-          className={`avatar phone-config-avatar phone-config-avatar--large ${avatarColorClass(user.id ?? props.displayName)}`}
-          aria-hidden="true"
-        >
-          {props.initials}
-        </span>
         <span className="phone-perfil-card__text">
           <span className="phone-perfil-card__name">{props.displayName}</span>
           <span className="phone-perfil-card__email">{user.email}</span>

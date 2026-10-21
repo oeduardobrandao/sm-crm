@@ -56,9 +56,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
-import { addMembro, getMembros, removeMembro, getInitials, type Membro } from '../../store';
+import { addMembro, getMembros, removeMembro, type Membro } from '../../store';
 import { useAuth } from '../../context/AuthContext';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import {
   assertNoFinancialColumns,
   formatFinancialBRL,
@@ -183,13 +183,12 @@ export default function EquipePage() {
               cargo: row.cargo,
               tipo,
               custo_mensal: row.custo_mensal ? Number(row.custo_mensal) : null,
-              avatar_url: '',
               data_pagamento: row.data_pagamento ? Number(row.data_pagamento) : undefined,
             };
             await addMembro(
               stripFinancialFields(rowPayload, canSeeFinancials, ['custo_mensal']) as Omit<
                 Membro,
-                'id' | 'user_id' | 'conta_id'
+                'id' | 'user_id' | 'conta_id' | 'avatar_url'
               >,
             );
             count++;
@@ -443,83 +442,81 @@ export default function EquipePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((m) => {
-                const avatarClass = avatarColorClass(m.id ?? m.nome);
-                return (
-                  <TableRow
-                    key={m.id}
-                    onClick={() => m.id && navigate(`/equipe/${m.id}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <TableCell style={{ paddingLeft: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <div
-                          className={`avatar ${avatarClass}`}
-                          style={{ width: 28, height: 28, fontSize: '0.7rem', fontWeight: 700 }}
-                        >
-                          {getInitials(m.nome)}
-                        </div>
-                        <button
-                          className="client-link"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/equipe/${m.id}`);
-                          }}
-                          style={{ fontWeight: 600, textAlign: 'left' }}
-                        >
-                          {m.nome}
-                        </button>
-                      </div>
-                    </TableCell>
-                    <TableCell>{m.cargo || '—'}</TableCell>
-                    <TableCell>
-                      <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
-                        {TIPO_LABEL[m.tipo]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {m.crm_user_id || !canEditTeam ? (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
-                      ) : pendingByMembroId.has(m.id!) ? (
-                        <Badge variant="warning" size="sm">
-                          convite pendente
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" size="sm">
-                          sem conta vinculada
-                        </Badge>
-                      )}
-                    </TableCell>
-                    {canEditTeam && (
-                      <TableCell
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ paddingRight: '0.75rem', textAlign: 'right' }}
+              {filtered.map((m) => (
+                <TableRow
+                  key={m.id}
+                  onClick={() => m.id && navigate(`/equipe/${m.id}`)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <TableCell style={{ paddingLeft: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <PessoaAvatar
+                        nome={m.nome}
+                        fotoUrl={m.avatar_url}
+                        seed={m.id}
+                        size={28}
+                        className="font-bold"
+                      />
+                      <button
+                        className="client-link"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/equipe/${m.id}`);
+                        }}
+                        style={{ fontWeight: 600, textAlign: 'left' }}
                       >
-                        <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                        {m.nome}
+                      </button>
+                    </div>
+                  </TableCell>
+                  <TableCell>{m.cargo || '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
+                      {TIPO_LABEL[m.tipo]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {m.crm_user_id || !canEditTeam ? (
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    ) : pendingByMembroId.has(m.id!) ? (
+                      <Badge variant="warning" size="sm">
+                        convite pendente
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" size="sm">
+                        sem conta vinculada
+                      </Badge>
+                    )}
+                  </TableCell>
+                  {canEditTeam && (
+                    <TableCell
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ paddingRight: '0.75rem', textAlign: 'right' }}
+                    >
+                      <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => openEdit(m)}
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
+                        {m.id && (
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="h-8 w-8"
-                            onClick={() => openEdit(m)}
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => setDeleteId(m.id!)}
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                          {m.id && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 text-destructive"
-                              onClick={() => setDeleteId(m.id!)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
+                        )}
+                      </div>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell

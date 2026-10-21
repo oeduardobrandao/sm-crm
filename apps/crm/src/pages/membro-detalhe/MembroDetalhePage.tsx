@@ -15,9 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getMembros, getTransacoes, formatDate, getInitials } from '../../store';
+import { getMembros, getTransacoes, formatDate } from '../../store';
 import { useAuth } from '../../context/AuthContext';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { FotoPessoaEditor } from '@/components/FotoPessoaEditor';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { MembroFormDialog } from '../equipe/MembroFormDialog';
@@ -127,8 +128,6 @@ export default function MembroDetalhePage() {
     );
   }
 
-  const avatarClass = avatarColorClass(membro?.id ?? membro?.nome);
-
   return (
     // Under Vidro the panel already pads the content.
     <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
@@ -164,18 +163,37 @@ export default function MembroDetalhePage() {
 
       {membro && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '1.5rem 0' }}>
-            <div
-              className={`avatar ${avatarClass}`}
-              style={{ fontWeight: 700, width: 56, height: 56, fontSize: 22 }}
-            >
-              {getInitials(membro.nome)}
+          {canEditTeam && membro.id != null ? (
+            // Editors get the photo editor (camera, Alterar / Remover foto) with the name
+            // above it; everyone else sees the photo as before.
+            <div style={{ margin: '1.5rem 0' }}>
+              <div style={{ marginBottom: 16 }}>
+                <h2 style={{ margin: 0 }}>{membro.nome}</h2>
+                <div style={{ color: '#888' }}>{membro.cargo}</div>
+              </div>
+              <FotoPessoaEditor
+                alvo={{ kind: 'membro', membroId: membro.id }}
+                nome={membro.nome}
+                seed={membro.id}
+                fotoUrl={membro.avatar_url}
+                variant="desktop"
+              />
             </div>
-            <div>
-              <h2 style={{ margin: 0 }}>{membro.nome}</h2>
-              <div style={{ color: '#888' }}>{membro.cargo}</div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '1.5rem 0' }}>
+              <PessoaAvatar
+                nome={membro.nome}
+                fotoUrl={membro.avatar_url}
+                seed={membro.id}
+                size={56}
+                className="font-bold"
+              />
+              <div>
+                <h2 style={{ margin: 0 }}>{membro.nome}</h2>
+                <div style={{ color: '#888' }}>{membro.cargo}</div>
+              </div>
             </div>
-          </div>
+          )}
 
           {canEditTeam && (
             <StatCardGrid style={{ marginBottom: '1.5rem' }}>

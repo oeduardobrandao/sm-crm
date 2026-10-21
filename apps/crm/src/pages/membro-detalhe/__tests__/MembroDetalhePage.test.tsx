@@ -38,9 +38,19 @@ const {
   toastErrorMock: vi.fn(),
 }));
 
+// The phone "…" sheet keys its history entry off the location.
+const location = vi.hoisted(() => ({
+  pathname: '/equipe/1',
+  search: '',
+  hash: '',
+  state: null,
+  key: 'default',
+}));
+
 vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
   useParams: () => paramsState,
+  useLocation: () => location,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -83,6 +93,35 @@ vi.mock('../../../services/invite', () => ({
 }));
 
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => viewport.desktop }));
+
+// The upload hook needs a QueryClient and the store's RPC; the page only decides
+// whether to offer it and for which target.
+const { fotoMock, useFotoPessoaMock } = vi.hoisted(() => {
+  const fotoMock = {
+    uploading: false,
+    pick: vi.fn(),
+    pickCamera: vi.fn(),
+    upload: vi.fn(async () => true),
+    remove: vi.fn(async () => {}),
+    inputProps: {
+      ref: { current: null },
+      type: 'file' as const,
+      accept: 'image/*',
+      disabled: false,
+      onChange: vi.fn(),
+    },
+    cameraInputProps: {
+      ref: { current: null },
+      type: 'file' as const,
+      accept: 'image/*',
+      capture: 'user' as const,
+      disabled: false,
+      onChange: vi.fn(),
+    },
+  };
+  return { fotoMock, useFotoPessoaMock: vi.fn((_alvo: unknown) => fotoMock) };
+});
+vi.mock('@/hooks/useFotoPessoa', () => ({ useFotoPessoa: useFotoPessoaMock }));
 
 vi.mock('../../../lib/supabase', () => ({
   supabase: { from: vi.fn() },
@@ -142,6 +181,17 @@ function setup(
       </VidroToolbarHarness>
     ),
   );
+}
+
+/** Phone: Editar and the photo actions live in the "…" sheet of the nav bar. */
+function openMemberMenu() {
+  fireEvent.click(screen.getByRole('button', { name: 'Mais ações do membro' }));
+  return screen.getByRole('dialog', { name: 'Ana Editora' });
+}
+
+async function openEditFromPhone() {
+  fireEvent.click(within(openMemberMenu()).getByRole('button', { name: 'Editar' }));
+  return screen.findByRole('dialog', { name: /Editar Membro/ });
 }
 
 describe('MembroDetalhePage financial query gate', () => {
@@ -258,7 +308,7 @@ describe('MembroDetalhePage — Editar button gated on equipe:editar', () => {
   it('shows the Editar button for a legacy admin (equipe preset resolves to true)', () => {
     setup(true, makeCan(fakeMembership({ role: 'admin' })));
 
-    expect(screen.getByRole('button', { name: /Editar/ })).toBeTruthy();
+    expect(within(openMemberMenu()).getByRole('button', { name: 'Editar' })).toBeTruthy();
   });
 
   it('hides the Editar button for a custom role with equipe:ver only', () => {
@@ -278,7 +328,7 @@ describe('MembroDetalhePage — Editar button gated on equipe:editar', () => {
       ),
     );
 
-    expect(screen.getByRole('button', { name: /Editar/ })).toBeTruthy();
+    expect(within(openMemberMenu()).getByRole('button', { name: 'Editar' })).toBeTruthy();
   });
 });
 
@@ -293,9 +343,7 @@ describe('MembroDetalhePage member editing', () => {
     mockedInviteUser.mockResolvedValueOnce({ success: true, message: 'Convite enviado' });
     setup(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
-
-    const dialog = screen.getByRole('dialog');
+    const dialog = await openEditFromPhone();
     expect(within(dialog).getByRole('combobox', { name: 'Conta CRM' })).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole('switch', { name: 'Convidar para o workspace' }));
@@ -315,12 +363,81 @@ describe('MembroDetalhePage member editing', () => {
     mockedUpdateMembro.mockResolvedValueOnce(undefined);
     setup(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Salvar' }));
+    const dialog = await openEditFromPhone();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
 
     await waitFor(() => expect(mockedUpdateMembro).toHaveBeenCalledTimes(1));
     const [, payload] = mockedUpdateMembro.mock.calls[0];
     expect(payload).not.toHaveProperty('avatar_url');
+  });
+});
+
+describe('MembroDetalhePage — member photo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    transacoes = [];
+  });
+
+  it('shows the editor with equipe:editar', () => {
+    viewport.desktop = true;
+    setup(true, makeCan(fakeMembership({ role: 'admin' })));
+
+    expect(screen.getByRole('button', { name: 'Alterar foto de Ana Editora' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remover foto' })).toBeInTheDocument();
+    expect(useFotoPessoaMock).toHaveBeenCalledWith({ kind: 'membro', membroId: 1 });
+  });
+
+  it.each([
+    ['false', makeCan(fakeMembership({ role: 'agent' }))],
+    ['unknown', makeCan(null)],
+  ])('hides the editor without equipe:editar (%s)', (_label, can) => {
+    viewport.desktop = true;
+    setup(true, can);
+
+    expect(screen.queryByRole('button', { name: /foto de Ana Editora/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /foto/i })).toBeNull();
+    expect(document.querySelector('img.avatar--photo')).toHaveAttribute(
+      'src',
+      'https://cdn.exemplo.com/ana.jpg',
+    );
+  });
+
+  it('offers the photo from the "…" sheet and the avatar on phones with equipe:editar', () => {
+    viewport.desktop = false;
+    setup(true, makeCan(fakeMembership({ role: 'admin' })));
+
+    expect(useFotoPessoaMock).toHaveBeenCalledWith({ kind: 'membro', membroId: 1 });
+    fireEvent.click(screen.getByRole('button', { name: 'Alterar foto de Ana Editora' }));
+    expect(fotoMock.pick).toHaveBeenCalledTimes(1);
+
+    const sheet = openMemberMenu();
+    expect(within(sheet).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Tirar foto' })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Alterar foto' }));
+    expect(fotoMock.pick).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(within(openMemberMenu()).getByRole('button', { name: 'Remover foto' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Remover a foto?' })).getByRole('button', {
+        name: 'Remover',
+      }),
+    );
+    expect(fotoMock.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['false', makeCan(fakeMembership({ role: 'agent' }))],
+    ['unknown', makeCan(null)],
+  ])('hides the photo actions on phones without equipe:editar (%s)', (_label, can) => {
+    viewport.desktop = false;
+    setup(true, can);
+
+    expect(screen.queryByRole('button', { name: 'Mais ações do membro' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /foto de Ana Editora/ })).toBeNull();
+    expect(document.querySelector('img.avatar--photo')).toHaveAttribute(
+      'src',
+      'https://cdn.exemplo.com/ana.jpg',
+    );
   });
 });
 

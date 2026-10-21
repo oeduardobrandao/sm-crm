@@ -1,10 +1,9 @@
 import { Navigate } from 'react-router-dom';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { useAuth } from '../../context/AuthContext';
-import { getInitials } from '../../store';
 import { visibleConfigTabs, type ConfigTab } from './configTabs';
 import './phone/configPhone.css';
 
@@ -46,7 +45,6 @@ function ConfiguracaoIndexPhone() {
   }
 
   const name = profile?.nome || user?.email || 'Perfil';
-  const initials = profile?.nome ? getInitials(profile.nome) : '??';
 
   return (
     <div className="phone-kit phone-config-screen">
@@ -62,11 +60,12 @@ function ConfiguracaoIndexPhone() {
                   className="phone-config-profile-cell"
                   aria-label={`Perfil: ${name}`}
                   icon={
-                    <span
-                      className={`avatar phone-config-avatar phone-config-avatar--large ${avatarColorClass(user?.id ?? profile?.nome)}`}
-                    >
-                      {initials}
-                    </span>
+                    <PessoaAvatar
+                      nome={profile?.nome || '?'}
+                      fotoUrl={profile?.avatar_url}
+                      seed={user?.id}
+                      className="phone-config-avatar phone-config-avatar--large"
+                    />
                   }
                   label={name}
                   subtitle={user?.email}

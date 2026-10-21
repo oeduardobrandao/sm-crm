@@ -4,6 +4,33 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
 
+// The upload hook needs a QueryClient; the page only cares which target it gets.
+const useFotoPessoaMock = vi.hoisted(() =>
+  vi.fn((_alvo: unknown) => ({
+    uploading: false,
+    pick: vi.fn(),
+    pickCamera: vi.fn(),
+    upload: vi.fn(async () => true),
+    remove: vi.fn(async () => {}),
+    inputProps: {
+      ref: { current: null },
+      type: 'file' as const,
+      accept: 'image/*',
+      disabled: false,
+      onChange: vi.fn(),
+    },
+    cameraInputProps: {
+      ref: { current: null },
+      type: 'file' as const,
+      accept: 'image/*',
+      capture: 'user' as const,
+      disabled: false,
+      onChange: vi.fn(),
+    },
+  })),
+);
+vi.mock('@/hooks/useFotoPessoa', () => ({ useFotoPessoa: useFotoPessoaMock }));
+
 vi.mock('../../../../context/AuthContext', () => ({
   useAuth: useAuthMock,
 }));
@@ -96,5 +123,39 @@ describe('PerfilTab — restriction notice gated on configuracoes:ver', () => {
     renderTab();
 
     expect(screen.queryByText(RESTRICTION_TEXT)).not.toBeInTheDocument();
+  });
+});
+
+describe('PerfilTab photo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows the photo editor for self', () => {
+    const auth = baseAuth(makeCan(fakeMembership({ role: 'agent' })));
+    useAuthMock.mockReturnValue({
+      ...auth,
+      profile: { ...auth.profile, avatar_url: 'https://cdn.exemplo.com/ana.jpg' },
+    });
+    const { container } = renderTab();
+
+    expect(screen.getByRole('button', { name: 'Alterar foto de Ana Souza' })).toBeInTheDocument();
+    expect(useFotoPessoaMock).toHaveBeenCalledWith({ kind: 'self', userId: 'user-1' });
+    expect(container.querySelector('img.avatar--photo')).toHaveAttribute(
+      'src',
+      'https://cdn.exemplo.com/ana.jpg',
+    );
+    expect(
+      screen.getByText(
+        'Aparece para a sua equipe em todo o CRM: Entregas, Tarefas, Agenda e Mensagens. Os clientes não veem.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('offers to add a photo when the profile has none', () => {
+    useAuthMock.mockReturnValue(baseAuth(makeCan(fakeMembership({ role: 'agent' }))));
+    renderTab();
+
+    expect(screen.getByRole('button', { name: 'Adicionar foto de Ana Souza' })).toBeInTheDocument();
   });
 });

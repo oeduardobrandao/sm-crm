@@ -203,10 +203,9 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
         await updateMembro(membro.id, safePayload);
         membroId = membro.id;
       } else {
-        const created = await addMembro({
-          ...safePayload,
-          avatar_url: '',
-        } as Omit<Membro, 'id' | 'user_id' | 'conta_id'>);
+        const created = await addMembro(
+          safePayload as Omit<Membro, 'id' | 'user_id' | 'conta_id' | 'avatar_url'>,
+        );
         membroId = created.id;
       }
 
