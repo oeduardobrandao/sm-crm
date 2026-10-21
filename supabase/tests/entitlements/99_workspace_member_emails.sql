@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- get_workspace_member_emails (20261021130000): e-mails de login dos membros
+-- get_workspace_member_emails (20261022100000): e-mails de login dos membros
 -- do workspace ATIVO, só para quem tem equipe:editar. Dono, admin legado e
 -- papel customizado com equipe:editar recebem as linhas; agente legado e
 -- papel com equipe:ver recebem zero; nada vaza entre workspaces.
