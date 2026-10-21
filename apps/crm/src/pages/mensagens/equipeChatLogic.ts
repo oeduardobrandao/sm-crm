@@ -1,4 +1,6 @@
-import type { EquipeConversa } from '@/store';
+import { format, isSameDay, isSameYear, isToday, isYesterday } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import type { EquipeConversa, EquipeMensagem } from '@/store';
 import { stripMentionTokens } from '@/components/mentions/mentionTokens';
 
 export type EquipeConversasSort = 'recentes' | 'antigas';
@@ -33,4 +35,71 @@ export function equipeConversaPreview(
   if (texto) return `${autor}: ${texto}`;
   if (c.last_has_anexo) return `${autor}: Anexo`;
   return autor;
+}
+
+/** Time of a message ("11:57"); its day is in the divider above it. */
+export function horaMensagem(iso: string): string {
+  return format(new Date(iso), 'HH:mm');
+}
+
+/** Longest pause between two messages of one author that still stacks them. */
+const PAUSA_MAX_MS = 5 * 60_000;
+
+export type EquipeThreadRow =
+  | { kind: 'dia'; key: string; label: string }
+  | {
+      kind: 'msg';
+      mensagem: EquipeMensagem;
+      /** First of a run: shows the author's name. */
+      inicio: boolean;
+      /** Last of a run: shows the avatar and the time. */
+      fim: boolean;
+    };
+
+/** "Hoje", "Ontem", "Segunda-feira, 19 de outubro", or with the year when it isn't this one. */
+export function rotuloDia(d: Date, now: Date = new Date()): string {
+  if (isToday(d)) return 'Hoje';
+  if (isYesterday(d)) return 'Ontem';
+  const texto = isSameYear(d, now)
+    ? format(d, "EEEE, d 'de' MMMM", { locale: ptBR })
+    : format(d, "d 'de' MMMM 'de' yyyy", { locale: ptBR });
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+/**
+ * Thread rows for messages in chronological order: a divider opening each day, and
+ * messages stacked into runs (same author, same day, at most 5 minutes apart).
+ */
+export function agruparEquipeMensagens(
+  itens: EquipeMensagem[],
+  now: Date = new Date(),
+): EquipeThreadRow[] {
+  const rows: EquipeThreadRow[] = [];
+  let anterior: {
+    m: EquipeMensagem;
+    d: Date;
+    row: Extract<EquipeThreadRow, { kind: 'msg' }>;
+  } | null = null;
+  for (const m of itens) {
+    const d = new Date(m.created_at);
+    const mesmoDia = anterior != null && isSameDay(anterior.d, d);
+    if (!mesmoDia) {
+      rows.push({ kind: 'dia', key: `dia-${format(d, 'yyyy-MM-dd')}`, label: rotuloDia(d, now) });
+    }
+    const continua: boolean =
+      anterior != null &&
+      mesmoDia &&
+      anterior.m.author_user_id === m.author_user_id &&
+      d.getTime() - anterior.d.getTime() <= PAUSA_MAX_MS;
+    if (continua) anterior!.row.fim = false;
+    const row: Extract<EquipeThreadRow, { kind: 'msg' }> = {
+      kind: 'msg',
+      mensagem: m,
+      inicio: !continua,
+      fim: true,
+    };
+    rows.push(row);
+    anterior = { m, d, row };
+  }
+  return rows;
 }
