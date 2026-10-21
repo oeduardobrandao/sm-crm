@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { signEquipeChatAnexoView } from '@/services/equipeChatMedia';
 import type { EquipeConversa, EquipeMensagemAnexo } from '@/store';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
-import { cn } from '@/lib/utils';
 
 /** Types the composer's file picker offers (the edge function's allowlist). */
 export const EQUIPE_ANEXO_ACCEPT =
@@ -114,10 +113,7 @@ export function EquipePessoaAvatar({
       fotoUrl={fotoUrl}
       seed={seed}
       size={size}
-      className={cn(
-        '![--avatar-bg:var(--primary-color)] ![--avatar-fg:#12151a]',
-        CHAT_INITIALS_FONT[fontSize],
-      )}
+      className={CHAT_INITIALS_FONT[fontSize]}
     />
   );
 }

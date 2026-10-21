@@ -363,7 +363,7 @@ function FluxosSections({
                       fotoUrl={membro?.avatar_url}
                       seed={linha.membro_id}
                       size={28}
-                      className="![--avatar-bg:#6d28d9] ![--avatar-fg:#fff] !text-[11px] !font-bold"
+                      className="!text-[11px] !font-bold"
                     />
                   </span>
                   <span className="phone-cell__body">

@@ -25,7 +25,7 @@ function resolveAuthorName(
 ): string {
   const wsUser = workspaceUsers.find((u) => u.id === userId);
   if (wsUser) return wsUser.nome;
-  return membros.find((m) => m.user_id === userId)?.nome ?? 'Membro';
+  return membros.find((m) => m.crm_user_id === userId)?.nome ?? 'Membro';
 }
 
 export default function PostCommentSummary({
