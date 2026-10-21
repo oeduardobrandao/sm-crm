@@ -24,6 +24,8 @@ const {
   mockMembros,
   mockTarefas,
   mockSearchPosts,
+  mockEquipeMembers,
+  mockCreateEquipe,
 } = vi.hoisted(() => ({
   mockFeed: vi.fn(),
   mockConversas: vi.fn(),
@@ -42,6 +44,8 @@ const {
   mockMembros: vi.fn().mockResolvedValue([]),
   mockTarefas: vi.fn().mockResolvedValue([]),
   mockSearchPosts: vi.fn().mockResolvedValue([]),
+  mockEquipeMembers: vi.fn().mockResolvedValue([]),
+  mockCreateEquipe: vi.fn(),
 }));
 
 vi.mock('@/store', () => ({
@@ -62,9 +66,9 @@ vi.mock('@/store', () => ({
   // actual RPCs from firing in these tests), but the mocked @/store module
   // must still expose these bindings or referencing them at render time
   // throws "No export is defined on the mock".
-  getEquipeChatMembers: vi.fn().mockResolvedValue([]),
+  getEquipeChatMembers: mockEquipeMembers,
   getEquipeConversaParticipantes: vi.fn().mockResolvedValue([]),
-  createEquipeConversa: vi.fn(),
+  createEquipeConversa: mockCreateEquipe,
   manageEquipeConversa: vi.fn(),
 }));
 
@@ -417,5 +421,44 @@ describe('MensagensPage — feature-flag behavior', () => {
     fireEvent.click(screen.getByTestId('mensagens-tab-clientes'));
 
     await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));
+  });
+
+  it('(k) a conversation created from Nova conversa opens right away, not as "Conversa não encontrada"', async () => {
+    mockMatchMedia(true);
+    const nova = {
+      ...EQUIPE_CONVERSAS[0],
+      conversa_id: 77,
+      tipo: 'dm' as const,
+      nome: null,
+      display_nome: 'Bruno Costa',
+      last_author_name: null,
+      last_content: null,
+      last_created_at: null,
+      last_message_id: null,
+    };
+    // The list the page cached on mount is empty; the server has the new DM
+    // only after create_equipe_conversa returns.
+    let criada = false;
+    mockEquipeConversas.mockImplementation(async () => (criada ? [nova] : []));
+    mockEquipeMembers.mockResolvedValue([
+      { user_id: 'user-3', nome: 'Bruno Costa', avatar_url: null, role: 'agent' },
+    ]);
+    mockCreateEquipe.mockImplementation(async () => {
+      criada = true;
+      return 77;
+    });
+
+    renderPage('/mensagens');
+    fireEvent.click(await screen.findByTestId('mensagens-tab-equipe'));
+    expect(await screen.findByText(/Nenhuma conversa ainda/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('nova-conversa-btn'));
+    fireEvent.click(await screen.findByTestId('colega-dm-user-3'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('current-path')).toHaveTextContent('/mensagens/equipe/77'),
+    );
+    expect(await screen.findByTestId('equipe-conversa-77')).toBeInTheDocument();
+    expect(screen.queryByText('Conversa não encontrada.')).not.toBeInTheDocument();
   });
 });
