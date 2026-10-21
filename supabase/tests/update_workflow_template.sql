@@ -38,6 +38,9 @@
 --       deixa a ultima etapa duplicada; evento registra a remocao com snapshot
 --   (t) cauda que NAO sai e trava a caminhada: ativa, nome customizado, com
 --       portal_approvals, com evento proprio, posicao antiga nao-objeto
+--   (u) espacos nas bordas do nome (20261021000010): template legado com "Agendar ",
+--       fluxo com "Postado " -- o merge e a cauda comparam com btrim; o save grava
+--       nomes aparados; o trigger apara qualquer INSERT/UPDATE de etapas
 --
 -- A RPC faz set_config('app.suppress_workflow_events','1', true), que persiste pelo
 -- resto da transacao de teste: toda chamada bem-sucedida e seguida de reset para '0'.
@@ -745,6 +748,77 @@ begin
   perform set_config('app.suppress_workflow_events', '0', true);
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf;
   assert v_cnt = 2, format('(t) posicao antiga nao-objeto: sem nome herdado, etapa fica, veio %s', v_cnt);
+
+  -- ---------------------------------------------------------------------
+  -- (u) espacos nas bordas
+  -- ---------------------------------------------------------------------
+  -- trigger: INSERT e UPDATE aparam; elemento sem nome string fica como esta
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'TV', '[{"nome":"  Copy  ","prazo_dias":1},{"nome":"Design\t","prazo_dias":1}]', 'padrao')
+    returning id into v_tpl;
+  select etapas into v_snap from workflow_templates where id = v_tpl;
+  assert v_snap->0->>'nome' = 'Copy' and v_snap->1->>'nome' = 'Design' and (v_snap->0->>'prazo_dias')::int = 1,
+    format('(u) INSERT deve aparar os nomes, veio %s', v_snap);
+  update workflow_templates set etapas = '[{"nome":" X ","prazo_dias":2}, 5, {"prazo_dias":3}]' where id = v_tpl;
+  select etapas into v_snap from workflow_templates where id = v_tpl;
+  assert v_snap = '[{"nome":"X","prazo_dias":2}, 5, {"prazo_dias":3}]'::jsonb,
+    format('(u) UPDATE apara so nomes string, veio %s', v_snap);
+
+  -- template legado gravado com espacos (trigger desligado so para montar o caso)
+  alter table workflow_templates disable trigger workflow_templates_trim_etapa_nomes;
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'TW', '[{"nome":"Copy","prazo_dias":1},{"nome":"Agendar ","prazo_dias":1},{"nome":"Postado ","prazo_dias":1},{"nome":"Postado ","prazo_dias":1}]', 'padrao')
+    returning id into v_tpl;
+  alter table workflow_templates enable trigger workflow_templates_trim_etapa_nomes;
+  -- W1: nomes aparados no fluxo; W2: "Postado " com espaco no fluxo
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'W1', v_tpl, 'ativo', 0, false, 'padrao') returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em)
+    values (v_wf, 0, 'Copy', 1, 'corridos', 'padrao', 'ativo', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf, 1, 'Agendar', 1, 'corridos', 'padrao', 'pendente') returning id into v_e1;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf, 2, 'Postado', 1, 'corridos', 'padrao', 'pendente'),
+           (v_wf, 3, 'Postado', 1, 'corridos', 'padrao', 'pendente');
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'W2', v_tpl, 'ativo', 0, false, 'padrao') returning id into v_wf2;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em)
+    values (v_wf2, 0, 'Copy', 1, 'corridos', 'padrao', 'ativo', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf2, 1, 'Agendar ', 1, 'corridos', 'padrao', 'pendente') returning id into v_e2;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf2, 2, 'Postado ', 1, 'corridos', 'padrao', 'pendente'),
+           (v_wf2, 3, 'Postado ', 1, 'corridos', 'padrao', 'pendente');
+
+  -- save: renomeia a posicao 1 (" Agendamento "), encolhe para 3 e duplica nada
+  perform update_workflow_template(v_tpl, 'TW',
+    '[{"nome":"Copy","prazo_dias":1},{"nome":" Agendamento ","prazo_dias":1},{"nome":"Postado ","prazo_dias":1}]', 'padrao');
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  select etapas into v_snap from workflow_templates where id = v_tpl;
+  assert v_snap->1->>'nome' = 'Agendamento' and v_snap->2->>'nome' = 'Postado',
+    format('(u) save grava nomes aparados, veio %s', v_snap);
+  select nome into v_err from workflow_etapas where id = v_e1;
+  assert v_err = 'Agendamento', format('(u) W1: "Agendar" herdado de "Agendar " segue o template, veio %s', v_err);
+  select nome into v_err from workflow_etapas where id = v_e2;
+  assert v_err = 'Agendamento', format('(u) W2: "Agendar " herdado segue e sai aparado, veio [%s]', v_err);
+  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf;
+  assert v_cnt = 3, format('(u) W1: cauda "Postado" (template antigo "Postado ") sai, sobraram %s', v_cnt);
+  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf2;
+  assert v_cnt = 3, format('(u) W2: cauda "Postado " sai, sobraram %s', v_cnt);
+  select count(*) into v_cnt from workflow_events
+    where workflow_id = v_wf2 and event_type = 'template_propagado'
+      and jsonb_path_exists(metadata, '$.alteracoes[*] ? (@.campo == "nome")');
+  assert v_cnt = 1, '(u) W2: so o rename real vira alteracao (nada de espaco-so)';
+
+  -- backfill usa o nome aparado
+  perform update_workflow_template(v_tpl, 'TW',
+    '[{"nome":"Copy","prazo_dias":1},{"nome":"Agendamento","prazo_dias":1},{"nome":"Postado","prazo_dias":1},{"nome":"  Arquivar ","prazo_dias":1}]', 'padrao');
+  perform set_config('app.suppress_workflow_events', '0', true);
+  select nome into v_err from workflow_etapas where workflow_id = v_wf and ordem = 3;
+  assert v_err = 'Arquivar', format('(u) backfill grava o nome aparado, veio [%s]', v_err);
+  select nome into v_err from workflow_etapas where workflow_id = v_wf2 and ordem = 2;
+  assert v_err = 'Postado ', format('(u) espaco-so nao e reescrito no fluxo, veio [%s]', v_err);
 
   raise notice 'PASS update_workflow_template';
 end $$;
