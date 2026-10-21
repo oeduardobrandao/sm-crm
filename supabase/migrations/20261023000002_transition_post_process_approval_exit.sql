@@ -47,7 +47,7 @@ ALTER TABLE public.post_process_events
   ADD CONSTRAINT post_process_events_evento_check CHECK (evento IN (
     'desmembrado', 'aplicado', 'avancou', 'voltou', 'concluido',
     'reaberto', 'removido', 'vinculado', 'etapa_editada', 'voltou_rascunho')) NOT VALID;
--- NOT VALID + VALIDATE: a validacao so pega SHARE UPDATE EXCLUSIVE, sem travar escritas.
+-- Na mesma transacao o lock exclusivo do DROP/ADD segue ate o VALIDATE; tabela pequena, custo desprezivel.
 ALTER TABLE public.post_process_events
   VALIDATE CONSTRAINT post_process_events_evento_check;
 
