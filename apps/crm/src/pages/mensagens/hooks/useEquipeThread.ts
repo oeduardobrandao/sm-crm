@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { trackUnsavedWork, useUnsavedWork } from '@mesaas/app-lifecycle';
 import { useAuth } from '@/context/AuthContext';
@@ -100,10 +100,10 @@ export function useEquipeThread({ conversa, mensagens, send, markSeen }: Options
     }
   }
 
-  /** Enter sends, Shift+Enter breaks the line. Ignored while an IME is composing
-   * (Enter there confirms the composed text, it isn't a send). */
-  function onComposerKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
+  /** Enter sends, Shift+Enter breaks the line. MentionEditor skips this while an IME
+   * is composing or an @-suggestion is open. */
+  function onComposerKeyDown(e: KeyboardEvent) {
+    if (e.key !== 'Enter' || e.shiftKey) return;
     e.preventDefault();
     void enviar();
   }

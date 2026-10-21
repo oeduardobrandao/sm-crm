@@ -1,5 +1,5 @@
 import { ArrowLeft, Paperclip, Send, Users, X } from 'lucide-react';
-import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { MentionText } from '@/components/mentions/MentionText';
 import type { EquipeConversa } from '@/store';
 import { initialsOf } from './Avatars';
@@ -205,13 +205,13 @@ export function EquipeThread({
           >
             <Paperclip size={15} />
           </button>
-          <MentionTextarea
-            rows={1}
+          <MentionEditor
             value={draft}
             onValueChange={setDraft}
             onKeyDown={onComposerKeyDown}
             placeholder="Mensagem para a equipe…"
-            className="flex-1 resize-none rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-2.5 text-sm outline-none"
+            rootClassName="min-w-0 flex-1"
+            className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-2.5 text-sm outline-none"
           />
           <button
             onClick={() => void enviar()}

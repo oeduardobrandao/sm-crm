@@ -510,14 +510,25 @@
   width: 18px;
   height: 18px;
 }
+.phone-msg-composer__field {
+  flex: 1;
+  min-width: 0;
+}
+/* MentionEditor's contenteditable (one <p> per line), not a text input. */
 .phone-msg-composer__input--area {
   display: block;
+  width: 100%;
   height: auto;
   min-height: 44px;
   max-height: 132px;
   padding: 10px 16px;
+  overflow-y: auto;
   border-radius: 22px;
   line-height: 22px;
-  resize: none;
-  field-sizing: content;
+}
+.phone-msg-composer__input--area p {
+  margin: 0;
+}
+.phone-msg-composer__input--area:focus {
+  border-color: var(--phone-accent);
 }

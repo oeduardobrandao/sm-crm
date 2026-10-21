@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ComponentProps } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setEditorText } from '@/test/mentionEditor';
 import type { EquipeConversa, EquipeMensagem } from '@/store';
 import { EquipeListPhone } from '../EquipeListPhone';
 import { EquipeThreadPhone } from '../EquipeThreadPhone';
@@ -21,7 +22,7 @@ vi.mock('@/services/equipeChatMedia', () => ({
   signEquipeChatAnexoView: vi.fn(),
 }));
 
-// MentionTextarea mounts useMentionSearch, which queries these on mount.
+// MentionEditor mounts useMentionSearch, which queries these on mount.
 vi.mock('@/store', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return { ...actual, getMembros: vi.fn(), getClientes: vi.fn(), getTarefas: vi.fn() };
@@ -202,14 +203,14 @@ describe('EquipeThreadPhone', () => {
 
   it('sends on Enter but not while an IME is composing', async () => {
     const { send } = renderThread();
-    const field = screen.getByRole('textbox', { name: 'Mensagem' });
-    fireEvent.change(field, { target: { value: 'oi' } });
+    const field = screen.getByRole('textbox', { name: 'Mensagem para a equipe…' });
+    setEditorText(field, 'oi');
 
     fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
     expect(send.mutateAsync).not.toHaveBeenCalled();
 
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(send.mutateAsync).toHaveBeenCalledWith({ content: 'oi', anexoIds: undefined });
-    await waitFor(() => expect(field).toHaveValue(''));
+    await waitFor(() => expect(field.textContent).toBe(''));
   });
 });

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Paperclip, Send, Users, X } from 'lucide-react';
-import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { MentionText } from '@/components/mentions/MentionText';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import type { EquipeConversa } from '@/store';
@@ -191,14 +191,12 @@ export function EquipeThreadPhone({
           >
             <Paperclip aria-hidden="true" />
           </button>
-          <MentionTextarea
-            rows={1}
+          <MentionEditor
             value={draft}
             onValueChange={setDraft}
             onKeyDown={onComposerKeyDown}
-            enterKeyHint="send"
             placeholder="Mensagem para a equipe…"
-            aria-label="Mensagem"
+            rootClassName="phone-msg-composer__field"
             className="phone-msg-composer__input phone-msg-composer__input--area"
           />
           <button

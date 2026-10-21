@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ComponentProps } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setEditorText } from '@/test/mentionEditor';
 import { toast } from 'sonner';
 import { EquipeThread } from '../EquipeThread';
 import type { EquipeConversa, EquipeMensagem } from '@/store';
@@ -27,7 +28,7 @@ vi.mock('@/services/equipeChatMedia', () => ({
   signEquipeChatAnexoView: mockSign,
 }));
 
-// MentionTextarea always mounts useMentionSearch -> useQuery(['membros'|'clientes'|'tarefas']),
+// MentionEditor always mounts useMentionSearch -> useQuery(['membros'|'clientes'|'tarefas']),
 // even when the user never types "@" -- mock the store's fetchers so those queries
 // resolve instantly instead of hitting the real (Supabase-backed) module.
 vi.mock('@/store', async (importOriginal) => {
@@ -195,8 +196,8 @@ describe('EquipeThread', () => {
 
   it('sends a message on Enter and clears the draft', async () => {
     const { send } = renderThread();
-    const input = screen.getByPlaceholderText('Mensagem para a equipe…');
-    fireEvent.change(input, { target: { value: 'Olá' } });
+    const input = screen.getByRole('textbox', { name: 'Mensagem para a equipe…' });
+    setEditorText(input, 'Olá');
     // enviar() awaits mutateAsync before its own setState calls -- wrap the
     // triggering event in act() so those updates settle inside the test
     // (same rationale as ConversationThread.test.tsx).
@@ -204,13 +205,13 @@ describe('EquipeThread', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });
     expect(send.mutateAsync).toHaveBeenCalledWith({ content: 'Olá', anexoIds: undefined });
-    expect(input).toHaveValue('');
+    expect(input.textContent).toBe('');
   });
 
   it('does not send on Shift+Enter', async () => {
     const { send } = renderThread();
-    const input = screen.getByPlaceholderText('Mensagem para a equipe…');
-    fireEvent.change(input, { target: { value: 'Olá' } });
+    const input = screen.getByRole('textbox', { name: 'Mensagem para a equipe…' });
+    setEditorText(input, 'Olá');
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
     });
@@ -259,8 +260,8 @@ describe('EquipeThread', () => {
   it('shows an error toast when sending fails', async () => {
     const send = makeSend({ mutateAsync: vi.fn().mockRejectedValue(new Error('network')) });
     renderThread({ send });
-    const input = screen.getByPlaceholderText('Mensagem para a equipe…');
-    fireEvent.change(input, { target: { value: 'Olá' } });
+    const input = screen.getByRole('textbox', { name: 'Mensagem para a equipe…' });
+    setEditorText(input, 'Olá');
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });
@@ -271,8 +272,8 @@ describe('EquipeThread', () => {
     const { send, markSeen, qc, rerender } = renderThread();
     const scrollEl = screen.getByTestId('thread-scroll');
 
-    const input = screen.getByPlaceholderText('Mensagem para a equipe…');
-    fireEvent.change(input, { target: { value: 'Nova mensagem' } });
+    const input = screen.getByRole('textbox', { name: 'Mensagem para a equipe…' });
+    setEditorText(input, 'Nova mensagem');
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });

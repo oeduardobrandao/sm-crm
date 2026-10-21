@@ -35,7 +35,7 @@ const {
   mockEquipeMensagens: vi.fn().mockResolvedValue([]),
   mockEquipeSeen: vi.fn().mockResolvedValue(undefined),
   mockEquipeSend: vi.fn().mockResolvedValue(undefined),
-  // EquipeThread's composer renders MentionTextarea (Task 10), which always
+  // EquipeThread's composer renders MentionEditor (Task 10), which always
   // mounts useMentionSearch -> useQuery(['membros'|'clientes'|'tarefas']) even
   // when the user never types "@" -- stub the two this file doesn't otherwise
   // cover so that query resolves instead of hitting the real module.
