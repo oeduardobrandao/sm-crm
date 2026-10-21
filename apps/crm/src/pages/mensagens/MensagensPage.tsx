@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Users } from 'lucide-react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { Cliente } from '@/store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -7,7 +6,6 @@ import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEquipeChatRealtime } from '@/hooks/useEquipeChatRealtime';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
-import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { useMensagensData } from './hooks/useMensagensData';
 import { useEquipeChatData } from './hooks/useEquipeChatData';
@@ -26,6 +24,8 @@ import {
 import { MensagensListPhone } from './phone/MensagensListPhone';
 import { ConversationThreadPhone } from './phone/ConversationThreadPhone';
 import { ThreadPhoneShell } from './phone/ThreadPhoneShell';
+import { EquipeListPhone } from './phone/EquipeListPhone';
+import { EquipeThreadPhone } from './phone/EquipeThreadPhone';
 
 type MensagensTab = 'clientes' | 'equipe';
 
@@ -175,40 +175,31 @@ function EquipePane({
   if (!isDesktop) {
     if (conversaId == null && !invalidId) {
       return (
-        <div className="page-full-bleed flex min-h-0 min-w-0 flex-col">
-          <PhonePageHeader title="Mensagens">{tabs}</PhonePageHeader>
-          {lista}
-        </div>
+        <EquipeListPhone
+          conversas={equipe.conversas.data ?? []}
+          isLoading={equipe.conversas.isLoading}
+          isError={conversasHardError}
+          currentUserId={user?.id ?? null}
+          onSelect={onSelect}
+          onNovaConversa={onNovaConversa}
+          headerExtra={tabs}
+        />
       );
     }
     if (!conversaAtual || equipe.conversas.isLoading) {
       return <ThreadPhoneShell title="Mensagens">{renderThreadStatus()}</ThreadPhoneShell>;
     }
     return (
-      <ThreadPhoneShell
-        title={conversaAtual.display_nome}
-        trailing={
-          <button
-            type="button"
-            onClick={onOpenDetalhes}
-            aria-label="Ver detalhes da conversa"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)]"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-          >
-            <Users size={18} />
-          </button>
-        }
+      <EquipeThreadPhone
+        key={conversaId}
+        conversa={conversaAtual}
+        mensagens={equipe.mensagens}
+        send={equipe.send}
+        markSeen={equipe.markSeen}
+        onOpenDetalhes={onOpenDetalhes}
       >
-        <EquipeThread
-          key={conversaId}
-          conversa={conversaAtual}
-          mensagens={equipe.mensagens}
-          send={equipe.send}
-          markSeen={equipe.markSeen}
-          hideHeader
-        />
         {detalhes}
-      </ThreadPhoneShell>
+      </EquipeThreadPhone>
     );
   }
 

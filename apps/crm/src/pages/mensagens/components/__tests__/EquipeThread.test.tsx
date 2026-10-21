@@ -171,11 +171,6 @@ describe('EquipeThread', () => {
     );
   });
 
-  it('can drop its own header when a phone nav bar shows the name', () => {
-    renderThread({ hideHeader: true, onOpenDetalhes: vi.fn() });
-    expect(screen.queryByRole('button', { name: 'Ver detalhes da conversa' })).toBeNull();
-  });
-
   it('renders messages in chronological order, author name on others, reversed alignment on the current user', () => {
     renderThread();
 
