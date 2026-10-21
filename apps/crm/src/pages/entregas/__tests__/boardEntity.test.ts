@@ -5,6 +5,7 @@ import {
   isPostEntity,
   sortEntitiesByPosicao,
   sortEntitiesByPrazo,
+  sortEntitiesByPublicacao,
   stageSignature,
   toPostEntity,
   toWorkflowEntity,
@@ -335,5 +336,22 @@ describe('sorts', () => {
     ]);
     expect(entityNumericId(w)).toBe(10);
     expect(isPostEntity(p)).toBe(true);
+  });
+
+  it('sortEntitiesByPublicacao: scheduled_at crescente, sem data e fluxos por último em ordem manual', () => {
+    const scheduled = (id: number, board_position: number, scheduled_at: string | null) => {
+      const process = makeProcess({ id, board_position });
+      return toPostEntity({ ...process, post: { ...process.post, scheduled_at } }, ctx)!;
+    };
+    const late = scheduled(1, 0, '2026-11-05T12:00:00Z');
+    const early = scheduled(2, 9, '2026-10-25T12:00:00Z');
+    const undated = scheduled(3, 2, null);
+    const w = toWorkflowEntity(makeCard({ id: 4, position: 1 }));
+    expect(sortEntitiesByPublicacao([undated, late, w, early]).map((e) => e.id)).toEqual([
+      'post:2',
+      'post:1',
+      'workflow:4',
+      'post:3',
+    ]);
   });
 });
