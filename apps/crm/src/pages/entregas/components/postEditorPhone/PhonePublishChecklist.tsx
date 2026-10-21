@@ -69,11 +69,10 @@ export function PhonePublishChecklist({
               : `${mediaCount} arquivos`
         }
         subtitle={s.mediaViolations.length > 0 ? s.mediaViolations.join(' ') : undefined}
-        // No check on an empty post: the schedule button doesn't gate on media, so
-        // neither a "pronto" nor a "Falta" would be true here.
+        // While media is still loading neither mark would be true yet.
         accessory={
-          mediaCount === 0 && s.mediaViolations.length === 0 ? undefined : (
-            <Mark ok={s.mediaViolations.length === 0} />
+          mediaCount === 0 && !s.missingMedia ? undefined : (
+            <Mark ok={!s.missingMedia && s.mediaViolations.length === 0} />
           )
         }
       />

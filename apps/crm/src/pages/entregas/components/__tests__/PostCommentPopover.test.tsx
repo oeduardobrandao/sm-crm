@@ -14,8 +14,11 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 
 import PostCommentPopover from '../PostCommentPopover';
+import { setEditorText } from '@/test/mentionEditor';
 
-// PostCommentPopover's comment/reply textareas render MentionTextarea (Task 5 of the
+const replyInput = () => screen.getByRole('textbox', { name: 'Responder...' });
+
+// PostCommentPopover's comment/reply inputs render MentionEditor (Task 5 of the
 // at-mentions feature), which pulls membros/clientes/tarefas through useMentionSearch
 // -> useQuery -- so every render here needs a QueryClient ancestor. Shadowing `render`
 // with a wrapped version (rather than touching each of this file's many call sites)
@@ -119,7 +122,7 @@ describe('PostCommentPopover', () => {
     mockUseAuth.mockReturnValue({ can: makeCan(fakeMembership({ role: 'owner' })) });
   });
 
-  // Re-arms the mocks MentionTextarea's useMentionSearch depends on -- the
+  // Re-arms the mocks MentionEditor's useMentionSearch depends on -- the
   // `vi.restoreAllMocks()` above (and the global one in vitest.setup.ts) strips a
   // bare `vi.fn()`'s resolved value back to "returns undefined" between tests.
   beforeEach(async () => {
@@ -277,8 +280,7 @@ describe('PostCommentPopover', () => {
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText('Responder...');
-    fireEvent.change(input, { target: { value: 'New reply' } });
+    setEditorText(replyInput(), 'New reply');
     fireEvent.click(screen.getByText('Enviar'));
 
     await waitFor(() => {
@@ -290,9 +292,8 @@ describe('PostCommentPopover', () => {
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText('Responder...');
-    fireEvent.change(input, { target: { value: 'Enter reply' } });
-    fireEvent.keyDown(input, { key: 'Enter', shiftKey: false });
+    setEditorText(replyInput(), 'Enter reply');
+    fireEvent.keyDown(replyInput(), { key: 'Enter', shiftKey: false });
 
     await waitFor(() => {
       expect(defaultProps.onReply).toHaveBeenCalledWith(1, 'Enter reply');
@@ -303,9 +304,8 @@ describe('PostCommentPopover', () => {
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText('Responder...');
-    fireEvent.change(input, { target: { value: 'Multiline' } });
-    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    setEditorText(replyInput(), 'Multiline');
+    fireEvent.keyDown(replyInput(), { key: 'Enter', shiftKey: true });
 
     expect(defaultProps.onReply).not.toHaveBeenCalled();
   });
@@ -343,10 +343,10 @@ describe('PostCommentPopover', () => {
 
     fireEvent.click(screen.getByTitle('Editar'));
 
-    const editInput = screen.getByDisplayValue('First comment');
-    expect(editInput.tagName).toBe('TEXTAREA');
+    const editInput = document.querySelector('.comment-edit-input') as HTMLElement;
+    expect(editInput).toHaveTextContent('First comment');
 
-    fireEvent.change(editInput, { target: { value: 'Edited comment' } });
+    setEditorText(editInput, 'Edited comment');
     fireEvent.click(screen.getByText('Salvar'));
 
     await waitFor(() => {

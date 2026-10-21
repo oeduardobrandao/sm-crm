@@ -322,8 +322,11 @@ export const InstagramCaptionField = forwardRef<
           )}
           {'\u200B'}
         </div>
+        {/* bare: Vidro's gray filled-field skin on top of the gray destination card made
+            the caption read as disabled; it keeps the white bordered field instead. */}
         <Textarea
           ref={textareaRef}
+          data-variant="bare"
           value={text}
           onChange={(e) => {
             if (!disabled) change(e.target.value); // readOnly can still fire onChange in tests

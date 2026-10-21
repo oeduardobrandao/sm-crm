@@ -100,8 +100,10 @@ export const DestinationCaptionField = forwardRef<
           {max == null ? `${text.length} caracteres` : `${text.length} / ${max}`}
         </span>
       </div>
+      {/* bare: same white bordered field as the Instagram caption, not Vidro's gray fill. */}
       <Textarea
         id={id}
+        data-variant="bare"
         value={text}
         onChange={(e) => {
           if (!disabled) change(e.target.value);
