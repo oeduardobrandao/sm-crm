@@ -86,7 +86,7 @@ describe('DialogContent phone sheet', () => {
     );
     expect(dialogEl().className).not.toContain('phone-dialog');
     expect(dialogEl().className).toContain('max-w-lg');
-    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeTruthy();
   });
 
   it('inside the shell on desktop widths keeps the desktop box', () => {

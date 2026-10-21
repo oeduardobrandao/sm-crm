@@ -144,7 +144,7 @@ describe('NovaConversaDialog', () => {
     // dialog itself stays mounted/visible in the DOM after this -- only its
     // internal state should have been cleared, which is exactly what this
     // asserts without needing to close/reopen via props.
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(await screen.findByText('Ana Silva')).toBeInTheDocument();

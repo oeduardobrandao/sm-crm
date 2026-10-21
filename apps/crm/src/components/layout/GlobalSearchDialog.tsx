@@ -44,7 +44,7 @@ import {
   countByType,
   filterSearchItems,
   groupSearchItems,
-  SEARCH_TYPE_LABELS,
+  searchTypeLabel,
   SEARCH_TYPE_ORDER,
   type SearchType,
 } from './searchModel';
@@ -188,6 +188,9 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
         articles: articles ?? [],
         statusDefs: statusDefs ?? [],
       }),
+    // buildSearchItems reads i18n at call time for prefixes and dates; `t` changes identity on
+    // a language switch, so listing it re-runs the build then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       clientes,
       contratos,
@@ -200,6 +203,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
       pages,
       articles,
       statusDefs,
+      t,
     ],
   );
 
@@ -241,7 +245,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
       {isPhone ? (
         <div className="phone-search__bar">
           {input}
-          <DialogClose className="phone-search__cancel">Cancelar</DialogClose>
+          <DialogClose className="phone-search__cancel">{t('search.cancel')}</DialogClose>
         </div>
       ) : (
         input
@@ -258,7 +262,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
         >
           <TypePill
             icon={Layers}
-            label="Tudo"
+            label={t('search.types.all')}
             count={counts.total}
             active={effectiveType === 'all'}
             onClick={() => selectType('all')}
@@ -267,7 +271,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
             <TypePill
               key={type}
               icon={TYPE_ICONS[type]}
-              label={SEARCH_TYPE_LABELS[type]}
+              label={searchTypeLabel(type)}
               count={counts[type] ?? 0}
               active={effectiveType === type}
               onClick={() => selectType(type)}
@@ -286,9 +290,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
             <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />
           </div>
         ) : !hasQuery ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            Digite para buscar clientes, posts, tarefas, fluxos, artigos de ajuda…
-          </div>
+          <div className="py-6 text-center text-sm text-muted-foreground">{t('search.hint')}</div>
         ) : matches.length === 0 ? (
           <div className="py-6 text-center text-sm">
             {t('topbar.noResults', 'Nenhum resultado.')}
@@ -297,7 +299,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
           groups.map((group) => {
             const Icon = TYPE_ICONS[group.type];
             return (
-              <CommandGroup key={group.type} heading={SEARCH_TYPE_LABELS[group.type]}>
+              <CommandGroup key={group.type} heading={searchTypeLabel(group.type)}>
                 {group.items.map((item) => (
                   <CommandItem key={item.key} value={item.key} onSelect={() => go(item.route)}>
                     <Icon className="h-4 w-4 shrink-0" />
@@ -335,7 +337,9 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
                       onSelect={() => go(`/ajuda?q=${encodeURIComponent(query.trim())}`)}
                     >
                       <ArrowRight className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Ver todos em Ajuda</span>
+                      <span className="truncate">
+                        {t('search.seeAllIn', { type: searchTypeLabel('ajuda') })}
+                      </span>
                       <span className="ml-auto truncate text-xs text-muted-foreground">
                         +{group.hiddenCount}
                       </span>
@@ -347,7 +351,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
                     >
                       <ArrowRight className="h-4 w-4 shrink-0" />
                       <span className="truncate">
-                        Ver todos em {SEARCH_TYPE_LABELS[group.type]}
+                        {t('search.seeAllIn', { type: searchTypeLabel(group.type) })}
                       </span>
                       <span className="ml-auto truncate text-xs text-muted-foreground">
                         +{group.hiddenCount}

@@ -174,7 +174,8 @@
   "topbar": {
     "search": "Buscar...",
     "searchPlaceholder": "Buscar...",
-    "noResults": "Nenhum resultado."
+    "noResults": "Nenhum resultado.",
+    "supportChat": "Chat de suporte"
   },
   "ui": {
     "close": "Fechar",
@@ -199,5 +200,40 @@
   "dateFormat": {
     "monthYear": "MMMM 'de' yyyy",
     "weekdayDayMonth": "EEEE, d 'de' MMMM"
-  }
+  },
+  "search": {
+    "types": {
+      "all": "Tudo",
+      "cliente": "Clientes",
+      "contrato": "Contratos",
+      "membro": "Equipe",
+      "transacao": "Financeiro",
+      "fluxo": "Fluxos",
+      "post": "Postagens",
+      "tarefa": "Tarefas",
+      "ideia": "Ideias",
+      "pagina": "Páginas",
+      "ajuda": "Ajuda"
+    },
+    "hint": "Digite para buscar clientes, posts, tarefas, fluxos, artigos de ajuda…",
+    "cancel": "Cancelar",
+    "seeAllIn": "Ver todos em {{type}}",
+    "createdAt": "Criado em {{date}}",
+    "scheduledAt": "Publicação {{date}}",
+    "dueAt": "Prazo {{date}}",
+    "standalonePost": "Avulso",
+    "sentByClient": "Enviada pelo cliente",
+    "byAuthor": "Por {{name}}",
+    "request": "Solicitação",
+    "fluxoStatus": {
+      "ativo": "Ativo",
+      "concluido": "Concluído",
+      "arquivado": "Arquivado"
+    }
+  },
+  "plan": {
+    "limitReached": "Limite do plano atingido.",
+    "csvLocked": "Importação CSV não está disponível no seu plano."
+  },
+  "optional": "(opcional)"
 }

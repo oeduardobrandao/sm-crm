@@ -34,7 +34,8 @@
   "convertToClient": "Converter em cliente",
   "convertDialog": {
     "title": "Converter Lead em Cliente",
-    "submit": "Criar Cliente"
+    "submit": "Criar Cliente",
+    "prefilled": "Os dados do lead foram preenchidos automaticamente. Revise e complete os campos abaixo."
   },
   "dialog": {
     "editTitle": "Editar Lead",

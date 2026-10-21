@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { MessageCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import NotificationBell from './NotificationBell';
 import { openSupportChat } from '@/lib/supportChat';
 import {
@@ -10,6 +11,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function TopBarActions({ variant = 'topbar' }: { variant?: 'topbar' | 'capsule' }) {
+  const { t } = useTranslation();
   const crispUnread = useSupportChatUnread();
   const buttonClassName = variant === 'capsule' ? 'vidro-capsule-btn' : 'topbar-action-btn';
 
@@ -34,7 +36,7 @@ export default function TopBarActions({ variant = 'topbar' }: { variant?: 'topba
             {crispUnread && <span className="unread-dot unread-dot--primary" />}
           </button>
         </TooltipTrigger>
-        <TooltipContent>Chat de suporte</TooltipContent>
+        <TooltipContent>{t('topbar.supportChat')}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

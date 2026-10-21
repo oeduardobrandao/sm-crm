@@ -1000,9 +1000,7 @@ export default function LeadsPage() {
           <DialogHeader>
             <DialogTitle>{t('convertDialog.title')}</DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground mb-1">
-            Os dados do lead foram preenchidos automaticamente. Revise e complete os campos abaixo.
-          </p>
+          <p className="text-xs text-muted-foreground mb-1">{t('convertDialog.prefilled')}</p>
           <Form {...convertForm}>
             <form onSubmit={convertForm.handleSubmit(onConvertSubmit)} className="space-y-3">
               {isPhone ? (
@@ -1027,7 +1025,9 @@ export default function LeadsPage() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('form.email')} (opcional)</FormLabel>
+                        <FormLabel>
+                          {t('form.email')} {t('optional')}
+                        </FormLabel>
                         <FormControl>
                           <Input type="email" {...field} />
                         </FormControl>
