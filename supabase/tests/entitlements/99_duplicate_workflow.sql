@@ -57,6 +57,8 @@ begin
        'plataformas',  -- 20261010100005
        -- definidas pela copia
        'user_id','created_via',
+       -- default de proposito: a copia nasce sem dispensa do banner (20261023000001)
+       'aviso_rascunho_dispensado_em',
        -- geradas pelo banco
        'id','created_at');
   assert v_missing is null, format('workflows tem coluna nao classificada em duplicate_workflow: %s', v_missing);
