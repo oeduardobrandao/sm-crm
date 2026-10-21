@@ -51,6 +51,17 @@ export async function getWorkspaceUsers(): Promise<any[]> {
   }));
 }
 
+/**
+ * Login e-mails of the active workspace's members. profiles has no e-mail
+ * column, so this goes through a SECURITY DEFINER RPC over auth.users that
+ * answers only callers with equipe:editar (zero rows otherwise).
+ */
+export async function getWorkspaceMemberEmails(): Promise<{ user_id: string; email: string }[]> {
+  const { data, error } = await supabase.rpc('get_workspace_member_emails');
+  if (error) throw error;
+  return (data ?? []) as { user_id: string; email: string }[];
+}
+
 export async function getMyWorkspaces(): Promise<any[]> {
   const {
     data: { user },

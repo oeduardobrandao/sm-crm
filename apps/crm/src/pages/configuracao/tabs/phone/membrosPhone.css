@@ -56,3 +56,10 @@
 .phone-kit .phone-membros-sheet-actions {
   padding: 4px 0 0;
 }
+
+/* Member screen: the login e-mail wraps instead of truncating, so the whole
+   address stays readable on narrow phones. */
+.phone-kit .phone-membros-email .phone-cell__label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

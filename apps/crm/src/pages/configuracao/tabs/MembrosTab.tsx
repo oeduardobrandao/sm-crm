@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
@@ -33,6 +33,7 @@ import {
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { captureEvent } from '@/lib/analytics';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import {
@@ -50,6 +51,15 @@ import {
   inviteSuccessMessage,
 } from '../inviteHelpers';
 import { MembrosPhone } from './phone/MembrosPhone';
+
+/** The roster rows with each member's login e-mail (empty when not visible). */
+function useMemberEmailsMerge(wsUsers: Record<string, string>[] | undefined) {
+  const emails = useWorkspaceMemberEmails();
+  return useMemo(
+    () => (wsUsers ?? []).map((u) => ({ ...u, email: emails.get(u.id) ?? '' })),
+    [wsUsers, emails],
+  );
+}
 
 /** Workspace members and pending invites. */
 export default function MembrosTab() {
@@ -95,6 +105,9 @@ export default function MembrosTab() {
     queryFn: getWorkspaceUsers,
     enabled: canViewTeam,
   });
+  // Login e-mails come from their own RPC (equipe:editar only); merged in so
+  // both layouts read `email` off the row like any other field.
+  const memberEmails = useMemberEmailsMerge(wsUsers);
 
   // Gated on `canManageTeam` (equipe:editar): the roster still needs this
   // list for the Convidar dialog's role select, which stays open to any
@@ -318,7 +331,7 @@ export default function MembrosTab() {
       <MembrosPhone
         currentUserId={user?.id}
         loading={wsUsersLoading}
-        members={wsUsers ?? []}
+        members={memberEmails}
         invites={invites ?? []}
         workspaceRoles={workspaceRoles}
         canManageTeam={canManageTeam}
@@ -374,7 +387,7 @@ export default function MembrosTab() {
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
-          {(wsUsers ?? []).map((u: Record<string, string>) => (
+          {memberEmails.map((u: Record<string, string>) => (
             <div key={u.id} className="config-member-row">
               <PessoaAvatar
                 nome={u.nome || '?'}
@@ -394,6 +407,20 @@ export default function MembrosTab() {
                 >
                   {u.nome}
                 </div>
+                {u.email && (
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      color: 'var(--text-muted)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      marginBottom: '0.15rem',
+                    }}
+                  >
+                    {u.email}
+                  </div>
+                )}
                 {u.papel_nome ? (
                   // Custom papel: same badge look as RoleBadge (badge
                   // badge-neutral), but with the papel's own name instead of
