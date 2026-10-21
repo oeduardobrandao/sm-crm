@@ -3,7 +3,7 @@ import { X, Check, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { MentionText } from '@/components/mentions/MentionText';
-import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { useAuth } from '@/context/AuthContext';
 
 interface WorkspaceUser {
@@ -85,7 +85,6 @@ function CommentItem({
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(comment.content);
   const [saving, setSaving] = useState(false);
-  const editRef = useRef<HTMLTextAreaElement>(null);
   const { can } = useAuth();
 
   const isAuthor = comment.author_id === currentUserId;
@@ -101,13 +100,6 @@ function CommentItem({
   // matching MembrosTab/EquipePage's own gate for this module.
   const canDelete = isAuthor || can('equipe', 'editar') === true;
   const membro = resolveAuthor(comment.author_id, membros, workspaceUsers);
-
-  useEffect(() => {
-    if (editing && editRef.current) {
-      editRef.current.focus();
-      editRef.current.selectionStart = editRef.current.value.length;
-    }
-  }, [editing]);
 
   const handleSaveEdit = async () => {
     const trimmed = editContent.trim();
@@ -167,12 +159,12 @@ function CommentItem({
 
       {editing ? (
         <>
-          <MentionTextarea
-            ref={editRef}
+          <MentionEditor
             className="comment-edit-input"
             value={editContent}
             onValueChange={setEditContent}
             disabled={saving}
+            autoFocus
           />
           <div className="comment-edit-actions">
             <button
@@ -244,7 +236,7 @@ export default function PostCommentPopover({
     }
   }, [replyContent, submitting, onReply, thread.id]);
 
-  const handleReplyKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleReplyKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleReply();
@@ -323,14 +315,14 @@ export default function PostCommentPopover({
 
       {!readOnly && (
         <div className="comment-popover-footer">
-          <MentionTextarea
+          <MentionEditor
             className="comment-reply-input"
+            rootClassName="comment-reply-field"
             placeholder="Responder..."
             value={replyContent}
             onValueChange={setReplyContent}
             onKeyDown={handleReplyKeyDown}
             disabled={submitting}
-            rows={1}
           />
           <button
             className="comment-reply-submit"

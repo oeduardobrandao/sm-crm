@@ -16,7 +16,7 @@ const DROPDOWN_MAX_HEIGHT = 320;
 const VIEWPORT_MARGIN = 8;
 
 /** A `getBoundingClientRect()`-shaped anchor. Callers (mentionSuggestion.ts for the
- * TipTap editor, MentionTextarea for plain-text fields -- Task 5) supply their own,
+ * TipTap editors: PostEditor and MentionEditor) supply their own,
  * so this component never touches TipTap directly. */
 export interface MentionListAnchorRect {
   top: number;
@@ -63,8 +63,7 @@ function MentionAvatar({ item }: { item: MentionSuggestionItem }) {
 
 /**
  * Portal-rendered @-mention dropdown. Deliberately decoupled from TipTap -- it is
- * mounted by mentionSuggestion.ts for PostEditor, and reused as-is by MentionTextarea
- * (Task 5) for plain-text fields (comments, tarefa descriptions).
+ * mounted by mentionSuggestion.ts, for PostEditor and for MentionEditor (comment inputs).
  */
 export const MentionList = forwardRef<MentionListHandle, MentionListProps>(function MentionList(
   { sections, onSelect, referenceRect },

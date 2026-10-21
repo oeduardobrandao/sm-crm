@@ -9043,9 +9043,15 @@ body.role-agent input[name='valor_total'] {
 .post-editor-content .ProseMirror u {
   text-decoration: underline;
 }
+/* Brand yellow as link text is unreadable (~1.6:1 on white, worse on the callout
+   washes), so a link keeps the surrounding text colour and carries the brand in its
+   underline. The Hub's own accent rule is more specific and still wins there. */
 .post-editor-content .ProseMirror a {
-  color: var(--primary-color);
+  color: inherit;
   text-decoration: underline;
+  text-decoration-color: var(--primary-hover);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
   cursor: pointer;
 }
 /* h2/h3/blockquote: sem consumidor de UI antes do editor de Páginas (Task 9) --
@@ -9139,9 +9145,8 @@ a.mention-chip:hover {
 /* @-mention suggestion dropdown (Task 4 of the at-mentions spec). Portal-rendered to
    document.body with position: fixed by MentionList.tsx, so it escapes the entregas
    drawer's clipped overflow container regardless of ancestor stacking context.
-   pointer-events: auto is required, not decorative: when the textarea using this
-   dropdown (Task 5's MentionTextarea, e.g. TarefaFormDialog's descricao field) sits
-   inside a shadcn/Radix Dialog, Radix's DismissableLayer sets
+   pointer-events: auto is required, not decorative: when an editor using this
+   dropdown sits inside a shadcn/Radix Dialog, Radix's DismissableLayer sets
    document.body.style.pointerEvents = 'none' and grants `auto` back only to its own
    modal layer. This dropdown is a sibling portal outside that layer, so without an
    explicit override here its rows are unclickable (only keyboard selection works). */
@@ -9708,6 +9713,10 @@ a.mention-chip:hover {
   padding: 0.5rem 0.75rem;
   border-top: 1px solid var(--border-color);
 }
+.comment-reply-field {
+  flex: 1;
+  min-width: 0;
+}
 .comment-reply-input {
   flex: 1;
   background: var(--surface-hover);
@@ -9718,7 +9727,7 @@ a.mention-chip:hover {
   font-family: var(--font-main);
   color: var(--text-main);
   resize: none;
-  height: 32px;
+  min-height: 32px;
 }
 .comment-reply-input:focus {
   outline: none;
@@ -9784,6 +9793,25 @@ a.mention-chip:hover {
 }
 .comment-edit-cancel:hover {
   opacity: 0.8;
+}
+
+/* Comment inputs are MentionEditor (TipTap), so a picked @-mention shows as a chip.
+   The .comment-*-input class sits on the contenteditable itself. */
+.mention-editor {
+  max-height: 160px;
+  overflow-y: auto;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.mention-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+.mention-editor .mention-chip {
+  white-space: normal;
 }
 
 /* ── Add comment popover (from BubbleMenu) ─────────────────── */

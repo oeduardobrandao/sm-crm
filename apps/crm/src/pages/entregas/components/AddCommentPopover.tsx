@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import { MentionEditor } from '@/components/mentions/MentionEditor';
 
 export interface AddCommentPopoverProps {
   position: { top: number; left: number };
@@ -58,7 +58,7 @@ export function AddCommentPopover({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="comment-add-label">Adicionar comentário</div>
-      <MentionTextarea
+      <MentionEditor
         className="comment-add-input"
         placeholder="Escreva seu comentário..."
         value={text}
