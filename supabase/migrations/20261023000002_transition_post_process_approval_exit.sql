@@ -27,9 +27,26 @@
 -- SELECT para authenticated, entao a escrita da coluna passa por aqui.
 -- duplicate_post/apply/detach inserem com lista explicita de colunas: a coluna
 -- nova nasce NULL nas copias, de proposito.
+-- O reset confere no servidor as condicoes de postRascunhoBanner
+-- (apps/crm/src/pages/entregas/approvalExit.ts): processo ativo, passo ativo
+-- padrao, passo aprovacao_cliente pendente adiante e banner ainda nao
+-- resolvido neste ciclo (aviso_rascunho_dispensado_em nulo ou anterior ao
+-- ciclo). Falhou alguma, ciclo_changed (estado velho no CRM). Como o reset
+-- carimba a dispensa, um segundo reset no mesmo ciclo falha. A dispensa sem
+-- reset fica leniente. Reset que muda o post grava o evento 'voltou_rascunho'
+-- no historico do processo, no formato do 'avancou' de transition_post_process
+-- (etapa e post_status em antes/depois, approval_choice em depois).
 
 ALTER TABLE public.post_processes
   ADD COLUMN IF NOT EXISTS aviso_rascunho_dispensado_em timestamptz NULL;
+
+-- Novo evento de historico. Lista anterior: 20260918000002.
+ALTER TABLE public.post_process_events
+  DROP CONSTRAINT IF EXISTS post_process_events_evento_check;
+ALTER TABLE public.post_process_events
+  ADD CONSTRAINT post_process_events_evento_check CHECK (evento IN (
+    'desmembrado', 'aplicado', 'avancou', 'voltou', 'concluido',
+    'reaberto', 'removido', 'vinculado', 'etapa_editada', 'voltou_rascunho'));
 
 CREATE OR REPLACE FUNCTION public.transition_post_process(
   p_process_id           bigint,
@@ -290,6 +307,8 @@ AS $$
 DECLARE
   v_conta   uuid := public.post_process_require_editor();
   v_post_id bigint;
+  v_proc    record;
+  v_ativo   record;
   v_ciclo   timestamptz;
   v_n       integer := 0;
 BEGIN
@@ -309,7 +328,7 @@ BEGIN
     RAISE EXCEPTION 'process_not_found' USING ERRCODE = 'P0001';
   END IF;
 
-  PERFORM 1 FROM post_processes pp
+  SELECT pp.estado, pp.aviso_rascunho_dispensado_em INTO v_proc FROM post_processes pp
    WHERE pp.id = p_process_id AND pp.conta_id = v_conta
      FOR UPDATE;
   IF NOT FOUND THEN
@@ -324,10 +343,38 @@ BEGIN
   END IF;
 
   IF coalesce(p_reset, false) THEN
+    -- Guardas do reset (ver o topo).
+    IF v_proc.estado IS DISTINCT FROM 'ativo' THEN
+      RAISE EXCEPTION 'ciclo_changed' USING ERRCODE = 'P0001';
+    END IF;
+    SELECT s.ordem, s.nome, s.tipo INTO v_ativo FROM post_process_steps s
+     WHERE s.process_id = p_process_id AND s.estado = 'ativo';
+    IF NOT FOUND OR v_ativo.tipo IS DISTINCT FROM 'padrao' THEN
+      RAISE EXCEPTION 'ciclo_changed' USING ERRCODE = 'P0001';
+    END IF;
+    IF NOT EXISTS (
+         SELECT 1 FROM post_process_steps s
+          WHERE s.process_id = p_process_id AND s.tipo = 'aprovacao_cliente'
+            AND s.estado = 'pendente' AND s.ordem > v_ativo.ordem) THEN
+      RAISE EXCEPTION 'ciclo_changed' USING ERRCODE = 'P0001';
+    END IF;
+    IF v_proc.aviso_rascunho_dispensado_em IS NOT NULL
+       AND v_proc.aviso_rascunho_dispensado_em >= v_ciclo THEN
+      RAISE EXCEPTION 'ciclo_changed' USING ERRCODE = 'P0001';
+    END IF;
+
     UPDATE workflow_posts SET status = 'rascunho'
      WHERE id = v_post_id AND conta_id = v_conta
        AND status = 'aprovado_cliente';
     GET DIAGNOSTICS v_n = ROW_COUNT;
+
+    IF v_n > 0 THEN
+      PERFORM public.post_process_log_event(v_conta, v_post_id, p_process_id, 'voltou_rascunho',
+        jsonb_build_object('etapa_ordem', v_ativo.ordem, 'etapa_nome', v_ativo.nome,
+                           'post_status', 'aprovado_cliente'),
+        jsonb_build_object('etapa_ordem', v_ativo.ordem, 'etapa_nome', v_ativo.nome,
+                           'post_status', 'rascunho', 'approval_choice', 'voltar_rascunho'));
+    END IF;
   END IF;
 
   UPDATE post_processes SET aviso_rascunho_dispensado_em = now()

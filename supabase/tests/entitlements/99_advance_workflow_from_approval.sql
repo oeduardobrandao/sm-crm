@@ -13,6 +13,9 @@
 -- 99a.7 etapa padrao -> not_approval_etapa; outra conta -> workflow_not_found;
 --       papel sem entregas:editar -> permission_denied; escolha invalida
 -- 99a.8 banner: reset so de aprovado_cliente, dispensa sem reset, ciclo_changed
+-- 99a.9 guardas do reset: fluxo ativo, etapa ativa padrao, aprovacao pendente
+--       adiante, uma vez por ciclo (segundo reset falha); dispensa leniente
+-- 99a.10 fluxo fora de ativo -> workflow_not_active
 
 -- Fluxo: 0 Copy padrao (concluida), 1 Aprov copy aprovacao_cliente (ativa),
 -- 2 Design padrao, 3 Aprov design aprovacao_cliente. Um post por status.
@@ -368,5 +371,96 @@ begin
   assert (select aviso_rascunho_dispensado_em from workflows where id = e.wf) is not null,
     'reset tambem grava aviso_rascunho_dispensado_em';
   raise notice 'PASS 99a.8 banner';
+end $$;
+rollback;
+
+-- 99a.9 guardas do reset do banner (I1). Cada guarda falha com ciclo_changed
+-- sem tocar post nem dispensa; a dispensa sem reset segue leniente.
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_ciclo timestamptz; v_n int; v_err text; v_before jsonb;
+begin
+  e := pg_temp.aw_env();
+  perform pg_temp.aw_call(e.usr, e.wf, e.e1, 'manter');
+  select concluido_em into v_ciclo from workflow_etapas where id = e.e1;
+  v_before := pg_temp.aw_snapshot(e.wf);
+
+  -- fluxo fora de ativo
+  update workflows set status = 'arquivado' where id = e.wf;
+  v_err := pg_temp.aw_try(e.usr, format(
+    'select resolve_workflow_rascunho_banner(%s, %L::timestamptz, true)', e.wf, v_ciclo));
+  assert v_err = 'ciclo_changed', format('reset com fluxo arquivado: %s', v_err);
+  assert pg_temp.aw_snapshot(e.wf) = v_before, 'fluxo arquivado: posts intactos';
+  assert (select aviso_rascunho_dispensado_em from workflows where id = e.wf) is null, 'fluxo arquivado: sem dispensa';
+  -- dispensar segue leniente
+  v_err := pg_temp.aw_try(e.usr, format(
+    'select resolve_workflow_rascunho_banner(%s, %L::timestamptz, false)', e.wf, v_ciclo));
+  assert v_err is null, format('dispensar com fluxo arquivado: %s', v_err);
+  update workflows set status = 'ativo', aviso_rascunho_dispensado_em = null where id = e.wf;
+
+  -- etapa ativa e de aprovacao
+  update workflow_etapas set tipo = 'aprovacao_cliente' where id = e.e2;
+  v_err := pg_temp.aw_try(e.usr, format(
+    'select resolve_workflow_rascunho_banner(%s, %L::timestamptz, true)', e.wf, v_ciclo));
+  assert v_err = 'ciclo_changed', format('reset com etapa ativa de aprovacao: %s', v_err);
+  assert pg_temp.aw_snapshot(e.wf) = v_before, 'etapa de aprovacao: posts intactos';
+  update workflow_etapas set tipo = 'padrao' where id = e.e2;
+
+  -- sem aprovacao pendente adiante
+  update workflow_etapas set tipo = 'padrao' where id = e.e3;
+  v_err := pg_temp.aw_try(e.usr, format(
+    'select resolve_workflow_rascunho_banner(%s, %L::timestamptz, true)', e.wf, v_ciclo));
+  assert v_err = 'ciclo_changed', format('reset sem aprovacao adiante: %s', v_err);
+  assert pg_temp.aw_snapshot(e.wf) = v_before, 'sem aprovacao adiante: posts intactos';
+  update workflow_etapas set tipo = 'aprovacao_cliente' where id = e.e3;
+
+  -- ja dispensado neste ciclo
+  update workflows set aviso_rascunho_dispensado_em = v_ciclo where id = e.wf;
+  v_err := pg_temp.aw_try(e.usr, format(
+    'select resolve_workflow_rascunho_banner(%s, %L::timestamptz, true)', e.wf, v_ciclo));
+  assert v_err = 'ciclo_changed', format('reset ja dispensado: %s', v_err);
+  assert pg_temp.aw_snapshot(e.wf) = v_before, 'ja dispensado: posts intactos';
+
+  -- dispensa de um ciclo anterior nao bloqueia
+  update workflows set aviso_rascunho_dispensado_em = v_ciclo - interval '1 day' where id = e.wf;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_n := resolve_workflow_rascunho_banner(e.wf, v_ciclo, true);
+  execute 'reset role';
+  assert v_n = 1, format('reset com dispensa antiga: %s', v_n);
+  assert (select aviso_rascunho_dispensado_em from workflows where id = e.wf) >= v_ciclo,
+    'reset carimba a dispensa do ciclo';
+
+  -- segundo reset no mesmo ciclo: cliente aprovou de novo no meio, nao volta
+  update workflow_posts set status = 'aprovado_cliente' where id = e.p_acli;
+  v_before := pg_temp.aw_snapshot(e.wf);
+  v_err := pg_temp.aw_try(e.usr, format(
+    'select resolve_workflow_rascunho_banner(%s, %L::timestamptz, true)', e.wf, v_ciclo));
+  assert v_err = 'ciclo_changed', format('segundo reset no ciclo: %s', v_err);
+  assert pg_temp.aw_snapshot(e.wf) = v_before, 'segundo reset: aprovacao nova intacta';
+  raise notice 'PASS 99a.9 guardas do reset do banner';
+end $$;
+rollback;
+
+-- 99a.10 fluxo fora de ativo -> workflow_not_active (M6)
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_err text; v_before jsonb;
+begin
+  e := pg_temp.aw_env();
+  update workflows set status = 'arquivado' where id = e.wf;
+  v_before := pg_temp.aw_snapshot(e.wf);
+  v_err := pg_temp.aw_try(e.usr, format(
+    'select advance_workflow_from_approval(%s, %s, %L)', e.wf, e.e1, 'manter'));
+  assert v_err = 'workflow_not_active', format('manter em fluxo arquivado: %s', v_err);
+  v_err := pg_temp.aw_try(e.usr, format(
+    'select advance_workflow_from_approval(%s, %s, %L, %L::jsonb)', e.wf, e.e1, 'aprovar_todos', pg_temp.aw_counts()));
+  assert v_err = 'workflow_not_active', format('aprovar_todos em fluxo arquivado: %s', v_err);
+  assert pg_temp.aw_snapshot(e.wf) = v_before, 'workflow_not_active nao toca posts';
+  assert (select status from workflow_etapas where id = e.e1) = 'ativo', 'etapa 1 continua ativa';
+  assert (select status from workflows where id = e.wf) = 'arquivado', 'fluxo continua arquivado';
+  raise notice 'PASS 99a.10 workflow_not_active';
 end $$;
 rollback;

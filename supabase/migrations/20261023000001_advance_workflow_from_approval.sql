@@ -35,6 +35,15 @@
 -- aprovacao_cliente concluidas; p_expected_ciclo divergente, ciclo_changed.
 -- p_reset volta so os aprovado_cliente a rascunho; sempre grava
 -- aviso_rascunho_dispensado_em (dispensa vale para a equipe toda).
+-- O reset confere no servidor as mesmas condicoes em que o banner aparece
+-- (fluxoRascunhoBanner em apps/crm/src/pages/entregas/approvalExit.ts): fluxo
+-- ativo, etapa ativa padrao, etapa aprovacao_cliente pendente adiante e banner
+-- ainda nao resolvido neste ciclo (aviso_rascunho_dispensado_em nulo ou
+-- anterior ao ciclo). Falhou alguma, ciclo_changed: o drawer estava velho (ex.:
+-- outro membro ja avancou o fluxo para a aprovacao seguinte e o cliente
+-- aprovou de novo) e o reset nao pode apagar aprovacoes que o usuario nao viu.
+-- Como o reset carimba a dispensa, um segundo reset no mesmo ciclo falha.
+-- A dispensa sem reset so grava o timestamp e fica leniente.
 --
 -- duplicate_workflow nao copia aviso_rascunho_dispensado_em: a copia nasce sem
 -- dispensa (default NULL de proposito).
@@ -77,6 +86,11 @@ BEGIN
      FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'workflow_not_found' USING ERRCODE = 'P0001';
+  END IF;
+  -- Fluxo arquivado (move_posts_* arquiva a origem) pode guardar etapa ativa:
+  -- um confirm velho nao pode concluir esse fluxo.
+  IF v_wf.status IS DISTINCT FROM 'ativo' THEN
+    RAISE EXCEPTION 'workflow_not_active' USING ERRCODE = 'P0001';
   END IF;
 
   -- workflow_etapas nao tem conta_id: o escopo vem do fluxo travado acima.
@@ -187,13 +201,15 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_conta uuid := public.post_process_require_editor();
+  v_wf    record;
+  v_ativa record;
   v_ciclo timestamptz;
   v_n     integer := 0;
 BEGIN
   -- Mesma ordem de locks de advance_workflow_from_approval.
   PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
 
-  PERFORM 1 FROM workflows w
+  SELECT w.status, w.aviso_rascunho_dispensado_em INTO v_wf FROM workflows w
    WHERE w.id = p_workflow_id AND w.conta_id = v_conta
      FOR UPDATE;
   IF NOT FOUND THEN
@@ -208,6 +224,28 @@ BEGIN
   END IF;
 
   IF coalesce(p_reset, false) THEN
+    -- Guardas do reset (ver o topo). Mesmo codigo do ciclo: o CRM trata como
+    -- estado velho e recarrega.
+    IF v_wf.status IS DISTINCT FROM 'ativo' THEN
+      RAISE EXCEPTION 'ciclo_changed' USING ERRCODE = 'P0001';
+    END IF;
+    SELECT e.ordem, e.tipo INTO v_ativa FROM workflow_etapas e
+     WHERE e.workflow_id = p_workflow_id AND e.status = 'ativo'
+     ORDER BY e.ordem LIMIT 1;
+    IF NOT FOUND OR v_ativa.tipo IS DISTINCT FROM 'padrao' THEN
+      RAISE EXCEPTION 'ciclo_changed' USING ERRCODE = 'P0001';
+    END IF;
+    IF NOT EXISTS (
+         SELECT 1 FROM workflow_etapas e
+          WHERE e.workflow_id = p_workflow_id AND e.tipo = 'aprovacao_cliente'
+            AND e.status = 'pendente' AND e.ordem > v_ativa.ordem) THEN
+      RAISE EXCEPTION 'ciclo_changed' USING ERRCODE = 'P0001';
+    END IF;
+    IF v_wf.aviso_rascunho_dispensado_em IS NOT NULL
+       AND v_wf.aviso_rascunho_dispensado_em >= v_ciclo THEN
+      RAISE EXCEPTION 'ciclo_changed' USING ERRCODE = 'P0001';
+    END IF;
+
     UPDATE workflow_posts SET status = 'rascunho'
      WHERE workflow_id = p_workflow_id AND conta_id = v_conta
        AND status = 'aprovado_cliente';
