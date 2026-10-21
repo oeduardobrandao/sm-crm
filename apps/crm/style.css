@@ -7606,8 +7606,12 @@ body.role-agent input[name='valor_total'] {
   margin-left: -0.5rem;
 }
 
+/* `flex: 1` (basis 0%) collapsed the non-fullscreen drawer in Safari: WebKit sizes the
+   panel's `height: fit-content` from the item's basis, not its content, leaving a ~30px
+   body. An auto basis sizes from content; min-height: 0 lets max-height still shrink it. */
 .drawer-body {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 1rem 1.25rem;
   display: flex;
