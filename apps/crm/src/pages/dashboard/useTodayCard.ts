@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { updateTarefa, type TarefaStatus, type TarefaWithRelations } from '../../store';
 import { useTodayAgenda } from './useTodayAgenda';
 import type { AgendaBucket } from './todayAgenda';
@@ -23,6 +23,7 @@ interface CompleteVars {
  */
 export function useTodayCard() {
   const { t } = useTranslation('dashboard');
+  const dateLocale = useDateFnsLocale();
   const queryClient = useQueryClient();
   const { status, scope, buckets, now, membroId } = useTodayAgenda();
   const [visible, setVisible] = useState<Set<AgendaBucket>>(
@@ -88,7 +89,7 @@ export function useTodayCard() {
   };
   const total = counts.atrasado + counts.hoje + counts.proximos;
 
-  const dateLabel = format(now, "EEEE, d 'de' MMMM", { locale: ptBR });
+  const dateLabel = format(now, t('dateFormat.weekdayDayMonth'), { locale: dateLocale });
   const summary = [
     dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1),
     t('today.summary', { overdue: counts.atrasado, today: counts.hoje }),

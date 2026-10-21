@@ -37,7 +37,9 @@
     "suporte": "Suporte",
     "novidades": "Novidades",
     "openMenuPending_one": "Abrir menu, 1 pendência",
-    "openMenuPending_other": "Abrir menu, {{count}} pendências"
+    "openMenuPending_other": "Abrir menu, {{count}} pendências",
+    "openMenu": "Abrir menu",
+    "menu": "Menu"
   },
   "sidebar": {
     "accountOptions": "Opções da Conta",
@@ -141,7 +143,8 @@
     "somethingWentWrong": "Algo deu errado",
     "reloadToRetry": "Recarregue a página para tentar novamente.",
     "reloadPage": "Recarregar página",
-    "loading": "Carregando…"
+    "loading": "Carregando…",
+    "clientPortal": "Hub do cliente"
   },
   "cookies": {
     "banner": {
@@ -167,5 +170,70 @@
       "cancel": "Cancelar"
     },
     "link": "Preferências de cookies"
-  }
+  },
+  "topbar": {
+    "search": "Buscar...",
+    "searchPlaceholder": "Buscar...",
+    "noResults": "Nenhum resultado.",
+    "supportChat": "Chat de suporte"
+  },
+  "ui": {
+    "close": "Fechar",
+    "clear": "Limpar",
+    "previousMonth": "Mês anterior",
+    "nextMonth": "Próximo mês",
+    "previousYear": "Ano anterior",
+    "nextYear": "Próximo ano",
+    "selectDate": "Selecionar data",
+    "selectDateTime": "Selecionar data e hora",
+    "selectPeriod": "Selecionar período",
+    "selectMonth": "Selecionar mês",
+    "time": "Horário:",
+    "minScheduleAhead": "Mínimo {{minutes}} min no futuro",
+    "confirmClose": {
+      "title": "Fechar sem salvar?",
+      "message": "Você tem alterações não salvas. Deseja fechar mesmo assim?",
+      "keepEditing": "Continuar editando",
+      "discard": "Fechar mesmo assim"
+    }
+  },
+  "dateFormat": {
+    "monthYear": "MMMM 'de' yyyy",
+    "weekdayDayMonth": "EEEE, d 'de' MMMM"
+  },
+  "search": {
+    "types": {
+      "all": "Tudo",
+      "cliente": "Clientes",
+      "contrato": "Contratos",
+      "membro": "Equipe",
+      "transacao": "Financeiro",
+      "fluxo": "Fluxos",
+      "post": "Postagens",
+      "tarefa": "Tarefas",
+      "ideia": "Ideias",
+      "pagina": "Páginas",
+      "ajuda": "Ajuda"
+    },
+    "hint": "Digite para buscar clientes, posts, tarefas, fluxos, artigos de ajuda…",
+    "cancel": "Cancelar",
+    "seeAllIn": "Ver todos em {{type}}",
+    "createdAt": "Criado em {{date}}",
+    "scheduledAt": "Publicação {{date}}",
+    "dueAt": "Prazo {{date}}",
+    "standalonePost": "Avulso",
+    "sentByClient": "Enviada pelo cliente",
+    "byAuthor": "Por {{name}}",
+    "request": "Solicitação",
+    "fluxoStatus": {
+      "ativo": "Ativo",
+      "concluido": "Concluído",
+      "arquivado": "Arquivado"
+    }
+  },
+  "plan": {
+    "limitReached": "Limite do plano atingido.",
+    "csvLocked": "Importação CSV não está disponível no seu plano."
+  },
+  "optional": "(opcional)"
 }

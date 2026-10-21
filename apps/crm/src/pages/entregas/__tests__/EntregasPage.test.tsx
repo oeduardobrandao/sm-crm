@@ -3129,7 +3129,7 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
     fireEvent.click(toggle);
     await screen.findByRole('dialog');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // O FocusScope do Radix devolve o foco num setTimeout depois de desmontar.

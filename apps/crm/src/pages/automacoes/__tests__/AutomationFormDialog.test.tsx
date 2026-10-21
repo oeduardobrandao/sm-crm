@@ -220,7 +220,14 @@ vi.mock('@/components/ui/dialog', async () => {
     return <h2>{children}</h2>;
   }
 
-  return { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle };
+  const useConfirmCloseCopy = () => ({
+    title: 'Fechar sem salvar?',
+    message: 'Você tem alterações não salvas. Deseja fechar mesmo assim?',
+    keepEditing: 'Continuar editando',
+    discard: 'Fechar mesmo assim',
+  });
+
+  return { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, useConfirmCloseCopy };
 });
 
 import { toast } from 'sonner';

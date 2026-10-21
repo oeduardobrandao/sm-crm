@@ -1391,10 +1391,13 @@ body.landing-page:has(.lp-v2) {
 }
 
 /* ---------- hero motion ---------- */
-/* Staggered fade-up on load: headline, sub, offer pill, then the devices. */
+/* Staggered rise on load: headline, sub, offer pill, then the devices.
+ * Opacity starts at 0.6, never 0: Chrome skips opacity:0 elements as LCP
+ * candidates, so a 0 start let the cookie banner become the LCP element.
+ * The `both` fill holds 0.6 through each delay, so first paint is eligible. */
 @keyframes lp2-rise {
   from {
-    opacity: 0;
+    opacity: 0.6;
     transform: translateY(16px);
   }
   to {

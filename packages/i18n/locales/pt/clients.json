@@ -453,5 +453,15 @@
     "revokeConfirm": "Revogar este link? Quem já o recebeu não vai mais conseguir usá-lo.",
     "activeUntil": "Link de conexão ativo até {{date}}",
     "generateError": "Não foi possível gerar o link. Tente novamente."
+  },
+  "table": {
+    "client": "Cliente",
+    "contact": "Contato",
+    "status": "Status"
+  },
+  "emptyList": "Nenhum cliente encontrado.",
+  "filters": {
+    "title": "Filtros",
+    "description": "Filtre e ordene os clientes"
   }
 }

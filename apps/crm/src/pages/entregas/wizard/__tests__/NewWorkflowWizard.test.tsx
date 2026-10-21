@@ -282,7 +282,7 @@ describe('NewWorkflowWizard — step 1 (galeria)', () => {
     const onClose = vi.fn();
     renderWizard({ onClose });
     fireEvent.click(screen.getByText('Posts mensais'));
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Fechar mesmo assim'));
     expect(onClose).toHaveBeenCalled();

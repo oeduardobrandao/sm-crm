@@ -21,7 +21,7 @@ describe('DialogContent close confirmation', () => {
   it('X button opens the confirm dialog instead of closing', () => {
     const onConfirmClose = vi.fn();
     renderDirty(onConfirmClose);
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
     expect(screen.getByText('Fechar sem salvar?')).toBeTruthy();
     expect(onConfirmClose).not.toHaveBeenCalled();
   });
@@ -29,7 +29,7 @@ describe('DialogContent close confirmation', () => {
   it('confirming from the X path calls onConfirmClose', () => {
     const onConfirmClose = vi.fn();
     renderDirty(onConfirmClose);
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
     fireEvent.click(screen.getByText('Fechar mesmo assim'));
     expect(onConfirmClose).toHaveBeenCalledTimes(1);
   });
@@ -97,7 +97,7 @@ describe('DialogContent layout', () => {
         </DialogContent>
       </Dialog>,
     );
-    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeTruthy();
   });
 
   it('fullscreen layout renders no built-in Close button and keeps the scroll hook', () => {
@@ -109,7 +109,7 @@ describe('DialogContent layout', () => {
         </DialogContent>
       </Dialog>,
     );
-    expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Fechar' })).toBeNull();
     expect(document.querySelector('[data-dialog-scroll]')).toBeTruthy();
     expect(screen.getByRole('dialog').className).toContain('inset-0');
   });

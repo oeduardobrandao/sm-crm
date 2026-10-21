@@ -34,7 +34,7 @@ import { PricingSection } from './PricingSection';
 import { FaqSection } from './FaqSection';
 import { Testimonials } from './Testimonials';
 
-import './landing.css';
+import './landing-styles';
 import './landing-v2.css';
 
 /** Some landing.content.ts strings embed literal `<strong>…</strong>` markup
@@ -198,6 +198,28 @@ function Ticker() {
   );
 }
 
+/** Bento screenshots (1400px sources) with 480/760/1100w downscales. */
+function featSrcSet(name: string) {
+  return [480, 760, 1100]
+    .map((w) => `/landing/${name}-${w}w.webp ${w}w`)
+    .concat(`/landing/${name}.webp 1400w`)
+    .join(', ');
+}
+/* Rendered widths from landing-v2.css. <=900px the bento is one column with
+ * 24px card padding; above, it is a 3-column grid (20px gap, 44px card
+ * padding) inside the 1200px container. The 130%/115% widths in the CSS are
+ * capped by Tailwind preflight's `img { max-width: 100% }`, so every shot
+ * lays out at 100% of its card (measured in the browser). */
+const SHOT_SIZES_MOBILE =
+  '(max-width: 720px) calc(100vw - 88px), (max-width: 900px) calc(100vw - 104px)';
+/** .lp2-shot--bottom: a wide (span 2) card. */
+const SHOT_SIZES_BOTTOM = `${SHOT_SIZES_MOBILE}, (max-width: 1200px) calc(66.67vw - 132px), 668px`;
+/** .lp2-shot--bleed: a single-column card. */
+const SHOT_SIZES_BLEED = `${SHOT_SIZES_MOBILE}, (max-width: 1200px) calc(33.33vw - 120px), 280px`;
+/** .lp2-shot--right: full width of the wide card up to 1100px, then the
+ * grid column beside the 360px copy column (+40px gap). */
+const SHOT_SIZES_RIGHT = `${SHOT_SIZES_MOBILE}, (max-width: 1100px) calc(66.67vw - 132px), (max-width: 1200px) calc(66.67vw - 532px), 268px`;
+
 const METRIC_TILES = [
   { icon: <Users size={16} />, label: 'Seguidores', value: '45.798', delta: '+12%' },
   { icon: <Eye size={16} />, label: 'Alcance (28d)', value: '96.826', delta: '+8%' },
@@ -223,6 +245,8 @@ function MetricsVisual() {
       <img
         className="lp2-shot lp2-shot--right"
         src="/landing/feat-analytics-dark.webp"
+        srcSet={featSrcSet('feat-analytics-dark')}
+        sizes={SHOT_SIZES_RIGHT}
         width={1400}
         height={1095}
         alt="Métricas do Instagram no Mesaas: seguidores, alcance e engajamento"
@@ -265,6 +289,8 @@ const FEATURE_VISUALS: {
       <img
         className="lp2-shot lp2-shot--bottom"
         src="/landing/feat-entregas-dark.webp"
+        srcSet={featSrcSet('feat-entregas-dark')}
+        sizes={SHOT_SIZES_BOTTOM}
         width={1400}
         height={1095}
         alt="Kanban de entregas do Mesaas com fluxos por etapa"
@@ -292,6 +318,8 @@ const FEATURE_VISUALS: {
       <img
         className="lp2-shot lp2-shot--bleed"
         src="/landing/feat-hub-dark.webp"
+        srcSet={featSrcSet('feat-hub-dark')}
+        sizes={SHOT_SIZES_BLEED}
         width={1400}
         height={1050}
         alt="Portal do cliente do Mesaas com aprovações por link"
@@ -308,6 +336,8 @@ const FEATURE_VISUALS: {
       <img
         className="lp2-shot lp2-shot--bleed"
         src="/landing/feat-calendario-dark.webp"
+        srcSet={featSrcSet('feat-calendario-dark')}
+        sizes={SHOT_SIZES_BLEED}
         width={1400}
         height={1095}
         alt="Calendário editorial mensal do Mesaas"

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { format, setHours, setMinutes, startOfDay, addMinutes, isBefore, isToday } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { Calendar as CalendarIcon, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -48,7 +49,7 @@ function roundUpToNext5(date: Date): { h: number; m: number } {
 export function DateTimePicker({
   value,
   onChange,
-  placeholder = 'Selecionar data e hora',
+  placeholder,
   className,
   disabled,
   clearable = true,
@@ -56,6 +57,8 @@ export function DateTimePicker({
   dayMarkers,
   dayMarkerLegend,
 }: DateTimePickerProps) {
+  const { t } = useTranslation();
+  const dateLocale = useDateFnsLocale();
   const [open, setOpen] = React.useState(false);
   // Under Vidro the inline trigger look gives way to the glass pill in buttons.css.
   const vidroShell = useVidroShell();
@@ -174,15 +177,15 @@ export function DateTimePicker({
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
           {value ? (
-            format(value, "dd MMM yyyy '·' HH:mm", { locale: ptBR })
+            format(value, "dd MMM yyyy '·' HH:mm", { locale: dateLocale })
           ) : (
-            <span>{placeholder}</span>
+            <span>{placeholder ?? t('ui.selectDateTime')}</span>
           )}
           {clearable && value && (
             <span
               role="button"
               tabIndex={0}
-              aria-label="Limpar"
+              aria-label={t('ui.clear')}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -205,7 +208,7 @@ export function DateTimePicker({
       <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 9999 }}>
         <Calendar
           mode="single"
-          locale={ptBR}
+          locale={dateLocale}
           selected={value}
           onSelect={handleDateSelect}
           disabled={calendarDisabled}
@@ -213,7 +216,7 @@ export function DateTimePicker({
           components={dayButton ? { DayButton: dayButton } : undefined}
         />
         <div className="border-t px-3 py-2 flex items-center gap-2">
-          <span className="text-xs text-muted-foreground font-medium">Horário:</span>
+          <span className="text-xs text-muted-foreground font-medium">{t('ui.time')}</span>
           <select
             className="h-9 rounded-md border bg-background px-2 text-base md:text-sm"
             value={hours}
@@ -253,7 +256,7 @@ export function DateTimePicker({
         {futureOnly && (
           <div className="border-t px-3 py-1.5">
             <p className="text-[11px] text-muted-foreground">
-              Mínimo {MIN_SCHEDULE_MINUTES} min no futuro
+              {t('ui.minScheduleAhead', { minutes: MIN_SCHEDULE_MINUTES })}
             </p>
           </div>
         )}

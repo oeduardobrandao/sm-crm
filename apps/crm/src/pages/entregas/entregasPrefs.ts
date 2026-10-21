@@ -4,10 +4,18 @@ import { BOARD_COLUMN_SORTS, type BoardColumnSort } from './postsBoardOrder';
 import type { FilaOrdem } from './minhaFila';
 
 /** Ordenacao de uma coluna (etapa) do board de Fluxos: 'prazo' (padrao,
- *  atrasados primeiro) ou 'manual' (position persistida via drag). */
-export type FluxosColumnSort = 'prazo' | 'manual';
+ *  atrasados primeiro), 'publicacao' (scheduled_at dos posts individuais) ou
+ *  'manual' (position persistida via drag). */
+export type FluxosColumnSort = 'prazo' | 'publicacao' | 'manual';
 
-const FLUXOS_COLUMN_SORTS: FluxosColumnSort[] = ['prazo', 'manual'];
+/** Ordem em que o menu do header da coluna lista os modos. */
+export const FLUXOS_COLUMN_SORTS: FluxosColumnSort[] = ['prazo', 'publicacao', 'manual'];
+
+export const FLUXOS_COLUMN_SORT_LABELS: Record<FluxosColumnSort, string> = {
+  prazo: 'Prazo',
+  publicacao: 'Data de publicação',
+  manual: 'Manual',
+};
 
 const fluxosSortsKey = (contaId: string) => `entregas_fluxos_sorts_${contaId}`;
 

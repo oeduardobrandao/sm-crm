@@ -37,7 +37,9 @@
     "suporte": "Support",
     "novidades": "What's New",
     "openMenuPending_one": "Open menu, 1 pending item",
-    "openMenuPending_other": "Open menu, {{count}} pending items"
+    "openMenuPending_other": "Open menu, {{count}} pending items",
+    "openMenu": "Open menu",
+    "menu": "Menu"
   },
   "sidebar": {
     "accountOptions": "Account Options",
@@ -141,7 +143,8 @@
     "somethingWentWrong": "Something went wrong",
     "reloadToRetry": "Reload the page to try again.",
     "reloadPage": "Reload page",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "clientPortal": "Client hub"
   },
   "cookies": {
     "banner": {
@@ -167,5 +170,70 @@
       "cancel": "Cancel"
     },
     "link": "Cookie preferences"
-  }
+  },
+  "topbar": {
+    "search": "Search...",
+    "searchPlaceholder": "Search...",
+    "noResults": "No results.",
+    "supportChat": "Support chat"
+  },
+  "ui": {
+    "close": "Close",
+    "clear": "Clear",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "previousYear": "Previous year",
+    "nextYear": "Next year",
+    "selectDate": "Select date",
+    "selectDateTime": "Select date and time",
+    "selectPeriod": "Select period",
+    "selectMonth": "Select month",
+    "time": "Time:",
+    "minScheduleAhead": "At least {{minutes}} min in the future",
+    "confirmClose": {
+      "title": "Close without saving?",
+      "message": "You have unsaved changes. Close anyway?",
+      "keepEditing": "Keep editing",
+      "discard": "Close anyway"
+    }
+  },
+  "dateFormat": {
+    "monthYear": "MMMM yyyy",
+    "weekdayDayMonth": "EEEE, MMMM d"
+  },
+  "search": {
+    "types": {
+      "all": "All",
+      "cliente": "Clients",
+      "contrato": "Contracts",
+      "membro": "Team",
+      "transacao": "Finances",
+      "fluxo": "Workflows",
+      "post": "Posts",
+      "tarefa": "Tasks",
+      "ideia": "Ideas",
+      "pagina": "Pages",
+      "ajuda": "Help"
+    },
+    "hint": "Type to search clients, posts, tasks, workflows, help articles…",
+    "cancel": "Cancel",
+    "seeAllIn": "See all in {{type}}",
+    "createdAt": "Created {{date}}",
+    "scheduledAt": "Publishing {{date}}",
+    "dueAt": "Due {{date}}",
+    "standalonePost": "Standalone",
+    "sentByClient": "Sent by the client",
+    "byAuthor": "By {{name}}",
+    "request": "Request",
+    "fluxoStatus": {
+      "ativo": "Active",
+      "concluido": "Completed",
+      "arquivado": "Archived"
+    }
+  },
+  "plan": {
+    "limitReached": "Plan limit reached.",
+    "csvLocked": "CSV import is not available on your plan."
+  },
+  "optional": "(optional)"
 }
