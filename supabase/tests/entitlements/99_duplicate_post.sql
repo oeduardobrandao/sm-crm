@@ -78,7 +78,9 @@ begin
      and column_name not in ('id','conta_id','post_id','template_id','template_nome',
        'assinatura','origem_workflow_id','origem_descricao','estado','motivo_encerramento',
        'etapa_atual','modo_prazo','board_position','revisao','created_by','created_at',
-       'updated_at','concluido_em');
+       'updated_at','concluido_em',
+       -- default de proposito: a copia nasce sem dispensa do banner (20261023000002)
+       'aviso_rascunho_dispensado_em');
   assert v_missing is null, format('post_processes tem coluna nao classificada: %s', v_missing);
 
   select string_agg(column_name, ', ' order by column_name) into v_missing
