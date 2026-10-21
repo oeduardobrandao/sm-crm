@@ -210,6 +210,14 @@ Monorepo with npm workspaces:
   at most 2880/day, under the free plan's 3000). Hourly because `rate_limit_log` is pruned
   every hour (`rate-limit-cleanup`), so a daily window would never count past one hour.
   Raise it together with the Geoapify plan; changing it needs no deploy
+- `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, `APNS_BUNDLE_ID` -- Apple Push
+  Notification service token auth for `notification-push-cron` (push channel of the iOS app,
+  `apps/mobile`). `APNS_PRIVATE_KEY` is the whole `AuthKey_XXXX.p8` file (literal `\n` for
+  newlines is accepted); `APNS_BUNDLE_ID` is `br.com.mesaas.app`. Optional as a set, no default:
+  without all four the cron claims nothing and returns `skipped`, so it can be deployed and
+  scheduled before the Apple Developer account exists. The cron is scheduled every minute by
+  migration 20261015000002, which must be applied AFTER the function is deployed. Sandbox vs
+  production is per device (`push_devices.environment`, reported by the app build), not a secret
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
 - `REPORT_PRINT_BASE` -- origem pública que serve a página de print do relatório
   de blocos (ex.: https://mesaas.com.br). Usada por report-docs POST /:id/pdf
@@ -315,7 +323,7 @@ Monorepo with npm workspaces:
 - Page param validation: `Math.max(1, parseInt(pageStr) || 1)`
 - localStorage iteration: collect keys first, then remove. Modifying during iteration skips items
 - Roles are `owner | admin | agent` -- always check via `AuthContext`, never hardcode
-- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing`, `hub-agenda` and `hub-post-references` (token do hub), `agenda-convite` (token do convidado externo), `agenda-cliente-email` (cron, `x-cron-secret`), `briefing-audio`, `geo-autocomplete` and `post-references` (verify the user JWT themselves) need it too, and so do `affiliate-public` (programa de afiliados, link mágico por e-mail trocado por sessão) and `affiliate-payout-cron` (cron, `x-cron-secret`)
+- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing`, `hub-agenda` and `hub-post-references` (token do hub), `agenda-convite` (token do convidado externo), `agenda-cliente-email` (cron, `x-cron-secret`), `briefing-audio`, `geo-autocomplete` and `post-references` (verify the user JWT themselves) need it too, and so do `affiliate-public` (programa de afiliados, link mágico por e-mail trocado por sessão) `affiliate-payout-cron` and `notification-push-cron` (crons, `x-cron-secret`)
 - Hub app uses token-based access (no Supabase auth), builds to `dist/hub/` with base path `/hub/`
 - Vercel rewrites in `vercel.json` route Hub URLs to `/hub/index.html` and CRM URLs to `/index.html`
 - `membros` and `clientes` use column-level `GRANT SELECT` allowlists (Migration `20260728000002`). Any column added to either table is invisible to the CRM until it is added to the grant, to `membros_v`/`clientes_v`, and to the `*_SAFE_COLUMNS` constants in `store/team.ts` / `store/clients.ts`. The failure surfaces as a confusing missing-column error. The same allowlist also keeps six PostgREST embeds, ten dependent RLS policies and `get_client_health_aggregates()` working -- none of which a `from('clientes')` grep finds.
