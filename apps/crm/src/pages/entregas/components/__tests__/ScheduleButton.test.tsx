@@ -151,6 +151,32 @@ describe('ScheduleButton', () => {
       expect(screen.queryByText(/legenda do Instagram/)).toBeNull();
     });
 
+    it('disables both buttons and lists mídia when the loaded media list is empty', () => {
+      render(<ScheduleButton post={makePost()} media={[]} {...defaultProps} />);
+      const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
+      const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+      expect(scheduleBtn.hasAttribute('disabled')).toBe(true);
+      expect(publishBtn.hasAttribute('disabled')).toBe(true);
+      expect(screen.getByText(/Falta: mídia/)).toBeTruthy();
+    });
+
+    it('does not gate on media while it is unknown (not passed / still loading)', () => {
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+      expect(screen.getByText('Publicar agora').closest('button')!.hasAttribute('disabled')).toBe(
+        false,
+      );
+    });
+
+    it('enables both buttons once media is attached', () => {
+      render(<ScheduleButton post={makePost()} media={[makeMedia()]} {...defaultProps} />);
+      expect(
+        screen.getByText('Agendar publicação').closest('button')!.hasAttribute('disabled'),
+      ).toBe(false);
+      expect(screen.getByText('Publicar agora').closest('button')!.hasAttribute('disabled')).toBe(
+        false,
+      );
+    });
+
     it('shows missing items hint when caption is empty', () => {
       render(
         <ScheduleButton

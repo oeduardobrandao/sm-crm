@@ -478,15 +478,24 @@ export function useScheduleActions({
           isCarousel: !isStoryPost && media.length > 1,
         })
       : [];
+  // Only a loaded, empty list counts: `media` is undefined while the query loads and on
+  // mounts that don't pass it (calendar panels), where the server still validates.
+  const missingMedia = media !== undefined && media.length === 0;
   const canSchedule =
     !!post.scheduled_at &&
     hasRequiredCaption &&
+    !missingMedia &&
     !accountWarning &&
     tiktokReady &&
     mediaViolations.length === 0;
   const canPublishNow =
-    hasRequiredCaption && !accountWarning && tiktokReady && mediaViolations.length === 0;
+    hasRequiredCaption &&
+    !missingMedia &&
+    !accountWarning &&
+    tiktokReady &&
+    mediaViolations.length === 0;
   const missingItems: string[] = [];
+  if (missingMedia) missingItems.push('mídia');
   if (!post.scheduled_at) missingItems.push('data de publicação');
   const captionLabel =
     targetsInstagram && targetsTikTok
@@ -534,6 +543,7 @@ export function useScheduleActions({
     retryBlocked,
     isStoryPost,
     hasRequiredCaption,
+    missingMedia,
     mediaViolations,
     canSchedule,
     canPublishNow,

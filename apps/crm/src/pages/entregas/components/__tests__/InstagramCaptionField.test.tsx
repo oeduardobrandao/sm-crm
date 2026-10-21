@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { getMembros, getClientes, getTarefas } from '@/store';
 import type { CommentThreadWithComments } from '@/store';
 import { InstagramCaptionField, type InstagramCaptionFieldHandle } from '../InstagramCaptionField';
+import { setEditorText } from '@/test/mentionEditor';
 
 function render(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -144,9 +145,7 @@ describe('InstagramCaptionField', () => {
     );
     select(6, 11);
     fireEvent.click(screen.getByRole('button', { name: /Comentar/ }));
-    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
-      target: { value: 'ajustar' },
-    });
+    setEditorText(screen.getByRole('textbox', { name: 'Escreva seu comentário...' }), 'ajustar');
     fireEvent.click(screen.getAllByRole('button', { name: 'Comentar' }).at(-1)!);
     await waitFor(() =>
       expect(comments.onCreateThread).toHaveBeenCalledWith('brave', 'ajustar', {
@@ -167,9 +166,7 @@ describe('InstagramCaptionField', () => {
     fireEvent.change(textarea(), { target: { value: 'oh ' + caption } });
     select(9, 14);
     fireEvent.click(screen.getByRole('button', { name: /Comentar/ }));
-    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
-      target: { value: 'ajustar' },
-    });
+    setEditorText(screen.getByRole('textbox', { name: 'Escreva seu comentário...' }), 'ajustar');
     fireEvent.click(screen.getAllByRole('button', { name: 'Comentar' }).at(-1)!);
     await waitFor(() => expect(comments.onCreateThread).toHaveBeenCalled());
     expect(onSave).toHaveBeenCalled();
@@ -188,9 +185,7 @@ describe('InstagramCaptionField', () => {
     fireEvent.change(textarea(), { target: { value: 'oh ' + caption } });
     select(9, 14);
     fireEvent.click(screen.getByRole('button', { name: /Comentar/ }));
-    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
-      target: { value: 'ajustar' },
-    });
+    setEditorText(screen.getByRole('textbox', { name: 'Escreva seu comentário...' }), 'ajustar');
     fireEvent.click(screen.getAllByRole('button', { name: 'Comentar' }).at(-1)!);
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     await act(async () => {});
@@ -209,14 +204,12 @@ describe('InstagramCaptionField', () => {
     );
     select(6, 11);
     fireEvent.click(screen.getByRole('button', { name: /Comentar/ }));
-    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
-      target: { value: 'ajustar' },
-    });
+    setEditorText(screen.getByRole('textbox', { name: 'Escreva seu comentário...' }), 'ajustar');
     fireEvent.click(screen.getAllByRole('button', { name: 'Comentar' }).at(-1)!);
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('Não foi possível criar o comentário.'),
     );
-    expect(screen.getByPlaceholderText('Escreva seu comentário...')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Escreva seu comentário...' })).toBeInTheDocument();
   });
 
   it('opens the thread popover on a click inside a highlight', () => {
@@ -332,9 +325,7 @@ describe('InstagramCaptionField', () => {
     );
     select(6, 11);
     fireEvent.click(screen.getByRole('button', { name: /Comentar/ }));
-    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
-      target: { value: 'ajustar' },
-    });
+    setEditorText(screen.getByRole('textbox', { name: 'Escreva seu comentário...' }), 'ajustar');
     fireEvent.change(textarea(), { target: { value: 'XX' + caption } });
     fireEvent.click(screen.getAllByRole('button', { name: 'Comentar' }).at(-1)!);
     await waitFor(() =>
