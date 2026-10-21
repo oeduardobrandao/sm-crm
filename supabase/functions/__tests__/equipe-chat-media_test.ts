@@ -9,11 +9,15 @@ function makeHandler(db: any, opts?: {
   headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   copies?: Array<{ from: string; to: string }>;
   trashed?: string[];
+  signed?: Array<{ key: string; mime: string; size: number }>;
 }) {
   return createEquipeChatMediaHandler({
     buildCorsHeaders,
     createDb: () => db as never,
-    signPutUrl: async (key: string) => `https://put.example.com/${key}`,
+    signPutUrl: async (key: string, mime: string, size: number) => {
+      opts?.signed?.push({ key, mime, size });
+      return `https://put.example.com/${key}`;
+    },
     signGetUrl: async (key: string) => `https://get.example.com/${key}`,
     headObject: opts?.headObject ?? (async () => ({ contentLength: 5000, contentType: "image/jpeg" })),
     copyObject: async (from: string, to: string) => { opts?.copies?.push({ from, to }); },
@@ -60,6 +64,19 @@ Deno.test("presign: key no prefixo tmp do tenant", async () => {
   const body = await res.json();
   assertEquals(body.key, "equipe-chat-tmp/conta-1/fixed-uuid.jpg");
   assertEquals(body.upload_url, "https://put.example.com/equipe-chat-tmp/conta-1/fixed-uuid.jpg");
+});
+
+// _shared/r2.ts signPutUrl assina o Content-Length: o presign tem que repassar o
+// size_bytes declarado, senao o PUT do navegador nao bate com a assinatura.
+Deno.test("presign: assina o PUT com o tamanho declarado", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const signed: Array<{ key: string; mime: string; size: number }> = [];
+  const res = await makeHandler(db, { signed })(req("presign", {
+    conversa_id: 7, mime_type: "image/jpeg", size_bytes: 5000,
+  }));
+  assertEquals(res.status, 200);
+  assertEquals(signed, [{ key: "equipe-chat-tmp/conta-1/fixed-uuid.jpg", mime: "image/jpeg", size: 5000 }]);
 });
 
 Deno.test("presign: mime fora da allowlist da 415", async () => {

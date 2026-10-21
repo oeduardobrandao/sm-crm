@@ -30,7 +30,8 @@ type DbClient = {
 interface Deps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
-  signPutUrl: (key: string, mime: string) => Promise<string>;
+  /** Signs Content-Length too (_shared/r2.ts), so the PUT must carry exactly size bytes. */
+  signPutUrl: (key: string, mime: string, sizeBytes: number) => Promise<string>;
   signGetUrl: (key: string, expires?: number) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   copyObject: (sourceKey: string, destKey: string) => Promise<void>;
@@ -118,7 +119,7 @@ export function createEquipeChatMediaHandler(deps: Deps) {
         if (!(await isParticipant(conversaId))) return json({ error: "Forbidden" }, 403);
         const uuid = (deps.randomUUID ?? crypto.randomUUID.bind(crypto))();
         const key = `${tmpPrefix}${uuid}.${MIME_EXT[mime]}`;
-        const upload_url = await deps.signPutUrl(key, mime);
+        const upload_url = await deps.signPutUrl(key, mime, size);
         return json({ upload_url, key }, 200);
       }
 
