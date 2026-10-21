@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * Proves the drawer's approval auto-complete is really wired: the effect must observe the
  * awaiting -> aprovado_cliente transition on the posts query and complete the active approval
- * etapa through the re-arming advance path. The code this replaced was dead, so "the pure
+ * etapa through the approval-exit advance path. The code this replaced was dead, so "the pure
  * transition rule and the store function are each tested" is not sufficient on its own.
  */
 
@@ -15,7 +15,6 @@ const store = vi.hoisted(() => ({
   getWorkflowPostsWithProperties: vi.fn(),
   advanceWorkflowFromApproval: vi.fn(),
   resolveWorkflowRascunhoBanner: vi.fn(),
-  resetApprovedPostsForNextCycle: vi.fn(),
   addWorkflowPost: vi.fn(),
   updateWorkflowPost: vi.fn(),
   removeWorkflowPost: vi.fn(),
@@ -204,7 +203,6 @@ describe('WorkflowDrawer approval auto-complete', () => {
       expect(toast.success).toHaveBeenCalledWith('Todos os posts aprovados. Etapa concluída!'),
     );
     expect(toast.info).not.toHaveBeenCalled();
-    expect(store.resetApprovedPostsForNextCycle).not.toHaveBeenCalled();
     expect(onRefresh).toHaveBeenCalled();
   });
 

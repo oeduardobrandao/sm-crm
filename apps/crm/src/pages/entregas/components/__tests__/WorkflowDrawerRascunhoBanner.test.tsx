@@ -13,7 +13,6 @@ const store = vi.hoisted(() => ({
   getWorkflowPostsWithProperties: vi.fn(),
   advanceWorkflowFromApproval: vi.fn(),
   resolveWorkflowRascunhoBanner: vi.fn(),
-  resetApprovedPostsForNextCycle: vi.fn(),
   addWorkflowPost: vi.fn(),
   updateWorkflowPost: vi.fn(),
   removeWorkflowPost: vi.fn(),

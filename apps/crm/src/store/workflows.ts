@@ -1,10 +1,5 @@
 import { supabase, getUserId, getContaId } from './core';
-import {
-  callRpcWithDeadlockRetry,
-  getWorkflowPostsCounts,
-  resetApprovedPostsForNextCycle,
-  type PostStatusCounts,
-} from './posts';
+import { callRpcWithDeadlockRetry, getWorkflowPostsCounts, type PostStatusCounts } from './posts';
 import { fetchAllPaged, fetchAllPagedByIds } from './paging';
 import { toLocalISODate } from '../utils/postDate';
 import type { PlatformId } from '@mesaas/platforms';
@@ -497,39 +492,6 @@ export function cardAutoScheduleGates(
     autoPublishOnApproval: card.cliente?.auto_publish_on_approval === true,
     isFinalApprovalCycle: isFinalClientApprovalCycle(card.allEtapas),
   };
-}
-
-export interface CompleteEtapaWithRearmResult {
-  workflow: Workflow;
-  etapas: WorkflowEtapa[];
-  /** Approved posts were reset to rascunho for the next approval cycle. */
-  rearmed: boolean;
-  /** The etapa advanced but the post reset failed — needs manual remediation. */
-  rearmFailed: boolean;
-}
-
-/**
- * completeEtapa + approval-cycle re-arm: when the completed etapa is an aprovacao_cliente
- * and another approval etapa lies ahead, approved posts are reset to rascunho so the next
- * approval cycle can run. Callers that must NOT touch posts ("Avançar etapa sem alterar
- * posts") keep calling plain completeEtapa.
- */
-export async function completeEtapaWithRearm(
-  workflowId: number,
-  etapaId: number,
-): Promise<CompleteEtapaWithRearmResult> {
-  const before = await getWorkflowEtapas(workflowId);
-  const current = before.find((e) => e.id === etapaId);
-  const rearm = current?.tipo === 'aprovacao_cliente' && hasLaterApprovalEtapa(before, etapaId);
-  const result = await completeEtapa(workflowId, etapaId);
-  if (!rearm) return { ...result, rearmed: false, rearmFailed: false };
-  // The advance already happened — a reset failure must not surface as an advance failure.
-  try {
-    await resetApprovedPostsForNextCycle(workflowId);
-    return { ...result, rearmed: true, rearmFailed: false };
-  } catch {
-    return { ...result, rearmed: false, rearmFailed: true };
-  }
 }
 
 /** Revert a workflow to its previous step (move card one column back). */

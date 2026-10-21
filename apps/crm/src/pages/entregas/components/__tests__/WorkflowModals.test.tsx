@@ -248,12 +248,7 @@ vi.mock('../MigrateTemplateDialog', () => ({
 }));
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  ClientApprovalChoiceDialog,
-  RecurringWorkflowDialog,
-  RevertConfirmDialog,
-  TemplatesModal,
-} from '../WorkflowModals';
+import { RecurringWorkflowDialog, RevertConfirmDialog, TemplatesModal } from '../WorkflowModals';
 import { saveWorkflowTemplate } from '../../../../store';
 
 // Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
@@ -271,9 +266,6 @@ describe('WorkflowModals', () => {
     const onCancelRecurring = vi.fn();
     const onConfirmRevert = vi.fn();
     const onCancelRevert = vi.fn();
-    const onApproveInternally = vi.fn();
-    const onSendToPortal = vi.fn();
-    const onCancelApproval = vi.fn();
 
     render(
       <>
@@ -288,30 +280,16 @@ describe('WorkflowModals', () => {
           onConfirm={onConfirmRevert}
           onCancel={onCancelRevert}
         />
-        <ClientApprovalChoiceDialog
-          open={true}
-          entityTitle="Fluxo Editorial"
-          onApproveInternally={onApproveInternally}
-          onSendToPortal={onSendToPortal}
-          onCancel={onCancelApproval}
-        />
       </>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Criar novo ciclo' }));
-    const cancelButtons = screen.getAllByRole('button', { name: 'Cancelar' });
-    fireEvent.click(cancelButtons[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Reverter' }));
-    fireEvent.click(cancelButtons[1]);
-    fireEvent.click(screen.getByRole('button', { name: 'Aprovar internamente' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar para o cliente aprovar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
 
     expect(onConfirmRecurring).toHaveBeenCalled();
     expect(onCancelRevert).toHaveBeenCalled();
     expect(onConfirmRevert).toHaveBeenCalled();
-    expect(onCancelApproval).toHaveBeenCalled();
-    expect(onApproveInternally).toHaveBeenCalled();
-    expect(onSendToPortal).toHaveBeenCalled();
   });
 
   describe('TemplatesModal edit save', () => {

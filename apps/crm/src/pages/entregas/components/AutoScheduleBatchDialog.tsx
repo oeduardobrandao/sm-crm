@@ -54,7 +54,7 @@ export interface AutoScheduleBatchDialogProps {
  *
  * Por que buscar em vez de usar um snapshot do board: nem KanbanView nem
  * EntregasTab têm as linhas de workflow_posts do fluxo (só contagens por fluxo),
- * e approvePostsInternally devolve void. A busca depois da escrita também é mais
+ * e a escrita de aprovação devolve void. A busca depois da escrita também é mais
  * fresca do que qualquer snapshot anterior a ela. Ver a nota de desvio no plano
  * docs/superpowers/plans/2026-09-17-manual-approval-auto-schedule-nudge.md.
  *

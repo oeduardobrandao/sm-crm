@@ -55,9 +55,7 @@ vi.mock('@dnd-kit/utilities', () => ({
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
-  approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
@@ -192,8 +190,8 @@ function makePostEntity(): PostEntity {
 }
 
 // Variante com uma etapa de aprovação do cliente ATIVA (ordem 1) e o post já
-// aprovado_interno -- as duas condições que fazem decideApprovalAdvance abrir
-// a escolha (ClientApprovalChoiceDialog) COM "Enviar para o cliente aprovar"
+// aprovado_interno -- as duas condições que fazem o drag abrir o diálogo
+// de saída de aprovação (ApprovalExitDialog) COM "Enviar para o cliente aprovar"
 // habilitado (sendToPortalDisabledReasonFor só desabilita em 'enviado_cliente'). Usada só pelo teste de "Enviar ao portal" abaixo -- os demais
 // testes deste arquivo usam STAGE_STEPS (tudo 'padrao') de propósito, para
 // nunca abrir esta escolha.

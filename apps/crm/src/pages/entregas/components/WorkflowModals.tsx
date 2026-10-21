@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { PlatformId } from '@mesaas/platforms';
@@ -50,7 +50,7 @@ import {
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
-import { ChoiceLabel, PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
+import { PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
@@ -1285,161 +1285,5 @@ export function ForwardConfirmDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
-}
-
-// ClientApprovalChoiceDialog — shown when completing an aprovacao_cliente step
-interface ClientApprovalChoiceDialogProps {
-  open: boolean;
-  /** Título do fluxo ou do post (spec §4.2: os diálogos recebem a entidade). */
-  entityTitle: string;
-  onApproveInternally: () => void;
-  onSendToPortal: () => void;
-  onAdvanceWithoutChanges: () => void;
-  onCancel: () => void;
-  /** Another client-approval etapa lies ahead — completing this one re-arms the posts. */
-  willRearm?: boolean;
-  /** Muda a cópia para o singular no processo individual. */
-  entityKind?: 'fluxo' | 'post';
-  /** Rótulo da terceira opção; o processo individual usa "Avançar sem aprovação"
-   *  ou "Concluir sem aprovação". */
-  withoutChangesLabel?: string;
-  /** Quando definido, desabilita "Enviar ao portal do cliente" e mostra o motivo
-   *  (spec §6.2: com n=1, botão desabilitado com o motivo, nunca sucesso vazio). */
-  sendToPortalDisabledReason?: string;
-}
-export function ClientApprovalChoiceDialog({
-  open,
-  entityTitle,
-  onApproveInternally,
-  onSendToPortal,
-  onAdvanceWithoutChanges,
-  onCancel,
-  willRearm,
-  entityKind,
-  withoutChangesLabel,
-  sendToPortalDisabledReason,
-}: ClientApprovalChoiceDialogProps) {
-  const isPost = entityKind === 'post';
-  const isPhone = !useIsDesktop(768);
-  const approveDescription = isPost
-    ? 'O post fica aprovado pela equipe e a etapa é concluída.'
-    : 'Os posts ficam aprovados pela equipe e a etapa é concluída.';
-  const sendDescription =
-    sendToPortalDisabledReason ??
-    (isPost
-      ? 'O status muda para "Enviado ao cliente" e o post aparece no portal para aprovação. A etapa não avança.'
-      : 'Os posts aprovados internamente vão para o portal, aguardando o cliente. A etapa não avança.');
-  const withoutDescription = isPost
-    ? 'A etapa é concluída e o status do post não muda.'
-    : 'A etapa é concluída e o status dos posts não muda.';
-  const rearmNote = isPost
-    ? 'A próxima etapa também é de aprovação: ao aprovar, o post volta para rascunho.'
-    : 'A próxima etapa também é de aprovação: ao aprovar, os posts voltam para rascunho.';
-  const title = isPost
-    ? 'O cliente ainda não aprovou este post'
-    : 'O cliente ainda não aprovou todos os posts';
-  const intro = `"${entityTitle}" está numa etapa que pede a aprovação do cliente. Escolha como seguir:`;
-  if (isPhone) {
-    return (
-      <PhoneConfirmSheet
-        open={open}
-        title={title}
-        message={willRearm ? `${intro} ${rearmNote}` : intro}
-        actions={[
-          {
-            label: <ChoiceLabel title="Aprovar internamente" description={approveDescription} />,
-            onSelect: onApproveInternally,
-          },
-          {
-            label: (
-              <ChoiceLabel title="Enviar para o cliente aprovar" description={sendDescription} />
-            ),
-            onSelect: onSendToPortal,
-            disabled: !!sendToPortalDisabledReason,
-          },
-          {
-            label: (
-              <ChoiceLabel
-                title={withoutChangesLabel ?? 'Avançar sem aprovação'}
-                description={withoutDescription}
-              />
-            ),
-            onSelect: onAdvanceWithoutChanges,
-          },
-        ]}
-        onCancel={onCancel}
-      />
-    );
-  }
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        if (!open) onCancel();
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-muted-foreground">{intro}</p>
-        <div className="flex flex-col gap-2">
-          <ApprovalChoiceOption
-            title="Aprovar internamente"
-            description={approveDescription}
-            onClick={onApproveInternally}
-          />
-          <ApprovalChoiceOption
-            title="Enviar para o cliente aprovar"
-            description={sendDescription}
-            onClick={onSendToPortal}
-            disabled={!!sendToPortalDisabledReason}
-          />
-          <ApprovalChoiceOption
-            title={withoutChangesLabel ?? 'Avançar sem aprovação'}
-            description={withoutDescription}
-            onClick={onAdvanceWithoutChanges}
-          />
-        </div>
-        {willRearm && <p className="text-xs text-muted-foreground">{rearmNote}</p>}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onCancel}>
-            Cancelar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ApprovalChoiceOption({
-  title,
-  description,
-  onClick,
-  disabled,
-}: {
-  title: string;
-  description: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  const id = useId();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-labelledby={`${id}-title`}
-      aria-describedby={`${id}-desc`}
-      className="w-full rounded-lg border border-border bg-background px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background"
-    >
-      <span id={`${id}-title`} className="block text-sm font-medium text-foreground">
-        {title}
-      </span>
-      <span id={`${id}-desc`} className="mt-0.5 block text-xs text-muted-foreground">
-        {description}
-      </span>
-    </button>
   );
 }

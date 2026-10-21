@@ -67,8 +67,8 @@ async function linkReferencesToApproval(
 
 // Dual-approval fluxos (e.g. copy approval → design → design approval) must not
 // auto-schedule on the first approval: the post still has production stages and
-// another client approval ahead, and once `agendado` the re-arm on etapa
-// completion (resetApprovedPostsForNextCycle) deliberately never touches it, so
+// another client approval ahead, and once `agendado` the exit dialog of an
+// approval etapa never moves it back to rascunho, so
 // it would publish without the later deliverables. With two or more
 // aprovacao_cliente etapas still open, this approval belongs to an earlier
 // cycle; only when at most one remains open is the approval final. Workflows
