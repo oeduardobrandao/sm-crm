@@ -607,6 +607,8 @@ begin
       assert v_row.participantes_count = 3, format('grupo: participantes_count errado %s', v_row.participantes_count);
       assert v_row.unread_count = 1, format('grupo: unread_count errado %s', v_row.unread_count);
       assert v_row.last_message_id = v_msg_grupo, format('grupo: last_message_id errado %s', v_row.last_message_id);
+      -- last_author_id: o CRM troca o nome por "Voce" quando e o proprio usuario.
+      assert v_row.last_author_id = v_b, format('grupo: last_author_id errado %s', v_row.last_author_id);
     elsif v_row.conversa_id = v_dm then
       v_dm_seen := true;
       assert v_row.tipo = 'dm', format('dm: tipo errado %s', v_row.tipo);
@@ -614,6 +616,7 @@ begin
       assert v_row.participantes_count = 2, format('dm: participantes_count errado %s', v_row.participantes_count);
       assert v_row.unread_count = 1, format('dm: unread_count errado %s', v_row.unread_count);
       assert v_row.last_message_id = v_msg_dm, format('dm: last_message_id errado %s', v_row.last_message_id);
+      assert v_row.last_author_id = v_b, format('dm: last_author_id errado %s', v_row.last_author_id);
     else
       raise exception 'conversa inesperada na lista de A: %', v_row.conversa_id;
     end if;

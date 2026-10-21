@@ -10,6 +10,7 @@ const conversaBase: EquipeConversa = {
   avatar_url: null,
   participantes_count: 4,
   last_author_name: null,
+  last_author_id: null,
   last_content: 'oi',
   last_has_anexo: false,
   last_created_at: '2026-07-30T10:00:00Z',
@@ -18,6 +19,18 @@ const conversaBase: EquipeConversa = {
 };
 
 describe('equipeChatLogic', () => {
+  it('equipeConversaPreview says "Você" when the last message is the current user\'s', () => {
+    const minha = { ...conversaBase, last_author_name: 'Eduardo Brandão', last_author_id: 'u-1' };
+    expect(equipeConversaPreview({ ...minha, last_content: 'oi' }, 'u-1')).toBe('Você: oi');
+    expect(
+      equipeConversaPreview({ ...minha, last_content: null, last_has_anexo: true }, 'u-1'),
+    ).toBe('Você: Anexo');
+    // Someone else's message keeps their name.
+    expect(equipeConversaPreview({ ...minha, last_content: 'oi' }, 'u-2')).toBe(
+      'Eduardo Brandão: oi',
+    );
+  });
+
   it('sortEquipeConversas orders by recency and can flip to oldest without mutating input', () => {
     const older = { ...conversaBase, conversa_id: 1, last_created_at: '2026-07-01T00:00:00Z' };
     const newer = { ...conversaBase, conversa_id: 2, last_created_at: '2026-07-31T00:00:00Z' };
@@ -66,6 +79,7 @@ describe('equipeChatLogic', () => {
       equipeConversaPreview({
         ...conversaBase,
         last_author_name: 'Ana',
+        last_author_id: null,
         last_content: null,
         last_has_anexo: true,
       }),
@@ -77,6 +91,7 @@ describe('equipeChatLogic', () => {
       equipeConversaPreview({
         ...conversaBase,
         last_author_name: 'Ana',
+        last_author_id: null,
         last_content: '   ',
         last_has_anexo: false,
       }),
@@ -88,6 +103,7 @@ describe('equipeChatLogic', () => {
       equipeConversaPreview({
         ...conversaBase,
         last_author_name: 'Ana',
+        last_author_id: null,
         last_content: 'chama o @[Bruno](membro:6) aqui',
       }),
     ).toBe('Ana: chama o @Bruno aqui');

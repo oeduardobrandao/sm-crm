@@ -365,7 +365,7 @@ export function EquipeThread({
               send.isPending || uploading || (!draft.trim() && anexosPendentes.length === 0)
             }
             aria-label="Enviar mensagem"
-            className="rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50 bg-[var(--primary-color)]"
+            className="rounded-full px-4 py-2.5 text-sm font-semibold text-[var(--dark)] disabled:opacity-50 bg-[var(--primary-color)]"
             style={{ border: 'none', cursor: 'pointer' }}
           >
             <Send size={15} />

@@ -3,10 +3,12 @@ import { Users } from 'lucide-react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { Cliente } from '@/store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEquipeChatRealtime } from '@/hooks/useEquipeChatRealtime';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
+import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { useMensagensData } from './hooks/useMensagensData';
 import { useEquipeChatData } from './hooks/useEquipeChatData';
 import { ConversationList, MensagensInfoTooltip } from './components/ConversationList';
@@ -64,6 +66,38 @@ function TabPills({
   );
 }
 
+/** Phones: the same two sections as an iOS segmented control under the large
+ * title. The testids sit on the labels (the click bubbles to the segment), so
+ * the page tests drive both layouts the same way. */
+function PhoneTabs({
+  activeTab,
+  onSelect,
+}: {
+  activeTab: MensagensTab;
+  onSelect: (tab: MensagensTab) => void;
+}) {
+  return (
+    <SegmentedControl
+      aria-label="Seção de mensagens"
+      className="mt-2"
+      value={activeTab}
+      onChange={onSelect}
+      options={[
+        {
+          value: 'clientes',
+          label: <span data-testid="mensagens-tab-clientes">Clientes</span>,
+          ariaLabel: 'Clientes',
+        },
+        {
+          value: 'equipe',
+          label: <span data-testid="mensagens-tab-equipe">Equipe</span>,
+          ariaLabel: 'Equipe',
+        },
+      ]}
+    />
+  );
+}
+
 interface EquipePaneProps {
   active: boolean;
   /** Clientes | Equipe pills, or null when only one section is on. */
@@ -100,6 +134,7 @@ function EquipePane({
   onCloseDetalhes,
   onLeftGrupo,
 }: EquipePaneProps) {
+  const { user } = useAuth();
   const equipe = useEquipeChatData(conversaId);
   useEquipeChatRealtime(conversaId);
 
@@ -118,6 +153,7 @@ function EquipePane({
       isLoading={equipe.conversas.isLoading}
       isError={conversasHardError}
       selectedConversaId={conversaId}
+      currentUserId={user?.id ?? null}
       onSelect={onSelect}
       onNovaConversa={onNovaConversa}
     />
@@ -340,7 +376,11 @@ export default function MensagensPage() {
     }
   }
 
-  const tabs = showTabs ? <TabPills activeTab={activeTab} onSelect={selectTab} /> : null;
+  const tabs = !showTabs ? null : isDesktop ? (
+    <TabPills activeTab={activeTab} onSelect={selectTab} />
+  ) : (
+    <PhoneTabs activeTab={activeTab} onSelect={selectTab} />
+  );
 
   const equipePane = (active: boolean) => (
     <EquipePane

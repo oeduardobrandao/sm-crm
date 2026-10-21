@@ -18,10 +18,15 @@ export function sortEquipeConversas(
 }
 
 /** One-line preview for a conversation row: "Autor: texto", "Autor: Anexo",
- * just the author, or the empty-conversation copy. */
-export function equipeConversaPreview(c: EquipeConversa): string {
+ * just the author, or the empty-conversation copy. The current user's own
+ * last message reads "Você: ..." instead of their full name. */
+export function equipeConversaPreview(
+  c: EquipeConversa,
+  currentUserId: string | null = null,
+): string {
   if (c.last_created_at == null) return 'Sem mensagens ainda. Comece a conversa!';
-  const autor = c.last_author_name ?? 'Equipe';
+  const minha = currentUserId != null && c.last_author_id === currentUserId;
+  const autor = minha ? 'Você' : (c.last_author_name ?? 'Equipe');
   // last_content may carry raw @[Label](tipo:id) mention tokens: this is a
   // plain-text preview row, not a rendered chip, so strip them before showing.
   const texto = stripMentionTokens(c.last_content?.trim() ?? '');

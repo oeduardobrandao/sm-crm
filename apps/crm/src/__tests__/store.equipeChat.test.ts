@@ -46,6 +46,7 @@ describe('store/equipeChat', () => {
       avatar_url: null,
       participantes_count: 3,
       last_author_name: 'Ana',
+      last_author_id: null,
       last_content: 'oi',
       last_has_anexo: false,
       last_created_at: '2026-09-02T10:00:00Z',

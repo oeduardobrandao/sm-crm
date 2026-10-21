@@ -10,6 +10,8 @@ export interface EquipeConversa {
   avatar_url: string | null;
   participantes_count: number;
   last_author_name: string | null;
+  /** Autor da ultima mensagem (NULL sem mensagens): "Você" na prévia quando é o usuário. */
+  last_author_id: string | null;
   last_content: string | null;
   last_has_anexo: boolean;
   /** NULL quando a conversa ainda nao tem mensagens. */

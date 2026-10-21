@@ -75,6 +75,7 @@ const CONVERSA: EquipeConversa = {
   avatar_url: null,
   participantes_count: 3,
   last_author_name: 'Ana',
+  last_author_id: null,
   last_content: 'Vamos revisar o brief',
   last_has_anexo: false,
   last_created_at: '2026-07-30T12:00:00.000Z',
@@ -160,6 +161,21 @@ function renderThread(overrides: Partial<ComponentProps<typeof EquipeThread>> = 
 }
 
 describe('EquipeThread', () => {
+  // The amber button used to inherit the theme's text colour: in dark mode the
+  // icon came out near-white on amber (about 1.5:1). --dark is the same
+  // near-black in both themes.
+  it('gives the send icon an explicit dark colour on the amber button', () => {
+    renderThread();
+    expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toHaveClass(
+      'text-[var(--dark)]',
+    );
+  });
+
+  it('can drop its own header when a phone nav bar shows the name', () => {
+    renderThread({ hideHeader: true, onOpenDetalhes: vi.fn() });
+    expect(screen.queryByRole('button', { name: 'Ver detalhes da conversa' })).toBeNull();
+  });
+
   it('renders messages in chronological order, author name on others, reversed alignment on the current user', () => {
     renderThread();
 

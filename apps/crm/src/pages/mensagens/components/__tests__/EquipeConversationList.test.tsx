@@ -13,6 +13,7 @@ const CONVERSAS: EquipeConversa[] = [
     avatar_url: null,
     participantes_count: 4,
     last_author_name: null,
+    last_author_id: null,
     last_content: 'Obrigado!',
     last_has_anexo: false,
     last_created_at: '2026-07-30T12:00:00.000Z',
@@ -27,6 +28,7 @@ const CONVERSAS: EquipeConversa[] = [
     avatar_url: 'https://cdn.example.com/ana.png',
     participantes_count: 2,
     last_author_name: 'Ana',
+    last_author_id: null,
     last_content: 'Segue o ajuste combinado.',
     last_has_anexo: false,
     last_created_at: '2026-07-31T09:00:00.000Z',
@@ -44,6 +46,7 @@ function renderList(overrides: Partial<ComponentProps<typeof EquipeConversationL
       isLoading={false}
       isError={false}
       selectedConversaId={null}
+      currentUserId="u-eu"
       onSelect={onSelect}
       onNovaConversa={onNovaConversa}
       {...overrides}
@@ -53,6 +56,36 @@ function renderList(overrides: Partial<ComponentProps<typeof EquipeConversationL
 }
 
 describe('EquipeConversationList', () => {
+  it('prefixes the current user\'s own last message with "Você"', () => {
+    renderList({
+      conversas: [{ ...CONVERSAS[1], last_author_name: 'Eu Mesmo', last_author_id: 'u-eu' }],
+    });
+    expect(screen.getByText('Você: Segue o ajuste combinado.')).toBeInTheDocument();
+    expect(screen.queryByText(/Eu Mesmo:/)).toBeNull();
+  });
+
+  // jsdom has no layout, so the phone overflow (the list measuring ~524px in a
+  // 390px screen: time, unread badge and "+" pushed off-screen) can only be
+  // guarded by the classes that fix it. Without min-w-0 a flex item's minimum
+  // width is its nowrap content, so a long name or preview widened the column.
+  it('lets long names and the column shrink (min-w-0) instead of widening the list', () => {
+    const { container } = render(
+      <EquipeConversationList
+        conversas={CONVERSAS}
+        isLoading={false}
+        isError={false}
+        selectedConversaId={null}
+        currentUserId={null}
+        onSelect={vi.fn()}
+        onNovaConversa={vi.fn()}
+      />,
+    );
+    expect(container.firstElementChild).toHaveClass('min-w-0');
+    const nome = screen.getByText('Time de Criação');
+    expect(nome).toHaveClass('truncate');
+    expect(nome).toHaveClass('min-w-0');
+  });
+
   it('renders rows with preview, unread badge and author prefix', () => {
     renderList();
     expect(screen.getByText('Time de Criação')).toBeInTheDocument();

@@ -14,6 +14,9 @@ RETURNS TABLE (
   avatar_url          text,
   participantes_count int,
   last_author_name    text,
+  -- Autor da ultima mensagem: o CRM troca o nome por "Voce" quando e o
+  -- proprio usuario (o nome sozinho nao distingue homonimos).
+  last_author_id      uuid,
   last_content        text,
   last_has_anexo      boolean,
   last_created_at     timestamptz,
@@ -88,6 +91,7 @@ BEGIN
          (SELECT count(*)::int FROM equipe_conversa_participantes pt2
            WHERE pt2.conversa_id = m.c_id),
          COALESCE(mb2.nome, p2.nome, 'Equipe'),
+         u.m_author,
          u.m_content,
          EXISTS (SELECT 1 FROM equipe_mensagem_anexos ax
                   WHERE ax.mensagem_id = u.m_id),

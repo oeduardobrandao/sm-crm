@@ -14,6 +14,8 @@ interface EquipeConversationListProps {
   isLoading: boolean;
   isError: boolean;
   selectedConversaId: number | null;
+  /** Last message by this user shows as "Você: ...". */
+  currentUserId: string | null;
   onSelect: (conversaId: number) => void;
   onNovaConversa: () => void;
   className?: string;
@@ -24,6 +26,7 @@ export function EquipeConversationList({
   isLoading,
   isError,
   selectedConversaId,
+  currentUserId,
   onSelect,
   onNovaConversa,
   className = '',
@@ -39,7 +42,7 @@ export function EquipeConversationList({
   }, [conversas, sort, busca]);
 
   return (
-    <div className={`flex flex-col ${className}`}>
+    <div className={`flex min-w-0 flex-col ${className}`}>
       <div className="border-b border-[var(--border-color)] px-4 pt-3 pb-3">
         <div className="flex items-center justify-between gap-2">
           <div className="mt-0" style={{ position: 'relative', flex: 1 }}>
@@ -149,7 +152,7 @@ export function EquipeConversationList({
               )}
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold">{c.display_nome}</span>
+                  <span className="min-w-0 truncate text-sm font-semibold">{c.display_nome}</span>
                   {c.last_created_at != null && (
                     <span className="shrink-0 text-xs text-[var(--text-light)]">
                       {formatTime(c.last_created_at)}
@@ -158,7 +161,7 @@ export function EquipeConversationList({
                 </span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-sm text-[var(--text-muted)]">
-                    {equipeConversaPreview(c)}
+                    {equipeConversaPreview(c, currentUserId)}
                   </span>
                   {c.unread_count > 0 && (
                     <span className="nav-badge nav-badge--count shrink-0">
