@@ -1,6 +1,19 @@
 import { useEffect, useRef } from 'react';
 
 const LID_SCROLL_RANGE = 320;
+
+/* srcset/sizes mirror landing-v2.css: .lp2-hd is min(100%, 1140px) of the
+ * .lp-container content box (20px gutters <=720px, 28px above, 1200px max),
+ * and the iPhone is 25% of it <=980px, 20% above. Keep in sync with the
+ * <link rel="preload" imagesrcset> in the prerendered HTML. */
+export const HERO_MACBOOK_SRCSET =
+  '/landing/hero-macbook-dark-760w.webp 760w, /landing/hero-macbook-dark-1200w.webp 1200w, /landing/hero-macbook-dark.webp 1800w';
+export const HERO_MACBOOK_SIZES =
+  '(max-width: 720px) calc(100vw - 40px), (max-width: 1196px) calc(100vw - 56px), 1140px';
+const HERO_IPHONE_SRCSET =
+  '/landing/hero-iphone-dark-280w.webp 280w, /landing/hero-iphone-dark-420w.webp 420w, /landing/hero-iphone-dark.webp 560w';
+const HERO_IPHONE_SIZES =
+  '(max-width: 720px) calc(25vw - 10px), (max-width: 980px) calc(25vw - 14px), (max-width: 1196px) calc(20vw - 11px), 228px';
 const LID_MIN_VIEWPORT = 981;
 
 /** Hero device mockups for the landing page (dark renders). On desktop the
@@ -48,6 +61,8 @@ export function HeroDevicesDark() {
       <img
         className="lp2-hd-macbook"
         src="/landing/hero-macbook-dark.webp"
+        srcSet={HERO_MACBOOK_SRCSET}
+        sizes={HERO_MACBOOK_SIZES}
         width={1800}
         height={1087}
         alt="MacBook com o quadro de entregas do Mesaas: fluxos por etapa, do briefing à aprovação do cliente"
@@ -58,6 +73,8 @@ export function HeroDevicesDark() {
       <img
         className="lp2-hd-iphone"
         src="/landing/hero-iphone-dark.webp"
+        srcSet={HERO_IPHONE_SRCSET}
+        sizes={HERO_IPHONE_SIZES}
         width={560}
         height={1160}
         alt="iPhone com o Hub do cliente: aprovações pendentes e próximo post"

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './blog.css';
-import '../landing/landing.css';
+import '../landing/landing-styles';
 import { LandingFooter, LandingHeader, useLandingChrome } from '../landing/LandingChrome';
 import NotFoundPage from '../not-found/NotFoundPage';
 import { BLOG_POSTS, postBySlug } from '@/content/blog.client';

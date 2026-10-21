@@ -1,4 +1,5 @@
-import posthog from 'posthog-js';
+// Type-only: the SDK itself is loaded on demand by initAnalytics (see loadSdk below).
+import type { PostHog } from 'posthog-js';
 
 /**
  * Product analytics. EU cloud region.
@@ -98,27 +99,44 @@ const HOST =
 
 // Two flags, not one: `initialized` = a posthog.init has run (never resets, so a re-grant can
 // never double-init); `capturing` = our helpers may send. Consent revoke flips only `capturing`.
+// `capturing` goes true the moment initAnalytics runs, even while the SDK is still downloading.
 let initialized = false;
 let capturing = false;
 // Last workspace identity AuthContext reported, kept in memory only (never sent while not
 // capturing) so a later start can identify the person. Cleared by resetAnalytics.
 let lastIdentity: { userId: string; props: WorkspaceUserProps } | null = null;
 
-function applyIdentity(userId: string, props: WorkspaceUserProps): void {
-  posthog.identify(userId, { ...props });
-  // Retention is a property of the workspace, not the individual — an agency churns, not a seat.
-  posthog.group('workspace', props.workspace_id);
+// posthog-js is ~220 KB minified. A static import put it in the CRM entry bundle, which the
+// landing page downloads before first paint, for an SDK that only starts after cookie consent
+// (and never without a key). So it is a dynamic import, fetched the first time initAnalytics runs.
+let sdk: PostHog | null = null;
+let loading: Promise<void> | null = null;
+// Calls made while capturing but before the SDK arrived, replayed in order right after init.
+// Bounded so a stalled download cannot grow it without limit; overflow drops the newest calls
+// (the head holds the identity replay, which matters more than one extra event). Dropped on
+// revoke and on a failed download.
+type PendingCall = (ph: PostHog) => void;
+const MAX_PENDING = 100;
+let pending: PendingCall[] = [];
+
+function run(call: PendingCall): void {
+  if (sdk) {
+    call(sdk);
+    return;
+  }
+  if (pending.length < MAX_PENDING) pending.push(call);
 }
 
-/**
- * Start or resume product analytics. Called by consent handling only after the visitor opted in
- * (lib/consentEffects.ts). Safe to call when unconfigured (local dev, CI, self-hosters): no-ops.
- * Idempotent: the first call runs posthog.init, later calls (after a revoke) only opt back in.
- */
-export function initAnalytics(): void {
+function applyIdentity(ph: PostHog, userId: string, props: WorkspaceUserProps): void {
+  ph.identify(userId, { ...props });
+  // Retention is a property of the workspace, not the individual — an agency churns, not a seat.
+  ph.group('workspace', props.workspace_id);
+}
+
+function startSdk(ph: PostHog): void {
   if (!KEY) return;
   if (!initialized) {
-    posthog.init(KEY, {
+    ph.init(KEY, {
       api_host: HOST,
       // Do not build a person profile for anonymous landing-page traffic — it is noise here, and
       // fewer profiles is the easier LGPD posture to defend.
@@ -142,21 +160,74 @@ export function initAnalytics(): void {
   // The SDK's opt-out flag survives page loads: a user who revoked yesterday and accepts today
   // gets an initialised but still opted-out SDK unless we opt back in. `captureEventName: false`
   // suppresses the default `$opt_in` event.
-  if (posthog.has_opted_out_capturing()) posthog.opt_in_capturing({ captureEventName: false });
+  if (ph.has_opted_out_capturing()) ph.opt_in_capturing({ captureEventName: false });
+}
+
+function loadSdk(): void {
+  if (loading) return;
+  loading = import('posthog-js').then(
+    (mod) => {
+      loading = null;
+      sdk = mod.default;
+      const queued = pending;
+      pending = [];
+      // Revoked while downloading: the SDK must not be initialised at all. A later grant takes
+      // the synchronous path in initAnalytics.
+      if (!capturing) return;
+      startSdk(sdk);
+      for (const call of queued) call(sdk);
+    },
+    () => {
+      // Network failure (offline, flaky mobile). Swallowed: analytics must never surface as an
+      // unhandled rejection. Back to "not started" so the next initAnalytics retries the import.
+      loading = null;
+      pending = [];
+      capturing = false;
+    },
+  );
+}
+
+/**
+ * Start or resume product analytics. Called by consent handling only after the visitor opted in
+ * (lib/consentEffects.ts). Safe to call when unconfigured (local dev, CI, self-hosters): no-ops,
+ * and posthog-js is never downloaded. Idempotent: the first call loads the SDK and runs
+ * posthog.init, later calls (after a revoke) only opt back in.
+ */
+export function initAnalytics(): void {
+  if (!KEY) return;
+  if (sdk) {
+    startSdk(sdk);
+    capturing = true;
+    if (lastIdentity) applyIdentity(sdk, lastIdentity.userId, lastIdentity.props);
+    return;
+  }
+  // Already started and still downloading: nothing new to queue.
+  if (capturing) return;
   capturing = true;
-  if (lastIdentity) applyIdentity(lastIdentity.userId, lastIdentity.props);
+  // The identity replay is queued first so it lands before anything captured in the meantime,
+  // exactly where the synchronous path runs it.
+  if (lastIdentity) {
+    const { userId, props } = lastIdentity;
+    run((ph) => applyIdentity(ph, userId, props));
+  }
+  loadSdk();
 }
 
 /**
  * Stop capturing (consent revoked). ORDER MATTERS: reset() deletes the SDK's opt-out flag, so it
  * must run before opt_out_capturing(); the reverse order silently un-revokes and the SDK's own
  * emitters ($pageview, exception capture, autocapture, session replay) resume.
+ * Revoked before the SDK finished downloading: drop the queue; the load handler then skips init.
  */
 export function disableAnalytics(): void {
-  if (!initialized || !capturing) return;
-  posthog.reset();
-  posthog.opt_out_capturing();
+  if (!capturing) return;
   capturing = false;
+  if (!sdk || !initialized) {
+    pending = [];
+    return;
+  }
+  sdk.reset();
+  sdk.opt_out_capturing();
 }
 
 /**
@@ -170,13 +241,13 @@ export function disableAnalytics(): void {
  */
 export function identifySignup(userId: string): void {
   if (!capturing) return;
-  posthog.identify(userId);
+  run((ph) => ph.identify(userId));
 }
 
 export function identifyWorkspaceUser(userId: string, props: WorkspaceUserProps): void {
   lastIdentity = { userId, props };
   if (!capturing) return;
-  applyIdentity(userId, props);
+  run((ph) => applyIdentity(ph, userId, props));
 }
 
 export interface CaptureOptions {
@@ -196,14 +267,14 @@ export function captureEvent(
 ): void {
   if (!capturing) return;
   if (opts?.sendInstantly) {
-    posthog.capture(event, props, { send_instantly: true });
+    run((ph) => ph.capture(event, props, { send_instantly: true }));
     return;
   }
-  posthog.capture(event, props);
+  run((ph) => ph.capture(event, props));
 }
 
 export function resetAnalytics(): void {
   lastIdentity = null;
   if (!capturing) return;
-  posthog.reset();
+  run((ph) => ph.reset());
 }

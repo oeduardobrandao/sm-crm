@@ -1,4 +1,4 @@
-import '../landing/landing.css';
+import '../landing/landing-styles';
 import { LandingHeader, LandingFooter, useLandingChrome } from '../landing/LandingChrome';
 import { FaqSection } from '../landing/FaqSection';
 import { ArrowRight } from 'lucide-react';
