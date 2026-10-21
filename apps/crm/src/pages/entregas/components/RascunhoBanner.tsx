@@ -39,7 +39,8 @@ export function RascunhoBanner({
   const confirmTitle = isPost
     ? 'Voltar o post para rascunho?'
     : `Voltar ${count} ${count === 1 ? 'post' : 'posts'} para rascunho?`;
-  const confirmBody = `${isPost ? 'Ele sai' : 'Eles saem'} de Aprovado e voltam para Rascunho. O histórico de aprovações é mantido.`;
+  const singular = isPost || count === 1;
+  const confirmBody = `${singular ? 'Ele sai de Aprovado e volta' : 'Eles saem de Aprovado e voltam'} para Rascunho. O histórico de aprovações é mantido.`;
 
   return (
     <>
@@ -60,6 +61,7 @@ export function RascunhoBanner({
           type="button"
           className="rascunho-banner__close"
           aria-label="Dispensar aviso"
+          disabled={busy}
           onClick={onDismiss}
         >
           <X size={16} aria-hidden="true" />

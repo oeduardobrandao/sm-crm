@@ -332,6 +332,12 @@ test('primeiro post walkthrough', async ({ page }) => {
   await shoot(page, SLUG, 26, 'avancar-etapa');
   await forwardDialog.getByRole('button', { name: 'Cancelar' }).click();
 
+  // DESATUALIZADO: o ClientApprovalChoiceDialog descrito abaixo foi removido.
+  // Avançar um card numa etapa aprovacao_cliente agora abre direto o
+  // ApprovalExitDialog (sem o alertdialog "Avançar etapa?" e sem o texto "O
+  // cliente ainda não aprovou"), então `forwardDialog2` e `approvalDialog` logo
+  // abaixo não acham mais nada. A seção precisa ser refeita para o novo diálogo.
+  //
   // DESVIO DOCUMENTADO: para mostrar o diálogo real "Como deseja prosseguir com
   // a aprovação?" (ClientApprovalChoiceDialog, com o botão "Aprovar
   // internamente") é preciso um fluxo cuja etapa ATUAL já seja do tipo

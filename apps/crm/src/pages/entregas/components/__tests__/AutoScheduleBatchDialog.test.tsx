@@ -345,7 +345,7 @@ describe('AutoScheduleBatchDialog', () => {
 
   // Fix B: o diálogo passa a ter seu próprio gate de segurança (espelho do
   // PR#400) -- não só confiar que os três callers já checaram antes de setar
-  // workflowId. Sem ele, um quarto caller futuro (ou um refactor de willRearm)
+  // workflowId. Sem ele, um caller futuro (ou um refactor de hasLaterApprovalEtapa)
   // poderia reabrir exatamente a falha do PR#400 sem nada no próprio
   // componente para impedir.
   it('renders nothing when isFinalApprovalCycle is false, even with a workflowId set', () => {

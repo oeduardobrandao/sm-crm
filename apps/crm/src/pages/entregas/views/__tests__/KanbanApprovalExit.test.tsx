@@ -241,10 +241,12 @@ function renderBoard(overrides: { card?: BoardCard; onRefresh?: () => void } = {
 }
 
 /** Abre o diálogo pelo botão do card e espera as contagens chegarem (as opções
- *  além de "Manter" só aparecem com elas). */
+ *  além de "Manter" só aparecem com elas; numa reabertura elas vêm do cache, e o
+ *  primário só habilita quando a busca nova termina). */
 async function openExitDialog() {
   fireEvent.click(screen.getByText('forward'));
   await screen.findByRole('radio', { name: /Voltar todos para rascunho/ });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Avançar' })).not.toBeDisabled());
 }
 
 describe('KanbanView saída de etapa de aprovação', () => {
@@ -364,6 +366,66 @@ describe('KanbanView saída de etapa de aprovação', () => {
       await screen.findByRole('radio', { name: /Voltar todos para rascunho/ }),
     ).toBeInTheDocument();
     expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it('posts_changed depois de "Aprovar todos" mantém a escolha e reconfirma aprovar_todos', async () => {
+    store.advanceWorkflowFromApproval.mockRejectedValueOnce({ message: 'posts_changed' });
+    const FRESH = { rascunho: 2, aprovado_interno: 1, aprovado_cliente: 1 };
+    // A segunda busca fica pendurada até o teste soltar: é na janela da recarga
+    // que as opções colapsavam e a escolha voltava para a recomendada.
+    let release: (v: typeof FRESH) => void = () => {};
+    store.getWorkflowPostStatusCounts
+      .mockResolvedValueOnce(COUNTS)
+      .mockImplementationOnce(() => new Promise((r) => (release = r)));
+    renderBoard();
+    await openExitDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /Aprovar todos/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+    await waitFor(() => expect(store.getWorkflowPostStatusCounts).toHaveBeenCalledTimes(2));
+    // Recarregando: o primário fica desabilitado, mas as opções e a escolha ficam.
+    expect(screen.getByRole('button', { name: 'Avançar' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Aprovar todos/ })).toBeChecked();
+    await act(async () => release(FRESH));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Avançar' })).not.toBeDisabled());
+    expect(screen.getByRole('radio', { name: /Aprovar todos/ })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+    await waitFor(() => expect(store.advanceWorkflowFromApproval).toHaveBeenCalledTimes(2));
+    expect(store.advanceWorkflowFromApproval.mock.calls[1][0]).toEqual({
+      workflowId: 1,
+      expectedEtapaId: 11,
+      choice: 'aprovar_todos',
+      expectedCounts: FRESH,
+    });
+  });
+
+  it.each([
+    ['not_approval_etapa', 'Esta etapa não é mais de aprovação. A tela foi atualizada.'],
+    ['expected_counts_required', 'Não foi possível conferir os posts. Tente de novo.'],
+    ['workflow_not_active', 'Este fluxo não está mais ativo.'],
+  ])('%s fecha o diálogo, mostra a cópia e recarrega', async (code, copy) => {
+    store.advanceWorkflowFromApproval.mockRejectedValue({ message: code });
+    const onRefresh = vi.fn();
+    renderBoard({ onRefresh });
+    await openExitDialog();
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(copy));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+    expect(screen.queryByRole('radio', { name: /Voltar todos para rascunho/ })).toBeNull();
+  });
+
+  it('falha ao buscar as contagens mostra o aviso e "Tentar de novo" busca de novo', async () => {
+    store.getWorkflowPostStatusCounts.mockRejectedValueOnce(new Error('offline'));
+    renderBoard();
+    fireEvent.click(screen.getByText('forward'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível carregar os posts.',
+    );
+    expect(screen.getByRole('button', { name: 'Avançar' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    await screen.findByRole('radio', { name: /Voltar todos para rascunho/ });
+    expect(store.getWorkflowPostStatusCounts).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Avançar' })).not.toBeDisabled();
   });
 
   it('etapa_changed fecha o diálogo e recarrega', async () => {

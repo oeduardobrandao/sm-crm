@@ -15,7 +15,11 @@ import {
 } from '../../../store';
 import type { BoardCard } from './useEntregasData';
 import { fluxoExitOptions, type ApprovalExitOption } from '../approvalExit';
-import { getErrorIdentifier, getPostProcessErrorToast } from '../postProcessErrors';
+import {
+  getErrorIdentifier,
+  getPostProcessErrorToast,
+  isStaleStateError,
+} from '../postProcessErrors';
 import { ApprovalExitDialog } from '../components/ApprovalExitDialog';
 import { AutoScheduleBatchDialog } from '../components/AutoScheduleBatchDialog';
 import { ForwardConfirmDialog, RevertConfirmDialog } from '../components/WorkflowModals';
@@ -117,6 +121,13 @@ export function useWorkflowStageCommands<Ctx = unknown>(
   /** Card whose approval-exit dialog is open. */
   const [approvalTarget, setApprovalTarget] = useState<BoardCard | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
+  /** True from a posts_changed until its refetch settles: the stale numbers must
+   *  not be confirmable in the render before the query reports `isFetching`. */
+  const [countsRefreshing, setCountsRefreshing] = useState(false);
+  /** Bumped when the dialog must come back after a choice that did not close it
+   *  (posts_changed, retry): the phone sheet hides itself on a pick and only a
+   *  remount shows it again. */
+  const [approvalSession, setApprovalSession] = useState(0);
   /** Fluxo cujo resumo de agendamento em lote está aberto (peça 2 da spec), com o
    *  booleano do gate de segurança capturado no momento da aprovação. */
   const [batchSchedule, setBatchSchedule] = useState<{
@@ -135,15 +146,25 @@ export function useWorkflowStageCommands<Ctx = unknown>(
   // null while (re)fetching, so stale numbers can never be confirmed (the
   // posts_changed refetch included).
   const counts: PostStatusCounts | null =
-    approvalWfId != null && !countsQuery.isFetching && countsQuery.data ? countsQuery.data : null;
+    approvalWfId != null && !countsQuery.isFetching && !countsRefreshing && countsQuery.data
+      ? countsQuery.data
+      : null;
+  const countsError = approvalWfId != null && countsQuery.isError && !countsQuery.isFetching;
   const refetchCounts = countsQuery.refetch;
+  const refreshCounts = () => {
+    setCountsRefreshing(true);
+    setApprovalSession((n) => n + 1);
+    void refetchCounts().finally(() => setCountsRefreshing(false));
+  };
 
   const approvalNext = approvalTarget ? nextEtapaOf(approvalTarget) : undefined;
   const temAprovacaoAdiante = approvalTarget
     ? hasLaterApprovalEtapa(approvalTarget.allEtapas, approvalTarget.etapa.id!)
     : false;
+  // Options come from the last numbers React Query holds, even mid-refetch, so the
+  // list (and the user's pick) does not collapse to "Manter" while `counts` is null.
   const exit = fluxoExitOptions({
-    counts: counts ?? {},
+    counts: (approvalWfId != null ? countsQuery.data : undefined) ?? {},
     isLastEtapa: approvalNext === undefined,
     temAprovacaoAdiante,
   });
@@ -244,10 +265,10 @@ export function useWorkflowStageCommands<Ctx = unknown>(
       toast.error(getPostProcessErrorToast(err, 'Erro ao avançar etapa'));
       if (code === 'posts_changed') {
         // Stays open with the fresh numbers; the user confirms again.
-        void refetchCounts();
+        refreshCounts();
       } else {
         setApprovalTarget(null);
-        if (code === 'etapa_changed') onRefresh();
+        if (isStaleStateError(err)) onRefresh();
       }
     } finally {
       setApprovalBusy(false);
@@ -308,6 +329,9 @@ export function useWorkflowStageCommands<Ctx = unknown>(
           aprovadoInterno: exit.aprovadoInterno,
         }}
         busy={approvalBusy}
+        countsError={countsError}
+        onRetry={refreshCounts}
+        sessionKey={`${approvalWfId ?? ''}:${approvalSession}`}
         onConfirm={(option) => void handleApprovalConfirm(option)}
         onCancel={() => {
           // A confirm in flight owns the move hooks; ignore the dismissal.

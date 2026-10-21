@@ -2,10 +2,18 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { RascunhoBanner } from '../RascunhoBanner';
 
-function setup(kind: 'fluxo' | 'post' = 'fluxo') {
+function setup(kind: 'fluxo' | 'post' = 'fluxo', { count = 4, busy = false } = {}) {
   const onReset = vi.fn();
   const onDismiss = vi.fn();
-  render(<RascunhoBanner count={4} entityKind={kind} onReset={onReset} onDismiss={onDismiss} />);
+  render(
+    <RascunhoBanner
+      count={count}
+      entityKind={kind}
+      busy={busy}
+      onReset={onReset}
+      onDismiss={onDismiss}
+    />,
+  );
   return { onReset, onDismiss };
 }
 
@@ -34,5 +42,35 @@ describe('RascunhoBanner', () => {
     expect(screen.getByText('Este post continua aprovado.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Voltar para rascunho' }));
     expect(screen.getByText('Voltar o post para rascunho?')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Ele sai de Aprovado e volta para Rascunho. O histórico de aprovações é mantido.',
+      ),
+    ).toBeTruthy();
+  });
+  it('fluxo com um post usa o singular na confirmação', () => {
+    setup('fluxo', { count: 1 });
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar todos para rascunho' }));
+    expect(
+      screen.getByText(
+        'Ele sai de Aprovado e volta para Rascunho. O histórico de aprovações é mantido.',
+      ),
+    ).toBeTruthy();
+  });
+  it('fluxo com vários posts usa o plural na confirmação', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar todos para rascunho' }));
+    expect(
+      screen.getByText(
+        'Eles saem de Aprovado e voltam para Rascunho. O histórico de aprovações é mantido.',
+      ),
+    ).toBeTruthy();
+  });
+  it('X fica desabilitado enquanto ocupado', () => {
+    const { onDismiss } = setup('fluxo', { busy: true });
+    const x = screen.getByRole('button', { name: 'Dispensar aviso' }) as HTMLButtonElement;
+    expect(x.disabled).toBe(true);
+    fireEvent.click(x);
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 });

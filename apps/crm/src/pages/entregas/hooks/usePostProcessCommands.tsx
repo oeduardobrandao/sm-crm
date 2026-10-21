@@ -45,7 +45,7 @@ export interface UsePostProcessCommandsOptions {
   onOptimisticStep?: (processId: number, ordem: number | null) => void;
   /** Chamado quando um diálogo de confirmação é DESCARTADO sem rodar o comando
    *  (Cancelar, Esc, clique fora) -- nunca num confirm que já seguiu para
-   *  `run`/`decideThenRun`. O Kanban usa isso para limpar `pendingInsertRef`
+   *  `run`. O Kanban usa isso para limpar `pendingInsertRef`
    *  de um drag entre colunas que abriu este diálogo: sem o callback, um
    *  Cancelar aqui deixa o ref preso, e o próximo comando do MESMO post
    *  disparado por botão (não-drag) herda a posição capturada pelo drag
@@ -92,6 +92,28 @@ const SUCCESS: Record<ProcessCommand, string> = {
   concluir: 'Processo concluído. O post mantém status e agendamento.',
   reabrir: 'Processo reaberto na última etapa.',
 };
+
+/** Saída de uma etapa de aprovação: o toast diz o que aconteceu com o post. Um
+ *  toast só por transição. */
+const EXIT_SUCCESS: Record<'avancar' | 'concluir', Record<ApprovalChoice, string>> = {
+  avancar: {
+    sem_alterar: 'Etapa avançada. Status do post mantido.',
+    aprovar_interno: 'Etapa avançada. Post aprovado.',
+    voltar_rascunho: 'Etapa avançada. O post voltou para rascunho.',
+  },
+  concluir: {
+    sem_alterar: 'Processo concluído. O post mantém status e agendamento.',
+    aprovar_interno: 'Processo concluído. Post aprovado.',
+    voltar_rascunho: 'Processo concluído. O post voltou para rascunho.',
+  },
+};
+
+function successMessage(command: ProcessCommand, choice: ApprovalChoice | null): string {
+  if (choice && (command === 'avancar' || command === 'concluir')) {
+    return EXIT_SUCCESS[command][choice];
+  }
+  return SUCCESS[command];
+}
 
 /**
  * Comandos de um processo individual (spec §5.4, §5.5, §6.2) compartilhados
@@ -157,8 +179,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
           expectedPostStatus: needsStatus ? t.post.status : null,
           nextDeadline: command === 'avancar' ? nextDeadlineFor(next, new Date()) : null,
         });
-        toast.success(SUCCESS[command]);
-        if (choice === 'voltar_rascunho') toast.info('O post voltou para rascunho.');
+        toast.success(successMessage(command, choice));
         invalidate(t);
       } catch (err) {
         opts.onOptimisticStep?.(t.process.id, null);

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,28 +8,36 @@ vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 import { ApprovalExitDialog, type ApprovalExitDialogProps } from '../ApprovalExitDialog';
 
 const numbers = { pendentes: 3, alteraveisRascunho: 7, aprovadoInterno: 2 };
+const baseProps: ApprovalExitDialogProps = {
+  open: true,
+  entityKind: 'fluxo',
+  entityTitle: 'Março',
+  nextEtapaName: 'Design',
+  counts: { aprovado_cliente: 5, enviado_cliente: 2, rascunho: 1 },
+  options: ['manter', 'aprovar', 'voltar_rascunho', 'enviar_portal'],
+  recommended: 'manter',
+  numbers,
+  onConfirm: () => {},
+  onCancel: () => {},
+};
 function setup(over: Partial<ApprovalExitDialogProps> = {}) {
   const onConfirm = vi.fn();
   const onCancel = vi.fn();
-  render(
+  const ui = (o: Partial<ApprovalExitDialogProps>) => (
     <MemoryRouter>
-      <ApprovalExitDialog
-        open
-        entityKind="fluxo"
-        entityTitle="Março"
-        nextEtapaName="Design"
-        counts={{ aprovado_cliente: 5, enviado_cliente: 2, rascunho: 1 }}
-        options={['manter', 'aprovar', 'voltar_rascunho', 'enviar_portal']}
-        recommended="manter"
-        numbers={numbers}
-        onConfirm={onConfirm}
-        onCancel={onCancel}
-        {...over}
-      />
-    </MemoryRouter>,
+      <ApprovalExitDialog {...baseProps} onConfirm={onConfirm} onCancel={onCancel} {...o} />
+    </MemoryRouter>
   );
-  return { onConfirm, onCancel };
+  const view = render(ui(over));
+  return {
+    onConfirm,
+    onCancel,
+    rerender: (o: Partial<ApprovalExitDialogProps>) => view.rerender(ui({ ...over, ...o })),
+  };
 }
+
+const checkedValue = () =>
+  (screen.getAllByRole('radio') as HTMLInputElement[]).find((r) => r.checked)?.value;
 
 beforeEach(() => {
   desktop.value = true;
@@ -81,7 +89,75 @@ describe('ApprovalExitDialog (desktop)', () => {
   });
 });
 
+describe('ApprovalExitDialog (desktop): seleção e foco', () => {
+  it('ao abrir, o foco vai para a opção marcada, não para a primeira', async () => {
+    setup({ recommended: 'voltar_rascunho' });
+    await waitFor(() =>
+      expect((document.activeElement as HTMLInputElement | null)?.value).toBe('voltar_rascunho'),
+    );
+  });
+  it('quando as contagens chegam, o foco acompanha a recomendada', async () => {
+    const { rerender } = setup({ counts: null, options: ['manter'], recommended: 'manter' });
+    await waitFor(() =>
+      expect((document.activeElement as HTMLInputElement | null)?.value).toBe('manter'),
+    );
+    rerender({
+      counts: baseProps.counts,
+      options: baseProps.options,
+      recommended: 'voltar_rascunho',
+    });
+    expect(checkedValue()).toBe('voltar_rascunho');
+    await waitFor(() =>
+      expect((document.activeElement as HTMLInputElement | null)?.value).toBe('voltar_rascunho'),
+    );
+  });
+  it('a escolha do usuário sobrevive a uma recarga das contagens', () => {
+    const { rerender } = setup({ recommended: 'voltar_rascunho' });
+    fireEvent.click(screen.getByLabelText(/Aprovar todos/));
+    rerender({ counts: null });
+    rerender({ counts: { aprovado_cliente: 4, rascunho: 2 } });
+    expect(checkedValue()).toBe('aprovar');
+  });
+  it('escolha que deixou de ser oferecida volta para a recomendada', () => {
+    const { rerender, onConfirm } = setup({ recommended: 'voltar_rascunho' });
+    fireEvent.click(screen.getByLabelText(/Enviar ao portal/));
+    rerender({ options: ['manter', 'aprovar', 'voltar_rascunho'] });
+    expect(checkedValue()).toBe('voltar_rascunho');
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+    expect(onConfirm).toHaveBeenCalledWith('voltar_rascunho');
+  });
+  it('reabrir volta para a recomendada', () => {
+    const { rerender } = setup({ recommended: 'voltar_rascunho' });
+    fireEvent.click(screen.getByLabelText(/Aprovar todos/));
+    rerender({ open: false });
+    rerender({ open: true });
+    expect(checkedValue()).toBe('voltar_rascunho');
+  });
+  it('erro nas contagens mostra aviso e "Tentar de novo"', () => {
+    const onRetry = vi.fn();
+    setup({ counts: null, countsError: true, onRetry });
+    expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível carregar os posts.');
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('ApprovalExitDialog (phone)', () => {
+  it('mostra os chips e o aviso de agendados/publicados', () => {
+    desktop.value = false;
+    setup();
+    expect(screen.getByText('Aprovado pelo cliente: 5')).toBeTruthy();
+    expect(screen.getByText('Posts agendados ou publicados nunca são alterados.')).toBeTruthy();
+  });
+  it('erro nas contagens oferece "Tentar de novo"', async () => {
+    desktop.value = false;
+    const onRetry = vi.fn();
+    setup({ counts: null, countsError: true, onRetry });
+    expect(screen.getByText('Não foi possível carregar os posts.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
+  });
+
   it('lista a recomendada primeiro e toque confirma', () => {
     desktop.value = false;
     const { onConfirm } = setup({ recommended: 'voltar_rascunho' });

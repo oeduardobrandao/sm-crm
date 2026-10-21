@@ -145,6 +145,10 @@ describe('usePostProcessCommands', () => {
       approvalChoice: 'aprovar_interno',
       expectedPostStatus: 'enviado_cliente',
     });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Etapa avançada. Post aprovado.'),
+    );
+    expect(toast.success).toHaveBeenCalledTimes(1);
   });
 
   it('"Enviar ao portal" some quando o post já está com o cliente', async () => {
@@ -241,7 +245,12 @@ describe('usePostProcessCommands', () => {
       approvalChoice: 'voltar_rascunho',
       expectedPostStatus: 'aprovado_cliente',
     });
-    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('O post voltou para rascunho.'));
+    // Um toast só, que já diz o que aconteceu com o post.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Etapa avançada. O post voltou para rascunho.'),
+    );
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.info).not.toHaveBeenCalled();
   });
 
   it('"Manter status" manda sem_alterar e não avisa rascunho mesmo se o RPC devolver rascunho', async () => {
@@ -265,7 +274,9 @@ describe('usePostProcessCommands', () => {
       approvalChoice: 'sem_alterar',
       expectedPostStatus: 'aprovado_cliente',
     });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Etapa avançada.'));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Etapa avançada. Status do post mantido.'),
+    );
     expect(toast.info).not.toHaveBeenCalled();
   });
 
@@ -339,7 +350,27 @@ describe('usePostProcessCommands', () => {
         }),
       ),
     );
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Processo concluído. O post mantém status e agendamento.',
+      ),
+    );
     expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('concluir em aprovação com "Aprovar" avisa que o post foi aprovado', async () => {
+    const t = target(
+      [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente')],
+      'enviado_cliente',
+    );
+    renderHarness(t);
+    fireEvent.click(screen.getByText('concluir'));
+    fireEvent.click(await screen.findByRole('radio', { name: /^Aprovar/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Processo concluído. Post aprovado.'),
+    );
+    expect(toast.success).toHaveBeenCalledTimes(1);
   });
 
   it('concluir em etapa padrão segue pelo AlertDialog de confirmação', async () => {
