@@ -13,6 +13,10 @@
 -- 99w.5 limite de fluxos ativos desfaz tudo
 -- 99w.6 erros de acesso: papel sem entregas:editar -> permission_denied;
 --       sem workspace ativo -> workspace_not_found
+-- 99w.7 futuras pelo template (20261021120000): duplicata no fim sai, escada
+--       embaralhada vira template[p+1..] levando responsavel/prazo/data por
+--       nome; sem como alinhar (nome ausente/ambiguo, sem template, concluido,
+--       linha acima nao pendente) a copia fica igual a origem; helper sem grant
 
 create or replace function pg_temp.dw_env(
   out ws uuid, out usr uuid, out cli bigint, out tmpl bigint)
@@ -316,5 +320,140 @@ begin
   assert v_raised, 'sem workspace ativo duplicou o fluxo';
   assert (select count(*) from workflows where conta_id = e.ws) = 1, 'nenhum fluxo criado (workspace_not_found)';
   raise notice 'PASS 99w.6';
+end $$;
+rollback;
+
+-- 99w.7 futuras pelo template (20261021120000)
+create or replace function pg_temp.dw_flow(p_ws uuid, p_usr uuid, p_cli bigint, p_tpl bigint, p_nomes text[], p_sts text[])
+returns bigint language plpgsql as $$
+declare wf bigint;
+begin
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, template_id, etapa_atual)
+    values (p_usr, p_ws, p_cli, 'D', case when 'ativo' = any (p_sts) then 'ativo' else 'concluido' end, p_tpl, 0)
+    returning id into wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em, concluido_em)
+    select wf, x.o - 1, x.n, 1, 'corridos', 'padrao', x.st,
+           case when x.st <> 'pendente' then now() end, case when x.st = 'concluido' then now() end
+      from unnest(p_nomes, p_sts) with ordinality x(n, st, o);
+  return wf;
+end $$;
+
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  e record; tpl bigint; tpl_amb bigint; wf bigint; v_new bigint; v_m bigint; v_names text;
+begin
+  e := pg_temp.dw_env();
+  insert into membros (user_id, conta_id, nome) values (e.usr, e.ws, 'Resp') returning id into v_m;
+  insert into workflow_templates (user_id, conta_id, nome, etapas)
+    values (e.usr, e.ws, 'Tpl', jsonb_build_array(
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 1, 'tipo_prazo', 'corridos', 'tipo', 'padrao'),
+      jsonb_build_object('nome', 'Design', 'prazo_dias', 2, 'tipo_prazo', 'corridos', 'tipo', 'padrao'),
+      jsonb_build_object('nome', 'Aprovação', 'prazo_dias', 3, 'tipo_prazo', 'uteis', 'tipo', 'aprovacao_cliente'),
+      jsonb_build_object('nome', 'Agendamento', 'prazo_dias', 4, 'tipo_prazo', 'corridos', 'tipo', 'padrao')))
+    returning id into tpl;
+
+  -- (a) duplicata no fim (caso Maven): Agendamento duas vezes
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, template_id, etapa_atual)
+    values (e.usr, e.ws, e.cli, 'A', 'ativo', tpl, 1) returning id into wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, concluido_em) values
+    (wf, 0, 'Copy', 1, 'corridos', 'padrao', 'concluido', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em) values
+    (wf, 1, 'Design', 2, 'corridos', 'padrao', 'ativo', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, data_limite, responsavel_id) values
+    (wf, 2, 'Aprovação', 5, 'uteis', 'aprovacao_cliente', 'pendente', date '2026-11-10', v_m),
+    (wf, 3, 'Agendamento', 4, 'corridos', 'padrao', 'pendente', date '2026-11-12', null),
+    (wf, 4, 'Agendamento', 4, 'corridos', 'padrao', 'pendente', date '2026-11-20', null);
+  perform pg_temp.dw_as(e.usr);
+  v_new := duplicate_workflow(wf, false);
+  execute 'reset role';
+  select string_agg(ordem || ':' || nome || ':' || status, ' > ' order by ordem) into v_names
+    from workflow_etapas where workflow_id = v_new;
+  assert v_names = '0:Copy:concluido > 1:Design:ativo > 2:Aprovação:pendente > 3:Agendamento:pendente',
+    format('(a) escada: %s', v_names);
+  assert (select data_limite from workflow_etapas where workflow_id = v_new and ordem = 3) = date '2026-11-12',
+    '(a) data limite da primeira Agendamento';
+  assert (select prazo_dias = 5 and responsavel_id = v_m and data_limite = date '2026-11-10'
+            from workflow_etapas where workflow_id = v_new and ordem = 2), '(a) campos da Aprovação levados';
+  assert (select count(*) from workflow_etapas where workflow_id = wf) = 5, '(a) origem intocada';
+
+  -- (b) escada embaralhada, nome com espaco sobrando na origem
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, template_id, etapa_atual)
+    values (e.usr, e.ws, e.cli, 'B', 'ativo', tpl, 0) returning id into wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em) values
+    (wf, 0, 'Copy ', 1, 'corridos', 'padrao', 'ativo', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, data_limite) values
+    (wf, 1, 'Agendamento', 9, 'corridos', 'padrao', 'pendente', date '2026-12-01'),
+    (wf, 2, 'Design', 7, 'uteis', 'padrao', 'pendente', null),
+    (wf, 3, 'Design', 8, 'uteis', 'padrao', 'pendente', date '2026-12-05');
+  perform pg_temp.dw_as(e.usr);
+  v_new := duplicate_workflow(wf, false);
+  execute 'reset role';
+  select string_agg(ordem || ':' || nome || ':' || status || ':' || prazo_dias || ':' || coalesce(data_limite::text, '-'),
+                    ' > ' order by ordem) into v_names
+    from workflow_etapas where workflow_id = v_new;
+  assert v_names = '0:Copy :ativo:1:- > 1:Design:pendente:7:- > 2:Aprovação:pendente:3:- > 3:Agendamento:pendente:9:2026-12-01',
+    format('(b) escada: %s', v_names);
+  assert (select tipo from workflow_etapas where workflow_id = v_new and ordem = 2) = 'aprovacao_cliente',
+    '(b) etapa nova vem do template';
+
+  -- (c) ja alinhado: copia igual
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, template_id, etapa_atual)
+    values (e.usr, e.ws, e.cli, 'C', 'ativo', tpl, 2) returning id into wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, concluido_em) values
+    (wf, 0, 'Copy', 1, 'corridos', 'padrao', 'concluido', now()),
+    (wf, 1, 'Design', 2, 'corridos', 'padrao', 'concluido', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em) values
+    (wf, 2, 'Aprovação', 3, 'uteis', 'aprovacao_cliente', 'ativo', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, data_limite) values
+    (wf, 3, 'Agendamento', 6, 'corridos', 'padrao', 'pendente', date '2026-12-09');
+  perform pg_temp.dw_as(e.usr);
+  v_new := duplicate_workflow(wf, false);
+  execute 'reset role';
+  assert (select string_agg(ordem || nome || status || prazo_dias || coalesce(data_limite::text, ''), '|' order by ordem)
+            from workflow_etapas where workflow_id = v_new)
+       = (select string_agg(ordem || nome || status || prazo_dias || coalesce(data_limite::text, ''), '|' order by ordem)
+            from workflow_etapas where workflow_id = wf), '(c) alinhado: copia igual';
+
+  -- (d) nao da para alinhar: copia igual a origem
+  insert into workflow_templates (user_id, conta_id, nome, etapas)
+    values (e.usr, e.ws, 'Amb', jsonb_build_array(
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 1),
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 1),
+      jsonb_build_object('nome', 'Fim', 'prazo_dias', 1)))
+    returning id into tpl_amb;
+  -- d1 nome ativo ambiguo; d2 nome ativo fora do template; d3 sem template;
+  -- d4 concluido (sem ativa); d5 linha acima da ativa ja concluida
+  foreach v_names in array array['d1', 'd2', 'd3', 'd4', 'd5'] loop
+    wf := case v_names
+      when 'd1' then pg_temp.dw_flow(e.ws, e.usr, e.cli, tpl_amb, array['Copy', 'Fim', 'Fim'], array['ativo', 'pendente', 'pendente'])
+      when 'd2' then pg_temp.dw_flow(e.ws, e.usr, e.cli, tpl, array['Extra', 'Design', 'Design'], array['ativo', 'pendente', 'pendente'])
+      when 'd3' then pg_temp.dw_flow(e.ws, e.usr, e.cli, null, array['Copy', 'Design', 'Design'], array['ativo', 'pendente', 'pendente'])
+      when 'd4' then pg_temp.dw_flow(e.ws, e.usr, e.cli, tpl, array['Copy', 'Design', 'Design'], array['concluido', 'concluido', 'concluido'])
+      when 'd5' then pg_temp.dw_flow(e.ws, e.usr, e.cli, tpl, array['Copy', 'Design', 'Design'], array['ativo', 'concluido', 'pendente'])
+    end;
+    assert not public._realign_pending_etapas_to_template(wf), format('(d) %s: helper alinhou', v_names);
+    assert (select string_agg(nome || status, '|' order by ordem) from workflow_etapas where workflow_id = wf)
+         = (select string_agg(n || st, '|' order by o) from unnest(
+              case v_names when 'd1' then array['Copy', 'Fim', 'Fim'] when 'd2' then array['Extra', 'Design', 'Design']
+                           else array['Copy', 'Design', 'Design'] end,
+              case v_names when 'd4' then array['concluido', 'concluido', 'concluido']
+                           when 'd5' then array['ativo', 'concluido', 'pendente']
+                           else array['ativo', 'pendente', 'pendente'] end) with ordinality x(n, st, o)),
+      format('(d) %s: helper mexeu nas etapas', v_names);
+  end loop;
+  -- e pela RPC: a copia do ultimo (d5) sai igual
+  perform pg_temp.dw_as(e.usr);
+  v_new := duplicate_workflow(wf, false);
+  execute 'reset role';
+  assert (select string_agg(nome || status, '|' order by ordem) from workflow_etapas where workflow_id = v_new)
+       = 'Copyativo|Designconcluido|Designpendente', '(d5) copia pela RPC igual a origem';
+
+  assert not has_function_privilege('authenticated', 'public._realign_pending_etapas_to_template(bigint)', 'EXECUTE'),
+    'authenticated tem EXECUTE no helper';
+  assert not has_function_privilege('anon', 'public._realign_pending_etapas_to_template(bigint)', 'EXECUTE'),
+    'anon tem EXECUTE no helper';
+  raise notice 'PASS 99w.7';
 end $$;
 rollback;
