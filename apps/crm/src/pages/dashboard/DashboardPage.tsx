@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { getDashboardStats, getClientes, type Cliente } from '../../store';
 import { useAuth } from '../../context/AuthContext';
@@ -10,7 +13,13 @@ import { WhatsAppSupportCard } from '@/components/support/WhatsAppSupportCard';
 import { ClientHealthMonitor } from './components/ClientHealthMonitor';
 import { AgentPendingSection } from './components/AgentPendingSection';
 import { TodayCard } from './components/TodayCard';
+import { MinhaFilaCard } from './components/MinhaFilaCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
+import { InicioPrazos } from './components/InicioPrazos';
+import { InicioHealthTable } from './components/InicioHealthTable';
+import { DashboardPhone } from './phone/DashboardPhone';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 
 export default function DashboardPage() {
   const { role, workspaceRole, canSeeFinancials } = useAuth();
@@ -18,6 +27,7 @@ export default function DashboardPage() {
   // stale across workspace switches (a user can be owner in one workspace and
   // agent in another). Fall back to `role` only while membership resolves.
   const isAgent = (workspaceRole ?? role) === 'agent';
+  const isPhone = !useIsDesktop(768);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -73,9 +83,88 @@ export default function DashboardPage() {
     .filter((tx) => tx.tipo === 'saida' && tx.status === 'agendado')
     .reduce((s, tx) => s + Number(tx.valor), 0);
 
+  const importBanner = clientesRes.data && <ImportBanner clienteCount={clientes.length} />;
+  const financeStrip = canSeeFinancials === true && stats && (
+    <FinanceKpiStrip
+      aReceber={aReceber}
+      aPagar={aPagar}
+      saldoProjetado={stats.saldo}
+      receitaMensal={stats.receitaMensal}
+      canSeeFinancials={canSeeFinancials}
+    />
+  );
+
+  // The Vidro toolbar carries the page title; the desktop dashboard has no in-page header to hide.
+  const today = format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR });
+  const { t } = useTranslation('dashboard');
+  // Vidro "Agência / Só meus": narrows the Prazos list to the user's own items. Agents only
+  // ever see their own, so they get no toggle.
+  const [onlyMine, setOnlyMine] = useState(false);
+  const inToolbar = usePageToolbar({
+    title: 'Início',
+    subtitle: today.charAt(0).toUpperCase() + today.slice(1),
+    actions: !isAgent && (
+      <div data-slot="toggle-group" role="group" aria-label={t('inicio.scope.label')}>
+        {([false, true] as const).map((mine) => (
+          <button
+            key={String(mine)}
+            type="button"
+            data-slot="toggle-group-item"
+            data-state={onlyMine === mine ? 'on' : 'off'}
+            aria-pressed={onlyMine === mine}
+            onClick={() => setOnlyMine(mine)}
+          >
+            {mine ? t('inicio.scope.meus') : t('inicio.scope.agencia')}
+          </button>
+        ))}
+      </div>
+    ),
+  });
+
+  if (isPhone) {
+    return (
+      <DashboardPhone
+        isAgent={isAgent}
+        cards={
+          !isAgent && (
+            <>
+              <TrialNudgeCard />
+              <WhatsAppSupportCard />
+            </>
+          )
+        }
+        footer={
+          <>
+            {importBanner}
+            {financeStrip}
+          </>
+        }
+      />
+    );
+  }
+
+  if (inToolbar) {
+    return (
+      <div className="inicio-vidro">
+        <div className="inicio-vidro__top">
+          <InicioPrazos onlyMine={onlyMine} />
+          <div className="inicio-vidro__side">
+            <MinhaFilaCard />
+            {!isAgent && <TrialNudgeCard />}
+            {!isAgent && <WhatsAppSupportCard />}
+          </div>
+        </div>
+        {isAgent ? <AgentPendingSection /> : <InicioHealthTable />}
+        {importBanner}
+        {financeStrip}
+      </div>
+    );
+  }
+
   return (
     <div>
       <TodayCard />
+      <MinhaFilaCard />
 
       {!isAgent && <TrialNudgeCard />}
       {!isAgent && <WhatsAppSupportCard />}
@@ -83,17 +172,9 @@ export default function DashboardPage() {
       {/* Agents see their own pending work where managers see client health. */}
       {isAgent ? <AgentPendingSection /> : <ClientHealthMonitor />}
 
-      {clientesRes.data && <ImportBanner clienteCount={clientes.length} />}
+      {importBanner}
 
-      {canSeeFinancials === true && stats && (
-        <FinanceKpiStrip
-          aReceber={aReceber}
-          aPagar={aPagar}
-          saldoProjetado={stats.saldo}
-          receitaMensal={stats.receitaMensal}
-          canSeeFinancials={canSeeFinancials}
-        />
-      )}
+      {financeStrip}
     </div>
   );
 }

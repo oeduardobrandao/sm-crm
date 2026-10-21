@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Star, Pencil, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,12 +16,21 @@ import {
   type BriefingTemplateQuestion,
 } from '@/store';
 
+export interface BriefingTemplateDraft {
+  title: string;
+  questions: BriefingTemplateQuestion[];
+}
+
 export function BriefingTemplatesModal({
   open,
   onOpenChange,
+  initialDraft,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Abre direto no editor de um template novo já preenchido (ex.: "Salvar como template"
+   * a partir de um briefing). Sem ele, o modal abre na lista. */
+  initialDraft?: BriefingTemplateDraft | null;
 }) {
   const qc = useQueryClient();
   const { data: templates = [] } = useQuery({
@@ -35,6 +44,19 @@ export function BriefingTemplatesModal({
   const [questions, setQuestions] = useState<BriefingTemplateQuestion[]>([]);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // O modal fica montado entre aberturas: sem este reset, fechar no X um rascunho vindo
+  // de "Salvar como template" faria o botão "Templates" reabrir aquele editor velho.
+  useEffect(() => {
+    if (!open) return;
+    if (!initialDraft) {
+      setEditing(null);
+      return;
+    }
+    setEditing('new');
+    setTitle(initialDraft.title);
+    setQuestions(initialDraft.questions.map((q) => ({ ...q })));
+  }, [open, initialDraft]);
 
   function refresh() {
     qc.invalidateQueries({ queryKey: ['briefing-templates'] });

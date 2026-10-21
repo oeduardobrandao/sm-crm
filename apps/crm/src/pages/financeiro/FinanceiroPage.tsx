@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useState } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,6 +29,14 @@ import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { FinanceiroPhone } from './phone/FinanceiroPhone';
 import {
   Select,
   SelectContent,
@@ -135,6 +143,14 @@ const rowKey = (t: Transacao) =>
   t.referencia_agendamento ? `proj-${t.referencia_agendamento}` : `id-${t.id}`;
 
 export default function FinanceiroPage() {
+  // Same 900px split as the .financeiro-desktop-table / .financeiro-mobile-cards CSS below, so the
+  // skeleton takes the shape of whichever layout is about to render.
+  const isDesktop = useIsDesktop(901);
+  // Below 768px the page is the phone list (PLAN F2d); 768-900 keeps the cards above.
+  const isPhone = !useIsDesktop(768);
+  // The form body follows the dialog primitive, which turns into a sheet only inside the
+  // phone shell (PhoneLayoutContext), so a dialog rendered elsewhere keeps its fields.
+  const { isPhone: phoneForm } = usePhoneLayout();
   const { canSeeFinancials, profile } = useAuth();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('todas');
@@ -151,6 +167,12 @@ export default function FinanceiroPage() {
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  // Phone bulk-confirm mode ("Selecionar"). Leaving it drops the selection.
+  const [phoneSelecting, setPhoneSelectingState] = useState(false);
+  const setPhoneSelecting = (next: boolean) => {
+    setPhoneSelectingState(next);
+    if (!next) setSelectedKeys(new Set());
+  };
 
   const form = useForm<TransacaoFormValues>({
     resolver: zodResolver(transacaoSchema),
@@ -312,6 +334,8 @@ export default function FinanceiroPage() {
     qc.invalidateQueries({ queryKey: ['transacoes'] });
     setSelectedKeys(new Set());
     setBulkConfirmOpen(false);
+    // Runs after the awaited writes, so the confirm dialog closed long before.
+    setPhoneSelectingState(false);
   };
 
   const handleDelete = async () => {
@@ -357,63 +381,345 @@ export default function FinanceiroPage() {
     );
   };
 
+  const categoria = useWatch({ control: form.control, name: 'categoria' });
+  const { errors } = form.formState;
+  // FTransacaoForm: grouped rows, a native date control and a checkmark list for Categoria.
+  const phoneFields = (
+    <>
+      <GroupedList aria-label="Transação">
+        <FormRow
+          label="Descrição"
+          error={errors.descricao?.message}
+          input={{ ...form.register('descricao'), autoComplete: 'off' }}
+        />
+        <FormRow
+          label="Valor (R$)"
+          error={errors.valor?.message}
+          input={{
+            ...form.register('valor'),
+            type: 'number',
+            inputMode: 'decimal',
+            min: 0,
+            step: 0.01,
+            placeholder: '0,00',
+          }}
+        />
+        <FormRow label="Data" error={errors.data?.message}>
+          {(field) => (
+            <input
+              {...field}
+              {...form.register('data')}
+              type="date"
+              className="phone-form-row__input"
+            />
+          )}
+        </FormRow>
+      </GroupedList>
+      <GroupedList footer={errors.categoria?.message}>
+        <PickerCell
+          label="Categoria"
+          placeholder="Selecione..."
+          options={CATEGORIAS.map((c) => ({ value: c, label: c }))}
+          value={categoria || null}
+          onChange={(v) =>
+            form.setValue('categoria', v ?? '', {
+              shouldDirty: true,
+              shouldValidate: form.formState.isSubmitted,
+            })
+          }
+        />
+      </GroupedList>
+    </>
+  );
+
+  const dialogs = (
+    <>
+      {/* Modal de edição/criação */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>
+              {editing
+                ? 'Editar Transação'
+                : modalTipo === 'entrada'
+                  ? 'Registrar Entrada'
+                  : 'Registrar Saída'}
+            </DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {phoneForm ? (
+                phoneFields
+              ) : (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="descricao"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Descrição</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="valor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Valor (R$)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            {...field}
+                            value={field.value ?? ''}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="data"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Data</FormLabel>
+                        <FormControl>
+                          <DatePicker
+                            value={isoToDate(field.value)}
+                            onChange={(d) => field.onChange(dateToIso(d))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="categoria"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Categoria</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {CATEGORIAS.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" />}
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmar pagamento */}
+      <AlertDialog
+        open={!!confirmT}
+        onOpenChange={(open) => {
+          if (!open) setConfirmT(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar pagamento?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPago}>Sim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmar pagamentos em lote */}
+      <AlertDialog
+        open={bulkConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setBulkConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {selecionadas.length === 1
+                ? 'Confirmar 1 pagamento?'
+                : `Confirmar ${selecionadas.length} pagamentos?`}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkConfirm}>Sim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmar exclusão */}
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover esta transação?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
+  const infoTooltip = (
+    <span
+      data-tooltip="Visão das finanças, receitas projetadas e despesas."
+      data-tooltip-dir="right"
+      style={{ display: 'flex' }}
+    >
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const csvActions = (
+    <>
+      <HelpTooltip
+        content={
+          <div className="space-y-1.5">
+            <p>
+              <strong>Colunas CSV:</strong> descricao*, valor*, data* (AAAA-MM-DD), tipo
+              (entrada|saida), categoria, detalhe
+            </p>
+            <p>
+              <strong>Categorias válidas:</strong> Mensalidade, Produção, Tráfego, Salário, Imposto,
+              Ferramenta, Outro
+            </p>
+          </div>
+        }
+      >
+        <span style={{ display: 'flex' }}>
+          <HelpCircle
+            className="h-4 w-4"
+            style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+          />
+        </span>
+      </HelpTooltip>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={handleCSVImport}
+        className="header-actions-icon-only"
+      >
+        <Upload className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
+        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <Button onClick={() => openAdd('entrada')}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Entrada
+    </Button>
+  );
+  const saidaAction = (
+    <Button variant="outline" onClick={() => openAdd('saida')}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Saída
+    </Button>
+  );
+  // Toolbar: classic order, Entrada then Saída, both after the shell capsule.
+  const inToolbar = usePageToolbar({
+    title: 'Financeiro',
+    titleAccessory: infoTooltip,
+    actions: csvActions,
+    primary: (
+      <>
+        {primaryAction}
+        {saidaAction}
+      </>
+    ),
+  });
+
+  if (isPhone) {
+    return (
+      <>
+        <FinanceiroPhone
+          isLoading={isLoading}
+          transacoes={filtered}
+          canSeeFinancials={canSeeFinancials}
+          kpis={{ recebido, aReceber, aPagar, saldoAtual, saldoProjetado }}
+          filter={filter}
+          onFilterChange={setFilter}
+          search={search}
+          onSearchChange={setSearch}
+          monthFilter={monthFilter}
+          onMonthFilterChange={setMonthFilter}
+          onAdd={openAdd}
+          onImport={handleCSVImport}
+          onEdit={openEdit}
+          onConfirm={setConfirmT}
+          onDelete={setDeleteId}
+          selecting={phoneSelecting}
+          onSelectingChange={setPhoneSelecting}
+          rowKey={rowKey}
+          selectedKeys={selectedKeys}
+          onToggle={toggleOne}
+          onToggleAll={toggleAll}
+          allSelected={allSelected}
+          selectedCount={selecionadas.length}
+          onBulkConfirm={() => setBulkConfirmOpen(true)}
+        />
+        {dialogs}
+      </>
+    );
+  }
+
   return (
     <div className="page-content">
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Financeiro</h1>
-          <span
-            data-tooltip="Visão das finanças, receitas projetadas e despesas."
-            data-tooltip-dir="right"
-            style={{ display: 'flex' }}
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
+            <h1>Financeiro</h1>
+            {infoTooltip}
+          </div>
+          <div className="header-actions">
+            {csvActions}
+            {primaryAction}
+            {saidaAction}
+          </div>
         </div>
-        <div className="header-actions">
-          <HelpTooltip
-            content={
-              <div className="space-y-1.5">
-                <p>
-                  <strong>Colunas CSV:</strong> descricao*, valor*, data* (AAAA-MM-DD), tipo
-                  (entrada|saida), categoria, detalhe
-                </p>
-                <p>
-                  <strong>Categorias válidas:</strong> Mensalidade, Produção, Tráfego, Salário,
-                  Imposto, Ferramenta, Outro
-                </p>
-              </div>
-            }
-          >
-            <span style={{ display: 'flex' }}>
-              <HelpCircle
-                className="h-4 w-4"
-                style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-              />
-            </span>
-          </HelpTooltip>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleCSVImport}
-            className="header-actions-icon-only"
-          >
-            <Upload className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
-            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
-          </Button>
-          <Button onClick={() => openAdd('entrada')}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Entrada
-          </Button>
-          <Button variant="outline" onClick={() => openAdd('saida')}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Saída
-          </Button>
-        </div>
-      </div>
+      )}
 
       <StatCardGrid style={{ marginBottom: '1.5rem' }}>
         {(
@@ -508,9 +814,11 @@ export default function FinanceiroPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+        isDesktop ? (
+          <TableSkeleton columns={6} />
+        ) : (
+          <CardListSkeleton />
+        )
       ) : (
         <>
           {/* Desktop table */}
@@ -701,163 +1009,7 @@ export default function FinanceiroPage() {
         </>
       )}
 
-      {/* Modal de edição/criação */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent onConfirmClose={() => setModalOpen(false)}>
-          <DialogHeader>
-            <DialogTitle>
-              {editing
-                ? 'Editar Transação'
-                : modalTipo === 'entrada'
-                  ? 'Registrar Entrada'
-                  : 'Registrar Saída'}
-            </DialogTitle>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="descricao"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Descrição</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="valor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Valor (R$)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        {...field}
-                        value={field.value ?? ''}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="data"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Data</FormLabel>
-                    <FormControl>
-                      <DatePicker
-                        value={isoToDate(field.value)}
-                        onChange={(d) => field.onChange(dateToIso(d))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="categoria"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Categoria</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione..." />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {CATEGORIAS.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving && <Spinner size="sm" />}
-                  Salvar
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmar pagamento */}
-      <AlertDialog
-        open={!!confirmT}
-        onOpenChange={(open) => {
-          if (!open) setConfirmT(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar pagamento?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmPago}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Confirmar pagamentos em lote */}
-      <AlertDialog
-        open={bulkConfirmOpen}
-        onOpenChange={(open) => {
-          if (!open) setBulkConfirmOpen(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {selecionadas.length === 1
-                ? 'Confirmar 1 pagamento?'
-                : `Confirmar ${selecionadas.length} pagamentos?`}
-            </AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleBulkConfirm}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Confirmar exclusão */}
-      <AlertDialog
-        open={deleteId != null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover esta transação?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogs}
     </div>
   );
 }

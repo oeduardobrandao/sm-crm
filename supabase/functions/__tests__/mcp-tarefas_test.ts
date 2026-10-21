@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "./assert.ts";
-import { createTask, listTasks, updateTask } from "../mcp/queries.ts";
+import { createTask, listIdeas, listTasks, updateTask } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import { registerTools } from "../mcp/tools.ts";
 import { McpInputError, type McpKeyContext } from "../_shared/mcp-token.ts";
@@ -102,6 +102,47 @@ Deno.test("mcp-tarefas: updateTask explicit nulls clear responsavel/data_limite 
   assert(!Object.hasOwn(patch, "descricao"), "omitted descricao not in patch");
 });
 
+Deno.test("mcp-tarefas: updateTask maps series constraint errors to readable pt-BR and selects serie_id", async () => {
+  const { db, calls } = makeFakeDb({
+    tarefas: [
+      { data: { id: 1 }, error: null },
+      {
+        data: null,
+        error: {
+          code: "23514",
+          message: 'new row violates check constraint "tarefas_serie_exige_prazo"',
+        },
+      },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let msg = "";
+  try {
+    await updateTask(deps, { task_id: 1, data_limite: null });
+  } catch (e) {
+    assert(e instanceof McpInputError);
+    msg = (e as Error).message;
+  }
+  assertEquals(msg, "Tarefas de uma série precisam de prazo.");
+  const sel = calls.find((c) => c.table === "tarefas" && c.method === "select" &&
+    typeof c.args[0] === "string" && (c.args[0] as string).includes("concluida_em"));
+  assert((sel!.args[0] as string).includes("serie_id"), "TASK_SELECT exposes serie_id");
+});
+
+Deno.test("mcp-tarefas: updateTask plain descricao clears stale rich content", async () => {
+  const { db, calls } = makeFakeDb({
+    tarefas: [
+      { data: { id: 1 }, error: null },
+      { data: { id: 1, titulo: "X", descricao: "Nova", status: "pendente" }, error: null },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  await updateTask(deps, { task_id: 1, descricao: "Nova descrição via MCP" });
+  const patch = updatePayload(calls, "tarefas")!;
+  assertEquals(patch.descricao, "Nova descrição via MCP");
+  assertEquals(patch.descricao_rich, null);
+});
+
 Deno.test("mcp-tarefas: updateTask task from another workspace -> McpInputError", async () => {
   const { db } = makeFakeDb({ tarefas: [{ data: null, error: null }] });
   const deps = { db, ctx: CTX } as unknown as Deps;
@@ -173,4 +214,15 @@ Deno.test("mcp-tarefas: create_task audit row carries task_id via the extended e
   await server.handlers["create_task"]({ titulo: "Nova tarefa", responsavel_id: 3 });
   const auditRow = insertPayload(calls, "audit_log")! as Record<string, any>;
   assertEquals(auditRow.resource_id, "8", "resource_id from task_id");
+});
+
+Deno.test("mcp-ideias: listIdeas selects origem, visivel_no_hub and audio_transcript", async () => {
+  const { db, calls } = makeFakeDb({ ideias: [{ data: [], error: null }] });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  await listIdeas(deps, {});
+  const sel = calls.find((c) => c.table === "ideias" && c.method === "select");
+  const str = String(sel?.args[0] ?? "");
+  assert(str.includes("origem"));
+  assert(str.includes("visivel_no_hub"));
+  assert(str.includes("audio_transcript"));
 });

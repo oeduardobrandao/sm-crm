@@ -7,6 +7,11 @@ import { reportCronFailure } from "../_shared/triage.ts";
 import type { CronFailureError } from "../_shared/notify.ts";
 import { classifyPublishError } from "../_shared/publish-error-codes.ts";
 import {
+  buildCollaboratorFailureFields,
+  normalizeCollaborators,
+  refusedCollaborators,
+} from "../_shared/instagram-collaborators.ts";
+import {
   decryptToken,
   createContainerForPost,
   pollContainerReady,
@@ -16,6 +21,8 @@ import {
   createMissingStorySegmentContainers,
   publishReadyStorySegments,
   selectStoryMediaId,
+  isCarouselPost,
+  advanceCarouselContainer,
 } from "../_shared/instagram-publish-utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -23,11 +30,29 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
   (() => { throw new Error("CRON_SECRET is required"); })();
 
-// Per-phase claim limits keep a single cron run bounded. The publish/retry phases
-// poll the Instagram container in-run (≤ ~6s each), so they're capped lower than
-// container creation to stay under the edge-function wall-clock at 1-min cadence.
+// Per-phase claim limits keep a single cron run bounded. The old "≤ ~6s each"
+// framing here assumed a near-instant Graph API and only counted pollContainerReady's
+// intentional 3s sleep -- it never accounted for each check/publish/permalink call's
+// own timeout, so it was already optimistic before this comment was corrected. Actual
+// worst case per publish-phase item is closer to 4*GRAPH_TIMEOUT_MS+3s (two
+// checkContainerStatus calls, one 3s sleep between them, publishContainer,
+// fetchPermalink -- see instagram-publish-utils.ts), and that worst case matters: the
+// claim RPC stamps publish_processing_at BEFORE any Graph call runs, and an edge-runtime
+// kill bypasses catch/markFailed entirely (AGENTS.md), so a run that overruns the
+// platform's execution limit strands every post it claimed behind the RPC's 10-minute
+// stale-reclaim window instead of retrying on the very next tick.
+//
+// PUBLISH_LIMIT was 10 -- prod data (2026-09-18) showed peak-minute post counts
+// (agencies converging on round-hour schedule slots, e.g. 13:00 UTC) already hitting
+// 13-15 in a single minute across unrelated clients, so posts were spilling into a
+// second/third tick from volume alone, before any Meta-side slowness. Doubled to
+// match CONTAINER_LIMIT's margin over that observed peak. PUBLISH_BATCH_SIZE is raised
+// alongside it (5 -> 10) specifically so the publish phase still runs the SAME number
+// of sequential batches (2) as before this change -- more per-tick throughput without
+// a longer worst-case chain of batches to get killed mid-run.
 const CONTAINER_LIMIT = 25;
-const PUBLISH_LIMIT = 10;
+const PUBLISH_LIMIT = 20;
+const PUBLISH_BATCH_SIZE = 10;
 const RETRY_LIMIT = 10;
 
 interface ClaimedPost {
@@ -44,6 +69,9 @@ interface ClaimedPost {
   client_id: number;
   story_segments: Array<{ file_id: number; container_id: string | null; media_id: string | null }> | null;
   ig_trial_strategy: string | null;
+  // Absent when an old claim RPC answers (pre-20261019000001): read it through
+  // normalizeCollaborators, never directly.
+  ig_collaborators?: string[] | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -70,19 +98,39 @@ async function markFailed(
   retryCount: number,
   err: unknown,
   clientId?: number,
+  collaborators: string[] = [],
 ) {
   const errorCode = classifyPublishError(err);
   const message = err instanceof Error ? err.message : String(err);
+  // publish_processing_at MUST be nulled on every failure, same as on success: the gallery's
+  // post_file_link_replace RPC (20260916000001) refuses to swap a post's media whenever this
+  // column is non-null, and a failed post's error copy routes the user straight to "fix the
+  // media in the gallery". Leaving the lock set (an earlier version of this fix did, to get
+  // free cron backoff from claim_posts_for_publishing's 10-min stale-reclaim window) silently
+  // stranded every failed post: the gallery edit was rejected AND manual retry just re-ran the
+  // same broken attempt. Same-tick Phase1->Phase3 reclaim is prevented in run() below instead,
+  // via touchedThisRun, without touching this column's meaning anywhere else in the schema.
   const fields: Record<string, unknown> = {
     status: "falha_publicacao",
     publish_retry_count: retryCount + 1,
     publish_error: message.slice(0, 500),
     publish_error_code: errorCode,
     publish_processing_at: null,
+    // COLLABORATOR_INVALID: as contas que a Meta recusou (pode ser []).
+    ...buildCollaboratorFailureFields(
+      errorCode,
+      collaborators,
+      (err as { graphUserMsg?: string } | null)?.graphUserMsg,
+    ),
   };
   // Um container expirado nunca volta a funcionar; sem limpar, o retry
-  // automático (processRetry) reusaria o mesmo id e falharia 3x igual.
-  if (errorCode === "CONTAINER_EXPIRED") fields.instagram_container_id = null;
+  // automático (processRetry) reusaria o mesmo id e falharia 3x igual. O mesmo
+  // vale para os filhos de um carrossel (carousel_children): sem limpar, o
+  // próximo tick montaria um novo pai a partir de filhos já expirados.
+  if (errorCode === "CONTAINER_EXPIRED") {
+    fields.instagram_container_id = null;
+    fields.carousel_children = null;
+  }
   await db.from("workflow_posts").update(fields).eq("id", postId);
 
   if (errorCode === "CONTAINER_EXPIRED") {
@@ -139,6 +187,34 @@ async function processContainerCreation(
     return;
   }
 
+  // Carousels are resumable across ticks (carousel_children mirrors story_segments):
+  // each child container id is persisted as it is created, readiness is persisted
+  // per child, and the CAROUSEL parent is only assembled once every child is
+  // FINISHED. "Not ready yet" is not a failure -- release the lock and let the
+  // next tick continue from the persisted state. The claim RPC keeps re-claiming
+  // this post in the container phase while instagram_container_id is null.
+  if (await isCarouselPost(db, post.post_id, post.tipo)) {
+    const { containerId, allReady } = await advanceCarouselContainer(db, {
+      postId: post.post_id,
+      igUserId: post.instagram_user_id,
+      token,
+      caption: post.ig_caption,
+      trialStrategy: post.ig_trial_strategy,
+      collaborators: normalizeCollaborators(post.ig_collaborators),
+    });
+    if (!allReady) {
+      await clearLock(db, post.post_id);
+      console.log(`[IG-PUBLISH] Carousel post ${post.post_id}: children still processing, will continue next cycle`);
+      return;
+    }
+    await db.from("workflow_posts").update({
+      instagram_container_id: containerId,
+      publish_processing_at: null,
+    }).eq("id", post.post_id);
+    console.log(`[IG-PUBLISH] Carousel container created for post ${post.post_id}: ${containerId}`);
+    return;
+  }
+
   // First attempt carries the cover; any retry drops it (useCover:false) so a cover
   // Instagram can't process can't make a scheduled post fail permanently. The
   // coverless retry is deferred to the next cron cycle (publish_retry_count > 0).
@@ -150,6 +226,7 @@ async function processContainerCreation(
     useCover: post.publish_retry_count === 0,
     tipo: post.tipo,
     trialStrategy: post.ig_trial_strategy,
+    collaborators: normalizeCollaborators(post.ig_collaborators),
   });
 
   await db.from("workflow_posts").update({
@@ -344,7 +421,14 @@ Deno.serve(createPublishCronHandler({
 
     function collectFailure(post: ClaimedPost, err: unknown) {
       const errorCode = classifyPublishError(err);
-      const message = err instanceof Error ? err.message : String(err);
+      let message = err instanceof Error ? err.message : String(err);
+      if (errorCode === "COLLABORATOR_INVALID") {
+        const refused = refusedCollaborators(
+          normalizeCollaborators(post.ig_collaborators),
+          (err as { graphUserMsg?: string } | null)?.graphUserMsg,
+        );
+        if (refused.length > 0) message += ` (recusados: ${refused.map((u) => `@${u}`).join(", ")})`;
+      }
       failedPosts.push({
         postId: post.post_id,
         clientId: post.client_id,
@@ -364,7 +448,10 @@ Deno.serve(createPublishCronHandler({
           try {
             await processContainerCreation(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            await markFailed(
+              db, post.post_id, post.publish_retry_count, err, post.client_id,
+              normalizeCollaborators(post.ig_collaborators),
+            );
             collectFailure(post, err);
             throw err;
           }
@@ -376,11 +463,14 @@ Deno.serve(createPublishCronHandler({
       const publishPosts = await claimPosts(db, "publish", PUBLISH_LIMIT);
       if (publishPosts.length > 0) {
         console.log(`[IG-PUBLISH] Phase 2: ${publishPosts.length} posts to publish`);
-        const r2 = await processBatch(publishPosts, 5, 1000, async (post) => {
+        const r2 = await processBatch(publishPosts, PUBLISH_BATCH_SIZE, 1000, async (post) => {
           try {
             await processPublish(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            await markFailed(
+              db, post.post_id, post.publish_retry_count, err, post.client_id,
+              normalizeCollaborators(post.ig_collaborators),
+            );
             collectFailure(post, err);
             throw err;
           }
@@ -389,14 +479,34 @@ Deno.serve(createPublishCronHandler({
       }
 
       // Phase 3: Retries
+      // A post that just failed in Phase 1/2 has publish_processing_at nulled again by
+      // markFailed (see its comment), so it would otherwise be immediately reclaimable here
+      // in the SAME cron tick -- burning all 3 retries in under a minute for errors whose own
+      // message says "retry later". touchedThisRun skips any post already claimed above this
+      // run, releasing its lock so the NEXT tick (not this one) retries it instead.
+      const touchedThisRun = new Set<number>([
+        ...containerPosts.map((p) => p.post_id),
+        ...publishPosts.map((p) => p.post_id),
+      ]);
       const retryPosts = await claimPosts(db, "retry", RETRY_LIMIT);
-      if (retryPosts.length > 0) {
-        console.log(`[IG-PUBLISH] Phase 3: ${retryPosts.length} posts to retry`);
-        const r3 = await processBatch(retryPosts, 5, 1000, async (post) => {
+      const freshRetries: ClaimedPost[] = [];
+      for (const post of retryPosts) {
+        if (touchedThisRun.has(post.post_id)) {
+          await clearLock(db, post.post_id);
+        } else {
+          freshRetries.push(post);
+        }
+      }
+      if (freshRetries.length > 0) {
+        console.log(`[IG-PUBLISH] Phase 3: ${freshRetries.length} posts to retry`);
+        const r3 = await processBatch(freshRetries, 5, 1000, async (post) => {
           try {
             await processRetry(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err, post.client_id);
+            await markFailed(
+              db, post.post_id, post.publish_retry_count, err, post.client_id,
+              normalizeCollaborators(post.ig_collaborators),
+            );
             collectFailure(post, err);
             throw err;
           }
@@ -416,8 +526,15 @@ Deno.serve(createPublishCronHandler({
               .select("id, nome, contas(nome)")
               .in("id", clientIds);
             if (clients) {
+              // `contas(nome)` is a many-to-one embed (an object at runtime); the
+              // schema-less client infers it as an array, so cast explicitly.
+              const clientRows = clients as unknown as Array<{
+                id: number;
+                nome: string;
+                contas: { nome: string } | null;
+              }>;
               const lookup = new Map(
-                clients.map((c: { id: number; nome: string; contas: { nome: string } | null }) => [
+                clientRows.map((c) => [
                   c.id,
                   { clientName: c.nome, workspaceName: c.contas?.nome },
                 ]),

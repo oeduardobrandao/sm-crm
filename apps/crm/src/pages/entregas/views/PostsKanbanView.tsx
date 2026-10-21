@@ -1,9 +1,11 @@
-import { Fragment, memo, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useMemo, useState, type CSSProperties } from 'react';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   DndContext,
   DragOverlay,
+  MouseSensor,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -23,9 +25,7 @@ import {
   CheckCheck,
   CircleCheck,
   CircleDashed,
-  Clapperboard,
   Eye,
-  GalleryHorizontalEnd,
   Image,
   Lock,
   MessageSquareWarning,
@@ -35,10 +35,24 @@ import {
   Send,
   ShieldCheck,
 } from 'lucide-react';
-import { reorderBoardPosts, type ActivePost } from '@/store';
+import { TIPO_ICONS } from '../tipoIcons';
+import { cardAutoScheduleGates, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { DestinationChips } from '../components/DestinationStatusPill';
+import {
+  shouldOfferAutoSchedule,
+  shouldShowAwaitingApproval,
+  nextApprovalAwaited,
+  isEligibleToScheduleNow,
+} from '../autoScheduleNudge';
+import {
+  AutoSchedulePromptDialog,
+  type AutoSchedulePromptPost,
+} from '../components/AutoSchedulePromptDialog';
+import { AutoScheduleBadge } from '../components/AutoScheduleBadge';
+import { AwaitingApprovalBadge } from '../components/AwaitingApprovalBadge';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { BoardSkeleton } from '@/components/ui/skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import {
   AlertDialog,
@@ -58,6 +72,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatPostDate } from '@/utils/postDate';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { getInitials } from '@/lib/initials';
 import { formatEtapaPrazo } from '../etapaPrazo';
 import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
 import {
@@ -79,13 +94,9 @@ import {
 } from '../postsKanbanDrop';
 import { getCustomStatusIcon } from '../statusIcons';
 import { ACTIVE_POSTS_KEY, useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
-
-const TIPO_ICONS: Record<ActivePost['tipo'], typeof Image> = {
-  feed: Image,
-  reels: Clapperboard,
-  carrossel: GalleryHorizontalEnd,
-  stories: CircleDashed,
-};
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneStatusBoard } from '../phone/PhoneStatusBoard';
+import { PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
 
 /* Column-header icon per canonical status; color only where the status carries
  * a semantic outcome (approved/scheduled/published/failed), muted otherwise.
@@ -149,6 +160,28 @@ interface PostsKanbanViewProps {
    *  Stable across renders (owned by the page) so it can be passed straight
    *  into the memoized PostBoardColumn without breaking memo. */
   onColumnSortChange?: (columnKey: string, sort: BoardColumnSort) => void;
+  /** post id → etapa ativa do processo individual (spec §4.4). Só posts
+   *  avulsos aparecem aqui. */
+  processEtapaByPostId?: Map<number, string>;
+  /** post id → nome da próxima aprovação do cliente que um avulso aprovado ainda
+   *  espera (selo "Aguarda aprovação"). Só entram avulsos de clientes com
+   *  agendamento automático. */
+  awaitedApprovalByPostId?: Map<number, string>;
+  /** features?.feature_post_scheduling === true, vindo da EntregasPage. Gate do
+   *  aviso de agendamento automático: instagram-publish devolve 403
+   *  feature_disabled para action "schedule" sem esse flag no plano
+   *  (supabase/functions/instagram-publish/handler.ts:70-77), então um aviso que
+   *  termina em erro é pior do que nenhum aviso. Ausente = desligado. */
+  schedulingEnabled?: boolean;
+  /** features?.feature_tiktok === true, vindo da EntregasPage. Gate ADICIONAL só
+   *  para post `tiktok`/`both`: tiktok-publish/handler.ts:85-89 exige
+   *  feature_post_scheduling E feature_tiktok para a action "schedule", então um
+   *  workspace com agendamento e sem o add-on de TikTok tomaria 403
+   *  feature_disabled (feature: "feature_tiktok") ao confirmar. Ausente =
+   *  desligado. */
+  tiktokEnabled?: boolean;
+  /** feature_multiplatform: um chip por destino no card (P2). */
+  multiplatformEnabled?: boolean;
 }
 
 /** A post avulso (no workflow) is always openable -- only a wired post depends
@@ -157,30 +190,67 @@ function isPostOpenable(post: ActivePost, openableWorkflowIds: Set<number>): boo
   return post.workflow_id == null || openableWorkflowIds.has(post.workflow_id);
 }
 
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 /** Card guts shared by the real card and its DragOverlay clone. */
 function PostBoardCardContent({
   post,
   registry,
   card,
+  processEtapa,
+  awaitedApproval,
+  onAutoScheduleClick,
+  schedulingEnabled,
+  tiktokEnabled,
+  multiplatformEnabled,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
+  processEtapa?: string;
+  /** Próxima aprovação esperada por um avulso (já filtrada por cliente com
+   *  agendamento automático). Posts de fluxo derivam isso de `card`. */
+  awaitedApproval?: string;
+  /** Abre o aviso de agendamento automático para este post. Ausente no clone do
+   *  DragOverlay, que renderiza o badge estático. */
+  onAutoScheduleClick?: () => void;
+  schedulingEnabled?: boolean;
+  tiktokEnabled?: boolean;
+  multiplatformEnabled?: boolean;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
   const membro = card?.membro;
   const prazo = card ? formatEtapaPrazo(card.deadline) : null;
   const TipoIcon = TIPO_ICONS[post.tipo];
+  // Quinto e último ponto de chamada de shouldOfferAutoSchedule (spec peça 3):
+  // sem platform/tiktokEnabled aqui, um post tiktok num workspace sem o add-on
+  // carregaria um badge permanente que toma 403 a cada clique.
+  const offerAutoSchedule = shouldOfferAutoSchedule({
+    status: post.status,
+    platform: post.platform,
+    schedulingFeatureEnabled: schedulingEnabled === true,
+    tiktokFeatureEnabled: tiktokEnabled === true,
+    ...cardAutoScheduleGates(card),
+  });
+
+  const awaitedApprovalName =
+    post.workflow_id != null
+      ? card
+        ? nextApprovalAwaited(
+            card.allEtapas.map((e) => ({
+              ordem: e.ordem,
+              nome: e.nome,
+              tipo: e.tipo ?? 'padrao',
+              open: e.status !== 'concluido',
+            })),
+          )
+        : null
+      : (awaitedApproval ?? null);
+  const showAwaitingApproval = shouldShowAwaitingApproval({
+    status: post.status,
+    autoPublishOnApproval:
+      post.workflow_id != null ? cardAutoScheduleGates(card).autoPublishOnApproval : true,
+    awaitedApproval: awaitedApprovalName,
+  });
 
   return (
     <>
@@ -205,6 +275,15 @@ function PostBoardCardContent({
               {prazo.shortLabel}
             </span>
           )}
+          {showAwaitingApproval && awaitedApprovalName && (
+            <AwaitingApprovalBadge approvalName={awaitedApprovalName} />
+          )}
+          {offerAutoSchedule && (
+            <AutoScheduleBadge
+              onClick={onAutoScheduleClick}
+              needsDate={!isEligibleToScheduleNow(post.scheduled_at)}
+            />
+          )}
           {locked && (
             <TooltipProvider delayDuration={200}>
               <Tooltip>
@@ -222,10 +301,16 @@ function PostBoardCardContent({
         </span>
       </div>
       <div className="item-title">{post.titulo || 'Post sem título'}</div>
+      {multiplatformEnabled && <DestinationChips post={post} />}
       {card ? (
         <span className="post-fluxo-tag post-fluxo-tag--static">
           <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
           {card.etapa.nome}
+        </span>
+      ) : post.workflow_id === null && processEtapa ? (
+        <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
+          <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+          Individual · {processEtapa}
         </span>
       ) : post.workflow_id === null ? (
         <span className="post-fluxo-tag post-fluxo-tag--avulso">
@@ -302,12 +387,24 @@ const PostBoardCard = memo(function PostBoardCard({
   card,
   openable,
   onPostClick,
+  processEtapa,
+  awaitedApproval,
+  onAutoScheduleClick,
+  schedulingEnabled,
+  tiktokEnabled,
+  multiplatformEnabled,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
   openable: boolean;
   onPostClick: (post: ActivePost) => void;
+  processEtapa?: string;
+  awaitedApproval?: string;
+  onAutoScheduleClick?: (post: ActivePost) => void;
+  schedulingEnabled?: boolean;
+  tiktokEnabled?: boolean;
+  multiplatformEnabled?: boolean;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
@@ -334,7 +431,17 @@ const PostBoardCard = memo(function PostBoardCard({
       onClick={openable ? () => onPostClick(post) : undefined}
       {...listeners}
     >
-      <PostBoardCardContent post={post} registry={registry} card={card} />
+      <PostBoardCardContent
+        post={post}
+        registry={registry}
+        card={card}
+        processEtapa={processEtapa}
+        awaitedApproval={awaitedApproval}
+        onAutoScheduleClick={onAutoScheduleClick ? () => onAutoScheduleClick(post) : undefined}
+        schedulingEnabled={schedulingEnabled}
+        tiktokEnabled={tiktokEnabled}
+        multiplatformEnabled={multiplatformEnabled}
+      />
     </div>
   );
 });
@@ -359,6 +466,12 @@ const PostBoardColumn = memo(function PostBoardColumn({
   dragHeight,
   sort,
   onColumnSortChange,
+  processEtapaByPostId,
+  awaitedApprovalByPostId,
+  onAutoScheduleClick,
+  schedulingEnabled,
+  tiktokEnabled,
+  multiplatformEnabled,
 }: {
   option: StatusOption;
   posts: ActivePost[];
@@ -379,21 +492,42 @@ const PostBoardColumn = memo(function PostBoardColumn({
    *  in an inline arrow here) so this memoized column doesn't re-render on
    *  every parent render. */
   onColumnSortChange?: (columnKey: string, sort: BoardColumnSort) => void;
+  /** post id → etapa ativa do processo individual (spec §4.4). */
+  processEtapaByPostId?: Map<number, string>;
+  /** post id → nome da próxima aprovação do cliente que um avulso aprovado ainda
+   *  espera (selo "Aguarda aprovação"). Só entram avulsos de clientes com
+   *  agendamento automático. */
+  awaitedApprovalByPostId?: Map<number, string>;
+  /** Stable callback (spec peça 3) -- same identity guarantee as
+   *  onColumnSortChange above. */
+  onAutoScheduleClick?: (post: ActivePost) => void;
+  schedulingEnabled?: boolean;
+  tiktokEnabled?: boolean;
+  multiplatformEnabled?: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
+  // Vidro: neutral header and count; the status icon keeps the colour cue.
+  const vidroShell = useVidroShell();
+  const tinted = vidroShell ? null : tint;
 
   return (
     <div
       className={`board-column${dragInvalid ? ' board-column--drag-invalid' : ''}`}
-      style={tint ? { borderColor: `${tint}30` } : undefined}
+      style={
+        tint
+          ? vidroShell
+            ? ({ '--col-tint': tint } as CSSProperties)
+            : { borderColor: `${tint}30` }
+          : undefined
+      }
     >
       <div
         className="board-column-header"
-        style={tint ? { background: `${tint}30`, borderBottomColor: `${tint}30` } : undefined}
+        style={tinted ? { background: `${tinted}30`, borderBottomColor: `${tinted}30` } : undefined}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem', minWidth: 0 }}>
-          <span className="board-column-title" style={tint ? { color: tint } : undefined}>
+          <span className="board-column-title" style={tinted ? { color: tinted } : undefined}>
             {option.kind === 'custom'
               ? (() => {
                   const CustomIcon = getCustomStatusIcon(option.icone);
@@ -436,7 +570,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
                 type="button"
                 aria-label={`Ordenar coluna ${option.label}`}
                 className="board-column-sort"
-                style={tint ? { color: tint } : undefined}
+                style={tinted ? { color: tinted } : undefined}
               >
                 <ArrowUpDown size={12} aria-hidden="true" />
               </button>
@@ -461,7 +595,9 @@ const PostBoardColumn = memo(function PostBoardColumn({
         <span
           className="board-column-count"
           style={
-            tint ? { background: `${tint}3d`, color: tint, borderColor: 'transparent' } : undefined
+            tinted
+              ? { background: `${tinted}3d`, color: tinted, borderColor: 'transparent' }
+              : undefined
           }
         >
           {posts.length}
@@ -470,7 +606,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
       <div
         ref={setNodeRef}
         className="board-column-body"
-        style={tint ? { background: `${tint}0a` } : undefined}
+        style={tinted ? { background: `${tinted}0a` } : undefined}
       >
         <SortableContext
           items={posts.map((p) => String(p.id))}
@@ -495,6 +631,12 @@ const PostBoardColumn = memo(function PostBoardColumn({
                     card={p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined}
                     openable={isPostOpenable(p, openableWorkflowIds)}
                     onPostClick={onPostClick}
+                    processEtapa={processEtapaByPostId?.get(p.id)}
+                    awaitedApproval={awaitedApprovalByPostId?.get(p.id)}
+                    onAutoScheduleClick={onAutoScheduleClick}
+                    schedulingEnabled={schedulingEnabled}
+                    tiktokEnabled={tiktokEnabled}
+                    multiplatformEnabled={multiplatformEnabled}
                   />
                 </Fragment>
               ))}
@@ -529,6 +671,11 @@ export function PostsKanbanView({
   onCreateAvulso,
   columnSorts,
   onColumnSortChange,
+  processEtapaByPostId,
+  awaitedApprovalByPostId,
+  schedulingEnabled,
+  tiktokEnabled,
+  multiplatformEnabled,
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
@@ -544,6 +691,21 @@ export function PostsKanbanView({
      *  captured drop slot. */
     place?: () => void;
   } | null>(null);
+
+  /** Post cujo aviso de agendamento automático está aberto (peça 1 da spec). */
+  const [nudgePost, setNudgePost] = useState<AutoSchedulePromptPost | null>(null);
+
+  /** Abre o aviso para o post do indicador persistente (spec peça 3). Identidade
+   *  estável (deps vazias, setNudgePost já é estável) para não quebrar o memo de
+   *  PostBoardColumn/PostBoardCard a cada render desta página. */
+  const handleAutoScheduleClick = useCallback((post: ActivePost) => {
+    setNudgePost({
+      id: post.id,
+      titulo: post.titulo,
+      platform: post.platform,
+      scheduled_at: post.scheduled_at,
+    });
+  }, []);
 
   /** Driven by the column header menu; a column absent from `columnSorts`
    *  defaults to 'manual'. */
@@ -580,6 +742,14 @@ export function PostsKanbanView({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
+
+  // Celular: segurar abre o menu do card; arrastar só pela alça, no modo
+  // Reordenar (a PointerSensor acima disputaria o toque com a rolagem).
+  const isPhone = !useIsDesktop(768);
+  const phoneSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
 
@@ -631,6 +801,36 @@ export function PostsKanbanView({
     updateStatus.mutate(move.forward, {
       onError: () =>
         persistPlacement([{ id: move.forward.id, board_ordem: move.previousBoardOrdem }]),
+      // Aviso de agendamento automático (spec peça 1). A linha devolvida pela
+      // escrita é a fonte do status: o trigger do banco força `status` a partir
+      // de um custom_status_id, então um status custom que se comporta como
+      // aprovado_cliente também cai aqui, sem consultar o registry.
+      onSuccess: (updated) => {
+        const card = post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined;
+        const offer = shouldOfferAutoSchedule({
+          status: updated?.status ?? move.forward.canonical,
+          platform: updated?.platform ?? post.platform,
+          schedulingFeatureEnabled: schedulingEnabled === true,
+          tiktokFeatureEnabled: tiktokEnabled === true,
+          ...cardAutoScheduleGates(card),
+        });
+        if (!offer) return;
+        // The forward write is a network round trip; if the user clicks
+        // Desfazer before it resolves, the backward mutate can revert the
+        // post BEFORE this callback runs. Re-check the LIVE cache (same
+        // resolveUndoGuard the Desfazer handler below uses to protect ITS
+        // write) so a since-reverted post doesn't get offered a nudge for a
+        // status it no longer has. Checked AFTER the gate above so tests
+        // exercising the gate don't also need to seed this cache.
+        const cachedPosts = qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY);
+        if (resolveUndoGuard(cachedPosts, move, registry) === 'stale') return;
+        setNudgePost({
+          id: post.id,
+          titulo: post.titulo,
+          platform: post.platform,
+          scheduled_at: updated?.scheduled_at ?? post.scheduled_at,
+        });
+      },
     });
     toast(`Post movido para "${move.targetLabel}".`, {
       duration: 6000,
@@ -651,6 +851,9 @@ export function PostsKanbanView({
           updateStatus.mutate(move.backward, {
             onError: () => persistPlacement([{ id: move.forward.id, board_ordem: rankBeforeUndo }]),
           });
+          // O post está voltando para fora de aprovado_cliente; um aviso aberto
+          // para ele ficaria oferecendo agendar um post que já não está aprovado.
+          setNudgePost((current) => (current?.id === move.forward.id ? null : current));
           // The forward move may also have placed the post in the target
           // column's manual order -- Desfazer restores the rank it had
           // before the drag, not just the status. Skipped when the forward
@@ -762,6 +965,15 @@ export function PostsKanbanView({
 
     // Cross-column: existing status-change flow, then placement if the
     // target column is manually sorted.
+    moveToStatus(dragged, targetKey, slotAtDrop?.key === targetKey ? slotAtDrop.index : undefined);
+  };
+
+  /** Status change of one post to `targetKey` (drag drop, or the phone card
+   *  menu's "Mover para"): the drop resolver decides locked / confirm / write,
+   *  and a manually sorted target gets the post at `slotIndex` (end when
+   *  absent). */
+  const moveToStatus = (dragged: ActivePost, targetKey: StatusKey, slotIndex?: number) => {
+    const draggedId = dragged.id;
     const result = resolvePostsKanbanDrop({
       post: dragged,
       overId: `${COL_PREFIX}${targetKey}`,
@@ -770,7 +982,7 @@ export function PostsKanbanView({
     const placeAfter = () => {
       if (columnSortFor(targetKey) !== 'manual') return;
       const targetList = (sortedByStatus.get(targetKey) ?? []).filter((p) => p.id !== draggedId);
-      const index = slotAtDrop?.key === targetKey ? slotAtDrop.index : targetList.length;
+      const index = slotIndex ?? targetList.length;
       persistPlacement(planBoardPlacement(targetList, index, draggedId));
     };
 
@@ -798,13 +1010,7 @@ export function PostsKanbanView({
   };
 
   if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
-    );
+    return <BoardSkeleton columns={registry.options.length || 4} />;
   }
 
   if (posts.length === 0) {
@@ -825,6 +1031,79 @@ export function PostsKanbanView({
           </>
         )}
       </div>
+    );
+  }
+
+  const confirmTitle = 'Post aprovado';
+  const confirmMessage =
+    'Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?';
+  const nudgeDialog = (
+    <AutoSchedulePromptDialog
+      post={nudgePost}
+      onClose={() => setNudgePost(null)}
+      onScheduled={() => {
+        setNudgePost(null);
+        qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
+        // Prefixo sem o workflowId de propósito: TanStack Query casa chaves por
+        // prefixo, então isto invalida ['workflow-posts-with-props', <qualquer
+        // id>]. O diálogo não carrega o workflow_id do post, e invalidar a lista
+        // de outro fluxo é inofensivo (são listas refetch-on-demand).
+        qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
+        qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+      }}
+    />
+  );
+
+  const renderCardContent = (post: ActivePost) => (
+    <PostBoardCardContent
+      post={post}
+      registry={registry}
+      card={post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined}
+      processEtapa={processEtapaByPostId?.get(post.id)}
+      awaitedApproval={awaitedApprovalByPostId?.get(post.id)}
+      onAutoScheduleClick={activeId == null ? () => handleAutoScheduleClick(post) : undefined}
+      schedulingEnabled={schedulingEnabled}
+      tiktokEnabled={tiktokEnabled}
+      multiplatformEnabled={multiplatformEnabled}
+    />
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <PhoneStatusBoard
+          options={registry.options}
+          postsFor={(key) => sortedByStatus.get(key) ?? []}
+          sortFor={columnSortFor}
+          onSortChange={onColumnSortChange}
+          renderContent={renderCardContent}
+          isOpenable={(post) => isPostOpenable(post, openableWorkflowIds)}
+          onOpen={onPostClick}
+          isLockedOption={(o) => LOCKED_STATUSES.has(o.canonical)}
+          lockedReason={(o) =>
+            LOCKED_TOOLTIPS[o.canonical] ?? 'Esta coluna é controlada pelo sistema.'
+          }
+          optionOf={(post) => registry.resolve(post)}
+          onMoveTo={(post, key) => moveToStatus(post, key)}
+          sensors={phoneSensors}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => {
+            setActiveId(null);
+            setDropSlot(null);
+          }}
+          activePost={activePost}
+        />
+        <PhoneConfirmSheet
+          open={!!pendingConfirm}
+          title={confirmTitle}
+          message={confirmMessage}
+          actions={[{ label: 'Confirmar', onSelect: handleConfirmStatusChange }]}
+          onCancel={() => setPendingConfirm(null)}
+        />
+        {nudgeDialog}
+      </>
     );
   }
 
@@ -856,6 +1135,12 @@ export function PostsKanbanView({
                 dragHeight={dragHeight}
                 sort={columnSortFor(option.key)}
                 onColumnSortChange={onColumnSortChange}
+                processEtapaByPostId={processEtapaByPostId}
+                awaitedApprovalByPostId={awaitedApprovalByPostId}
+                onAutoScheduleClick={handleAutoScheduleClick}
+                schedulingEnabled={schedulingEnabled}
+                tiktokEnabled={tiktokEnabled}
+                multiplatformEnabled={multiplatformEnabled}
               />
             ))}
           </div>
@@ -871,6 +1156,11 @@ export function PostsKanbanView({
                     ? cardsByWorkflowId.get(activePost.workflow_id)
                     : undefined
                 }
+                processEtapa={processEtapaByPostId?.get(activePost.id)}
+                awaitedApproval={awaitedApprovalByPostId?.get(activePost.id)}
+                schedulingEnabled={schedulingEnabled}
+                tiktokEnabled={tiktokEnabled}
+                multiplatformEnabled={multiplatformEnabled}
               />
             </div>
           )}
@@ -884,10 +1174,8 @@ export function PostsKanbanView({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
-            <AlertDialogDescription>
-              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
-            </AlertDialogDescription>
+            <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingConfirm(null)}>Cancelar</AlertDialogCancel>
@@ -895,6 +1183,7 @@ export function PostsKanbanView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {nudgeDialog}
     </>
   );
 }

@@ -87,6 +87,7 @@ function tarefa(over: Record<string, unknown>) {
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    serie: null,
     ...over,
   };
 }

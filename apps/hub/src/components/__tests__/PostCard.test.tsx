@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostCard, PlatformBadge } from '../PostCard';
+import { HubContext } from '../../HubContext';
 import { submitApproval } from '../../api';
 import type {
   HubPost,
@@ -301,9 +302,10 @@ describe('PostCard', () => {
 
   it('opens the media lightbox from the cover image and reuses the refresh callback for stale URLs', () => {
     const onApprovalSubmitted = vi.fn();
+    // The cover is the first slide; a stale cover_media flag on a later slide is ignored.
     const galleryMedia = [
-      makeMedia({ id: 1, url: 'https://cdn.example.com/gallery-1.jpg', sort_order: 0 }),
-      makeMedia({ id: 2, url: 'https://cdn.example.com/cover.jpg', sort_order: 1 }),
+      makeMedia({ id: 1, url: 'https://cdn.example.com/cover.jpg', sort_order: 0 }),
+      makeMedia({ id: 2, url: 'https://cdn.example.com/gallery-2.jpg', sort_order: 1 }),
     ];
 
     const { container } = render(
@@ -332,7 +334,7 @@ describe('PostCard', () => {
     fireEvent.click(coverButton);
 
     expect(screen.getByTestId('post-media-lightbox')).toBeInTheDocument();
-    expect(screen.getByText('Indice inicial: 1')).toBeInTheDocument();
+    expect(screen.getByText('Indice inicial: 0')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Simular URL expirada' }));
 
@@ -394,5 +396,49 @@ describe('PlatformBadge', () => {
   it('renders "Instagram" for undefined platform (pre-migration/cached payload)', () => {
     render(<PlatformBadge platform={undefined} />);
     expect(screen.getByText('Instagram')).toBeInTheDocument();
+  });
+});
+
+describe('PostCard Pauta status pills', () => {
+  function renderPauta(status: HubPost['status']) {
+    return render(
+      <HubContext.Provider value={{ bootstrap: { feature_hub_pauta: true } } as never}>
+        <PostCard
+          post={makePost({ status })}
+          token="token-publico"
+          approvals={[]}
+          propertyValues={[]}
+          workflowSelectOptions={[]}
+          onApprovalSubmitted={vi.fn()}
+        />
+      </HubContext.Provider>,
+    );
+  }
+
+  it('pending pill is wait', () => {
+    renderPauta('enviado_cliente');
+    expect(screen.getByText('Aguardando aprovação')).toHaveClass('hub-pill-st-wait');
+  });
+
+  it('agendado uses the sched tone tokens instead of the emerald utilities', () => {
+    renderPauta('agendado');
+    const pill = screen.getByText('Agendado');
+    expect(pill.style.color).toBe('var(--hub-st-sched-fg)');
+    expect(pill.style.background).toBe('var(--hub-st-sched-bg)');
+    expect(pill.className).not.toContain('emerald');
+  });
+
+  it('classic agendado keeps the emerald pill', () => {
+    render(
+      <PostCard
+        post={makePost({ status: 'agendado' })}
+        token="token-publico"
+        approvals={[]}
+        propertyValues={[]}
+        workflowSelectOptions={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Agendado').className).toContain('bg-emerald-50');
   });
 });

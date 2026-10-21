@@ -184,7 +184,7 @@ describe('MensagensPage', () => {
       });
       await waitFor(() => expect(mockFetchPosts).toHaveBeenCalledWith('tok'));
       const card = await screen.findByTestId('hub-post-hover-preview');
-      expect(card).toHaveTextContent('Feed');
+      expect(card).toHaveTextContent('Imagem');
       expect(card).toHaveTextContent('Aprovado');
       expect(card).toHaveTextContent('Fluxo de agosto');
       fireEvent.mouseLeave(chip.parentElement!);

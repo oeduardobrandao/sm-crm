@@ -18,11 +18,15 @@ vi.mock('../../store/core', () => ({
 }));
 
 import {
+  buildSystemDefaultLayout,
   createReportTemplate,
   deleteReportTemplate,
+  getReportTemplate,
   listReportTemplates,
   setDefaultReportTemplate,
+  updateReportTemplate,
 } from '../reportTemplates';
+import { validateLayout } from '@mesaas/report-blocks/types';
 
 beforeEach(() => {
   fromMock.mockReset();
@@ -101,8 +105,9 @@ describe('createReportTemplate', () => {
 });
 
 describe('deleteReportTemplate', () => {
-  it('deleta filtrado por id', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: null });
+  it('deleta filtrado por id e pede o id de volta', async () => {
+    const select = vi.fn().mockResolvedValue({ data: [{ id: 't1' }], error: null });
+    const eq = vi.fn().mockReturnValue({ select });
     const del = vi.fn().mockReturnValue({ eq });
     fromMock.mockReturnValue({ delete: del });
 
@@ -110,13 +115,23 @@ describe('deleteReportTemplate', () => {
 
     expect(fromMock).toHaveBeenCalledWith('report_templates');
     expect(eq).toHaveBeenCalledWith('id', 't1');
+    expect(select).toHaveBeenCalledWith('id');
   });
 
   it('erro do PostgREST vira Error', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: { message: 'delete falhou' } });
+    const select = vi.fn().mockResolvedValue({ data: null, error: { message: 'delete falhou' } });
+    const eq = vi.fn().mockReturnValue({ select });
     fromMock.mockReturnValue({ delete: vi.fn().mockReturnValue({ eq }) });
 
     await expect(deleteReportTemplate('t1')).rejects.toThrow('delete falhou');
+  });
+
+  it('zero linhas (RLS filtrou) vira Error, não sucesso falso', async () => {
+    const select = vi.fn().mockResolvedValue({ data: [], error: null });
+    const eq = vi.fn().mockReturnValue({ select });
+    fromMock.mockReturnValue({ delete: vi.fn().mockReturnValue({ eq }) });
+
+    await expect(deleteReportTemplate('t1')).rejects.toThrow('Modelo não encontrado');
   });
 });
 
@@ -133,5 +148,91 @@ describe('setDefaultReportTemplate', () => {
     rpcMock.mockResolvedValue({ error: { message: 'NOT_FOUND' } });
 
     await expect(setDefaultReportTemplate('t1')).rejects.toThrow('NOT_FOUND');
+  });
+});
+
+describe('getReportTemplate', () => {
+  it('busca por id com maybeSingle', async () => {
+    const row = {
+      id: 't1',
+      name: 'Mensal',
+      layout: { version: 1, blocks: [] },
+      is_default: false,
+      created_at: '2026-08-01',
+    };
+    const maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null });
+    const eq = vi.fn().mockReturnValue({ maybeSingle });
+    const select = vi.fn().mockReturnValue({ eq });
+    fromMock.mockReturnValue({ select });
+
+    await expect(getReportTemplate('t1')).resolves.toEqual(row);
+    expect(select).toHaveBeenCalledWith('id, name, layout, is_default, created_at');
+    expect(eq).toHaveBeenCalledWith('id', 't1');
+  });
+
+  it('inexistente devolve null', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    fromMock.mockReturnValue({
+      select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle }) }),
+    });
+    await expect(getReportTemplate('nope')).resolves.toBeNull();
+  });
+
+  it('erro do PostgREST vira Error', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'boom' } });
+    fromMock.mockReturnValue({
+      select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle }) }),
+    });
+    await expect(getReportTemplate('t1')).rejects.toThrow('boom');
+  });
+});
+
+describe('updateReportTemplate', () => {
+  it('atualiza name/layout filtrado por id e pede o id de volta', async () => {
+    const select = vi.fn().mockResolvedValue({ data: [{ id: 't1' }], error: null });
+    const eq = vi.fn().mockReturnValue({ select });
+    const update = vi.fn().mockReturnValue({ eq });
+    fromMock.mockReturnValue({ update });
+
+    await updateReportTemplate('t1', { name: 'Novo nome' });
+
+    expect(fromMock).toHaveBeenCalledWith('report_templates');
+    expect(update).toHaveBeenCalledWith({ name: 'Novo nome' });
+    expect(eq).toHaveBeenCalledWith('id', 't1');
+    expect(select).toHaveBeenCalledWith('id');
+  });
+
+  it('zero linhas (RLS filtrou) vira Error', async () => {
+    const select = vi.fn().mockResolvedValue({ data: [], error: null });
+    fromMock.mockReturnValue({
+      update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ select }) }),
+    });
+    await expect(updateReportTemplate('t1', { name: 'x' })).rejects.toThrow(
+      'Modelo não encontrado',
+    );
+  });
+
+  it('erro do PostgREST vira Error', async () => {
+    const select = vi.fn().mockResolvedValue({ data: null, error: { message: 'layout inválido' } });
+    fromMock.mockReturnValue({
+      update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ select }) }),
+    });
+    await expect(updateReportTemplate('t1', { name: 'x' })).rejects.toThrow('layout inválido');
+  });
+});
+
+describe('buildSystemDefaultLayout', () => {
+  it('é um layout válido, começa pela capa e não carrega texto de IA', () => {
+    const layout = buildSystemDefaultLayout();
+    expect(validateLayout(layout).ok).toBe(true);
+    expect(layout.blocks[0].type).toBe('cover');
+    expect(layout.blocks.some((b) => b.type === 'ai_summary')).toBe(true);
+    expect(layout.blocks.every((b) => b.text === undefined)).toBe(true);
+  });
+
+  it('gera ids novos a cada chamada', () => {
+    const a = buildSystemDefaultLayout();
+    const b = buildSystemDefaultLayout();
+    expect(a.blocks[0].id).not.toBe(b.blocks[0].id);
   });
 });

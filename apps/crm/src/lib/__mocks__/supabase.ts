@@ -39,8 +39,9 @@ let authChangeCallback: AuthChangeCallback | null = null;
 
 // Minimal postgres_changes realtime stand-in, shared by every feature that
 // subscribes via supabase.channel(...).on('postgres_changes', ...).subscribe():
-// AuthContext's live-revocation channel (UPDATE on workspace_members) and
-// useEquipeChatRealtime's message channel (INSERT on equipe_mensagens).
+// AuthContext's live-revocation channels (UPDATE on workspace_members and
+// workspace_roles) and useEquipeChatRealtime's message channel (INSERT on
+// equipe_mensagens).
 // Listeners register into a shared LIST (keyed by event+table) rather than a
 // single slot, so multiple simultaneously-subscribed channels don't clobber
 // each other.
@@ -258,6 +259,14 @@ export function __emitWorkspaceMemberUpdate(newRow: Record<string, unknown>) {
 // above activeListeners.
 export function __getWorkspaceMemberSubscription(): PostgresChangesFilter | null {
   return findListener('UPDATE', 'workspace_members')?.filter ?? null;
+}
+
+export function __emitWorkspaceRolesUpdate(newRow: Record<string, unknown>) {
+  findListener('UPDATE', 'workspace_roles')?.callback({ new: newRow });
+}
+
+export function __getWorkspaceRolesSubscription(): PostgresChangesFilter | null {
+  return findListener('UPDATE', 'workspace_roles')?.filter ?? null;
 }
 
 // equipe-chat realtime (useEquipeChatRealtime): single INSERT listener on

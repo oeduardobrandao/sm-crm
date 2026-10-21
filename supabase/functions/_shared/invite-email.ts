@@ -1,30 +1,23 @@
-import { escapeHtml } from "./report-template/escape.ts";
+import { mesaasEmail } from "./email/shell.ts";
+import { button, fallbackLink, heading, paragraph, paragraphHtml, strong } from "./email/blocks.ts";
 
 /**
- * Build the HTML body for a "set your password" invite e-mail. All dynamic
- * values are HTML-escaped (the action link too — it carries `&`-joined query
- * params that must be entity-encoded in attribute context).
+ * Build the HTML body for a "set your password" invite e-mail. Text blocks escape their own
+ * values (workspace name included), and the button and fallback link escape the action link
+ * (it carries `&`-joined query params that must be entity-encoded in attribute context).
  */
 export function buildInviteEmail(params: { actionLink: string; workspaceName: string }): string {
-  const ws = escapeHtml(params.workspaceName);
-  const link = escapeHtml(params.actionLink);
-  return `<!DOCTYPE html>
-<html lang="pt-BR"><body style="margin:0;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;color:#1a3d2b">
-  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
-    <table width="440" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden">
-      <tr><td style="background:#1a3d2b;padding:28px;text-align:center;color:#fff;font-size:18px;font-weight:600">
-        Você foi convidado para o ${ws}
-      </td></tr>
-      <tr><td style="padding:28px;font-size:14px;line-height:1.6;color:#444441">
-        <p>Para acessar o workspace <strong>${ws}</strong> no Mesaas, defina sua senha:</p>
-        <p style="text-align:center;margin:28px 0">
-          <a href="${link}" style="display:inline-block;background:#1a3d2b;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600">Definir minha senha</a>
-        </p>
-        <p style="font-size:12px;color:#888780">Se você não esperava este convite, ignore este e-mail.</p>
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
+  return mesaasEmail({
+    preheader: `Defina sua senha para entrar no ${params.workspaceName}.`,
+    eyebrow: "Convite",
+    sections: [
+      heading(`Você foi convidado para o ${params.workspaceName}`) +
+        paragraphHtml(`Para acessar o workspace ${strong(params.workspaceName)} no Mesaas, defina sua senha:`, "body", "0"),
+      button(params.actionLink, "Definir minha senha") + fallbackLink(params.actionLink) +
+        paragraph("Se você não esperava este convite, ignore este e-mail.", "small", "16px 0 0"),
+    ],
+    footerLines: [],
+  });
 }
 
 /**

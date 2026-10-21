@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { InstagramGrid, type GridItem, type ReorderUpdate } from '@mesaas/ui/InstagramGrid';
 import { reorderPostSchedules } from '../api';
 import type { HubPost, InstagramFeedProfile, InstagramFeedPost } from '../types';
@@ -37,6 +38,7 @@ export function InstagramGridPreview({
   onClose,
   onScheduleUpdated,
 }: InstagramGridPreviewProps) {
+  const { t } = useTranslation('hubPostCard');
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const items = useMemo<GridItem[]>(() => {
@@ -148,13 +150,15 @@ export function InstagramGridPreview({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Pré-visualização do feed de ${displayName || 'Instagram'}`}
+        aria-label={t('grid.previewAria', 'Pré-visualização do feed de {{name}}', {
+          name: displayName || 'Instagram',
+        })}
         className="bg-white rounded-2xl w-[min(420px,calc(100vw-2rem))] max-h-[92vh] overflow-hidden flex flex-col relative"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          aria-label="Fechar"
+          aria-label={t('common:actions.close', 'Fechar')}
           className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/5 hover:bg-black/10 flex items-center justify-center text-[#262626] text-base transition-colors"
         >
           ✕

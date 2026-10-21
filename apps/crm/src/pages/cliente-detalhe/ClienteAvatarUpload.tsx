@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Camera, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,18 +28,14 @@ interface ClienteAvatarUploadProps {
   canEdit: boolean;
 }
 
-export function ClienteAvatarUpload({
-  clienteId,
-  nome,
-  cor,
-  initials,
-  imageUrl,
-  canEdit,
-}: ClienteAvatarUploadProps) {
+/**
+ * Upload / remove of a client's photo, shared by the desktop header avatar and the
+ * phone index ("…" > Alterar foto / Remover foto). Spread `inputProps` on a hidden file
+ * input and call `pick()` from a user gesture (iOS only opens the picker inside one).
+ */
+export function useClienteFoto(clienteId: number) {
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
-  const [removeOpen, setRemoveOpen] = useState(false);
-  const [imageFailed, setImageFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function invalidate() {
@@ -46,12 +43,15 @@ export function ClienteAvatarUpload({
     qc.invalidateQueries({ queryKey: ['clientes'] });
   }
 
-  async function handleUpload(file: File) {
+  async function handleUpload(file: File): Promise<boolean> {
     if (file.size > MAX_PHOTO_BYTES) {
       toast.error('Arquivo deve ser menor que 2MB.');
-      return;
+      return false;
     }
     setUploading(true);
+    // The upload and the record update that follows are one unit of work: a silent
+    // version swap must not land between them.
+    const release = holdUnsavedWork();
     try {
       const blob = await resizeClientePhoto(file);
       const path = `clientes/${clienteId}/${crypto.randomUUID()}.png`;
@@ -62,17 +62,19 @@ export function ClienteAvatarUpload({
 
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       await updateCliente(clienteId, { foto_url: urlData.publicUrl });
-      setImageFailed(false);
       invalidate();
       toast.success('Foto atualizada!');
+      return true;
     } catch {
       toast.error('Erro ao enviar foto.');
+      return false;
     } finally {
+      release();
       setUploading(false);
     }
   }
 
-  async function handleRemove() {
+  async function remove() {
     setUploading(true);
     try {
       await updateCliente(clienteId, { foto_url: null });
@@ -82,8 +84,48 @@ export function ClienteAvatarUpload({
       toast.error('Erro ao remover foto.');
     } finally {
       setUploading(false);
-      setRemoveOpen(false);
     }
+  }
+
+  return {
+    uploading,
+    pick: () => inputRef.current?.click(),
+    remove,
+    upload: handleUpload,
+    inputProps: {
+      ref: inputRef,
+      type: 'file' as const,
+      accept: 'image/*',
+      disabled: uploading,
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (file) void handleUpload(file);
+      },
+    },
+  };
+}
+
+export function ClienteAvatarUpload({
+  clienteId,
+  nome,
+  cor,
+  initials,
+  imageUrl,
+  canEdit,
+}: ClienteAvatarUploadProps) {
+  const foto = useClienteFoto(clienteId);
+  const uploading = foto.uploading;
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  async function handleUpload(file: File) {
+    if (await foto.upload(file)) setImageFailed(false);
+  }
+
+  async function handleRemove() {
+    await foto.remove();
+    setRemoveOpen(false);
   }
 
   const avatar =
@@ -113,7 +155,7 @@ export function ClienteAvatarUpload({
         className="cliente-avatar-upload__trigger"
         aria-label="Alterar foto do cliente"
         disabled={uploading}
-        onClick={() => inputRef.current?.click()}
+        onClick={foto.pick}
       >
         {avatar}
         <span className="cliente-avatar-upload__overlay" aria-hidden="true">
@@ -124,7 +166,7 @@ export function ClienteAvatarUpload({
         type="file"
         accept="image/*"
         className="hidden"
-        ref={inputRef}
+        ref={foto.inputProps.ref}
         disabled={uploading}
         onChange={(e) => {
           const file = e.target.files?.[0];

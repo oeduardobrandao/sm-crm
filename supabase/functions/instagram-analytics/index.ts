@@ -6,6 +6,7 @@ import { featureForPath } from "../_shared/feature-guard.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { resolveHubUrl } from "../_shared/hub-url.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import { BEST_TIMES_CACHE_KEY, computeBestTimes, isCurrentBestTimes } from "../_shared/best-times.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -65,7 +66,9 @@ async function getCachedOrFetch<T>(
   cacheKey: string,
   fetchFn: () => Promise<T>,
   maxAgeHours = 6,
-  skipCacheRead = false
+  skipCacheRead = false,
+  // Lets a route reject cached rows written under an older payload contract.
+  isCacheUsable: (data: unknown) => boolean = () => true
 ): Promise<{ data: T; fromCache: boolean; fetchedAt: string }> {
   if (!skipCacheRead) {
     const { data: cached } = await serviceClient
@@ -75,7 +78,7 @@ async function getCachedOrFetch<T>(
       .eq('cache_key', cacheKey)
       .single();
 
-    if (cached && cached.data) {
+    if (cached && cached.data && isCacheUsable(cached.data)) {
       const age = Date.now() - new Date(cached.fetched_at).getTime();
       if (age < maxAgeHours * 60 * 60 * 1000) {
         return { data: cached.data as T, fromCache: true, fetchedAt: cached.fetched_at };
@@ -209,6 +212,9 @@ Deno.serve(async (req) => {
 
   const json = createJsonResponder(corsHeaders);
 
+  // Declared outside the try so the catch block can mark the account expired.
+  const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
   try {
     // Verify auth
     const token = authHeader?.replace(/^Bearer\s+/i, '');
@@ -219,8 +225,6 @@ Deno.serve(async (req) => {
     const userRes = await supabaseClient.auth.getUser();
     const user = userRes.data?.user;
     if (userRes.error || !user) throw new Error("Unauthorized: Token verification failed");
-
-    const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
     // Get user's conta_id
     const { data: profile } = await serviceClient
@@ -503,61 +507,16 @@ Deno.serve(async (req) => {
       await verifyClientOwnership(serviceClient, clientId, contaId);
       const account = await getAccount(serviceClient, clientId);
 
-      const result = await getCachedOrFetch(serviceClient, account.id, 'best_times', async () => {
-        console.log('[best-times] analyzing posts for account', account.id);
-
-        // Fetch last 90 days of posts
-        const sinceDate = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
-        const { data: posts } = await serviceClient
-          .from('instagram_posts')
-          .select('posted_at, likes, comments, saved, shares, reach')
-          .eq('instagram_account_id', account.id)
-          .gte('posted_at', sinceDate);
-
-        console.log('[best-times] found', posts?.length || 0, 'posts');
-
-        // Build 7x24 heatmap of average engagement rate per slot
-        const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
-        const counts: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
-
-        for (const p of (posts || [])) {
-          const date = new Date(p.posted_at);
-          const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
-          const hour = date.getHours();
-          const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
-          const engRate = p.reach > 0 ? (interactions / p.reach) * 100 : 0;
-          heatmap[dayOfWeek][hour] += engRate;
-          counts[dayOfWeek][hour] += 1;
-        }
-
-        // Average out
-        for (let d = 0; d < 7; d++) {
-          for (let h = 0; h < 24; h++) {
-            heatmap[d][h] = counts[d][h] > 0 ? Math.round((heatmap[d][h] / counts[d][h]) * 100) / 100 : 0;
-          }
-        }
-
-        // Find top 3 slots (only slots with posts)
-        const slots: { day: number; hour: number; value: number; postCount: number }[] = [];
-        for (let d = 0; d < 7; d++) {
-          for (let h = 0; h < 24; h++) {
-            if (counts[d][h] > 0) {
-              slots.push({ day: d, hour: h, value: heatmap[d][h], postCount: counts[d][h] });
-            }
-          }
-        }
-        slots.sort((a, b) => b.value - a.value);
-        const topSlots = slots.slice(0, 3);
-
-        return {
-          heatmap,
-          counts,
-          topSlots,
-          totalPosts: (posts || []).length,
-          labels_days: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'],
-          labels_hours: Array.from({ length: 24 }, (_, i) => `${i}h`),
-        };
-      }, 12);
+      // Legacy UTC-bucketed rows lack the São Paulo marker: recompute instead of serving them.
+      const result = await getCachedOrFetch(
+        serviceClient,
+        account.id,
+        BEST_TIMES_CACHE_KEY,
+        () => computeBestTimes(serviceClient, account.id),
+        12,
+        false,
+        isCurrentBestTimes,
+      );
 
       return json(result);
     }
@@ -696,19 +655,18 @@ Deno.serve(async (req) => {
         return json({ accounts: [], summary: { total: clients.length, connected: 0, growing: 0, stagnant: 0, declining: 0 } });
       }
 
-      // Get latest post date per account
+      // Get latest post date per account from the aggregate view (one row per
+      // account). Fetching every instagram_posts row was silently capped at
+      // PostgREST's 1000 rows in large workspaces, losing idle accounts' last post.
       const accountIds = igAccounts.map((a: any) => a.id);
       const { data: latestPosts } = await serviceClient
-        .from('instagram_posts')
-        .select('instagram_account_id, posted_at')
-        .in('instagram_account_id', accountIds)
-        .order('posted_at', { ascending: false });
+        .from('instagram_account_last_post')
+        .select('instagram_account_id, last_post_at')
+        .in('instagram_account_id', accountIds);
 
       const latestPostMap: Record<number, string> = {};
       for (const p of (latestPosts || [])) {
-        if (!latestPostMap[p.instagram_account_id]) {
-          latestPostMap[p.instagram_account_id] = p.posted_at;
-        }
+        if (p.last_post_at) latestPostMap[p.instagram_account_id] = p.last_post_at;
       }
 
       // Get post counts in last 30 days per account
@@ -1358,7 +1316,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       // 1. Fetch report — verify belongs to user's workspace and is ready
       const { data: report } = await serviceClient
         .from('analytics_reports')
-        .select('id, report_month, status, storage_path, ai_content, last_emailed_at, client_id, conta_id')
+        .select('id, report_month, status, storage_path, ai_content, email_kpis, last_emailed_at, client_id, conta_id')
         .eq('id', reportId)
         .eq('conta_id', contaId)
         .single();
@@ -1405,7 +1363,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       }
 
       // 7. Build and send email
-      const { buildReportEmail } = await import("../_shared/report-template/email.ts");
+      const { buildReportEmail, buildReportFrom } = await import("../_shared/report-template/email.ts");
 
       const hubUrl = await resolveHubUrl(serviceClient, report.client_id, contaId);
       const emailHtml = buildReportEmail({
@@ -1417,6 +1375,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
         aiSummary: report.ai_content?.executive_summary ?? null,
         pdfUrl,
         hubUrl,
+        emailKpis: report.email_kpis ?? null,
       });
 
       // Format month for subject
@@ -1434,7 +1393,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: `${workspace?.name ?? 'Mesaas'} <relatorios@mesaas.com.br>`,
+          from: buildReportFrom(workspace?.name),
           to: [cliente.email],
           subject: `Seu relatório de ${monthLabel} está pronto!`,
           html: emailHtml,

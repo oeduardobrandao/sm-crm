@@ -1,12 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFetchMock } from '../../../../test/shared/fetchMock';
 import {
   createIdeia,
+  deleteBriefingAudio,
   deleteIdeia,
+  deleteIdeiaAudio,
   fetchBootstrap,
   fetchBriefing,
+  fetchPostHistory,
   fetchPosts,
+  finalizeBriefingAudio,
+  finalizeIdeiaAudio,
+  presignBriefingAudio,
+  presignIdeiaAudio,
+  retryBriefingTranscription,
+  retryIdeiaTranscription,
   submitApproval,
   submitBriefingAnswer,
   submitEditSuggestion,
@@ -52,6 +61,73 @@ describe('hub api client', () => {
     await expect(submitApproval('token-hub', 12, 'mensagem')).rejects.toThrow(
       'Comentário obrigatório',
     );
+  });
+
+  describe('429 retry', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('retries a rate-limited write with backoff and resolves once the server accepts it', async () => {
+      vi.useFakeTimers();
+      fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'Muitas tentativas.' } });
+      fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'Muitas tentativas.' } });
+      fetchHarness.queueResponse({ json: { ok: true } });
+
+      const pending = submitBriefingAnswer('token-hub', 'q1', 'resposta');
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      await expect(pending).resolves.toEqual({ ok: true });
+      expect(fetchHarness.calls).toHaveLength(3);
+      for (const call of fetchHarness.calls) {
+        expect(JSON.parse(String(call.init?.body))).toEqual({
+          token: 'token-hub',
+          question_id: 'q1',
+          answer: 'resposta',
+        });
+      }
+    });
+
+    it('gives up after the retry budget and surfaces the rate-limit message', async () => {
+      vi.useFakeTimers();
+      for (let i = 0; i < 10; i++) {
+        fetchHarness.queueResponse({
+          ok: false,
+          status: 429,
+          json: { error: 'Muitas tentativas.' },
+        });
+      }
+
+      const pending = submitBriefingAnswer('token-hub', 'q1', 'resposta');
+      const outcome = expect(pending).rejects.toThrow('Muitas tentativas.');
+      await vi.advanceTimersByTimeAsync(120_000);
+      await outcome;
+
+      expect(fetchHarness.calls).toHaveLength(4);
+    });
+
+    it('stops retrying once its abort signal fires (a newer autosave superseded it)', async () => {
+      vi.useFakeTimers();
+      fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'Muitas tentativas.' } });
+      fetchHarness.queueResponse({ json: { ok: true } });
+
+      const ac = new AbortController();
+      const pending = submitBriefingAnswer('token-hub', 'q1', 'versão antiga', ac.signal);
+      const outcome = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(500);
+      ac.abort();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await outcome;
+
+      // The stale payload was never replayed.
+      expect(fetchHarness.calls).toHaveLength(1);
+    });
+
+    it('does not retry non-429 failures', async () => {
+      fetchHarness.queueResponse({ ok: false, status: 500, json: { error: 'boom' } });
+      await expect(submitBriefingAnswer('token-hub', 'q1', 'x')).rejects.toThrow('boom');
+      expect(fetchHarness.calls).toHaveLength(1);
+    });
   });
 
   it('falls back to HTTP status when error bodies are not valid JSON', async () => {
@@ -181,6 +257,144 @@ describe('hub api client', () => {
 
     await expect(submitEditSuggestion('token-hub', 99, null, 'texto', null)).rejects.toThrow(
       'Post não está em revisão',
+    );
+  });
+
+  it('presigns and finalizes briefing audio on the nested hub-briefing routes', async () => {
+    fetchHarness.queueResponse({
+      json: {
+        upload_url: 'https://r2/put',
+        r2_key: 'briefing-audio/c/q/x.webm',
+        mime_type: 'audio/webm',
+      },
+    });
+    const signed = await presignBriefingAudio('tok', {
+      question_id: 'q1',
+      mime_type: 'audio/webm;codecs=opus',
+      size_bytes: 10,
+    });
+    expect(signed.mime_type).toBe('audio/webm');
+    expect(String(fetchHarness.calls[0].input)).toContain('/functions/v1/hub-briefing/upload-url');
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      token: 'tok',
+      question_id: 'q1',
+      mime_type: 'audio/webm;codecs=opus',
+      size_bytes: 10,
+    });
+
+    fetchHarness.queueResponse({ json: { ok: true, answer: 'oi', transcript: 'oi', audio: null } });
+    const fin = await finalizeBriefingAudio('tok', 'q1', {
+      r2_key: 'k',
+      mime_type: 'audio/webm',
+      size_bytes: 10,
+      duration_seconds: 3,
+    });
+    expect(fin.answer).toBe('oi');
+    expect(String(fetchHarness.calls[1].input)).toContain('/functions/v1/hub-briefing/q1/audio');
+  });
+
+  it('retries transcription and deletes audio', async () => {
+    fetchHarness.queueResponse({ json: { ok: true, answer: 'a', transcript: 'a', audio: null } });
+    await retryBriefingTranscription('tok', 'q1');
+    expect(String(fetchHarness.calls[0].input)).toContain('/hub-briefing/q1/audio/transcribe');
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({ token: 'tok' });
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await deleteBriefingAudio('tok', 'q1');
+    expect(fetchHarness.calls[1].init?.method).toBe('DELETE');
+    expect(String(fetchHarness.calls[1].input)).toContain('/hub-briefing/q1/audio?token=tok');
+  });
+
+  it('presigns, finalizes, retries and deletes ideia audio on the hub-ideias routes', async () => {
+    fetchHarness.queueResponse({
+      json: { upload_url: 'u', r2_key: 'k', mime_type: 'audio/webm' },
+    });
+    await presignIdeiaAudio('tok', { ideia_id: 'i1', mime_type: 'audio/webm', size_bytes: 3 });
+    expect(String(fetchHarness.calls[0].input)).toContain(
+      '/functions/v1/hub-ideias/audio-upload-url',
+    );
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      token: 'tok',
+      ideia_id: 'i1',
+      mime_type: 'audio/webm',
+      size_bytes: 3,
+    });
+
+    fetchHarness.queueResponse({ json: { ok: true, transcript: null, audio: null } });
+    await finalizeIdeiaAudio('tok', 'i1', {
+      r2_key: 'k',
+      mime_type: 'audio/webm',
+      size_bytes: 3,
+      duration_seconds: 2,
+    });
+    expect(String(fetchHarness.calls[1].input)).toContain('/functions/v1/hub-ideias/i1/audio');
+
+    fetchHarness.queueResponse({ json: { ok: true, transcript: null, audio: null } });
+    await retryIdeiaTranscription('tok', 'i1');
+    expect(String(fetchHarness.calls[2].input)).toContain(
+      '/functions/v1/hub-ideias/i1/audio/transcribe',
+    );
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await deleteIdeiaAudio('tok', 'i1');
+    expect(String(fetchHarness.calls[3].input)).toContain('/hub-ideias/i1/audio?token=tok');
+    expect(fetchHarness.calls[3].init?.method).toBe('DELETE');
+  });
+
+  it('fetches a post history through hub-post-history with token and post_id', async () => {
+    fetchHarness.queueResponse({ json: { events: [], approvals: [] } });
+
+    const result = await fetchPostHistory('token-hub', 42);
+
+    expect(result).toEqual({ events: [], approvals: [] });
+    const url = new URL(String(fetchHarness.calls[0].input));
+    expect(url.pathname).toBe('/functions/v1/hub-post-history');
+    expect(url.searchParams.get('token')).toBe('token-hub');
+    expect(url.searchParams.get('post_id')).toBe('42');
+    expect(fetchHarness.calls[0].init?.method).toBeUndefined();
+  });
+
+  it('sends motivo with a correcao and omits it otherwise', async () => {
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'correcao', 'Trocar foto', 'midia');
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      token: 'token-hub',
+      post_id: 12,
+      action: 'correcao',
+      comentario: 'Trocar foto',
+      motivo: 'midia',
+    });
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'aprovado');
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toEqual({
+      token: 'token-hub',
+      post_id: 12,
+      action: 'aprovado',
+    });
+  });
+
+  it('sends reference_ids with a correcao only when there are some', async () => {
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'correcao', 'Trocar', undefined, [3, 4]);
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      token: 'token-hub',
+      post_id: 12,
+      action: 'correcao',
+      comentario: 'Trocar',
+      reference_ids: [3, 4],
+    });
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'correcao', 'Trocar', undefined, []);
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).not.toHaveProperty(
+      'reference_ids',
+    );
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'aprovado', undefined, undefined, [3]);
+    expect(JSON.parse(String(fetchHarness.calls[2].init?.body))).not.toHaveProperty(
+      'reference_ids',
     );
   });
 });

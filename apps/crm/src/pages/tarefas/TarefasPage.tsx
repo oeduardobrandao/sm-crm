@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Calendar, Columns, List, ListChecks, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { PageSkeleton } from '@/components/ui/skeletons';
+import { useAuth } from '@/context/AuthContext';
+import { useCurrentMembro } from '@/hooks/useCurrentMembro';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import type { TarefaWithRelations } from '../../store';
 import { useTarefasData } from './hooks/useTarefasData';
 import {
@@ -11,6 +15,7 @@ import {
   EMPTY_TAREFA_FILTERS,
   type TarefaFilterState,
 } from './tarefasLogic';
+import { loadTarefasEscopo, persistTarefasEscopo, type TarefasEscopo } from './tarefasPrefs';
 import { TarefasStatsHeader } from './components/TarefasStatsHeader';
 import { TarefasFilters } from './components/TarefasFilters';
 import { TarefaFormDialog } from './components/TarefaFormDialog';
@@ -19,6 +24,8 @@ import { ListView } from './views/ListView';
 import { MembrosBoardView } from './views/MembrosBoardView';
 import { StatusKanbanView } from './views/StatusKanbanView';
 import { CalendarView } from './views/CalendarView';
+import { TarefasPhoneContext, type TarefasPhoneActions } from './phone/parts';
+import { TarefasPhoneHeader } from './phone/TarefasPhoneHeader';
 
 type ActiveView = 'lista' | 'membros' | 'kanban' | 'calendario';
 
@@ -30,13 +37,30 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function TarefasPage() {
+  const isDesktop = useIsDesktop(768);
   const [activeView, setActiveView] = useState<ActiveView>('lista');
   const [filters, setFilters] = useState<TarefaFilterState>(EMPTY_TAREFA_FILTERS);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TarefaWithRelations | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [createDataLimite, setCreateDataLimite] = useState<string | null | undefined>(undefined);
 
   const { tarefas, tags, membros, clientes, isLoading, refresh } = useTarefasData();
+
+  const { user, profile } = useAuth();
+  const { membro: currentMembro } = useCurrentMembro();
+  const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
+  const userId = user?.id ?? 'unknown';
+  const [escopo, setEscopo] = useState<TarefasEscopo>(() => loadTarefasEscopo(contaId, userId));
+  const handleEscopoChange = (next: TarefasEscopo) => {
+    setEscopo(next);
+    persistTarefasEscopo(contaId, userId, next);
+  };
+  const currentMembroId = currentMembro?.id ?? null;
+  const scopedTarefas = useMemo(() => {
+    if (escopo !== 'minhas' || currentMembroId == null) return tarefas;
+    return tarefas.filter((t) => t.responsavel_id === currentMembroId);
+  }, [tarefas, escopo, currentMembroId]);
 
   // Deep link: /tarefas?tarefa=<id> opens the detail sheet (EntregasPage ?drawer= pattern).
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,55 +91,91 @@ export default function TarefasPage() {
     }
   }, [tarefas]);
 
-  const filteredTarefas = useMemo(() => applyTarefaFilters(tarefas, filters), [tarefas, filters]);
-  const stats = useMemo(() => computeHeaderStats(tarefas, new Date()), [tarefas]);
+  const filteredTarefas = useMemo(
+    () => applyTarefaFilters(scopedTarefas, filters),
+    [scopedTarefas, filters],
+  );
+  const stats = useMemo(() => computeHeaderStats(scopedTarefas, new Date()), [scopedTarefas]);
   const selected = selectedId != null ? (tarefas.find((t) => t.id === selectedId) ?? null) : null;
+  // Phones: the detail screen stays mounted after it closes (last task shown), so its
+  // history entry is popped by the screen itself, not stranded by an unmount.
+  const lastDetailRef = useRef<TarefaWithRelations | null>(null);
+  if (selected) lastDetailRef.current = selected;
+  const detailTarefa = selected ?? lastDetailRef.current;
 
   const openForm = (tarefa: TarefaWithRelations | null) => {
     setEditing(tarefa);
+    setCreateDataLimite(undefined);
     setFormOpen(true);
   };
 
-  if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
+  const handleCreateForDate = (date: string | null) => {
+    setEditing(null);
+    setCreateDataLimite(date);
+    setFormOpen(true);
+  };
+
+  const phoneActions = useMemo<TarefasPhoneActions>(
+    () => ({
+      membros,
+      onRefresh: refresh,
+      openDetail: (t) => setSelectedId(t.id!),
+      edit: (t) => {
+        setEditing(t);
+        setCreateDataLimite(undefined);
+        setFormOpen(true);
+      },
+    }),
+    [membros, refresh],
+  );
+
+  const subtitle = (
+    <>
+      {stats.abertas} aberta{stats.abertas === 1 ? '' : 's'}
+      {stats.atrasadas > 0 && (
+        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+          {' '}
+          · {stats.atrasadas} atrasada{stats.atrasadas === 1 ? '' : 's'}
+        </span>
+      )}
+      {stats.vencemHoje > 0 && (
+        <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
+          {' '}
+          · {stats.vencemHoje} vence{stats.vencemHoje === 1 ? '' : 'm'} hoje
+        </span>
+      )}
+    </>
+  );
+
+  const primaryAction = (
+    <Button onClick={() => openForm(null)}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova tarefa
+    </Button>
+  );
+
+  // The minhas/todas switch: the toolbar's segmented slot gets the Vidro pill, the in-page
+  // header keeps today's inline styles.
+  const escopoOptions = ['minhas', 'todas'] as const;
+  const escopoLabel = (option: TarefasEscopo) =>
+    option === 'minhas' ? 'Minhas tarefas' : 'Todas as tarefas';
+  const escopoSwitchVidro =
+    currentMembroId != null ? (
+      <div className="vidro-seg">
+        {escopoOptions.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className="vidro-seg-btn"
+            aria-pressed={escopo === option}
+            onClick={() => handleEscopoChange(option)}
+          >
+            {escopoLabel(option)}
+          </button>
+        ))}
       </div>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
-        <div className="header-title">
-          <h1>Tarefas</h1>
-          <p>
-            {stats.abertas} aberta{stats.abertas === 1 ? '' : 's'}
-            {stats.atrasadas > 0 && (
-              <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                {' '}
-                · {stats.atrasadas} atrasada{stats.atrasadas === 1 ? '' : 's'}
-              </span>
-            )}
-            {stats.vencemHoje > 0 && (
-              <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
-                {' '}
-                · {stats.vencemHoje} vence{stats.vencemHoje === 1 ? '' : 'm'} hoje
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="header-actions">
-          <Button onClick={() => openForm(null)}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Nova tarefa
-          </Button>
-        </div>
-      </header>
-
-      <TarefasStatsHeader stats={stats} />
-
+    ) : null;
+  const escopoSwitch =
+    currentMembroId != null ? (
       <div
         style={{
           display: 'flex',
@@ -123,34 +183,224 @@ export default function TarefasPage() {
           background: 'var(--surface-2)',
           padding: '0.25rem',
           borderRadius: '8px',
-          overflowX: 'auto',
           width: 'fit-content',
-          maxWidth: '100%',
         }}
-        className="animate-up no-scrollbar"
+        className="animate-up"
       >
-        {VIEW_TABS.map((tab) => (
+        {escopoOptions.map((option) => (
           <button
-            key={tab.id}
-            onClick={() => setActiveView(tab.id)}
+            key={option}
+            onClick={() => handleEscopoChange(option)}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
               padding: '0.4rem 0.9rem',
               borderRadius: '6px',
               border: 'none',
-              background: activeView === tab.id ? '#000' : 'transparent',
-              color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
+              background: escopo === option ? '#000' : 'transparent',
+              color: escopo === option ? '#fff' : 'var(--text-secondary)',
               fontSize: '0.8rem',
-              fontWeight: activeView === tab.id ? 600 : 400,
+              fontWeight: escopo === option ? 600 : 400,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
             }}
           >
-            {tab.icon} {tab.label}
+            {escopoLabel(option)}
           </button>
         ))}
+      </div>
+    ) : null;
+
+  const inToolbar = usePageToolbar(
+    isLoading
+      ? null
+      : {
+          title: 'Tarefas',
+          subtitle,
+          segmented: escopoSwitchVidro,
+          primary: primaryAction,
+        },
+  );
+
+  if (isLoading) {
+    // The page always opens on the 'lista' view.
+    return <PageSkeleton body="list" />;
+  }
+
+  const views = (
+    <>
+      {activeView === 'lista' && (
+        <ListView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+        />
+      )}
+      {activeView === 'membros' && (
+        <MembrosBoardView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+          onlyMembroId={escopo === 'minhas' ? currentMembroId : null}
+        />
+      )}
+      {activeView === 'kanban' && (
+        <StatusKanbanView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+        />
+      )}
+      {activeView === 'calendario' && (
+        <CalendarView
+          tarefas={filteredTarefas}
+          membros={membros}
+          onTarefaClick={(t) => setSelectedId(t.id!)}
+          onRefresh={refresh}
+          onCreateTask={handleCreateForDate}
+        />
+      )}
+    </>
+  );
+
+  const formDialog = (
+    <TarefaFormDialog
+      open={formOpen}
+      onClose={() => setFormOpen(false)}
+      editing={editing}
+      membros={membros}
+      clientes={clientes}
+      tags={tags}
+      onSaved={refresh}
+      onTagCreated={refresh}
+      initialValues={{ data_limite: createDataLimite }}
+    />
+  );
+
+  if (!isDesktop) {
+    return (
+      <TarefasPhoneContext.Provider value={phoneActions}>
+        <div className="phone-tar-page">
+          <TarefasPhoneHeader
+            stats={stats}
+            view={activeView}
+            onViewChange={setActiveView}
+            escopo={currentMembroId != null ? escopo : null}
+            onEscopoChange={handleEscopoChange}
+            filters={filters}
+            onFiltersChange={setFilters}
+            clientes={clientes}
+            membros={membros}
+            tags={tags}
+            resultCount={filteredTarefas.length}
+            onNew={() => openForm(null)}
+          />
+          {tarefas.length === 0 && activeView === 'lista' ? (
+            <div className="phone-tar-empty">
+              <ListChecks aria-hidden="true" />
+              <p>Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.</p>
+              <button type="button" className="phone-tar-ink-btn" onClick={() => openForm(null)}>
+                <Plus aria-hidden="true" /> Nova tarefa
+              </button>
+            </div>
+          ) : (
+            views
+          )}
+        </div>
+        {formDialog}
+        {detailTarefa && (
+          <TarefaDetailSheet
+            open={selected != null}
+            tarefa={detailTarefa}
+            membros={membros}
+            onClose={() => setSelectedId(null)}
+            // The form opens over the detail screen, which stays put underneath.
+            onEdit={() => openForm(detailTarefa)}
+            onRefresh={refresh}
+          />
+        )}
+      </TarefasPhoneContext.Provider>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {!inToolbar && (
+        <header className="header animate-up">
+          <div className="header-title">
+            <h1>Tarefas</h1>
+            <p>{subtitle}</p>
+          </div>
+          <div className="header-actions">{primaryAction}</div>
+        </header>
+      )}
+
+      <TarefasStatsHeader stats={stats} />
+
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.5rem',
+        }}
+      >
+        {inToolbar ? (
+          <div className="vidro-seg animate-up no-scrollbar">
+            {VIEW_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className="vidro-seg-btn"
+                aria-pressed={activeView === tab.id}
+                onClick={() => setActiveView(tab.id)}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.25rem',
+              background: 'var(--surface-2)',
+              padding: '0.25rem',
+              borderRadius: '8px',
+              overflowX: 'auto',
+              width: 'fit-content',
+              maxWidth: '100%',
+            }}
+            className="animate-up no-scrollbar"
+          >
+            {VIEW_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveView(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.4rem 0.9rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: activeView === tab.id ? '#000' : 'transparent',
+                  color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
+                  fontSize: '0.8rem',
+                  fontWeight: activeView === tab.id ? 600 : 400,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!inToolbar && escopoSwitch}
       </div>
 
       <TarefasFilters
@@ -161,7 +411,7 @@ export default function TarefasPage() {
         tags={tags}
       />
 
-      {tarefas.length === 0 ? (
+      {tarefas.length === 0 && activeView === 'lista' ? (
         <div
           className="card animate-up"
           style={{
@@ -180,51 +430,10 @@ export default function TarefasPage() {
           </Button>
         </div>
       ) : (
-        <>
-          {activeView === 'lista' && (
-            <ListView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-            />
-          )}
-          {activeView === 'membros' && (
-            <MembrosBoardView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-            />
-          )}
-          {activeView === 'kanban' && (
-            <StatusKanbanView
-              tarefas={filteredTarefas}
-              membros={membros}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-            />
-          )}
-          {activeView === 'calendario' && (
-            <CalendarView
-              tarefas={filteredTarefas}
-              onTarefaClick={(t) => setSelectedId(t.id!)}
-              onRefresh={refresh}
-            />
-          )}
-        </>
+        views
       )}
 
-      <TarefaFormDialog
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        editing={editing}
-        membros={membros}
-        clientes={clientes}
-        tags={tags}
-        onSaved={refresh}
-        onTagCreated={refresh}
-      />
+      {formDialog}
 
       {selected && (
         <TarefaDetailSheet

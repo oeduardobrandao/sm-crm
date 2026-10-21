@@ -84,6 +84,17 @@ Deno.test("classify: transiente da Meta", () => {
   );
 });
 
+// Caso real de produção (posts 5172/4277/3049/4106/5545, 2026-09-18): AbortSignal.timeout()
+// no nosso próprio fetch, não um erro vindo da Meta. Todos publicaram com sucesso no retry
+// do cron, então isso é instabilidade transiente, não UNKNOWN.
+Deno.test("classify: nosso AbortSignal.timeout (DOMException local) vira transiente", () => {
+  const timeoutErr = new DOMException("Signal timed out.", "TimeoutError");
+  assertEquals(classifyPublishError(timeoutErr), "IG_TRANSIENT");
+
+  const abortErr = new DOMException("The signal has been aborted", "AbortError");
+  assertEquals(classifyPublishError(abortErr), "IG_TRANSIENT");
+});
+
 Deno.test("classify: erros internos", () => {
   assertEquals(classifyPublishError(new Error("Tag length overflows ciphertext")), "INTERNAL");
   assertEquals(classifyPublishError(new Error("mark_platform_published failed for post 1: boom")), "INTERNAL");
@@ -96,10 +107,45 @@ Deno.test("classify: fallback UNKNOWN", () => {
   assertEquals(classifyPublishError("string solta"), "UNKNOWN");
 });
 
-Deno.test("NON_RETRYABLE_CODES: exatamente os 6 códigos que o cron não deve reprocessar", () => {
+// Casos reais de produção previamente classificados como UNKNOWN (retryable) apesar de
+// nunca poderem ter sucesso num retry automático: consumiam os 3 retries e 3 emails de
+// alerta por post antes de existir uma regra dedicada.
+Deno.test("classify: mídia com tipo não aceito pela Meta", () => {
+  assertEquals(
+    classifyPublishError(new Error("Only photo or video can be accepted as media type.")),
+    "MEDIA_UNSUPPORTED",
+  );
+});
+
+Deno.test("classify: legenda acima do limite da Meta", () => {
+  assertEquals(classifyPublishError(new Error("The caption was too long.")), "CAPTION_TOO_LONG");
+});
+
+Deno.test("classify: acesso da conta restrito", () => {
+  assertEquals(classifyPublishError(new Error("User access is restricted")), "ACCOUNT_RESTRICTED");
+});
+
+Deno.test("CAPTION_TOO_LONG and ACCOUNT_RESTRICTED are non-retryable and have copy", () => {
+  for (const code of ["CAPTION_TOO_LONG", "ACCOUNT_RESTRICTED"] as const) {
+    assert(NON_RETRYABLE_CODES.includes(code));
+    assert(PUBLISH_ERROR_COPY[code].titulo.length > 0);
+  }
+});
+
+Deno.test("NON_RETRYABLE_CODES: exatamente os 9 códigos que o cron não deve reprocessar", () => {
   assertEquals(
     [...NON_RETRYABLE_CODES].sort(),
-    ["CAROUSEL_LIMIT", "MEDIA_TOO_LARGE", "MEDIA_UNSUPPORTED", "NO_MEDIA", "TOKEN_EXPIRED", "TRIAL_INELIGIBLE"],
+    [
+      "ACCOUNT_RESTRICTED",
+      "CAPTION_TOO_LONG",
+      "CAROUSEL_LIMIT",
+      "COLLABORATOR_INVALID",
+      "MEDIA_TOO_LARGE",
+      "MEDIA_UNSUPPORTED",
+      "NO_MEDIA",
+      "TOKEN_EXPIRED",
+      "TRIAL_INELIGIBLE",
+    ],
   );
 });
 

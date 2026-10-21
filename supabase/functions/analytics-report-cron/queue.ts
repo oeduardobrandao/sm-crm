@@ -4,6 +4,14 @@
 // invocação; quem drena o resto da fila é o job pg_cron 'report-worker-tick'
 // (a cada 5 min), não este kick. O worker re-checa o entitlement ao processar
 // (cobre downgrade entre o enfileiramento e o claim).
+//
+// instagram_accounts é lido via fetchAllRows (.range()) porque o PostgREST
+// trunca silenciosamente em 1000 linhas -- sem paginação, contas além da
+// milésima nunca entrariam na fila. O loop por conta segue sequencial (upserts
+// mensais idempotentes; O(contas) por execução -- aceitável por ora, anotado
+// no audit como item de Q3).
+
+import { fetchAllRows } from "../_shared/paginate.ts";
 
 type SupabaseLike = {
   // deno-lint-ignore no-explicit-any
@@ -40,13 +48,17 @@ export async function queueMonthlyReports(
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const month = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
 
-  const { data: accounts, error } = await supabase
-    .from("instagram_accounts")
-    .select("id, client_id")
-    .not("encrypted_access_token", "is", null);
+  const accounts = await fetchAllRows<{ id: string; client_id: number }>(
+    (from, to) =>
+      supabase
+        .from("instagram_accounts")
+        .select("id, client_id")
+        .not("encrypted_access_token", "is", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+  );
 
-  if (error) throw error;
-  if (!accounts || accounts.length === 0) {
+  if (accounts.length === 0) {
     return { kind: "empty" };
   }
 

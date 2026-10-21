@@ -1,0 +1,60 @@
+{
+  "page": {
+    "description": "As informações que orientam a estratégia do seu projeto.",
+    "noBriefings": "Nenhum briefing disponível ainda.",
+    "noQuestions": "Nenhuma pergunta neste briefing ainda.",
+    "generalSection": "Geral"
+  },
+  "tabs": {
+    "briefingsLabel": "Briefings",
+    "sectionsLabel": "Seções do briefing",
+    "scrollPrev": "Ver seções anteriores",
+    "scrollNext": "Ver mais seções"
+  },
+  "question": {
+    "placeholder": "Digite sua resposta ou grave um áudio…",
+    "audioResponseLabel": "Resposta em áudio",
+    "saving": "Salvando…",
+    "saved": "✓ Salvo",
+    "saveError": "Não foi possível salvar. Tente de novo.",
+    "saveTextError": "Não foi possível salvar o texto. Tente de novo.",
+    "transcriptionDone": "Transcrição adicionada à resposta.",
+    "transcriptionPending": "Transcrição pendente.",
+    "transcriptionFailed": "Não foi possível transcrever este áudio.",
+    "retry": "Tentar novamente",
+    "retrying": "Transcrevendo…",
+    "remove": "Remover áudio",
+    "removing": "Removendo…"
+  },
+  "errors": {
+    "uploadFailed": "Não foi possível enviar o áudio.",
+    "transcribeFailed": "Não foi possível transcrever.",
+    "removeFailed": "Não foi possível remover o áudio.",
+    "unsupportedFormat": "Formato de áudio não suportado: {{mime}}",
+    "unknownFormat": "desconhecido",
+    "emptyRecording": "Gravação vazia. Tente de novo.",
+    "audioTooLarge": "Áudio maior que 15 MB. Grave um trecho mais curto.",
+    "quotaExceeded": "O espaço de armazenamento do plano acabou. Fale com a agência para liberar espaço.",
+    "genericUploadFailure": "O envio do áudio falhou. Tente de novo.",
+    "genericUnavailable": "Não foi possível concluir agora. Tente de novo em instantes.",
+    "questionNotFound": "Esta pergunta não está mais disponível. Recarregue a página.",
+    "audioNotFound": "O áudio não foi encontrado. Grave de novo.",
+    "unsupportedFileType": "Formato de áudio não suportado neste navegador."
+  },
+  "recorder": {
+    "record": "Gravar áudio",
+    "uploading": "Enviando áudio…",
+    "transcribing": "Transcrevendo…",
+    "maxDuration": "Até {{duration}} por resposta.",
+    "stop": "Parar",
+    "stopAria": "Parar gravação",
+    "remainingWarning": "Restam {{remaining}}. A gravação para sozinha no limite.",
+    "progressAria": "Tempo de gravação",
+    "previewLabel": "Prévia",
+    "sending": "Enviando…",
+    "send": "Enviar",
+    "discard": "Descartar",
+    "micPermissionDenied": "Permita o acesso ao microfone no navegador para gravar.",
+    "micUnavailable": "Não foi possível acessar o microfone."
+  }
+}

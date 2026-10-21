@@ -18,6 +18,8 @@ export const FEATURE_COLUMNS = [
   "feature_custom_properties", "feature_post_scheduling", "feature_auto_sync_cron",
   "feature_post_tagging", "feature_brand_customization", "feature_mcp",
   "feature_tiktok", "feature_mensagens", "feature_instagram_automation",
+  "feature_briefing_audio", "feature_post_processes", "feature_agenda",
+  "feature_multiplatform", "feature_hub_pauta", "feature_crm_vidro",
   "feature_team_chat",
 ] as const;
 

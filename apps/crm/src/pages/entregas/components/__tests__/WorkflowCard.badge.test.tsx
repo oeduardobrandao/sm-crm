@@ -268,3 +268,14 @@ describe('WorkflowCard tour anchors', () => {
     expect(container.querySelector('[data-tour="wf-posts"]')).toBeInTheDocument();
   });
 });
+
+describe('WorkflowCard kebab', () => {
+  it('always offers "Copiar link do fluxo", independent of the edit/delete callbacks', () => {
+    render(
+      <MemoryRouter>
+        <WorkflowCard card={makeCard(1)} postsCount={5} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Copiar link do fluxo')).toBeInTheDocument();
+  });
+});

@@ -112,6 +112,95 @@ describe('comment thread store', () => {
     expect(result.post_comments[0].content).toBe('Needs rework');
   });
 
+  it('createCommentThread inserts caption anchor columns when an anchor is given', async () => {
+    const thread = {
+      id: 6,
+      post_id: 10,
+      conta_id: 'conta-1',
+      quoted_text: 'brave',
+      status: 'active',
+      created_by: 'user-1',
+      resolved_by: null,
+      created_at: '2026-04-23T00:00:00Z',
+      resolved_at: null,
+      field: 'ig_caption',
+      anchor_start: 6,
+      anchor_end: 11,
+      orphaned: false,
+    };
+    mockedSupabase.__queueSupabaseResult('post_comment_threads', 'insert', {
+      data: thread,
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
+      data: {
+        id: 9,
+        thread_id: 6,
+        author_id: 'user-1',
+        content: 'x',
+        created_at: '',
+        updated_at: null,
+      },
+      error: null,
+    });
+    await store.createCommentThread(10, 'brave', 'x', { field: 'ig_caption', start: 6, end: 11 });
+    expect(getCalls('post_comment_threads', 'insert').at(-1)!.payload).toEqual({
+      post_id: 10,
+      conta_id: 'conta-1',
+      quoted_text: 'brave',
+      created_by: 'user-1',
+      field: 'ig_caption',
+      anchor_start: 6,
+      anchor_end: 11,
+    });
+  });
+
+  it('createCommentThread without an anchor keeps the legacy payload', async () => {
+    mockedSupabase.__queueSupabaseResult('post_comment_threads', 'insert', {
+      data: { id: 7, post_id: 10, quoted_text: 'q' },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
+      data: {
+        id: 10,
+        thread_id: 7,
+        author_id: 'user-1',
+        content: 'x',
+        created_at: '',
+        updated_at: null,
+      },
+      error: null,
+    });
+    await store.createCommentThread(10, 'q', 'x');
+    expect(getCalls('post_comment_threads', 'insert').at(-1)!.payload).toEqual({
+      post_id: 10,
+      conta_id: 'conta-1',
+      quoted_text: 'q',
+      created_by: 'user-1',
+    });
+  });
+
+  it('saveIgCaption calls the save_ig_caption RPC with the caption and anchors', async () => {
+    mockedSupabase.__queueSupabaseRpc('save_ig_caption', { data: null, error: null });
+    const anchors = [
+      { id: 6, anchor_start: 9, anchor_end: 14, orphaned: false, quoted_text: 'brave' },
+    ];
+    await store.saveIgCaption(10, 'oh hello brave', anchors);
+    expect(getCalls('rpc:save_ig_caption', 'rpc').at(-1)!.payload).toEqual({
+      p_post_id: 10,
+      p_caption: 'oh hello brave',
+      p_anchors: anchors,
+    });
+  });
+
+  it('saveIgCaption throws when the RPC errors', async () => {
+    mockedSupabase.__queueSupabaseRpc('save_ig_caption', {
+      data: null,
+      error: { message: 'boom' },
+    });
+    await expect(store.saveIgCaption(10, 'x', [])).rejects.toBeTruthy();
+  });
+
   it('addPostComment inserts with author_id from profile', async () => {
     const comment = {
       id: 2,

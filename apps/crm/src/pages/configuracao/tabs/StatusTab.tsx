@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, Archive, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { CUSTOM_STATUS_ICONS, getCustomStatusIcon } from '@/pages/entregas/statusIcons';
 import { useAuth } from '../../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../../lib/entitlement-toast';
@@ -32,30 +33,25 @@ import {
   type PostStatusDefinition,
   type PostStatusAutomation,
   type CustomStatusBehavesAs,
-  type WorkflowPost,
 } from '../../../store';
-import { STATUS_LABELS, POST_STATUS_ORDER } from '../../entregas/postLabels';
-
-const BEHAVES_AS_OPTIONS: CustomStatusBehavesAs[] = [
-  'rascunho',
-  'revisao_interna',
-  'aprovado_interno',
-  'enviado_cliente',
-  'aprovado_cliente',
-  'correcao_cliente',
-];
-
-const PRESET_COLORS = [
-  '#94a3b8',
-  '#7c5cff',
-  '#0ea5b7',
-  '#3b82f6',
-  '#22c55e',
-  '#eab308',
-  '#f97316',
-  '#ef4444',
-  '#ec4899',
-];
+import { STATUS_LABELS } from '../../entregas/postLabels';
+import {
+  ACTION_OPTIONS,
+  automationActionLabel,
+  automationNeedsMembro,
+  automationTriggerLabel,
+  BEHAVES_AS_OPTIONS,
+  buildAutomationPayload,
+  NOTIFY_TARGET_OPTIONS,
+  PRESET_COLORS,
+  triggerOptions,
+  type AutomationAction,
+  type AutomationCreatePayload,
+  type NotifyTarget,
+  type StatusCreatePayload,
+  type TriggerValue,
+} from './phone/statusModel';
+import { StatusPhone } from './phone/StatusPhone';
 
 /** Query key shared with useStatusRegistry so every surface refreshes together. */
 const DEFS_KEY = ['post-status-definitions'];
@@ -63,6 +59,7 @@ const DEFS_KEY = ['post-status-definitions'];
 export default function StatusTab() {
   const { profile } = useAuth();
   const qc = useQueryClient();
+  const isPhone = !useIsDesktop(768);
   const [pendingArchive, setPendingArchive] = useState<PostStatusDefinition | null>(null);
 
   const { data: defs = [], isLoading } = useQuery({
@@ -83,12 +80,7 @@ export default function StatusTab() {
     // Ordem after the current MAX, not defs.length: archived rows keep their
     // ordem, so a count-based value could collide with a live row and land
     // the new status mid-list.
-    mutationFn: (payload: {
-      nome: string;
-      cor: string;
-      icone: string | null;
-      behaves_as: CustomStatusBehavesAs;
-    }) =>
+    mutationFn: (payload: StatusCreatePayload) =>
       createPostStatusDefinition({
         ...payload,
         ordem: defs.reduce((max, d) => Math.max(max, d.ordem), -1) + 1,
@@ -141,6 +133,40 @@ export default function StatusTab() {
     }
   };
 
+  const automations = useStatusAutomations(defs, onMutationError);
+
+  if (isPhone) {
+    return (
+      <StatusPhone
+        defs={defs}
+        isLoading={isLoading}
+        reordering={reordering}
+        onMove={move}
+        onChangeBehavesAs={(def, behaves_as) => updateMutation.mutate({ id: def.id, behaves_as })}
+        onCreateStatus={(payload, onCreated) =>
+          createMutation.mutate(payload, { onSuccess: onCreated })
+        }
+        creatingStatus={createMutation.isPending}
+        pendingArchive={pendingArchive}
+        onRequestArchive={setPendingArchive}
+        onCancelArchive={() => setPendingArchive(null)}
+        onConfirmArchive={(def) => {
+          archiveMutation.mutate(def.id);
+          setPendingArchive(null);
+        }}
+        automations={automations.automations}
+        automationsLoading={automations.isLoading}
+        membros={automations.membros}
+        onToggleAutomation={(a, ativo) => automations.toggleMutation.mutate({ id: a.id, ativo })}
+        onRemoveAutomation={(a) => automations.deleteMutation.mutate(a.id)}
+        onCreateAutomation={(payload, onCreated) =>
+          automations.createMutation.mutate(payload, { onSuccess: onCreated })
+        }
+        creatingAutomation={automations.createMutation.isPending}
+      />
+    );
+  }
+
   return (
     <div>
       <section className="card animate-up" style={{ marginBottom: '1.5rem' }}>
@@ -152,7 +178,7 @@ export default function StatusTab() {
         </p>
 
         {isLoading ? (
-          <Spinner size="sm" />
+          <ListSkeleton rows={3} />
         ) : defs.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
             Nenhum status personalizado ainda.
@@ -264,7 +290,7 @@ export default function StatusTab() {
         </div>
       </section>
 
-      <AutomationsSection defs={defs} onMutationError={onMutationError} />
+      <AutomationsSection defs={defs} {...automations} />
 
       <AlertDialog
         open={!!pendingArchive}
@@ -300,12 +326,7 @@ function CreateStatusForm({
   onCreate,
   creating,
 }: {
-  onCreate: (payload: {
-    nome: string;
-    cor: string;
-    icone: string | null;
-    behaves_as: CustomStatusBehavesAs;
-  }) => void;
+  onCreate: (payload: StatusCreatePayload) => void;
   creating: boolean;
 }) {
   const [nome, setNome] = useState('');
@@ -439,30 +460,12 @@ function CreateStatusForm({
 
 const AUTOMATIONS_KEY = ['post-status-automations'];
 
-/** 'canonical:<status>' | 'custom:<uuid>' — local select encoding. */
-type TriggerValue = string;
-
-const triggerValueOf = (a: PostStatusAutomation): TriggerValue =>
-  a.trigger_custom_status_id
-    ? `custom:${a.trigger_custom_status_id}`
-    : `canonical:${a.trigger_status}`;
-
-function triggerPatch(value: TriggerValue) {
-  return value.startsWith('custom:')
-    ? { trigger_status: null, trigger_custom_status_id: value.slice('custom:'.length) }
-    : {
-        trigger_status: value.slice('canonical:'.length) as WorkflowPost['status'],
-        trigger_custom_status_id: null,
-      };
-}
-
-function AutomationsSection({
-  defs,
-  onMutationError,
-}: {
-  defs: PostStatusDefinition[];
-  onMutationError: (err: unknown, fallback: string) => void;
-}) {
+/** Queries + mutations of "Automações por status", shared by the desktop section and
+ * the phone screen. */
+function useStatusAutomations(
+  defs: PostStatusDefinition[],
+  onMutationError: (err: unknown, fallback: string) => void,
+) {
   const qc = useQueryClient();
 
   const { data: automations = [], isLoading } = useQuery({
@@ -493,29 +496,32 @@ function AutomationsSection({
     onError: (err) => onMutationError(err, 'Erro ao remover automação'),
   });
 
-  const triggerLabel = (a: PostStatusAutomation): string => {
-    if (a.trigger_custom_status_id) {
-      const def = defs.find((d) => d.id === a.trigger_custom_status_id);
-      return def ? `· ${def.nome}` : 'Status removido';
-    }
-    return a.trigger_status ? STATUS_LABELS[a.trigger_status] : '';
-  };
+  const triggerLabel = (a: PostStatusAutomation): string => automationTriggerLabel(a, defs);
+  const actionLabel = (a: PostStatusAutomation): string => automationActionLabel(a, membros);
 
-  const actionLabel = (a: PostStatusAutomation): string => {
-    if (a.action_type === 'assign_responsavel') {
-      const membroId = 'membro_id' in a.config ? a.config.membro_id : null;
-      const membro = membros.find((m) => m.id === membroId);
-      return `Atribuir a ${membro?.nome ?? 'membro removido'}`;
-    }
-    const cfg = a.config as { target?: string; membro_id?: number };
-    if (cfg.target === 'member') {
-      const membro = membros.find((m) => m.id === cfg.membro_id);
-      return `Notificar ${membro?.nome ?? 'membro removido'}`;
-    }
-    if (cfg.target === 'roles') return 'Notificar owners e admins';
-    return 'Notificar o responsável do post';
+  return {
+    automations,
+    isLoading,
+    membros,
+    createMutation,
+    toggleMutation,
+    deleteMutation,
+    triggerLabel,
+    actionLabel,
   };
+}
 
+function AutomationsSection({
+  defs,
+  automations,
+  isLoading,
+  membros,
+  createMutation,
+  toggleMutation,
+  deleteMutation,
+  triggerLabel,
+  actionLabel,
+}: { defs: PostStatusDefinition[] } & ReturnType<typeof useStatusAutomations>) {
   return (
     <section className="card animate-up" style={{ marginBottom: '1.5rem' }}>
       <h3 className="config-title">Automações por status</h3>
@@ -526,7 +532,7 @@ function AutomationsSection({
       </p>
 
       {isLoading ? (
-        <Spinner size="sm" />
+        <ListSkeleton rows={3} />
       ) : automations.length === 0 ? (
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhuma automação ainda.</p>
       ) : (
@@ -590,32 +596,23 @@ function CreateAutomationForm({
 }: {
   defs: PostStatusDefinition[];
   membros: { id?: number; nome: string }[];
-  onCreate: (payload: Parameters<typeof createPostStatusAutomation>[0]) => void;
+  onCreate: (payload: AutomationCreatePayload) => void;
   creating: boolean;
 }) {
   const [trigger, setTrigger] = useState<TriggerValue>('canonical:correcao_cliente');
-  const [action, setAction] = useState<'notify' | 'assign_responsavel'>('notify');
-  const [notifyTarget, setNotifyTarget] = useState<'responsavel' | 'roles' | 'member'>(
-    'responsavel',
-  );
+  const [action, setAction] = useState<AutomationAction>('notify');
+  const [notifyTarget, setNotifyTarget] = useState<NotifyTarget>('responsavel');
   const [membroId, setMembroId] = useState<number | ''>('');
 
-  const needsMembro = action === 'assign_responsavel' || notifyTarget === 'member';
+  const needsMembro = automationNeedsMembro(action, notifyTarget);
 
   const submit = () => {
-    if (needsMembro && membroId === '') {
-      toast.error('Escolha um membro');
+    const result = buildAutomationPayload({ trigger, action, notifyTarget, membroId });
+    if ('error' in result) {
+      toast.error(result.error);
       return;
     }
-    const config =
-      action === 'assign_responsavel'
-        ? { membro_id: membroId as number }
-        : notifyTarget === 'member'
-          ? { target: 'member' as const, membro_id: membroId as number }
-          : notifyTarget === 'roles'
-            ? { target: 'roles' as const, roles: ['owner', 'admin'] }
-            : { target: 'responsavel' as const };
-    onCreate({ ...triggerPatch(trigger), action_type: action, config });
+    onCreate(result.payload);
   };
 
   return (
@@ -639,18 +636,11 @@ function CreateAutomationForm({
           value={trigger}
           onChange={(e) => setTrigger(e.target.value)}
         >
-          {POST_STATUS_ORDER.flatMap((status) => [
-            <option key={status} value={`canonical:${status}`}>
-              {STATUS_LABELS[status]}
-            </option>,
-            ...defs
-              .filter((d) => d.behaves_as === status)
-              .map((d) => (
-                <option key={d.id} value={`custom:${d.id}`}>
-                  {`· ${d.nome}`}
-                </option>
-              )),
-          ])}
+          {triggerOptions(defs).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
       </label>
       <select
@@ -659,8 +649,11 @@ function CreateAutomationForm({
         value={action}
         onChange={(e) => setAction(e.target.value as typeof action)}
       >
-        <option value="notify">Notificar</option>
-        <option value="assign_responsavel">Atribuir responsável</option>
+        {ACTION_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
       </select>
       {action === 'notify' && (
         <select
@@ -669,9 +662,11 @@ function CreateAutomationForm({
           value={notifyTarget}
           onChange={(e) => setNotifyTarget(e.target.value as typeof notifyTarget)}
         >
-          <option value="responsavel">Responsável do post</option>
-          <option value="roles">Owners e admins</option>
-          <option value="member">Membro específico</option>
+          {NOTIFY_TARGET_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
       )}
       {needsMembro && (

@@ -1,4 +1,5 @@
 import { usePageMeta } from '@/lib/usePageMeta';
+import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 import changelogData from '@/content/changelog.json';
 import { parseReleases, type ChangelogRelease } from '@/content/changelog.schema';
 import { sanitizeUrl } from '@/utils/security';
@@ -170,6 +171,10 @@ export default function NovidadesPage({ releases }: { releases?: ChangelogReleas
         <a href="/" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>
           Voltar para o início
         </a>
+      </p>
+
+      <p style={{ textAlign: 'center', marginTop: '1rem' }}>
+        <CookiePreferencesLink />
       </p>
     </div>
   );

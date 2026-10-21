@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     db,
     ctx,
     randomUUID: () => crypto.randomUUID(),
-    signPutUrl: (key: string, mime: string) => signPutUrl(key, mime),
+    signPutUrl: (key: string, mime: string, size: number) => signPutUrl(key, mime, size),
     headObject: (key: string) => headObject(key),
     storageQuota: (contaId: string) => effectivePlanLimit(db as never, contaId, "storage_quota_bytes"),
   });

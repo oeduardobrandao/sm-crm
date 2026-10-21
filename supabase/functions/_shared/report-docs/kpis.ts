@@ -13,7 +13,7 @@ import type { AccountTotals } from "../instagram-account-metrics.ts";
 
 export const KPI_IDS = [
   "followers_gained", "followers_total", "reach", "views", "engagement_rate",
-  "saves", "posts_count", "profile_views", "website_clicks",
+  "saves", "posts_count", "profile_views", "website_clicks", "follows",
 ] as const;
 export type ReportKpiId = (typeof KPI_IDS)[number];
 
@@ -32,6 +32,10 @@ export const KPI_LABELS_PT: Record<ReportKpiId, string> = {
   posts_count: "Publicações",
   profile_views: "Visitas ao perfil",
   website_clicks: "Cliques no link",
+  // Entradas brutas (sem descontar quem deixou de seguir). O app do Instagram
+  // mostra as entradas separadas do saldo, e é esse número que o cliente
+  // costuma comparar; followers_gained segue sendo o saldo líquido.
+  follows: "Seguidores conquistados",
 };
 
 export interface KpiEntry {
@@ -133,6 +137,12 @@ export function computeKpis(s: KpiSources): Record<ReportKpiId, KpiEntry> {
     }
   }
 
+  // follows: só as entradas de follows_and_unfollows. Grandeza sem sinal, então
+  // o prev vale sempre que os dois meses têm dado (deltaPct já ignora prev 0).
+  const followsMonth = netMonth?.follows ?? null;
+  const followsPrevRaw = s.accountPrevMonth?.follows_and_unfollows?.follows;
+  const followsPrev = followsMonth !== null && typeof followsPrevRaw === "number" ? followsPrevRaw : null;
+
   const postsPrev = s.prevMonthPostsCount;
 
   return {
@@ -145,5 +155,6 @@ export function computeKpis(s: KpiSources): Record<ReportKpiId, KpiEntry> {
     posts_count: { value: s.allPosts.length, unit: "count", prev: postsPrev },
     profile_views: { value: profileViews.value, unit: "count", prev: profileViews.prev },
     website_clicks: { value: websiteClicks.value, unit: "count", prev: websiteClicks.prev },
+    follows: { value: followsMonth, unit: "count", prev: followsPrev },
   };
 }

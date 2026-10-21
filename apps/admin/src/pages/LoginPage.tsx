@@ -3,9 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { verifyAdmin } from '../lib/api';
 import { describeSignInError } from './login-error';
+import { Button } from '../components/ui/button';
+import { useIsPhone } from '../hooks/useIsPhone';
+import { cn } from '../lib/utils';
+import './login.css';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const isPhone = useIsPhone();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -48,55 +53,121 @@ export default function LoginPage() {
     }
   };
 
+  const fieldRow = cn(
+    'flex items-center gap-3 px-4 transition-colors focus-within:bg-foreground/[0.06] focus-within:ring-2 focus-within:ring-inset focus-within:ring-foreground/70',
+    isPhone ? 'min-h-[52px] text-[17px]' : 'min-h-[48px] px-3.5 text-[15px]',
+  );
+  const fieldLabel = cn('shrink-0', isPhone ? 'w-16' : 'w-[60px]');
+  const fieldInput =
+    'min-w-0 flex-1 border-0 bg-transparent p-0 text-[length:inherit] text-foreground outline-none placeholder:text-muted-foreground';
+
+  const header = (
+    <div className={cn('flex flex-col items-center', isPhone ? 'gap-2.5' : 'mb-6 gap-2')}>
+      <img
+        src="/logo-black.svg"
+        alt="Mesaas"
+        className="admin-login-logo-black h-7 w-auto dark:hidden"
+      />
+      <img
+        src="/logo-white.svg"
+        alt=""
+        aria-hidden="true"
+        className="admin-login-logo-white hidden h-7 w-auto dark:block"
+      />
+      <h1
+        className={cn('m-0 font-bold text-foreground', isPhone ? 'text-[28px]' : 'text-[26px]')}
+        style={{ fontFamily: 'var(--font-heading)' }}
+      >
+        Mesaas Admin
+      </h1>
+      <p
+        className={cn('m-0 text-center text-muted-foreground', isPhone ? 'text-[15px]' : 'text-sm')}
+      >
+        Acesso restrito à equipe da plataforma
+      </p>
+    </div>
+  );
+
+  const form = (
+    <form onSubmit={handleSubmit} className={cn('flex flex-col', isPhone ? 'gap-3.5' : 'gap-3')}>
+      <div
+        className={cn(
+          'overflow-hidden bg-card',
+          isPhone ? 'rounded-2xl bg-card/90 backdrop-blur-xl' : 'rounded-[14px]',
+        )}
+      >
+        <label htmlFor="admin-login-email" className={cn(fieldRow, 'border-b border-border/70')}>
+          <span className={fieldLabel}>E-mail</span>
+          <input
+            id="admin-login-email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className={fieldInput}
+          />
+        </label>
+        <label htmlFor="admin-login-password" className={fieldRow}>
+          <span className={fieldLabel}>Senha</span>
+          <input
+            id="admin-login-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className={fieldInput}
+          />
+        </label>
+      </div>
+
+      {error && (
+        <p
+          role="alert"
+          className={cn(
+            'admin-login-error m-0',
+            isPhone ? 'admin-login-error--pill mx-1 text-[13px]' : 'text-center text-sm',
+          )}
+        >
+          {error}
+        </p>
+      )}
+
+      <Button
+        type="submit"
+        variant="ink"
+        disabled={loading}
+        className={cn(
+          'w-full',
+          isPhone ? 'h-[52px] rounded-[14px] text-[17px]' : 'h-[46px] rounded-xl text-[15px]',
+        )}
+      >
+        {loading ? 'Entrando…' : 'Entrar'}
+      </Button>
+    </form>
+  );
+
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ background: 'linear-gradient(135deg, #eaf0dc 0%, #eab308 100%)' }}
+      className={cn(
+        'admin-login-light flex min-h-[100dvh] items-center justify-center',
+        isPhone
+          ? 'px-4 pb-[max(34px,env(safe-area-inset-bottom))] pt-[max(54px,env(safe-area-inset-top))]'
+          : 'p-6',
+      )}
     >
-      <div className="w-full max-w-[400px] bg-white rounded-3xl p-10 shadow-xl">
-        <div className="flex flex-col items-center mb-8">
-          <img src="/logo-black.svg" alt="Mesaas" className="h-5 w-auto" />
-          <p className="text-sm text-[#4b5563] mt-2 uppercase tracking-widest font-medium">admin</p>
+      {isPhone ? (
+        <div className="flex w-full flex-col gap-7">
+          {header}
+          {form}
         </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-xs font-medium text-[#374151] uppercase tracking-wider mb-1.5">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full px-3 py-2.5 rounded-lg border border-[#e5e7eb] text-sm font-sf text-[#12151a] focus:outline-none focus:border-[#eab308] transition-colors"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-[#374151] uppercase tracking-wider mb-1.5">
-              Senha
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-3 py-2.5 rounded-lg border border-[#e5e7eb] text-sm font-sf text-[#12151a] focus:outline-none focus:border-[#eab308] transition-colors"
-            />
-          </div>
-
-          {error && <p className="text-sm text-red-600 text-center">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 rounded-lg bg-[#eab308] text-[#12151a] font-semibold text-sm hover:bg-[#ca8a04] transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
+      ) : (
+        <div className="admin-login-card w-full max-w-[400px] rounded-[28px] border border-white/60 bg-card/75 px-8 pb-8 pt-9 text-card-foreground backdrop-blur-2xl">
+          {header}
+          {form}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
-import { applyTemplateLayout, stripAiTextForTemplate } from '../templateOps';
+import {
+  applyTemplateLayout,
+  layoutHasFilledImage,
+  sanitizeLayoutForTemplate,
+} from '../templateOps';
 
 const doc = (label: string) => ({
   type: 'doc',
   content: [{ type: 'paragraph', content: [{ type: 'text', text: label }] }],
 });
 
-describe('stripAiTextForTemplate', () => {
+describe('sanitizeLayoutForTemplate', () => {
   it('remove text dos blocos ai_ e preserva blocos text, config e accent', () => {
     const layout: ReportLayout = {
       version: 1,
@@ -18,7 +22,7 @@ describe('stripAiTextForTemplate', () => {
         { id: 'p1', type: 'top_posts', size: 'full', config: { count: 6 } },
       ],
     };
-    const out = stripAiTextForTemplate(layout);
+    const out = sanitizeLayoutForTemplate(layout);
     expect(out.accent).toBe('#9f1239');
     expect(out.blocks[0].text).toEqual(doc('autor'));
     expect(out.blocks[1].text).toBeUndefined();
@@ -28,7 +32,7 @@ describe('stripAiTextForTemplate', () => {
     expect(layout.blocks[1].text).toEqual(doc('ia'));
   });
 
-  it('stripAiTextForTemplate preserva theme, fonts e accent (aparencia e parte do template)', () => {
+  it('sanitizeLayoutForTemplate preserva theme, fonts e accent (aparencia e parte do template)', () => {
     const layout: ReportLayout = {
       version: 1,
       accent: '#7c3aed',
@@ -36,7 +40,7 @@ describe('stripAiTextForTemplate', () => {
       fonts: 'fraunces',
       blocks: [{ id: 'a', type: 'ai_summary', size: 'full', text: { type: 'doc', content: [] } }],
     };
-    const stripped = stripAiTextForTemplate(layout);
+    const stripped = sanitizeLayoutForTemplate(layout);
     expect(stripped.theme).toBe('editorial');
     expect(stripped.fonts).toBe('fraunces');
     expect(stripped.accent).toBe('#7c3aed');
@@ -100,5 +104,21 @@ describe('applyTemplateLayout', () => {
     const out = applyTemplateLayout(template, current);
     expect(out.theme).toBe('editorial');
     expect(out.fonts).toBe('fraunces');
+  });
+});
+
+describe('layoutHasFilledImage', () => {
+  it('só conta imagem com file_id', () => {
+    expect(
+      layoutHasFilledImage({ version: 1, blocks: [{ id: 'i', type: 'image', size: 'full' }] }),
+    ).toBe(false);
+    expect(
+      layoutHasFilledImage({
+        version: 1,
+        blocks: [
+          { id: 'i', type: 'image', size: 'full', config: { file_id: 1, width: 1, height: 1 } },
+        ],
+      }),
+    ).toBe(true);
   });
 });

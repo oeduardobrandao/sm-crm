@@ -134,6 +134,31 @@ describe('supabase helpers', () => {
     ).toHaveLength(2);
   });
 
+  it('falls back to the stale cached profile when a forced refresh fails transiently', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { module, queryMock } = await loadSupabaseModule({ id: 'user-1' });
+
+    queryMock.queue(
+      'profiles',
+      'select',
+      {
+        data: { id: 'user-1', nome: 'Ana Silva', conta_id: 'conta-1' },
+        error: null,
+      },
+      {
+        data: null,
+        error: { message: 'network blip' },
+      },
+    );
+
+    await expect(module.getCurrentProfile()).resolves.toMatchObject({ conta_id: 'conta-1' });
+    // A forced refetch that fails transiently must not discard an already-
+    // cached profile: getContaId() (used on every write) would otherwise
+    // throw "not authenticated" instead of using the still-valid cache.
+    await expect(module.getCurrentProfile(true)).resolves.toMatchObject({ conta_id: 'conta-1' });
+    expect(warnSpy).toHaveBeenCalledWith('getCurrentProfile error:', { message: 'network blip' });
+  });
+
   it('returns null when the current profile cannot be loaded', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { module, queryMock } = await loadSupabaseModule({ id: 'user-1' });
@@ -272,6 +297,27 @@ describe('supabase helpers', () => {
     await module.signOut();
 
     expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('drops the vidro look cache on sign-out', async () => {
+    const { module } = await loadSupabaseModule({ id: 'user-1' });
+    localStorage.setItem('look-vidro', 'u1');
+
+    await module.signOut();
+
+    expect(localStorage.getItem('look-vidro')).toBeNull();
+  });
+
+  // Sign-out is an SPA redirect, not a reload: the attribute would outlive the session and the next
+  // user in this tab would seed useVidro from it (and keep the shell if their first
+  // workspace-limits call fails).
+  it('drops the vidro attribute on sign-out', async () => {
+    const { module } = await loadSupabaseModule({ id: 'user-1' });
+    document.documentElement.setAttribute('data-look', 'vidro');
+
+    await module.signOut();
+
+    expect(document.documentElement.hasAttribute('data-look')).toBe(false);
   });
 });
 

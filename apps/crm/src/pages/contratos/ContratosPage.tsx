@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search } from 'lucide-react';
+import { holdUnsavedWork, useUnsavedWork } from '@mesaas/app-lifecycle';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search, UserRound } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { TableSkeleton } from '@/components/ui/skeletons';
 import {
   Select,
   SelectContent,
@@ -65,6 +67,7 @@ import {
   updateContrato,
   removeContrato,
   getClientes,
+  sortClientesByNome,
   formatDate,
   type Contrato,
 } from '../../store';
@@ -72,6 +75,13 @@ import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { captureEvent } from '@/lib/analytics';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { GroupedList, Cell } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { ContratosPhone } from './phone/ContratosPhone';
 
 const contratoSchema = z.object({
   titulo: z.string().min(1, 'Título obrigatório'),
@@ -104,15 +114,27 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function ContratosPage() {
-  const { canSeeFinancials, profile } = useAuth();
+  // Keyed on CONTRATOS, not FINANCEIRO: this page's RLS policies and its nav
+  // entry both key on contratos, and AppLayout's route guard now does too
+  // (CONTRACT_PATHS). Masking on the financial capability made a custom role
+  // of {contratos: editar, financeiro: none} see masked values on a page it
+  // is fully authorized for. Legacy roles are unaffected -- derivePermission
+  // couples the two capabilities for every one of them.
+  const { can, profile } = useAuth();
+  const canSeeContracts = can('contratos', 'ver');
   const qc = useQueryClient();
   const navigate = useNavigate();
+  // Below 768px the page is the phone list (PLAN F2d). The form body follows the dialog
+  // primitive, which becomes a sheet only inside the phone shell (PhoneLayoutContext).
+  const isPhone = !useIsDesktop(768);
+  const { isPhone: phoneForm } = usePhoneLayout();
   const [filter, setFilter] = useState<FilterStatus>('todos');
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Contrato | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  useUnsavedWork(saving);
 
   const form = useForm<ContratoFormValues>({
     resolver: zodResolver(contratoSchema),
@@ -129,6 +151,10 @@ export default function ContratosPage() {
   const { data: contratos = [], isLoading } = useQuery({
     queryKey: ['contratos'],
     queryFn: getContratos,
+    // Same belt-and-braces the financial pages use: the layout guard already
+    // keeps an unauthorized member off this route, so this only ever matters
+    // if that guard regresses -- and then the rows never reach the cache.
+    enabled: canSeeContracts === true,
   });
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
@@ -219,28 +245,35 @@ export default function ContratosPage() {
     openCSVSelector(
       async (rows) => {
         let count = 0;
-        for (const row of rows) {
-          if (!row.titulo || !row.data_inicio || !row.data_fim || !row.valor_total) continue;
-          try {
-            const clienteMatch = row.cliente_nome
-              ? clientes.find((c) => c.nome.toLowerCase() === row.cliente_nome.toLowerCase())
-              : null;
-            const status = (
-              ['vigente', 'a_assinar', 'encerrado'].includes(row.status) ? row.status : 'a_assinar'
-            ) as Contrato['status'];
-            await addContrato({
-              titulo: row.titulo,
-              cliente_id: clienteMatch?.id ?? null,
-              cliente_nome: row.cliente_nome || '',
-              data_inicio: row.data_inicio,
-              data_fim: row.data_fim,
-              valor_total: Number(row.valor_total),
-              status,
-            });
-            count++;
-          } catch {
-            /* skip row */
+        const release = holdUnsavedWork();
+        try {
+          for (const row of rows) {
+            if (!row.titulo || !row.data_inicio || !row.data_fim || !row.valor_total) continue;
+            try {
+              const clienteMatch = row.cliente_nome
+                ? clientes.find((c) => c.nome.toLowerCase() === row.cliente_nome.toLowerCase())
+                : null;
+              const status = (
+                ['vigente', 'a_assinar', 'encerrado'].includes(row.status)
+                  ? row.status
+                  : 'a_assinar'
+              ) as Contrato['status'];
+              await addContrato({
+                titulo: row.titulo,
+                cliente_id: clienteMatch?.id ?? null,
+                cliente_nome: row.cliente_nome || '',
+                data_inicio: row.data_inicio,
+                data_fim: row.data_fim,
+                valor_total: Number(row.valor_total),
+                status,
+              });
+              count++;
+            } catch {
+              /* skip row */
+            }
           }
+        } finally {
+          release();
         }
         toast.success(
           `${count} contrato${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso!`,
@@ -251,41 +284,333 @@ export default function ContratosPage() {
     );
   };
 
-  return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Contratos</h1>
-          <span
-            data-tooltip="Gerencie os contratos dos seus clientes."
-            data-tooltip-dir="right"
-            style={{ display: 'flex' }}
-          >
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
-        </div>
-        <div className="header-actions">
-          <span
-            data-tooltip="Colunas: titulo*, cliente_nome, data_inicio* (AAAA-MM-DD), data_fim*, valor_total*, status"
-            data-tooltip-dir="bottom"
-            style={{ display: 'flex' }}
-          >
-            <HelpCircle
-              className="h-4 w-4"
-              style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+  const clienteIdValue = useWatch({ control: form.control, name: 'clienteId' });
+  const statusValue = useWatch({ control: form.control, name: 'status' });
+  const { errors } = form.formState;
+  const setField = (name: 'clienteId' | 'status', value: string) =>
+    form.setValue(name, value as never, {
+      shouldDirty: true,
+      shouldValidate: form.formState.isSubmitted,
+    });
+  // Grouped rows on phones: dates stacked as native date controls, pickers as checkmark
+  // lists, and the linked client one tap away while editing.
+  const phoneFields = (
+    <>
+      <GroupedList aria-label="Contrato">
+        <FormRow
+          label="Título"
+          error={errors.titulo?.message}
+          input={{ ...form.register('titulo'), autoComplete: 'off' }}
+        />
+        <FormRow label="Data início" error={errors.dataInicio?.message}>
+          {(field) => (
+            <input
+              {...field}
+              {...form.register('dataInicio')}
+              type="date"
+              className="phone-form-row__input"
             />
-          </span>
-          <Button variant="outline" onClick={handleCSVImport}>
-            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
-          </Button>
-          <Button onClick={openAdd}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Contrato
-          </Button>
+          )}
+        </FormRow>
+        <FormRow label="Data fim" error={errors.dataFim?.message}>
+          {(field) => (
+            <input
+              {...field}
+              {...form.register('dataFim')}
+              type="date"
+              className="phone-form-row__input"
+            />
+          )}
+        </FormRow>
+        <FormRow
+          label="Valor Total (R$)"
+          error={errors.valor?.message}
+          input={{
+            ...form.register('valor'),
+            type: 'number',
+            inputMode: 'decimal',
+            min: 0,
+            step: 0.01,
+            placeholder: '0,00',
+          }}
+        />
+      </GroupedList>
+      <GroupedList>
+        <PickerCell
+          label="Cliente (opcional)"
+          sheetTitle="Cliente"
+          searchable
+          emptyOption={{ label: 'Nenhum' }}
+          options={sortClientesByNome(clientes).map((c) => ({
+            value: String(c.id),
+            label: c.nome,
+          }))}
+          value={clienteIdValue || null}
+          onChange={(v) => setField('clienteId', v ?? '')}
+        />
+        <PickerCell
+          label="Status"
+          options={[
+            { value: 'a_assinar', label: 'A Assinar' },
+            { value: 'vigente', label: 'Vigente' },
+            { value: 'encerrado', label: 'Encerrado' },
+          ]}
+          value={statusValue}
+          onChange={(v) => v && setField('status', v)}
+        />
+      </GroupedList>
+      {editing?.cliente_id && (
+        <GroupedList>
+          <Cell
+            icon={<UserRound aria-hidden="true" />}
+            label="Abrir cliente"
+            value={editing.cliente_nome}
+            chevron
+            onClick={() => {
+              setModalOpen(false);
+              navigate(`/clientes/${editing.cliente_id}`);
+            }}
+          />
+        </GroupedList>
+      )}
+    </>
+  );
+
+  const dialogs = (
+    <>
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Editar Contrato' : 'Novo Contrato'}</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {phoneForm ? (
+                phoneFields
+              ) : (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="titulo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Título</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="clienteId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cliente (opcional)</FormLabel>
+                        <Select
+                          value={field.value || '__none__'}
+                          onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhum</SelectItem>
+                            {sortClientesByNome(clientes).map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="dataInicio"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Data Início</FormLabel>
+                          <FormControl>
+                            <DatePicker
+                              value={isoToDate(field.value)}
+                              onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
+                              className="w-full"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="dataFim"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Data Fim</FormLabel>
+                          <FormControl>
+                            <DatePicker
+                              value={isoToDate(field.value)}
+                              onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
+                              className="w-full"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="valor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Valor Total (R$)</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={0} step={0.01} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Status</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="a_assinar">A Assinar</SelectItem>
+                            <SelectItem value="vigente">Vigente</SelectItem>
+                            <SelectItem value="encerrado">Encerrado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" />} Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover este contrato?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
+  const infoTooltip = (
+    <span
+      data-tooltip="Gerencie os contratos dos seus clientes."
+      data-tooltip-dir="right"
+      style={{ display: 'flex' }}
+    >
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const headerActions = (
+    <>
+      <span
+        data-tooltip="Colunas: titulo*, cliente_nome, data_inicio* (AAAA-MM-DD), data_fim*, valor_total*, status"
+        data-tooltip-dir="bottom"
+        style={{ display: 'flex' }}
+      >
+        <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+      </span>
+      <Button variant="outline" onClick={handleCSVImport}>
+        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <Button onClick={openAdd}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Contrato
+    </Button>
+  );
+
+  const inToolbar = usePageToolbar({
+    title: 'Contratos',
+    titleAccessory: infoTooltip,
+    actions: headerActions,
+    primary: primaryAction,
+  });
+
+  if (isPhone) {
+    return (
+      <>
+        <ContratosPhone
+          isLoading={isLoading}
+          contratos={filtered}
+          canSeeValues={canSeeContracts}
+          filter={filter}
+          onFilterChange={setFilter}
+          search={search}
+          onSearchChange={setSearch}
+          onAdd={openAdd}
+          onImport={handleCSVImport}
+          onEdit={openEdit}
+          onDelete={setDeleteId}
+          onOpenCliente={(clienteId) => navigate(`/clientes/${clienteId}`)}
+        />
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <h1>Contratos</h1>
+            {infoTooltip}
+          </div>
+          <div className="header-actions">
+            {headerActions}
+            {primaryAction}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
@@ -333,9 +658,7 @@ export default function ContratosPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+        <TableSkeleton columns={6} />
       ) : (
         <div className="card">
           <Table>
@@ -369,7 +692,7 @@ export default function ContratosPage() {
                     {formatDate(c.data_inicio)} → {formatDate(c.data_fim)}
                   </TableCell>
                   <TableCell data-label="Valor">
-                    {formatFinancialBRL(c.valor_total, canSeeFinancials)}
+                    {formatFinancialBRL(c.valor_total, canSeeContracts)}
                   </TableCell>
                   <TableCell data-label="Status">
                     <Badge
@@ -408,154 +731,7 @@ export default function ContratosPage() {
         </div>
       )}
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent onConfirmClose={() => setModalOpen(false)}>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Editar Contrato' : 'Novo Contrato'}</DialogTitle>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="titulo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Título</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="clienteId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cliente (opcional)</FormLabel>
-                    <Select
-                      value={field.value || '__none__'}
-                      onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione..." />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">Nenhum</SelectItem>
-                        {clientes.map((c) => (
-                          <SelectItem key={c.id} value={String(c.id)}>
-                            {c.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="dataInicio"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Data Início</FormLabel>
-                      <FormControl>
-                        <DatePicker
-                          value={isoToDate(field.value)}
-                          onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
-                          className="w-full"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="dataFim"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Data Fim</FormLabel>
-                      <FormControl>
-                        <DatePicker
-                          value={isoToDate(field.value)}
-                          onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
-                          className="w-full"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={form.control}
-                name="valor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Valor Total (R$)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} step={0.01} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="a_assinar">A Assinar</SelectItem>
-                        <SelectItem value="vigente">Vigente</SelectItem>
-                        <SelectItem value="encerrado">Encerrado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving && <Spinner size="sm" />} Salvar
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog
-        open={deleteId != null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover este contrato?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogs}
     </div>
   );
 }

@@ -3,27 +3,28 @@ import { Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-rou
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { UserX, AlertTriangle } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { DetailSkeleton } from '@/components/ui/skeletons';
 import { Button } from '@/components/ui/button';
 import { getCliente, getInitials } from '../../store';
 import { useAuth } from '../../context/AuthContext';
-import { ClienteDetalheHeader } from './ClienteDetalheHeader';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { ClientePhoneSectionShell, useClienteSectionBack } from './phone/ClientePhoneChrome';
+import {
+  ClienteAvatar,
+  ClienteBackButton,
+  ClienteBadges,
+  ClienteDetalheHeader,
+  ClienteEditButton,
+} from './ClienteDetalheHeader';
 import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ClienteEditDialog } from './ClienteEditDialog';
 import {
   CLIENTE_TABS,
-  canAccessClienteTabRole,
+  clienteTabGuardOutcome,
   financeiroTabGuardOutcome,
   type ClienteDetalheOutletContext,
 } from './clienteTabs.model';
-
-function CenteredSpinner() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-      <Spinner size="lg" />
-    </div>
-  );
-}
 
 /**
  * Shell for /clientes/:id/*: loads the client, renders the header + tab nav,
@@ -36,13 +37,17 @@ export default function ClienteDetalhePage() {
   const { id: idParam } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, workspaceRole, membershipResolved, canSeeFinancials, loading } = useAuth();
+  const { user, workspaceRole, membershipResolved, canSeeFinancials, can, loading } = useAuth();
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
 
   const clienteId = parseInt(idParam ?? '', 10);
   const validId = !isNaN(clienteId);
+  // Phones (PLAN F3.1): no header + pill strip; the index route is a sections list and
+  // every section renders under one nav bar. Tablet and desktop keep the layout below.
+  const isPhone = !useIsDesktop(768);
+  const sectionBack = useClienteSectionBack(clienteId);
 
   useEffect(() => {
     if (!loading && !user) navigate('/login');
@@ -57,6 +62,38 @@ export default function ClienteDetalhePage() {
     enabled: validId,
   });
 
+  // Shared by the photo-upload trigger and the header's "Editar" button
+  // (which opens ClienteEditDialog below) -- a custom role with only
+  // `clientes:ver` must not reach either mutation surface, even though it
+  // can view this page (Task 14, revisão externa round 4, P2).
+  const canEditClient = can('clientes', 'editar') === true;
+
+  // Desktop Vidro toolbar: this layout route registers for every tab under it (the
+  // tabs never register). Null until the session, the membership and the client are
+  // all in, so no state below (skeleton, access cards, not-found) shows a name.
+  const inToolbar = usePageToolbar(
+    !loading && user && workspaceRole !== null && !loadingCliente && cliente
+      ? {
+          leading: (
+            <>
+              <ClienteBackButton onBack={() => navigate('/clientes')} />
+              <ClienteAvatar
+                clienteId={clienteId}
+                nome={cliente.nome}
+                initials={getInitials(cliente.nome)}
+                cor={cliente.cor}
+                imageUrl={cliente.foto_url}
+                canEditPhoto={canEditClient}
+              />
+            </>
+          ),
+          title: cliente.nome,
+          subtitle: <ClienteBadges plano={cliente.plano} status={cliente.status} />,
+          primary: canEditClient ? <ClienteEditButton onEdit={() => setEditOpen(true)} /> : null,
+        }
+      : null,
+  );
+
   if (!validId) {
     return <Navigate to="/clientes" replace />;
   }
@@ -65,7 +102,7 @@ export default function ClienteDetalhePage() {
   // shell early would flash the agent-sized tab set at an owner, and the
   // guard below would bounce them off a tab they are allowed to see.
   if (loading || !user) {
-    return <CenteredSpinner />;
+    return <DetailSkeleton />;
   }
 
   // `workspaceRole` is null here in two DIFFERENT real cases, and
@@ -110,7 +147,14 @@ export default function ClienteDetalhePage() {
   // under /clientes/:id and renders a blank content pane.
   const current = pathname.replace(/^\/clientes\/[^/]+\/?/, '').replace(/\/+$/, '');
 
-  // Unknown segment: not one of the seven registered tabs (and not the empty
+  // `hub` deixou de ser aba própria (virou o grupo do nav, cf. clienteTabs.model),
+  // então cai na checagem de segmento desconhecido abaixo e iria para visao-geral.
+  // A rota `index` de App.tsx não salva: o guard resolve ANTES do Outlet montar.
+  if (current === 'hub') {
+    return <Navigate to={`/clientes/${clienteId}/hub/acesso`} replace />;
+  }
+
+  // Unknown segment: not one of the eleven registered tabs (and not the empty
   // index segment, which has its own route/component).
   if (current && !CLIENTE_TABS.some((tab) => tab.key === current)) {
     return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
@@ -121,16 +165,25 @@ export default function ClienteDetalhePage() {
     // FinanceiroTab) mounts in this same render — never mount-then-redirect
     // via an effect, which would let a financial query fire first.
     const outcome = financeiroTabGuardOutcome(canSeeFinancials);
-    if (outcome === 'loading') return <CenteredSpinner />;
+    if (outcome === 'loading') return <DetailSkeleton />;
     if (outcome === 'denied') {
       return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
     }
-  } else if (current && !canAccessClienteTabRole(current, workspaceRole)) {
-    return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
+  } else if (current) {
+    // Same three-state principle as financeiro above, generalized to every
+    // other permission-gated tab (the five `hub/*` portal routes and
+    // `relatorios`): 'unknown' must render a skeleton, not bounce someone who
+    // is actually authorized just because their membership hasn't resolved
+    // yet. Resolved BEFORE the Outlet mounts, same reasoning as financeiro.
+    const outcome = clienteTabGuardOutcome(current, can);
+    if (outcome === 'loading') return <DetailSkeleton />;
+    if (outcome === 'denied') {
+      return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
+    }
   }
 
   if (loadingCliente) {
-    return <CenteredSpinner />;
+    return <DetailSkeleton />;
   }
 
   if (!cliente) {
@@ -144,25 +197,55 @@ export default function ClienteDetalhePage() {
     );
   }
 
+  const outletContext = {
+    clienteId,
+    cliente,
+    onEditCliente: canEditClient ? () => setEditOpen(true) : undefined,
+  } satisfies ClienteDetalheOutletContext;
+
+  if (isPhone) {
+    const tab = CLIENTE_TABS.find((candidate) => candidate.key === current);
+    return (
+      <div className="phone-cli-page">
+        {tab ? (
+          <ClientePhoneSectionShell
+            clienteNome={cliente.nome}
+            tabLabel={t(tab.labelKey)}
+            onBack={sectionBack.onBack}
+            backToClient={sectionBack.toIndex}
+          >
+            <Outlet context={outletContext} />
+          </ClientePhoneSectionShell>
+        ) : (
+          <Outlet context={outletContext} />
+        )}
+        <ClienteEditDialog cliente={cliente} open={editOpen} onOpenChange={setEditOpen} />
+      </div>
+    );
+  }
+
   return (
     <div className="cliente-detalhe-page">
-      <ClienteDetalheHeader
-        clienteId={clienteId}
-        nome={cliente.nome}
-        initials={getInitials(cliente.nome)}
-        cor={cliente.cor}
-        plano={cliente.plano}
-        status={cliente.status}
-        imageUrl={cliente.foto_url}
-        canEditPhoto={workspaceRole === 'owner' || workspaceRole === 'admin'}
-        onBack={() => navigate('/clientes')}
-        onEdit={() => setEditOpen(true)}
-      />
+      {!inToolbar && (
+        <ClienteDetalheHeader
+          clienteId={clienteId}
+          nome={cliente.nome}
+          initials={getInitials(cliente.nome)}
+          cor={cliente.cor}
+          plano={cliente.plano}
+          status={cliente.status}
+          imageUrl={cliente.foto_url}
+          canEditPhoto={canEditClient}
+          canEdit={canEditClient}
+          onBack={() => navigate('/clientes')}
+          onEdit={() => setEditOpen(true)}
+        />
+      )}
 
       <div className="cliente-tabs-shell">
         <ClienteDetalheNav clienteId={clienteId} cliente={cliente} />
         <div className="cliente-tabs-content">
-          <Outlet context={{ clienteId, cliente } satisfies ClienteDetalheOutletContext} />
+          <Outlet context={outletContext} />
         </div>
       </div>
 

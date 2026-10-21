@@ -22,9 +22,11 @@ const store = vi.hoisted(() => ({
   sendPostsToCliente: vi.fn(),
   getPostApprovals: vi.fn().mockResolvedValue([]),
   getPostStatusEvents: vi.fn().mockResolvedValue([]),
+  getPostProcessEvents: vi.fn().mockResolvedValue([]),
   replyToPostApproval: vi.fn(),
   getPostCommentThreads: vi.fn().mockResolvedValue([]),
   createCommentThread: vi.fn(),
+  saveIgCaption: vi.fn(),
   addPostComment: vi.fn(),
   updatePostComment: vi.fn(),
   deletePostComment: vi.fn(),
@@ -41,6 +43,15 @@ const store = vi.hoisted(() => ({
   getWorkflows: vi.fn().mockResolvedValue([]),
   movePostsToNewFlow: vi.fn(),
   movePostsToExistingFlow: vi.fn(),
+  isFinalClientApprovalCycle: vi.fn(() => true),
+  cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
+}));
+// Desktop layout; the phone branch has its own suite (WorkflowDrawerPhone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
 }));
 vi.mock('../../../../store', () => store);
 
@@ -52,16 +63,23 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { from: () => ({ select: () => ({ eq: () => ({ data: [], error: null }) }) }) },
 }));
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1' }, role: 'owner' }),
+  useAuth: () => ({ user: { id: 'u1' }, role: 'owner', can: () => true }),
 }));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ limits: null, isLoading: false }),
 }));
 vi.mock('../../../../services/postMedia', () => ({ listPostMedia: vi.fn().mockResolvedValue([]) }));
+// PostEditorBody and WorkflowDrawer read client references from this module by path.
+vi.mock('@/store/postReferences', () => ({
+  getPostReferences: vi.fn(async () => []),
+  getPostReferenceCounts: vi.fn(async () => ({})),
+  deletePostReference: vi.fn(),
+}));
 vi.mock('@/services/inlineImage', () => ({
   uploadInlineImage: vi.fn(),
   extractR2Keys: () => [],
   injectSignedUrls: (v: unknown) => v,
+  stripSignedUrls: (v: unknown) => v,
   resolveInlineImageUrls: vi.fn().mockResolvedValue({}),
 }));
 
@@ -75,7 +93,10 @@ vi.mock('../PostMediaGallery', () => ({
   hasVideoMissingThumbnail: () => false,
 }));
 vi.mock('../InstagramCaptionField', () => ({ InstagramCaptionField: () => <div /> }));
-vi.mock('../ScheduleButton', () => ({ ScheduleButton: () => <div /> }));
+vi.mock('../ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
+  ScheduleButton: () => <div />,
+}));
 vi.mock('../WorkflowCalendarView', () => ({ WorkflowCalendarView: () => <div /> }));
 vi.mock('../DiffView', () => ({ DiffView: () => <div /> }));
 vi.mock('../ReadOnlyTipTap', () => ({ ReadOnlyTipTap: () => <div /> }));

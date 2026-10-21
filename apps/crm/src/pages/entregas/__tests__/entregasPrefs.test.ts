@@ -6,6 +6,11 @@ import {
   persistBoardColumnSort,
   loadFluxosColumnSorts,
   persistFluxosColumnSort,
+  loadLastEntidade,
+  persistLastEntidade,
+  hasLastMode,
+  loadListGroupBy,
+  persistListGroupBy,
 } from '../entregasPrefs';
 
 describe('entregasPrefs', () => {
@@ -88,5 +93,51 @@ describe('fluxos column sort prefs', () => {
   it('drops junk values on load', () => {
     localStorage.setItem('entregas_fluxos_sorts_conta-1', '{"a":"whatever","b":1}');
     expect(loadFluxosColumnSorts('conta-1')).toEqual({});
+  });
+});
+
+describe('entidade prefs', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('null sem chave ou com lixo; persiste e recarrega por conta', () => {
+    expect(loadLastEntidade('c1')).toBeNull();
+    localStorage.setItem('entregas_entidade_c1', 'garbage');
+    expect(loadLastEntidade('c1')).toBeNull();
+    persistLastEntidade('c1', 'posts');
+    expect(loadLastEntidade('c1')).toBe('posts');
+    expect(localStorage.getItem('entregas_entidade_c1')).toBe('posts');
+    expect(loadLastEntidade('c2')).toBeNull();
+  });
+
+  it('hasLastMode distingue ausente de entregas', () => {
+    expect(hasLastMode('c1')).toBe(false);
+    persistLastMode('c1', 'entregas');
+    expect(hasLastMode('c1')).toBe(true);
+  });
+
+  it('não lança quando o storage falha', () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(loadLastEntidade('c1')).toBeNull();
+    expect(hasLastMode('c1')).toBe(false);
+    spy.mockRestore();
+  });
+});
+
+describe('agrupar da Lista', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('devolve null sem preferência gravada e com lixo gravado', () => {
+    expect(loadListGroupBy('c1')).toBeNull();
+    localStorage.setItem('entregas_list_group_c1', 'xyz');
+    expect(loadListGroupBy('c1')).toBeNull();
+  });
+
+  it('grava e lê por conta', () => {
+    persistListGroupBy('c1', 'nenhum');
+    persistListGroupBy('c2', 'cliente');
+    expect(loadListGroupBy('c1')).toBe('nenhum');
+    expect(loadListGroupBy('c2')).toBe('cliente');
   });
 });

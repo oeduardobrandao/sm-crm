@@ -91,10 +91,16 @@ banner shows). `.main-content` offsets itself with `margin-left: var(--sidebar-w
 
 | Viewport | Sidebar |
 |---|---|
-| ≥ 1101px | Static; `.main-content` is inset by 260px |
+| ≥ 1101px | Static. 64px icon rail by default, expands over the content on hover; pinned open, `.main-content` is inset by 260px |
 | 768–1100px | Off-canvas drawer; `margin-left: 0 !important` |
 | ≤ 900px | Drawer + bottom nav |
 | ≤ 768px | Further compaction |
+
+The pin toggle sits at the top of the sidebar, aligned with the nav icons. Unpinned, `AppLayout` sets
+`data-sidebar-collapsed` on `.app-container` and CSS overrides `--sidebar-width: 64px` there;
+hovering only widens the sidebar itself (`.sidebar--overlay`), so the content never moves until
+the user pins (persisted in localStorage `sidebar-pinned`). Anything inset by the sidebar should
+read `var(--sidebar-width)`, never a literal 260px.
 
 **Anything `position: fixed` and anchored to the sidebar must be `display: none` by default
 and only shown inside `@media (min-width: 1101px)`** — below that the sidebar isn't there and
@@ -152,6 +158,20 @@ layer does not define. Liquid-glass chrome lives in `apps/admin/src/liquidglass/
 That effect is **CSS `backdrop-filter`, deliberately not WebGL.** A real WebGL liquid-glass
 pass hides the elements it targets (`opacity: 0`), and its single shared canvas fights layered
 fixed/sticky chrome.
+
+### Primitives
+
+`apps/admin/src/components/ui/` holds **copies** of the CRM's shadcn primitives (button, input,
+textarea, select, switch, table, dropdown-menu, checkbox, skeleton, tabs, label, separator,
+tooltip), plus an admin-only `badge.tsx` (same API as the CRM Badge, implemented on Tailwind
+tokens because the admin does not load `apps/crm/style.css`) and `card.tsx`. They import `cn`
+from `../../lib/utils`, never `@/lib/utils`. A fix to a primitive on one side must be mirrored
+on the other by hand; nothing enforces parity. Composition components (`EmptyState`,
+`ErrorState`, `PageHeader`) live in `apps/admin/src/components/`. Clickable rows use
+`RowLink`/`RowButton` from `apps/admin/src/components/RowLink.tsx` so the primary cell is a
+real link or button.
+
+The Admin's copy is Portuguese throughout.
 
 ## Shared
 

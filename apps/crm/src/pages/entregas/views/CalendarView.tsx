@@ -9,6 +9,8 @@ import { useScheduledPosts } from '../hooks/useScheduledPosts';
 import { dateDayKey, summarizeDay } from '../hooks/scheduledPostsUtils';
 import { PublicacoesPanel } from '../components/PublicacoesPanel';
 import { type EntregasMode } from '../components/ModeToggle';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { CalendarViewPhone, type CalendarDeadlineEvent } from '../phone/CalendarViewPhone';
 
 export type CalendarMode = EntregasMode;
 
@@ -18,13 +20,14 @@ interface CalendarViewProps {
   mode: CalendarMode;
   openableWorkflowIds: Set<number>;
   onPostClick: (post: ActivePost) => void;
+  /** Spec §4.4: this calendar only ever shows fluxo deadlines -- with the flag
+   *  on, a "Somente fluxos" note (mode `entregas` only) links to the board,
+   *  where posts individuais do appear. */
+  postProcessesEnabled?: boolean;
+  onGoToKanban?: () => void;
 }
 
-interface CalendarEvent {
-  card: BoardCard;
-  type: 'etapa' | 'workflow';
-  date: Date;
-}
+type CalendarEvent = CalendarDeadlineEvent;
 
 const monthNames = [
   'Janeiro',
@@ -47,7 +50,10 @@ export function CalendarView({
   mode,
   openableWorkflowIds,
   onPostClick,
+  postProcessesEnabled,
+  onGoToKanban,
 }: CalendarViewProps) {
+  const isPhone = !useIsDesktop(768);
   const qc = useQueryClient();
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(
@@ -101,9 +107,37 @@ export function CalendarView({
     qc.invalidateQueries({ queryKey: ['scheduled-posts'] });
     qc.invalidateQueries({ queryKey: ['active-posts'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
   };
+
+  if (isPhone) {
+    return (
+      <CalendarViewPhone
+        mode={mode}
+        currentDate={currentDate}
+        onMonthChange={(d) => {
+          setCurrentDate(d);
+          setSelectedDay(null);
+        }}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
+        events={events}
+        // The desktop grid can't place these (no started etapa, so no deadline);
+        // the phone lists them behind a "Sem data" chip.
+        undatedCards={cards.filter((c) => !c.etapa.iniciado_em)}
+        noCards={cards.length === 0}
+        byDay={byDay}
+        igStatuses={igStatuses}
+        postsLoading={postsLoading}
+        openableWorkflowIds={openableWorkflowIds}
+        onCardClick={onCardClick}
+        onPostClick={onPostClick}
+        onStatusChange={handleStatusChange}
+        postProcessesEnabled={postProcessesEnabled}
+        onGoToKanban={onGoToKanban}
+      />
+    );
+  }
 
   if (mode === 'entregas' && cards.length === 0) {
     return (
@@ -114,12 +148,30 @@ export function CalendarView({
         >
           <p>Nenhuma entrega encontrada. Ajuste os filtros.</p>
         </div>
+        {postProcessesEnabled && (
+          <p className="entregas-somente-fluxos">
+            Somente fluxos. Posts individuais aparecem no{' '}
+            <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
+              quadro
+            </button>
+            .
+          </p>
+        )}
       </div>
     );
   }
 
   return (
     <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {postProcessesEnabled && mode === 'entregas' && (
+        <p className="entregas-somente-fluxos">
+          Somente fluxos. Posts individuais aparecem no{' '}
+          <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
+            quadro
+          </button>
+          .
+        </p>
+      )}
       <div className="calendar-layout">
         <div className="calendar-main">
           <MonthGrid

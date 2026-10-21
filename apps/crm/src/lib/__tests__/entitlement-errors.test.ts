@@ -29,3 +29,33 @@ describe('mapEntitlementError', () => {
     expect(mapEntitlementError(null)).toBeNull();
   });
 });
+
+describe('mapEntitlementError feature_post_processes', () => {
+  it('rotula feature_post_processes em português', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_post_processes' })).toEqual({
+      kind: 'feature',
+      key: 'feature_post_processes',
+      label: 'Processos individuais de produção',
+    });
+  });
+});
+
+describe('mapEntitlementError feature_agenda', () => {
+  it('rotula feature_agenda em português', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_agenda' })).toEqual({
+      kind: 'feature',
+      key: 'feature_agenda',
+      label: 'Agenda',
+    });
+  });
+});
+
+describe('mapEntitlementError feature_multiplatform', () => {
+  it('rotula feature_multiplatform em português', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_multiplatform' })).toEqual({
+      kind: 'feature',
+      key: 'feature_multiplatform',
+      label: 'Plataformas por fluxo',
+    });
+  });
+});

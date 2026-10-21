@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HubPreview, type HubPreviewDraft } from '../HubPreview';
+import type { HubLook } from '../../../../../hub/src/theme';
 
 const BASE_DRAFT: HubPreviewDraft = {
   brandColor: '#eab308',
@@ -15,13 +16,18 @@ const BASE_DRAFT: HubPreviewDraft = {
   defaultAppearance: 'light',
 };
 
-function renderPreview(overrides: Partial<HubPreviewDraft> = {}, customized = true) {
+function renderPreview(
+  overrides: Partial<HubPreviewDraft> = {},
+  customized = true,
+  look: HubLook = 'classic',
+) {
   return render(
     <HubPreview
       draft={{ ...BASE_DRAFT, ...overrides }}
       workspaceName="Agência Teste"
       workspaceLogoUrl="https://cdn.example.com/logo.png"
       customized={customized}
+      look={look}
     />,
   );
 }
@@ -149,6 +155,26 @@ describe('HubPreview', () => {
     expect(screen.getByRole('button', { name: 'Escuro' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('Pauta mobile shows the floating bar with a menu button and no bottom nav', () => {
+    renderPreview({}, true, 'pauta');
+    fireEvent.click(screen.getByRole('button', { name: 'Celular' }));
+    expect(screen.getByTestId('hub-preview-floating-bar')).toBeInTheDocument();
+    expect(screen.queryByTestId('hub-preview-bottom-nav')).not.toBeInTheDocument();
+  });
+
+  it('Pauta greets and loads Assinatura for a non-customized workspace', () => {
+    renderPreview({}, false, 'pauta');
+    expect(screen.getByText('Bom dia, Ana.')).toBeInTheDocument();
+    const link = document.getElementById('crm-hub-preview-fonts') as HTMLLinkElement;
+    expect(link.href).toContain('Bricolage+Grotesque');
+    expect(link.href).toContain('Figtree');
+  });
+
+  it('classic keeps its greeting', () => {
+    renderPreview();
+    expect(screen.getByText('Bem-vindo(a) de volta')).toBeInTheDocument();
+  });
+
   it('defaults to the desktop shell: sidebar present, no bottom nav', () => {
     renderPreview();
     expect(screen.getByTestId('hub-preview-sidebar')).toBeInTheDocument();
@@ -167,6 +193,23 @@ describe('HubPreview', () => {
     expect(within(bottomNav).getByText('Aprovar')).toBeInTheDocument();
     expect(within(bottomNav).getByText('Posts')).toBeInTheDocument();
     expect(within(bottomNav).getByText('Mais')).toBeInTheDocument();
+  });
+
+  it('initialDevice="mobile" opens on the mobile shell, and Computador still switches back', () => {
+    render(
+      <HubPreview
+        draft={BASE_DRAFT}
+        workspaceName="Agência Teste"
+        workspaceLogoUrl={null}
+        customized
+        initialDevice="mobile"
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Celular' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('hub-preview-sidebar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('hub-preview-bottom-nav')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Computador' }));
+    expect(screen.getByTestId('hub-preview-sidebar')).toBeInTheDocument();
   });
 
   it('switching back to Computador restores the desktop shell', () => {

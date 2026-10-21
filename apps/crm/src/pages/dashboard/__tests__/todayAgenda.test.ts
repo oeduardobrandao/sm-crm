@@ -27,6 +27,7 @@ function tarefa(over: Partial<TarefaWithRelations>): TarefaWithRelations {
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
     cliente_nome: 'Cliente X',
+    serie: null,
     ...over,
   } as TarefaWithRelations;
 }
@@ -158,6 +159,19 @@ describe('buildTodayAgenda · etapas', () => {
     expect(b.hoje[0].badge?.label).toBe('Hoje');
     expect(b.hoje[0].context).toBe('Pack agosto · Dra. Ana');
     expect(b.hoje[0].href).toBe('/entregas?drawer=7');
+  });
+
+  it('carries the client for grouping, null when the item has none', () => {
+    const b = buildTodayAgenda(
+      base({
+        etapas: [etapa({ id: 1, cliente_id: 4 }), etapa({ id: 2, cliente_nome: '' })],
+        tarefas: [tarefa({ id: 9, cliente_id: 5, cliente_nome: 'Cliente X' })],
+      }),
+    );
+    const byKey = Object.fromEntries(b.hoje.map((i) => [i.key, i.cliente]));
+    expect(byKey['etapa:1']).toEqual({ id: 4, nome: 'Dra. Ana' });
+    expect(byKey['etapa:2']).toBeNull();
+    expect(byKey['tarefa:9']).toEqual({ id: 5, nome: 'Cliente X' });
   });
 
   it('mine scope filters by responsavel_id', () => {

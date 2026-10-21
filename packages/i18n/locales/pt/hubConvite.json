@@ -1,0 +1,25 @@
+{
+  "cabecalho": {
+    "de": "Convite de {{nome}}",
+    "instrucao": "Confirme ou recuse cada data abaixo."
+  },
+  "selo": {
+    "sim": "Você confirmou",
+    "nao": "Você recusou",
+    "aguardando": "Aguardando sua resposta",
+    "semResposta": "Sem resposta"
+  },
+  "secoes": {
+    "anteriores": "Já aconteceram"
+  },
+  "vazio": "Nenhuma data para responder neste convite.",
+  "indisponivel": {
+    "titulo": "Este convite não está mais disponível.",
+    "descricao": "O evento pode ter sido cancelado ou o convite removido. Fale com quem convidou você."
+  },
+  "erro": {
+    "titulo": "Não foi possível carregar o convite.",
+    "retry": "Tentar novamente"
+  },
+  "rodape": "Enviado pela Mesaas em nome de {{workspace}}."
+}

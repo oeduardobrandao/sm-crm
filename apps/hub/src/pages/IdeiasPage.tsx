@@ -1,13 +1,43 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, ExternalLink, X, Loader2, ImagePlus } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  ExternalLink,
+  X,
+  Loader2,
+  ImagePlus,
+  Mic,
+  RotateCcw,
+} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { PageHeader } from '../components/PageHeader';
-import { fetchIdeias, createIdeia, updateIdeia, deleteIdeia, deleteIdeiaImage } from '../api';
+import {
+  fetchIdeias,
+  createIdeia,
+  updateIdeia,
+  deleteIdeia,
+  deleteIdeiaImage,
+  deleteIdeiaAudio,
+  retryIdeiaTranscription,
+} from '../api';
 import { uploadIdeiaImage } from '../services/ideiaMedia';
+import { uploadIdeiaAudio } from '../services/ideiaAudio';
+import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
+import {
+  AudioRecorder,
+  formatDuration,
+  isRecordingSupported,
+  type RecorderPhase,
+} from '@mesaas/ui/AudioRecorder';
+import { describeAudioError, MAX_AUDIO_SECONDS } from '@mesaas/ui/audio/validation';
+import { HUB_AUDIO_VARS } from '../lib/audioVars';
 import type { HubIdeia, IdeiaImage } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
+import { ListSkeleton } from '../components/Skeleton';
 
 const STATUS_LABEL: Record<HubIdeia['status'], string> = {
   nova: 'Nova',
@@ -29,10 +59,46 @@ const STATUS_COLOR: Record<HubIdeia['status'], string> = {
 
 function isMutable(ideia: HubIdeia): boolean {
   return (
+    ideia.origem === 'cliente' &&
     ideia.status === 'nova' &&
     ideia.comentario_agencia === null &&
     ideia.ideia_reactions.length === 0
   );
+}
+
+const AUDIO_STATUS_LABEL: Record<'pending' | 'done' | 'failed', string> = {
+  pending: 'Transcrição pendente',
+  done: 'Transcrito',
+  failed: 'Falha na transcrição',
+};
+
+/** Builds the shared AudioRecorder's label overrides from this page's `t`. */
+function recorderLabels(
+  t: (key: string, fallback: string, opts?: Record<string, unknown>) => string,
+) {
+  return {
+    sendLabel: t('recorder.send', 'Enviar'),
+    labels: {
+      record: t('recorder.record', 'Gravar áudio'),
+      uploading: t('recorder.uploading', 'Enviando áudio…'),
+      transcribing: t('recorder.transcribing', 'Transcrevendo…'),
+      micPermissionDenied: t(
+        'recorder.micPermissionDenied',
+        'Permita o acesso ao microfone no navegador para gravar.',
+      ),
+      micUnavailable: t('recorder.micUnavailable', 'Não foi possível acessar o microfone.'),
+      stop: t('recorder.stop', 'Parar'),
+      stopAria: t('recorder.stopAria', 'Parar gravação'),
+      progressAria: t('recorder.progressAria', 'Tempo de gravação'),
+      remainingWarning: (remaining: string) =>
+        t('recorder.remainingWarning', 'Restam {{remaining}}. A gravação para sozinha no limite.', {
+          remaining,
+        }),
+      previewLabel: t('recorder.previewLabel', 'Prévia'),
+      sending: t('recorder.sending', 'Enviando…'),
+      discard: t('recorder.discard', 'Descartar'),
+    },
+  };
 }
 
 const MAX_IMAGES = 10;
@@ -67,6 +133,7 @@ function IdeiaImages({
   images: IdeiaImage[];
   onChanged: () => void;
 }) {
+  const { t } = useTranslation('hubIdeas');
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -84,7 +151,7 @@ function IdeiaImages({
       }
       onChanged();
     } catch (e) {
-      setErr((e as Error).message ?? 'Erro ao enviar imagem.');
+      setErr((e as Error).message ?? t('images.uploadError', 'Erro ao enviar imagem.'));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -98,7 +165,7 @@ function IdeiaImages({
       await deleteIdeiaImage(token, ideiaId, fileId);
       onChanged();
     } catch (e) {
-      setErr((e as Error).message ?? 'Erro ao remover imagem.');
+      setErr((e as Error).message ?? t('images.removeError', 'Erro ao remover imagem.'));
     } finally {
       setBusy(false);
     }
@@ -129,8 +196,8 @@ function IdeiaImages({
               <button
                 onClick={() => remove(img.file_id)}
                 disabled={busy}
-                aria-label="Remover imagem"
-                className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                aria-label={t('images.removeImage', 'Remover imagem')}
+                className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity disabled:opacity-50"
               >
                 <X size={12} />
               </button>
@@ -145,7 +212,7 @@ function IdeiaImages({
           className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 transition-colors disabled:opacity-50"
         >
           {busy ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
-          Adicionar imagem
+          {t('images.addImage', 'Adicionar imagem')}
         </button>
       )}
       {err && <p className="text-xs text-red-500">{err}</p>}
@@ -162,7 +229,9 @@ function IdeiaImages({
 }
 
 export function IdeiasPage() {
-  const { token } = useHub();
+  const { t } = useTranslation('hubIdeas');
+  const { token, bootstrap } = useHub();
+  const audioEnabled = bootstrap.feature_briefing_audio === true;
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<HubIdeia | null>(null);
@@ -191,48 +260,56 @@ export function IdeiasPage() {
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <PageHeader
-        title="Compartilhe suas ideias"
-        description="Envie ideias e solicitações e a agência responderá em breve."
+        title={t('page.title', 'Compartilhe suas ideias')}
+        description={t(
+          'page.description',
+          'Envie ideias e solicitações e a agência responderá em breve.',
+        )}
         action={
           <button
             onClick={openCreate}
             className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
             <Plus size={16} strokeWidth={2.5} />
-            Nova ideia
+            {t('page.newIdea', 'Nova ideia')}
           </button>
         }
       />
 
       {/* List */}
       {isLoading ? (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-        </div>
+        <ListSkeleton rows={3} />
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">⚠️</span>
-          <p className="font-display text-lg font-semibold hub-txt mb-1">Erro ao carregar ideias</p>
+          <p className="font-display text-lg font-semibold hub-txt mb-1">
+            {t('loadError.title', 'Erro ao carregar ideias')}
+          </p>
           <p className="text-sm hub-tx2 mb-6">{error.message}</p>
           <button
             onClick={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
             className="px-4 py-2 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
-            Tentar novamente
+            {t('loadError.retry', 'Tentar novamente')}
           </button>
         </div>
       ) : ideias.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">💡</span>
-          <p className="font-display text-lg font-semibold hub-txt mb-1">Nenhuma ideia ainda</p>
+          <p className="font-display text-lg font-semibold hub-txt mb-1">
+            {t('empty.title', 'Nenhuma ideia ainda')}
+          </p>
           <p className="text-sm hub-tx2 mb-6">
-            Clique em "Nova ideia" para enviar sua primeira sugestão ou solicitação.
+            {t(
+              'empty.description',
+              'Clique em "Nova ideia" para enviar sua primeira sugestão ou solicitação.',
+            )}
           </p>
           <button
             onClick={openCreate}
             className="px-4 py-2 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
-            Adicionar ideia
+            {t('empty.addIdea', 'Adicionar ideia')}
           </button>
         </div>
       ) : (
@@ -242,6 +319,7 @@ export function IdeiasPage() {
               key={ideia.id}
               ideia={ideia}
               token={token}
+              audioEnabled={audioEnabled}
               onChanged={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
               onEdit={() => openEdit(ideia)}
               onDelete={() => {
@@ -258,6 +336,7 @@ export function IdeiasPage() {
         <IdeiaModal
           token={token}
           editing={editing}
+          audioEnabled={audioEnabled}
           onClose={() => setModalOpen(false)}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
@@ -269,19 +348,172 @@ export function IdeiasPage() {
   );
 }
 
+function IdeiaAudioBlock({
+  token,
+  ideia,
+  canWrite,
+  audioEnabled,
+  onChanged,
+}: {
+  token: string;
+  ideia: HubIdeia;
+  canWrite: boolean;
+  audioEnabled: boolean;
+  onChanged: () => void;
+}) {
+  const { t } = useTranslation('hubIdeas');
+  const [phase, setPhase] = useState<RecorderPhase>('idle');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const audio = ideia.audio;
+  const showRecorder = canWrite && audioEnabled && isRecordingSupported();
+  const canRemoveAudio = canWrite && !!audio;
+  if (!audio && !showRecorder) return null;
+
+  async function handleRecorded(blob: Blob, mime: string, seconds: number) {
+    setErr(null);
+    try {
+      await uploadIdeiaAudio({
+        token,
+        ideiaId: ideia.id,
+        blob,
+        mime,
+        durationSeconds: seconds,
+        onPhase: setPhase,
+      });
+      setRecording(false);
+      onChanged();
+    } catch (e) {
+      setErr(
+        describeAudioError(e, t('audio.uploadError', 'O envio do áudio falhou. Tente de novo.')),
+      );
+      throw e;
+    } finally {
+      setPhase('idle');
+    }
+  }
+
+  async function retry() {
+    setErr(null);
+    setBusy(true);
+    try {
+      await retryIdeiaTranscription(token, ideia.id);
+      onChanged();
+    } catch (e) {
+      setErr(describeAudioError(e, t('audio.retryError', 'Não foi possível transcrever agora.')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setErr(null);
+    setBusy(true);
+    try {
+      await deleteIdeiaAudio(token, ideia.id);
+      onChanged();
+    } catch (e) {
+      setErr(describeAudioError(e, t('audio.removeError', 'Não foi possível remover o áudio.')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2" style={HUB_AUDIO_VARS}>
+      {audio && (
+        <>
+          <p className="text-[12px] hub-tx3 font-medium">
+            {t('audio.label', 'Áudio')}
+            {audio.transcription_status
+              ? ` · ${t(`audio.status.${audio.transcription_status}`, AUDIO_STATUS_LABEL[audio.transcription_status])}`
+              : ''}
+          </p>
+          <AudioPlayer
+            src={audio.url}
+            durationSeconds={audio.duration_seconds}
+            label={t('audio.playerLabel', 'Áudio da ideia')}
+            className="hub-txt w-full max-w-[360px]"
+          />
+          {audio.transcript && (
+            <div className="rounded-lg hub-bg-soft px-3 py-2">
+              <p className="text-[12px] hub-tx3 font-semibold uppercase tracking-wide mb-1">
+                {t('audio.transcript', 'Transcrição')}
+              </p>
+              <p className="text-sm hub-tx2 whitespace-pre-wrap">{audio.transcript}</p>
+            </div>
+          )}
+        </>
+      )}
+      {(showRecorder ||
+        canRemoveAudio ||
+        (audio?.transcription_status === 'failed' && audioEnabled && canWrite)) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {audio?.transcription_status === 'failed' && audioEnabled && canWrite && (
+            <button
+              type="button"
+              onClick={retry}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 underline underline-offset-2 disabled:opacity-50"
+            >
+              <RotateCcw size={12} /> {t('audio.retry', 'Tentar novamente')}
+            </button>
+          )}
+          {showRecorder && audio && !recording && (
+            <button
+              type="button"
+              onClick={() => setRecording(true)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 underline underline-offset-2 disabled:opacity-50"
+            >
+              <Mic size={12} /> {t('audio.recordAgain', 'Gravar novamente')}
+            </button>
+          )}
+          {canRemoveAudio && (
+            <button
+              type="button"
+              onClick={remove}
+              disabled={busy}
+              className="text-[12px] hub-tx3 underline underline-offset-2 hover:text-red-600 disabled:opacity-50"
+            >
+              {t('audio.remove', 'Remover áudio')}
+            </button>
+          )}
+        </div>
+      )}
+      {showRecorder && (!audio || recording) && (
+        <AudioRecorder
+          phase={phase}
+          disabled={busy}
+          onRecorded={handleRecorded}
+          hint={t('audio.recorderHint', 'Até {{duration}}.', {
+            duration: formatDuration(MAX_AUDIO_SECONDS),
+          })}
+          {...recorderLabels(t)}
+        />
+      )}
+      {err && <p className="text-xs text-red-500">{err}</p>}
+    </div>
+  );
+}
+
 function IdeiaCard({
   ideia,
   token,
+  audioEnabled,
   onChanged,
   onEdit,
   onDelete,
 }: {
   ideia: HubIdeia;
   token: string;
+  audioEnabled: boolean;
   onChanged: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation('hubIdeas');
   const mutable = isMutable(ideia);
 
   // Group reactions by emoji
@@ -298,30 +530,39 @@ function IdeiaCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <span
-            className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ${STATUS_COLOR[ideia.status]}`}
+            className={`inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full mb-2 ${STATUS_COLOR[ideia.status]}`}
           >
-            {STATUS_LABEL[ideia.status]}
+            {t(`status.${ideia.status}`, STATUS_LABEL[ideia.status])}
           </span>
           {ideia.tipo === 'solicitacao' && (
-            <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 border hub-border hub-tx2">
-              Solicitação
+            <span className="inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 border hub-border hub-tx2">
+              {t('tipoLabel.solicitacao', 'Solicitação')}
+            </span>
+          )}
+          {ideia.origem === 'agencia' && (
+            <span className="inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 hub-btn-primary">
+              {t('card.agencySuggestion', 'Sugestão da agência')}
             </span>
           )}
           <h3 className="font-display text-[17px] font-semibold hub-txt leading-snug">
             {ideia.titulo}
           </h3>
-          <p className="text-sm hub-tx2 mt-1 whitespace-pre-wrap">{ideia.descricao}</p>
+          {ideia.descricao && (
+            <p className="text-sm hub-tx2 mt-1 whitespace-pre-wrap">{ideia.descricao}</p>
+          )}
         </div>
         {mutable && (
           <div className="flex gap-1 shrink-0">
             <button
               onClick={onEdit}
+              aria-label={t('card.edit', 'Editar')}
               className="hub-icon-btn p-1.5 rounded-md hub-tx3 transition-colors"
             >
               <Pencil size={15} />
             </button>
             <button
               onClick={onDelete}
+              aria-label={t('card.delete', 'Excluir')}
               className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-500/10 hub-tx3 hover:text-red-600 transition-colors"
             >
               <Trash2 size={15} />
@@ -348,8 +589,51 @@ function IdeiaCard({
         </div>
       )}
 
-      {/* Images (not lock-gated — always manageable) */}
-      <IdeiaImages token={token} ideiaId={ideia.id} images={ideia.images} onChanged={onChanged} />
+      {/* Images: full manage UI for the client's own ideias (not lock-gated);
+          agency-suggested ideias show the images read-only, with no upload/remove controls. */}
+      {ideia.origem === 'cliente' ? (
+        <IdeiaImages token={token} ideiaId={ideia.id} images={ideia.images} onChanged={onChanged} />
+      ) : (
+        ideia.images.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {ideia.images.map((img) => (
+              <a
+                key={img.file_id}
+                href={sanitizeExternalUrl(img.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img
+                  src={img.thumbnail_url ?? img.url}
+                  alt=""
+                  width={64}
+                  height={64}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-16 w-16 rounded-lg object-cover border hub-border hub-bg-soft"
+                  style={
+                    img.blur_data_url
+                      ? { backgroundImage: `url(${img.blur_data_url})`, backgroundSize: 'cover' }
+                      : undefined
+                  }
+                />
+              </a>
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Audio: same rule as images -- full manage UI for the client's own
+          ideias, not lock-gated (the backend never checks lock for audio
+          routes either; a reaction/comment/status change must not strand a
+          client's recording). */}
+      <IdeiaAudioBlock
+        token={token}
+        ideia={ideia}
+        canWrite={ideia.origem === 'cliente'}
+        audioEnabled={audioEnabled}
+        onChanged={onChanged}
+      />
 
       {/* Reactions */}
       {reactionMap.size > 0 && (
@@ -370,7 +654,7 @@ function IdeiaCard({
       {ideia.comentario_agencia && (
         <div className="border-t hub-border pt-3 mt-1">
           <p className="text-[12px] hub-tx3 font-medium mb-1">
-            Resposta da agência
+            {t('card.agencyResponse', 'Resposta da agência')}
             {ideia.comentario_autor && (
               <span className="normal-case tracking-normal ml-1">
                 — {ideia.comentario_autor.nome}
@@ -387,11 +671,13 @@ function IdeiaCard({
 interface ModalProps {
   token: string;
   editing: HubIdeia | null;
+  audioEnabled: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
+function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalProps) {
+  const { t } = useTranslation('hubIdeas');
   const qc = useQueryClient();
   const [titulo, setTitulo] = useState(editing?.titulo ?? '');
   const [descricao, setDescricao] = useState(editing?.descricao ?? '');
@@ -401,6 +687,32 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
   const [errors, setErrors] = useState<{ titulo?: string; descricao?: string }>({});
   // The idea this modal is editing: the existing one, or the one we just created.
   const [current, setCurrent] = useState<HubIdeia | null>(editing);
+
+  // Audio recorded before the ideia exists: held locally (preview + discard),
+  // uploaded right after create succeeds, same single-step pattern as images.
+  const audioSupported = audioEnabled && isRecordingSupported();
+  const [pendingAudio, setPendingAudio] = useState<{
+    blob: Blob;
+    mime: string;
+    durationSeconds: number;
+    url: string;
+  } | null>(null);
+  const [rerecord, setRerecord] = useState(false);
+  const [audioPhase, setAudioPhase] = useState<RecorderPhase>('idle');
+  const pendingAudioRef = useRef(pendingAudio);
+  pendingAudioRef.current = pendingAudio;
+  useEffect(
+    () => () => {
+      if (pendingAudioRef.current) URL.revokeObjectURL(pendingAudioRef.current.url);
+    },
+    [],
+  );
+
+  function discardPendingAudio() {
+    if (pendingAudio) URL.revokeObjectURL(pendingAudio.url);
+    setPendingAudio(null);
+    setRerecord(false);
+  }
 
   // Images picked before the ideia exists: held locally, uploaded right after
   // the create call so saving is a single step for the client.
@@ -443,10 +755,23 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
     return failed;
   }
 
+  // descricao alone can be empty when an audio recording (new, pending upload; or
+  // already saved on the ideia being edited) conveys the idea instead. Editing an
+  // ideia with no audio at all keeps requiring text -- there's no audio UI here.
+  // While `rerecord` is true the recorder shown is empty (the user asked to replace
+  // the take) even though `pendingAudio` still holds the OLD blob until a new one is
+  // confirmed -- that stale blob doesn't count as "has audio" here or below.
+  const audioToUpload = !rerecord ? pendingAudio : null;
+  const hasAudioAlternative = !!audioToUpload || !!current?.audio;
+
   function validate() {
     const e: typeof errors = {};
-    if (!titulo.trim()) e.titulo = 'Título obrigatório';
-    if (!descricao.trim()) e.descricao = 'Descrição obrigatória';
+    if (!titulo.trim()) e.titulo = t('modal.tituloRequired', 'Título obrigatório');
+    if (!descricao.trim() && !hasAudioAlternative) {
+      e.descricao = audioSupported
+        ? t('modal.descricaoOrAudioRequired', 'Adicione uma descrição ou grave um áudio.')
+        : t('modal.descricaoRequired', 'Descrição obrigatória');
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -459,7 +784,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
       if (current) {
         const { ideia } = await updateIdeia(token, current.id, {
           titulo: titulo.trim(),
-          descricao: descricao.trim(),
+          descricao: descricao.trim() || null,
           links: cleanLinks,
           tipo,
         });
@@ -471,8 +796,15 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             failed.length === 0
               ? null
               : failed.length === 1
-                ? '1 imagem não foi enviada. Salve novamente para tentar de novo.'
-                : `${failed.length} imagens não foram enviadas. Salve novamente para tentar de novo.`,
+                ? t(
+                    'modal.imageUploadFailedOne',
+                    '1 imagem não foi enviada. Salve novamente para tentar de novo.',
+                  )
+                : t(
+                    'modal.imageUploadFailedMany',
+                    '{{count}} imagens não foram enviadas. Salve novamente para tentar de novo.',
+                    { count: failed.length },
+                  ),
           );
           refreshCurrent();
         }
@@ -480,10 +812,44 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
       } else {
         const { ideia } = await createIdeia(token, {
           titulo: titulo.trim(),
-          descricao: descricao.trim(),
+          descricao: descricao.trim() || null,
           links: cleanLinks,
           tipo,
         });
+        if (audioToUpload) {
+          try {
+            await uploadIdeiaAudio({
+              token,
+              ideiaId: ideia.id,
+              blob: audioToUpload.blob,
+              mime: audioToUpload.mime,
+              durationSeconds: audioToUpload.durationSeconds,
+              onPhase: setAudioPhase,
+            });
+          } catch (e) {
+            // The blob is gone by the time the user reads this (discarded once the
+            // modal closes below, same as the success path) -- when there's no
+            // descricao either, the ideia was just created with no content at all,
+            // so say so plainly and point at the card's own recorder (works for a
+            // no-audio ideia) rather than implying "tente de novo" replays anything.
+            alert(
+              describeAudioError(
+                e,
+                descricao.trim()
+                  ? t(
+                      'audio.createUploadError',
+                      'Ideia enviada, mas o áudio falhou. Tente de novo no card.',
+                    )
+                  : t(
+                      'audio.createUploadErrorNoContent',
+                      'Ideia enviada sem conteúdo: o áudio falhou e não há descrição. Grave de novo ou escreva uma descrição no card.',
+                    ),
+              ),
+            );
+          } finally {
+            setAudioPhase('idle');
+          }
+        }
         // Single-step save: upload any locally queued images right after create.
         const failed = await flushPendingFiles(ideia.id, 0);
         qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
@@ -497,13 +863,20 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
         setPendingFiles(failed);
         setUploadErr(
           failed.length === 1
-            ? '1 imagem não foi enviada. Salve novamente para tentar de novo.'
-            : `${failed.length} imagens não foram enviadas. Salve novamente para tentar de novo.`,
+            ? t(
+                'modal.imageUploadFailedOne',
+                '1 imagem não foi enviada. Salve novamente para tentar de novo.',
+              )
+            : t(
+                'modal.imageUploadFailedMany',
+                '{{count}} imagens não foram enviadas. Salve novamente para tentar de novo.',
+                { count: failed.length },
+              ),
         );
         refreshCurrent();
       }
     } catch (err: unknown) {
-      alert((err as Error).message ?? 'Erro ao salvar.');
+      alert((err as Error).message ?? t('modal.saveError', 'Erro ao salvar.'));
     } finally {
       setSaving(false);
     }
@@ -539,9 +912,13 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
       <div className="hub-bg-card rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold hub-txt">
-            {editing || current ? TIPO_COPY[tipo].editar : TIPO_COPY[tipo].novo}
+            {editing || current
+              ? t(`tipo.${tipo}.editar`, TIPO_COPY[tipo].editar)
+              : t(`tipo.${tipo}.novo`, TIPO_COPY[tipo].novo)}
           </h2>
           <button
+            type="button"
+            aria-label={t('modal.close', 'Fechar')}
             onClick={onClose}
             className="hub-icon-btn p-1.5 rounded-md transition-colors hub-tx3"
           >
@@ -551,68 +928,161 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
         <div className="space-y-3">
           <div>
-            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Tipo</label>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
+              {t('modal.tipoLabel', 'Tipo')}
+            </label>
             <div className="flex gap-1 p-1 rounded-lg hub-bg-soft w-fit">
-              {(['ideia', 'solicitacao'] as const).map((t) => (
+              {(['ideia', 'solicitacao'] as const).map((opt) => (
                 <button
-                  key={t}
+                  key={opt}
                   type="button"
-                  onClick={() => setTipo(t)}
+                  onClick={() => setTipo(opt)}
                   // rounded-md (not the --hub-r-ctl token): the radius preset
                   // deliberately skips this site to keep the neutral default
                   // byte-identical.
                   className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${
-                    tipo === t ? 'hub-btn-primary' : 'hub-tx3'
+                    tipo === opt ? 'hub-btn-primary' : 'hub-tx3'
                   }`}
                 >
-                  {t === 'ideia' ? 'Ideia' : 'Solicitação'}
+                  {t(`tipoLabel.${opt}`, opt === 'ideia' ? 'Ideia' : 'Solicitação')}
                 </button>
               ))}
             </div>
-            <p className="text-[11.5px] hub-tx3 mt-1">
-              Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.
+            <p className="text-[12px] hub-tx3 mt-1">
+              {t(
+                'modal.tipoHint',
+                'Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.',
+              )}
             </p>
           </div>
 
           <div>
-            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Título</label>
+            <label
+              htmlFor="ideia-titulo"
+              className="text-[12.5px] font-semibold hub-tx2 mb-1 block"
+            >
+              {t('modal.tituloLabel', 'Título')}
+            </label>
             <input
+              id="ideia-titulo"
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 ${errors.titulo ? 'border-red-400' : 'hub-border'}`}
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
-              placeholder={TIPO_COPY[tipo].tituloPh}
+              placeholder={t(`tipo.${tipo}.tituloPh`, TIPO_COPY[tipo].tituloPh)}
             />
             {errors.titulo && <p className="text-xs text-red-500 mt-0.5">{errors.titulo}</p>}
           </div>
 
           <div>
-            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Descrição</label>
+            <label
+              htmlFor="ideia-descricao"
+              className="text-[12.5px] font-semibold hub-tx2 mb-1 block"
+            >
+              {t('modal.descricaoLabel', 'Descrição')}
+              {audioSupported && !current && (
+                <span className="hub-tx3 font-normal">
+                  {' '}
+                  {t('modal.descricaoOrAudioHint', '(ou grave um áudio abaixo)')}
+                </span>
+              )}
+            </label>
             <textarea
+              id="ideia-descricao"
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              placeholder={TIPO_COPY[tipo].descricaoPh}
+              placeholder={t(`tipo.${tipo}.descricaoPh`, TIPO_COPY[tipo].descricaoPh)}
             />
             {errors.descricao && <p className="text-xs text-red-500 mt-0.5">{errors.descricao}</p>}
           </div>
 
+          {audioSupported && !current && (
+            <div
+              className="rounded-xl border hub-border hub-bg-soft p-3 space-y-2"
+              style={HUB_AUDIO_VARS}
+            >
+              <label className="text-[12.5px] font-semibold hub-tx2 block">
+                {t('audio.label', 'Áudio')}{' '}
+                <span className="hub-tx3 font-normal">
+                  · {t('audio.orWriteDescriptionAbove', '(ou escreva a descrição acima)')}
+                </span>
+              </label>
+              {pendingAudio && !rerecord ? (
+                <div className="space-y-2">
+                  <AudioPlayer
+                    src={pendingAudio.url}
+                    durationSeconds={pendingAudio.durationSeconds}
+                    label={t('audio.previewLabel', 'Prévia')}
+                    className="hub-txt w-full max-w-[360px]"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setRerecord(true)}
+                      className="text-[12px] hub-tx3 underline underline-offset-2"
+                    >
+                      {t('audio.recordAgain', 'Gravar novamente')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={discardPendingAudio}
+                      className="text-[12px] hub-tx3 underline underline-offset-2"
+                    >
+                      {t('recorder.discard', 'Descartar')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <AudioRecorder
+                  phase={audioPhase}
+                  onRecorded={async (blob, mime, durationSeconds) => {
+                    if (pendingAudio) URL.revokeObjectURL(pendingAudio.url);
+                    setPendingAudio({
+                      blob,
+                      mime,
+                      durationSeconds,
+                      url: URL.createObjectURL(blob),
+                    });
+                    setRerecord(false);
+                  }}
+                  hint={t('audio.recorderHint', 'Até {{duration}}.', {
+                    duration: formatDuration(MAX_AUDIO_SECONDS),
+                  })}
+                  {...recorderLabels(t)}
+                  sendLabel={t('audio.useThisRecording', 'Usar este áudio')}
+                />
+              )}
+              <p className="text-[12px] hub-tx3">
+                {t(
+                  'audio.transcriptAppearsHint',
+                  'A transcrição aparece na ideia logo depois de enviar.',
+                )}
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
-              Links de referência{' '}
-              <span className="hub-tx3 normal-case tracking-normal font-normal">(opcional)</span>
+              {t('modal.linksLabel', 'Links de referência')}{' '}
+              <span className="hub-tx3 normal-case tracking-normal font-normal">
+                {t('modal.optional', '(opcional)')}
+              </span>
             </label>
             {links.map((link, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input
+                  aria-label={t('modal.linkPlaceholder', 'https://...')}
                   className="flex-1 border hub-border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2"
                   value={link}
                   onChange={(e) =>
                     setLinks((ls) => ls.map((l, j) => (j === i ? e.target.value : l)))
                   }
-                  placeholder="https://..."
+                  placeholder={t('modal.linkPlaceholder', 'https://...')}
                 />
                 {links.length > 1 && (
                   <button
+                    type="button"
+                    aria-label={t('modal.removeLink', 'Remover link')}
                     onClick={() => setLinks((ls) => ls.filter((_, j) => j !== i))}
                     className="hub-icon-btn p-2 rounded-md hub-tx3 transition-colors"
                   >
@@ -625,14 +1095,16 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
               onClick={() => setLinks((ls) => [...ls, ''])}
               className="text-xs hub-tx3 underline underline-offset-2 transition-colors"
             >
-              + Adicionar outro link
+              {t('modal.addLink', '+ Adicionar outro link')}
             </button>
           </div>
 
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
-              Imagens{' '}
-              <span className="hub-tx3 normal-case tracking-normal font-normal">(até 10)</span>
+              {t('modal.imagesLabel', 'Imagens')}{' '}
+              <span className="hub-tx3 normal-case tracking-normal font-normal">
+                {t('modal.upToTen', '(até 10)')}
+              </span>
             </label>
             {current ? (
               <IdeiaImages
@@ -657,8 +1129,8 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                         <button
                           type="button"
                           onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
-                          aria-label="Remover imagem"
-                          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label={t('images.removeImage', 'Remover imagem')}
+                          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                         >
                           <X size={12} />
                         </button>
@@ -673,7 +1145,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                     className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 transition-colors"
                   >
                     <ImagePlus size={13} />
-                    Adicionar imagem
+                    {t('images.addImage', 'Adicionar imagem')}
                   </button>
                 )}
                 <input
@@ -697,7 +1169,13 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
-            {current ? 'Salvar alterações' : 'Salvar'}
+            {saving && audioPhase === 'uploading'
+              ? t('recorder.uploading', 'Enviando áudio…')
+              : saving && audioPhase === 'transcribing'
+                ? t('recorder.transcribing', 'Transcrevendo…')
+                : current
+                  ? t('modal.saveChanges', 'Salvar alterações')
+                  : t('common:actions.save', 'Salvar')}
           </button>
           <button
             onClick={() => {
@@ -705,7 +1183,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             }}
             className="px-4 py-2.5 rounded-lg border hub-border text-sm hub-tx2 hover:bg-[var(--hub-soft)] transition-colors"
           >
-            {current ? 'Concluir' : 'Cancelar'}
+            {current ? t('modal.concluir', 'Concluir') : t('common:actions.cancel', 'Cancelar')}
           </button>
         </div>
       </div>

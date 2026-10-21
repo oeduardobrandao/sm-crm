@@ -1,3 +1,4 @@
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
 import { generateImageThumbnail, generateBlurDataUrl, probeImage } from './postMedia';
 
@@ -44,17 +45,17 @@ async function callFn<T>(
   return res.json() as Promise<T>;
 }
 
-function putToR2(url: string, file: File): Promise<void> {
+export function putToR2(url: string, body: Blob, contentType: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url);
-    xhr.setRequestHeader('Content-Type', file.type);
+    xhr.setRequestHeader('Content-Type', contentType);
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
         : reject(new Error(`Upload falhou: ${xhr.status}`));
     xhr.onerror = () => reject(new Error('Erro de rede no upload'));
-    xhr.send(file);
+    xhr.send(body);
   });
 }
 
@@ -70,7 +71,14 @@ export async function listIdeiaImages(ideiaId: string): Promise<CrmIdeiaImage[]>
   return images;
 }
 
-export async function uploadIdeiaImage(
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadIdeiaImage(
+  ...args: Parameters<typeof uploadIdeiaImageUnguarded>
+): ReturnType<typeof uploadIdeiaImageUnguarded> {
+  return trackUnsavedWork(uploadIdeiaImageUnguarded(...args));
+}
+
+async function uploadIdeiaImageUnguarded(
   ideiaId: string,
   file: File,
   sortOrder?: number,
@@ -97,8 +105,8 @@ export async function uploadIdeiaImage(
   });
 
   await Promise.all([
-    putToR2(signed.upload_url, file),
-    putToR2(signed.thumbnail_upload_url, thumb),
+    putToR2(signed.upload_url, file, file.type),
+    putToR2(signed.thumbnail_upload_url, thumb, 'image/webp'),
   ]);
 
   return callFn<CrmIdeiaImage>('POST', `/${ideiaId}/files`, {

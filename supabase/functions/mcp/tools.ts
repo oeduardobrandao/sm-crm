@@ -2,6 +2,7 @@
 import { z } from "npm:zod@3";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token.ts";
+import { CONTENT_FORMATS, IG_CAPTION_MAX } from "../_shared/platform-registry.ts";
 import {
   createClient,
   createMember,
@@ -85,7 +86,7 @@ function register(
 }
 
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
-const FORMATO = z.enum(["feed", "reels", "stories", "carrossel"]);
+const FORMATO = z.enum(CONTENT_FORMATS);
 const METRIC = z.enum([
   "reach", "saved", "shares", "comments", "likes",
   "share_rate", "like_rate", "save_rate", "comment_rate", "ig_score",
@@ -186,9 +187,9 @@ export function registerTools(server: any, deps: Deps): void {
       workflow_id: z.number().int().positive().optional(),
       cliente_id: z.number().int().positive().optional(),
       titulo: z.string().trim().min(1).max(200),
-      tipo: z.enum(["feed", "reels", "stories", "carrossel"]).optional(),
+      tipo: FORMATO.optional(),
       body: z.string().max(10000).optional(),
-      ig_caption: z.string().max(2200).optional(),
+      ig_caption: z.string().max(IG_CAPTION_MAX).optional(),
     },
     (a) => createPost(deps, a),
     (a) => ({
@@ -202,9 +203,9 @@ export function registerTools(server: any, deps: Deps): void {
     {
       post_id: z.number().int().positive(),
       titulo: z.string().trim().min(1).max(200).optional(),
-      tipo: z.enum(["feed", "reels", "stories", "carrossel"]).optional(),
+      tipo: FORMATO.optional(),
       body: z.string().max(10000).optional(),
-      ig_caption: z.string().max(2200).optional(),
+      ig_caption: z.string().max(IG_CAPTION_MAX).optional(),
       status: z.enum(["rascunho", "revisao_interna"]).optional(),
     },
     (a) => updatePost(deps, a),
@@ -265,7 +266,7 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   register(server, deps, "create_media_upload", "posts:write",
-    "Gera URL(s) de upload presigned (PUT) para subir imagens JPG/PNG prontas ao workspace (cota checada antes de assinar). Depois use set_post_media com os r2_key retornados para colocá-las como mídia de um post. Máx 10 arquivos, ≤ 8MB cada.",
+    "Gera URL(s) de upload presigned (PUT) para subir imagens JPG/PNG prontas ao workspace (cota checada antes de assinar). Cada URL só aceita um corpo de exatamente size_bytes bytes (outro tamanho dá 403 SignatureDoesNotMatch): informe o tamanho real do arquivo. Depois use set_post_media com os r2_key retornados para colocá-las como mídia de um post. Máx 10 arquivos, ≤ 8MB cada.",
     { files: z.array(z.object({
         filename: z.string().trim().min(1).max(200),
         mime_type: z.enum(["image/jpeg", "image/png"]),
@@ -317,7 +318,7 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   register(server, deps, "update_task", "tarefas:write",
-    "Edita uma tarefa: título, descrição, status, responsável, prazo. Passe null em descricao/responsavel_id/data_limite para limpar o campo; campos omitidos não mudam.",
+    "Edita uma tarefa: título, descrição, status, responsável, prazo. Passe null em descricao/responsavel_id/data_limite para limpar o campo; campos omitidos não mudam. Uma tarefa que pertence a uma série recorrente (serie_id preenchido) não pode ter data_limite nulo.",
     {
       task_id: z.number().int().positive(),
       titulo: z.string().trim().min(1).max(200).optional(),

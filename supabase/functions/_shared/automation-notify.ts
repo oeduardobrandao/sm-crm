@@ -10,22 +10,35 @@ type DbClient = { from: (table: string) => any; rpc: (name: string, params: Reco
 export type AutomationFailureReason =
   | "token_expired"
   | "subscription_lost"
-  | "duplicate_account_conflict";
+  | "duplicate_account_conflict"
+  | "target_never_published";
 
 const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export async function notifyAutomationFailure(
   svc: DbClient,
-  args: { contaId: string; clientId: number; reason: AutomationFailureReason },
+  args: {
+    contaId: string;
+    clientId: number;
+    reason: AutomationFailureReason;
+    extraMetadata?: Record<string, unknown>;
+  },
 ): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
+    // `reason` entra no dedupe: motivos diferentes tem remedios diferentes
+    // (ex.: token_expired manda reconectar, target_never_published manda
+    // escolher o post publicado), entao colapsar os dois no mesmo dedupe de
+    // 24h esconde a orientacao certa do usuario. Efeito colateral aceitavel:
+    // os tres motivos antigos (que compartilhavam o mesmo remedio) passam a
+    // deduplicar separadamente entre si.
     const { data: existing, error: existErr } = await svc
       .from("notifications")
       .select("id")
       .eq("type", "instagram_automation_failed")
       .eq("workspace_id", args.contaId)
       .eq("metadata->>client_id", String(args.clientId))
+      .eq("metadata->>reason", args.reason)
       .gt("created_at", cutoff)
       .limit(1);
     if (existErr) throw existErr;
@@ -46,7 +59,10 @@ export async function notifyAutomationFailure(
       p_user_ids: userIds,
       p_type: "instagram_automation_failed",
       p_link: "/automacoes",
-      p_metadata: { client_id: args.clientId, reason: args.reason },
+      // Campos canonicos por ULTIMO: um `extraMetadata` que carregue `reason`
+      // ou `client_id` nao pode sobrescreve-los em silencio -- o dedupe acima
+      // agora depende do `reason` gravado aqui ser o de verdade.
+      p_metadata: { ...args.extraMetadata, client_id: args.clientId, reason: args.reason },
     });
     if (insertErr) throw insertErr;
   } catch (err) {

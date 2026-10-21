@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Outlet, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { HubContext } from '../HubContext';
 import { HubSidebar } from './HubSidebar';
@@ -9,23 +10,30 @@ import { PoweredByMesaas } from '../components/PoweredByMesaas';
 import {
   resolveHubTheme,
   buildGoogleFontsHref,
+  effectiveHubFonts,
   DEFAULT_HUB_THEME,
+  type HubLook,
   type HubThemeConfig,
   type HubSurface,
   type HubRadius,
   type HubCardStyle,
 } from '../theme';
-import { fetchBootstrap } from '../api';
-import type { HubBootstrap } from '../types';
+import { hubBootstrapQuery } from '../queries';
+import { ShellSkeleton } from '../components/Skeleton';
 
 const FONT_LINK_ID = 'hub-custom-fonts';
 
 export function HubShell() {
   const { workspace, token } = useParams<{ workspace: string; token: string }>();
   const { t } = useTranslation();
-  const [bootstrap, setBootstrap] = useState<HubBootstrap | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Usually already in flight: main.tsx prefetches it before the page chunk loads.
+  const bootstrapQuery = useQuery({
+    ...hubBootstrapQuery(workspace ?? '', token ?? ''),
+    enabled: !!workspace && !!token,
+  });
+  const bootstrap = bootstrapQuery.data ?? null;
+  const error = bootstrapQuery.error?.message ?? null;
+  const loading = bootstrapQuery.isPending;
   const { theme, toggleTheme, setTheme, hasStoredPreference } = useTheme();
   const ht = bootstrap?.hub_theme;
   // Defense in depth: hub-bootstrap already fails closed (serves NEUTRAL_HUB_THEME
@@ -40,15 +48,9 @@ export function HubShell() {
   // default_appearance. customized: false always reads them as their neutral
   // defaults, even if a stale/tampered payload carries contrary values.
   const effectiveHideBranding = isCustomized ? (ht?.hide_branding ?? false) : false;
+  // Visual identity flag. HubShell provides HubContext, so it can't use useHubLook.
+  const look: HubLook = bootstrap?.feature_hub_pauta === true ? 'pauta' : 'classic';
   const appliedDefaultAppearance = useRef(false);
-
-  useEffect(() => {
-    if (!workspace || !token) return;
-    fetchBootstrap(workspace, token)
-      .then(setBootstrap)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [workspace, token]);
 
   useEffect(() => {
     if (!bootstrap?.workspace.logo_url) return;
@@ -66,13 +68,11 @@ export function HubShell() {
   // are already loaded by index.html) — one shared <link> tag, updated in place
   // when the font choice changes, removed entirely when it reverts to defaults.
   useEffect(() => {
-    const displayId = isCustomized
-      ? (ht?.font_display ?? DEFAULT_HUB_THEME.fontDisplay)
-      : DEFAULT_HUB_THEME.fontDisplay;
-    const bodyId = isCustomized
-      ? (ht?.font_body ?? DEFAULT_HUB_THEME.fontBody)
-      : DEFAULT_HUB_THEME.fontBody;
-    const href = buildGoogleFontsHref(displayId, bodyId);
+    const fonts = effectiveHubFonts(look, isCustomized, {
+      display: ht?.font_display,
+      body: ht?.font_body,
+    });
+    const href = buildGoogleFontsHref(fonts.display, fonts.body);
     const existing = document.getElementById(FONT_LINK_ID) as HTMLLinkElement | null;
     if (href) {
       if (existing) {
@@ -87,7 +87,7 @@ export function HubShell() {
     } else if (existing) {
       existing.remove();
     }
-  }, [isCustomized, ht?.font_display, ht?.font_body]);
+  }, [look, isCustomized, ht?.font_display, ht?.font_body]);
 
   // First visit adopts the agency's configured default appearance; an explicit
   // client choice (a value already in localStorage) always wins on later visits.
@@ -114,11 +114,7 @@ export function HubShell() {
   }, [bootstrap, hasStoredPreference, ht, isCustomized]);
 
   if (loading) {
-    return (
-      <div className="hub-root min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
+    return <ShellSkeleton />;
   }
 
   if (error || !bootstrap) {
@@ -152,7 +148,7 @@ export function HubShell() {
         }
       : { ...DEFAULT_HUB_THEME, accent: bootstrap.workspace.brand_color };
 
-  const resolved = resolveHubTheme(config, theme === 'dark');
+  const resolved = resolveHubTheme(config, theme === 'dark', look);
   const styleText = Object.entries(resolved.vars)
     .map(([k, v]) => `${k}: ${v};`)
     .join(' ');
@@ -162,10 +158,15 @@ export function HubShell() {
       value={{ bootstrap, token: token!, workspace: workspace!, theme, toggleTheme }}
     >
       <style>{`:root { ${styleText} }`}</style>
-      <div className="hub-root min-h-screen flex flex-col">
+      <div
+        className="hub-root min-h-screen flex flex-col"
+        data-hub-look={look === 'pauta' ? 'pauta' : undefined}
+      >
         <HubSidebar />
         <HubMobileNav />
-        <main className="hub-noise flex-1 md:pl-[240px]">
+        <main
+          className={look === 'pauta' ? 'flex-1 md:pl-[240px]' : 'hub-noise flex-1 md:pl-[240px]'}
+        >
           <div className="mx-auto w-full max-w-5xl px-5 sm:px-8 py-8 sm:py-12 pb-28 md:pb-16">
             <Outlet />
             {!effectiveHideBranding && <PoweredByMesaas />}

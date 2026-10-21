@@ -6,7 +6,7 @@
 // JWT-authed (the CRM user); does its own owner/admin + feature check; writes via service role
 // (mcp_oauth_grants writes are service-role-only by RLS). Deploy WITHOUT --no-verify-jwt is NOT
 // used here — keep gateway JWT verification on, like mcp-keys.
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
@@ -16,14 +16,13 @@ import {
   mcpScopesFromClaim,
   validateConsentPayload,
 } from "../_shared/mcp-oauth.ts";
+import { adminScopesFromClaim } from "../_shared/mcp-admin-scopes.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
+import { listAdminMcpGrants, revokeAdminMcpGrant } from "../_shared/admin-mcp-grants.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-function isManager(role: string | null | undefined): boolean {
-  return role === "owner" || role === "admin";
-}
 
 /**
  * Fetches Supabase's OAuth authorization details for a pending authorization, verified with the
@@ -34,7 +33,7 @@ function isManager(role: string | null | undefined): boolean {
 async function fetchAuthorizationDetails(
   authorizationId: string,
   authHeader: string,
-): Promise<{ clientId: string; requestedMcp: string[] } | null> {
+): Promise<{ clientId: string; requestedMcp: string[]; requestedAdmin: string[] } | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/auth/v1/oauth/authorizations/${encodeURIComponent(authorizationId)}`,
@@ -44,10 +43,20 @@ async function fetchAuthorizationDetails(
     const det = await res.json();
     const clientId = det?.client?.id;
     if (typeof clientId !== "string" || !clientId) return null;
-    return { clientId, requestedMcp: mcpScopesFromClaim(det?.scope) };
+    return {
+      clientId,
+      requestedMcp: mcpScopesFromClaim(det?.scope),
+      requestedAdmin: adminScopesFromClaim(det?.scope),
+    };
   } catch (_e) {
     return null;
   }
+}
+
+/** True if `userId` currently holds a platform_admins row (grants MCP admin access). */
+async function isPlatformAdmin(svc: SupabaseClient, userId: string): Promise<boolean> {
+  const { data } = await svc.from("platform_admins").select("id").eq("user_id", userId).maybeSingle();
+  return !!data;
 }
 
 Deno.serve(async (req) => {
@@ -76,17 +85,19 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
 
-    // Workspaces the user may connect: their owner/admin memberships, annotated with whether the
-    // workspace's plan enables MCP (the consent UI disables the rest).
+    // Workspaces the user may connect: those where they hold 'configuracoes':'editar'
+    // (owner/admin legados, ou papel custom com a permissão), anotadas com se o plano da
+    // workspace habilita MCP (a UI de consentimento desabilita o resto).
     if (action === "eligible-workspaces") {
       const { data: memberships } = await svc
         .from("workspace_members")
         .select("workspace_id, role, workspaces!inner(id, name)")
-        .eq("user_id", user.id)
-        .in("role", ["owner", "admin"]);
+        .eq("user_id", user.id);
       const rows = (memberships ?? []) as any[];
       const workspaces = [];
       for (const m of rows) {
+        const canManage = await hasPermissionFor(svc, user.id, m.workspace_id as string, "configuracoes", "editar");
+        if (!canManage) continue;
         const feature_mcp = await effectivePlanFeature(svc, m.workspace_id as string, "feature_mcp");
         workspaces.push({
           id: m.workspace_id as string,
@@ -95,7 +106,7 @@ Deno.serve(async (req) => {
           feature_mcp,
         });
       }
-      return json({ workspaces });
+      return json({ workspaces, platform_admin: await isPlatformAdmin(svc, user.id) });
     }
 
     // Record (or re-point) the consent grant for this user + OAuth client → workspace + scopes.
@@ -108,21 +119,43 @@ Deno.serve(async (req) => {
       // never from the browser. A mismatched/forged client_id can't bind a grant here.
       const auth = await fetchAuthorizationDetails(authorization_id, authHeader);
       if (!auth) return json({ error: "invalid_authorization" }, 400);
-      const { clientId, requestedMcp } = auth;
+      const { clientId, requestedMcp, requestedAdmin } = auth;
 
-      // Authorize against the CHOSEN workspace (not the active one): must be owner/admin there.
-      const { data: membership } = await svc
-        .from("workspace_members")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("workspace_id", conta_id)
-        .maybeSingle();
-      if (!membership || !isManager(membership.role as string)) {
+      // target "platform": Admin da plataforma MCP grant — no conta_id, gated by platform_admins,
+      // and never behind assertPlanFeature (platform admin access isn't a workspace plan feature).
+      if (parsed.value.target === "platform") {
+        if (!(await isPlatformAdmin(svc, user.id))) return json({ error: "Insufficient permissions" }, 403);
+        const grantScopes = boundGrantScopes(scopes, requestedAdmin);
+        if (grantScopes.length === 0) return json({ error: "no_scopes_granted" }, 400);
+        const now = new Date().toISOString();
+        const { error } = await svc
+          .from("admin_mcp_oauth_grants")
+          .upsert(
+            { user_id: user.id, client_id: clientId, scopes: grantScopes, revoked_at: null, revoked_by: null, updated_at: now },
+            { onConflict: "user_id,client_id" },
+          );
+        if (error) throw error;
+        await insertAuditLog(svc, {
+          actor_user_id: user.id,
+          action: "mcp_admin.oauth.grant",
+          resource_type: "admin_mcp_oauth_grant",
+          resource_id: clientId,
+          metadata: { scopes: grantScopes, authorization_id },
+        });
+        return json({ ok: true });
+      }
+      const contaId = conta_id as string; // target workspace: validateConsentPayload garante não-nulo
+
+      // Authorize against the CHOSEN workspace (not the active one): 'configuracoes':'editar'
+      // there. has_permission_for fails closed on a missing membership (no separate lookup
+      // needed -- a non-member resolves to false).
+      const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", "editar");
+      if (!canManage) {
         return json({ error: "Insufficient permissions" }, 403);
       }
 
       try {
-        await assertPlanFeature(svc, conta_id, "feature_mcp");
+        await assertPlanFeature(svc, contaId, "feature_mcp");
       } catch (e) {
         if (e instanceof FeatureDisabledError) {
           // Marketing signal; never let it change the response.
@@ -133,7 +166,7 @@ Deno.serve(async (req) => {
           // no log line.
           try {
             const { error: insErr } = await svc.from("paywall_hits").insert({
-              workspace_id: conta_id,
+              workspace_id: contaId,
               user_id: user.id,
               feature: "feature_mcp",
             });
@@ -159,7 +192,7 @@ Deno.serve(async (req) => {
           {
             user_id: user.id,
             client_id: clientId,
-            conta_id,
+            conta_id: contaId,
             scopes: grantScopes,
             revoked_at: null,
             revoked_by: null,
@@ -170,7 +203,7 @@ Deno.serve(async (req) => {
       if (error) throw error;
 
       await insertAuditLog(svc, {
-        conta_id,
+        conta_id: contaId,
         actor_user_id: user.id,
         action: "mcp.oauth.grant",
         resource_type: "mcp_oauth_grant",
@@ -180,17 +213,27 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    // List / revoke the workspace's Claude OAuth connections — owner/admin of the ACTIVE workspace.
+    // List / revoke the workspace's Claude OAuth connections — 'configuracoes':'editar' on the
+    // ACTIVE workspace. active_workspace_id, not profiles.conta_id: the latter is global and
+    // goes stale on a workspace switch (same rule as invite-user/manage-workspace-user).
     if (action === "list-grants" || action === "revoke-grant") {
       const { data: profile } = await svc
         .from("profiles")
-        .select("role, conta_id")
+        .select("active_workspace_id")
         .eq("id", user.id)
         .single();
-      if (!profile || !isManager(profile.role as string)) {
+      const contaId = profile?.active_workspace_id as string | undefined;
+      if (!contaId) {
         return json({ error: "Insufficient permissions" }, 403);
       }
-      const contaId = profile.conta_id as string;
+      // Mesmo split do mcp-keys: 'list-grants' é leitura e a aba MCP em modo
+      // somente leitura (`configuracoes:ver`) precisa dela para renderizar a
+      // lista de conexões; 'revoke-grant' é mutação e segue exigindo 'editar'.
+      const requiredAction = action === "list-grants" ? "ver" : "editar";
+      const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", requiredAction);
+      if (!canManage) {
+        return json({ error: "Insufficient permissions" }, 403);
+      }
 
       if (action === "list-grants") {
         const { data: grants } = await svc
@@ -236,6 +279,21 @@ Deno.serve(async (req) => {
         resource_id: data.client_id as string,
         metadata: {},
       });
+      return json({ ok: true });
+    }
+
+    // Grants OAuth do Admin da plataforma: qualquer platform admin lista e revoga os de todos
+    // (supervisão entre admins; a tabela não tem conta_id).
+    if (action === "list-admin-grants" || action === "revoke-admin-grant") {
+      if (!(await isPlatformAdmin(svc, user.id))) return json({ error: "Insufficient permissions" }, 403);
+      if (action === "list-admin-grants") {
+        const grants = await listAdminMcpGrants(svc);
+        return json({ grants });
+      }
+      const grantId = typeof body.grant_id === "string" ? body.grant_id : "";
+      if (!grantId) return json({ error: "grant_id required" }, 400);
+      const result = await revokeAdminMcpGrant(svc, grantId, user.id);
+      if (!result.ok) return json({ error: "not found" }, 404);
       return json({ ok: true });
     }
 

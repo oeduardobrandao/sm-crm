@@ -58,6 +58,7 @@ Deno.test("fallbackSummaryParagraphs cita o mês e não inventa base ausente", (
     posts_count: { value: 8, unit: "count", prev: null },
     profile_views: { value: null, unit: "count", prev: null },
     website_clicks: { value: null, unit: "count", prev: null },
+    follows: { value: null, unit: "count", prev: null },
   }, "Julho de 2026");
   assert(paras.length >= 1);
   assert(paras[0].includes("Julho de 2026"));

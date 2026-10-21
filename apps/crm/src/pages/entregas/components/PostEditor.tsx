@@ -10,6 +10,8 @@ import Link from '@tiptap/extension-link';
 import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
+import { toast } from 'sonner';
+import { isAllowedRichTextAutolinkUrl, normalizeRichTextLinkUrl } from '@mesaas/link-policy';
 import {
   Bold,
   Italic,
@@ -22,21 +24,32 @@ import {
   Check,
   Lightbulb,
   MessageSquare,
+  ImagePlus,
+  Loader2,
 } from 'lucide-react';
 import { CalloutExtension } from './CalloutExtension';
 import { CommentHighlight } from './CommentHighlight';
 import { MentionNode } from '@/components/mentions/MentionNode';
 import { mentionHref } from '@/components/mentions/mentionHref';
 import { MentionSuggestion } from '@/components/mentions/mentionSuggestion';
-import { useMentionSearch } from '@/components/mentions/useMentionSearch';
-import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import { useMentionSearch, type MentionSection } from '@/components/mentions/useMentionSearch';
 import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
+import { MAX_CAPTION_CHARS } from './useCaptionDraft';
+import { AddCommentPopover } from './AddCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
+import { PhoneFormatBar } from './postEditorPhone/PhoneFormatBar';
 
-const TEXT_COLORS = [
+// Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
+// (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
+// era aplicada, sem qualquer explicação (ver PaginaRichTextEditor.tsx para a mesma
+// checagem no editor de páginas do Hub).
+const LINK_REJECTED_MESSAGE =
+  'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).';
+
+export const TEXT_COLORS = [
   { name: 'Padrão', color: null },
   { name: 'Cinza', color: '#787774' },
   { name: 'Marrom', color: '#9F6B53' },
@@ -48,7 +61,66 @@ const TEXT_COLORS = [
   { name: 'Rosa', color: '#C14C8A' },
 ] as const;
 
-const HIGHLIGHT_COLORS = [
+/**
+ * Extracted from `useEditor`'s inline array so the schema can be asserted on directly
+ * (see `__tests__/postEditorExtensions.test.ts`) without mounting the full editor --
+ * PostEditor needs live TanStack Query data (useMentionSearch) and a Router, which makes
+ * a full render expensive to set up just to check the extension set. Mirrors the same
+ * export-for-testability pattern already used by `readOnlyTipTapExtensions`
+ * (ReadOnlyTipTap.tsx) and `pageEditorExtensions` (cliente-detalhe/hub/pageEditorSchema.ts).
+ */
+export function postEditorExtensions({
+  mentionSearch,
+  onUploadInlineImage,
+  placeholder = 'Escreva o conteúdo do post...',
+  onUploadStart,
+  onUploadEnd,
+}: {
+  mentionSearch: (query: string) => Promise<MentionSection[]>;
+  onUploadInlineImage?: InlineImageUploadFn;
+  placeholder?: string;
+  onUploadStart?: () => void;
+  onUploadEnd?: () => void;
+}) {
+  return [
+    // StarterKit v3 already bundles Link and Underline. Without `link: false` /
+    // `underline: false` both register twice -- TipTap logs "Duplicate extension
+    // names found: ['link','underline']" and keeps BOTH Link instances live, so
+    // StarterKit's own `openOnClick: true` handler fires alongside the `openOnClick:
+    // false` one configured below, and clicking a link while editing navigates away.
+    StarterKit.configure({ link: false, underline: false }),
+    UnderlineExt,
+    TextStyle,
+    Color,
+    Highlight.configure({
+      multicolor: true,
+      HTMLAttributes: {},
+    }),
+    // isAllowedRichTextAutolinkUrl (@mesaas/link-policy) -- same policy and same
+    // autolink-aware resolution as the CRM's page editor (pageEditorSchema.ts):
+    // http/https/mailto/tel allowed, everything else (including relative/anchor-only
+    // and credentialed URLs) rejected. This Link extension had no `isAllowedUri` at
+    // all before, so an `ftp:`, credentialed, or relative URL typed into a post
+    // caption persisted here and then rendered as a dead `href=""` in the Hub, which
+    // enforces this same policy on read (RichTextTiptap.tsx, `autolink: false` there
+    // -- it only ever validates an already-resolved href, never raw typed text).
+    Link.configure({
+      openOnClick: false,
+      autolink: true,
+      isAllowedUri: (url, ctx) => isAllowedRichTextAutolinkUrl(url, ctx),
+    }),
+    Placeholder.configure({ placeholder }),
+    CalloutExtension,
+    CommentHighlight,
+    MentionNode,
+    MentionSuggestion.configure({ search: mentionSearch }),
+    ...(onUploadInlineImage
+      ? [createInlineImageExtension(onUploadInlineImage, onUploadStart, onUploadEnd)]
+      : []),
+  ];
+}
+
+export const HIGHLIGHT_COLORS = [
   { name: 'Nenhum', color: null, cssColor: 'transparent' },
   { name: 'Cinza', color: 'gray', cssColor: '#E3E2E0' },
   { name: 'Marrom', color: 'brown', cssColor: '#EEE0DA' },
@@ -76,6 +148,13 @@ interface PostEditorProps {
   onEditComment?: (commentId: number, content: string) => Promise<void>;
   onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
   onUploadInlineImage?: InlineImageUploadFn;
+  placeholder?: string;
+  ariaLabel?: string;
+  showCharacterCount?: boolean;
+  onUploadStateChange?: (uploading: boolean) => void;
+  /** `phone`: no desktop toolbar or bubble menu; the phone format bar and selection menu
+   *  (shown inside the full-screen text editor) carry the same commands instead. */
+  variant?: 'default' | 'phone';
 }
 
 export function PostEditor({
@@ -94,7 +173,13 @@ export function PostEditor({
   onEditComment,
   onDeleteComment,
   onUploadInlineImage,
+  placeholder = 'Escreva o conteúdo do post...',
+  ariaLabel,
+  showCharacterCount = true,
+  onUploadStateChange,
+  variant = 'default',
 }: PostEditorProps) {
+  const phone = variant === 'phone';
   const navigate = useNavigate();
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkInputValue, setLinkInputValue] = useState('');
@@ -105,17 +190,32 @@ export function PostEditor({
   const highlightRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
   const [commentAddOpen, setCommentAddOpen] = useState(false);
-  const [commentAddText, setCommentAddText] = useState('');
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentAddPos, setCommentAddPos] = useState<{ top: number; left: number } | null>(null);
   const [threadPopoverPos, setThreadPopoverPos] = useState<{ top: number; left: number } | null>(
     null,
   );
   const commentBtnRef = useRef<HTMLButtonElement>(null);
-  const commentAddRef = useRef<HTMLDivElement>(null);
   const commentAddWrapperRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const pendingUploadsRef = useRef(0);
+  const uploadStateChangeRef = useRef(onUploadStateChange);
+  useEffect(() => {
+    uploadStateChangeRef.current = onUploadStateChange;
+  }, [onUploadStateChange]);
+  const beginUpload = useRef(() => {
+    pendingUploadsRef.current += 1;
+    setImageUploading(true);
+    uploadStateChangeRef.current?.(true);
+  }).current;
+  const endUpload = useRef(() => {
+    pendingUploadsRef.current = Math.max(0, pendingUploadsRef.current - 1);
+    const uploading = pendingUploadsRef.current > 0;
+    setImageUploading(uploading);
+    uploadStateChangeRef.current?.(uploading);
+  }).current;
 
   // Editor extensions are frozen at first render (useEditor is called with no deps
   // array below), so MentionSuggestion.configure() must receive a STABLE function --
@@ -130,23 +230,13 @@ export function PostEditor({
   const mentionSearchFn = useRef((query: string) => mentionSearchRef.current(query)).current;
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      UnderlineExt,
-      TextStyle,
-      Color,
-      Highlight.configure({
-        multicolor: true,
-        HTMLAttributes: {},
-      }),
-      Link.configure({ openOnClick: false, autolink: true }),
-      Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
-      CalloutExtension,
-      CommentHighlight,
-      MentionNode,
-      MentionSuggestion.configure({ search: mentionSearchFn }),
-      ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
-    ],
+    extensions: postEditorExtensions({
+      mentionSearch: mentionSearchFn,
+      onUploadInlineImage,
+      placeholder,
+      onUploadStart: beginUpload,
+      onUploadEnd: endUpload,
+    }),
     content: initialContent ?? undefined,
     editable: !disabled,
     onCreate: () => {
@@ -156,10 +246,40 @@ export function PostEditor({
       if (!isInitialized.current) return;
       onUpdate(ed.getJSON() as Record<string, unknown>, ed.getText());
     },
+    editorProps: ariaLabel
+      ? {
+          attributes: {
+            role: 'textbox',
+            'aria-label': ariaLabel,
+            'aria-multiline': 'true',
+          },
+        }
+      : {},
   });
 
+  const handleImageSelection = useCallback(
+    async (file: File | undefined) => {
+      if (!file || !editor || !onUploadInlineImage) return;
+      beginUpload();
+      try {
+        const uploaded = await onUploadInlineImage(file);
+        editor.chain().focus().insertInlineImage(uploaded).run();
+        onUpdate(editor.getJSON() as Record<string, unknown>, editor.getText());
+      } catch {
+        // The caller owns the user-facing error message.
+      } finally {
+        endUpload();
+        if (imageInputRef.current) imageInputRef.current.value = '';
+      }
+    },
+    [beginUpload, editor, endUpload, onUpdate, onUploadInlineImage],
+  );
+
+  // `false`: TipTap's setEditable emits `update` by default, which reached onUpdate (and
+  // the drawers' content autosave) on every open, since in a real browser the editor's
+  // deferred `create` usually lands before this effect. Editability isn't a content edit.
   useEffect(() => {
-    if (editor) editor.setEditable(!disabled);
+    if (editor) editor.setEditable(!disabled, false);
   }, [editor, disabled]);
 
   // Close dropdowns on outside click
@@ -179,11 +299,6 @@ export function PostEditor({
       ) {
         setHighlightOpen(false);
       }
-      if (commentAddOpen) {
-        const inPortal = commentAddRef.current?.contains(e.target as Node);
-        const inWrapper = commentAddWrapperRef.current?.contains(e.target as Node);
-        if (!inPortal && !inWrapper) setCommentAddOpen(false);
-      }
       if (
         activeThreadId != null &&
         commentPopoverRef.current &&
@@ -194,7 +309,7 @@ export function PostEditor({
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [textColorOpen, highlightOpen, commentAddOpen, activeThreadId]);
+  }, [textColorOpen, highlightOpen, activeThreadId]);
 
   const openLinkPopover = useCallback(() => {
     if (!editor) return;
@@ -209,11 +324,24 @@ export function PostEditor({
   const applyLink = useCallback(() => {
     if (!editor) return;
     const url = linkInputValue.trim();
-    if (url) {
-      editor.chain().focus().setLink({ href: url }).run();
-    } else {
+    if (!url) {
       editor.chain().focus().unsetLink().run();
+      setLinkPopoverOpen(false);
+      return;
     }
+    // normalizeRichTextLinkUrl (@mesaas/link-policy) resolves a schemeless candidate
+    // ("mesaas.com.br", "contato@exemplo.com") to the href TipTap will actually store --
+    // `isAllowedUri` on the Link extension only decides yes/no on a resolved copy, it
+    // never rewrites what `setLink` persists. Passing the raw `url` through here is what
+    // let a schemeless href reach `setLink` unresolved and render dead (`href=""`) in the
+    // Hub. When nothing valid can be resolved, no link is applied and the popover stays
+    // open with an explanation instead of silently closing.
+    const normalized = normalizeRichTextLinkUrl(url);
+    if (!normalized) {
+      toast.error(LINK_REJECTED_MESSAGE);
+      return;
+    }
+    editor.chain().focus().setLink({ href: normalized }).run();
     setLinkPopoverOpen(false);
   }, [editor, linkInputValue]);
 
@@ -248,26 +376,28 @@ export function PostEditor({
     [editor],
   );
 
-  const handleAddComment = useCallback(async () => {
-    if (!editor || !onCreateComment || !commentAddText.trim()) return;
-    const { from, to } = editor.state.selection;
-    const quotedText = editor.state.doc.textBetween(from, to, ' ');
-    if (!quotedText.trim()) return;
-
-    setCommentSubmitting(true);
-    try {
-      const threadId = await onCreateComment(quotedText, commentAddText.trim());
+  const handleAddComment = useCallback(
+    async (text: string) => {
+      if (!editor || !onCreateComment) return;
+      const { from, to } = editor.state.selection;
+      const quotedText = editor.state.doc.textBetween(from, to, ' ');
+      if (!quotedText.trim()) return;
+      const threadId = await onCreateComment(quotedText, text);
       editor.chain().focus().setCommentHighlight({ threadId }).run();
       setCommentAddOpen(false);
-      setCommentAddText('');
-    } finally {
-      setCommentSubmitting(false);
-    }
-  }, [editor, onCreateComment, commentAddText]);
+    },
+    [editor, onCreateComment],
+  );
 
   // Click handler for comment-highlighted text and @-mention chips
   useEffect(() => {
-    if (!editor) return;
+    // The editor from this render can already be destroyed by the time effects run:
+    // useEditor schedules a destroy 1ms after creating it and only cancels that from its
+    // own passive effect, so when React runs passive effects later (a slow phone, WebKit
+    // yielding to paint) the timer wins and useEditor swaps in a new instance on the next
+    // render. `editor.view` throws on a destroyed editor, which took the whole app down
+    // on iOS Safari. Skip it here; this effect re-runs with the new instance.
+    if (!editor || editor.isDestroyed) return;
     const editorDom = editor.view.dom;
     const handleEditorClick = (e: Event) => {
       const target = e.target as HTMLElement;
@@ -340,8 +470,10 @@ export function PostEditor({
   const currentHighlight = editor?.getAttributes('highlight').color ?? null;
 
   return (
-    <div className={`post-editor${disabled ? ' post-editor--readonly' : ''}`}>
-      {!disabled && (
+    <div
+      className={`post-editor${disabled ? ' post-editor--readonly' : ''}${phone ? ' post-editor--phone' : ''}`}
+    >
+      {!disabled && !phone && (
         <div className="post-editor-toolbar">
           <button
             type="button"
@@ -366,6 +498,34 @@ export function PostEditor({
             <ListOrdered className="h-3.5 w-3.5" />
           </button>
           <div className="post-editor-divider" />
+          {onUploadInlineImage && (
+            <>
+              <button
+                type="button"
+                className="post-editor-btn"
+                aria-label="Inserir imagem"
+                disabled={imageUploading}
+                onClick={() => imageInputRef.current?.click()}
+                data-tooltip="Inserir imagem"
+              >
+                {imageUploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-3.5 w-3.5" />
+                )}
+              </button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="sr-only"
+                aria-hidden="true"
+                tabIndex={-1}
+                onChange={(event) => void handleImageSelection(event.target.files?.[0])}
+              />
+              <div className="post-editor-divider" />
+            </>
+          )}
           <button
             type="button"
             className={`post-editor-btn${editor?.isActive('callout') ? ' active' : ''}`}
@@ -377,13 +537,16 @@ export function PostEditor({
           >
             <Lightbulb className="h-3.5 w-3.5" />
           </button>
-          <div className="post-editor-char-count">
-            {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} / 2200
-          </div>
+          {showCharacterCount && (
+            <div className="post-editor-char-count">
+              {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} /{' '}
+              {MAX_CAPTION_CHARS}
+            </div>
+          )}
         </div>
       )}
 
-      {editor && !disabled && (
+      {editor && !disabled && !phone && (
         <BubbleMenu editor={editor} className="bubble-menu">
           <button
             type="button"
@@ -438,6 +601,7 @@ export function PostEditor({
                   className="post-editor-link-input"
                   type="url"
                   placeholder="https://..."
+                  aria-label="Endereço do link"
                   value={linkInputValue}
                   onChange={(e) => setLinkInputValue(e.target.value)}
                   onKeyDown={(e) => {
@@ -566,73 +730,116 @@ export function PostEditor({
           <div className="post-editor-divider" />
 
           {/* Comment button */}
-          <div className="comment-add-wrapper" ref={commentAddWrapperRef}>
-            <button
-              ref={commentBtnRef}
-              type="button"
-              className="post-editor-btn"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                if (!commentAddOpen && commentBtnRef.current) {
-                  const rect = commentBtnRef.current.getBoundingClientRect();
-                  const left = Math.min(rect.left, window.innerWidth - 280 - 16);
-                  setCommentAddPos({ top: rect.bottom + 6, left });
-                }
-                setCommentAddOpen((v) => !v);
-                setTextColorOpen(false);
-                setHighlightOpen(false);
-                setLinkPopoverOpen(false);
-              }}
-              data-tooltip="Comentar"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          {onCreateComment && (
+            <div className="comment-add-wrapper" ref={commentAddWrapperRef}>
+              <button
+                ref={commentBtnRef}
+                type="button"
+                className="post-editor-btn"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (!commentAddOpen && commentBtnRef.current) {
+                    const rect = commentBtnRef.current.getBoundingClientRect();
+                    const left = Math.min(rect.left, window.innerWidth - 280 - 16);
+                    setCommentAddPos({ top: rect.bottom + 6, left });
+                  }
+                  setCommentAddOpen((v) => !v);
+                  setTextColorOpen(false);
+                  setHighlightOpen(false);
+                  setLinkPopoverOpen(false);
+                }}
+                data-tooltip="Comentar"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </BubbleMenu>
       )}
 
       <EditorContent editor={editor} className="post-editor-content" />
 
-      {commentAddOpen &&
-        commentAddPos &&
-        createPortal(
-          <div
-            ref={commentAddRef}
-            className="comment-add-popover"
-            style={{
-              position: 'fixed',
-              top: commentAddPos.top,
-              left: commentAddPos.left,
-              zIndex: 9999,
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="comment-add-label">Adicionar comentário</div>
-            <MentionTextarea
-              className="comment-add-input"
-              placeholder="Escreva seu comentário..."
-              value={commentAddText}
-              onValueChange={setCommentAddText}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleAddComment();
-                }
-                if (e.key === 'Escape') setCommentAddOpen(false);
-              }}
-              autoFocus
+      {phone && editor && !disabled && (
+        <>
+          {onUploadInlineImage && (
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              aria-hidden="true"
+              tabIndex={-1}
+              onChange={(event) => void handleImageSelection(event.target.files?.[0])}
             />
-            <button
-              type="button"
-              className="comment-add-submit"
-              onClick={handleAddComment}
-              disabled={!commentAddText.trim() || commentSubmitting}
-            >
-              Comentar
-            </button>
-          </div>,
-          document.body,
-        )}
+          )}
+          <PhoneFormatBar
+            editor={editor}
+            onLink={openLinkPopover}
+            onComment={
+              onCreateComment
+                ? () => {
+                    // Top of the visible area: with the keyboard up, anything lower is
+                    // under it.
+                    const top = (window.visualViewport?.offsetTop ?? 0) + 8;
+                    setCommentAddPos({ top, left: 8 });
+                    setCommentAddOpen(true);
+                    setLinkPopoverOpen(false);
+                  }
+                : undefined
+            }
+            onPickImage={onUploadInlineImage ? () => imageInputRef.current?.click() : undefined}
+            imageUploading={imageUploading}
+            textColors={TEXT_COLORS}
+            highlightColors={HIGHLIGHT_COLORS}
+            onTextColor={applyTextColor}
+            onHighlight={applyHighlight}
+            linkRow={
+              linkPopoverOpen ? (
+                <div className="phone-format-bar__link" onMouseDown={(e) => e.stopPropagation()}>
+                  <input
+                    ref={linkInputRef}
+                    className="phone-format-bar__link-input"
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://..."
+                    aria-label="Endereço do link"
+                    value={linkInputValue}
+                    onChange={(e) => setLinkInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        applyLink();
+                      }
+                      if (e.key === 'Escape') setLinkPopoverOpen(false);
+                    }}
+                  />
+                  {editor.isActive('link') && (
+                    <button type="button" onClick={removeLink}>
+                      Remover
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setLinkPopoverOpen(false)}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="phone-format-bar__link-ok" onClick={applyLink}>
+                    OK
+                  </button>
+                </div>
+              ) : undefined
+            }
+          />
+        </>
+      )}
+
+      {commentAddOpen && commentAddPos && (
+        <AddCommentPopover
+          position={commentAddPos}
+          onSubmit={handleAddComment}
+          onClose={() => setCommentAddOpen(false)}
+          ignoreRefs={[commentAddWrapperRef]}
+          className={phone ? 'phone-comment-add' : undefined}
+        />
+      )}
 
       {activeThreadId != null &&
         threadPopoverPos &&
@@ -658,7 +865,6 @@ export function PostEditor({
                   membros={membros ?? []}
                   workspaceUsers={workspaceUsers ?? []}
                   currentUserId={currentUserId}
-                  currentUserRole={currentUserRole}
                   onReply={onReplyToComment ?? (async () => {})}
                   onResolve={handleResolveThread}
                   onReopen={handleReopenThread}

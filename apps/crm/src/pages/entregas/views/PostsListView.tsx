@@ -1,15 +1,29 @@
 import { useMemo, useState } from 'react';
-import { ChevronUp, ChevronDown, CircleDashed, Plus } from 'lucide-react';
+import { ChevronUp, ChevronDown, CircleDashed, Plus, Route, Users } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
+import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { getInitials } from '@/lib/initials';
 import { formatPostDate } from '@/utils/postDate';
-import { etapaDeadlineDate, formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
+import { formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
+import { postStageOf, postResponsavelIdOf, type PostStage } from '../postStage';
+import type { ListGroupBy } from '../viewQuery';
+import { allGroupsCollapsed, groupListRows, toggleKey } from '../listGrouping';
+import { ListGroupHeaderRow } from '../components/ListGroupHeaderRow';
+import { ListGroupsToggle } from '../components/ListGroupsToggle';
+import type { PostEntity } from '../boardEntity';
 import { POST_STATUS_ORDER, TIPO_LABELS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { PostStatusChip } from '../components/PostStatusChip';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
+  PhoneActivePostListRow,
+  PhoneListSections,
+  PhoneRowAside,
+  type PhoneRowDisplay,
+} from '../phone/PhoneListRows';
 
 interface PostsListViewProps {
   posts: ActivePost[];
@@ -26,6 +40,19 @@ interface PostsListViewProps {
   filtersActive: boolean;
   /** Opens NewAvulsoDialog from the unfiltered empty state's CTA. */
   onCreateAvulso: () => void;
+  /** post id → processo individual ativo (spec §4.4). Só posts avulsos
+   *  aparecem aqui; é daqui que saem a etapa, o responsável e o prazo de um
+   *  avulso em produção, que não tem card de fluxo para consultar. */
+  postEntityByPostId?: Map<number, PostEntity>;
+  /** "Agrupar por" da Lista. 'nenhum' (padrão) = tabela corrida. */
+  groupBy?: ListGroupBy;
+  /** Nome de cada membro: o responsável de um avulso sem etapa vem do
+   *  responsavel_id do próprio post, que não tem card nem processo para dar o nome. */
+  membroNomeById?: ReadonlyMap<number, string>;
+  /** Quantos postados a página tirou de `posts` (ficam ocultos por padrão). Com
+   *  a lista vazia só por eles, o estado vazio diz isso em vez de oferecer criar
+   *  um avulso. */
+  hiddenPostados?: number;
 }
 
 type Column = { key: string; label: string };
@@ -41,15 +68,6 @@ const COLUMNS: Column[] = [
   { key: 'agendado', label: 'Agendado para' },
 ];
 
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 const oneLineCell: React.CSSProperties = {
   padding: '0.6rem 1rem',
   whiteSpace: 'nowrap',
@@ -57,6 +75,21 @@ const oneLineCell: React.CSSProperties = {
   textOverflow: 'ellipsis',
   maxWidth: 220,
 };
+
+const EMPTY_NOMES: ReadonlyMap<number, string> = new Map();
+
+/** Responsável pela regra do filtro "Responsável" (postResponsavelIdOf): o da
+ *  etapa, ou o responsavel_id do próprio post quando ele não está em etapa
+ *  nenhuma. Célula, ordenação e agrupamento leem daqui. */
+function resolveResponsavel(
+  p: ActivePost,
+  stage: PostStage | undefined,
+  nomes: ReadonlyMap<number, string>,
+): { id: number | null; nome: string } {
+  const id = postResponsavelIdOf(p, stage);
+  const nome = stage ? stage.responsavelNome : id != null ? (nomes.get(id) ?? '') : '';
+  return { id, nome };
+}
 
 /** Read-only sortable table of every post across active workflows. Clicking a row
  *  opens the post in its workflow drawer. */
@@ -69,32 +102,48 @@ export function PostsListView({
   cardsByWorkflowId,
   filtersActive,
   onCreateAvulso,
+  postEntityByPostId,
+  groupBy = 'nenhum',
+  membroNomeById = EMPTY_NOMES,
+  hiddenPostados = 0,
 }: PostsListViewProps) {
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'agendado',
     direction: 'asc',
   });
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const statusRegistry = useStatusRegistry();
+  const isPhone = !useIsDesktop(768);
 
   // A post avulso has no workflow_id to look up -- undefined here means the same
-  // "no card" state every caller below already treats as "no etapa/prazo/fluxo".
+  // "no card" state every caller below already treats as "no fluxo".
   const cardOf = (p: ActivePost) =>
     p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
-  const membroNome = (p: ActivePost) => cardOf(p)?.membro?.nome || '';
+  // Etapa, responsável e prazo saem da MESMA projeção que a barra de filtros usa
+  // (postStageOf): o fluxo para um post amarrado, o processo individual para um
+  // avulso. Ler card e processo por caminhos diferentes aqui e lá era o que
+  // deixava a linha visível com o filtro de responsável achando que ela não existe.
+  const stageOf = (p: ActivePost) =>
+    postStageOf(cardOf(p), p.workflow_id == null ? postEntityByPostId?.get(p.id) : undefined);
+  const membroNome = (p: ActivePost) => resolveResponsavel(p, stageOf(p), membroNomeById).nome;
 
   const sorted = useMemo(() => {
     const dir = sort.direction === 'asc' ? 1 : -1;
     const column = sort.column;
-    // A post avulso has no workflow_id to look up -- undefined here sinks it to
-    // the end of the etapa/prazo sorts and empties its responsável, same as any
-    // other workflow with no matching card.
-    const cardForSort = (p: ActivePost) =>
-      p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
-    const nome = (p: ActivePost) => cardForSort(p)?.membro?.nome || '';
-    const etapaNome = (p: ActivePost) => cardForSort(p)?.etapa.nome || '';
-    // Sort key for the etapa deadline: overdue first, then soonest; posts whose
-    // workflow has no card/deadline sink to the end in BOTH directions.
-    const prazoDias = (p: ActivePost) => cardForSort(p)?.deadline.diasRestantes;
+    // Um post sem fluxo carregado E sem processo individual não está em etapa
+    // nenhuma: afunda no fim das ordenações de etapa/prazo nos DOIS sentidos; o
+    // responsável dele é o responsavel_id do próprio post (resolveResponsavel).
+    const stageForSort = (p: ActivePost) =>
+      postStageOf(
+        p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined,
+        p.workflow_id == null ? postEntityByPostId?.get(p.id) : undefined,
+      );
+    const nome = (p: ActivePost) => resolveResponsavel(p, stageForSort(p), membroNomeById).nome;
+    const etapaNome = (p: ActivePost) => stageForSort(p)?.etapaNome || '';
+    const prazoDias = (p: ActivePost) => {
+      const stage = stageForSort(p);
+      return stage?.hasPrazo ? stage.deadline.diasRestantes : undefined;
+    };
     return [...posts].sort((a, b) => {
       switch (column) {
         case 'titulo':
@@ -130,15 +179,13 @@ export function PostsListView({
           return 0;
       }
     });
-  }, [posts, sort, cardsByWorkflowId]);
+  }, [posts, sort, cardsByWorkflowId, postEntityByPostId, membroNomeById]);
 
   if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
+    return isPhone ? (
+      <CardListSkeleton rows={6} />
+    ) : (
+      <TableSkeleton rows={8} columns={COLUMNS.length} />
     );
   }
 
@@ -148,7 +195,13 @@ export function PostsListView({
         className="card animate-up"
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
-        {filtersActive ? (
+        {hiddenPostados > 0 ? (
+          <p>
+            {hiddenPostados === 1
+              ? 'Nenhum post a mostrar. 1 post postado está oculto.'
+              : `Nenhum post a mostrar. ${hiddenPostados} posts postados estão ocultos.`}
+          </p>
+        ) : filtersActive ? (
           <p>Nenhum post encontrado. Ajuste os filtros.</p>
         ) : (
           <>
@@ -171,8 +224,229 @@ export function PostsListView({
     }
   };
 
+  const renderRow = (p: ActivePost) => {
+    const workflowId = p.workflow_id;
+    // A post avulso (no workflow) is always openable -- only a wired post
+    // depends on its workflow still being an active, loaded card.
+    const openable = workflowId == null || openableWorkflowIds.has(workflowId);
+    const card = cardOf(p);
+    const stage = stageOf(p);
+    const processEtapa = workflowId == null ? postEntityByPostId?.get(p.id)?.etapaNome : undefined;
+    const prazo = stage?.hasPrazo ? formatEtapaPrazo(stage.deadline) : null;
+    const collaborators = p.ig_collaborators ?? [];
+    const prazoDate = stage?.prazoDate ?? null;
+    return (
+      <tr
+        key={p.id}
+        onClick={openable ? () => onPostClick(p) : undefined}
+        style={{
+          cursor: openable ? 'pointer' : 'default',
+          borderBottom: '1px solid var(--border-color)',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <td style={oneLineCell}>{p.titulo || 'Post sem título'}</td>
+        <td style={{ padding: '0.6rem 1rem' }}>
+          {p.cliente_id != null ? (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {card?.clienteAvatarUrl ? (
+                    <img
+                      src={card.clienteAvatarUrl}
+                      alt={p.cliente_nome}
+                      loading="lazy"
+                      decoding="async"
+                      className="board-post-cliente-avatar"
+                      style={{ display: 'block' }}
+                    />
+                  ) : (
+                    <span
+                      className="board-post-cliente-avatar board-post-cliente-avatar--initials"
+                      style={{ background: card?.cliente?.cor || 'var(--surface-hover)' }}
+                    >
+                      {getInitials(p.cliente_nome || '?')}
+                    </span>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>{p.cliente_nome || '—'}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            '—'
+          )}
+        </td>
+        <td style={{ ...oneLineCell, overflow: 'visible' }}>
+          {workflowId == null ? (
+            processEtapa ? (
+              <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
+                <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                Individual · {processEtapa}
+              </span>
+            ) : (
+              <span className="post-fluxo-tag post-fluxo-tag--avulso">
+                <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                Avulso
+              </span>
+            )
+          ) : card ? (
+            <button
+              type="button"
+              className="post-fluxo-tag"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFluxoClick(workflowId);
+              }}
+              title={`Abrir fluxo: ${p.workflow_titulo}`}
+            >
+              {p.workflow_titulo}
+            </button>
+          ) : (
+            <span className="post-fluxo-tag post-fluxo-tag--static">{p.workflow_titulo}</span>
+          )}
+        </td>
+        <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>{stage?.etapaNome || '—'}</td>
+        <td style={{ padding: '0.6rem 1rem' }}>
+          <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
+          {p.ig_trial_strategy && (
+            <span className="post-tipo-badge post-tipo-badge--trial">Teste</span>
+          )}
+          {collaborators.length > 0 && (
+            <span
+              className="post-tipo-badge post-tipo-badge--collab"
+              title={`Colaboradores: ${collaborators.map((u) => `@${u}`).join(', ')}`}
+            >
+              <Users className="h-3 w-3" aria-hidden="true" />
+              Collab {collaborators.length}
+            </span>
+          )}
+        </td>
+        <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
+          <PostStatusChip post={p} registry={statusRegistry} />
+        </td>
+        <td
+          style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}
+          title={stage ? `Etapa: ${stage.etapaNome}` : undefined}
+        >
+          {membroNome(p) || '—'}
+        </td>
+        <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
+          {prazo ? (
+            <>
+              <span style={{ color: prazo.color, fontWeight: 600 }}>{prazo.label}</span>
+              {prazoDate && (
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {' '}
+                  · {formatEtapaDeadlineDay(prazoDate)}
+                </span>
+              )}
+            </>
+          ) : (
+            '—'
+          )}
+        </td>
+        <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
+          {p.scheduled_at ? formatPostDate(p.scheduled_at) : '—'}
+        </td>
+      </tr>
+    );
+  };
+
+  const groups =
+    groupBy === 'nenhum'
+      ? null
+      : groupListRows(
+          sorted,
+          groupBy,
+          {
+            prazo: (p) => {
+              const s = stageOf(p);
+              return s ? { date: s.prazoDate, deadline: s.deadline } : undefined;
+            },
+            postagem: (p) => (p.scheduled_at ? new Date(p.scheduled_at) : null),
+            cliente: (p) => ({ id: p.cliente_id, nome: p.cliente_nome }),
+            responsavel: (p) => resolveResponsavel(p, stageOf(p), membroNomeById),
+            etapa: (p) => stageOf(p)?.etapaNome ?? '',
+          },
+          new Date(),
+        );
+  const groupKeys = groups?.map((g) => g.key) ?? [];
+  const allCollapsed = allGroupsCollapsed(groupKeys, collapsed);
+  const toggleAll = () => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys));
+
+  if (isPhone) {
+    // Celular (D20): linhas agrupadas com ações de deslizar no lugar da tabela. As
+    // colunas que não cabem na linha (fluxo, tipo, agendado) vão para a terceira linha.
+    const renderPhoneRow = (p: ActivePost) => {
+      const workflowId = p.workflow_id;
+      const openable = workflowId == null || openableWorkflowIds.has(workflowId);
+      const card = cardOf(p);
+      const stage = stageOf(p);
+      const processEtapa =
+        workflowId == null ? postEntityByPostId?.get(p.id)?.etapaNome : undefined;
+      const prazo = stage?.hasPrazo ? formatEtapaPrazo(stage.deadline) : null;
+      const fluxo =
+        workflowId == null
+          ? processEtapa
+            ? 'Individual'
+            : 'Avulso'
+          : p.workflow_titulo || 'Fluxo';
+      const display: PhoneRowDisplay = {
+        title: p.titulo || 'Post sem título',
+        subtitle: [
+          p.cliente_nome || 'Sem cliente',
+          stage?.etapaNome,
+          membroNome(p) || 'Sem responsável',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        meta: [
+          fluxo,
+          TIPO_LABELS[p.tipo],
+          p.ig_trial_strategy ? 'Teste' : null,
+          (p.ig_collaborators?.length ?? 0) > 0 ? `Collab ${p.ig_collaborators?.length}` : null,
+          p.scheduled_at ? `Agendado ${formatPostDate(p.scheduled_at)}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        aside: (
+          <PhoneRowAside
+            status={<PostStatusChip post={p} registry={statusRegistry} />}
+            deadline={prazo?.label}
+            overdue={!!stage?.deadline.estourado}
+          />
+        ),
+      };
+      return (
+        <PhoneActivePostListRow
+          key={p.id}
+          post={p}
+          display={display}
+          onOpen={openable ? () => onPostClick(p) : undefined}
+          onOpenFluxo={workflowId != null && card ? () => onFluxoClick(workflowId) : undefined}
+        />
+      );
+    };
+    return (
+      <PhoneListSections
+        label="Posts"
+        groups={groups}
+        rows={sorted}
+        renderRow={renderPhoneRow}
+        collapsed={collapsed}
+        onToggleGroup={(key) => setCollapsed((prev) => toggleKey(prev, key))}
+        allCollapsed={allCollapsed}
+        onToggleAll={toggleAll}
+      />
+    );
+  }
+
   return (
     <div className="animate-up card" style={{ overflow: 'auto' }}>
+      {groups && groups.length > 1 && (
+        <ListGroupsToggle allCollapsed={allCollapsed} onToggle={toggleAll} />
+      )}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>
           <tr>
@@ -205,121 +479,27 @@ export function PostsListView({
             ))}
           </tr>
         </thead>
-        <tbody>
-          {sorted.map((p) => {
-            const workflowId = p.workflow_id;
-            // A post avulso (no workflow) is always openable -- only a wired post
-            // depends on its workflow still being an active, loaded card.
-            const openable = workflowId == null || openableWorkflowIds.has(workflowId);
-            const card = cardOf(p);
-            const prazo = card ? formatEtapaPrazo(card.deadline) : null;
-            const prazoDate = card ? etapaDeadlineDate(card) : null;
+        {groups ? (
+          groups.map((g) => {
+            const isCollapsed = collapsed.has(g.key);
             return (
-              <tr
-                key={p.id}
-                onClick={openable ? () => onPostClick(p) : undefined}
-                style={{
-                  cursor: openable ? 'pointer' : 'default',
-                  borderBottom: '1px solid var(--border-color)',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <td style={oneLineCell}>{p.titulo || 'Post sem título'}</td>
-                <td style={{ padding: '0.6rem 1rem' }}>
-                  {p.cliente_id != null ? (
-                    <TooltipProvider delayDuration={200}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          {card?.clienteAvatarUrl ? (
-                            <img
-                              src={card.clienteAvatarUrl}
-                              alt={p.cliente_nome}
-                              loading="lazy"
-                              decoding="async"
-                              className="board-post-cliente-avatar"
-                              style={{ display: 'block' }}
-                            />
-                          ) : (
-                            <span
-                              className="board-post-cliente-avatar board-post-cliente-avatar--initials"
-                              style={{ background: card?.cliente?.cor || 'var(--surface-hover)' }}
-                            >
-                              {getInitials(p.cliente_nome || '?')}
-                            </span>
-                          )}
-                        </TooltipTrigger>
-                        <TooltipContent>{p.cliente_nome || '—'}</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td style={{ ...oneLineCell, overflow: 'visible' }}>
-                  {workflowId == null ? (
-                    <span className="post-fluxo-tag post-fluxo-tag--avulso">
-                      <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                      Avulso
-                    </span>
-                  ) : card ? (
-                    <button
-                      type="button"
-                      className="post-fluxo-tag"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onFluxoClick(workflowId);
-                      }}
-                      title={`Abrir fluxo: ${p.workflow_titulo}`}
-                    >
-                      {p.workflow_titulo}
-                    </button>
-                  ) : (
-                    <span className="post-fluxo-tag post-fluxo-tag--static">
-                      {p.workflow_titulo}
-                    </span>
-                  )}
-                </td>
-                <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
-                  {card?.etapa.nome || '—'}
-                </td>
-                <td style={{ padding: '0.6rem 1rem' }}>
-                  <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
-                  {p.ig_trial_strategy && (
-                    <span className="post-tipo-badge post-tipo-badge--trial">Teste</span>
-                  )}
-                </td>
-                <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
-                  <PostStatusChip post={p} registry={statusRegistry} />
-                </td>
-                <td
-                  style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}
-                  title={card ? `Etapa: ${card.etapa.nome}` : undefined}
-                >
-                  {membroNome(p) || '—'}
-                </td>
-                <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
-                  {prazo ? (
-                    <>
-                      <span style={{ color: prazo.color, fontWeight: 600 }}>{prazo.label}</span>
-                      {prazoDate && (
-                        <span style={{ color: 'var(--text-muted)' }}>
-                          {' '}
-                          · {formatEtapaDeadlineDay(prazoDate)}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
-                  {p.scheduled_at ? formatPostDate(p.scheduled_at) : '—'}
-                </td>
-              </tr>
+              <tbody key={g.key}>
+                <ListGroupHeaderRow
+                  label={g.label}
+                  sub={g.sub}
+                  count={g.rows.length}
+                  danger={g.danger}
+                  colSpan={COLUMNS.length}
+                  collapsed={isCollapsed}
+                  onToggle={() => setCollapsed((prev) => toggleKey(prev, g.key))}
+                />
+                {!isCollapsed && g.rows.map(renderRow)}
+              </tbody>
             );
-          })}
-        </tbody>
+          })
+        ) : (
+          <tbody>{sorted.map(renderRow)}</tbody>
+        )}
       </table>
     </div>
   );

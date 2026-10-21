@@ -11,7 +11,7 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 export const TIKTOK_AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/";
 export const TIKTOK_API_BASE = "https://open.tiktokapis.com/v2";
 export const TIKTOK_SCOPES =
-  "user.info.basic,user.info.profile,user.info.stats,video.list,video.upload,video.publish";
+  "user.info.basic,user.info.profile,user.info.stats,video.list,video.publish";
 
 // sic — TikTok's official misspellings in their wire format; never "correct" these strings.
 export const FIELD_PUBLIC_POST_ID = "publicaly_available_post_id";
@@ -28,7 +28,7 @@ export const STATUS_PROCESSING_DOWNLOAD = "PROCESSING_DOWNLOAD";
 export const STATUS_PUBLISH_COMPLETE = "PUBLISH_COMPLETE";
 export const STATUS_FAILED = "FAILED";
 // Only occurs in TikTok's "inbox" draft-posting mode (video.upload scope), which this
-// integration never uses (direct-post only). Mapped for completeness/safety in case a
+// integration never requests or uses (direct-post only). Mapped for completeness/safety in case a
 // stray status-fetch response ever reports it.
 export const STATUS_SEND_TO_USER_INBOX = "SEND_TO_USER_INBOX";
 

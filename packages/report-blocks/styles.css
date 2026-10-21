@@ -24,6 +24,20 @@
 .rb-grid > [data-block-id]:empty {
   display: none;
 }
+/* Cartões lado a lado na mesma linha ficam com a mesma altura: a célula do
+   grid já estica até a altura da linha, então o cartão (e, no editor, o miolo
+   .rb-edit-body, já que a toolbar é absolute) estica junto. As regras :empty
+   acima e do modo edição têm especificidade maior e seguem valendo. */
+.rb-grid > [data-block-id],
+.rb-grid .rb-edit-body {
+  display: flex;
+  flex-direction: column;
+}
+.rb-grid .rb-edit-body,
+.rb-grid > [data-block-id] > .rb-card,
+.rb-grid .rb-edit-body > .rb-card {
+  flex: 1 1 auto;
+}
 @media (max-width: 720px) {
   .rb-third,
   .rb-half {
@@ -135,13 +149,28 @@
   .rb-page-break {
     break-after: page;
   }
+  /* O PDF é a cópia do relatório na tela: o grid mantém os 880px da tela e
+     encolhe com zoom para os 190mm úteis do A4 (210mm menos as margens de
+     10mm do @page em RelatorioPrintPage.tsx) = 718px, ou seja 718/880.
+     Sem isso o grid refluía na largura da folha e as colunas, quebras de
+     texto e proporções das imagens saíam diferentes da tela. zoom (e não
+     transform) porque reduz também o layout, então a paginação acompanha.
+     Medidas físicas abaixo são divididas pelo zoom para manter o tamanho
+     real na folha. */
   .rb-grid {
+    --rb-print-zoom: 0.816;
+    width: 880px;
     max-width: none;
+    zoom: var(--rb-print-zoom);
   }
   .rb-cover {
     /* Área útil do A4 com as margens de 10mm que o Gotenberg já usa
        (RelatorioPrintPage.tsx: `@page { margin: 10mm; }`). */
-    min-height: 277mm;
+    /* Menos 1.5rem: com o zoom, o Chromium reserva o row-gap do grid (1rem)
+       depois da capa na MESMA página; capa de 277mm + gap estoura e gera uma
+       página 2 em branco (medido 2026-10-03: some com gap 0 ou capa <= 274mm).
+       1rem compensa o gap e 0.5rem é folga para o Chromium do Gotenberg. */
+    min-height: calc(277mm / var(--rb-print-zoom) - 1.5rem);
     break-after: page;
   }
   .rb-cover-splash {
@@ -153,7 +182,7 @@
        aplica, mas segue protegendo a página única se o texto crescer (ex.:
        subtítulo com quebra de linha) ou o logoSize estiver no máximo. Sem
        isso o break-after não impede a PRÓPRIA capa de invadir a página 2. */
-    max-height: 190mm;
+    max-height: calc(190mm / var(--rb-print-zoom));
   }
 }
 /* Modo edição (canvas do CRM): célula sem dados NÃO colapsa; mostra aviso.
@@ -175,4 +204,27 @@
   place-items: center;
   font-size: 0.78rem;
   opacity: 0.55;
+}
+
+/* Bloco Imagem (spec 2026-10-02): quadro centralizado com teto de 560px de
+   altura (largura = min(100%, 560px * proporção), inline no componente). */
+.rb-image {
+  margin: 0 auto;
+  break-inside: avoid;
+}
+.rb-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--rb-radius, 12px);
+}
+.rb-image img.rb-image-contain {
+  background: var(--rb-soft, rgba(0, 0, 0, 0.04));
+}
+.rb-image figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--rb-ink-soft, inherit);
+  opacity: 0.85;
 }

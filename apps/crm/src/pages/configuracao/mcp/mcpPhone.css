@@ -1,0 +1,167 @@
+/* Configurações > Agentes (MCP) on phones. phone-* classes and --phone-* tokens only:
+   the Hub imports the CRM stylesheet. */
+
+.phone-kit .phone-mcp-heading {
+  margin-top: 4px;
+}
+
+.phone-kit .phone-mcp-readonly {
+  font-weight: 600;
+}
+
+.phone-kit .phone-mcp-mono {
+  font-family: var(--font-mono);
+  font-size: var(--phone-text-footnote);
+}
+
+/* "Como conectar" guide card: intro line plus the numbered steps. */
+.phone-kit .phone-mcp-guide {
+  list-style: none;
+}
+.phone-kit .phone-mcp-guide__intro {
+  margin: 0 0 10px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.45;
+}
+.phone-kit .phone-mcp-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: phone-mcp-step;
+}
+.phone-kit .phone-mcp-steps li {
+  display: flex;
+  gap: 10px;
+  counter-increment: phone-mcp-step;
+  font-size: var(--phone-text-subhead);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.phone-kit .phone-mcp-steps li::before {
+  content: counter(phone-mcp-step);
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font-size: 12px;
+  font-weight: 700;
+}
+.phone-kit .phone-mcp-steps code,
+.phone-kit .phone-mcp-note code,
+.phone-kit .phone-group__footer code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* A URL row that shows the whole value, wrapped. */
+.phone-kit .phone-mcp-url .phone-cell__subtitle {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Copy and action rows read as actions. */
+.phone-kit .phone-mcp-copy .phone-cell__label,
+.phone-kit .phone-mcp-action .phone-cell__label {
+  font-weight: 600;
+}
+.phone-kit .phone-mcp-copy .phone-cell__icon,
+.phone-kit .phone-mcp-action .phone-cell__icon {
+  color: var(--phone-label);
+}
+
+.phone-kit .phone-mcp-empty .phone-cell__label {
+  color: var(--phone-label-secondary);
+}
+
+/* Code block: scrolls sideways inside its card, never the page. */
+.phone-kit .phone-mcp-code {
+  min-width: 0;
+  padding: 12px 16px;
+}
+.phone-kit .phone-mcp-code__pre {
+  margin: 0;
+  padding: 10px 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-kit .phone-mcp-code__pre:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+
+.phone-kit .phone-mcp-note {
+  margin: -8px 16px 20px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.45;
+}
+.phone-sheet .phone-mcp-note {
+  margin-top: 0;
+}
+
+/* Grant and key rows: swipe row + hold target + explicit "…" trigger. */
+.phone-kit .phone-mcp-row__inner {
+  display: flex;
+  align-items: stretch;
+}
+.phone-kit .phone-mcp-row__main {
+  flex: 1;
+  min-width: 0;
+}
+.phone-kit .phone-mcp-row__main .phone-cell__body {
+  padding-right: 4px;
+}
+.phone-kit .phone-mcp-row__subtitle {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.phone-kit .phone-mcp-row__more {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  padding: 0 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  cursor: pointer;
+}
+.phone-kit .phone-mcp-row__more svg {
+  width: 20px;
+  height: 20px;
+}
+.phone-kit .phone-mcp-row__more:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -4px;
+  border-radius: 10px;
+}
+/* The inset separator continues under the "…" trigger. */
+.phone-kit .phone-cell + .phone-cell .phone-mcp-row__more {
+  border-top: 1px solid var(--phone-separator);
+}
+
+.phone-sheet.phone-mcp-sheet .phone-config-primary {
+  margin-top: 4px;
+}
+.phone-kit .phone-cell + .phone-cell.phone-mcp-code {
+  border-top: 1px solid var(--phone-separator);
+}

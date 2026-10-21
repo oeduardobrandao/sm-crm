@@ -35,7 +35,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { UsagePanel } from './UsagePanel';
+import { CobrancaPhone, CobrancaPhoneLocked } from './CobrancaPhone';
 import './cobranca.css';
 
 const RECOMMENDED_ID = 'pro';
@@ -111,6 +113,8 @@ export default function CobrancaPage() {
   } | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // Phone layout below 768px; every state, query and handler above and below is shared.
+  const isPhone = !useIsDesktop(768);
 
   // Follow the ACTIVE workspace role, not the stale profile-level role: a user
   // can be owner in one workspace and agent in another, and switch_workspace
@@ -188,6 +192,7 @@ export default function CobrancaPage() {
   }, [plans]);
 
   if (!isOwner) {
+    if (isPhone) return <CobrancaPhoneLocked />;
     return (
       <div className="card">
         <p style={{ color: 'var(--text-muted)' }}>
@@ -396,6 +401,195 @@ export default function CobrancaPage() {
             ? `Seu acesso continua até ${formatUtcDateBR(subscription.current_period_end)}. Depois disso, o workspace volta ao plano gratuito.`
             : 'Sua assinatura será cancelada.';
 
+  const planGrid = (
+    <div className="plan-grid">
+      {plansLoading
+        ? Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="plan-card plan-skeleton"
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              <div className="sk" style={{ height: 18, width: '40%' }} />
+              <div className="sk" style={{ height: 30, width: '55%', marginTop: 8 }} />
+              <div className="sk" style={{ height: 12, width: '85%', marginTop: 16 }} />
+              <div className="sk" style={{ height: 12, width: '70%', marginTop: 8 }} />
+              <div className="sk" style={{ height: 12, width: '78%', marginTop: 8 }} />
+              <div className="sk" style={{ height: 38, width: '100%', marginTop: 'auto' }} />
+            </div>
+          ))
+        : visiblePlans.map((p, i) => {
+            const isYear = interval === 'year';
+            // PRIMARY AMOUNT RULE: a gated year card's prominent price is the 12x's own
+            // parcela (pagarme_installment_cents), never price_brl_annual / 12 — that
+            // derivation would contradict the exact figure the checkout dialog charges.
+            // Non-gated cards (or gate off) keep today's derivation unchanged.
+            const gated = isYear && isPagarme12xEnabled(p);
+            const monthly = gated
+              ? (p.pagarme_installment_cents ?? 0)
+              : isYear && p.price_brl_annual != null
+                ? p.price_brl_annual / 12
+                : p.price_brl;
+            const isCurrent = p.id === currentPlanId;
+            const isReco = p.id === RECOMMENDED_ID && !isCurrent;
+            const isInternal = isInternalPlan(p.id);
+            return (
+              <div
+                key={p.id}
+                className={`plan-card${isCurrent ? ' is-current' : ''}${isReco ? ' is-recommended' : ''}${isInternal ? ' is-lifetime' : ''}`}
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                <div className="plan-card__top">
+                  <span className="plan-name">{p.name}</span>
+                  {isCurrent ? (
+                    <span className="plan-tag plan-tag--current">
+                      {isInternal && <i className="ph ph-crown-simple" aria-hidden="true" />}
+                      Plano atual
+                    </span>
+                  ) : isReco ? (
+                    <span className="plan-tag plan-tag--reco">Recomendado</span>
+                  ) : null}
+                </div>
+
+                <div>
+                  {!isInternal && isYear && monthly != null && monthly > 0 && (
+                    <div className="plan-annual-lead">
+                      {gated ? 'em 12x de' : 'cobrado anualmente,'}
+                    </div>
+                  )}
+                  <div className="plan-price">
+                    {isInternal ? (
+                      <span className="plan-price__note">Plano exclusivo</span>
+                    ) : monthly != null && monthly > 0 ? (
+                      <>
+                        <span className="plan-price__amount">{formatBRL(monthly)}</span>
+                        {!isYear && <span className="plan-price__period">/mês</span>}
+                      </>
+                    ) : (
+                      <span className="plan-price__free">Grátis</span>
+                    )}
+                  </div>
+                  {gated && p.price_brl_annual != null && p.price_brl_annual > 0 && (
+                    <div className="plan-price__secondary">
+                      {`ou ${formatBRL(p.price_brl_annual)} à vista`}
+                    </div>
+                  )}
+                </div>
+
+                <ul className="plan-features">
+                  {planFeatures(p).map((f) => (
+                    <li key={f}>
+                      <i className="ph ph-check" aria-hidden="true" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="plan-cta">{renderCta(p)}</div>
+              </div>
+            );
+          })}
+    </div>
+  );
+
+  const checkoutDialog = (
+    <PagarmeCheckoutDialog
+      open={!!pagarmeDialog}
+      mode={pagarmeDialog?.mode ?? 'checkout'}
+      plan={
+        pagarmeDialog?.plan
+          ? {
+              id: pagarmeDialog.plan.id,
+              name: pagarmeDialog.plan.name,
+              price_brl_annual: pagarmeDialog.plan.price_brl_annual ?? 0,
+              pagarme_installment_cents: pagarmeDialog.plan.pagarme_installment_cents ?? 0,
+            }
+          : null
+      }
+      source="billing"
+      trialEligible={!subscription?.hasEverSubscribed}
+      firstChargeAt={switchPreviewDate}
+      switchChangesPlan={pagarmeDialog?.plan ? pagarmeDialog.plan.id !== currentPlanId : false}
+      onPayUpfront={
+        // undefined no modo switch: a saída à vista abriria um checkout Stripe que 409a
+        // com a assinatura ativa.
+        pagarmeDialog?.plan && pagarmeDialog.mode === 'checkout'
+          ? () => {
+              const planId = pagarmeDialog.plan!.id;
+              setPagarmeDialog(null);
+              void startStripeUpgrade(planId);
+            }
+          : undefined
+      }
+      onClose={() => setPagarmeDialog(null)}
+      onSuccess={startPlanRefetchPoll}
+    />
+  );
+
+  if (isPhone) {
+    const showCurrent = hasActiveSub || showPagarmeManage || showStripeManage;
+    return (
+      <CobrancaPhone
+        showCurrent={showCurrent}
+        planName={currentPlan?.name ?? currentPlanId}
+        statusLabel={
+          switchWindow
+            ? 'Troca agendada'
+            : subscription?.status === 'trialing'
+              ? 'Teste'
+              : subscription?.status === 'past_due'
+                ? 'Pagamento pendente'
+                : 'Ativo'
+        }
+        statusWarning={subscription?.status === 'past_due'}
+        periodLabel={
+          subscription?.current_period_end
+            ? switchWindow
+              ? 'Primeira cobrança em'
+              : subscription.cancel_at_period_end
+                ? 'Cancela em'
+                : 'Renova em'
+            : null
+        }
+        periodDate={
+          subscription?.current_period_end
+            ? formatPeriodEnd(subscription.current_period_end, subscription.provider)
+            : ''
+        }
+        warning={
+          (showPagarmeManage && subscription?.status === 'past_due') ||
+          (!showPagarmeManage && showStripeManage)
+            ? 'Não conseguimos cobrar seu cartão. Atualize os dados para manter o acesso.'
+            : null
+        }
+        showPagarmeManage={showPagarmeManage}
+        switchWindow={switchWindow}
+        portalBusy={busy === 'portal'}
+        onUpdateCard={() => setPagarmeDialog({ mode: 'update-card', plan: null })}
+        onOpenCancel={() => setCancelDialogOpen(true)}
+        onManage={handleManage}
+        cancelOpen={cancelDialogOpen}
+        cancelDescription={cancelDialogDescription}
+        cancelling={cancelling}
+        onCancelDismiss={() => setCancelDialogOpen(false)}
+        onCancelConfirm={() => {
+          // The confirm sheet closes itself on a choice; clearing the open flag here
+          // (instead of only on success, as the desktop dialog does) lets the row reopen
+          // it for a retry after a failure. Same handler as the desktop confirm.
+          setCancelDialogOpen(false);
+          void handleCancelPagarmeSubscription();
+        }}
+        usage={<UsagePanel />}
+        interval={interval}
+        onIntervalChange={setInterval}
+        annualSavingsPct={annualSavingsPct}
+        firstTime={!subscription?.hasEverSubscribed}
+        plans={planGrid}
+        checkout={checkoutDialog}
+      />
+    );
+  }
+
   return (
     <>
       {(hasActiveSub || showPagarmeManage || showStripeManage) && (
@@ -493,126 +687,9 @@ export default function CobrancaPage() {
         )}
       </div>
 
-      <div className="plan-grid">
-        {plansLoading
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="plan-card plan-skeleton"
-                style={{ animationDelay: `${i * 60}ms` }}
-              >
-                <div className="sk" style={{ height: 18, width: '40%' }} />
-                <div className="sk" style={{ height: 30, width: '55%', marginTop: 8 }} />
-                <div className="sk" style={{ height: 12, width: '85%', marginTop: 16 }} />
-                <div className="sk" style={{ height: 12, width: '70%', marginTop: 8 }} />
-                <div className="sk" style={{ height: 12, width: '78%', marginTop: 8 }} />
-                <div className="sk" style={{ height: 38, width: '100%', marginTop: 'auto' }} />
-              </div>
-            ))
-          : visiblePlans.map((p, i) => {
-              const isYear = interval === 'year';
-              // PRIMARY AMOUNT RULE: a gated year card's prominent price is the 12x's own
-              // parcela (pagarme_installment_cents), never price_brl_annual / 12 — that
-              // derivation would contradict the exact figure the checkout dialog charges.
-              // Non-gated cards (or gate off) keep today's derivation unchanged.
-              const gated = isYear && isPagarme12xEnabled(p);
-              const monthly = gated
-                ? (p.pagarme_installment_cents ?? 0)
-                : isYear && p.price_brl_annual != null
-                  ? p.price_brl_annual / 12
-                  : p.price_brl;
-              const isCurrent = p.id === currentPlanId;
-              const isReco = p.id === RECOMMENDED_ID && !isCurrent;
-              const isInternal = isInternalPlan(p.id);
-              return (
-                <div
-                  key={p.id}
-                  className={`plan-card${isCurrent ? ' is-current' : ''}${isReco ? ' is-recommended' : ''}${isInternal ? ' is-lifetime' : ''}`}
-                  style={{ animationDelay: `${i * 60}ms` }}
-                >
-                  <div className="plan-card__top">
-                    <span className="plan-name">{p.name}</span>
-                    {isCurrent ? (
-                      <span className="plan-tag plan-tag--current">
-                        {isInternal && <i className="ph ph-crown-simple" aria-hidden="true" />}
-                        Plano atual
-                      </span>
-                    ) : isReco ? (
-                      <span className="plan-tag plan-tag--reco">Recomendado</span>
-                    ) : null}
-                  </div>
+      {planGrid}
 
-                  <div>
-                    {!isInternal && isYear && monthly != null && monthly > 0 && (
-                      <div className="plan-annual-lead">
-                        {gated ? 'em 12x de' : 'cobrado anualmente,'}
-                      </div>
-                    )}
-                    <div className="plan-price">
-                      {isInternal ? (
-                        <span className="plan-price__note">Plano exclusivo</span>
-                      ) : monthly != null && monthly > 0 ? (
-                        <>
-                          <span className="plan-price__amount">{formatBRL(monthly)}</span>
-                          {!isYear && <span className="plan-price__period">/mês</span>}
-                        </>
-                      ) : (
-                        <span className="plan-price__free">Grátis</span>
-                      )}
-                    </div>
-                    {gated && p.price_brl_annual != null && p.price_brl_annual > 0 && (
-                      <div className="plan-price__secondary">
-                        {`ou ${formatBRL(p.price_brl_annual)} à vista`}
-                      </div>
-                    )}
-                  </div>
-
-                  <ul className="plan-features">
-                    {planFeatures(p).map((f) => (
-                      <li key={f}>
-                        <i className="ph ph-check" aria-hidden="true" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div className="plan-cta">{renderCta(p)}</div>
-                </div>
-              );
-            })}
-      </div>
-
-      <PagarmeCheckoutDialog
-        open={!!pagarmeDialog}
-        mode={pagarmeDialog?.mode ?? 'checkout'}
-        plan={
-          pagarmeDialog?.plan
-            ? {
-                id: pagarmeDialog.plan.id,
-                name: pagarmeDialog.plan.name,
-                price_brl_annual: pagarmeDialog.plan.price_brl_annual ?? 0,
-                pagarme_installment_cents: pagarmeDialog.plan.pagarme_installment_cents ?? 0,
-              }
-            : null
-        }
-        source="billing"
-        trialEligible={!subscription?.hasEverSubscribed}
-        firstChargeAt={switchPreviewDate}
-        switchChangesPlan={pagarmeDialog?.plan ? pagarmeDialog.plan.id !== currentPlanId : false}
-        onPayUpfront={
-          // undefined no modo switch: a saída à vista abriria um checkout Stripe que 409a
-          // com a assinatura ativa.
-          pagarmeDialog?.plan && pagarmeDialog.mode === 'checkout'
-            ? () => {
-                const planId = pagarmeDialog.plan!.id;
-                setPagarmeDialog(null);
-                void startStripeUpgrade(planId);
-              }
-            : undefined
-        }
-        onClose={() => setPagarmeDialog(null)}
-        onSuccess={startPlanRefetchPoll}
-      />
+      {checkoutDialog}
 
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <AlertDialogContent>

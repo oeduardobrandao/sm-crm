@@ -83,30 +83,13 @@ export function clearedAmountColumns() {
 }
 
 /**
- * Retrieves a subscription's current price from Stripe and applies any active coupon,
- * so the returned amount is what the customer actually pays. `fallbackInterval` is the
- * mirror's billing_interval, used when the price object doesn't carry a recurring interval.
+ * Pure: what a subscription object charges per interval, net of its active coupon. Shared by
+ * fetchStripeAmount (live retrieve) and the metrics backfill (subscriptions.list pages).
  */
-export async function fetchStripeAmount(
-  stripe: StripeClient,
-  subscriptionId: string,
+export function stripeAmountFromSubscription(
+  sub: unknown,
   fallbackInterval: string | null,
-): Promise<StripeAmount> {
-  let sub: unknown;
-  try {
-    sub = await stripe.subscriptions.retrieve(
-      subscriptionId,
-      { expand: ["items.data.price", "discounts"] },
-      { timeout: STRIPE_TIMEOUT_MS },
-    );
-  } catch (_e) {
-    // Some API versions reject expanding `discounts`; retry with price only.
-    sub = await stripe.subscriptions.retrieve(
-      subscriptionId,
-      { expand: ["items.data.price"] },
-      { timeout: STRIPE_TIMEOUT_MS },
-    );
-  }
+): StripeAmount {
   const s = sub as {
     livemode?: boolean;
     items?: {
@@ -139,4 +122,32 @@ export async function fetchStripeAmount(
     discount_label: discountLabel,
     livemode: s.livemode ?? true,
   };
+}
+
+/**
+ * Retrieves a subscription's current price from Stripe and applies any active coupon,
+ * so the returned amount is what the customer actually pays. `fallbackInterval` is the
+ * mirror's billing_interval, used when the price object doesn't carry a recurring interval.
+ */
+export async function fetchStripeAmount(
+  stripe: StripeClient,
+  subscriptionId: string,
+  fallbackInterval: string | null,
+): Promise<StripeAmount> {
+  let sub: unknown;
+  try {
+    sub = await stripe.subscriptions.retrieve(
+      subscriptionId,
+      { expand: ["items.data.price", "discounts"] },
+      { timeout: STRIPE_TIMEOUT_MS },
+    );
+  } catch (_e) {
+    // Some API versions reject expanding `discounts`; retry with price only.
+    sub = await stripe.subscriptions.retrieve(
+      subscriptionId,
+      { expand: ["items.data.price"] },
+      { timeout: STRIPE_TIMEOUT_MS },
+    );
+  }
+  return stripeAmountFromSubscription(sub, fallbackInterval);
 }

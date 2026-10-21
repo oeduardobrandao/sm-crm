@@ -1,0 +1,21 @@
+{
+  "title": "Marca",
+  "description": "Cores, logos e tipografia do seu negócio.",
+  "empty": "Nenhum material de marca foi adicionado ainda.",
+  "logoAlt": "Logo",
+  "download": "Baixar",
+  "sections": {
+    "logo": "Logo",
+    "colors": "Cores",
+    "typography": "Tipografia",
+    "files": "Arquivos"
+  },
+  "colors": {
+    "primary": "Cor primária",
+    "secondary": "Cor secundária"
+  },
+  "fonts": {
+    "primary": "Fonte principal",
+    "secondary": "Fonte secundária"
+  }
+}

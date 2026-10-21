@@ -107,7 +107,7 @@ export function PostMediaLightbox({
 
           <DialogPrimitive.Close
             aria-label="Fechar"
-            className="fixed top-4 right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
+            className="fixed top-[calc(1rem+env(safe-area-inset-top,0px))] right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
           >
             <X className="h-5 w-5" />
           </DialogPrimitive.Close>
@@ -129,7 +129,7 @@ export function PostMediaLightbox({
                   setDownloading(false);
                 }
               }}
-              className="fixed top-4 right-16 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20 disabled:opacity-50"
+              className="fixed top-[calc(1rem+env(safe-area-inset-top,0px))] right-16 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20 disabled:opacity-50"
             >
               <Download className="h-5 w-5" />
             </button>

@@ -1,0 +1,150 @@
+{
+  "home": {
+    "greeting": "Hello,",
+    "kpi": {
+      "postsThisMonth": {
+        "label": "Posts this month",
+        "hint": "Image, Vertical video, Stories"
+      },
+      "pendingApprovals": {
+        "label": "Pending approvals",
+        "hintCount": "{{count}} to review",
+        "hintZero": "All caught up"
+      },
+      "approvalRate": {
+        "label": "Approval rate",
+        "hint": "Approved vs. revision"
+      },
+      "nextPost": {
+        "label": "Next post",
+        "hintEmpty": "Nothing scheduled"
+      }
+    },
+    "pendingBanner": {
+      "singular": "You have 1 post awaiting approval",
+      "plural": "You have {{count}} posts awaiting approval"
+    },
+    "calendarSection": {
+      "title": "Calendar",
+      "subtitle": "Upcoming posts"
+    },
+    "resources": {
+      "title": "Resources",
+      "subtitle": "Quick access",
+      "marca": "Brand",
+      "paginas": "Pages",
+      "briefing": "Briefing",
+      "ideias": "Ideas"
+    },
+    "pauta": {
+      "greeting": {
+        "morning": "Good morning, {{name}}.",
+        "afternoon": "Good afternoon, {{name}}.",
+        "evening": "Good evening, {{name}}."
+      },
+      "summary": {
+        "both": "You have <chip>{{posts}}</chip> to approve and <chip>{{publications}}</chip> going out this week.",
+        "pendingOnly": "You have <chip>{{posts}}</chip> to approve.",
+        "weekOnly": "<chip>{{publications}}</chip> going out this week.",
+        "none": "All caught up here."
+      },
+      "chip": {
+        "posts_one": "1 post",
+        "posts_other": "{{count}} posts",
+        "publications_one": "1 publication",
+        "publications_other": "{{count}} publications"
+      },
+      "cta": {
+        "review": "Review approvals"
+      },
+      "kpi": {
+        "pending": "To approve",
+        "reviewNow": "Review now"
+      },
+      "section": {
+        "approvals": "Approvals",
+        "calendar": "Calendar",
+        "agenda": "Agenda",
+        "resources": "Resources",
+        "results": "Results"
+      },
+      "waiting": {
+        "title": "Waiting on you",
+        "seeAll": "See all",
+        "review": "Review"
+      },
+      "resources": {
+        "title": "Quick access"
+      }
+    }
+  },
+  "calendar": {
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "title": "Posts",
+    "selectedDateLabel": "{{month}} {{day}}, {{year}}",
+    "monthYearLabel": "{{month}} {{year}}",
+    "noPostsThisDay": "No posts on this day.",
+    "selectADay": "Select a day.",
+    "rangeError": "Couldn't load this month.",
+    "rangeRetry": "Try again",
+    "eventosCount_one": "{{count}} event",
+    "eventosCount_other": "{{count}} events",
+    "eventos": "Events",
+    "posts": "Posts",
+    "eventosErro": "Couldn't load the events.",
+    "eventosRetry": "Try again",
+    "diaInteiro": "All day",
+    "fecharEvento": "Close",
+    "tipoLabel": {
+      "feed": "Image",
+      "reels": "Vertical video",
+      "stories": "Stories",
+      "carrossel": "Carousel"
+    },
+    "statusLabel": {
+      "rascunho": "Draft",
+      "revisao_interna": "Internal review",
+      "aprovado_interno": "Internally approved",
+      "enviado_cliente": "Awaiting approval",
+      "aprovado_cliente": "Approved",
+      "correcao_cliente": "Revision requested",
+      "agendado": "Scheduled",
+      "publicado": "Published",
+      "em_producao": "In production"
+    }
+  },
+  "dashboard": {
+    "connectInstagram": "Connect Instagram to see performance metrics.",
+    "title": "Performance",
+    "topPostsTitle": "Top Posts"
+  },
+  "reachChart": {
+    "title": "Reach",
+    "totalLabel": "total in period",
+    "tooltip": {
+      "reach": "Reach: {{value}}",
+      "impressions": "Impressions: {{value}}"
+    },
+    "noData": "No reach data available."
+  },
+  "followerChart": {
+    "title": "Followers",
+    "tooltip": "{{value}} followers",
+    "noData": "No follower data available."
+  },
+  "topPosts": {
+    "noPosts": "No posts in the selected period.",
+    "goToPost": "Go to post {{index}}",
+    "tipoLabel": {
+      "CAROUSEL_ALBUM": "Carousel",
+      "VIDEO": "Reels",
+      "IMAGE": "Image"
+    },
+    "stats": {
+      "views": "Views",
+      "engagement": "Engagement",
+      "saved": "Saved"
+    }
+  }
+}

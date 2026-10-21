@@ -259,7 +259,7 @@ async function handleCallback(svc: DbClient, url: URL, req: Request): Promise<Re
     console.error("[tiktok-integration] callback: history/import best-effort failed:", (e as Error)?.message);
   }
 
-  return Response.redirect(`${oauthRedirectBase()}/clientes/${clientId}`, 302);
+  return Response.redirect(`${oauthRedirectBase()}/clientes/${clientId}?tt_connected=1`, 302);
 }
 
 // ─── POST /sync/:clientId ─────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 // apps/crm/src/services/postMedia.ts
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
 import type { PostMedia } from '../store';
 
@@ -6,7 +7,9 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
 const IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const VIDEO_MIME = ['video/mp4', 'video/quicktime', 'video/webm'];
-const MAX_SIZE = 400 * 1024 * 1024;
+// Espelha file-upload-url: vídeos até 2 GB, demais arquivos até 400 MB.
+const MAX_IMAGE_SIZE = 400 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 const MAX_CONCURRENT = 3;
 
 export type UploadProgress = { loaded: number; total: number };
@@ -43,7 +46,9 @@ async function callFn<T>(
 export function validateFile(file: File, kind: 'image' | 'video') {
   const allowed = kind === 'image' ? IMAGE_MIME : VIDEO_MIME;
   if (!allowed.includes(file.type)) throw new Error(`Tipo de arquivo não suportado: ${file.type}`);
-  if (file.size <= 0 || file.size > MAX_SIZE) throw new Error('Arquivo maior que 400 MB');
+  const max = kind === 'video' ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+  if (file.size <= 0 || file.size > max)
+    throw new Error(kind === 'video' ? 'Vídeo maior que 2 GB' : 'Arquivo maior que 400 MB');
 }
 
 export function detectKind(file: File): 'image' | 'video' {
@@ -203,7 +208,14 @@ export async function getPostCovers(postIds: number[]): Promise<Map<number, Post
   return new Map(covers.map((c) => [c.post_id, c.media]));
 }
 
-export async function uploadPostMedia(args: {
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadPostMedia(
+  ...args: Parameters<typeof uploadPostMediaUnguarded>
+): ReturnType<typeof uploadPostMediaUnguarded> {
+  return trackUnsavedWork(uploadPostMediaUnguarded(...args));
+}
+
+async function uploadPostMediaUnguarded(args: {
   postId: number;
   file: File;
   thumbnail?: File; // required for video
@@ -269,10 +281,6 @@ export async function uploadPostMedia(args: {
 
 export async function deletePostMedia(id: number): Promise<void> {
   await callFn(`post-media-manage`, 'DELETE', undefined, undefined, `/${id}`);
-}
-
-export async function setPostMediaCover(id: number): Promise<PostMedia> {
-  return callFn<PostMedia>(`post-media-manage`, 'PATCH', { is_cover: true }, undefined, `/${id}`);
 }
 
 export async function reorderPostMedia(id: number, sort_order: number): Promise<PostMedia> {

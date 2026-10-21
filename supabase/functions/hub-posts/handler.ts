@@ -1,6 +1,16 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
+import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
+import { fetchAllRows } from "../_shared/paginate.ts";
+import {
+  computeEmProducaoByPost,
+  INTERNAL_STATUSES,
+  isHubVisiblePost,
+  type EmProducaoReason,
+  type StatusEventRow,
+} from "./em-producao.ts";
+import { cursorOf, HISTORY_PAGE_SIZE, parseGetMode, shellCutoff } from "./modes.ts";
 
 function extractR2Keys(content: any): string[] {
   const keys: string[] = [];
@@ -27,9 +37,32 @@ function injectSignedUrls(content: any, urlMap: Record<string, string>): any {
   return walk(content);
 }
 
+// PostgREST truncates an unpaged select at db-max-rows (1000 on hosted Supabase) silently.
+const ROW_CAP = 1000;
+
+type PageFetcher<T> = (
+  from: number,
+  to: number,
+) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
+
+/** fetchAllRows with today's failure mode: a failed lookup logs and degrades to []. All-or-nothing per lookup: an error on any page discards the pages already read. */
+async function pagedRows<T>(label: string, fetchPage: PageFetcher<T>): Promise<{ data: T[] }> {
+  try {
+    return { data: await fetchAllRows(fetchPage) };
+  } catch (err) {
+    console.error(`[hub-posts] ${label} lookup failed:`, err);
+    return { data: [] };
+  }
+}
+
+/** Unpaged lookups whose size is bounded per post or per workflow: never silent if that breaks. */
+function warnIfCapped(table: string, rows: unknown[] | null | undefined) {
+  if ((rows?.length ?? 0) >= ROW_CAP) console.warn(`[hub-posts] row cap reached: ${table}`);
+}
+
 type DbClient = {
   from: (table: string) => any;
-  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
 };
 
 interface HubPostsHandlerDeps {
@@ -117,59 +150,134 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       return json(data ?? { ok: true }, 200);
     }
 
-    const { data: posts } = await db
+    const mode = parseGetMode(url.searchParams);
+    if (!mode) return json({ error: "Parâmetros inválidos." }, 400);
+    const cutoff = shellCutoff(deps.now());
+
+    // Every lookup below is batched by id and only depends on what came before
+    // it, so the GET runs in three round-trip phases instead of one query at a
+    // time: (1) posts plus the token-scoped rows, (2) everything keyed by the
+    // post/workflow ids, (3) validating the R2 keys found in rich content.
+    //
+    // Spec: docs/superpowers/specs/2026-10-02-hub-posts-bounded-design.md. The shell holds
+    // every post still in flight plus published posts with either date inside the window;
+    // older published posts come through ?before= (Postagens) and ?from=&to= (calendar).
+    let postsQuery = db
       .from("workflow_posts")
-      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
+      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, published_at, publish_error, platform, ig_trial_strategy, ig_collaborators, media_autocleaned_at, workflow_id, targets_state:post_targets(platform, permalink), workflows(titulo, created_at)")
       .eq("conta_id", hubToken.conta_id)
-      .eq("cliente_id", hubToken.cliente_id)
-      .order("scheduled_at", { ascending: true });
+      .eq("cliente_id", hubToken.cliente_id);
+    if (mode.kind === "shell") {
+      postsQuery = postsQuery
+        .or(`status.neq.postado,published_at.gte.${cutoff},scheduled_at.gte.${cutoff}`)
+        .order("scheduled_at", { ascending: true });
+    } else if (mode.kind === "history") {
+      const { ts, id } = mode.before;
+      postsQuery = postsQuery
+        .eq("status", "postado")
+        .or(`published_at.lt.${ts},and(published_at.eq.${ts},id.lt.${id})`)
+        .order("published_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(HISTORY_PAGE_SIZE + 1);
+    } else if (mode.kind === "range") {
+      postsQuery = postsQuery
+        .eq("status", "postado")
+        .gte("scheduled_at", mode.from)
+        .lt("scheduled_at", mode.to)
+        .order("scheduled_at", { ascending: true })
+        .order("id", { ascending: true });
+    } else {
+      postsQuery = postsQuery.eq("id", mode.postId);
+    }
+
+    // Placed LAST in the array: the test mock dequeues workflow_posts in call order, and an
+    // unqueued select answers [] (read as "nothing older"). A non-empty array is the only
+    // "older exists" signal; never .maybeSingle() or a truthiness check on data.
+    const olderCheck = mode.kind === "shell"
+      ? db
+        .from("workflow_posts")
+        .select("id")
+        .eq("conta_id", hubToken.conta_id)
+        .eq("cliente_id", hubToken.cliente_id)
+        .eq("status", "postado")
+        .lt("published_at", cutoff)
+        .limit(1)
+      : Promise.resolve({ data: [] as unknown[] });
+
+    const [{ data: rawPosts }, { data: igAccount }, { data: clienteRow }, { data: olderRows }] =
+      await Promise.all([
+        postsQuery,
+        db
+          .from("instagram_accounts")
+          .select("username, profile_picture_url")
+          .eq("client_id", hubToken.cliente_id)
+          .maybeSingle(),
+        db
+          .from("clientes")
+          .select("auto_publish_on_approval")
+          .eq("id", hubToken.cliente_id)
+          .single(),
+        olderCheck,
+      ]);
+
+    let posts = (rawPosts ?? []) as any[];
+    let nextCursor: string | null = null;
+    if (mode.kind === "history" && posts.length > HISTORY_PAGE_SIZE) {
+      posts = posts.slice(0, HISTORY_PAGE_SIZE);
+      nextCursor = cursorOf(posts[HISTORY_PAGE_SIZE - 1]);
+    }
+    const hasOlder = Array.isArray(olderRows) && olderRows.length > 0;
+    warnIfCapped("workflow_posts", posts);
+    const autoPublishOnApproval = clienteRow?.auto_publish_on_approval ?? false;
 
     // A post with no workflow_id is avulso (never attached to a flow): the embed
     // resolves to null and the flattened row carries null, not "", so the Hub
     // frontend can tell "no workflow" apart from "workflow with an empty titulo".
+    // P4: the TikTok URL lives on the TikTok destination (post_targets.permalink); the
+    // response keeps the legacy field name so the Hub frontend does not change.
     const flatPosts = (posts ?? []).map((post: any) => {
-      const { workflows: workflow, ...rest } = post;
-      return { ...rest, workflow_titulo: workflow?.titulo ?? null, workflow_created_at: workflow?.created_at ?? null };
+      const { workflows: workflow, targets_state: targets, ...rest } = post;
+      const tiktokTarget = Array.isArray(targets)
+        ? targets.find((t: { platform?: string }) => t?.platform === "tiktok")
+        : null;
+      return {
+        ...rest,
+        tiktok_post_url: tiktokTarget?.permalink ?? null,
+        workflow_titulo: workflow?.titulo ?? null,
+        workflow_created_at: workflow?.created_at ?? null,
+      };
     });
 
-    const workflowIds = [...new Set(flatPosts.map((post: any) => post.workflow_id).filter(Boolean))];
+    const workflowIds = [...new Set<number>(flatPosts.map((post: any) => post.workflow_id).filter(Boolean))];
 
     const postIds = flatPosts.map((post: { id: number }) => post.id);
 
-    const { data: postApprovals } = postIds.length > 0
-      ? await db
-          .from("post_approvals")
-          .select("id, post_id, action, comentario, is_workspace_user, created_at")
-          .in("post_id", postIds)
-          .order("created_at", { ascending: true })
-      : { data: [] };
-
-    const { data: pendingSuggestions } = postIds.length > 0
-      ? await db
-          .from("post_edit_suggestions")
-          .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
-          .in("post_id", postIds)
-          .eq("status", "pending")
-      : { data: [] };
-
-    const suggestionByPost: Record<number, any> = {};
-    for (const s of (pendingSuggestions ?? [])) {
-      suggestionByPost[s.post_id] = s;
-    }
-
-    const { data: rejectedSuggestions } = postIds.length > 0
-      ? await db
-          .from("post_edit_suggestions")
-          .select("post_id, updated_at")
-          .in("post_id", postIds)
-          .eq("status", "rejected")
-          .order("updated_at", { ascending: false })
-      : { data: [] };
-
-    const rejectedAtByPost: Record<number, string> = {};
-    for (const r of (rejectedSuggestions ?? [])) {
-      if (!rejectedAtByPost[r.post_id]) rejectedAtByPost[r.post_id] = r.updated_at;
-    }
+    // "Em produção": posts the client already saw that are back with the
+    // agency. Only internal-status posts are looked up; on error the em-produção
+    // set is empty, so every internal post is dropped server-side (fail closed).
+    const internalPostIds = flatPosts
+      .filter((post: { status: string }) => INTERNAL_STATUSES.has(post.status))
+      .map((post: { id: number }) => post.id);
+    const loadEmProducao = async (): Promise<Map<number, EmProducaoReason>> => {
+      if (internalPostIds.length === 0) return new Map();
+      try {
+        const statusEvents = await fetchAllRows<StatusEventRow>((from, to) =>
+          db
+            .from("post_status_events")
+            .select("id, post_id, from_status, to_status, created_at")
+            .eq("conta_id", hubToken.conta_id)
+            .in("post_id", internalPostIds)
+            .in("to_status", ["enviado_cliente", ...INTERNAL_STATUSES])
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+        return computeEmProducaoByPost(statusEvents);
+      } catch (err) {
+        console.error("[hub-posts] status events lookup failed:", err);
+        return new Map();
+      }
+    };
 
     // Propriedades pertencem ao modelo do fluxo: um post avulso (detach preserva
     // os valores como dado inativo) NAO expoe propriedades no Hub, senao o
@@ -178,32 +286,200 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       .filter((post: any) => post.workflow_id != null)
       .map((post: { id: number }) => post.id);
 
-    const { data: propertyValues } = wiredPostIds.length > 0
-      ? await db
-          .from("post_property_values")
-          .select("post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
-          .in("post_id", wiredPostIds)
-          .eq("template_property_definitions.portal_visible", true)
-          .order("template_property_definitions(display_order)", { ascending: true })
-      : { data: [] };
+    // Dual-approval fluxos: hub-approve only auto-schedules on the FINAL
+    // client-approval etapa (see isFinalApprovalCycle there). Workflows with two
+    // or more aprovacao_cliente etapas still open are reported so the portal
+    // does not promise "aprovar = agendar" during an earlier approval cycle.
+    // workflowIds can be [] for an avulso-only client (no posts attached to any
+    // workflow): skip the query entirely rather than call .in() with an empty
+    // array, matching the workflowSelectOptions guard below.
+    const loadSuspendedWorkflowIds = async (): Promise<number[]> => {
+      if (!autoPublishOnApproval || workflowIds.length === 0) return [];
+      const { data: etapas, error: etapasError } = await db
+        .from("workflow_etapas")
+        .select("workflow_id, tipo, status")
+        .in("workflow_id", workflowIds)
+        .eq("tipo", "aprovacao_cliente");
+      warnIfCapped("workflow_etapas", etapas);
+      if (etapasError) {
+        // Fail closed: without the etapa picture, suspend every workflow rather
+        // than promise a scheduling that hub-approve's own guard may refuse.
+        console.error("[hub-posts] etapa lookup failed:", etapasError);
+        return workflowIds;
+      }
+      const openByWorkflow = new Map<number, number>();
+      for (const e of (etapas ?? []) as { workflow_id: number; status?: string | null }[]) {
+        if (e.status === "concluido") continue;
+        openByWorkflow.set(e.workflow_id, (openByWorkflow.get(e.workflow_id) ?? 0) + 1);
+      }
+      return [...openByWorkflow.entries()]
+        .filter(([, open]) => open >= 2)
+        .map(([workflowId]) => workflowId);
+    };
 
-    const { data: workflowSelectOptions } = postIds.length > 0 && workflowIds.length > 0
-      ? await db
-          .from("workflow_select_options")
-          .select("workflow_id, property_definition_id, option_id, label, color")
-          .in("workflow_id", workflowIds)
-      : { data: [] };
+    // Avulsos com processo individual: a mesma promessa "aprovar = agendar"
+    // nao vale enquanto a execucao tiver outra etapa de aprovacao adiante
+    // (hub-approve.isFinalApprovalCycle, ramo sem fluxo). Chaveado por post,
+    // aditivo ao array de fluxos.
+    const avulsoIds = flatPosts
+      .filter((post: { workflow_id: number | null }) => post.workflow_id == null)
+      .map((post: { id: number }) => post.id);
+    const loadSuspendedPostIds = async (): Promise<number[]> => {
+      if (!autoPublishOnApproval || avulsoIds.length === 0) return [];
+      const { data: procs, error: procsError } = await db
+        .from("post_processes")
+        .select("id, post_id")
+        .in("post_id", avulsoIds)
+        .eq("estado", "ativo");
+      warnIfCapped("post_processes", procs);
+      if (procsError) {
+        console.error("[hub-posts] post_processes lookup failed:", procsError);
+        return avulsoIds;
+      }
+      const procRows = (procs ?? []) as { id: number; post_id: number }[];
+      if (procRows.length === 0) return [];
+      const { data: steps, error: stepsError } = await db
+        .from("post_process_steps")
+        .select("process_id, estado")
+        .in("process_id", procRows.map((p) => p.id))
+        .eq("tipo", "aprovacao_cliente");
+      warnIfCapped("post_process_steps", steps);
+      if (stepsError) {
+        console.error("[hub-posts] post_process_steps lookup failed:", stepsError);
+        return procRows.map((p) => p.post_id);
+      }
+      const openByProcess = new Map<number, number>();
+      for (const s of (steps ?? []) as { process_id: number; estado?: string | null }[]) {
+        if (s.estado !== "pendente" && s.estado !== "ativo") continue;
+        openByProcess.set(s.process_id, (openByProcess.get(s.process_id) ?? 0) + 1);
+      }
+      return procRows
+        .filter((p) => (openByProcess.get(p.id) ?? 0) >= 2)
+        .map((p) => p.post_id);
+    };
 
-    const { data: mediaLinks } = postIds.length > 0
-      ? await db
-          .from("post_file_links")
-          .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status, media_lost_at)")
-          .in("post_id", postIds)
-          .order("sort_order", { ascending: true })
-          .order("id", { ascending: true })
-      : { data: [] };
+    const none = Promise.resolve({ data: [] as any[] });
+    const [
+      emProducaoByPost,
+      { data: rawPostApprovals },
+      { data: pendingSuggestions },
+      { data: rejectedSuggestions },
+      { data: propertyValues },
+      { data: workflowSelectOptions },
+      { data: mediaLinks },
+      autoPublishSuspendedWorkflowIds,
+      autoPublishSuspendedPostIds,
+    ] = await Promise.all([
+      loadEmProducao(),
+      postIds.length > 0
+        ? pagedRows("post_approvals", (from, to) =>
+            db
+              .from("post_approvals")
+              .select("id, post_id, action, comentario, is_workspace_user, created_at")
+              .in("post_id", postIds)
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
+        : none,
+      postIds.length > 0
+        ? pagedRows("pending suggestions", (from, to) =>
+            db
+              .from("post_edit_suggestions")
+              .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
+              .in("post_id", postIds)
+              .eq("status", "pending")
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
+        : none,
+      postIds.length > 0
+        ? pagedRows("rejected suggestions", (from, to) =>
+            db
+              .from("post_edit_suggestions")
+              .select("id, post_id, updated_at")
+              .in("post_id", postIds)
+              .eq("status", "rejected")
+              .order("updated_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to)
+          )
+        : none,
+      wiredPostIds.length > 0
+        ? pagedRows("post_property_values", (from, to) =>
+            db
+              .from("post_property_values")
+              .select("id, post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
+              .in("post_id", wiredPostIds)
+              .eq("template_property_definitions.portal_visible", true)
+              .order("template_property_definitions(display_order)", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
+        : none,
+      postIds.length > 0 && workflowIds.length > 0
+        ? db
+            .from("workflow_select_options")
+            .select("workflow_id, property_definition_id, option_id, label, color")
+            .in("workflow_id", workflowIds)
+        : none,
+      postIds.length > 0
+        ? pagedRows("post_file_links", (from, to) =>
+            db
+              .from("post_file_links")
+              .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status, media_lost_at)")
+              .in("post_id", postIds)
+              .order("sort_order", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
+        : none,
+      loadSuspendedWorkflowIds(),
+      loadSuspendedPostIds(),
+    ]);
+    warnIfCapped("workflow_select_options", workflowSelectOptions);
 
-    const mediaWithUrls = await Promise.all((mediaLinks ?? []).map(async (link: any) => {
+    // Never-sent drafts stay on the server. Phase 2 queried with every post id (no extra
+    // round trip); from here on, every field is pruned to the visible set so nothing tied
+    // to a dropped post (approvals, properties, options, suspension ids, media) leaves.
+    const visiblePosts = flatPosts.filter((post: { id: number; status: string }) =>
+      isHubVisiblePost(post, emProducaoByPost),
+    );
+    const visibleIds = new Set<number>(visiblePosts.map((post: { id: number }) => post.id));
+    const visibleWorkflowIds = new Set<number>(
+      visiblePosts
+        .map((post: { workflow_id: number | null }) => post.workflow_id)
+        .filter((id: number | null): id is number => id != null),
+    );
+
+    // Internal team notes (replyToPostApproval) never leave the server; same
+    // rule as hub-post-history. Filtered in code rather than with a PostgREST
+    // .or() so the rule has exactly one definition (_shared/hub-approvals.ts).
+    const postApprovals = (
+      (rawPostApprovals ?? []) as {
+        post_id: number;
+        action: string;
+        is_workspace_user: boolean | null;
+      }[]
+    )
+      .filter((a) => visibleIds.has(a.post_id))
+      .filter(isClientVisibleApproval);
+
+    const suggestionByPost: Record<number, any> = {};
+    for (const s of (pendingSuggestions ?? [])) {
+      if (!visibleIds.has(s.post_id)) continue;
+      suggestionByPost[s.post_id] = s;
+    }
+
+    const rejectedAtByPost: Record<number, string> = {};
+    for (const r of (rejectedSuggestions ?? [])) {
+      if (!visibleIds.has(r.post_id)) continue;
+      if (!rejectedAtByPost[r.post_id]) rejectedAtByPost[r.post_id] = r.updated_at;
+    }
+
+    const mediaWithUrls = await Promise.all((mediaLinks ?? [])
+      .filter((link: { post_id: number }) => visibleIds.has(link.post_id))
+      .map(async (link: any) => {
       const f = link.files;
       const lost = !!f.media_lost_at;
       return {
@@ -231,57 +507,41 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       (mediaByPost[media.post_id] ??= []).push(media);
     }
 
-    const flatPostsWithMedia = flatPosts.map((post: any) => {
+    const flatPostsWithMedia = visiblePosts.map((post: any) => {
       const mediaForPost = mediaByPost[post.id] ?? [];
-      const cover_media = mediaForPost.find((media) => media.is_cover) ?? mediaForPost[0] ?? null;
+      // First slide by sort_order: what Instagram shows in the feed. The is_cover
+      // flag goes stale when a slide is moved to the front, so it is not consulted.
+      const cover_media = mediaForPost[0] ?? null;
       return { ...post, media: mediaForPost, cover_media };
     });
 
+    // Inline images in post content and in pending suggestions: only keys under
+    // this workspace's prefix that still exist in `files` get a signed URL. Both
+    // sources are validated in one query.
     const expectedKeyPrefix = `contas/${hubToken.conta_id}/`;
-    const allContentKeys: string[] = [];
+    const contentKeys = new Set<string>();
     for (const post of flatPostsWithMedia) {
-      if (post.conteudo) allContentKeys.push(...extractR2Keys(post.conteudo));
+      if (post.conteudo) extractR2Keys(post.conteudo).forEach((key) => contentKeys.add(key));
+    }
+    for (const s of Object.values(suggestionByPost)) {
+      if ((s as any).suggested_conteudo) {
+        extractR2Keys((s as any).suggested_conteudo).forEach((key) => contentKeys.add(key));
+      }
     }
 
     const contentUrlMap: Record<string, string> = {};
-    if (allContentKeys.length > 0) {
-      const safeKeys = allContentKeys.filter((key) => key.startsWith(expectedKeyPrefix));
-      if (safeKeys.length > 0) {
-        const { data: validFiles } = await db.from("files")
-          .select("r2_key")
-          .eq("conta_id", hubToken.conta_id)
-          .in("r2_key", safeKeys);
-        const validKeySet = new Set((validFiles ?? []).map((f: any) => f.r2_key));
-        await Promise.all(
-          safeKeys.filter((key) => validKeySet.has(key)).map(async (key) => {
-            contentUrlMap[key] = await deps.signGetUrl(key, 3600);
-          })
-        );
-      }
-    }
-
-    // Also collect R2 keys from pending suggestions for URL signing
-    const suggestionContentKeys: string[] = [];
-    for (const s of Object.values(suggestionByPost)) {
-      if ((s as any).suggested_conteudo) {
-        suggestionContentKeys.push(...extractR2Keys((s as any).suggested_conteudo));
-      }
-    }
-    if (suggestionContentKeys.length > 0) {
-      const safeKeys = suggestionContentKeys.filter((key) => key.startsWith(expectedKeyPrefix));
-      const unseenKeys = safeKeys.filter((key) => !(key in contentUrlMap));
-      if (unseenKeys.length > 0) {
-        const { data: validFiles } = await db.from("files")
-          .select("r2_key")
-          .eq("conta_id", hubToken.conta_id)
-          .in("r2_key", unseenKeys);
-        const validKeySet = new Set((validFiles ?? []).map((f: any) => f.r2_key));
-        await Promise.all(
-          unseenKeys.filter((key) => validKeySet.has(key)).map(async (key) => {
-            contentUrlMap[key] = await deps.signGetUrl(key, 3600);
-          })
-        );
-      }
+    const safeKeys = [...contentKeys].filter((key) => key.startsWith(expectedKeyPrefix));
+    if (safeKeys.length > 0) {
+      const { data: validFiles } = await db.from("files")
+        .select("r2_key")
+        .eq("conta_id", hubToken.conta_id)
+        .in("r2_key", safeKeys);
+      const validKeySet = new Set((validFiles ?? []).map((f: any) => f.r2_key));
+      await Promise.all(
+        safeKeys.filter((key) => validKeySet.has(key)).map(async (key) => {
+          contentUrlMap[key] = await deps.signGetUrl(key, 3600);
+        })
+      );
     }
 
     const postsWithResolvedContent = flatPostsWithMedia.map((post: any) => {
@@ -304,63 +564,33 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         ...resolvedPost,
         pending_suggestion: resolvedSuggestion,
         suggestion_rejected_at: !resolvedSuggestion ? (rejectedAtByPost[post.id] ?? null) : null,
+        em_producao: emProducaoByPost.get(post.id) ?? null,
       };
     });
 
-    const { data: igAccount } = await db
-      .from("instagram_accounts")
-      .select("username, profile_picture_url")
-      .eq("client_id", hubToken.cliente_id)
-      .maybeSingle();
-
-    const { data: clienteRow } = await db
-      .from("clientes")
-      .select("auto_publish_on_approval")
-      .eq("id", hubToken.cliente_id)
-      .single();
-    const autoPublishOnApproval = clienteRow?.auto_publish_on_approval ?? false;
-
-    // Dual-approval fluxos: hub-approve only auto-schedules on the FINAL
-    // client-approval etapa (see isFinalApprovalCycle there). Workflows with two
-    // or more aprovacao_cliente etapas still open are reported so the portal
-    // does not promise "aprovar = agendar" during an earlier approval cycle.
-    let autoPublishSuspendedWorkflowIds: number[] = [];
-    // workflowIds can be [] for an avulso-only client (no posts attached to any
-    // workflow): skip the query entirely rather than call .in() with an empty
-    // array, matching the workflowSelectOptions guard above.
-    if (autoPublishOnApproval && workflowIds.length > 0) {
-      const { data: etapas, error: etapasError } = await db
-        .from("workflow_etapas")
-        .select("workflow_id, tipo, status")
-        .in("workflow_id", workflowIds)
-        .eq("tipo", "aprovacao_cliente");
-      if (etapasError) {
-        // Fail closed: without the etapa picture, suspend every workflow rather
-        // than promise a scheduling that hub-approve's own guard may refuse.
-        console.error("[hub-posts] etapa lookup failed:", etapasError);
-        autoPublishSuspendedWorkflowIds = workflowIds;
-      } else {
-        const openByWorkflow = new Map<number, number>();
-        for (const e of (etapas ?? []) as { workflow_id: number; status?: string | null }[]) {
-          if (e.status === "concluido") continue;
-          openByWorkflow.set(e.workflow_id, (openByWorkflow.get(e.workflow_id) ?? 0) + 1);
-        }
-        autoPublishSuspendedWorkflowIds = [...openByWorkflow.entries()]
-          .filter(([, open]) => open >= 2)
-          .map(([workflowId]) => workflowId);
-      }
+    if (mode.kind === "post" && postsWithResolvedContent.length === 0) {
+      return json({ error: "Post não encontrado." }, 404);
     }
 
     return json({
       posts: postsWithResolvedContent,
-      postApprovals: postApprovals ?? [],
-      propertyValues: propertyValues ?? [],
-      workflowSelectOptions: workflowSelectOptions ?? [],
+      postApprovals,
+      propertyValues: ((propertyValues ?? []) as { post_id: number }[])
+        .filter((v) => visibleIds.has(v.post_id)),
+      workflowSelectOptions: ((workflowSelectOptions ?? []) as { workflow_id: number }[])
+        .filter((o) => visibleWorkflowIds.has(o.workflow_id)),
       instagramProfile: igAccount
         ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
         : null,
       autoPublishOnApproval,
-      autoPublishSuspendedWorkflowIds,
+      autoPublishSuspendedWorkflowIds: autoPublishSuspendedWorkflowIds
+        .filter((id) => visibleWorkflowIds.has(id)),
+      autoPublishSuspendedPostIds: autoPublishSuspendedPostIds
+        .filter((id) => visibleIds.has(id)),
+      ...(mode.kind === "shell"
+        ? { olderCursor: hasOlder ? `${cutoff}|0` : null, historyCutoff: hasOlder ? cutoff : null }
+        : {}),
+      ...(mode.kind === "history" ? { nextCursor } : {}),
     });
   };
 }

@@ -9,14 +9,23 @@ import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { openConsentPreferences } from '@/lib/consent';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { getInitials } from '../../../store';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PerfilPhone } from './phone/PerfilPhone';
 
 /** Personal settings: profile, password, account details and sign-out. */
 export default function PerfilTab() {
-  const { user, profile, role, signOut, refetchProfile } = useAuth();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  const { user, profile, can, signOut, refetchProfile } = useAuth();
+  const isPhone = !useIsDesktop(768);
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that here. Was
+  // `role === 'owner' || role === 'admin'`, which a custom role with the
+  // chassis 'agent' role never passed even when it held the tab-level
+  // grant, wrongly telling it other config subsections were off-limits.
+  const canViewConfig = can('configuracoes', 'ver') === true;
 
   // --- Profile form ---
   const [pNome, setPNome] = useState('');
@@ -94,6 +103,30 @@ export default function PerfilTab() {
   if (!user) return null;
 
   const initials = profile?.nome ? getInitials(profile.nome) : '??';
+
+  if (isPhone) {
+    return (
+      <PerfilPhone
+        user={user}
+        displayName={profile?.nome ?? user.email ?? ''}
+        initials={initials}
+        nome={{ value: pNome, onChange: setPNome }}
+        empresa={{ value: pEmpresa, onChange: setPEmpresa }}
+        telefone={{ value: pTelefone, onChange: setPTelefone }}
+        whatsapp={{ value: pWhatsapp, onChange: setPWhatsapp }}
+        marketingOptIn={pMarketingOptIn}
+        onMarketingOptInChange={setPMarketingOptIn}
+        profileSaving={profileLoading}
+        onSaveProfile={handleProfileSave}
+        senha={{ value: senha, onChange: setSenha }}
+        confirmar={{ value: confirmar, onChange: setConfirmar }}
+        passwordSaving={pwLoading}
+        onSavePassword={handlePasswordSave}
+        showRestriction={!canViewConfig}
+        onSignOut={signOut}
+      />
+    );
+  }
 
   return (
     <>
@@ -200,7 +233,7 @@ export default function PerfilTab() {
 
       {/* Agents see no other tab, so the strip is hidden for them entirely —
           this is the only place that explains why. */}
-      {!isOwnerOrAdmin && (
+      {!canViewConfig && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <RoleRestrictionNotice
             title="Configurações do workspace"
@@ -239,6 +272,18 @@ export default function PerfilTab() {
             <span className="client-info-value">{user.app_metadata?.provider ?? 'email'}</span>
           </div>
         </div>
+      </div>
+
+      {/* Privacy */}
+      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <h3 className="config-title">Privacidade</h3>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+          Escolha quais ferramentas opcionais (análise de uso e chat de suporte) podem usar o
+          armazenamento do seu navegador.
+        </p>
+        <Button variant="outline" onClick={() => openConsentPreferences()}>
+          Preferências de cookies
+        </Button>
       </div>
 
       {/* Logout */}

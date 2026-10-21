@@ -1,4 +1,5 @@
 import type { WorkflowPost } from '../../../store';
+import { targetsInstagram } from '../platformTargets';
 
 // PublishErrorBlock é específico do lado Instagram (copy, código de erro e retry
 // são todos do Instagram). Para platform='both' com Instagram já publicado
@@ -20,7 +21,7 @@ export function shouldShowPublishErrorBlock(
 ): boolean {
   return (
     post.status === 'falha_publicacao' &&
-    post.platform !== 'tiktok' &&
+    targetsInstagram(post.platform) &&
     !post.instagram_media_id &&
     !!(post.publish_error || post.publish_error_code)
   );

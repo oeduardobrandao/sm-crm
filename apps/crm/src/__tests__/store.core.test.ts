@@ -78,6 +78,10 @@ describe('store core helpers and CRUD', () => {
         id: 'user-2',
         nome: 'Mariana Freitas',
         role: 'admin',
+        // No role_id/workspace_roles in the mocked row (legacy member,
+        // matches the pre-Task-13 shape) -- both flatten to null.
+        role_id: null,
+        papel_nome: null,
         avatar_url: 'https://cdn.mesaas.com/mariana.jpg',
         created_at: '2026-03-01T10:00:00.000Z',
       },
@@ -86,6 +90,103 @@ describe('store core helpers and CRUD', () => {
       method: 'eq',
       args: ['workspace_id', 'conta-1'],
     });
+  });
+
+  it('flattens role_id and the embedded workspace_roles.nome as papel_nome for a member with a custom papel', async () => {
+    mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+      data: [
+        {
+          user_id: 'user-3',
+          role: 'agent',
+          role_id: 'role-1',
+          joined_at: '2026-04-02T10:00:00.000Z',
+          can_see_financials: false,
+          workspace_roles: { nome: 'Editor de Conteúdo' },
+          profiles: {
+            id: 'user-3',
+            nome: 'Carla Editora',
+            avatar_url: null,
+            created_at: '2026-03-02T10:00:00.000Z',
+          },
+        },
+      ],
+      error: null,
+    });
+
+    const users = await store.getWorkspaceUsers();
+
+    expect(users).toEqual([
+      {
+        id: 'user-3',
+        nome: 'Carla Editora',
+        role: 'agent',
+        role_id: 'role-1',
+        papel_nome: 'Editor de Conteúdo',
+        can_see_financials: false,
+        avatar_url: null,
+        created_at: '2026-03-02T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  // Pre-migration fallback (same isMissingRolesSchemaError reused by
+  // getMyMembership, hotfix #439): a database that predates the roles
+  // migration 400s on the enriched select (role_id / workspace_roles unknown
+  // to PostgREST's schema cache). Without a fallback here, MembrosTab's
+  // roster query rejected and useQuery silently rendered an empty roster
+  // (`wsUsers ?? []`) instead of a loud failure -- this pins the re-run
+  // against the legacy columns instead.
+  it('falls back to the legacy select and reports role_id/papel_nome as null when the roles schema is missing (42703)', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workspace_members',
+      'select',
+      {
+        data: null,
+        error: { code: '42703', message: 'column workspace_members.role_id does not exist' },
+      },
+      {
+        data: [
+          {
+            user_id: 'user-4',
+            role: 'owner',
+            joined_at: '2026-04-03T10:00:00.000Z',
+            can_see_financials: true,
+            profiles: {
+              id: 'user-4',
+              nome: 'Dona da Conta',
+              avatar_url: null,
+              created_at: '2026-03-03T10:00:00.000Z',
+            },
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const users = await store.getWorkspaceUsers();
+
+    expect(users).toEqual([
+      {
+        id: 'user-4',
+        nome: 'Dona da Conta',
+        role: 'owner',
+        role_id: null,
+        papel_nome: null,
+        can_see_financials: true,
+        avatar_url: null,
+        created_at: '2026-03-03T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('rethrows a non-schema error instead of falling back (a network blip must not be swallowed)', async () => {
+    const queryError = { message: 'permission denied' };
+    mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+      data: null,
+      error: queryError,
+    });
+
+    await expect(store.getWorkspaceUsers()).rejects.toBe(queryError);
   });
 
   it('returns an empty workspace list when there is no authenticated user', async () => {
@@ -116,7 +217,7 @@ describe('store core helpers and CRUD', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await store.updateWorkspaceUserRole('user-44', 'admin');
+    await store.updateWorkspaceUserRole('user-44', { role: 'admin' });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [input, init] = fetchMock.mock.calls[0];
@@ -128,6 +229,22 @@ describe('store core helpers and CRUD', () => {
       action: 'update-role',
       targetUserId: 'user-44',
       role: 'admin',
+    });
+  });
+
+  it('spreads roleId (custom papel) into the update-role request body instead of role', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await store.updateWorkspaceUserRole('user-44', { roleId: 'role-1' });
+
+    expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))).toEqual({
+      action: 'update-role',
+      targetUserId: 'user-44',
+      roleId: 'role-1',
     });
   });
 
@@ -198,6 +315,18 @@ describe('store core helpers and CRUD', () => {
       expected: [{ id: 1, cidade: 'Fortaleza' }],
       modifiers: [
         { method: 'eq', args: ['cliente_id', 12] },
+        { method: 'order', args: ['created_at', { ascending: false }] },
+      ],
+    },
+    {
+      name: 'getClienteLinks',
+      operation: 'select' as const,
+      table: 'cliente_links',
+      run: () => store.getClienteLinks(42),
+      response: [{ id: 1, titulo: 'Drive da marca' }],
+      expected: [{ id: 1, titulo: 'Drive da marca' }],
+      modifiers: [
+        { method: 'eq', args: ['cliente_id', 42] },
         { method: 'order', args: ['created_at', { ascending: false }] },
       ],
     },
@@ -413,6 +542,24 @@ describe('store core helpers and CRUD', () => {
       },
     },
     {
+      name: 'addClienteLink',
+      table: 'cliente_links',
+      run: () =>
+        store.addClienteLink({
+          cliente_id: 12,
+          titulo: 'Drive da marca',
+          url: 'https://drive.google.com/drive/folders/abc',
+          descricao: 'Pasta com os materiais',
+        }),
+      payload: {
+        cliente_id: 12,
+        titulo: 'Drive da marca',
+        url: 'https://drive.google.com/drive/folders/abc',
+        descricao: 'Pasta com os materiais',
+        conta_id: 'conta-1',
+      },
+    },
+    {
       name: 'addClienteData',
       table: 'cliente_datas',
       run: () =>
@@ -570,6 +717,13 @@ describe('store core helpers and CRUD', () => {
       eq: ['id', 9],
     },
     {
+      name: 'updateClienteLink',
+      table: 'cliente_links',
+      run: () => store.updateClienteLink(7, { titulo: 'x' }),
+      payloadMatcher: { titulo: 'x', updated_at: expect.any(String) },
+      eq: ['id', 7],
+    },
+    {
       name: 'updateClienteData',
       table: 'cliente_datas',
       run: () => store.updateClienteData(3, { titulo: 'Reunião de pauta' }),
@@ -627,6 +781,12 @@ describe('store core helpers and CRUD', () => {
       eq: ['id', 9],
     },
     {
+      name: 'removeClienteLink',
+      table: 'cliente_links',
+      run: () => store.removeClienteLink(7),
+      eq: ['id', 7],
+    },
+    {
       name: 'removeClienteData',
       table: 'cliente_datas',
       run: () => store.removeClienteData(3),
@@ -654,5 +814,68 @@ describe('store core helpers and CRUD', () => {
     const call = getLastCall(table);
     expect(call.operation).toBe('delete');
     expect(call.modifiers).toContainEqual({ method: 'eq', args: eq });
+  });
+
+  describe('cliente_links edge cases', () => {
+    it('getClienteLinks returns [] when the query resolves with null data', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'select', { data: null, error: null });
+
+      await expect(store.getClienteLinks(42)).resolves.toEqual([]);
+    });
+
+    it('getClienteLinks throws the supabase error', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'select', {
+        data: null,
+        error: new Error('select links failed'),
+      });
+
+      await expect(store.getClienteLinks(42)).rejects.toThrow('select links failed');
+    });
+
+    it('addClienteLink throws the supabase error', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'insert', {
+        data: null,
+        error: new Error('insert link failed'),
+      });
+
+      await expect(
+        store.addClienteLink({ cliente_id: 12, titulo: 'Drive', url: 'https://example.com' }),
+      ).rejects.toThrow('insert link failed');
+    });
+
+    it('updateClienteLink stamps a fresh ISO updated_at and returns the row', async () => {
+      const row = { id: 7, cliente_id: 12, titulo: 'x', url: 'https://example.com' };
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'update', { data: row, error: null });
+
+      const before = Date.now();
+      const result = await store.updateClienteLink(7, { titulo: 'x' });
+      const after = Date.now();
+
+      expect(result).toEqual(row);
+      const payload = getLastCall('cliente_links').payload as { updated_at: string };
+      expect(new Date(payload.updated_at).toISOString()).toBe(payload.updated_at);
+      expect(new Date(payload.updated_at).getTime()).toBeGreaterThanOrEqual(before);
+      expect(new Date(payload.updated_at).getTime()).toBeLessThanOrEqual(after);
+    });
+
+    it('updateClienteLink throws the supabase error', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'update', {
+        data: null,
+        error: new Error('update link failed'),
+      });
+
+      await expect(store.updateClienteLink(7, { titulo: 'x' })).rejects.toThrow(
+        'update link failed',
+      );
+    });
+
+    it('removeClienteLink throws the supabase error', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'delete', {
+        data: null,
+        error: new Error('delete link failed'),
+      });
+
+      await expect(store.removeClienteLink(7)).rejects.toThrow('delete link failed');
+    });
   });
 });

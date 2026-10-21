@@ -1,0 +1,275 @@
+import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
+
+vi.mock('@/store', () => ({
+  getPostStatusDefinitions: vi.fn(async () => []),
+}));
+
+// Radix's real DropdownMenu only mounts its content once open, which needs
+// pointer-event choreography jsdom doesn't reproduce well. Same convention as
+// WorkflowCard's tests: render the content unconditionally, but (unlike those)
+// keep onClick wired through so the kebab's menu items are actually clickable.
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({
+    children,
+    onClick,
+    className,
+  }: {
+    children: React.ReactNode;
+    onClick?: (e: React.MouseEvent) => void;
+    className?: string;
+  }) => (
+    <button type="button" role="menuitem" className={className} onClick={onClick}>
+      {children}
+    </button>
+  ),
+}));
+
+import { PostProcessCard } from '../PostProcessCard';
+import type { PostEntity } from '../../boardEntity';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
+
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return rtlRender(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+const steps = [
+  { ordem: 0, nome: 'Copy', tipo: 'padrao' as const },
+  { ordem: 1, nome: 'Design', tipo: 'padrao' as const },
+];
+
+/** A step whose prazo_dias (<= 3) would read as "caution" through
+ *  deadlineFromPrazoEfetivo's fallback -- exactly the config that exposed the
+ *  bug: an etapa not yet started (no prazo_efetivo) still has a low
+ *  prazo_dias, and the fallback fills diasRestantes with it. */
+function makeEntity(overrides: Partial<PostEntity> = {}): PostEntity {
+  return {
+    kind: 'post',
+    id: 'post:9',
+    process: {
+      id: 9,
+      post_id: 109,
+      post: {
+        id: 109,
+        tipo: 'feed',
+        cliente_nome: 'Aurora',
+        status: 'rascunho',
+      },
+    } as never,
+    step: { ordem: 0 } as never,
+    templateId: 7,
+    steps,
+    etapaOrdem: 0,
+    etapaNome: 'Copy',
+    responsavel: undefined,
+    prazoEfetivo: null,
+    posicao: 0,
+    deadline: { diasRestantes: 2, horasRestantes: 0, estourado: false, urgente: false },
+    cliente: undefined,
+    titulo: 'Post X',
+    ...overrides,
+  } as PostEntity;
+}
+
+describe('PostProcessCard', () => {
+  it('sem prazo efetivo: o card fica deadline-ok mesmo com diasRestantes <= 3', () => {
+    // dl.diasRestantes (2) <= 3 would compute 'deadline-caution' unconditionally
+    // if the card ignored hasDeadline, even though prazoEfetivo is null.
+    const entity = makeEntity({ prazoEfetivo: null });
+    render(<PostProcessCard entity={entity} />);
+
+    expect(screen.getByText('Sem prazo')).toBeInTheDocument();
+    const card = screen.getByTestId('post-process-card');
+    expect(card.className).toContain('deadline-ok');
+    expect(card.className).not.toContain('deadline-caution');
+  });
+
+  it('a cor da barra segue a etapa, não o prazo', () => {
+    // Prazo vencendo em breve (deadline-caution) não pinta a barra de âmbar:
+    // na primeira etapa ela sai amarela da rampa de progresso.
+    const entity = makeEntity({ prazoEfetivo: new Date('2026-01-01T00:00:00.000Z') });
+    render(<PostProcessCard entity={entity} />);
+
+    const card = screen.getByTestId('post-process-card');
+    expect(card.className).toContain('deadline-caution');
+    const bar = card.querySelector('div[style*="width: 0%"]') as HTMLElement | null;
+    expect(bar).toBeTruthy();
+    expect(bar!.style.background).toBe('rgb(231, 176, 8)'); // hsl(45 93% 47%), início da rampa
+  });
+
+  it('renderiza Voltar/Avançar com aria-label e não propaga o clique ao card', () => {
+    const onClick = vi.fn();
+    const onForwardClick = vi.fn();
+    const onRevertClick = vi.fn();
+    render(
+      <PostProcessCard
+        entity={makeEntity()}
+        onClick={onClick}
+        onForwardClick={onForwardClick}
+        onRevertClick={onRevertClick}
+        canRevert
+        forwardLabel="Avançar etapa"
+        dragHandle={<span data-testid="handle" />}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar etapa' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Voltar etapa' }));
+    expect(onForwardClick).toHaveBeenCalledTimes(1);
+    expect(onRevertClick).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(screen.getByTestId('handle')).toBeInTheDocument();
+  });
+  it('sem canRevert não mostra Voltar; rótulo "Concluir processo" na última etapa', () => {
+    render(
+      <PostProcessCard
+        entity={makeEntity()}
+        onForwardClick={vi.fn()}
+        forwardLabel="Concluir processo"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Voltar etapa' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Concluir processo' })).toBeInTheDocument();
+  });
+  it('sem handlers (leitura) só mostra o kebab de copiar link, nenhuma ação de mutação', () => {
+    // "Copiar link do post" não depende de handler nenhum -- é sempre oferecido,
+    // mesmo num render puramente de leitura (fase 3). O contrato de zero
+    // interatividade da fase 3 vale só para AÇÕES (editar/excluir/mover).
+    render(<PostProcessCard entity={makeEntity()} />);
+    expect(screen.queryAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: /copiar link do post/i })).toBeInTheDocument();
+  });
+
+  it('card compacto: badge "Individual" fica só ícone, e a barra de progresso leva o contador "N/total" ao lado', () => {
+    render(<PostProcessCard entity={makeEntity()} />);
+    // O texto "Individual" não deve mais existir como nó de texto solto --
+    // só o ícone, com o rótulo completo em aria-label/title.
+    expect(screen.queryByText('Individual')).toBeNull();
+    expect(screen.getByLabelText('Processo individual')).toBeInTheDocument();
+
+    // "N/total" fica visível ao lado da barra (aria-hidden: o progressbar já
+    // anuncia o mesmo valor), e a barra repete etapa + contador no title.
+    expect(screen.getByText('1/2')).toHaveAttribute('aria-hidden', 'true');
+    const bar = screen.getByTestId('post-progress-bar');
+    expect(bar).toHaveAttribute('title', 'Copy 1/2');
+    // ...e o mesmo texto chega ao leitor de tela pelo progressbar, não só pelo
+    // title (que AT nenhuma anuncia de forma confiável num <div> genérico).
+    expect(bar).toHaveAttribute('role', 'progressbar');
+    expect(bar).toHaveAttribute('aria-valuetext', 'Copy 1/2');
+  });
+
+  it('kebab: encerrar/excluir só aparecem quando o caller passa o handler', () => {
+    const onClick = vi.fn();
+    const onRemoveProcessClick = vi.fn();
+    const onDeleteClick = vi.fn();
+    render(
+      <PostProcessCard
+        entity={makeEntity()}
+        onClick={onClick}
+        onRemoveProcessClick={onRemoveProcessClick}
+        onDeleteClick={onDeleteClick}
+      />,
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Encerrar processo' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir post' }));
+    expect(onRemoveProcessClick).toHaveBeenCalledTimes(1);
+    expect(onDeleteClick).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('kebab: sem os handlers opcionais, encerrar/excluir não aparecem', () => {
+    render(<PostProcessCard entity={makeEntity()} onClick={vi.fn()} />);
+    expect(screen.queryByRole('menuitem', { name: 'Encerrar processo' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Excluir post' })).toBeNull();
+  });
+
+  it('kebab: nunca oferece "editar processo" -- essa capacidade não existe (spec §4)', () => {
+    render(
+      <PostProcessCard
+        entity={makeEntity()}
+        onClick={vi.fn()}
+        onRemoveProcessClick={vi.fn()}
+        onDeleteClick={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/editar processo/i)).toBeNull();
+    // E "Encerrar", nunca "Remover": remove_post_process encerra o processo e
+    // preserva o post.
+    expect(screen.queryByText(/remover processo/i)).toBeNull();
+  });
+});
+
+describe('PostProcessCard: Duplicar post', () => {
+  it('mostra o item e chama onDuplicateClick sem abrir o card', () => {
+    const onClick = vi.fn();
+    const onDuplicateClick = vi.fn();
+    render(
+      <PostProcessCard
+        entity={makeEntity()}
+        onClick={onClick}
+        onDuplicateClick={onDuplicateClick}
+      />,
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: /Duplicar post/ }));
+    expect(onDuplicateClick).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('sem onDuplicateClick não mostra o item', () => {
+    render(<PostProcessCard entity={makeEntity()} />);
+    expect(screen.queryByRole('menuitem', { name: /Duplicar post/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('PostProcessCard: ações do card sob o Vidro', () => {
+  function renderCard(vidro: boolean) {
+    const ui = (
+      <PostProcessCard
+        entity={makeEntity()}
+        onForwardClick={vi.fn()}
+        forwardLabel="Avançar etapa"
+      />
+    );
+    render(vidro ? <VidroToolbarHarness>{ui}</VidroToolbarHarness> : ui);
+    return {
+      kebab: screen.getByRole('button', { name: 'Mais opções' }),
+      forward: screen.getByRole('button', { name: 'Avançar etapa' }),
+    };
+  }
+
+  it('flag desligada: mantém btn-edit-workflow e o estilo inline', () => {
+    const { kebab, forward } = renderCard(false);
+    expect(kebab).toHaveClass('btn-edit-workflow', 'board-card-kebab');
+    expect(forward).toHaveClass('btn-edit-workflow', 'btn-forward-etapa');
+    expect(kebab).not.toHaveClass('vidro-board-action');
+    expect(forward).not.toHaveClass('vidro-board-action');
+    expect(kebab.style.borderRadius).toBe('8px');
+    expect(kebab.style.padding).toBe('0px 0.5rem');
+    expect(forward.style.borderRadius).toBe('8px');
+  });
+
+  it('Vidro: troca btn-edit-workflow por vidro-board-action e solta raio e padding inline', () => {
+    const { kebab, forward } = renderCard(true);
+    expect(kebab).toHaveClass('vidro-board-action', 'board-card-kebab');
+    expect(forward).toHaveClass('vidro-board-action', 'btn-forward-etapa');
+    expect(kebab).not.toHaveClass('btn-edit-workflow');
+    expect(forward).not.toHaveClass('btn-edit-workflow');
+    expect(kebab.style.borderRadius).toBe('');
+    expect(kebab.style.padding).toBe('');
+    expect(kebab.style.height).toBe('26px');
+    expect(forward.style.borderRadius).toBe('');
+    expect(forward.style.padding).toBe('');
+    expect(forward.style.marginLeft).toBe('auto');
+    expect(forward.style.color).toBe('rgb(62, 207, 142)');
+  });
+});

@@ -78,7 +78,8 @@ describe('FolderTree', () => {
       { wrapper: createWrapper() },
     );
 
-    expect(screen.getByText('Carregando...')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
+    expect(screen.queryByText('Nenhuma pasta')).not.toBeInTheDocument();
   });
 
   it('shows AUTO badge for system folders', async () => {

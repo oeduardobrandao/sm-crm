@@ -1,12 +1,9 @@
+import { CONTENT_FORMATS, CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
 import { formatPostDateFull } from '@/utils/postDate';
 import type { ClientePost, WorkflowPost } from '../../store';
 
-export const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
+/** Rótulos neutros de formato (registro de plataformas). O valor gravado continua sendo o tipo. */
+export const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = CONTENT_FORMAT_LABELS;
 
 export const TIPO_COLORS: Record<WorkflowPost['tipo'], string> = {
   feed: '#eab308',
@@ -16,12 +13,7 @@ export const TIPO_COLORS: Record<WorkflowPost['tipo'], string> = {
 };
 
 /** Fixed render order for tipo dots/swatches, so a day looks identical across refetches. */
-export const TIPO_ORDER = [
-  'feed',
-  'carrossel',
-  'reels',
-  'stories',
-] as const satisfies readonly WorkflowPost['tipo'][];
+export const TIPO_ORDER = CONTENT_FORMATS satisfies readonly WorkflowPost['tipo'][];
 
 /** Badge pair: solid text color over a 25-alpha tint of itself. */
 export const TIPO_BADGE_COLORS: Record<WorkflowPost['tipo'], { bg: string; text: string }> =
@@ -36,6 +28,7 @@ export const PLATFORM_LABELS: Record<NonNullable<WorkflowPost['platform']>, stri
   instagram: 'Instagram',
   tiktok: 'TikTok',
   both: 'Ambas',
+  other: 'Geral',
 };
 
 /** Pipeline order of post statuses — column order for the Publicações kanban

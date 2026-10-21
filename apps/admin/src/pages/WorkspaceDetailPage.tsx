@@ -1,16 +1,7 @@
-import { useState, useEffect, type ReactNode } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  statusMeta,
-  toneBadgeClass,
-  hasSubscription,
-  intervalLabel,
-  intervalSuffix,
-  formatMoney,
-} from '../lib/subscription';
 import {
   getWorkspace,
   listPlans,
@@ -24,24 +15,44 @@ import {
   listWorkspaceOAuthGrants,
   revokeOAuthGrant,
   revokeAllOAuthGrants,
-  RESOURCE_LIMIT_KEYS,
-  RESOURCE_LIMIT_LABELS,
   FEATURE_FLAG_KEYS,
-  FEATURE_FLAG_LABELS,
-  RATE_LIMIT_KEYS,
-  RATE_LIMIT_LABELS,
 } from '../lib/api';
-import { sanitizeExternalUrl } from '../lib/security';
 import { computeOverridesPayload } from './workspace-overrides';
-import WorkspaceInvitesCard from './WorkspaceInvitesCard';
-import WorkspaceEventsCard from './WorkspaceEventsCard';
+import { overrideCount, visibleConnections } from './workspace-detail-view';
+import { ErrorState } from '../components/ErrorState';
+import { Skeleton } from '../components/ui/skeleton';
+import { useIsPhone } from '../hooks/useIsPhone';
+import { WorkspaceDetailPhone } from './workspace-detail/WorkspaceDetailPhone';
+import { WorkspaceDetailDesktop } from './workspace-detail/WorkspaceDetailDesktop';
+import { OverridesSheets } from './workspace-detail/OverridesSheets';
+import type { WorkspaceDetailViewProps } from './workspace-detail/types';
+
+const DISCARD_EDITS_WARNING = 'Descartar as alterações não salvas?';
+
+type WorkspaceData = Awaited<ReturnType<typeof getWorkspace>>;
+
+/** The editable copy of the resolved limits/features, seeded from the server response. */
+function editsFrom(data: WorkspaceData) {
+  const resources: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data.resolved_limits ?? {})) {
+    resources[k] = v != null ? String(v) : '';
+  }
+  const features: Record<string, boolean> = { ...(data.resolved_features ?? {}) };
+  return { resources, features };
+}
+
+function sameEdits<T>(a: Record<string, T>, b: Record<string, T>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) if (a[k] !== b[k]) return false;
+  return true;
+}
 
 export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const isPhone = useIsPhone();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'workspace', id],
     queryFn: () => getWorkspace(id!),
     enabled: !!id,
@@ -58,12 +69,13 @@ export default function WorkspaceDetailPage() {
     enabled: !!id,
   });
   const mcpKeys = mcpKeysData?.keys;
+  const [showRevokedKeys, setShowRevokedKeys] = useState(false);
 
   const revokeMcpKeyMutation = useMutation({
     mutationFn: (keyId: string) => revokeMcpKey(id!, keyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'mcp-keys'] });
-      toast.success('Key revoked');
+      toast.success('Chave revogada');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -71,7 +83,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => revokeAllMcpKeys(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'mcp-keys'] });
-      toast.success('All keys revoked');
+      toast.success('Todas as chaves revogadas');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -82,12 +94,13 @@ export default function WorkspaceDetailPage() {
     enabled: !!id,
   });
   const oauthGrants = oauthGrantsData?.grants;
+  const [showRevokedGrants, setShowRevokedGrants] = useState(false);
 
   const revokeOAuthGrantMutation = useMutation({
     mutationFn: (grantId: string) => revokeOAuthGrant(id!, grantId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'oauth-grants'] });
-      toast.success('Connection revoked');
+      toast.success('Conexão revogada');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -95,7 +108,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => revokeAllOAuthGrants(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'oauth-grants'] });
-      toast.success('All connections revoked');
+      toast.success('Todas as conexões revogadas');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -104,26 +117,15 @@ export default function WorkspaceDetailPage() {
   const [featureEdits, setFeatureEdits] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [openPanel, setOpenPanel] = useState<'limits' | 'features' | null>(null);
 
   useEffect(() => {
     if (data) {
       setSelectedPlanId(data.plan?.id || '');
       setNotes(data.override?.notes || '');
-      const rEdits: Record<string, string> = {};
-      if (data.resolved_limits) {
-        for (const [k, v] of Object.entries(data.resolved_limits)) {
-          rEdits[k] = v != null ? String(v) : '';
-        }
-      }
-      setResourceEdits(rEdits);
-
-      const fEdits: Record<string, boolean> = {};
-      if (data.resolved_features) {
-        for (const [k, v] of Object.entries(data.resolved_features)) {
-          fEdits[k] = v;
-        }
-      }
-      setFeatureEdits(fEdits);
+      const edits = editsFrom(data);
+      setResourceEdits(edits.resources);
+      setFeatureEdits(edits.features);
     }
   }, [data]);
 
@@ -131,7 +133,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: (planId: string) => setWorkspacePlan(id!, planId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Plan updated');
+      toast.success('Plano atualizado');
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -139,7 +141,7 @@ export default function WorkspaceDetailPage() {
   const saveOverridesMutation = useMutation({
     mutationFn: () => {
       const plan = plansData?.plans?.find((p) => p.id === selectedPlanId);
-      if (!plan) throw new Error('No plan selected');
+      if (!plan) throw new Error('Nenhum plano selecionado');
 
       const { resource_overrides, feature_overrides } = computeOverridesPayload(
         plan,
@@ -154,12 +156,22 @@ export default function WorkspaceDetailPage() {
         workspace_id: id!,
         resource_overrides,
         feature_overrides,
-        notes: notes || undefined,
+        notes,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Overrides saved');
+      setOpenPanel(null);
+      toast.success('Overrides salvos');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const saveNotesMutation = useMutation({
+    mutationFn: () => setWorkspaceOverrides({ workspace_id: id!, notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
+      toast.success('Notas salvas');
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -168,7 +180,8 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => clearWorkspaceOverrides(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Overrides cleared');
+      setOpenPanel(null);
+      toast.success('Overrides removidos');
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -177,16 +190,29 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => unsetWorkspacePlan(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Comp removido — workspace volta à cobrança normal');
+      toast.success('Comp removido. Workspace volta à cobrança normal');
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
+  if (isError) {
+    return (
+      <ErrorState message="Não foi possível carregar o workspace." onRetry={() => refetch()} />
+    );
+  }
   if (isLoading || !data) {
-    return <p className="text-dim-foreground">Loading...</p>;
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="h-12 w-72" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
   }
 
-  const plan = plansData?.plans?.find((p) => p.id === selectedPlanId);
+  const plans = plansData?.plans ?? [];
+  const plan = plans.find((p) => p.id === selectedPlanId);
 
   const isOverridden = (key: string, type: 'resource' | 'feature') => {
     if (!data.override) return false;
@@ -194,452 +220,86 @@ export default function WorkspaceDetailPage() {
     return data.override.feature_overrides?.[key] !== undefined;
   };
 
+  const initialEdits = editsFrom(data);
+  const editsDirty =
+    !sameEdits(resourceEdits, initialEdits.resources) ||
+    !sameEdits(featureEdits, initialEdits.features);
+
+  // Closing a panel discards its unsaved edits: both panels feed one save payload, so a
+  // half-edited limit left behind would otherwise ride along on the next features save.
+  /** True when the panel may close: nothing to lose, or the user confirmed discarding. */
+  const confirmDiscard = () => !editsDirty || window.confirm(DISCARD_EDITS_WARNING);
+  /** Resets both panels' edits (they share one save payload) and closes. */
+  const discardAndClose = () => {
+    setResourceEdits(initialEdits.resources);
+    setFeatureEdits(initialEdits.features);
+    setOpenPanel(null);
+  };
+
+  const keysView = visibleConnections(mcpKeys, showRevokedKeys);
+  const grantsView = visibleConnections(oauthGrants, showRevokedGrants);
+
+  const view: WorkspaceDetailViewProps = {
+    workspaceId: id!,
+    data,
+    plans,
+    plan,
+    selectedPlanId,
+    onPlanChange: (planId) => {
+      setSelectedPlanId(planId);
+      setPlanMutation.mutate(planId);
+    },
+    onUnsetComp: () => unsetMutation.mutate(),
+    unsetPending: unsetMutation.isPending,
+    notes,
+    onNotesChange: setNotes,
+    onSaveNotes: () => saveNotesMutation.mutate(),
+    saveNotesPending: saveNotesMutation.isPending,
+    onOpenLimits: () => setOpenPanel('limits'),
+    onOpenFeatures: () => setOpenPanel('features'),
+    resourceOverrideCount: overrideCount(data.override?.resource_overrides),
+    featureOverrideCount: overrideCount(data.override?.feature_overrides),
+    activeFeatureCount: FEATURE_FLAG_KEYS.filter((k) => data.resolved_features?.[k]).length,
+    isOverridden,
+    mcpKeys: {
+      ...keysView,
+      showRevoked: showRevokedKeys,
+      onToggleRevoked: () => setShowRevokedKeys((v) => !v),
+      onRevoke: (keyId) => revokeMcpKeyMutation.mutate(keyId),
+      revokePending: revokeMcpKeyMutation.isPending,
+      onRevokeAll: () => revokeAllMcpKeysMutation.mutate(),
+      revokeAllPending: revokeAllMcpKeysMutation.isPending,
+    },
+    oauthGrants: {
+      ...grantsView,
+      showRevoked: showRevokedGrants,
+      onToggleRevoked: () => setShowRevokedGrants((v) => !v),
+      onRevoke: (grantId) => revokeOAuthGrantMutation.mutate(grantId),
+      revokePending: revokeOAuthGrantMutation.isPending,
+      onRevokeAll: () => revokeAllOAuthGrantsMutation.mutate(),
+      revokeAllPending: revokeAllOAuthGrantsMutation.isPending,
+    },
+  };
+
   return (
-    <div className="w-full min-w-0 max-w-full overflow-x-hidden">
-      <button
-        onClick={() => navigate('/admin/workspaces')}
-        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-4 transition-colors"
-      >
-        <ArrowLeft size={16} /> Back
-      </button>
-
-      <div className="flex min-w-0 flex-col gap-4 mb-8 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center text-lg font-bold text-foreground shrink-0">
-            {data.workspace.name.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h1 className="font-sf text-xl font-bold break-words">{data.workspace.name}</h1>
-            <p className="text-sm text-muted-foreground truncate">
-              Owner: {data.owner?.email || '—'}
-              {data.owner?.telefone ? ` · ${data.owner.telefone}` : ''} · Created{' '}
-              {new Date(data.workspace.created_at).toLocaleDateString('pt-BR')}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-stretch gap-1 sm:items-end">
-          <select
-            value={selectedPlanId}
-            onChange={(e) => {
-              setSelectedPlanId(e.target.value);
-              setPlanMutation.mutate(e.target.value);
-            }}
-            className="w-full min-w-0 max-w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none sm:w-auto"
-          >
-            <option value="">No plan</option>
-            {plansData?.plans?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          {data?.workspace.plan_source === 'manual' && (
-            <button
-              type="button"
-              onClick={() => unsetMutation.mutate()}
-              disabled={unsetMutation.isPending}
-              className="mt-1 text-sm underline text-muted-foreground hover:text-foreground disabled:opacity-50 text-right"
-            >
-              Remover comp (voltar à cobrança)
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Provider subscription — the customer's real billing, even when an admin has
-          manually comped the effective plan above. */}
-      <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 className="font-semibold">
-            {data.subscription?.provider === 'pagarme'
-              ? 'Assinatura Pagar.me'
-              : 'Assinatura Stripe'}
-          </h2>
-          {data.subscription?.stripe_dashboard_url && (
-            <a
-              href={sanitizeExternalUrl(data.subscription.stripe_dashboard_url)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex shrink-0 items-center gap-1 text-sm text-primary hover:underline"
-            >
-              Abrir no Stripe <ExternalLink size={14} />
-            </a>
-          )}
-        </div>
-
-        {hasSubscription(data.subscription) ? (
-          <>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-              <Field label="Status">
-                <span
-                  className={`inline-block text-xs font-semibold uppercase px-2 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(data.subscription.status).tone)}`}
-                >
-                  {statusMeta(data.subscription.status).label}
-                </span>
-              </Field>
-              <Field label="Plano">
-                <span className="text-sm">
-                  {data.subscription.plan_name ?? '—'}
-                  {intervalLabel(data.subscription.interval)
-                    ? ` (${intervalLabel(data.subscription.interval)})`
-                    : ''}
-                </span>
-              </Field>
-              <Field label="Valor">
-                <span className="font-sf text-sm">
-                  {formatMoney(data.subscription.amount_cents, data.subscription.currency)}
-                  {intervalSuffix(data.subscription.interval)}
-                  {data.subscription.installments != null &&
-                    data.subscription.installments > 1 &&
-                    ` · ${data.subscription.installments}x`}
-                </span>
-                {data.subscription.gross_cents != null && (
-                  <span className="ml-2 text-xs text-muted-foreground line-through">
-                    {formatMoney(data.subscription.gross_cents, data.subscription.currency)}
-                  </span>
-                )}
-                {data.subscription.discount_label && (
-                  <div className="text-[0.7rem] text-muted-foreground">
-                    {data.subscription.discount_label}
-                  </div>
-                )}
-                {data.subscription.amount_source === 'catalog' && (
-                  <div className="text-[0.7rem] text-muted-foreground">preço de tabela</div>
-                )}
-              </Field>
-              <Field label={data.subscription.cancel_at_period_end ? 'Cancela em' : 'Renova em'}>
-                <span className="text-sm">
-                  {data.subscription.current_period_end
-                    ? new Date(data.subscription.current_period_end).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: 'long',
-                        year: 'numeric',
-                      })
-                    : '—'}
-                </span>
-              </Field>
-              {data.subscription.failed_payment_count > 0 && (
-                <Field label="Pagamentos falhos">
-                  <span className="text-sm text-warning">
-                    {data.subscription.failed_payment_count}
-                  </span>
-                </Field>
-              )}
-            </div>
-            {data.workspace.plan_source === 'manual' && (
-              <p className="mt-4 text-xs text-muted-foreground">
-                O plano efetivo foi ajustado manualmente (comp). Os dados acima refletem a
-                assinatura real do cliente no Stripe.
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">Sem assinatura Stripe.</p>
-        )}
-      </div>
-
-      <div className="grid min-w-0 max-w-full grid-cols-1 gap-6 mb-6 md:grid-cols-2">
-        <div className="bg-card border border-border rounded-2xl p-5 min-w-0">
-          <h2 className="font-semibold mb-4">Resource Limits</h2>
-          <div className="flex flex-col gap-2">
-            {RESOURCE_LIMIT_KEYS.map((key) => (
-              <LimitRow
-                key={key}
-                label={RESOURCE_LIMIT_LABELS[key]}
-                fieldKey={key}
-                value={resourceEdits[key] ?? ''}
-                planValue={plan ? (plan[key] as number | null) : null}
-                isOverridden={isOverridden(key, 'resource')}
-                onChange={(val) => setResourceEdits((prev) => ({ ...prev, [key]: val }))}
-              />
-            ))}
-          </div>
-
-          <h3 className="font-semibold mt-5 mb-3 text-sm text-muted-foreground">Rate Limits</h3>
-          <div className="flex flex-col gap-2">
-            {RATE_LIMIT_KEYS.map((key) => (
-              <LimitRow
-                key={key}
-                label={RATE_LIMIT_LABELS[key]}
-                fieldKey={key}
-                value={resourceEdits[key] ?? ''}
-                planValue={plan ? (plan[key] as number | null) : null}
-                isOverridden={isOverridden(key, 'resource')}
-                onChange={(val) => setResourceEdits((prev) => ({ ...prev, [key]: val }))}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-2xl p-5 min-w-0 overflow-hidden">
-          <h2 className="font-semibold mb-4">Feature Flags</h2>
-          <div className="flex flex-col gap-2">
-            {FEATURE_FLAG_KEYS.map((key) => (
-              <div key={key} className="flex items-center justify-between gap-2 overflow-hidden">
-                <span className="text-sm text-muted-foreground truncate">
-                  {FEATURE_FLAG_LABELS[key]}
-                </span>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => setFeatureEdits((prev) => ({ ...prev, [key]: !prev[key] }))}
-                    className={`text-sm font-medium ${featureEdits[key] ? 'text-success' : 'text-destructive'}`}
-                  >
-                    {featureEdits[key] ? 'ON' : 'OFF'}
-                  </button>
-                  {isOverridden(key, 'feature') && (
-                    <span
-                      className="w-1.5 h-1.5 rounded-full bg-warning shrink-0"
-                      title={`override (plan: ${plan?.[key] ? 'ON' : 'OFF'})`}
-                    />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* MCP API Keys */}
-      <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">MCP API Keys</h2>
-          {mcpKeys?.some((k) => !k.revoked_at) && (
-            <button
-              onClick={() => revokeAllMcpKeysMutation.mutate()}
-              disabled={revokeAllMcpKeysMutation.isPending}
-              className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
-            >
-              Revoke all
-            </button>
-          )}
-        </div>
-        {!mcpKeys || mcpKeys.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No keys.</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {mcpKeys.map((k) => (
-              <div key={k.id} className="flex items-center justify-between gap-2 text-sm">
-                <div className="min-w-0 truncate">
-                  <span className="font-medium">{k.name}</span>
-                  <span className="text-muted-foreground"> …{k.token_suffix}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">{k.scopes.join(', ')}</span>
-                </div>
-                {k.revoked_at ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">revoked</span>
-                ) : (
-                  <button
-                    onClick={() => revokeMcpKeyMutation.mutate(k.id)}
-                    disabled={revokeMcpKeyMutation.isPending}
-                    className="shrink-0 text-xs font-medium text-destructive hover:underline disabled:opacity-50"
-                  >
-                    Revoke
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* MCP OAuth Connections (Claude) */}
-      <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">MCP OAuth Connections</h2>
-          {oauthGrants?.some((g) => !g.revoked_at) && (
-            <button
-              onClick={() => revokeAllOAuthGrantsMutation.mutate()}
-              disabled={revokeAllOAuthGrantsMutation.isPending}
-              className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
-            >
-              Revoke all
-            </button>
-          )}
-        </div>
-        {!oauthGrants || oauthGrants.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No connections.</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {oauthGrants.map((g) => (
-              <div key={g.id} className="flex items-center justify-between gap-2 text-sm">
-                <div className="min-w-0 truncate">
-                  <span className="font-medium">{g.connected_by ?? 'Claude'}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">{g.scopes.join(', ')}</span>
-                </div>
-                {g.revoked_at ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">revoked</span>
-                ) : (
-                  <button
-                    onClick={() => revokeOAuthGrantMutation.mutate(g.id)}
-                    disabled={revokeOAuthGrantMutation.isPending}
-                    className="shrink-0 text-xs font-medium text-destructive hover:underline disabled:opacity-50"
-                  >
-                    Revoke
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
-        <h2 className="font-semibold mb-3">Notes</h2>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Admin notes..."
-          rows={2}
-          className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary resize-none"
-        />
-      </div>
-
-      <div className="flex min-w-0 flex-col gap-3 mb-8 sm:flex-row">
-        <button
-          onClick={() => saveOverridesMutation.mutate()}
-          disabled={saveOverridesMutation.isPending}
-          className="w-full px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50 sm:w-auto"
-        >
-          {saveOverridesMutation.isPending ? 'Saving...' : 'Save Overrides'}
-        </button>
-        <button
-          onClick={() => clearMutation.mutate()}
-          disabled={clearMutation.isPending}
-          className="w-full px-6 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50 sm:w-auto"
-        >
-          Reset to Plan Defaults
-        </button>
-      </div>
-
-      <div className="min-w-0 overflow-hidden bg-card border border-border rounded-2xl p-5">
-        <h2 className="font-semibold mb-4">Members ({data.members.length})</h2>
-        {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[1.5fr_1.9fr_1.4fr_0.8fr_0.9fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Name</span>
-          <span>Email</span>
-          <span>Phone</span>
-          <span>Role</span>
-          <span>Joined</span>
-        </div>
-        {data.members.map((m) => (
-          <div
-            key={m.user_id}
-            className="min-w-0 border-b border-border/50 py-2.5 md:grid md:grid-cols-[1.5fr_1.9fr_1.4fr_0.8fr_0.9fr] md:gap-2"
-          >
-            {/* Mobile card */}
-            <div className="flex min-w-0 items-center justify-between gap-3 md:hidden">
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-sm">{m.name}</span>
-                <span className="truncate text-xs text-muted-foreground">{m.email}</span>
-                {m.telefone && (
-                  <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                    {m.telefone}
-                    {m.marketing_opt_in && (
-                      <span className="shrink-0 text-[0.55rem] font-semibold uppercase px-1 py-0.5 rounded-sm bg-success/10 text-success">
-                        MKT
-                      </span>
-                    )}
-                  </span>
-                )}
-              </div>
-              <span
-                className={`shrink-0 text-xs font-medium ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
-              >
-                {m.role}
-              </span>
-            </div>
-            {/* Desktop row */}
-            <span className="hidden truncate text-sm md:inline">{m.name}</span>
-            <span className="hidden truncate text-sm text-muted-foreground md:inline">
-              {m.email}
-            </span>
-            <span className="hidden min-w-0 items-center gap-1.5 text-sm text-muted-foreground md:flex">
-              {m.telefone ? (
-                <>
-                  <span className="truncate">{m.telefone}</span>
-                  {m.marketing_opt_in && (
-                    <span
-                      className="shrink-0 text-[0.55rem] font-semibold uppercase px-1 py-0.5 rounded-sm bg-success/10 text-success"
-                      title="Opted in to marketing contact"
-                    >
-                      MKT
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="text-dim-foreground">—</span>
-              )}
-            </span>
-            <span
-              className={`hidden md:inline text-sm ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
-            >
-              {m.role}
-            </span>
-            <span className="hidden md:inline text-sm text-muted-foreground">
-              {new Date(m.joined_at).toLocaleDateString('pt-BR', {
-                day: '2-digit',
-                month: 'short',
-              })}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <WorkspaceInvitesCard workspaceId={id!} />
-      <WorkspaceEventsCard workspaceId={id!} />
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-[0.65rem] uppercase tracking-wider text-muted-foreground mb-1">
-        {label}
-      </div>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-function LimitRow({
-  label,
-  fieldKey,
-  value,
-  planValue,
-  isOverridden,
-  onChange,
-}: {
-  label: string;
-  fieldKey: string;
-  value: string;
-  planValue: number | null;
-  isOverridden: boolean;
-  onChange: (val: string) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 min-w-0">
-      <span className="text-sm text-muted-foreground truncate">{label}</span>
-      <div className="flex items-center gap-2 shrink-0">
-        <input
-          type="number"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-20 px-2 py-1 rounded text-right font-sf text-sm bg-secondary border focus:outline-none focus:border-primary ${
-            isOverridden ? 'border-primary/30 text-primary' : 'border-transparent text-foreground'
-          }`}
-        />
-        {isOverridden ? (
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-warning shrink-0"
-            title={`plan: ${planValue ?? '—'}`}
-          />
-        ) : (
-          <span className="text-[0.7rem] text-dim-foreground hidden sm:inline whitespace-nowrap">
-            plan: {planValue ?? '—'}
-          </span>
-        )}
-      </div>
-    </div>
+    <>
+      {isPhone ? <WorkspaceDetailPhone {...view} /> : <WorkspaceDetailDesktop {...view} />}
+      <OverridesSheets
+        openPanel={openPanel}
+        plan={plan}
+        resourceEdits={resourceEdits}
+        setResourceEdits={setResourceEdits}
+        featureEdits={featureEdits}
+        setFeatureEdits={setFeatureEdits}
+        isOverridden={isOverridden}
+        editsDirty={editsDirty}
+        confirmDiscard={confirmDiscard}
+        discardAndClose={discardAndClose}
+        onSave={() => saveOverridesMutation.mutate()}
+        savePending={saveOverridesMutation.isPending}
+        onClear={() => clearMutation.mutate()}
+        clearPending={clearMutation.isPending}
+      />
+    </>
   );
 }

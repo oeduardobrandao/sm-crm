@@ -18,7 +18,7 @@ export default function BlogIndexPage() {
   return (
     <>
       <LandingHeader variant="subpage" />
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <section className="lp-pad" id="top">
           <div className="lp-container">
             <div className="section-head">

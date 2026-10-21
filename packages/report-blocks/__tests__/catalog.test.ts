@@ -3,7 +3,7 @@ import { WIDGET_CATALOG, WIDGET_CATEGORIES } from '../catalog';
 import { BLOCK_TYPES } from '../types';
 
 describe('WIDGET_CATALOG', () => {
-  it('cobre todos os 25 tipos de bloco, sem duplicatas', () => {
+  it('cobre todos os tipos de bloco, sem duplicatas', () => {
     const types = WIDGET_CATALOG.map((w) => w.type);
     expect(new Set(types).size).toBe(types.length);
     expect([...types].sort()).toEqual([...BLOCK_TYPES].sort());

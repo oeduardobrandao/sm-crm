@@ -9,6 +9,7 @@ import {
   ChartPie,
   Clock,
   Eye,
+  FileImage,
   Globe,
   Heading,
   Heart,
@@ -27,6 +28,7 @@ import {
   Trophy,
   Type,
   UserPlus,
+  UserRoundPlus,
   Users,
   UserSearch,
   type LucideIcon,
@@ -51,6 +53,7 @@ export const WIDGET_ICONS: Record<BlockType, LucideIcon> = {
   kpi_posts_count: Images,
   kpi_profile_views: UserSearch,
   kpi_website_clicks: MousePointerClick,
+  kpi_follows: UserRoundPlus,
   chart_followers: ChartLine,
   chart_formats: ChartColumn,
   chart_best_times: Clock,
@@ -61,6 +64,7 @@ export const WIDGET_ICONS: Record<BlockType, LucideIcon> = {
   top_posts: Trophy,
   post_list: List,
   tags_table: Tags,
+  image: FileImage,
 };
 
 export const FALLBACK_WIDGET_ICON: LucideIcon = Shapes;

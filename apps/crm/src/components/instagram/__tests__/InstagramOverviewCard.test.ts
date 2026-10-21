@@ -44,7 +44,7 @@ describe('renderInstagramOverviewCard', () => {
       /\.instagram-overview__token-badge\s*\{[^}]*white-space:\s*nowrap[^}]*min-height:\s*36px/s,
     );
     expect(css).toMatch(
-      /@media\s*\(max-width:\s*900px\)\s*\{[^}]*\.instagram-overview__account-kpis\s*>\s*:last-child:nth-child\(odd\)\s*\{[^}]*grid-column:\s*auto[^}]*max-width:\s*none[^}]*justify-self:\s*stretch/s,
+      /@media\s*\(max-width:\s*900px\)\s*\{[^}]*\.instagram-overview__account-kpis\s*>\s*\.kpi-card:first-child:nth-last-child\(odd\)\s*\{[^}]*grid-column:\s*auto[^}]*max-width:\s*none[^}]*justify-self:\s*stretch/s,
     );
   });
 

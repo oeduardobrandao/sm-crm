@@ -44,6 +44,42 @@ describe('store workflow functions', () => {
     });
   });
 
+  it('saveWorkflowTemplate persists plataformas after the RPC', async () => {
+    mockedSupabase.__queueSupabaseRpc('update_workflow_template', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('workflow_templates', 'update', {
+      data: null,
+      error: null,
+    });
+
+    await store.saveWorkflowTemplate(7, {
+      nome: 'T',
+      etapas: [],
+      modo_prazo: 'padrao',
+      plataformas: ['instagram', 'geral'],
+    });
+
+    const [update] = getCalls('workflow_templates', 'update');
+    expect(update.payload).toEqual({ plataformas: ['instagram', 'geral'] });
+    expect(update.modifiers).toContainEqual({ method: 'eq', args: ['id', 7] });
+  });
+
+  it('saveWorkflowTemplate throws a clear error when the plataformas update fails', async () => {
+    mockedSupabase.__queueSupabaseRpc('update_workflow_template', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('workflow_templates', 'update', {
+      data: null,
+      error: { message: 'boom' },
+    });
+
+    await expect(
+      store.saveWorkflowTemplate(7, {
+        nome: 'T',
+        etapas: [],
+        modo_prazo: 'padrao',
+        plataformas: ['tiktok'],
+      }),
+    ).rejects.toThrow('Template salvo, mas as plataformas não foram gravadas.');
+  });
+
   it.each([
     {
       name: 'getWorkflowTemplates',
@@ -71,15 +107,6 @@ describe('store workflow functions', () => {
       },
     },
     {
-      name: 'updateWorkflowTemplate',
-      table: 'workflow_templates',
-      operation: 'update' as const,
-      run: () => store.updateWorkflowTemplate(1, { nome: 'Social Quinzenal' }),
-      response: { id: 1, nome: 'Social Quinzenal' },
-      payload: { nome: 'Social Quinzenal' },
-      modifier: { method: 'eq', args: ['id', 1] },
-    },
-    {
       name: 'removeWorkflowTemplate',
       table: 'workflow_templates',
       operation: 'delete' as const,
@@ -101,25 +128,51 @@ describe('store workflow functions', () => {
     },
   );
 
-  it('propagates template changes via the propagate_template_to_workflows RPC', async () => {
-    mockedSupabase.__queueSupabaseRpc('propagate_template_to_workflows', {
-      data: null,
-      error: null,
+  it('saves a template via the update_workflow_template RPC', async () => {
+    mockedSupabase.__queueSupabaseRpc('update_workflow_template', { data: null, error: null });
+
+    const etapas = [
+      {
+        nome: 'Copy',
+        prazo_dias: 1,
+        tipo_prazo: 'corridos' as const,
+        responsavel_id: 7,
+        tipo: 'padrao' as const,
+      },
+    ];
+    await store.saveWorkflowTemplate(5, { nome: 'Posts', etapas, modo_prazo: 'padrao' });
+
+    const rpcCall = getCalls('rpc:update_workflow_template').at(-1);
+    expect(rpcCall?.payload).toEqual({
+      p_template_id: 5,
+      p_nome: 'Posts',
+      p_etapas: etapas,
+      p_modo_prazo: 'padrao',
     });
-
-    await store.propagateTemplateToWorkflows(5);
-
-    const rpcCall = getCalls('rpc:propagate_template_to_workflows').at(-1);
-    expect(rpcCall?.payload).toEqual({ p_template_id: 5 });
   });
 
-  it('propagates propagate_template_to_workflows RPC errors as thrown Errors', async () => {
-    mockedSupabase.__queueSupabaseRpc('propagate_template_to_workflows', {
+  it('throws the mapped message when update_workflow_template fails', async () => {
+    mockedSupabase.__queueSupabaseRpc('update_workflow_template', {
       data: null,
-      error: { message: 'forbidden' },
+      error: { message: 'invalid_responsavel' },
     });
 
-    await expect(store.propagateTemplateToWorkflows(5)).rejects.toThrow('forbidden');
+    await expect(
+      store.saveWorkflowTemplate(5, { nome: 'Posts', etapas: [], modo_prazo: 'padrao' }),
+    ).rejects.toThrow('Um dos responsáveis não faz mais parte da equipe.');
+  });
+
+  it.each([
+    [
+      'template_invalid',
+      'Revise as etapas do template: cada etapa precisa de nome e prazo inteiro entre 0 e 999.',
+    ],
+    ['invalid_responsavel', 'Um dos responsáveis não faz mais parte da equipe.'],
+    ['template_not_found', 'Template não encontrado.'],
+    ['workspace_not_found', 'Erro ao salvar template.'],
+    ['boom', 'Erro ao salvar template.'],
+  ])('mapTemplateSaveError(%s)', (code, expected) => {
+    expect(store.mapTemplateSaveError(code)).toBe(expected);
   });
 
   it('completes a step and activates the next workflow stage', async () => {
@@ -518,6 +571,76 @@ describe('getDeadlineInfo', () => {
     expect(result.urgente).toBe(true);
     expect(result.estourado).toBe(false);
   });
+
+  it('data_limite estourado is based on the local end of day, not UTC midnight (timezone regression)', () => {
+    // Pins "now" at 22:00 on the deadline day itself, in this suite's local
+    // timezone (America/Fortaleza, UTC-3). Before the fix, `new
+    // Date(etapa.data_limite)` parsed 'YYYY-MM-DD' as UTC midnight, so "end of
+    // day" (+1 day) landed at 21:00 LOCAL instead of local midnight -- a step
+    // due today would already read estourado: true one hour before this.
+    // TZ must be pinned here: CI runs in UTC, where the old UTC parse gives
+    // the same result as the fix, so the assertions below pass against the
+    // bug too unless the process TZ actually differs from UTC (same pattern
+    // as apps/hub/src/components/__tests__/PostCalendar.test.tsx).
+    const originalTZ = process.env.TZ;
+    process.env.TZ = 'America/Fortaleza';
+    try {
+      const hoje = new Date(2026, 3, 15, 22, 0, 0); // 2026-04-15 22:00 local
+      vi.setSystemTime(hoje);
+      const y = hoje.getFullYear();
+      const m = String(hoje.getMonth() + 1).padStart(2, '0');
+      const d = String(hoje.getDate()).padStart(2, '0');
+
+      const result = store.getDeadlineInfo({
+        id: 1,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Entrega',
+        prazo_dias: 2,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: null,
+        data_limite: `${y}-${m}-${d}`,
+      } as never);
+
+      expect(result.estourado).toBe(false);
+      // Just after local midnight, the deadline day has actually ended.
+      vi.setSystemTime(new Date(2026, 3, 16, 0, 0, 1));
+      const afterMidnight = store.getDeadlineInfo({
+        id: 1,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Entrega',
+        prazo_dias: 2,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: null,
+        data_limite: `${y}-${m}-${d}`,
+      } as never);
+      expect(afterMidnight.estourado).toBe(true);
+    } finally {
+      process.env.TZ = originalTZ;
+    }
+  });
+
+  it('falls through to iniciado_em/prazo_dias when data_limite is unparseable', () => {
+    vi.setSystemTime(new Date('2026-04-10T12:00:00.000Z'));
+
+    const result = store.getDeadlineInfo({
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      prazo_dias: 5,
+      tipo_prazo: 'corridos',
+      status: 'ativo',
+      iniciado_em: '2026-04-08T12:00:00.000Z',
+      data_limite: 'not-a-date',
+    } as never);
+
+    expect(result.diasRestantes).toBe(3);
+    expect(result.estourado).toBe(false);
+  });
 });
 
 describe('getWorkflowPostsCounts', () => {
@@ -564,5 +687,95 @@ describe('getWorkflowPostsCounts', () => {
       error: { message: 'boom' },
     });
     await expect(store.getWorkflowPostsCounts([1])).rejects.toBeTruthy();
+  });
+
+  describe('bulk etapas / concluded summaries (no per-workflow requests)', () => {
+    it('getWorkflowEtapasByWorkflowIds groups rows by workflow, keeps ordem order, fills empties', async () => {
+      mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select', {
+        data: [
+          { id: 11, workflow_id: 1, ordem: 0 },
+          { id: 12, workflow_id: 1, ordem: 1 },
+          { id: 21, workflow_id: 2, ordem: 0 },
+        ],
+        error: null,
+      });
+
+      const map = await store.getWorkflowEtapasByWorkflowIds([1, 2, 3]);
+
+      expect(map.get(1)!.map((e) => e.id)).toEqual([11, 12]);
+      expect(map.get(2)!.map((e) => e.id)).toEqual([21]);
+      expect(map.get(3)).toEqual([]);
+      const calls = getCalls('workflow_etapas', 'select');
+      expect(calls).toHaveLength(1);
+      expect(calls[0].modifiers).toEqual(
+        expect.arrayContaining([
+          { method: 'in', args: ['workflow_id', [1, 2, 3]] },
+          { method: 'order', args: ['workflow_id', { ascending: true }] },
+          { method: 'order', args: ['ordem', { ascending: true }] },
+        ]),
+      );
+    });
+
+    it('getWorkflowEtapasByWorkflowIds splits long id lists into chunks of 150', async () => {
+      const ids = Array.from({ length: 301 }, (_, i) => i + 1);
+      mockedSupabase.__queueSupabaseResult(
+        'workflow_etapas',
+        'select',
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      );
+
+      await store.getWorkflowEtapasByWorkflowIds(ids);
+
+      const inArgs = getCalls('workflow_etapas', 'select').map(
+        (c) => c.modifiers.find((m) => m.method === 'in')!.args[1] as number[],
+      );
+      expect(inArgs.map((a) => a.length)).toEqual([150, 150, 1]);
+      expect(inArgs.flat()).toEqual(ids);
+    });
+
+    it('getWorkflowEtapasByWorkflowIds makes no request for an empty list', async () => {
+      const map = await store.getWorkflowEtapasByWorkflowIds([]);
+      expect(map.size).toBe(0);
+      expect(getCalls('workflow_etapas')).toHaveLength(0);
+    });
+
+    it('getConcludedWorkflowSummaries derives dates and post counts from two bulk reads', async () => {
+      mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select', {
+        data: [
+          {
+            id: 1,
+            workflow_id: 7,
+            ordem: 0,
+            iniciado_em: '2026-09-01T00:00:00Z',
+            concluido_em: '2026-09-03T00:00:00Z',
+          },
+          {
+            id: 2,
+            workflow_id: 7,
+            ordem: 1,
+            iniciado_em: '2026-09-03T00:00:00Z',
+            concluido_em: '2026-09-11T00:00:00Z',
+          },
+        ],
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+        data: [{ workflow_id: 7 }, { workflow_id: 7 }, { workflow_id: 7 }],
+        error: null,
+      });
+      const wf7 = { id: 7, titulo: 'Setembro' } as never;
+      const wf8 = { id: 8, titulo: 'Sem etapas' } as never;
+
+      const summaries = await store.getConcludedWorkflowSummaries([wf7, wf8]);
+
+      expect(summaries).toEqual([
+        { workflow: wf7, postCount: 3, totalDays: 10, completedAt: '2026-09-11T00:00:00Z' },
+        { workflow: wf8, postCount: 0, totalDays: null, completedAt: null },
+      ]);
+      expect(getCalls('workflow_etapas', 'select')).toHaveLength(1);
+      expect(getCalls('workflow_posts', 'select')).toHaveLength(1);
+    });
   });
 });

@@ -33,3 +33,15 @@ export async function fetchInternalWorkspaceIds(svc: DbClient): Promise<Set<stri
     return new Set<string>();
   }
 }
+
+/**
+ * Fail-CLOSED variant for writers of durable history (admin metrics snapshots). A snapshot
+ * written with an internal workspace inside pollutes the history forever, so a lookup failure
+ * must abort the write instead of excluding none.
+ * Unpaginated: PostgREST caps a response at 1000 rows, fine while internal workspaces are few.
+ */
+export async function fetchInternalWorkspaceIdsOrThrow(svc: DbClient): Promise<Set<string>> {
+  const { data, error } = await svc.from("workspaces").select("id").eq("is_internal", true);
+  if (error) throw new Error(`internal workspace lookup failed: ${error.message}`);
+  return new Set<string>(((data ?? []) as Array<{ id: string }>).map((w) => w.id));
+}

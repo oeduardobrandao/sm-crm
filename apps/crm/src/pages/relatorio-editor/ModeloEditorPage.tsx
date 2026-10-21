@@ -1,0 +1,265 @@
+// Editor de modelo (spec 2026-09-25 §2): o mesmo canvas do relatório, com
+// dados de exemplo e a marca real do workspace, gravando em report_templates.
+// Sem PDF, atualizar dados, ver como cliente ou salvar/aplicar template.
+import { useMemo, useRef, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Info, Plus, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { DocSkeleton } from '@/components/ui/skeletons';
+import type { ReportBlock } from '@mesaas/report-blocks/types';
+import '@mesaas/report-blocks/styles.css';
+import { getReportTemplate, type ReportTemplateRow } from '../../services/reportTemplates';
+import { useLayoutAutosave } from './useLayoutAutosave';
+import { TEMPLATE_AUTOSAVE_TARGET } from './templateAutosave';
+import { useBlockEditing } from './useBlockEditing';
+import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
+import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
+import { UndoRedoButtons } from './UndoRedoButtons';
+import { useStuckHeader } from './useStuckHeader';
+import { useSampleSnapshot } from './useSampleSnapshot';
+import { EditorCanvas } from './EditorCanvas';
+import { TextBlockEditor } from './TextBlockEditor';
+import { AddWidgetDrawer } from './AddWidgetDrawer';
+import { LayersPanel } from './LayersPanel';
+import { AppearancePopover } from './AppearancePopover';
+import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
+import { withAiSampleText } from './templateOps';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import { ReportPhoneView } from './phone/ReportPhoneView';
+
+const SETTINGS_PATH = '/configuracao/relatorios';
+const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
+
+function AiPlaceholder() {
+  return (
+    <div
+      style={{
+        border: '1px dashed var(--border-color)',
+        borderRadius: 10,
+        padding: '1rem',
+        color: 'var(--text-muted)',
+        fontSize: '0.85rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+      }}
+    >
+      <Sparkles className="h-4 w-4" aria-hidden="true" />
+      Gerado pela IA em cada relatório
+    </div>
+  );
+}
+
+function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
+  const snapshot = useSampleSnapshot();
+
+  const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(
+    template.id,
+    { layout: normalizeCoverSize(template.layout), title: template.name },
+    TEMPLATE_AUTOSAVE_TARGET,
+  );
+  // F1 (revisão final): templateAutosave pula a gravação no banco quando o
+  // título vem em branco (name é NOT NULL), mas o hook ainda otimiza o cache
+  // com o valor em branco. Um draft local, só sincronizado com o hook quando
+  // não-vazio, garante que `setTitle` nunca recebe '' -- o guard do target
+  // fica só como defesa-em-profundidade.
+  const [draftName, setDraftName] = useState(title);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const history = useLayoutHistory(layout, applyLayout);
+  const commit = history.commit;
+  const { sentinelRef, headerRef, stuck } = useStuckHeader();
+  const {
+    drawerOpen,
+    setDrawerOpen,
+    highlightId,
+    highlightAndScroll,
+    openWidgetDrawer,
+    handleInsert,
+    handleRemoveBlock,
+  } = useBlockEditing(layoutRef, commit);
+  // Celular (D27): o modelo só é visto, não editado. Todos os hooks acima seguem
+  // montados para a ordem não mudar quando a largura cruza 768px.
+  const isPhone = !useIsDesktop(768);
+  const previewLayout = useMemo(() => withAiSampleText(layout), [layout]);
+
+  if (isPhone) {
+    return (
+      <ReportPhoneView
+        title={title}
+        subtitle="Modelo de relatório"
+        fallbackTo={SETTINGS_PATH}
+        backLabel="Voltar para Modelos"
+        sampleNote={SAMPLE_NOTE}
+        layout={previewLayout}
+        snapshot={snapshot}
+      />
+    );
+  }
+
+  return (
+    <div className="rb-editor-with-rail">
+      <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
+      <header
+        ref={headerRef}
+        className="rb-editor-header"
+        data-stuck={stuck || undefined}
+        style={{
+          maxWidth: 880,
+          margin: '0 auto 1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem 0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Button variant="outline" size="sm" asChild>
+          <Link to={SETTINGS_PATH}>
+            <ArrowLeft className="h-3.5 w-3.5" /> Modelos
+          </Link>
+        </Button>
+        <div className="rb-editor-title">
+          <input
+            aria-label="Nome do modelo"
+            className="rb-editor-title-input"
+            value={draftName}
+            onChange={(e) => {
+              const next = e.target.value;
+              setDraftName(next);
+              if (next.trim()) setTitle(next);
+            }}
+            onBlur={() => {
+              if (!draftName.trim()) setDraftName(title);
+            }}
+          />
+          <p className="rb-editor-subtitle">
+            Modelo de relatório
+            {saving && (
+              <span className="drawer-saving-indicator" style={{ marginLeft: '0.6rem' }}>
+                Salvando…
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="rb-editor-actions">
+          <UndoRedoButtons
+            canUndo={history.canUndo}
+            canRedo={history.canRedo}
+            onUndo={history.undo}
+            onRedo={history.redo}
+          />
+          <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
+          <Button size="sm" onClick={() => openWidgetDrawer(null)}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar widget
+          </Button>
+        </div>
+      </header>
+
+      <p
+        role="note"
+        style={{
+          maxWidth: 880,
+          margin: '0 auto 1.25rem',
+          padding: '0.6rem 0.85rem',
+          borderRadius: 10,
+          background: 'var(--surface-2)',
+          color: 'var(--text-muted)',
+          fontSize: '0.85rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+        }}
+      >
+        <Info className="h-4 w-4" aria-hidden="true" />
+        {SAMPLE_NOTE}
+      </p>
+
+      <EditorCanvas
+        layout={layout}
+        snapshot={snapshot}
+        onChange={commit}
+        onRemoveBlock={handleRemoveBlock}
+        onConfigChange={(id, patch) =>
+          commit(updateBlockConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
+        }
+        highlightId={highlightId}
+        imageContext={{ mode: 'template' }}
+        renderTextBlock={(block: ReportBlock) =>
+          block.type === 'text' ? (
+            <TextBlockEditor
+              key={block.id}
+              block={block}
+              onTextChange={(id, json) =>
+                commit(updateBlockText(layoutRef.current, id, json), `text:${id}`)
+              }
+            />
+          ) : (
+            <AiPlaceholder key={block.id} />
+          )
+        }
+      />
+
+      <LayersPanel
+        layout={layout}
+        highlightId={highlightId}
+        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
+        onLocate={highlightAndScroll}
+        onAddAt={openWidgetDrawer}
+        onAddEnd={() => openWidgetDrawer(null)}
+      />
+
+      <AddWidgetDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onInsert={handleInsert} />
+    </div>
+  );
+}
+
+export default function ModeloEditorPage() {
+  // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
+  usePreventStrayFileDrop();
+  const isPhone = !useIsDesktop(768);
+  const { id } = useParams<{ id: string }>();
+  const {
+    data: template,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['report-template', id],
+    queryFn: () => getReportTemplate(id!),
+    enabled: Boolean(id),
+    // O editor é a fonte da verdade após carregar; refetch clobbaria edições.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+
+  if (isLoading) {
+    // Same 880px column as the editor header and canvas.
+    return <DocSkeleton style={{ maxWidth: 880, margin: '0 auto' }} />;
+  }
+
+  // F5 (revisão final): getReportTemplate falhar (rede, RLS, etc.) não é o
+  // mesmo caso de um id que simplesmente não existe -- a cópia tem que dizer
+  // qual dos dois aconteceu.
+  if (isError) {
+    return (
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar backLabel="Voltar para Modelos" fallbackTo={SETTINGS_PATH} />}
+        <p style={{ color: 'var(--text-muted)' }}>Não foi possível carregar o modelo.</p>
+        <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
+      </div>
+    );
+  }
+
+  if (!template) {
+    return (
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar backLabel="Voltar para Modelos" fallbackTo={SETTINGS_PATH} />}
+        <p style={{ color: 'var(--text-muted)' }}>Modelo não encontrado.</p>
+        <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
+      </div>
+    );
+  }
+
+  return <ModeloEditorBody key={template.id} template={template} />;
+}

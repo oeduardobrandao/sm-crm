@@ -14,11 +14,14 @@ import {
   createMissingStorySegmentContainers,
   publishReadyStorySegments,
   selectStoryMediaId,
+  advanceCarouselContainer,
+  INTERACTIVE_GRAPH_TIMEOUT_MS,
 } from "../_shared/instagram-publish-utils.ts";
+import { buildCollaboratorFailureFields, normalizeCollaborators } from "../_shared/instagram-collaborators.ts";
 
 type DbClient = {
   from: (table: string) => any;
-  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
   auth: { getUser: (jwt: string) => Promise<{ data: { user: { id: string } | null }; error: unknown }> };
 };
 
@@ -59,11 +62,14 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
       .from("workflow_posts")
-      .select("id, status, workflow_id, cliente_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy")
+      .select("id, status, workflow_id, cliente_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo, ig_trial_strategy, ig_collaborators")
       .eq("id", postId)
       .single();
 
     if (!post) return json({ error: "Post não encontrado." }, 404);
+    // null/missing is [] (spec 2026-10-19). Sent on every container-creating
+    // call, first attempt and retries alike.
+    const collaborators = normalizeCollaborators(post.ig_collaborators);
 
     // Resolve caller's workspace and guard feature_post_scheduling
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
@@ -102,11 +108,15 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       // Best-effort: on any failure leave instagram_container_id null and let the
       // cron create it later. Mirrors cron Phase 1 cover semantics (deferred
       // coverless retry via retry_count), NOT publish-now's immediate retry.
+      // Stories and carousels are skipped: both keep per-item state that the cron
+      // advances under the publish_processing_at lock, which this path does not
+      // hold, and the cron picks the post up within a minute anyway.
       try {
         const dueInMs = post.scheduled_at
           ? new Date(post.scheduled_at).getTime() - Date.now()
           : Infinity;
-        if (dueInMs <= 3_600_000 && validation.account && post.tipo !== "stories") {
+        const isCarousel = (validation.media?.length ?? 0) > 1;
+        if (dueInMs <= 3_600_000 && validation.account && post.tipo !== "stories" && !isCarousel) {
           const token = await decryptToken(validation.account.encrypted_access_token);
           const { containerId } = await createContainerForPost(svcDb, {
             igUserId: validation.account.instagram_user_id,
@@ -116,6 +126,8 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             useCover: post.publish_retry_count === 0,
             tipo: post.tipo,
             trialStrategy: post.ig_trial_strategy,
+            collaborators,
+            timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
           });
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
@@ -147,12 +159,30 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           publish_error_code: null,
         },
       });
+      // carousel_children is outside record_post_status_change's p_fields allowlist
+      // (20260807000001): clear it separately so a re-scheduled carousel rebuilds
+      // its children instead of assembling a parent from stale (possibly expired) ones.
+      await svcDb.from("workflow_posts").update({ carousel_children: null }).eq("id", postId);
       return json({ ok: true, status: "aprovado_cliente" });
     }
 
     if (action === "retry") {
       if (post.status !== "falha_publicacao") {
         return json({ error: "Apenas posts com falha podem ser reenviados." }, 422);
+      }
+      // Optional body { clearCollaborators: true } ("Publicar sem colaboradores"
+      // after COLLABORATOR_INVALID). Cleared BEFORE the status flip: the post is
+      // still falha_publicacao, which no claim phase takes for this code, so the
+      // cron can never publish it with the old list in between.
+      const retryBody = await req.json().catch(() => ({}));
+      const clearCollaborators = typeof retryBody?.clearCollaborators === "boolean" &&
+        retryBody.clearCollaborators;
+      if (clearCollaborators) {
+        const { error: clearErr } = await svcDb.from("workflow_posts").update({
+          ig_collaborators: [],
+          ig_collaborators_refused: [],
+        }).eq("id", postId);
+        if (clearErr) return internalServerError(json, "instagram-publish:retry", clearErr);
       }
       await svcDb.rpc("record_post_status_change", {
         p_post_id: postId,
@@ -167,6 +197,14 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           publish_processing_at: null,
         },
       });
+      // carousel_children is outside record_post_status_change's p_fields allowlist
+      // (20260807000001): clear it separately so a re-scheduled carousel rebuilds
+      // its children instead of assembling a parent from stale (possibly expired) ones.
+      // ig_collaborators_refused (same allowlist gap) is reset so no chip stays red.
+      await svcDb.from("workflow_posts").update({
+        carousel_children: null,
+        ig_collaborators_refused: [],
+      }).eq("id", postId);
       return json({ ok: true, status: "agendado" });
     }
 
@@ -199,9 +237,11 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         const igUserId = validation.account!.instagram_user_id;
 
         if (post.tipo === "stories") {
-          await createMissingStorySegmentContainers(svcDb, { postId, igUserId, token });
+          await createMissingStorySegmentContainers(svcDb, {
+            postId, igUserId, token, timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
+          });
           const { segments, allDone } = await publishReadyStorySegments(svcDb, {
-            postId, igUserId, token, maxPolls: 12, intervalMs: 3000,
+            postId, igUserId, token, maxPolls: 12, intervalMs: 3000, timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
           });
           if (!allDone) {
             await svcDb.from("workflow_posts").update({
@@ -256,32 +296,70 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             const msg = (markErr as { message?: string })?.message ?? String(markErr);
             throw new Error(`mark_platform_published failed: ${msg}`);
           }
-          const permalink = await fetchPermalink(firstMediaId, token);
+          const permalink = await fetchPermalink(firstMediaId, token, INTERACTIVE_GRAPH_TIMEOUT_MS);
           if (permalink) {
             await svcDb.from("workflow_posts").update({ instagram_permalink: permalink }).eq("id", postId);
           }
           return json({ ok: true, status: "postado", instagram_permalink: permalink });
         }
 
-        // publish-now always attaches the cover when present (useCover:true) and does
-        // an IMMEDIATE coverless retry below if Instagram rejects it during processing.
-        const created = await createContainerForPost(svcDb, {
-          igUserId,
-          token,
-          postId,
-          caption: post.ig_caption ?? "",
-          useCover: true,
-          tipo: post.tipo,
-          trialStrategy: post.ig_trial_strategy,
-        });
-        let containerId = created.containerId;
-        const coverVideoUrl = created.coverVideoUrl; // set only when a cover was used
+        let containerId: string;
+        let coverVideoUrl: string | undefined; // set only when a single-video cover was used
+
+        if ((validation.media?.length ?? 0) > 1) {
+          // Carousel: resumable per-child state (carousel_children). Create the
+          // children, wait up to the same 12 x 3s budget the parent poll below uses,
+          // and assemble the parent only when every child is FINISHED. Not ready is
+          // not a failure: leave the post agendado for the cron to finish, exactly
+          // like the IN_PROGRESS exit below and the stories !allDone exit above.
+          const advanced = await advanceCarouselContainer(svcDb, {
+            postId,
+            igUserId,
+            token,
+            caption: post.ig_caption ?? "",
+            trialStrategy: post.ig_trial_strategy,
+            collaborators,
+            maxPolls: 12,
+            intervalMs: 3000,
+            timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
+          });
+          if (!advanced.allReady) {
+            await svcDb.from("workflow_posts").update({
+              scheduled_at: new Date().toISOString(),
+              publish_processing_at: null,
+            }).eq("id", postId);
+            return json({
+              ok: true,
+              status: "agendado",
+              message: "Mídia ainda processando no Instagram. O post será publicado automaticamente em alguns minutos.",
+            });
+          }
+          containerId = advanced.containerId!;
+        } else {
+          // publish-now always attaches the cover when present (useCover:true) and does
+          // an IMMEDIATE coverless retry below if Instagram rejects it during processing.
+          const created = await createContainerForPost(svcDb, {
+            igUserId,
+            token,
+            postId,
+            caption: post.ig_caption ?? "",
+            useCover: true,
+            tipo: post.tipo,
+            trialStrategy: post.ig_trial_strategy,
+            collaborators,
+            timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
+          });
+          containerId = created.containerId;
+          coverVideoUrl = created.coverVideoUrl;
+        }
 
         await svcDb.from("workflow_posts").update({
           instagram_container_id: containerId,
         }).eq("id", postId);
 
-        let containerStatus = await pollContainerReady(containerId, token, 12, 3000);
+        let containerStatus = await pollContainerReady(
+          containerId, token, 12, 3000, INTERACTIVE_GRAPH_TIMEOUT_MS,
+        );
 
         // A cover Instagram can't process surfaces as ERROR during async
         // processing (the Graph cover detail is not exposed). Retry once without
@@ -290,14 +368,19 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           const trial = post.ig_trial_strategy === "manual" || post.ig_trial_strategy === "auto"
             ? post.ig_trial_strategy
             : null;
-          const retry = await createVideoContainer(
-            igUserId, token, coverVideoUrl, post.ig_caption, undefined, trial,
-          );
+          // The cover is dropped; collaborators never are.
+          const retry = await createVideoContainer(igUserId, token, coverVideoUrl, post.ig_caption, {
+            trialStrategy: trial,
+            timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
+            collaborators,
+          });
           containerId = retry.id;
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
           }).eq("id", postId);
-          containerStatus = await pollContainerReady(containerId, token, 12, 3000);
+          containerStatus = await pollContainerReady(
+            containerId, token, 12, 3000, INTERACTIVE_GRAPH_TIMEOUT_MS,
+          );
         }
 
         if (containerStatus === "ERROR") {
@@ -315,7 +398,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           });
         }
 
-        const result = await publishContainer(igUserId, token, containerId);
+        const result = await publishContainer(igUserId, token, containerId, INTERACTIVE_GRAPH_TIMEOUT_MS);
 
         const { error: markErr } = await svcDb.rpc("mark_platform_published", {
           p_post_id: postId,
@@ -334,7 +417,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
 
         console.log(`[IG-PUBLISH-NOW] Published post ${postId}, media_id: ${result.id}`);
 
-        const permalink = await fetchPermalink(result.id, token);
+        const permalink = await fetchPermalink(result.id, token, INTERACTIVE_GRAPH_TIMEOUT_MS);
         if (permalink) {
           await svcDb.from("workflow_posts").update({ instagram_permalink: permalink }).eq("id", postId);
         }
@@ -356,6 +439,15 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           },
         });
 
+        // ig_collaborators_refused is outside record_post_status_change's p_fields
+        // allowlist: written separately (possibly [] when Meta's text names no one).
+        const collaboratorFields = buildCollaboratorFailureFields(errorCode, collaborators, err?.graphUserMsg);
+        if (Object.keys(collaboratorFields).length > 0) {
+          try {
+            await svcDb.from("workflow_posts").update(collaboratorFields).eq("id", postId);
+          } catch (_) { /* best-effort */ }
+        }
+
         if (errorCode === "CONTAINER_EXPIRED" && post.tipo === "stories") {
           // Stories keep their containers per-segment in story_segments, not in the
           // top-level instagram_container_id cleared above. Without this, a segment
@@ -375,6 +467,15 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
               const cleared = segments.map((seg) => (seg.media_id ? seg : { ...seg, container_id: null }));
               await svcDb.from("workflow_posts").update({ story_segments: cleared }).eq("id", postId);
             }
+          } catch (_) { /* best-effort */ }
+        }
+
+        if (errorCode === "CONTAINER_EXPIRED" && post.tipo !== "stories") {
+          // Carousel children live in carousel_children, not in the top-level
+          // instagram_container_id cleared above: drop them so the retry rebuilds
+          // every child instead of assembling a parent from expired ones.
+          try {
+            await svcDb.from("workflow_posts").update({ carousel_children: null }).eq("id", postId);
           } catch (_) { /* best-effort */ }
         }
 

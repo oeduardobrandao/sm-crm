@@ -1884,12 +1884,22 @@ section.lp-pad-alt {
   flex-direction: column;
   gap: 10px;
 }
-.footer-col a {
+.footer-col a,
+.footer-col button.cookie-prefs-link {
   color: #4b5563;
   font-size: 0.9rem;
   text-decoration: none;
 }
-.footer-col a:hover {
+.footer-col button.cookie-prefs-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.footer-col a:hover,
+.footer-col button.cookie-prefs-link:hover {
   color: #12151a;
 }
 .footer-tag {
@@ -2250,10 +2260,12 @@ section.lp-pad-alt {
 [data-theme='dark'] .ft-label {
   color: #6b7280;
 }
-[data-theme='dark'] .footer-col a {
+[data-theme='dark'] .footer-col a,
+[data-theme='dark'] .footer-col button.cookie-prefs-link {
   color: #94a3b8;
 }
-[data-theme='dark'] .footer-col a:hover {
+[data-theme='dark'] .footer-col a:hover,
+[data-theme='dark'] .footer-col button.cookie-prefs-link:hover {
   color: #e8eaf0;
 }
 [data-theme='dark'] .footer-tag {
@@ -2286,4 +2298,29 @@ section.lp-pad-alt {
   font-weight: 600;
   font-size: 0.82rem;
   margin-bottom: 0.35rem;
+}
+
+/* ---- skip link: off-screen until keyboard focus ---- */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10000;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #12151a;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+.skip-link:focus {
+  transform: none;
+  outline: 2px solid #ffbf30;
+  outline-offset: 2px;
+}
+
+/* Focus target of the skip link; no ring around the whole page. */
+main#main-content:focus {
+  outline: none;
 }

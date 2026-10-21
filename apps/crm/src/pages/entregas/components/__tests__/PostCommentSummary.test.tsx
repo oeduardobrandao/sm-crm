@@ -29,6 +29,10 @@ function makeThread(overrides?: Partial<CommentThreadWithComments>): CommentThre
     resolved_by: null,
     created_at: new Date().toISOString(),
     resolved_at: null,
+    field: 'conteudo',
+    anchor_start: null,
+    anchor_end: null,
+    orphaned: false,
     post_comments: [
       {
         id: 100,
@@ -250,5 +254,36 @@ describe('PostCommentSummary', () => {
     expect(dots).toHaveLength(2);
     expect(dots[0].className).toContain('comment-summary-dot--active');
     expect(dots[1].className).toContain('comment-summary-dot--resolved');
+  });
+
+  it('shows a "Legenda" chip on caption threads only', () => {
+    render(
+      <PostCommentSummary
+        {...defaultProps}
+        threads={[
+          makeThread({ id: 1, field: 'ig_caption', anchor_start: 0, anchor_end: 3 }),
+          makeThread({ id: 2 }),
+        ]}
+      />,
+    );
+    expect(screen.getAllByText('Legenda')).toHaveLength(1);
+  });
+
+  it('shows "texto removido" for an orphaned caption thread', () => {
+    render(
+      <PostCommentSummary
+        {...defaultProps}
+        threads={[
+          makeThread({
+            id: 1,
+            field: 'ig_caption',
+            anchor_start: null,
+            anchor_end: null,
+            orphaned: true,
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText('texto removido')).toBeInTheDocument();
   });
 });

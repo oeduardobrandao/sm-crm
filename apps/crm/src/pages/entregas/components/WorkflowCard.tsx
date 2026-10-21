@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, Check, FileText, ExternalLink } from 'lucide-react';
+import {
+  ArrowLeft,
+  Edit2,
+  Check,
+  FileText,
+  ExternalLink,
+  MoreHorizontal,
+  Trash2,
+  Copy,
+  CopyPlus,
+} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,28 +19,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
+import { copyAppLink } from '@/lib/copyAppLink';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import { sanitizeUrl } from '@/utils/security';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { getInitials } from '@/lib/initials';
 import { WorkflowTimelinePopover } from './WorkflowTimelinePopover';
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-// Deadline accent colors mapped from class name
-const deadlineAccent: Record<string, string> = {
-  'deadline-ok': '#3ecf8e',
-  'deadline-caution': '#eab308',
-  'deadline-warning': '#ea580c',
-  'deadline-overdue': '#ef4444',
-};
+import { DeadlinePill } from './DeadlinePill';
+import { etapaDeadlineDate } from '../etapaPrazo';
+import { progressColor } from '../progressColor';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 
 interface WorkflowCardProps {
   card: BoardCard;
@@ -59,6 +58,12 @@ interface WorkflowCardProps {
   revisaoInternaCount?: number;
   /** Number of posts still awaiting client approval (status enviado_cliente) */
   awaitingClienteCount?: number;
+  /** Exclui o fluxo. Nenhum caller passa isto ainda -- TODO(fluxos-cards-compactos):
+   *  ligar a uma função de exclusão de fluxo quando o fluxo de exclusão via
+   *  card existir. */
+  onDeleteClick?: () => void;
+  /** "Duplicar fluxo". Ausente no overlay de arraste e sem permissão. */
+  onDuplicateClick?: () => void;
 }
 
 export function WorkflowCard({
@@ -77,8 +82,15 @@ export function WorkflowCard({
   clearedClienteCount,
   revisaoInternaCount,
   awaitingClienteCount,
+  onDeleteClick,
+  onDuplicateClick,
 }: WorkflowCardProps) {
   const navigate = useNavigate();
+  // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
+  // vidro-board-action and drop their inline radius/padding, so buttons.css can paint them.
+  // The card root drops its inline padding/radius too, so boards.css's 12px card radius applies.
+  const vidroShell = useVidroShell();
+  const boardAction = vidroShell ? 'vidro-board-action' : 'btn-edit-workflow';
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | undefined | null>(undefined);
   const dl = card.deadline;
@@ -107,7 +119,7 @@ export function WorkflowCard({
       })
     : null;
 
-  const accent = deadlineAccent[deadlineClass] ?? '#3ecf8e';
+  const progressFill = progressColor(card.etapaIdx, card.totalEtapas);
 
   return (
     <div
@@ -117,9 +129,9 @@ export function WorkflowCard({
         opacity: isDragOverlay ? 0.85 : 1,
         position: 'relative',
         zIndex: assignDropdownOpen ? 50 : 1,
-        padding: '0.9rem',
-        gap: '0.6rem',
-        borderRadius: '10px',
+        ...(vidroShell ? null : { padding: '0.7rem' }),
+        gap: '0.45rem',
+        ...(vidroShell ? null : { borderRadius: '10px' }),
       }}
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
     >
@@ -237,7 +249,7 @@ export function WorkflowCard({
             '—'
           )}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
           {card.workflow.recorrente && (
             <span
               title="Recorrente"
@@ -254,11 +266,20 @@ export function WorkflowCard({
               ↻
             </span>
           )}
-          {dragHandle && (
-            <div style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex' }}>
-              {dragHandle}
-            </div>
-          )}
+          <button
+            type="button"
+            className="board-card-posts-chip"
+            data-tour="wf-posts"
+            title="Posts do fluxo"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPostsClick?.();
+            }}
+          >
+            <FileText className="h-3 w-3" />
+            {postsCount ?? 0} posts
+            {approvedPostsCount ? ` · ${approvedPostsCount} ✓` : ''}
+          </button>
         </div>
       </div>
 
@@ -294,40 +315,23 @@ export function WorkflowCard({
         )}
       </div>
 
-      {/* Deadline badge + prazo type */}
-      <div
+      {/* Deadline pill (texto + tipo_prazo combinados, spec §4) */}
+      <DeadlinePill
+        className={`board-card-deadline board-card-deadline-pill ${deadlineClass}`}
+        dataTour="wf-deadline"
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.5rem',
+          fontSize: '0.7rem',
+          fontWeight: 700,
+          padding: '0.2rem 0.6rem',
+          borderRadius: '999px',
+          letterSpacing: '0.01em',
+          alignSelf: 'flex-start',
         }}
-      >
-        <span
-          className={`board-card-deadline ${deadlineClass}`}
-          data-tour="wf-deadline"
-          style={{
-            fontSize: '0.7rem',
-            fontWeight: 700,
-            padding: '0.2rem 0.6rem',
-            borderRadius: '999px',
-            letterSpacing: '0.01em',
-          }}
-        >
-          {deadlineText}
-        </span>
-        <span
-          className="board-card-prazo-type"
-          style={{
-            fontSize: '0.62rem',
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-          }}
-        >
-          {card.etapa.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'}
-        </span>
-      </div>
+        relativeText={deadlineText}
+        dueDate={etapaDeadlineDate(card)}
+        estourado={dl.estourado}
+        tipoPrazo={card.etapa.tipo_prazo}
+      />
 
       {/* Assignee chip */}
       <DropdownMenu
@@ -345,13 +349,10 @@ export function WorkflowCard({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.4rem',
-              padding: '0.25rem 0.5rem 0.25rem 0.25rem',
               borderRadius: '10px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--card-bg)',
               width: 'fit-content',
               maxWidth: '100%',
-              transition: 'border-color 0.15s, background 0.15s',
+              transition: 'background 0.15s',
             }}
             onClick={(e) => {
               if (!membros) return;
@@ -527,52 +528,45 @@ export function WorkflowCard({
         );
       })()}
 
-      {/* Current etapa + Progress bar */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span
-            style={{
-              fontSize: '0.68rem',
-              fontWeight: 600,
-              color: 'var(--text-main)',
-              letterSpacing: '0.02em',
-            }}
-          >
-            {card.etapa.nome}
-          </span>
-          <span
-            style={{
-              fontSize: '0.65rem',
-              color: 'var(--text-muted)',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              fontFamily: 'var(--font-mono)',
-            }}
-          >
-            {card.etapaIdx + 1}/{card.totalEtapas}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      {/* Current etapa + Progress bar (4px, sem rótulo visível -- N/total vira tooltip) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <span
+          style={{
+            fontSize: '0.68rem',
+            fontWeight: 600,
+            color: 'var(--text-main)',
+            letterSpacing: '0.02em',
+          }}
+        >
+          {card.etapa.nome}
+        </span>
+        <div
+          className="board-progress-track"
+          data-testid="post-progress-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={card.totalEtapas}
+          aria-valuenow={card.etapaIdx + 1}
+          aria-valuetext={`${card.etapa.nome} ${card.etapaIdx + 1}/${card.totalEtapas}`}
+          aria-label="Progresso do fluxo"
+          title={`${card.etapa.nome} ${card.etapaIdx + 1}/${card.totalEtapas}`}
+          style={{
+            height: '4px',
+            background: 'var(--surface-hover)',
+            borderRadius: '999px',
+            overflow: 'hidden',
+          }}
+        >
           <div
             style={{
-              flex: 1,
-              height: '5px',
-              background: 'var(--surface-hover)',
+              height: '100%',
+              width: `${progressPct}%`,
+              background: progressFill,
               borderRadius: '999px',
-              overflow: 'hidden',
+              transition: 'width 0.4s ease',
+              opacity: 0.85,
             }}
-          >
-            <div
-              style={{
-                height: '100%',
-                width: `${progressPct}%`,
-                background: accent,
-                borderRadius: '999px',
-                transition: 'width 0.4s ease',
-                opacity: 0.85,
-              }}
-            />
-          </div>
+          />
         </div>
       </div>
 
@@ -648,80 +642,121 @@ export function WorkflowCard({
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* Rodapé: alça de arrastar, histórico, kebab (editar, voltar etapa,
+          excluir) e avançar fora do kebab (spec §4). */}
       <div
+        className="board-card-actions"
         style={{
           display: 'flex',
-          gap: '0.3rem',
+          alignItems: 'center',
+          gap: '0.35rem',
           paddingTop: '0.5rem',
           borderTop: '1px solid var(--border-color)',
           marginTop: '0.1rem',
         }}
       >
-        {card.etapaIdx > 0 && onRevertClick && (
-          <button
-            className="btn-revert-etapa"
-            title="Voltar etapa"
-            style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRevertClick();
-            }}
+        {dragHandle && (
+          <span
+            className="board-card-drag-handle"
+            style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'inline-flex' }}
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-          </button>
+            {dragHandle}
+          </span>
         )}
-        <button
-          className="btn-edit-workflow"
-          title="Editar fluxo"
-          style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditClick?.();
-          }}
-        >
-          <Edit2 className="h-3.5 w-3.5" />
-        </button>
         <WorkflowTimelinePopover workflowId={card.workflow.id!} />
-        <button
-          className="btn-edit-workflow"
-          title="Posts do fluxo"
-          data-tour="wf-posts"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            padding: '0.4rem 0.75rem',
-            borderRadius: '10px',
-            border: '0px solid var(--border-color)',
-            background: 'transparent',
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            flexShrink: 0,
-            position: 'relative',
-            transition: 'all 0.15s',
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onPostsClick?.();
-          }}
-        >
-          <FileText className="h-3.5 w-3.5" />
-          Posts
-          {postsCount !== undefined && postsCount > 0 && (
-            <span className="board-card-posts-badge">{postsCount}</span>
-          )}
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={`${boardAction} board-card-kebab`}
+              aria-label="Mais opções"
+              title="Mais opções"
+              style={
+                vidroShell
+                  ? { flexShrink: 0 }
+                  : { padding: '0.35rem 0.55rem', borderRadius: '8px', flexShrink: 0 }
+              }
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {!isDragOverlay && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  copyAppLink(`/entregas?drawer=${card.workflow.id}`);
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copiar link do fluxo
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditClick?.();
+              }}
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+              Editar
+            </DropdownMenuItem>
+            {onPostsClick && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPostsClick();
+                }}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Abrir posts
+              </DropdownMenuItem>
+            )}
+            {onDuplicateClick && !isDragOverlay && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicateClick();
+                }}
+              >
+                <CopyPlus className="h-3.5 w-3.5" />
+                Duplicar fluxo
+              </DropdownMenuItem>
+            )}
+            {card.etapaIdx > 0 && onRevertClick && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRevertClick();
+                }}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Voltar etapa
+              </DropdownMenuItem>
+            )}
+            {onDeleteClick && (
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteClick();
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Excluir
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {onForwardClick && (
           <button
-            className="btn-edit-workflow btn-forward-etapa"
+            className={`${boardAction} btn-forward-etapa`}
             title={
               card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'
             }
             style={{
-              padding: '0.35rem 0.55rem',
-              borderRadius: '10px',
+              ...(vidroShell ? null : { padding: '0.35rem 0.55rem', borderRadius: '8px' }),
               flexShrink: 0,
               marginLeft: 'auto',
               color: '#3ecf8e',

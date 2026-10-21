@@ -4,6 +4,7 @@
 // Pure and React-free on purpose — every rule below (container chunking, client
 // resolution, the status/date clamp, commit ordering) is unit-tested in
 // __tests__/buildCommitRows.test.ts.
+import type { ContentFormat } from '@mesaas/platforms';
 import {
   isIsoCalendarValid,
   POST_STATUS_TARGETS,
@@ -38,7 +39,7 @@ const SOURCE_LABELS: Record<string, string> = {
   csv: 'planilha',
 };
 
-type PostTipo = 'feed' | 'reels' | 'stories' | 'carrossel';
+type PostTipo = ContentFormat;
 
 /**
  * Case-, accent- and whitespace-insensitive key for matching client names.

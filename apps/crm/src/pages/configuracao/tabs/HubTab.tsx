@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   Palette,
   Droplet,
   Type as TypeIcon,
   LayoutGrid,
   IdCard,
-  Sun,
-  Moon,
   Upload,
   ChevronDown,
   type LucideIcon,
@@ -42,6 +41,7 @@ import {
   ColorPickerFormat,
 } from '@/components/ui/color-picker-advanced';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useAuth } from '../../../context/AuthContext';
 import { useEntitlements } from '../../../hooks/useEntitlements';
 import { supabase } from '../../../lib/supabase';
@@ -56,17 +56,30 @@ import { HubPreview, HUB_DISPLAY_FONTS, HUB_BODY_FONTS, type HubPreviewDraft } f
 // need the resolver's REAL palette/accent math so they never drift from what the
 // Hub actually renders.
 import {
-  PALETTES,
   HUB_FONT_PAIRINGS,
-  resolveHubTheme,
-  relativeLuminance,
+  PAUTA_FONTS,
+  hubFontOptions,
   type HubSurface,
   type HubRadius,
   type HubCardStyle,
+  type HubFontOption,
 } from '../../../../../hub/src/theme';
+import {
+  BRAND_PRESET_COLORS,
+  SURFACE_OPTIONS,
+  RADIUS_OPTIONS,
+  CARD_STYLE_OPTIONS,
+  LOGO_STYLE_OPTIONS,
+  APPEARANCE_OPTIONS,
+  SurfaceGlyph,
+  RadiusGlyph,
+  CardStyleGlyph,
+  LogoGlyph,
+  AccentChips,
+} from './phone/hubBrandingParts';
+import { HubPhone } from './phone/HubPhone';
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
-const HEX_6_RE = /^#[0-9a-fA-F]{6}$/;
 
 const HINT: CSSProperties = {
   fontSize: '0.8rem',
@@ -77,42 +90,6 @@ const HINT: CSSProperties = {
 };
 const FIELD: CSSProperties = { marginBottom: '1.5rem' };
 const FIELD_LABEL: CSSProperties = { display: 'block', marginBottom: '0.5rem' };
-
-// The CRM's own tipo palette (postLabels.ts) -- already the canonical
-// "Mesaas brand-adjacent" colours per PRODUCT.md, so they double as sensible
-// one-click presets here instead of an arbitrary swatch set.
-const BRAND_PRESET_COLORS = ['#eab308', '#E1306C', '#42c8f5', '#3ecf8e'];
-
-const SURFACE_OPTIONS: { value: HubSurface; label: string }[] = [
-  { value: 'neutral', label: 'Neutro' },
-  { value: 'warm', label: 'Quente' },
-  { value: 'cool', label: 'Frio' },
-];
-// Suave leads: it's hub_radius's default (migration 20260731000001), so it's what
-// most workspaces already have — putting it first matches what they'll see.
-const RADIUS_OPTIONS: { value: HubRadius; label: string }[] = [
-  { value: 'soft', label: 'Suave' },
-  { value: 'square', label: 'Reto' },
-  { value: 'pill', label: 'Pílula' },
-];
-const CARD_STYLE_OPTIONS: { value: HubCardStyle; label: string }[] = [
-  { value: 'filled', label: 'Preenchido' },
-  { value: 'outline', label: 'Contorno' },
-  { value: 'tonal', label: 'Tonal' },
-];
-const LOGO_STYLE_OPTIONS: { value: string; label: string; sublabel: string }[] = [
-  { value: 'round', label: 'Redondo', sublabel: 'avatar circular' },
-  { value: 'wordmark', label: 'Horizontal', sublabel: 'wordmark' },
-];
-const APPEARANCE_OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
-  { value: 'light', label: 'Claro', icon: Sun },
-  { value: 'dark', label: 'Escuro', icon: Moon },
-];
-
-// Radius values a small (~32px) glyph actually renders at. Mirrors theme.ts's
-// RADIUS_CARD/RADIUS_CTL (not exported -- these are display-only, unlike the
-// resolver's own live values, which the preview reads through resolveHubTheme).
-const RADIUS_GLYPH_PX: Record<HubRadius, number> = { square: 0, soft: 12, pill: 999 };
 
 /** Titled control card: icon + 13-14px title + one-line muted description, then
  * content. Every "Personalizar Hub" section uses this so the tab reads as five
@@ -265,168 +242,18 @@ function OptionCardGroup<V extends string>({
   );
 }
 
-/** Mini-page swatch: a tiny "page" tinted with the surface palette, holding a card
- * rect and two text-stroke bars, so a theme reads as a miniature screen instead of
- * a colour dot. */
-function SurfaceGlyph({ surface }: { surface: HubSurface }) {
-  const palette = PALETTES[surface].light;
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'block',
-        width: '100%',
-        minWidth: 64,
-        height: 48,
-        borderRadius: 8,
-        background: palette.bg,
-        border: `1px solid ${palette.bd}`,
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      <span
-        style={{
-          position: 'absolute',
-          inset: '6px 6px auto 6px',
-          height: 18,
-          borderRadius: 4,
-          background: palette.card,
-          border: `1px solid ${palette.bd}`,
-        }}
-      />
-      <span
-        style={{
-          position: 'absolute',
-          left: 9,
-          bottom: 6,
-          width: '42%',
-          height: 2,
-          borderRadius: 1,
-          background: palette.txt,
-          opacity: 0.5,
-        }}
-      />
-      <span
-        style={{
-          position: 'absolute',
-          left: 9,
-          bottom: 11,
-          width: '28%',
-          height: 2,
-          borderRadius: 1,
-          background: palette.txt,
-          opacity: 0.3,
-        }}
-      />
-    </span>
-  );
-}
-
-function RadiusGlyph({ radius }: { radius: HubRadius }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'block',
-        width: 32,
-        height: 32,
-        border: '1.5px solid var(--text-muted)',
-        borderRadius: RADIUS_GLYPH_PX[radius],
-      }}
-    />
-  );
-}
-
-const CARD_STYLE_GLYPH: Record<HubCardStyle, CSSProperties> = {
-  filled: { background: 'var(--card-bg)', border: '1px solid var(--border-color)' },
-  outline: { background: 'transparent', border: '1.5px solid var(--text-muted)' },
-  tonal: { background: 'var(--surface-1)', border: 'none' },
-};
-
-function CardStyleGlyph({ cardStyle }: { cardStyle: HubCardStyle }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'block',
-        width: 44,
-        height: 32,
-        borderRadius: 6,
-        ...CARD_STYLE_GLYPH[cardStyle],
-      }}
-    />
-  );
-}
-
-/** The round option renders the actual accent-on-avatar fallback (WorkspaceMark's
- * monogram); the wordmark option renders the workspace name in the CURRENTLY
- * picked display font, so Identidade stays honest about the Tipografia choice. */
-function LogoGlyph({
-  kind,
-  brandColor,
-  initial,
-  workspaceName,
-  fontDisplayCss,
-}: {
-  kind: 'round' | 'wordmark';
-  brandColor: string;
-  initial: string;
-  workspaceName: string;
-  fontDisplayCss: string;
-}) {
-  if (kind === 'round') {
-    const fg =
-      HEX_6_RE.test(brandColor) && relativeLuminance(brandColor) > 0.55 ? '#171717' : '#ffffff';
-    return (
-      <span
-        aria-hidden="true"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: 32,
-          height: 32,
-          borderRadius: '50%',
-          background: HEX_6_RE.test(brandColor) ? brandColor : '#171717',
-          color: fg,
-          fontSize: 12,
-          fontWeight: 600,
-        }}
-      >
-        {initial}
-      </span>
-    );
-  }
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: 32,
-        fontFamily: fontDisplayCss,
-        fontSize: 13,
-        color: 'var(--text-main)',
-        maxWidth: 92,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {workspaceName || 'Workspace'}
-    </span>
-  );
-}
-
 function FontPairingCards({
   fontDisplay,
   fontBody,
+  pairings,
+  defaultLabel,
   onPick,
   disabled,
 }: {
   fontDisplay: string;
   fontBody: string;
+  pairings: typeof HUB_FONT_PAIRINGS;
+  defaultLabel?: string;
   onPick: (display: string, body: string) => void;
   disabled?: boolean;
 }) {
@@ -441,7 +268,7 @@ function FontPairingCards({
         marginBottom: '1rem',
       }}
     >
-      {HUB_FONT_PAIRINGS.map((pairing) => {
+      {pairings.map((pairing) => {
         const active = fontDisplay === pairing.display && fontBody === pairing.body;
         const displayFont = HUB_DISPLAY_FONTS[pairing.display];
         const bodyFont = HUB_BODY_FONTS[pairing.body];
@@ -467,6 +294,7 @@ function FontPairingCards({
             </span>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)' }}>
               {pairing.label}
+              {defaultLabel && pairing.display === PAUTA_FONTS.display ? ` · ${defaultLabel}` : ''}
             </span>
             <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
               {displayFont?.label} · {bodyFont?.label}
@@ -486,12 +314,16 @@ function FontSelectsDisclosure({
   setFontDisplay,
   fontBody,
   setFontBody,
+  displayOptions,
+  bodyOptions,
   disabled,
 }: {
   fontDisplay: string;
   setFontDisplay: (v: string) => void;
   fontBody: string;
   setFontBody: (v: string) => void;
+  displayOptions: [string, HubFontOption][];
+  bodyOptions: [string, HubFontOption][];
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -538,7 +370,7 @@ function FontSelectsDisclosure({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(HUB_DISPLAY_FONTS).map(([id, font]) => (
+                {displayOptions.map(([id, font]) => (
                   <SelectItem key={id} value={id} style={{ fontFamily: font.css }}>
                     {font.label}
                   </SelectItem>
@@ -555,7 +387,7 @@ function FontSelectsDisclosure({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(HUB_BODY_FONTS).map(([id, font]) => (
+                {bodyOptions.map(([id, font]) => (
                   <SelectItem key={id} value={id} style={{ fontFamily: font.css }}>
                     {font.label}
                   </SelectItem>
@@ -567,23 +399,6 @@ function FontSelectsDisclosure({
       )}
     </div>
   );
-}
-
-function accentChipStyle(kind: 'filled' | 'outline'): CSSProperties {
-  const base: CSSProperties = {
-    fontSize: '0.7rem',
-    fontWeight: 600,
-    padding: '0.3rem 0.65rem',
-    borderRadius: 999,
-  };
-  if (kind === 'filled')
-    return { ...base, background: 'var(--hub-primary)', color: 'var(--hub-primary-fg)' };
-  return {
-    ...base,
-    border: '1px solid var(--hub-acc)',
-    color: 'var(--hub-acc)',
-    background: 'transparent',
-  };
 }
 
 /** One-click brand-adjacent presets, standing in for the shared ColorPicker's
@@ -631,47 +446,29 @@ function PresetSwatches({
   );
 }
 
-/** Shows where the accent actually lands (button, active nav, calendar), resolved
- * through the real theme resolver -- never a hand-picked shade of the hex the user
- * just typed. Surface/font/radius/card style are fixed neutrals here on purpose:
- * this chip row is about the ACCENT, not a full preview (HubPreview already covers
- * that), so it stays correct regardless of what the other sections are set to. */
-function AccentChips({ brandColor }: { brandColor: string }) {
-  const vars = resolveHubTheme(
-    {
-      accent: brandColor,
-      surface: 'neutral',
-      fontDisplay: 'fraunces',
-      fontBody: 'instrument-sans',
-      radius: 'soft',
-      cardStyle: 'filled',
-      customized: true,
-    },
-    false,
-  ).vars as CSSProperties;
-  return (
-    <div
-      style={{ ...vars, display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.85rem' }}
-    >
-      <span style={accentChipStyle('filled')}>Botão</span>
-      <span style={accentChipStyle('outline')}>Nav ativa</span>
-      <span style={accentChipStyle('outline')}>Calendário</span>
-    </div>
-  );
-}
-
 /** Branding for the client-facing Hub (Configurações → Hub), with a live preview. */
 export default function HubTab() {
-  const { role } = useAuth();
+  const isPhone = !useIsDesktop(768);
+  const { can } = useAuth();
   const queryClient = useQueryClient();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
-  const { hasFeature, isLoading: entitlementsLoading } = useEntitlements();
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that for this tab's
+  // own queries. Was `role === 'owner' || role === 'admin'`, which a custom
+  // role with the chassis 'agent' role never passed even when it held the
+  // tab-level grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
+  // F4 (revisão externa): every branding control below was live for a
+  // `ver`-only role. `updateHubBranding` writes to `workspaces`, whose RLS
+  // FILTERS the row out rather than raising, so PostgREST returned 200/zero
+  // rows and the save toasted success without saving anything.
+  const canEditConfig = can('configuracoes', 'editar') === true;
+  const { hasFeature, features, isLoading: entitlementsLoading } = useEntitlements();
   const customized = !entitlementsLoading && hasFeature('feature_brand_customization');
 
   const { data: workspace } = useQuery({
     queryKey: ['currentWorkspace'],
     queryFn: getCurrentWorkspace,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const {
@@ -681,7 +478,7 @@ export default function HubTab() {
   } = useQuery({
     queryKey: ['workspace-hub-branding'],
     queryFn: getHubBranding,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const [brandColor, setBrandColor] = useState('#eab308');
@@ -690,6 +487,14 @@ export default function HubTab() {
   const [cardStyle, setCardStyle] = useState<HubCardStyle>('filled');
   const [fontDisplay, setFontDisplay] = useState('fraunces');
   const [fontBody, setFontBody] = useState('instrument-sans');
+  // Never hasFeature here: it treats a missing key as on (useEntitlements.ts:16).
+  const pauta = !entitlementsLoading && features?.feature_hub_pauta === true;
+  // Keyed on the STORED pair, not the draft: the carve-out is for what the workspace
+  // already has, so picking another pair must not make Assinatura vanish mid-edit.
+  const fontOptions = hubFontOptions(pauta, {
+    display: branding?.hub_font_display ?? fontDisplay,
+    body: branding?.hub_font_body ?? fontBody,
+  });
   const [logoStyle, setLogoStyle] = useState('round');
   const [defaultAppearance, setDefaultAppearance] = useState('light');
   const [hideBranding, setHideBranding] = useState(false);
@@ -698,7 +503,7 @@ export default function HubTab() {
   const [removeLogoOpen, setRemoveLogoOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
-  const controlsDisabled = brandingPending || brandingFailed;
+  const controlsDisabled = brandingPending || brandingFailed || !canEditConfig;
 
   useEffect(() => {
     if (branding) {
@@ -730,19 +535,23 @@ export default function HubTab() {
   // CURRENTLY picked pair for the preview itself -- this one loads every allowlisted
   // display face once, so all four pairing cards render in their real fonts
   // regardless of which pair is selected.
+  const specimenFamilies = fontOptions.display
+    .map(([, font]) => `family=${font.gf.split(':')[0]}:wght@500;600`)
+    .join('&');
   useEffect(() => {
     const linkId = 'crm-hub-specimen-fonts';
-    if (document.getElementById(linkId)) return;
-    const families = Object.values(HUB_DISPLAY_FONTS).map(
-      (font) => `family=${font.gf.split(':')[0]}:wght@500;600`,
-    );
-    const link = document.createElement('link');
+    const existing = document.getElementById(linkId) as HTMLLinkElement | null;
+    const link = existing ?? document.createElement('link');
     link.id = linkId;
     link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?${families.join('&')}&display=swap`;
-    document.head.appendChild(link);
+    // Updated in place so turning the flag on adds Bricolage to the same link.
+    link.href = `https://fonts.googleapis.com/css2?${specimenFamilies}&display=swap`;
+    if (!existing) document.head.appendChild(link);
+  }, [specimenFamilies]);
+
+  useEffect(() => {
     return () => {
-      document.getElementById(linkId)?.remove();
+      document.getElementById('crm-hub-specimen-fonts')?.remove();
     };
   }, []);
 
@@ -753,6 +562,9 @@ export default function HubTab() {
       return;
     }
     setLogoUploading(true);
+    // The upload and the record update that follows are one unit of work: a silent
+    // version swap must not land between them.
+    const release = holdUnsavedWork();
     try {
       const bitmap = await createImageBitmap(file);
       // Bound the longest side at 512px, keeping the source aspect ratio: this
@@ -789,6 +601,7 @@ export default function HubTab() {
       console.error('hub dark logo upload failed', err);
       toast.error('Não foi possível enviar a logo. Tente novamente.');
     } finally {
+      release();
       setLogoUploading(false);
     }
   };
@@ -855,6 +668,44 @@ export default function HubTab() {
   const workspaceInitial = (workspace?.name || '?').trim().charAt(0).toUpperCase() || '?';
   const fontDisplayCss = HUB_DISPLAY_FONTS[fontDisplay]?.css ?? HUB_DISPLAY_FONTS.fraunces.css;
 
+  if (isPhone) {
+    // Same draft, handlers and save as the desktop form below; the phone view only
+    // lays them out as an iOS settings screen (and never mounts the AlertDialog).
+    return (
+      <HubPhone
+        loading={canViewConfig && brandingPending}
+        canEdit={canEditConfig}
+        controlsDisabled={controlsDisabled}
+        brandingFailed={brandingFailed}
+        customized={customized}
+        look={pauta ? 'pauta' : 'classic'}
+        pauta={pauta}
+        workspaceName={workspace?.name ?? ''}
+        workspaceLogoUrl={workspace?.logo_url ?? null}
+        workspaceInitial={workspaceInitial}
+        fontDisplayCss={fontDisplayCss}
+        previewDraft={previewDraft}
+        fontOptions={fontOptions}
+        setBrandColor={setBrandColor}
+        setSurface={setSurface}
+        setRadius={setRadius}
+        setCardStyle={setCardStyle}
+        setFontDisplay={setFontDisplay}
+        setFontBody={setFontBody}
+        setLogoStyle={setLogoStyle}
+        setDefaultAppearance={setDefaultAppearance}
+        setHideBranding={setHideBranding}
+        logoUploading={logoUploading}
+        onLogoDarkUpload={handleLogoDarkUpload}
+        removeLogoOpen={removeLogoOpen}
+        setRemoveLogoOpen={setRemoveLogoOpen}
+        onRemoveLogoDark={handleRemoveLogoDark}
+        saving={saveMutation.isPending}
+        onSave={() => saveMutation.mutate()}
+      />
+    );
+  }
+
   return (
     <div>
       <div style={{ marginBottom: '1.5rem' }}>
@@ -868,16 +719,21 @@ export default function HubTab() {
           result before touching any controls below. Configurações → Hub is
           workspace-level, not per-client, so there is no token to build a real "Ver
           hub" link from here either; every hub URL is per-client (see
-          pages/cliente-detalhe/HubTab.tsx). We deliberately don't invent a tokenless
+          pages/cliente-detalhe/hub/AcessoPage.tsx). We deliberately don't invent a tokenless
           workspace route; the per-client tab is still the place to copy/open a
           client's actual link. HubPreview owns its own "Pré-visualização ao vivo"
           caption + toggles header. */}
+      {!canEditConfig && (
+        <p style={{ ...HINT, marginTop: 0, marginBottom: '1rem' }}>Somente leitura</p>
+      )}
+
       <div style={{ marginBottom: '2rem' }}>
         <HubPreview
           draft={previewDraft}
           workspaceName={workspace?.name ?? ''}
           workspaceLogoUrl={workspace?.logo_url ?? null}
           customized={customized}
+          look={pauta ? 'pauta' : 'classic'}
         />
       </div>
 
@@ -976,6 +832,8 @@ export default function HubTab() {
             <FontPairingCards
               fontDisplay={fontDisplay}
               fontBody={fontBody}
+              pairings={fontOptions.pairings}
+              defaultLabel={pauta ? 'Padrão' : undefined}
               disabled={controlsDisabled}
               onPick={(display, body) => {
                 setFontDisplay(display);
@@ -987,6 +845,8 @@ export default function HubTab() {
               setFontDisplay={setFontDisplay}
               fontBody={fontBody}
               setFontBody={setFontBody}
+              displayOptions={fontOptions.display}
+              bodyOptions={fontOptions.body}
               disabled={controlsDisabled}
             />
           </SectionCard>
@@ -1079,7 +939,7 @@ export default function HubTab() {
                   type="button"
                   id="hub-logo-dark-trigger"
                   onClick={() => logoInputRef.current?.click()}
-                  disabled={logoUploading}
+                  disabled={logoUploading || !canEditConfig}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1111,7 +971,7 @@ export default function HubTab() {
                     variant="ghost"
                     className="text-destructive"
                     onClick={() => setRemoveLogoOpen(true)}
-                    disabled={logoUploading}
+                    disabled={logoUploading || !canEditConfig}
                     style={{ alignSelf: 'flex-start' }}
                   >
                     Remover
@@ -1124,10 +984,11 @@ export default function HubTab() {
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 hidden
+                disabled={!canEditConfig}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   e.target.value = '';
-                  if (file) handleLogoDarkUpload(file);
+                  if (file && canEditConfig) handleLogoDarkUpload(file);
                 }}
               />
             </div>
@@ -1181,7 +1042,10 @@ export default function HubTab() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveLogoDark} disabled={logoUploading}>
+            <AlertDialogAction
+              onClick={handleRemoveLogoDark}
+              disabled={logoUploading || !canEditConfig}
+            >
               Remover
             </AlertDialogAction>
           </AlertDialogFooter>

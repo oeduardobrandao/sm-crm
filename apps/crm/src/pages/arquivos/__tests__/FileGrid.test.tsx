@@ -1,11 +1,34 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import { createPortal } from 'react-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { FileGrid, formatBytes } from '../components/FileGrid';
 import type { FileRecord, Folder } from '../types';
 
-// Mock FileContextMenu to pass through children and right-click
+// Mock FileContextMenu to pass through children and right-click. Also
+// surfaces the `canEdit` prop FileGrid threads to it (Task 14 fix round 3):
+// rendering stand-in "Renomear"/"Excluir" markers only when canEdit is true
+// locks in the meaning of the prop for this suite's defaultProps, instead of
+// silently accepting whatever value (including undefined) FileGrid passes.
+// Portaled to document.body (same pattern the real FileContextMenu uses for
+// its actual menu) rather than rendered as a sibling of `children` --
+// `children` is a bare `<tr>` in list mode, and a `<span>` sibling directly
+// under `<tbody>` is invalid HTML (React warns: "<span> cannot be a child of
+// <tbody>"). FileContextMenu's OWN rendering (real Renomear/Excluir buttons,
+// dialogs, etc.) has its own dedicated suite in FileContextMenu.test.tsx.
 vi.mock('../components/FileContextMenu', () => ({
-  FileContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  FileContextMenu: ({ children, canEdit }: { children: React.ReactNode; canEdit?: boolean }) => (
+    <>
+      {children}
+      {canEdit &&
+        createPortal(
+          <>
+            <span>Renomear</span>
+            <span>Excluir</span>
+          </>,
+          document.body,
+        )}
+    </>
+  ),
 }));
 
 // Mock tanstack/react-query so FileGrid can call useQueryClient/useMutation without a provider
@@ -89,6 +112,7 @@ describe('FileGrid', () => {
     onFileAction: vi.fn(),
     onActionComplete: vi.fn(),
     viewMode: 'grid' as const,
+    canEdit: true,
   };
 
   it('shows empty state when no files or folders', () => {
@@ -221,6 +245,34 @@ describe('FileGrid', () => {
     });
   });
 
+  it('marks the grid tiles as Vidro cards and leaves the loading skeleton unmarked', () => {
+    const { container, rerender } = render(
+      <FileGrid
+        files={[makeFile({ id: 100, name: 'foto.jpg' })]}
+        subfolders={[makeFolder({ id: 1, name: 'Fotos' })]}
+        {...defaultProps}
+      />,
+    );
+    expect(screen.getByText('Fotos').closest("[data-slot='card']")).not.toBeNull();
+    expect(screen.getByText('foto.jpg').closest("[data-slot='card']")).not.toBeNull();
+    expect(container.querySelectorAll("[data-slot='card']")).toHaveLength(2);
+
+    rerender(<FileGrid files={[]} subfolders={[]} {...defaultProps} isLoading />);
+    expect(container.querySelector("[data-slot='card']")).toBeNull();
+  });
+
+  it('marks the list-mode table for the Vidro table rules', () => {
+    const { container } = render(
+      <FileGrid
+        files={[makeFile({ id: 100, name: 'doc.pdf', kind: 'document' })]}
+        subfolders={[]}
+        {...defaultProps}
+        viewMode="list"
+      />,
+    );
+    expect(container.querySelector('table')).toHaveAttribute('data-slot', 'table');
+  });
+
   describe('list mode', () => {
     it('renders table with folder and file rows', () => {
       render(
@@ -297,6 +349,46 @@ describe('FileGrid', () => {
 
       fireEvent.click(screen.getByText('doc.pdf'));
       expect(onFileAction).toHaveBeenCalledWith('open', file);
+    });
+  });
+
+  /**
+   * Task 14 fix round 3 (external review): `canEdit` is a required prop on
+   * FileGrid (threaded straight to FileContextMenu's own required `canEdit`)
+   * -- `defaultProps` above used to omit it entirely, so every render in
+   * this suite passed `canEdit: undefined` and silently exercised the
+   * RESTRICTED configuration without any test ever catching it (tests are
+   * excluded from `tsc`, so a missing required prop here is not a type
+   * error). This pair locks in what the prop actually controls, using the
+   * FileContextMenu mock's own canEdit-conditional markers above.
+   */
+  describe('canEdit propagation to FileContextMenu', () => {
+    it('canEdit: true renders the Renomear/Excluir markers', () => {
+      render(
+        <FileGrid
+          files={[makeFile({ id: 100, name: 'foto.jpg' })]}
+          subfolders={[]}
+          {...defaultProps}
+          canEdit={true}
+        />,
+      );
+
+      expect(screen.getAllByText('Renomear').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Excluir').length).toBeGreaterThan(0);
+    });
+
+    it('canEdit: false hides the Renomear/Excluir markers', () => {
+      render(
+        <FileGrid
+          files={[makeFile({ id: 100, name: 'foto.jpg' })]}
+          subfolders={[]}
+          {...defaultProps}
+          canEdit={false}
+        />,
+      );
+
+      expect(screen.queryByText('Renomear')).not.toBeInTheDocument();
+      expect(screen.queryByText('Excluir')).not.toBeInTheDocument();
     });
   });
 });

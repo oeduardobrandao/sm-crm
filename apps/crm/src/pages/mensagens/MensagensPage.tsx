@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Users } from 'lucide-react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { Cliente } from '@/store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEquipeChatRealtime } from '@/hooks/useEquipeChatRealtime';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { useMensagensData } from './hooks/useMensagensData';
 import { useEquipeChatData } from './hooks/useEquipeChatData';
-import { ConversationList } from './components/ConversationList';
+import { ConversationList, MensagensInfoTooltip } from './components/ConversationList';
 import { ConversationThread } from './components/ConversationThread';
 import { EquipeConversationList } from './components/EquipeConversationList';
 import { EquipeThread } from './components/EquipeThread';
@@ -18,11 +21,13 @@ import {
   ThreadNotFound,
   ThreadPlaceholder,
 } from './components/ThreadStatus';
+import { MensagensListPhone } from './phone/MensagensListPhone';
+import { ConversationThreadPhone } from './phone/ConversationThreadPhone';
+import { ThreadPhoneShell } from './phone/ThreadPhoneShell';
 
 type MensagensTab = 'clientes' | 'equipe';
 
-const LIST_COL_CLASS_DESKTOP = 'w-[340px] shrink-0 border-r border-[var(--border-color)]';
-const LIST_COL_CLASS_MOBILE = 'flex-1';
+const LIST_COL_CLASS = 'w-[340px] shrink-0 border-r border-[var(--border-color)]';
 
 function TabPills({
   activeTab,
@@ -61,13 +66,11 @@ function TabPills({
 
 interface EquipePaneProps {
   active: boolean;
-  showTabs: boolean;
-  activeTab: MensagensTab;
-  onTabSelect: (tab: MensagensTab) => void;
+  /** Clientes | Equipe pills, or null when only one section is on. */
+  tabs: ReactNode;
   isDesktop: boolean;
   conversaId: number | null;
   invalidId: boolean;
-  onBack?: () => void;
   onSelect: (conversaId: number) => void;
   onNovaConversa: () => void;
   detalhesOpen: boolean;
@@ -79,18 +82,17 @@ interface EquipePaneProps {
 /** Owns the equipe-chat data + realtime hooks. The parent only mounts this
  * component while `feature_team_chat` is on, so a workspace without the flag
  * never issues the extra `get_equipe_conversas` fetch. `active` then gates
- * whether it actually renders into the list/thread slots -- it keeps its
- * query alive in the background even while the Clientes tab is the one
- * showing, the same way the clientes side never pauses on the Equipe tab. */
+ * whether it actually renders into the list/thread slots -- on desktop it
+ * keeps its query alive in the background even while the Clientes tab is the
+ * one showing, the same way the clientes side never pauses on the Equipe tab.
+ * On phones it renders the list as a root screen under the page header and a
+ * thread inside ThreadPhoneShell, the same frame as the Clientes screens. */
 function EquipePane({
   active,
-  showTabs,
-  activeTab,
-  onTabSelect,
+  tabs,
   isDesktop,
   conversaId,
   invalidId,
-  onBack,
   onSelect,
   onNovaConversa,
   detalhesOpen,
@@ -109,56 +111,92 @@ function EquipePane({
   const conversaAtual =
     conversaId != null ? equipe.conversas.data?.find((c) => c.conversa_id === conversaId) : null;
 
-  function renderThreadSlot() {
-    if (invalidId) return <ThreadNotFound onBack={onBack} />;
-    if (conversaId == null) return <ThreadPlaceholder />;
-    if (equipe.conversas.isLoading) return <ThreadLoading onBack={onBack} />;
+  const lista = (
+    <EquipeConversationList
+      className="min-h-0 min-w-0 flex-1"
+      conversas={equipe.conversas.data ?? []}
+      isLoading={equipe.conversas.isLoading}
+      isError={conversasHardError}
+      selectedConversaId={conversaId}
+      onSelect={onSelect}
+      onNovaConversa={onNovaConversa}
+    />
+  );
+
+  const detalhes = detalhesOpen && conversaAtual && (
+    <EquipeDetalhesSheet conversa={conversaAtual} onClose={onCloseDetalhes} onLeft={onLeftGrupo} />
+  );
+
+  function renderThreadStatus() {
+    if (invalidId) return <ThreadNotFound />;
+    if (equipe.conversas.isLoading) return <ThreadLoading />;
     if (conversasHardError) {
-      return <ThreadLoadError onRetry={() => equipe.conversas.refetch()} onBack={onBack} />;
+      return <ThreadLoadError onRetry={() => equipe.conversas.refetch()} />;
     }
-    if (!conversaAtual) return <ThreadNotFound onBack={onBack} />;
+    return <ThreadNotFound />;
+  }
+
+  if (!isDesktop) {
+    if (conversaId == null && !invalidId) {
+      return (
+        <div className="page-full-bleed flex min-h-0 min-w-0 flex-col">
+          <PhonePageHeader title="Mensagens">{tabs}</PhonePageHeader>
+          {lista}
+        </div>
+      );
+    }
+    if (!conversaAtual || equipe.conversas.isLoading) {
+      return <ThreadPhoneShell title="Mensagens">{renderThreadStatus()}</ThreadPhoneShell>;
+    }
     return (
-      <EquipeThread
-        key={conversaId}
-        conversa={conversaAtual}
-        mensagens={equipe.mensagens}
-        send={equipe.send}
-        markSeen={equipe.markSeen}
-        onBack={onBack}
-        onOpenDetalhes={onOpenDetalhes}
-      />
+      <ThreadPhoneShell
+        title={conversaAtual.display_nome}
+        trailing={
+          <button
+            type="button"
+            onClick={onOpenDetalhes}
+            aria-label="Ver detalhes da conversa"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)]"
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+          >
+            <Users size={18} />
+          </button>
+        }
+      >
+        <EquipeThread
+          key={conversaId}
+          conversa={conversaAtual}
+          mensagens={equipe.mensagens}
+          send={equipe.send}
+          markSeen={equipe.markSeen}
+          hideHeader
+        />
+        {detalhes}
+      </ThreadPhoneShell>
     );
   }
 
-  const showList = isDesktop || (conversaId == null && !invalidId);
-  const showThread = isDesktop || conversaId != null || invalidId;
-
   return (
     <>
-      {showList && (
-        <div
-          className={`flex flex-col ${isDesktop ? LIST_COL_CLASS_DESKTOP : LIST_COL_CLASS_MOBILE}`}
-        >
-          {showTabs && <TabPills activeTab={activeTab} onSelect={onTabSelect} />}
-          <EquipeConversationList
-            className="min-h-0 flex-1"
-            conversas={equipe.conversas.data ?? []}
-            isLoading={equipe.conversas.isLoading}
-            isError={conversasHardError}
-            selectedConversaId={conversaId}
-            onSelect={onSelect}
-            onNovaConversa={onNovaConversa}
-          />
-        </div>
-      )}
-      {showThread && renderThreadSlot()}
-      {detalhesOpen && conversaAtual && (
-        <EquipeDetalhesSheet
+      <div className={`flex flex-col ${LIST_COL_CLASS}`}>
+        {tabs}
+        {lista}
+      </div>
+      {conversaId == null && !invalidId ? (
+        <ThreadPlaceholder />
+      ) : conversaAtual && !equipe.conversas.isLoading ? (
+        <EquipeThread
+          key={conversaId}
           conversa={conversaAtual}
-          onClose={onCloseDetalhes}
-          onLeft={onLeftGrupo}
+          mensagens={equipe.mensagens}
+          send={equipe.send}
+          markSeen={equipe.markSeen}
+          onOpenDetalhes={onOpenDetalhes}
         />
+      ) : (
+        renderThreadStatus()
       )}
+      {detalhes}
     </>
   );
 }
@@ -245,6 +283,10 @@ export default function MensagensPage() {
     clientesOn,
     clientesOn && activeTab === 'clientes',
   );
+  const inToolbar = usePageToolbar({
+    title: 'Mensagens',
+    titleAccessory: <MensagensInfoTooltip />,
+  });
 
   // A failed background refetch (e.g. window refocus, or the seen-marker's
   // post-mount invalidation) keeps `data` populated from the last successful
@@ -264,19 +306,15 @@ export default function MensagensPage() {
     navigate(`/mensagens/${id}`);
   }
 
-  const onBack = !isDesktop ? () => navigate('/mensagens') : undefined;
-
   function renderThreadSlot() {
-    if (invalidId) return <ThreadNotFound onBack={onBack} />;
-    // Only reachable when isDesktop: on mobile with no id, showThread below
-    // is false and the list fills the screen instead.
+    if (invalidId) return <ThreadNotFound />;
     if (clienteId == null) return <ThreadPlaceholder />;
-    if (conversas.isLoading) return <ThreadLoading onBack={onBack} />;
+    if (conversas.isLoading) return <ThreadLoading />;
     if (conversasHardError) {
-      return <ThreadLoadError onRetry={() => conversas.refetch()} onBack={onBack} />;
+      return <ThreadLoadError onRetry={() => conversas.refetch()} />;
     }
     const conversa = conversas.data?.find((c) => c.cliente_id === clienteId);
-    if (!conversa) return <ThreadNotFound onBack={onBack} />;
+    if (!conversa) return <ThreadNotFound />;
     return (
       <ConversationThread
         key={clienteId}
@@ -285,13 +323,9 @@ export default function MensagensPage() {
         sendGeneral={sendGeneral}
         replyToPost={replyToPost}
         clientesById={clientesById}
-        onBack={onBack}
       />
     );
   }
-
-  const showList = isDesktop || (clienteId == null && !invalidId);
-  const showThread = isDesktop || clienteId != null || invalidId;
 
   // A workspace can have either flag on independently. Once the entitlement
   // check has actually resolved (never redirect mid-load, or every deep link
@@ -306,57 +340,111 @@ export default function MensagensPage() {
     }
   }
 
+  const tabs = showTabs ? <TabPills activeTab={activeTab} onSelect={selectTab} /> : null;
+
+  const equipePane = (active: boolean) => (
+    <EquipePane
+      active={active}
+      tabs={tabs}
+      isDesktop={isDesktop}
+      conversaId={equipeConversaId}
+      invalidId={invalidEquipeId}
+      onSelect={(id) => navigate(`/mensagens/equipe/${id}`)}
+      onNovaConversa={() => setNovaConversaOpen(true)}
+      detalhesOpen={detalhesOpen}
+      onOpenDetalhes={() => setDetalhesOpen(true)}
+      onCloseDetalhes={() => setDetalhesOpen(false)}
+      onLeftGrupo={() => {
+        setDetalhesOpen(false);
+        navigate('/mensagens');
+      }}
+    />
+  );
+
+  const novaConversaDialog = equipeOn && (
+    <NovaConversaDialog
+      open={novaConversaOpen}
+      onOpenChange={setNovaConversaOpen}
+      onCreated={(id) => navigate(`/mensagens/equipe/${id}`)}
+    />
+  );
+
+  // Phones (below 768): the list is a root screen with the page header; a thread is a
+  // pushed screen with its own nav bar and composer, and the tab bar hidden. The
+  // Equipe tab renders inside the same frame (EquipePane's phone branch).
+  if (!isDesktop) {
+    if (equipeOn && activeTab === 'equipe') {
+      return (
+        <>
+          {equipePane(true)}
+          {novaConversaDialog}
+        </>
+      );
+    }
+    if (!clientesOn) return null;
+    if (clienteId == null && !invalidId) {
+      return (
+        <MensagensListPhone
+          conversas={conversas.data ?? []}
+          isLoading={conversas.isLoading}
+          isError={conversasHardError}
+          clientesById={clientesById}
+          onSelect={goToConversa}
+          headerExtra={tabs}
+        />
+      );
+    }
+    const conversa =
+      clienteId != null ? conversas.data?.find((c) => c.cliente_id === clienteId) : undefined;
+    if (conversa && !conversas.isLoading) {
+      return (
+        <ConversationThreadPhone
+          key={clienteId}
+          conversa={conversa}
+          feed={feed}
+          sendGeneral={sendGeneral}
+          replyToPost={replyToPost}
+          clientesById={clientesById}
+        />
+      );
+    }
+    return (
+      <ThreadPhoneShell title="Mensagens">
+        {invalidId ? (
+          <ThreadNotFound />
+        ) : conversas.isLoading ? (
+          <ThreadLoading />
+        ) : conversasHardError ? (
+          <ThreadLoadError onRetry={() => conversas.refetch()} />
+        ) : (
+          <ThreadNotFound />
+        )}
+      </ThreadPhoneShell>
+    );
+  }
+
   return (
     <div className="page-full-bleed flex min-h-0">
       {clientesOn && activeTab === 'clientes' && (
         <>
-          {showList && (
-            <div
-              className={`flex flex-col ${isDesktop ? LIST_COL_CLASS_DESKTOP : LIST_COL_CLASS_MOBILE}`}
-            >
-              {showTabs && <TabPills activeTab={activeTab} onSelect={selectTab} />}
-              <ConversationList
-                className="min-h-0 flex-1"
-                conversas={conversas.data ?? []}
-                isLoading={conversas.isLoading}
-                isError={conversasHardError}
-                selectedClienteId={clienteId}
-                clientesById={clientesById}
-                onSelect={goToConversa}
-              />
-            </div>
-          )}
-          {showThread && renderThreadSlot()}
+          <div className={`flex flex-col ${LIST_COL_CLASS}`}>
+            {tabs}
+            <ConversationList
+              className="min-h-0 flex-1"
+              conversas={conversas.data ?? []}
+              isLoading={conversas.isLoading}
+              isError={conversasHardError}
+              selectedClienteId={clienteId}
+              clientesById={clientesById}
+              onSelect={goToConversa}
+              hideTitle={inToolbar}
+            />
+          </div>
+          {renderThreadSlot()}
         </>
       )}
-      {equipeOn && (
-        <EquipePane
-          active={activeTab === 'equipe'}
-          showTabs={showTabs}
-          activeTab={activeTab}
-          onTabSelect={selectTab}
-          isDesktop={isDesktop}
-          conversaId={equipeConversaId}
-          invalidId={invalidEquipeId}
-          onBack={onBack}
-          onSelect={(id) => navigate(`/mensagens/equipe/${id}`)}
-          onNovaConversa={() => setNovaConversaOpen(true)}
-          detalhesOpen={detalhesOpen}
-          onOpenDetalhes={() => setDetalhesOpen(true)}
-          onCloseDetalhes={() => setDetalhesOpen(false)}
-          onLeftGrupo={() => {
-            setDetalhesOpen(false);
-            navigate('/mensagens');
-          }}
-        />
-      )}
-      {equipeOn && (
-        <NovaConversaDialog
-          open={novaConversaOpen}
-          onOpenChange={setNovaConversaOpen}
-          onCreated={(id) => navigate(`/mensagens/equipe/${id}`)}
-        />
-      )}
+      {equipeOn && equipePane(activeTab === 'equipe')}
+      {novaConversaDialog}
     </div>
   );
 }

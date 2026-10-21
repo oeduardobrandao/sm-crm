@@ -1,0 +1,17 @@
+/* HistoryDrawer variant="page" (phones, below 768px): the drawer's sections in the page
+   flow under a nav bar instead of a fixed right-hand panel. Only `phone-history-page*`
+   classes; the Hub imports the CRM stylesheet tree, so nothing here touches shared rules. */
+.phone-history-page {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-history-page__head {
+  margin: 4px 0 12px;
+}
+.phone-history-page__head .history-duration {
+  margin-top: 4px;
+}
+.phone-history-page .drawer-body {
+  overflow: visible;
+  padding: 0 0 24px;
+}

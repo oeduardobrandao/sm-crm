@@ -2,6 +2,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { handleSetFinancialAccess } from "./setFinancialAccess.ts";
+import { removeMember } from "./removeMember.ts";
+import { resolveRoleUpdate, UUID_RE } from "./roleUpdate.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,7 +41,7 @@ Deno.serve(async (req: Request) => {
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const body = await req.json();
-    const { action, targetUserId, role, inviteId } = body;
+    const { action, targetUserId, role, roleId, inviteId } = body;
 
     // --- Accept Invite (called by the invited user themselves, any role) ---
     if (action === "accept-invite") {
@@ -150,9 +153,28 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
     }
 
+    // callerRole stays loaded for the owner-protection guards below (only
+    // owner assigns owner, an owner target can't be touched by a non-owner);
+    // the ACTOR gate itself is now the permission model, not a role literal.
     const callerRole = callerMembership.role;
-    if (callerRole !== "owner" && callerRole !== "admin") {
+    const canManageTeam = await hasPermissionFor(serviceClient, user.id, workspaceId, "equipe", "editar");
+    if (!canManageTeam) {
       return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
+    }
+
+    // update-role specifically requires owner/admin, ON TOP OF equipe:editar.
+    // Spec decision: "atribuição segue dono e admin" -- a custom role (chassis
+    // 'agent') holding equipe:editar can still remove members and manage
+    // invites, but assigning roles/permission sets is reserved for the two
+    // legacy roles that already hold every permission themselves. Without
+    // this, such an actor could set a colleague to the legacy admin preset
+    // (all modules) -- a permission set the actor doesn't hold. remove and
+    // cancel-invite stay on equipe:editar alone.
+    if (action === "update-role" && callerRole !== "owner" && callerRole !== "admin") {
+      return new Response(
+        JSON.stringify({ error: "Apenas donos e admins podem alterar funções." }),
+        { status: 403, headers },
+      );
     }
 
     // --- Cancel Invite (does not require targetUserId) ---
@@ -214,18 +236,29 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "update-role") {
-      const ALLOWED_ROLES = ["owner", "admin", "agent"];
-      if (!role || !ALLOWED_ROLES.includes(role)) {
-        return new Response(JSON.stringify({ error: "role must be one of: owner, admin, agent" }), { status: 400, headers });
+      // roleId (custom role) resolves to a workspace_roles row scoped to this
+      // workspace before the pure decision function runs -- only bother with
+      // the lookup when it looks like a real UUID, matching the
+      // manage-workspace-roles/handler.ts UUID_RE idiom.
+      let targetRoleRow: { id: string; nome: string } | null = null;
+      if (typeof roleId === "string" && UUID_RE.test(roleId)) {
+        const { data: roleRow } = await serviceClient
+          .from("workspace_roles")
+          .select("id, nome")
+          .eq("id", roleId)
+          .eq("conta_id", workspaceId)
+          .maybeSingle();
+        targetRoleRow = roleRow ?? null;
       }
-      // Only owner can assign owner role
-      if (role === "owner" && callerRole !== "owner") {
-        return new Response(JSON.stringify({ error: "Only owner can assign owner role" }), { status: 403, headers });
+
+      const result = resolveRoleUpdate({ role, roleId, callerRole, targetRoleRow });
+      if ("error" in result) {
+        return new Response(JSON.stringify({ error: result.error }), { status: result.status, headers });
       }
 
       const { error: updateError } = await serviceClient
         .from("workspace_members")
-        .update({ role })
+        .update(result.update)
         .eq("user_id", targetUserId)
         .eq("workspace_id", workspaceId);
 
@@ -234,7 +267,7 @@ Deno.serve(async (req: Request) => {
       // Sync role to profiles so the app picks it up immediately
       const { error: profileUpdateError } = await serviceClient
         .from("profiles")
-        .update({ role })
+        .update({ role: result.profileRole })
         .eq("id", targetUserId)
         .eq("conta_id", workspaceId);
 
@@ -246,36 +279,13 @@ Deno.serve(async (req: Request) => {
         action: 'update-role',
         resource_type: 'workspace_member',
         resource_id: targetUserId,
-        metadata: { new_role: role, workspace_id: workspaceId },
+        metadata: { ...result.audit, workspace_id: workspaceId },
       });
 
       return new Response(JSON.stringify({ message: "Permissão atualizada com sucesso." }), { status: 200, headers });
 
     } else if (action === "remove") {
-      // Remove from workspace_members
-      const { error: removeError } = await serviceClient
-        .from("workspace_members")
-        .delete()
-        .eq("user_id", targetUserId)
-        .eq("workspace_id", workspaceId);
-
-      if (removeError) throw removeError;
-
-      // If user's active_workspace_id was this workspace, switch to another or null
-      const { data: otherMembership } = await serviceClient
-        .from("workspace_members")
-        .select("workspace_id")
-        .eq("user_id", targetUserId)
-        .limit(1)
-        .maybeSingle();
-
-      await serviceClient
-        .from("profiles")
-        .update({
-          active_workspace_id: otherMembership?.workspace_id || null,
-          conta_id: otherMembership?.workspace_id || null,
-        })
-        .eq("id", targetUserId);
+      await removeMember(serviceClient, { targetUserId, workspaceId });
 
       await insertAuditLog(serviceClient, {
         conta_id: workspaceId,

@@ -104,7 +104,7 @@ describe('ClientePostCalendar', () => {
       onSelectDay: vi.fn(),
       postUpdating: null,
       onPostStatusUpdate: vi.fn(),
-      onOpenCard: vi.fn(),
+      onOpenPost: vi.fn(),
     };
   }
 
@@ -121,7 +121,43 @@ describe('ClientePostCalendar', () => {
     expect(screen.getByText('Posts Agosto')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Abrir publicação/i }));
-    expect(props.onOpenCard).toHaveBeenCalledWith(10);
+    expect(props.onOpenPost).toHaveBeenCalledWith(1, 10);
+  });
+
+  it('labels content posts with neutral format names, not Instagram ones', () => {
+    const props = baseProps();
+    render(
+      <ClientePostCalendar
+        {...props}
+        events={[
+          event({ postId: 1, tipo: 'feed' }),
+          event({ postId: 2, tipo: 'reels' }),
+          event({ postId: 3, tipo: 'carrossel' }),
+          event({ postId: 4, tipo: 'stories' }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('IMAGEM')).toBeInTheDocument();
+    expect(screen.getByText('VÍDEO VERTICAL')).toBeInTheDocument();
+    expect(screen.getByText('CARROSSEL')).toBeInTheDocument();
+    expect(screen.getByText('STORIES')).toBeInTheDocument();
+    expect(screen.queryByText('FEED')).not.toBeInTheDocument();
+    expect(screen.queryByText('REELS')).not.toBeInTheDocument();
+  });
+
+  it('labels a post avulso and opens it with a null workflow id', () => {
+    const props = baseProps();
+    render(
+      <ClientePostCalendar
+        {...props}
+        events={[event({ postId: 7, workflowId: null, workflowTitle: null })]}
+      />,
+    );
+
+    expect(screen.getByText('Post avulso')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Abrir publicação/i }));
+    expect(props.onOpenPost).toHaveBeenCalledWith(7, null);
   });
 
   it('shows the schedule action for an internally-approved post and reports the status update', () => {

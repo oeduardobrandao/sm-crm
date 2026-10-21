@@ -11,10 +11,13 @@ export default defineConfig(({ command }) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@mesaas/app-lifecycle': path.resolve(__dirname, '../../packages/app-lifecycle/index.ts'),
+      '@mesaas/ui': path.resolve(__dirname, '../../packages/ui'),
+      '@mesaas/ios-kit': path.resolve(__dirname, '../../packages/ios-kit'),
     },
   },
   base: command === 'serve' ? '/' : '/admin/',
   build: {
     outDir: '../../dist/admin',
+    manifest: 'build-manifest.json',
   },
 }));

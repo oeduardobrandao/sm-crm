@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { SubscriptionInfo, SubscriptionSummary } from './subscription';
+import type { SubscriptionInfo, SubscriptionSummary, WorkspaceStatusGroup } from './subscription';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -39,7 +39,15 @@ export interface WorkspaceDetail {
   resolved_limits: Record<string, number | null> | null;
   resolved_features: Record<string, boolean> | null;
   subscription: SubscriptionInfo | null;
-  usage: { client_count: number; member_count: number; integration_count: number };
+  usage: {
+    client_count: number;
+    member_count: number;
+    integration_count: number;
+    /** Absent until platform-admin is redeployed with the brand metrics; render as '—'. */
+    instagram_account_count?: number;
+    instagram_account_count_active?: number;
+    storage_used_bytes?: number;
+  };
 }
 
 export interface MemberInfo {
@@ -97,6 +105,12 @@ export interface Plan {
   feature_tiktok: boolean;
   feature_mensagens: boolean;
   feature_instagram_automation: boolean;
+  feature_briefing_audio: boolean;
+  feature_post_processes: boolean;
+  feature_agenda: boolean;
+  feature_multiplatform: boolean;
+  feature_hub_pauta: boolean;
+  feature_crm_vidro: boolean;
   feature_team_chat: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
@@ -137,6 +151,56 @@ export interface GlobalBanner {
   dismissal_count: number;
 }
 
+export type WorkspaceActivityBucket = '7d' | '30d' | 'dormente' | 'nunca';
+export type WorkspaceSortKey =
+  | 'name'
+  | 'plan'
+  | 'client_count'
+  | 'member_count'
+  | 'created_at'
+  | 'last_activity_at';
+export type SortDir = 'asc' | 'desc';
+
+// A `type` literal (not `interface`) so it keeps the implicit string index signature
+// TS grants object-type literals -- adminApi()'s `params` parameter needs that to accept it.
+// This matches every other multi-field adminApi() params shape in this file (see
+// setWorkspaceOverrides below): none of them are declared as `interface`.
+export type ListWorkspacesParams = {
+  search?: string;
+  plan_id?: string;
+  offset?: number;
+  limit?: number;
+  /** Freezes the filtered set to how it looked at this instant (ISO), for multi-call exports. */
+  as_of?: string;
+  /** Subscription status group; mirrors the CASE on p_status in admin_list_workspaces. */
+  status?: WorkspaceStatusGroup;
+  has_overrides?: boolean;
+  activity?: WorkspaceActivityBucket;
+  /** ISO timestamp; created_at >= created_since. */
+  created_since?: string;
+  sort?: WorkspaceSortKey;
+  dir?: SortDir;
+};
+
+export interface ListWorkspacesResponse {
+  workspaces: WorkspaceSummary[];
+  total: number;
+  /** Membership count across the whole filtered set, not just the returned page. */
+  total_members: number;
+  /** Client count across the whole filtered set, not just the returned page. */
+  total_clients: number;
+  /** Workspaces with plan overrides across the whole filtered set, not just the page. */
+  total_with_overrides: number;
+  /**
+   * Connected Instagram accounts across the whole filtered set. Counts every link, including
+   * revoked/expired ones — they still occupy a plan slot until removed. Optional: an admin
+   * deployed against a database still on admin_list_workspaces v6 gets no such key.
+   */
+  total_instagram_accounts?: number;
+  /** Subset of total_instagram_accounts whose authorization is still valid. */
+  total_instagram_accounts_active?: number;
+}
+
 // ─── Column definitions ─────────────────────────────────────
 
 export const RESOURCE_LIMIT_KEYS = [
@@ -155,18 +219,18 @@ export const RESOURCE_LIMIT_KEYS = [
 ] as const;
 
 export const RESOURCE_LIMIT_LABELS: Record<string, string> = {
-  max_clients: 'Max Clients',
-  max_team_members: 'Max Team Members',
-  max_workflow_templates: 'Max Workflow Templates',
-  max_active_workflows_per_client: 'Max Workflows/Client',
-  max_instagram_accounts: 'Max Instagram Accounts',
-  max_leads: 'Max Leads',
-  max_hub_tokens: 'Max Hub Tokens',
-  storage_quota_bytes: 'Storage (bytes)',
-  max_custom_properties_per_template: 'Max Custom Props/Template',
-  max_posts_per_workflow: 'Max Posts/Workflow',
-  max_workspaces_per_user: 'Max Workspaces/User',
-  max_mcp_keys: 'Max MCP Keys',
+  max_clients: 'Máx. de clientes',
+  max_team_members: 'Máx. de membros da equipe',
+  max_workflow_templates: 'Máx. de modelos de fluxo',
+  max_active_workflows_per_client: 'Máx. de fluxos por cliente',
+  max_instagram_accounts: 'Máx. de contas Instagram',
+  max_leads: 'Máx. de leads',
+  max_hub_tokens: 'Máx. de tokens do Hub',
+  storage_quota_bytes: 'Armazenamento (bytes)',
+  max_custom_properties_per_template: 'Máx. de propriedades por modelo',
+  max_posts_per_workflow: 'Máx. de posts por fluxo',
+  max_workspaces_per_user: 'Máx. de workspaces por usuário',
+  max_mcp_keys: 'Máx. de chaves MCP',
 };
 
 export const FEATURE_FLAG_KEYS = [
@@ -192,32 +256,44 @@ export const FEATURE_FLAG_KEYS = [
   'feature_tiktok',
   'feature_mensagens',
   'feature_instagram_automation',
+  'feature_briefing_audio',
+  'feature_post_processes',
+  'feature_agenda',
+  'feature_multiplatform',
+  'feature_hub_pauta',
+  'feature_crm_vidro',
   'feature_team_chat',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_instagram: 'Instagram',
-  feature_instagram_ai: 'Instagram AI',
-  feature_analytics_reports: 'Analytics Reports',
-  feature_best_times: 'Best Times',
-  feature_audience_demographics: 'Audience Demographics',
-  feature_hub_portal: 'Hub Portal',
+  feature_instagram_ai: 'IA do Instagram',
+  feature_analytics_reports: 'Relatórios de analytics',
+  feature_best_times: 'Melhores horários',
+  feature_audience_demographics: 'Demografia do público',
+  feature_hub_portal: 'Portal do Hub',
   feature_leads: 'Leads',
-  feature_financial: 'Financial',
-  feature_contracts: 'Contracts',
-  feature_ideas: 'Ideas',
-  feature_workflow_gantt: 'Workflow Gantt',
-  feature_workflow_recurrence: 'Workflow Recurrence',
-  feature_csv_import: 'CSV Import',
-  feature_custom_properties: 'Custom Properties',
-  feature_post_scheduling: 'Post Scheduling',
-  feature_auto_sync_cron: 'Auto Sync Cron',
-  feature_post_tagging: 'Post Tagging',
-  feature_brand_customization: 'Brand Customization',
+  feature_financial: 'Financeiro',
+  feature_contracts: 'Contratos',
+  feature_ideas: 'Ideias',
+  feature_workflow_gantt: 'Gantt de fluxos',
+  feature_workflow_recurrence: 'Recorrência de fluxos',
+  feature_csv_import: 'Importação CSV',
+  feature_custom_properties: 'Propriedades personalizadas',
+  feature_post_scheduling: 'Agendamento de posts',
+  feature_auto_sync_cron: 'Sincronização automática',
+  feature_post_tagging: 'Marcação de posts',
+  feature_brand_customization: 'Personalização de marca',
   feature_mcp: 'MCP (Claude)',
   feature_tiktok: 'TikTok',
   feature_mensagens: 'Mensagens',
-  feature_instagram_automation: 'Instagram Automation',
+  feature_instagram_automation: 'Automação do Instagram',
+  feature_briefing_audio: 'Gravação de áudio',
+  feature_post_processes: 'Processos individuais (Entregas)',
+  feature_agenda: 'Agenda',
+  feature_multiplatform: 'Plataformas por fluxo',
+  feature_hub_pauta: 'Hub: visual Pauta',
+  feature_crm_vidro: 'Visual vidro (CRM desktop)',
   feature_team_chat: 'Chat da equipe',
 };
 
@@ -228,9 +304,9 @@ export const RATE_LIMIT_KEYS = [
 ] as const;
 
 export const RATE_LIMIT_LABELS: Record<string, string> = {
-  rate_instagram_syncs_per_day: 'Instagram Syncs/Day',
-  rate_ai_analyses_per_month: 'AI Analyses/Month',
-  rate_report_generations_per_month: 'Report Generations/Month',
+  rate_instagram_syncs_per_day: 'Sincronizações do Instagram por dia',
+  rate_ai_analyses_per_month: 'Análises de IA por mês',
+  rate_report_generations_per_month: 'Relatórios gerados por mês',
 };
 
 // ─── API Call ─────────────────────────────────────────────────
@@ -274,26 +350,8 @@ export function verifyAdmin() {
   return adminApi<{ is_admin: boolean }>('verify-admin');
 }
 
-export function listWorkspaces(params?: {
-  search?: string;
-  plan_id?: string;
-  offset?: number;
-  limit?: number;
-  /** Freezes the filtered set to how it looked at this instant (ISO timestamp), so a multi-call
-   * paginated export can't have its result set shift underneath it from concurrent signups.
-   * Omit for normal single-call browsing -- it behaves exactly as before. */
-  as_of?: string;
-}) {
-  return adminApi<{
-    workspaces: WorkspaceSummary[];
-    total: number;
-    /** Membership count across the whole filtered set, not just the returned page. */
-    total_members: number;
-    /** Client count across the whole filtered set, not just the returned page. */
-    total_clients: number;
-    /** Workspaces with plan overrides across the whole filtered set, not just the page. */
-    total_with_overrides: number;
-  }>('list-workspaces', params || {});
+export function listWorkspaces(params?: ListWorkspacesParams) {
+  return adminApi<ListWorkspacesResponse>('list-workspaces', params || {});
 }
 
 export function getWorkspace(workspace_id: string) {
@@ -302,6 +360,122 @@ export function getWorkspace(workspace_id: string) {
 
 export function listPlans() {
   return adminApi<{ plans: Plan[] }>('list-plans');
+}
+
+// ─── Depósitos (admin Métricas page) ──────────────────────────
+// Mirror of supabase/functions/platform-admin/deposits-logic.ts. Keep the two in sync by hand.
+
+export type DepositProvider = 'stripe' | 'pagarme';
+
+export interface DepositDayRow {
+  /** Day the funds become available at the provider (YYYY-MM-DD). */
+  date: string;
+  /** Projected day the money reaches the bank account (YYYY-MM-DD). */
+  deposit_on: string;
+  net_cents: number;
+  gross_cents: number;
+  fee_cents: number;
+  count: number;
+  kind: 'payout' | 'projected';
+  manual_withdrawal?: boolean;
+}
+
+export interface DepositMonthRow {
+  /** YYYY-MM */
+  month: string;
+  net_cents: number;
+  gross_cents: number;
+  fee_cents: number;
+  count: number;
+}
+
+export interface ProviderDeposits {
+  configured: boolean;
+  ok: boolean;
+  error?: 'unavailable';
+  /** Pagination hit its cap: `upcoming` is incomplete. */
+  truncated: boolean;
+  balance: { available_cents: number; pending_cents: number; currency: 'brl' } | null;
+  meta: Record<string, string | number | boolean | null>;
+  upcoming: { next30: DepositDayRow[]; byMonth: DepositMonthRow[] };
+  in_transit: { id: string; amount_cents: number; expected_on: string | null; status: string }[];
+  recent: { id: string; date: string; amount_cents: number; status: string }[];
+}
+
+export interface DepositsResponse {
+  generated_at: string;
+  currency: 'brl';
+  summary: {
+    next: { date: string; amount_cents: number; provider: DepositProvider } | null;
+    next_30d_cents: number;
+    waiting_cents: number;
+    /** A configured provider failed: the totals only cover the one that answered. */
+    partial: boolean;
+  };
+  stripe: ProviderDeposits;
+  pagarme: ProviderDeposits;
+}
+
+export function getDeposits() {
+  return adminApi<DepositsResponse>('get-deposits');
+}
+
+// ─── Métricas: histórico (sub-projeto B) ─────────────────────
+
+export interface MetricsMovements {
+  new: number;
+  expansion: number;
+  contraction: number;
+  past_due: number;
+  recovered: number;
+  churn: number;
+  switch: number;
+}
+
+export interface MetricsChurn {
+  logos: number;
+  lost_cents: number;
+  base_logos: number;
+  base_cents: number;
+  logo_pct: number | null;
+  revenue_pct: number | null;
+}
+
+export interface MetricsMonth {
+  month: string;
+  missing: boolean;
+  close_date: string | null;
+  closed: boolean;
+  source: 'cron' | 'backfill' | null;
+  mrr_cents: number | null;
+  arr_cents: number | null;
+  paying_count: number | null;
+  by_provider: { stripe: number; pagarme: number } | null;
+  by_plan: { plan_id: string | null; name: string; mrr_cents: number }[] | null;
+  movements_since: string | null;
+  movements: MetricsMovements | null;
+  churn: MetricsChurn | null;
+}
+
+export interface MetricsHistoryResponse {
+  generated_at: string;
+  first_month: string | null;
+  months: MetricsMonth[];
+}
+
+export interface BackfillReport {
+  months_written: number;
+  months_kept_cron: number;
+  rows_written: number;
+  skipped: { stripe_unmapped: number; pagarme_unmapped: number; pagarme_divergent: number };
+}
+
+export function getMetricsHistory() {
+  return adminApi<MetricsHistoryResponse>('get-metrics-history');
+}
+
+export function backfillMetrics() {
+  return adminApi<BackfillReport>('backfill-metrics');
 }
 
 export interface PayingWorkspace {
@@ -471,7 +645,7 @@ export interface InviteInfo {
   created_at: string;
   accepted_at: string | null;
   expires_at: string | null;
-  invited_by: string;
+  invited_by: string | null;
   silent_add: boolean;
   link_expired: boolean;
   auth_state: InviteAuthState | null;
@@ -544,6 +718,61 @@ export function deleteBanner(banner_id: string) {
   return adminApi<{ message: string }>('delete-banner', { banner_id });
 }
 
+// ─── Popups ─────────────────────────────────────────────────
+
+export type PopupTrigger = 'payment_pending' | 'trial_ending' | 'plan_downgraded';
+export type PopupFrequency = 'once' | 'until_cta' | 'daily';
+
+export interface PopupPage {
+  title: string;
+  eyebrow: string | null;
+  body: string;
+  image_key: string | null;
+  cta_label?: string | null;
+  cta_url?: string | null;
+}
+
+export interface GlobalPopup {
+  id: string;
+  pages: PopupPage[];
+  cta_label: string | null;
+  cta_url: string | null;
+  cta_style: 'ink' | 'brand';
+  secondary_label: string | null;
+  frequency: PopupFrequency;
+  require_ack: boolean;
+  /** Gatilho por situação de cobrança (spec 2026-09-06). Nulo = popup comum. */
+  trigger: PopupTrigger | null;
+  /** Só com trial_ending: dias antes do fim do teste (1 a 60). */
+  trigger_days: number | null;
+  target_mode: 'all' | 'plan' | 'workspace';
+  target_plan_ids: string[] | null;
+  target_workspace_ids: string[] | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  status: 'draft' | 'active' | 'archived';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  counts: { seen: number; closed: number; cta: number; ack: number };
+}
+
+export function listPopups(params?: { status?: string }) {
+  return adminApi<{ popups: GlobalPopup[] }>('list-popups', params || {});
+}
+
+export function createPopup(params: Record<string, unknown>) {
+  return adminApi<{ popup: GlobalPopup }>('create-popup', params);
+}
+
+export function updatePopup(params: Record<string, unknown>) {
+  return adminApi<{ popup: GlobalPopup }>('update-popup', params);
+}
+
+export function deletePopup(popup_id: string) {
+  return adminApi<{ message: string }>('delete-popup', { popup_id });
+}
+
 // ─── Workspace Events ───────────────────────────────────────
 
 export interface WorkspaceEvent {
@@ -613,6 +842,10 @@ export function deleteKbArticle(article_id: string) {
   return adminApi<{ message: string }>('delete-kb-article', { article_id });
 }
 
+export function reorderKbArticles(items: Array<{ id: string; display_order: number }>) {
+  return adminApi<{ message: string }>('reorder-kb-articles', { items });
+}
+
 export function listKbContextLinks(article_id: string) {
   return adminApi<{ links: KbContextLink[] }>('list-kb-context-links', { article_id });
 }
@@ -623,4 +856,242 @@ export function upsertKbContextLink(params: Record<string, unknown>) {
 
 export function deleteKbContextLink(link_id: string) {
   return adminApi<{ message: string }>('delete-kb-context-link', { link_id });
+}
+
+// ─── KB Vídeos (tutoriais da Central de Ajuda) ──────────────────
+
+export type KbVideoStreamStatus = 'pending' | 'ready' | 'error';
+
+export interface KbVideoSeries {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  display_order: number;
+  status: 'draft' | 'published';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KbVideo {
+  id: number;
+  series_id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  article_id: string | null;
+  display_order: number;
+  status: 'draft' | 'published';
+  stream_uid: string | null;
+  stream_status: KbVideoStreamStatus;
+  stream_upload_expires_at: string | null;
+  duration_seconds: number | null;
+  hls_url: string | null;
+  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listKbVideoSeries() {
+  return adminApi<{ series: KbVideoSeries[] }>('list-kb-video-series');
+}
+
+export function upsertKbVideoSeries(params: Record<string, unknown>) {
+  return adminApi<{ series: KbVideoSeries }>('upsert-kb-video-series', params);
+}
+
+export function deleteKbVideoSeries(series_id: string) {
+  return adminApi<{ message: string }>('delete-kb-video-series', { series_id });
+}
+
+export function listKbVideos() {
+  return adminApi<{ videos: KbVideo[] }>('list-kb-videos');
+}
+
+export function getKbVideo(video_id: number) {
+  return adminApi<{ video: KbVideo }>('get-kb-video', { video_id });
+}
+
+export function upsertKbVideo(params: Record<string, unknown>) {
+  return adminApi<{ video: KbVideo }>('upsert-kb-video', params);
+}
+
+export function deleteKbVideo(video_id: number) {
+  return adminApi<{ message: string }>('delete-kb-video', { video_id });
+}
+
+export function createKbVideoUpload(video_id: number) {
+  return adminApi<{ uploadURL: string; video: KbVideo }>('create-kb-video-upload', { video_id });
+}
+
+export function refreshKbVideo(video_id: number) {
+  return adminApi<{ video: KbVideo }>('refresh-kb-video', { video_id });
+}
+
+export function cancelKbVideoUpload(video_id: number, stream_uid: string) {
+  return adminApi<{ video: KbVideo }>('cancel-kb-video-upload', { video_id, stream_uid });
+}
+
+export function reorderKbVideos(items: Array<{ id: number; display_order: number }>) {
+  return adminApi<{ message: string }>('reorder-kb-videos', { items });
+}
+
+export interface KbViewStatsEntry {
+  views_30d: number;
+  users_30d: number;
+  views_total: number;
+  users_total: number;
+  /** Videos only. */
+  completed?: number;
+}
+
+export interface KbViewStatsResponse {
+  /** Keyed by article uuid. Items with no views are absent. */
+  articles: Record<string, KbViewStatsEntry>;
+  /** Keyed by String(video id). */
+  videos: Record<string, KbViewStatsEntry>;
+}
+
+export function getKbViewStats() {
+  return adminApi<KbViewStatsResponse>('kb-view-stats');
+}
+
+// ─── MCP do Admin (conector platform-admin) ────────────────────
+
+export interface AdminMcpGrant {
+  id: string;
+  user_id: string;
+  email: string | null;
+  client_id: string;
+  scopes: string[];
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export function listAdminMcpGrants() {
+  return adminApi<{ grants: AdminMcpGrant[] }>('list-admin-mcp-grants');
+}
+
+export function revokeAdminMcpGrant(grantId: string) {
+  return adminApi<{ ok: true }>('revoke-admin-mcp-grant', { grant_id: grantId });
+}
+
+// ─── Programa de afiliados ─────────────────────────────────────
+
+export interface AffiliateSummary {
+  referrals_count: number;
+  trialing_count: number;
+  paying_count: number;
+  pending_cents: number;
+  available_cents: number;
+  paid_out_cents: number;
+  lifetime_cents: number;
+}
+
+export interface AffiliateStripeFields {
+  stripe_account_id: string | null;
+  stripe_details_submitted: boolean;
+  stripe_transfers_active: boolean;
+}
+
+export interface AffiliateListItem extends AffiliateStripeFields {
+  id: string;
+  code: string;
+  nome: string;
+  email: string;
+  status: 'active' | 'suspended';
+  created_at: string;
+  summary: AffiliateSummary;
+}
+
+export interface AffiliateCommissionRuleRow {
+  plan_id: string;
+  plan_name: string;
+  price_brl: number | null;
+  rate_bps: number;
+  months: number;
+  /** false = plano pago sem regra (não gera comissão). */
+  configured: boolean;
+}
+
+export interface AffiliateDetail {
+  affiliate: AffiliateStripeFields & {
+    id: string;
+    code: string;
+    nome: string;
+    email: string;
+    telefone: string | null;
+    status: 'active' | 'suspended';
+    stripe_status_checked_at: string | null;
+    terms_accepted_at: string;
+    created_at: string;
+  };
+  summary: AffiliateSummary;
+  referrals: Array<{
+    workspace_id: string;
+    workspace_name: string | null;
+    created_at: string;
+    provider: string | null;
+    status: string | null;
+    plan_id: string | null;
+    billing_interval: string | null;
+  }>;
+  commissions: Array<{
+    id: string;
+    workspace_id: string | null;
+    workspace_name: string | null;
+    stripe_invoice_id: string;
+    invoice_amount_cents: number;
+    plan_id: string | null;
+    billing_reason: string | null;
+    commissionable_cents: number;
+    covered_months: number;
+    rate_bps: number;
+    commission_cents: number;
+    refunded_amount_cents: number;
+    disputed: boolean;
+    net_cents: number;
+    paid_at: string;
+    available_at: string;
+  }>;
+  payouts: Array<{
+    id: string;
+    amount_cents: number;
+    status: 'pending' | 'paid' | 'failed';
+    stripe_account_id: string;
+    stripe_transfer_id: string | null;
+    failure_code: string | null;
+    created_at: string;
+    paid_at: string | null;
+  }>;
+}
+
+export type UpdateAffiliateCommissionRuleParams = {
+  plan_id: string;
+  rate_bps: number;
+  months: number;
+};
+
+export function listAffiliates() {
+  return adminApi<{ affiliates: AffiliateListItem[]; rules: AffiliateCommissionRuleRow[] }>(
+    'list-affiliates',
+  );
+}
+
+export function getAffiliate(affiliateId: string) {
+  return adminApi<AffiliateDetail>('get-affiliate', { affiliate_id: affiliateId });
+}
+
+export function updateAffiliateStatus(affiliateId: string, status: 'active' | 'suspended') {
+  return adminApi<{ affiliate: { id: string; status: string } }>('update-affiliate', {
+    affiliate_id: affiliateId,
+    status,
+  });
+}
+
+export function updateAffiliateCommissionRule(params: UpdateAffiliateCommissionRuleParams) {
+  return adminApi<{ rule: { plan_id: string; rate_bps: number; months: number } }>(
+    'update-affiliate-commission-rule',
+    params,
+  );
 }

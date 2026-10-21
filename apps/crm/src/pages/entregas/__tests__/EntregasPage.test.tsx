@@ -1,6 +1,14 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { Ref } from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
+
+// The phone header now carries the shell's help links and bell (PhonePageHeader); their
+// own suites cover them, and they need the KB query and notifications.
+vi.mock('@/components/layout/PhoneShellHeader', () => ({
+  PhoneShellActions: () => <div data-testid="shell-actions" />,
+}));
 
 vi.mock('../hooks/useEntregasData', () => ({
   useEntregasData: vi.fn(),
@@ -10,11 +18,49 @@ vi.mock('../hooks/useActivePosts', () => ({
   useActivePosts: vi.fn(() => ({ posts: [], isLoading: false })),
 }));
 
+// VistasTabs reads the saved views through this hook (TanStack Query + the
+// store); this suite has no QueryClientProvider, so the hook is stubbed and a
+// test seeds `savedViewsMock.views` to render saved tabs.
+const savedViewsMock = vi.hoisted(() => ({
+  views: [] as { id: string; name: string; query: string; position: number }[],
+}));
+vi.mock('../hooks/useSavedViews', () => ({
+  useSavedViews: () => ({
+    views: savedViewsMock.views,
+    isLoading: false,
+    isError: false,
+    save: vi.fn(),
+    updateQuery: vi.fn(),
+    rename: vi.fn(),
+    remove: vi.fn(),
+  }),
+}));
+
 const storeMocks = vi.hoisted(() => ({
   duplicateWorkflow: vi.fn(),
   getStandalonePost: vi.fn(),
   // Used by the provisional card built from a "mover para outro fluxo" seed.
   getDeadlineInfo: vi.fn(() => ({ estourado: false, urgente: false })),
+  isFinalClientApprovalCycle: vi.fn(() => true),
+  // buildMinhaFila (real in this suite) reads these two pure exports of
+  // store/posts.ts; copies of the originals, since this mock replaces the module.
+  ASSIGNEE_PENDING_POST_STATUSES: [
+    'rascunho',
+    'revisao_interna',
+    'correcao_cliente',
+    'falha_publicacao',
+  ] as const,
+  compareScheduledAtAscNullsLast: (
+    a: { scheduled_at: string | null; id: number },
+    b: { scheduled_at: string | null; id: number },
+  ) => {
+    if (a.scheduled_at == null && b.scheduled_at == null) return a.id - b.id;
+    if (a.scheduled_at == null) return 1;
+    if (b.scheduled_at == null) return -1;
+    if (a.scheduled_at < b.scheduled_at) return -1;
+    if (a.scheduled_at > b.scheduled_at) return 1;
+    return a.id - b.id;
+  },
 }));
 vi.mock('../../../store', () => storeMocks);
 
@@ -22,16 +68,55 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   },
 }));
 
 // Real DropdownMenu needs Radix portal/pointer-capture machinery jsdom doesn't
 // implement; render it flat (same pattern as LeadsPage.atlimit.test.tsx) so the
 // Novo dropdown's items are directly clickable without opening anything first.
+// The Vidro toolbar's view picker is a radio group; the flat mock keeps its one live group's
+// value and handler here so each item renders as a clickable menuitemradio.
+const radioGroup = vi.hoisted(() => ({
+  value: undefined as string | undefined,
+  onValueChange: undefined as ((v: string) => void) | undefined,
+}));
 vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenuRadioGroup: ({
+    children,
+    value,
+    onValueChange,
+    'aria-label': label,
+  }: {
+    children: React.ReactNode;
+    value?: string;
+    onValueChange?: (v: string) => void;
+    'aria-label'?: string;
+  }) => {
+    radioGroup.value = value;
+    radioGroup.onValueChange = onValueChange;
+    return (
+      <div role="group" aria-label={label}>
+        {children}
+      </div>
+    );
+  },
+  DropdownMenuRadioItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={radioGroup.value === value}
+      onClick={() => radioGroup.onValueChange?.(value)}
+    >
+      {children}
+    </button>
+  ),
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  // VistasTabs' per-vista menu (only rendered once a saved vista exists).
+  DropdownMenuSeparator: () => <hr />,
+  DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuItem: ({
     children,
     onClick,
@@ -50,10 +135,15 @@ vi.mock('../components/NewAvulsoDialog', () => ({
     open,
     onClose,
     onCreated,
+    onNeedsManualApply,
   }: {
     open: boolean;
     onClose: () => void;
     onCreated: (post: { id: number }) => void;
+    onNeedsManualApply?: (
+      post: { id: number; titulo: string | null; cliente_id: number | null },
+      template: { id: number },
+    ) => void;
   }) =>
     open ? (
       <div>
@@ -67,12 +157,54 @@ vi.mock('../components/NewAvulsoDialog', () => ({
         >
           Create avulso post
         </button>
+        <button
+          onClick={() => {
+            // Template pré-vinculado com modo_prazo != 'padrao' (spec §3): o
+            // post já foi criado, mas precisa do ApplyProcessDialog manual.
+            onNeedsManualApply?.({ id: 77, titulo: 'Post avulso', cliente_id: 1 }, { id: 9 });
+            onClose();
+          }}
+        >
+          Create avulso post needing manual apply
+        </button>
         <button onClick={onClose}>Close avulso dialog</button>
       </div>
     ) : null,
 }));
 
-vi.mock('../components/EntregasFilters', () => ({
+vi.mock('../components/ApplyProcessDialog', () => ({
+  ApplyProcessDialog: ({
+    onClose,
+    onApplied,
+    post,
+  }: {
+    onClose: () => void;
+    onApplied: (result: { post_id: number }) => void;
+    post: { id: number };
+  }) => (
+    <div>
+      <div>ApplyProcessDialogMock: {post.id}</div>
+      <button onClick={onClose}>Cancel apply process</button>
+      <button
+        onClick={() => {
+          // Mirrors the real dialog's confirm flow (ApplyProcessDialog.tsx):
+          // onApplied() then onClose(), same batch.
+          onApplied({ post_id: post.id });
+          onClose();
+        }}
+      >
+        Apply process
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock('../components/EntregasFilters', async (importOriginal) => ({
+  // The pure helpers the phone header and filters sheet read.
+  countActiveFilters: (await importOriginal<typeof import('../components/EntregasFilters')>())
+    .countActiveFilters,
+  STATUS_OPTIONS: (await importOriginal<typeof import('../components/EntregasFilters')>())
+    .STATUS_OPTIONS,
   EMPTY_FILTERS: {
     filterClientes: [],
     filterMembros: [],
@@ -93,6 +225,7 @@ vi.mock('../components/EntregasFilters', () => ({
     clientes,
     membros,
     mode,
+    trailing,
   }: {
     filters: { filterClientes: number[]; filterMembros: number[]; filterStatus: string[] };
     onChange: (next: {
@@ -103,8 +236,10 @@ vi.mock('../components/EntregasFilters', () => ({
     clientes: Array<{ id: number; nome: string }>;
     membros: Array<{ id: number; nome: string }>;
     mode?: string;
+    trailing?: React.ReactNode;
   }) => (
-    <div>
+    <div data-testid="entregas-filters">
+      {trailing}
       <div>Filters: {filters.filterStatus.join(',')}</div>
       <div>FiltersMode: {mode}</div>
       <div>Clientes: {clientes.length}</div>
@@ -134,42 +269,261 @@ vi.mock('../components/EntregasFilters', () => ({
 vi.mock('../views/KanbanView', () => ({
   KanbanView: ({
     cards,
+    postEntities,
     showExample,
     onDismissExample,
     onCardClick,
     onEditClick,
     onPostsClick,
     onRecurring,
+    onCreateTemplate,
+    createTemplateDisabled,
   }: {
     cards: Array<{ workflow: { id: number; titulo: string } }>;
+    postEntities?: Array<{ id: string }>;
     showExample?: boolean;
     onDismissExample?: () => void;
     onCardClick: (card: unknown) => void;
     onEditClick: (card: unknown) => void;
     onPostsClick: (card: unknown) => void;
     onRecurring: (workflowId: number) => void;
+    onCreateTemplate?: () => void;
+    createTemplateDisabled?: boolean;
   }) =>
     showExample ? (
       <div>
         <div>Posts de Agosto</div>
         <button onClick={onDismissExample}>Ocultar exemplo</button>
       </div>
-    ) : cards.length === 0 ? (
+    ) : cards.length === 0 && !postEntities?.length ? (
       <div>Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.</div>
     ) : (
       <div>
-        <div>Kanban view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
-        <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
-        <button onClick={() => onCardClick(cards[0])}>Open drawer from card</button>
-        <button onClick={() => onPostsClick(cards[0])}>Open drawer modal</button>
-        <button onClick={() => onRecurring(cards[0].workflow.id)}>Trigger recurring</button>
+        {cards.length > 0 && (
+          <div>Kanban view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+        )}
+        {postEntities?.map((entity) => (
+          <div key={entity.id} data-testid="post-process-card">
+            {entity.id}
+          </div>
+        ))}
+        {onCreateTemplate && (
+          <button onClick={onCreateTemplate} disabled={createTemplateDisabled}>
+            Create new template
+          </button>
+        )}
+        {cards.length > 0 && (
+          <>
+            <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
+            <button onClick={() => onCardClick(cards[0])}>Open drawer from card</button>
+            <button onClick={() => onPostsClick(cards[0])}>Open drawer modal</button>
+            <button onClick={() => onRecurring(cards[0].workflow.id)}>Trigger recurring</button>
+          </>
+        )}
       </div>
     ),
 }));
 
 // EntregasPage now reads profile.conta_id via useAuth; there is no AuthProvider in this suite.
 vi.mock('../../../context/AuthContext', () => ({
-  useAuth: () => ({ profile: { conta_id: 'conta-1', role: 'owner' } }),
+  useAuth: () => ({ profile: { conta_id: 'conta-1', role: 'owner' }, can: () => true }),
+}));
+
+const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    features: limitsMock.features,
+    planName: null,
+    isLoading: false,
+    isUnlimited: false,
+  }),
+}));
+
+vi.mock('@/hooks/useEntitlements', () => ({
+  useEntitlements: () => ({
+    isAtLimit: () => false,
+    hasFeature: () => true,
+    features: {},
+    limits: {},
+    planName: null,
+    isLoading: false,
+  }),
+}));
+
+// SemProcessoSection is real in this suite and its PostStatusChip reads
+// useStatusRegistry, which reaches getPostStatusDefinitions -- absent from
+// storeMocks, and vitest throws on a missing mock export.
+vi.mock('@/hooks/useStatusRegistry', () => ({
+  useStatusRegistry: () => ({
+    resolve: (p: { status: string }) => ({
+      key: p.status,
+      kind: 'canonical',
+      canonical: p.status,
+      label: p.status,
+    }),
+    options: [],
+  }),
+}));
+
+// useCurrentMembro reads getMembros from `@/store` (the same module the literal
+// `../../../store` mock above replaces, without getMembros): stub the hook.
+const currentMembroMock = vi.hoisted(() => ({
+  membro: null as { id: number; nome: string } | null,
+  isLoading: false,
+  isPending: false,
+  isError: false,
+  isSuccess: true,
+}));
+vi.mock('@/hooks/useCurrentMembro', () => ({
+  useCurrentMembro: () => ({ ...currentMembroMock }),
+}));
+
+// jsdom's matchMedia is a stub; the Lista's Responsáveis panel is an inline
+// aside on desktop and a Sheet below 901px. Each test picks the branch.
+const isDesktopMock = vi.hoisted(() => ({ value: true }));
+// Width-aware: `value: true` is a desktop width, `false` the 768-900 compact layout
+// (bottom Sheets). The phone layout (< 768) is `phone: true`.
+const viewportMock = vi.hoisted(() => ({ phone: false }));
+vi.mock('@/hooks/useIsDesktop', () => ({
+  useIsDesktop: (min = 768) => (viewportMock.phone ? 390 : isDesktopMock.value ? 1280 : 800) >= min,
+}));
+// Page-level phone card commands: the board's own instances are covered by the
+// Kanban suites; here they only need to exist.
+vi.mock('../hooks/useWorkflowStageCommands', () => ({
+  useWorkflowStageCommands: () => ({ forward: vi.fn(), revert: vi.fn(), dialogs: null }),
+}));
+vi.mock('../hooks/usePostProcessCommands', () => ({
+  usePostProcessCommands: () => ({
+    avancar: vi.fn(),
+    voltar: vi.fn(),
+    concluir: vi.fn(),
+    reabrir: vi.fn(),
+    remover: vi.fn(),
+    dialogs: null,
+  }),
+}));
+
+// Like FilaMembroPicker: the Lista controls (on the tabs line, after the tabs)
+// are unit-tested on their own (ListToolbar.test.tsx / ResponsaveisPanel.test.tsx).
+// The stub keeps the ref wiring: the page hands the toggle's ref to the toolbar to
+// return focus to it when the aside closes.
+vi.mock('../components/ListToolbar', () => ({
+  ListToolbar: ({
+    groupBy,
+    groupByOptions,
+    onGroupByChange,
+    onToggleResponsaveis,
+    responsaveisToggleRef,
+    postados,
+  }: {
+    groupBy: string;
+    groupByOptions: readonly string[];
+    onGroupByChange: (g: string) => void;
+    onToggleResponsaveis: () => void;
+    responsaveisToggleRef?: Ref<HTMLButtonElement>;
+    postados?: { count: number; shown: boolean; onToggle: () => void };
+  }) => (
+    <div>
+      <div>GroupBy: {groupBy}</div>
+      <div>GroupByOptions: {groupByOptions.join(',')}</div>
+      <button onClick={() => onGroupByChange('cliente')}>Agrupar por cliente</button>
+      {postados && (
+        <button onClick={postados.onToggle}>
+          Alternar postados ({postados.count}, {postados.shown ? 'visíveis' : 'ocultos'})
+        </button>
+      )}
+      <button ref={responsaveisToggleRef} onClick={onToggleResponsaveis}>
+        Alternar responsáveis
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock('../components/ResponsaveisPanel', () => ({
+  ResponsaveisPanel: ({
+    counts,
+    selected,
+    onChange,
+    caption,
+    onClose,
+  }: {
+    counts: ReadonlyMap<number, number>;
+    selected: number[];
+    onChange: (ids: number[]) => void;
+    caption: string;
+    onClose?: () => void;
+  }) => (
+    <div>
+      <div>Contagens: {[...counts.entries()].map(([id, n]) => `${id}=${n}`).join(',')}</div>
+      <div>Selecionados: {selected.join(',')}</div>
+      <div>Legenda: {caption}</div>
+      <button onClick={() => onChange([7])}>Marcar membro 7</button>
+      {/* Like the real panel: only the desktop aside gets onClose (its X); the
+          mobile Sheet closes itself. */}
+      {onClose && <button onClick={onClose}>Fechar painel de responsáveis</button>}
+    </div>
+  ),
+}));
+
+// captureEvent is only asserted by the Minha fila analytics tests; the rest of
+// the module stays real.
+const analyticsMock = vi.hoisted(() => ({ captureEvent: vi.fn() }));
+vi.mock('@/lib/analytics', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  captureEvent: analyticsMock.captureEvent,
+}));
+
+vi.mock('../views/MinhaFilaView', () => ({
+  MinhaFilaView: ({
+    fila,
+    membroId,
+    currentMembroId,
+    ordem,
+    isLoading,
+    isError,
+  }: {
+    fila: { items: unknown[] };
+    membroId: number | null;
+    currentMembroId: number | null;
+    ordem?: string;
+    isLoading: boolean;
+    isError: boolean;
+  }) => (
+    <div>
+      <div>
+        Fila view: membro {membroId ?? 'none'} / self {currentMembroId ?? 'none'}
+      </div>
+      <div>Fila ordem: {ordem ?? 'unset'}</div>
+      <div>Fila state: {isError ? 'error' : isLoading ? 'loading' : 'ready'}</div>
+      <div>Fila items: {fila.items.length}</div>
+    </div>
+  ),
+}));
+
+// The member picker lives in the VistasTabs row, outside the view.
+vi.mock('../components/FilaMembroPicker', () => ({
+  FilaMembroPicker: ({ onChange }: { onChange: (id: number | null) => void }) => (
+    <>
+      <button onClick={() => onChange(12)}>Pick member 12</button>
+      <button onClick={() => onChange(null)}>Pick self</button>
+    </>
+  ),
+}));
+
+vi.mock('../components/FilaOrdemPicker', () => ({
+  FilaOrdemPicker: ({
+    ordem,
+    onChange,
+  }: {
+    ordem: string;
+    onChange: (ordem: 'prazo' | 'publicacao') => void;
+  }) => (
+    <>
+      <span>Ordem picker: {ordem}</span>
+      <button onClick={() => onChange('publicacao')}>Order by publicacao</button>
+    </>
+  ),
 }));
 
 // Mock only startEntregasTour (driver.js can't run in jsdom); tourStorageKey stays real so the
@@ -181,8 +535,33 @@ vi.mock('../tour/entregasTour', async (importOriginal) => ({
 }));
 
 vi.mock('../views/ChartView', () => ({
-  ChartView: ({ cards }: { cards: Array<{ workflow: { titulo: string } }> }) => (
-    <div>Chart view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+  ChartView: ({
+    cards,
+    totalCards,
+    filters,
+    onFiltersChange,
+    onCardClick,
+    onGoToView,
+    onGoToKanban,
+  }: {
+    cards: Array<{ workflow: { titulo: string } }>;
+    totalCards: number;
+    filters: Record<string, unknown>;
+    onFiltersChange: (next: Record<string, unknown>) => void;
+    onCardClick: (card: unknown) => void;
+    onGoToView: (view: 'kanban' | 'list') => void;
+    onGoToKanban?: () => void;
+  }) => (
+    <div>
+      <div>Chart view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+      <div>Chart total: {totalCards}</div>
+      <button onClick={() => onFiltersChange({ ...filters, filterPrazo: ['hoje'] })}>
+        Chart KPI vencem hoje
+      </button>
+      <button onClick={() => onCardClick(cards[0])}>Open drawer from chart</button>
+      <button onClick={() => onGoToView('list')}>Chart ver na lista</button>
+      {onGoToKanban && <button onClick={onGoToKanban}>Chart somente fluxos</button>}
+    </div>
   ),
 }));
 
@@ -206,13 +585,16 @@ vi.mock('../views/ListView', () => ({
     cards,
     sort,
     onSortChange,
+    groupBy,
   }: {
     cards: Array<{ workflow: { titulo: string } }>;
     sort: { column: string; direction: 'asc' | 'desc' };
     onSortChange: (next: { column: string; direction: 'asc' | 'desc' }) => void;
+    groupBy?: string;
   }) => (
     <div>
       <div>List view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+      <div>ListGroupBy: {groupBy}</div>
       <div>
         Sort: {sort.column}/{sort.direction}
       </div>
@@ -248,12 +630,18 @@ vi.mock('../views/PostsListView', () => ({
   PostsListView: ({
     posts,
     onFluxoClick,
+    groupBy,
+    hiddenPostados,
   }: {
     posts: unknown[];
     onFluxoClick: (workflowId: number) => void;
+    groupBy?: string;
+    hiddenPostados?: number;
   }) => (
     <div>
       <div>Posts list view: {posts.length}</div>
+      <div>PostsGroupBy: {groupBy}</div>
+      <div>Postados ocultos: {hiddenPostados ?? 0}</div>
       <button onClick={() => onFluxoClick(1)}>Open fluxo from tag</button>
     </div>
   ),
@@ -265,11 +653,13 @@ vi.mock('../components/WorkflowDrawer', () => ({
     onClose,
     initialPostId,
     onOpenWorkflow,
+    onDetachedKeepingProcess,
   }: {
     card: { workflow: { titulo: string } };
     onClose: () => void;
     initialPostId?: number;
     onOpenWorkflow?: (workflowId: number, seed?: unknown) => void;
+    onDetachedKeepingProcess?: (postIds: number[]) => void;
   }) => (
     <div>
       <div>Workflow drawer: {card.workflow.titulo}</div>
@@ -288,6 +678,7 @@ vi.mock('../components/WorkflowDrawer', () => ({
       >
         Move posts to workflow 99 with seed
       </button>
+      <button onClick={() => onDetachedKeepingProcess?.([77])}>Detach keeping process</button>
     </div>
   ),
 }));
@@ -396,6 +787,8 @@ import { useActivePosts } from '../hooks/useActivePosts';
 import { duplicateWorkflow, getStandalonePost } from '../../../store';
 import { toast } from 'sonner';
 import EntregasPage from '../EntregasPage';
+import { toPostEntity } from '../boardEntity';
+import type { PostProcessWithPost } from '../../../store';
 
 const mockedUseEntregasData = vi.mocked(useEntregasData);
 const mockedUseActivePosts = vi.mocked(useActivePosts);
@@ -439,8 +832,8 @@ function DeepLinkProbe() {
   );
 }
 
-function renderPage(initialEntry = '/entregas') {
-  return render(
+function pageTree(initialEntry: string) {
+  return (
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route
@@ -454,17 +847,30 @@ function renderPage(initialEntry = '/entregas') {
           }
         />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
-function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[] }) {
+function renderPage(initialEntry = '/entregas') {
+  return render(pageTree(initialEntry));
+}
+
+function renderEntregasPage(data: {
+  activeWorkflows: unknown[];
+  cards: unknown[];
+  postProcessesVisible?: boolean;
+}) {
   mockedUseEntregasData.mockReturnValue({
     clientes: [],
     membros: [],
     templates: [],
     cards: data.cards,
     activeWorkflows: data.activeWorkflows,
+    postEntities: [],
+    processByPostId: new Map(),
+    concludedPostProcesses: [],
+    activePostProcessCount: 0,
+    postProcessesVisible: data.postProcessesVisible ?? false,
     isLoading: false,
     refresh: vi.fn(),
   } as never);
@@ -473,14 +879,106 @@ function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[]
 
 const wfFixture = { id: 1 };
 
+// Mirrors useEntregasData.test.ts's vigenteFixture: a minimal PostProcessWithPost
+// that toPostEntity accepts, used to hand EntregasPage a real PostEntity (the hook
+// itself is mocked in this suite, so nothing derives it for us).
+const vigenteFixture: PostProcessWithPost = {
+  id: 9,
+  conta_id: 'c',
+  post_id: 77,
+  template_id: null,
+  template_nome: null,
+  assinatura: '',
+  origem_workflow_id: null,
+  origem_descricao: null,
+  estado: 'ativo',
+  motivo_encerramento: null,
+  etapa_atual: 0,
+  modo_prazo: 'padrao',
+  board_position: 0,
+  revisao: 1,
+  created_by: null,
+  created_at: '2026-09-10T00:00:00Z',
+  updated_at: '2026-09-10T00:00:00Z',
+  concluido_em: null,
+  steps: [
+    {
+      id: 1,
+      conta_id: 'c',
+      process_id: 9,
+      ordem: 0,
+      nome: 'Copy',
+      tipo: 'padrao',
+      responsavel_id: null,
+      prazo_dias: null,
+      tipo_prazo: null,
+      prazo_efetivo: null,
+      estado: 'ativo',
+      iniciado_em: null,
+      concluido_em: null,
+      interrompido_em: null,
+      origem_etapa_ordem: null,
+      origem_etapa_nome: null,
+    },
+  ],
+  post: {
+    id: 77,
+    workflow_id: null,
+    cliente_id: 10,
+    cliente_nome: 'Cliente A',
+    workflow_titulo: null,
+    titulo: 'Post X',
+    tipo: 'feed',
+    status: 'rascunho',
+    custom_status_id: null,
+    scheduled_at: null,
+    published_at: null,
+    ig_caption: null,
+    instagram_permalink: null,
+    publish_error: null,
+    publish_error_code: null,
+    ordem: 0,
+    responsavel_id: null,
+    platform: 'instagram',
+    tiktok_publish_status: null,
+    tiktok_publish_error: null,
+    tiktok_post_url: null,
+    instagram_media_id: null,
+    ig_trial_strategy: null,
+    board_ordem: null,
+  },
+} as unknown as PostProcessWithPost;
+
+/** 'YYYY-MM-DD' n days from today, local time — the etapa `data_limite` format. */
+function isoInDays(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
+// Every describe below starts without saved views, at a desktop width.
+beforeEach(() => {
+  savedViewsMock.views = [];
+  viewportMock.phone = false;
+});
+
 describe('EntregasPage', () => {
   beforeEach(() => {
     mockedDuplicateWorkflow.mockReset();
     mockedGetStandalonePost.mockReset();
     mockedToast.success.mockReset();
     mockedToast.error.mockReset();
+    mockedToast.info.mockReset();
     tourMock.startEntregasTour.mockReset();
-    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = false;
+    currentMembroMock.isError = false;
+    currentMembroMock.isSuccess = true;
+    limitsMock.features = null;
     localStorage.clear();
     // The "Como funciona" panel is open by default, and its copy names the same
     // objects the board does ("Publicações", "Fluxos"), which makes the board's
@@ -502,6 +1000,10 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [],
       activeWorkflows: [],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: true,
       refresh: vi.fn(),
     } as never);
@@ -531,6 +1033,10 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 1 }, { id: 2 }],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -562,6 +1068,24 @@ describe('EntregasPage', () => {
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
+  it('opens TemplatesModal from the board\'s own "Create new template" control', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    expect(screen.queryByText('Templates modal')).not.toBeInTheDocument();
+
+    // Distinct from the top-nav "Templates" button covered above: this exercises
+    // KanbanView's own onCreateTemplate -> setTemplatesOpen(true) wiring.
+    fireEvent.click(screen.getByText('Create new template'));
+
+    expect(screen.getByText('Templates modal')).toBeInTheDocument();
+  });
+
+  it('mostra o total de posts individuais no cabeçalho só com a flag ligada', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+    expect(await screen.findByText(/fluxos ativos: 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/posts individuais/)).toBeNull();
+  });
+
   it('opens the Post avulso dialog from the Novo dropdown and switches into Publicações after creating one', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
@@ -578,11 +1102,49 @@ describe('EntregasPage', () => {
     expect(screen.queryByText('NewAvulsoDialogMock')).not.toBeInTheDocument();
   });
 
+  it('reveals the standalone post if the manual apply dialog is cancelled (post was already created)', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    fireEvent.click(screen.getByText('Create avulso post needing manual apply'));
+
+    expect(screen.getByText('ApplyProcessDialogMock: 77')).toBeInTheDocument();
+
+    // Cancelling must NOT just close the dialog -- the post already exists
+    // without a process, so it needs the same reveal as a normal avulso
+    // creation, or it silently vanishes from the Fluxos board (2026-09-12
+    // Codex review finding).
+    fireEvent.click(screen.getByText('Cancel apply process'));
+
+    expect(screen.queryByText('ApplyProcessDialogMock: 77')).not.toBeInTheDocument();
+    expect(screen.getByText('Standalone drawer: 77')).toBeInTheDocument();
+    expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+  });
+
+  it('reveals the post on the Fluxos board (not Publicações) after successfully applying a process manually', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    fireEvent.click(screen.getByText('Create avulso post needing manual apply'));
+    expect(screen.getByText('ApplyProcessDialogMock: 77')).toBeInTheDocument();
+
+    // The real ApplyProcessDialog calls onApplied() then onClose() in the same
+    // batch on success -- the onClose fallback added for the cancel case must
+    // NOT also fire here and override the reveal (2026-09-12 opus review
+    // finding: it did, landing the user in Publicações instead of Fluxos).
+    fireEvent.click(screen.getByText('Apply process'));
+
+    expect(screen.queryByText('ApplyProcessDialogMock: 77')).not.toBeInTheDocument();
+    expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
+    expect(screen.queryByText('Posts kanban view: 0')).not.toBeInTheDocument();
+    expect(screen.queryByText('Standalone drawer: 77')).not.toBeInTheDocument();
+  });
+
   it('keeps the current view when creating a post avulso from an already-Publicações kanban/lista', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
     fireEvent.click(screen.getByText('Lista'));
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Post avulso'));
@@ -610,13 +1172,17 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
 
     renderPage();
 
-    fireEvent.click(screen.getByText('Gráfico'));
+    fireEvent.click(screen.getByText('Visão geral'));
     expect(screen.getByText('Chart view: Fluxo Editorial')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Lista'));
@@ -627,6 +1193,86 @@ describe('EntregasPage', () => {
     fireEvent.click(screen.getByText('Concluídas'));
     expect(screen.getByText('Concluded view')).toBeInTheDocument();
     expect(screen.queryByText(/Filters:/)).not.toBeInTheDocument();
+  });
+
+  it('exposes the view switcher as a tablist and sets the document title', () => {
+    document.title = 'Dashboard | Mesaas';
+    const { unmount } = renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    expect(document.title).toBe('Entregas | Mesaas');
+
+    // Restoring the previous title on unmount is what stops it from leaking
+    // into whatever route the user navigates to next.
+    unmount();
+    expect(document.title).toBe('Dashboard | Mesaas');
+
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    expect(screen.getByRole('tablist', { name: 'Modos de visualização' })).toBeInTheDocument();
+    const kanbanTab = screen.getByRole('tab', { name: 'Kanban' });
+    const visaoGeralTab = screen.getByRole('tab', { name: 'Visão geral' });
+    expect(kanbanTab).toHaveAttribute('aria-selected', 'true');
+    expect(visaoGeralTab).toHaveAttribute('aria-selected', 'false');
+
+    fireEvent.click(visaoGeralTab);
+
+    expect(visaoGeralTab).toHaveAttribute('aria-selected', 'true');
+    expect(kanbanTab).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByText('Chart view: Fluxo Editorial')).toBeInTheDocument();
+    // The "de N fluxos" caption counts the whole board, not the filtered slice.
+    expect(screen.getByText('Chart total: 1')).toBeInTheDocument();
+  });
+
+  // The Visão geral KPIs and buckets patch filterPrazo; without the entregas-mode
+  // pipeline reading it, every one of those clicks changed state with no effect.
+  it('applies the prazo filter to the fluxos board, not only to posts', () => {
+    renderEntregasPage({
+      activeWorkflows: [{ id: 1 }, { id: 2 }],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Vence hoje', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7, data_limite: isoInDays(0) },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Vence semana que vem', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7, data_limite: isoInDays(8) },
+        }),
+      ],
+    });
+
+    fireEvent.click(screen.getByText('Visão geral'));
+    expect(screen.getByText('Chart view: Vence hoje, Vence semana que vem')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Chart KPI vencem hoje'));
+
+    expect(screen.getByText('Chart view: Vence hoje')).toBeInTheDocument();
+  });
+
+  it('hydrates the prazo filter for the fluxos board straight from the URL', () => {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [],
+      templates: [],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Vence hoje', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7, data_limite: isoInDays(0) },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Vence semana que vem', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7, data_limite: isoInDays(8) },
+        }),
+      ],
+      activeWorkflows: [{ id: 1 }, { id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+
+    renderPage('/entregas?prazo=hoje');
+
+    expect(screen.getByText('Kanban view: Vence hoje')).toBeInTheDocument();
   });
 
   it('auto-opens the drawer from the query string and supports edit-to-posts flow', async () => {
@@ -640,6 +1286,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -675,6 +1323,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -701,6 +1351,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -728,6 +1380,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -750,6 +1404,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -785,6 +1441,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -813,6 +1471,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [{ id: 1 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       };
@@ -853,6 +1513,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [{ id: 1 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -881,6 +1543,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -904,6 +1568,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -918,6 +1584,156 @@ describe('EntregasPage', () => {
     });
   });
 
+  describe('deep link ?drawer= quando o fluxo não está no quadro', () => {
+    function renderWithBoard(entry: string) {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      return renderPage(entry);
+    }
+
+    it('abre o post avulso quando o post foi desmembrado do fluxo do link', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 5, workflow_id: null } as never);
+      renderWithBoard('/entregas?drawer=99&post=5');
+      expect(await screen.findByText('Standalone drawer: 5')).toBeInTheDocument();
+      expect(mockedGetStandalonePost).toHaveBeenCalledWith(5);
+      expect(screen.getByTestId('current-path')).toHaveTextContent('/entregas');
+    });
+
+    it('avisa quando o post continua em um fluxo fora do quadro, sem entrar em loop', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 5, workflow_id: 99 } as never);
+      renderWithBoard('/entregas?drawer=99&post=5');
+      await waitFor(() =>
+        expect(mockedToast.error).toHaveBeenCalledWith(
+          'Este post está em um fluxo que não aparece mais no quadro.',
+        ),
+      );
+      expect(mockedGetStandalonePost).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/Standalone drawer/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Workflow drawer/)).not.toBeInTheDocument();
+    });
+
+    it('abre o novo fluxo quando o post foi movido para um fluxo que está no quadro', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 5, workflow_id: 1 } as never);
+      renderWithBoard('/entregas?drawer=99&post=5');
+      expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+      expect(mockedGetStandalonePost).toHaveBeenCalledTimes(1);
+      expect(mockedToast.error).not.toHaveBeenCalled();
+    });
+
+    it('avisa uma única vez quando o post foi movido para outro fluxo que também não está no quadro', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 5, workflow_id: 42 } as never);
+      renderWithBoard('/entregas?drawer=99&post=5');
+      await waitFor(() =>
+        expect(mockedToast.error).toHaveBeenCalledWith(
+          'Este post está em um fluxo que não aparece mais no quadro.',
+        ),
+      );
+      expect(mockedToast.error).toHaveBeenCalledTimes(1);
+      expect(mockedGetStandalonePost).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/Workflow drawer/)).not.toBeInTheDocument();
+    });
+
+    it('avisa quando só o fluxo foi pedido e ele não existe', async () => {
+      renderWithBoard('/entregas?drawer=99');
+      await waitFor(() => expect(mockedToast.error).toHaveBeenCalledWith('Fluxo não encontrado'));
+      expect(mockedGetStandalonePost).not.toHaveBeenCalled();
+    });
+
+    it('espera o carregamento antes de decidir que o fluxo não existe', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
+        isLoading: true,
+        isFetching: true,
+        refresh: vi.fn(),
+      } as never);
+      const { rerender } = renderPage('/entregas?drawer=99');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockedToast.error).not.toHaveBeenCalled();
+
+      // Carregamento termina, lista final confirma que o fluxo não existe.
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        isFetching: false,
+        refresh: vi.fn(),
+      } as never);
+      rerender(pageTree('/entregas?drawer=99'));
+      await waitFor(() => expect(mockedToast.error).toHaveBeenCalledWith('Fluxo não encontrado'));
+    });
+
+    it('espera o refetch em background antes de decidir que o fluxo não existe', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        isFetching: true,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?drawer=99');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockedToast.error).not.toHaveBeenCalled();
+    });
+
+    it('continua abrindo o drawer do fluxo quando o card existe', async () => {
+      renderWithBoard('/entregas?drawer=1&post=5');
+      expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+      expect(mockedGetStandalonePost).not.toHaveBeenCalled();
+    });
+
+    it('resolve ?post= de post preso em fluxo fora do quadro com duas consultas e um aviso', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 7, workflow_id: 99 } as never);
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        isFetching: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?post=7');
+      await waitFor(() =>
+        expect(mockedToast.error).toHaveBeenCalledWith(
+          'Este post está em um fluxo que não aparece mais no quadro.',
+        ),
+      );
+      expect(mockedGetStandalonePost).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText(/Standalone drawer/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Workflow drawer/)).not.toBeInTheDocument();
+    });
+  });
+
   it('duplicates recurring workflows and refreshes on success', async () => {
     const refresh = vi.fn();
     mockedDuplicateWorkflow.mockResolvedValue(undefined as never);
@@ -927,6 +1743,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -953,6 +1771,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -1014,7 +1834,7 @@ describe('EntregasPage', () => {
   it('shows the replay control only on the kanban view', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
     expect(screen.getByText(/ver tour novamente/i)).toBeTruthy();
-    fireEvent.click(screen.getByText('Gráfico'));
+    fireEvent.click(screen.getByText('Visão geral'));
     expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
   });
 
@@ -1024,14 +1844,14 @@ describe('EntregasPage', () => {
     expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
     expect(screen.getByText('FiltersMode: entregas')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
 
     expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
     expect(screen.queryByText(/^kanban view:/i)).toBeNull();
     expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
     expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Fluxos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Etapas' }));
     expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
   });
 
@@ -1041,7 +1861,7 @@ describe('EntregasPage', () => {
     fireEvent.click(screen.getByText('Open drawer from card'));
     expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     fireEvent.click(screen.getByText('Open avulso post from kanban'));
 
     expect(screen.queryByText('Workflow drawer: Fluxo Editorial')).not.toBeInTheDocument();
@@ -1051,7 +1871,7 @@ describe('EntregasPage', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
     // Put the page in Publicações mode from the kanban…
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
 
     // …and Lista opens already in Publicações (shared state, not per-view).
@@ -1061,7 +1881,7 @@ describe('EntregasPage', () => {
     expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
 
     // Back to Fluxos in the lista carries into the kanban too.
-    fireEvent.click(screen.getByText('Fluxos'));
+    fireEvent.click(screen.getByText('Etapas'));
     expect(screen.getByText(/^list view:/i)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Kanban'));
     expect(screen.queryByText('Posts kanban view: 0')).toBeNull();
@@ -1078,7 +1898,7 @@ describe('EntregasPage', () => {
     } as never);
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Filter tipo')); // reels only
@@ -1101,6 +1921,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [wfFixture],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -1123,6 +1945,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1150,7 +1974,7 @@ describe('EntregasPage', () => {
     it('persists the active mode per conta whenever it changes', () => {
       renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
-      fireEvent.click(screen.getByText('Publicações'));
+      fireEvent.click(screen.getByText('Status'));
 
       expect(localStorage.getItem('entregas_last_mode_conta-1')).toBe('publicacoes');
     });
@@ -1160,7 +1984,7 @@ describe('EntregasPage', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
     fireEvent.click(screen.getByText('Lista'));
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     fireEvent.click(screen.getByText('Open fluxo from tag'));
 
     expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
@@ -1204,7 +2028,7 @@ describe('EntregasPage', () => {
       ],
     });
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Filter member')); // filterMembros: [7]
@@ -1233,7 +2057,7 @@ describe('EntregasPage', () => {
       ],
     });
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Filter etapa Design'));
@@ -1262,11 +2086,390 @@ describe('EntregasPage', () => {
       ],
     });
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Filter prazo atrasado'));
     expect(screen.getByText('Posts kanban view: 1')).toBeInTheDocument();
+  });
+
+  describe('filtro de entidade', () => {
+    it('flag desligada: sem toggle, sem entidade na URL e sem chave nova no localStorage', () => {
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(screen.queryByRole('radiogroup', { name: 'Entidades do quadro' })).toBeNull();
+      // PathProbe reads the MemoryRouter's own useLocation(), which DOES reflect
+      // setSearchParams -- so this is a real assertion on the synced URL, not
+      // just an inference from the viewQuery unit tests.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      expect(localStorage.getItem('entregas_entidade_conta-1')).toBeNull();
+
+      // Switching views/mode is exactly what would otherwise trigger the
+      // persist effect and the URL sync; confirm the guarantee survives that.
+      fireEvent.click(screen.getByText('Lista'));
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=list$/);
+      expect(localStorage.getItem('entregas_entidade_conta-1')).toBeNull();
+    });
+
+    it('flag ligada e navegador novo: começa em Todos; com entregas_last_mode gravado começa em Fluxos', () => {
+      limitsMock.features = { feature_post_processes: true };
+      renderEntregasPage({
+        activeWorkflows: [wfFixture],
+        cards: [],
+        postProcessesVisible: true,
+      });
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('com entregas_last_mode gravado começa em Fluxos', () => {
+      limitsMock.features = { feature_post_processes: true };
+      localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
+      renderEntregasPage({
+        activeWorkflows: [wfFixture],
+        cards: [],
+        postProcessesVisible: true,
+      });
+      expect(screen.getByRole('radio', { name: 'Fluxos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('?entidade=posts na URL vence a preferência local', () => {
+      limitsMock.features = { feature_post_processes: true };
+      localStorage.setItem('entregas_entidade_conta-1', 'todos');
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        postProcessesVisible: true,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=posts');
+      expect(screen.getByRole('radio', { name: 'Posts individuais' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('em Todos, a seção Sem processo lista só avulsos sem processo vigente e liga useActivePosts', async () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+          {
+            id: 2,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso com processo',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map([[2, {}]]),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        postProcessesVisible: true,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=todos');
+      expect(await screen.findByText('Avulso livre')).toBeInTheDocument();
+      expect(screen.queryByText('Avulso com processo')).toBeNull();
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(true);
+    });
+
+    it('flag desligada: useActivePosts fica em false no Kanban de Fluxos e a seção Sem processo não monta', () => {
+      limitsMock.features = null;
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+      expect(screen.queryByRole('heading', { name: 'Sem processo' })).toBeNull();
+      expect(screen.queryByText('Avulso livre')).toBeNull();
+    });
+
+    it('flag ligada e entidade=fluxos: a seção Sem processo também não monta (spec §4.3: não aparece em Fluxos)', () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        postProcessesVisible: true,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=fluxos');
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+      expect(screen.queryByRole('heading', { name: 'Sem processo' })).toBeNull();
+      expect(screen.queryByText('Avulso livre')).toBeNull();
+    });
+
+    it('link "Somente fluxos" da Visão geral leva ao Kanban E muda entidade para Todos, não só a view', () => {
+      limitsMock.features = { feature_post_processes: true };
+      // Returning user with no explicit ?entidade= in the URL: entidade defaults
+      // to 'fluxos' (spec default for "quem já usou Entregas"). This is exactly
+      // the common case where the ChartView "Somente fluxos" note renders and
+      // its link must actually reveal individual posts, not just switch views.
+      localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
+      renderEntregasPage({
+        activeWorkflows: [wfFixture],
+        cards: [makeCard()],
+        postProcessesVisible: true,
+      });
+
+      expect(screen.getByRole('radio', { name: 'Fluxos' })).toHaveAttribute('aria-checked', 'true');
+
+      fireEvent.click(screen.getByText('Visão geral'));
+      fireEvent.click(screen.getByText('Chart somente fluxos'));
+
+      // 'kanban' is the default view, so serializeEntregasQuery omits it from the
+      // URL; only 'entidade=todos' shows up, confirming the filter itself changed.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?entidade=todos$/);
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('link "Somente fluxos" clicado em modo Publicações também leva ao Kanban de Fluxos, não ao de Publicações', () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        postProcessesVisible: true,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+
+      // Starts on the Visão geral (Chart) tab while mode is 'publicacoes' (e.g. the user
+      // was just looking at the Publicações chart). onGoToKanban must reset `mode` too,
+      // not just `entidade` — otherwise the link lands on the Publicações board.
+      renderPage('/entregas?view=chart&mode=publicacoes');
+
+      fireEvent.click(screen.getByText('Chart somente fluxos'));
+
+      // mode=entregas is the default, so it — like the default view=kanban — is omitted
+      // from the URL; only entidade=todos shows up, same shape as the mode=entregas case.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?entidade=todos$/);
+      expect(screen.getByText(/^Kanban view:/)).toBeInTheDocument();
+      expect(screen.queryByText(/^Posts kanban view:/)).toBeNull();
+      // EntidadeToggle only mounts when mode === 'entregas' (and the flag is on), so this
+      // confirms mode actually flipped back, not just that entidade and the URL did.
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('flag desligada com processo ativo: mostra o toggle de entidade e o card individual', async () => {
+      limitsMock.features = { feature_post_processes: false };
+      const entity = toPostEntity(vigenteFixture, { clientes: [], membros: [] })!;
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        postEntities: [entity],
+        processByPostId: new Map([[77, vigenteFixture]]),
+        concludedPostProcesses: [],
+        activePostProcessCount: 1,
+        postProcessesVisible: true,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas');
+      await screen.findByTestId('post-process-card');
+      expect(screen.getByRole('radiogroup', { name: 'Entidades do quadro' })).toBeInTheDocument();
+      // Criação continua escondida: a seção Sem processo não aparece com a flag desligada.
+      expect(screen.queryByText('Sem processo')).toBeNull();
+      // A asserção acima é vácua sozinha (mockedUseActivePosts já devolve posts: []
+      // neste describe, então SemProcessoSection já se escondia por "total === 0",
+      // independente do gate). Esta é a que de fato prova que semProcessoMode usou
+      // postProcessesEnabled (false aqui), não postProcessesVisible (true aqui, por
+      // haver processo vigente): se EntregasPage.tsx voltasse a gatear por
+      // postProcessesVisible, este valor seria true e a asserção falharia.
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+    });
+
+    describe('revelar card no quadro depois de desmembrar mantendo etapas', () => {
+      const entity = toPostEntity(vigenteFixture, { clientes: [], membros: [] })!;
+
+      function baseData(overrides: Record<string, unknown> = {}) {
+        return {
+          clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+          membros: [{ id: 7, nome: 'Ana' }],
+          templates: [],
+          cards: [
+            makeCard({
+              workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+            }),
+          ],
+          activeWorkflows: [{ id: 2 }],
+          postEntities: [],
+          processByPostId: new Map(),
+          concludedPostProcesses: [],
+          activePostProcessCount: 1,
+          postProcessesVisible: true,
+          isLoading: false,
+          isFetching: false,
+          refresh: vi.fn(),
+          ...overrides,
+        };
+      }
+
+      beforeEach(() => {
+        limitsMock.features = { feature_post_processes: true };
+      });
+
+      it('desmembrar mantendo etapas revela o card: Kanban, Todos, filtros que escondiam limpos, drawer do post aberto', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [entity] }) as never);
+        renderPage('/entregas?drawer=2&clientes=99');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+
+        await screen.findByText('Standalone drawer: 77');
+        expect(screen.getByTestId('current-path')).toHaveTextContent('entidade=todos');
+        expect(screen.getByTestId('current-path')).not.toHaveTextContent('clientes=99');
+        expect(mockedToast.info).toHaveBeenCalledWith(
+          'Filtros removidos para mostrar o post no quadro.',
+        );
+      });
+
+      it('timing guard: não desiste antes de observar um fetch, e revela assim que a entidade chega', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [] }) as never);
+        const { rerender } = renderPage('/entregas?drawer=2');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+        // First pass: entity not found yet, and no fetch has been observed since the
+        // reveal started -- keeps waiting silently instead of giving up immediately.
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+        expect(screen.queryByText('Standalone drawer: 77')).toBeNull();
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: true }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [entity], isFetching: false }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        await screen.findByText('Standalone drawer: 77');
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+      });
+
+      it('timing guard: desiste e toasta erro só depois de observar um fetch em que a entidade ainda não chegou', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [] }) as never);
+        const { rerender } = renderPage('/entregas?drawer=2');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: true }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: false }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        await waitFor(() =>
+          expect(mockedToast.error).toHaveBeenCalledWith(
+            'O post não apareceu no quadro. Recarregue a página.',
+          ),
+        );
+        expect(screen.queryByText('Standalone drawer: 77')).toBeNull();
+      });
+    });
   });
 });
 
@@ -1276,6 +2479,7 @@ describe('EntregasPage — painel "Como funciona"', () => {
   beforeEach(() => {
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
     tourMock.startEntregasTour.mockReset();
+    limitsMock.features = null;
     localStorage.clear();
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0);
@@ -1332,5 +2536,977 @@ describe('EntregasPage — painel "Como funciona"', () => {
 
     expect(screen.getByText(/não se sincronizam/i)).toBeTruthy();
     expect(screen.getByRole('heading', { name: /quem vê o quê/i })).toBeTruthy();
+  });
+});
+
+describe('Publicações: filtros que falam de etapa leem o processo individual', () => {
+  /** Avulso com processo ativo numa etapa de `responsavelId`, e o post cru que a
+   *  aba Publicações lista (o mesmo post_id dos dois lados). */
+  function comProcesso(opts: { responsavelId: number | null; nome?: string; prazo?: string }) {
+    const process = {
+      ...vigenteFixture,
+      steps: [
+        {
+          ...vigenteFixture.steps[0],
+          nome: opts.nome ?? 'Copy',
+          responsavel_id: opts.responsavelId,
+          prazo_efetivo: opts.prazo ?? null,
+        },
+      ],
+    } as unknown as PostProcessWithPost;
+    return {
+      process,
+      entity: toPostEntity(process, { clientes: [], membros: [{ id: 7, nome: 'Ana' } as never] })!,
+    };
+  }
+
+  function mountPublicacoes(process: PostProcessWithPost, entity: ReturnType<typeof toPostEntity>) {
+    mockedUseActivePosts.mockReturnValue({ posts: [process.post], isLoading: false } as never);
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [{ id: 7, nome: 'Ana' }],
+      templates: [],
+      cards: [],
+      activeWorkflows: [],
+      postEntities: [entity],
+      processByPostId: new Map([[77, process]]),
+      concludedPostProcesses: [],
+      activePostProcessCount: 1,
+      postProcessesVisible: true,
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+    renderPage('/entregas?view=list&mode=publicacoes');
+  }
+
+  beforeEach(() => {
+    limitsMock.features = { feature_post_processes: true };
+    localStorage.clear();
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+  });
+
+  it('mantém o avulso quando o responsável filtrado é o da etapa ativa do processo', () => {
+    const { process, entity } = comProcesso({ responsavelId: 7 });
+    mountPublicacoes(process, entity);
+    expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Filter member'));
+
+    // A regressão que este teste tranca: o filtro lia só o card do fluxo, então um
+    // avulso em produção sumia da lista por não ter fluxo nenhum.
+    expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+  });
+
+  it('descarta o avulso quando a etapa ativa é de outro responsável', () => {
+    const { process, entity } = comProcesso({ responsavelId: 99 });
+    mountPublicacoes(process, entity);
+
+    fireEvent.click(screen.getByText('Filter member'));
+
+    expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
+  });
+
+  it('casa o filtro de etapa com o nome da etapa ativa do processo', () => {
+    const { process, entity } = comProcesso({ responsavelId: 7, nome: 'Design' });
+    mountPublicacoes(process, entity);
+
+    fireEvent.click(screen.getByText('Filter etapa Design'));
+
+    expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+  });
+
+  it('casa o filtro de prazo com o prazo da etapa ativa do processo', () => {
+    const { process, entity } = comProcesso({ responsavelId: 7, prazo: isoInDays(-3) });
+    mountPublicacoes(process, entity);
+
+    fireEvent.click(screen.getByText('Filter prazo atrasado'));
+
+    expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+  });
+});
+
+describe('EntregasPage: Minha fila', () => {
+  const membros = [
+    { id: 7, nome: 'Ana' },
+    { id: 12, nome: 'Bruno' },
+  ];
+  function renderFila(entry = '/entregas?view=fila', over: Record<string, unknown> = {}) {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros,
+      templates: [],
+      cards: [makeCard()],
+      activeWorkflows: [wfFixture],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
+      postProcessesVisible: false,
+      isLoading: false,
+      isError: false,
+      refresh: vi.fn(),
+      ...over,
+    } as never);
+    return renderPage(entry);
+  }
+  const openedCalls = () =>
+    analyticsMock.captureEvent.mock.calls.filter(([name]) => name === 'minha_fila_opened');
+
+  beforeEach(() => {
+    limitsMock.features = null;
+    localStorage.clear();
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = false;
+    currentMembroMock.isError = false;
+    currentMembroMock.isSuccess = true;
+    analyticsMock.captureEvent.mockReset();
+  });
+
+  it('has the tab, hides toggles and filters, enables active-posts and writes view=fila', () => {
+    renderFila('/entregas');
+    fireEvent.click(screen.getByRole('tab', { name: 'Minha fila' }));
+    expect(screen.getByText('Fila view: membro 7 / self 7')).toBeInTheDocument();
+    expect(screen.getByText('Fila state: ready')).toBeInTheDocument();
+    expect(screen.queryByText('Etapas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Posts individuais')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Filters:/)).not.toBeInTheDocument();
+    expect(mockedUseActivePosts).toHaveBeenLastCalledWith(true);
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+  });
+
+  it('?view=fila opens with the Minha fila tab active and renders the view', () => {
+    renderFila('/entregas?view=fila');
+    expect(screen.getByRole('tab', { name: 'Minha fila' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('Fila view: membro 7 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+  });
+
+  it('keeps membro=12 from the URL once membros resolved and shows that member', () => {
+    renderFila('/entregas?view=fila&membro=12');
+    expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('normalizes the own id and an unknown id out of the URL', () => {
+    const own = renderFila('/entregas?view=fila&membro=7');
+    expect(screen.getByText('Fila view: membro 7 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+    own.unmount();
+
+    renderFila('/entregas?view=fila&membro=999');
+    expect(screen.getByText('Fila view: membro 7 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+  });
+
+  it('does not touch membro= while membros are still loading, and reports loading', () => {
+    currentMembroMock.membro = null;
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isLoading = true;
+    currentMembroMock.isPending = true;
+    renderFila('/entregas?view=fila&membro=12', { membros: [] });
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('keeps membro=12 across the membros load, then keeps it once they resolve', () => {
+    currentMembroMock.membro = null;
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isLoading = true;
+    currentMembroMock.isPending = true;
+    const view = renderFila('/entregas?view=fila&membro=12', { membros: [] });
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    currentMembroMock.isSuccess = true;
+    currentMembroMock.isLoading = false;
+    mockedUseEntregasData.mockReturnValue({
+      ...mockedUseEntregasData.mock.results.at(-1)!.value,
+      membros,
+    } as never);
+    view.rerender(pageTree('/entregas?view=fila&membro=12'));
+    expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('reports an error when membros or active-posts fail, and keeps the URL intact', () => {
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isError = true;
+    renderFila('/entregas?view=fila&membro=12', { membros: [] });
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('shows loading, not the unlinked state, on a paused membros cold start', () => {
+    // Offline/paused: TanStack isLoading (= isPending && isFetching) is false.
+    currentMembroMock.membro = null;
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = true;
+    renderFila('/entregas?view=fila', { membros: [] });
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(screen.getByText('Fila view: membro none / self none')).toBeInTheDocument();
+  });
+
+  it('shows loading, not an empty queue, while active-posts is paused', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: false,
+      isPending: true,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila&membro=12');
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(openedCalls()).toHaveLength(0);
+  });
+
+  it('shows loading, not an empty queue, while the entregas data is paused', () => {
+    // Offline cold start: workflows/etapas/processos pending but not fetching,
+    // so isLoading (and the page skeleton) is false; posts and membros cached.
+    mockedUseActivePosts.mockReturnValue({
+      posts: [{ id: 1, workflow_id: 1, status: 'rascunho', scheduled_at: null }],
+      isLoading: false,
+      isPending: false,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila', {
+      cards: [],
+      activeWorkflows: [],
+      isLoading: false,
+      isPending: true,
+    });
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(openedCalls()).toHaveLength(0);
+  });
+
+  it('error wins over a paused dependency', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: false,
+      isPending: true,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila', { isError: true });
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
+  });
+
+  it('reports an error when active-posts fails', () => {
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: true });
+    renderFila();
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
+  });
+
+  it('reports an error when the entregas data fails', () => {
+    renderFila('/entregas?view=fila', { isError: true });
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
+  });
+
+  it('picking a member writes membro=; picking yourself drops it', () => {
+    renderFila();
+    fireEvent.click(screen.getByText('Pick member 12'));
+    expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+    fireEvent.click(screen.getByText('Pick self'));
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+  });
+
+  it('a saved vista with membro=12 selects that member', () => {
+    savedViewsMock.views = [
+      { id: 'v1', name: 'Fila do Bruno', query: 'view=fila&membro=12', position: 0 },
+    ];
+    renderFila('/entregas');
+    fireEvent.click(screen.getByRole('button', { name: 'Fila do Bruno' }));
+    expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('builds the fila from the page data and passes it to the view', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [
+        {
+          id: 1,
+          workflow_id: 1,
+          cliente_id: 10,
+          cliente_nome: 'Cliente',
+          workflow_titulo: 'Fluxo Editorial',
+          titulo: 'Post do fluxo',
+          tipo: 'feed',
+          status: 'rascunho',
+          custom_status_id: null,
+          scheduled_at: null,
+          responsavel_id: null,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as never);
+    // makeCard(): etapa.responsavel_id 7 = the logged-in membro.
+    renderFila('/entregas?view=fila', {
+      cards: [makeCard({ allEtapas: [], etapa: { ordem: 0, nome: 'Design', responsavel_id: 7 } })],
+    });
+    expect(screen.getByText('Fila items: 1')).toBeInTheDocument();
+  });
+
+  it('fires minha_fila_opened once per entry: fila, kanban, fila again = twice', () => {
+    renderFila('/entregas?view=fila');
+    expect(openedCalls()).toHaveLength(1);
+    expect(openedCalls()[0][1]).toMatchObject({ membro_is_self: true });
+    fireEvent.click(screen.getByRole('tab', { name: 'Kanban' }));
+    expect(openedCalls()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Minha fila' }));
+    expect(openedCalls()).toHaveLength(2);
+  });
+
+  it('fires minha_fila_opened again when switching member', () => {
+    renderFila('/entregas?view=fila');
+    expect(openedCalls()).toHaveLength(1);
+    fireEvent.click(screen.getByText('Pick member 12'));
+    expect(openedCalls()).toHaveLength(2);
+    expect(openedCalls()[1][1]).toMatchObject({ membro_is_self: false });
+  });
+
+  it('ordem defaults to prazo, persists the pick per conta and is read back on mount', () => {
+    const first = renderFila();
+    expect(screen.getByText('Fila ordem: prazo')).toBeInTheDocument();
+    expect(openedCalls()[0][1]).toMatchObject({ ordem: 'prazo' });
+    fireEvent.click(screen.getByText('Order by publicacao'));
+    expect(screen.getByText('Fila ordem: publicacao')).toBeInTheDocument();
+    expect(screen.getByText('Ordem picker: publicacao')).toBeInTheDocument();
+    expect(localStorage.getItem('entregas_fila_ordem_conta-1')).toBe('publicacao');
+    expect(analyticsMock.captureEvent).toHaveBeenCalledWith('minha_fila_ordem_changed', {
+      ordem: 'publicacao',
+    });
+    first.unmount();
+    renderFila();
+    expect(screen.getByText('Fila ordem: publicacao')).toBeInTheDocument();
+  });
+
+  it('does not fire minha_fila_opened while loading or on error', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: true,
+      isPending: true,
+      isError: false,
+    });
+    const loading = renderFila();
+    expect(openedCalls()).toHaveLength(0);
+    loading.unmount();
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: true });
+    renderFila();
+    expect(openedCalls()).toHaveLength(0);
+  });
+});
+
+describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
+  // No `postResponsaveis` in the fixture on purpose: filterBoardCards only reads
+  // it while filterPostResponsaveis is non-empty, which these tests never set.
+  function renderLista(entry: string, over: Record<string, unknown> = {}) {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [
+        { id: 7, nome: 'Ana' },
+        { id: 8, nome: 'Bruno' },
+      ],
+      templates: [],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Fluxo Ana', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7 },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Fluxo Bruno', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 8 },
+        }),
+      ],
+      activeWorkflows: [wfFixture],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
+      postProcessesVisible: false,
+      isLoading: false,
+      isError: false,
+      refresh: vi.fn(),
+      ...over,
+    } as never);
+    return renderPage(entry);
+  }
+
+  beforeEach(() => {
+    limitsMock.features = null;
+    localStorage.clear();
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    analyticsMock.captureEvent.mockReset();
+    isDesktopMock.value = true;
+  });
+
+  it('lê agrupar= da URL e grava a nova escolha na URL e na preferência da conta', () => {
+    renderLista('/entregas?view=list&agrupar=etapa');
+    expect(screen.getByText('ListGroupBy: etapa')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Agrupar por cliente'));
+
+    expect(screen.getByText('ListGroupBy: cliente')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=list&agrupar=cliente$/,
+    );
+    expect(localStorage.getItem('entregas_list_group_conta-1')).toBe('cliente');
+    expect(analyticsMock.captureEvent).toHaveBeenCalledWith('entregas_lista_agrupar', {
+      agrupar: 'cliente',
+      mode: 'entregas',
+    });
+  });
+
+  it('sem agrupar= na URL, começa pela preferência gravada', () => {
+    localStorage.setItem('entregas_list_group_conta-1', 'nenhum');
+    renderLista('/entregas?view=list');
+    expect(screen.getByText('ListGroupBy: nenhum')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=list&agrupar=nenhum$/,
+    );
+  });
+
+  it('sem URL e sem preferência, agrupa por prazo e deixa a URL limpa', () => {
+    renderLista('/entregas?view=list');
+    expect(screen.getByText('ListGroupBy: prazo')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=list$/);
+  });
+
+  it('na Lista de Fluxos, postagem vale como prazo e não é oferecida', () => {
+    renderLista('/entregas?view=list&agrupar=postagem');
+    expect(screen.getByText('ListGroupBy: prazo')).toBeInTheDocument();
+    expect(
+      screen.getByText('GroupByOptions: prazo,cliente,responsavel,etapa,nenhum'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=list$/);
+  });
+
+  it('em Publicações, postagem é oferecida e aplicada', () => {
+    renderLista('/entregas?view=list&mode=publicacoes&agrupar=postagem');
+    expect(screen.getByText('PostsGroupBy: postagem')).toBeInTheDocument();
+    expect(
+      screen.getByText('GroupByOptions: prazo,postagem,cliente,responsavel,etapa,nenhum'),
+    ).toBeInTheDocument();
+  });
+
+  it('painel: as contagens ignoram o próprio filtro de responsável e marcar filtra a lista', () => {
+    renderLista('/entregas?view=list');
+    expect(screen.queryByText(/Contagens:/)).toBeNull();
+
+    fireEvent.click(screen.getByText('Alternar responsáveis'));
+    expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    expect(screen.getByText('Legenda: Responsável pela etapa atual')).toBeInTheDocument();
+    expect(analyticsMock.captureEvent).toHaveBeenCalledWith('entregas_lista_responsaveis_aberto', {
+      mode: 'entregas',
+    });
+
+    fireEvent.click(screen.getByText('Marcar membro 7'));
+
+    expect(screen.getByText('List view: Fluxo Ana')).toBeInTheDocument();
+    expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    expect(screen.getByText('Selecionados: 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=list&membros=7$/,
+    );
+  });
+
+  it('painel em Publicações conta pelo responsável da etapa e, sem etapa, pelo do próprio post', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [
+        {
+          id: 5,
+          workflow_id: 1,
+          cliente_id: 10,
+          titulo: 'Post do fluxo',
+          tipo: 'feed',
+          status: 'rascunho',
+          responsavel_id: null,
+          scheduled_at: null,
+        },
+        {
+          id: 6,
+          workflow_id: null,
+          cliente_id: 10,
+          titulo: 'Avulso',
+          tipo: 'feed',
+          status: 'rascunho',
+          responsavel_id: 8,
+          scheduled_at: null,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as never);
+    renderLista('/entregas?view=list&mode=publicacoes');
+
+    fireEvent.click(screen.getByText('Alternar responsáveis'));
+
+    expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    expect(screen.getByText('Legenda: Quem está com o post na etapa atual')).toBeInTheDocument();
+  });
+
+  it('no celular o painel abre num Sheet', async () => {
+    isDesktopMock.value = false;
+    renderLista('/entregas?view=list');
+
+    fireEvent.click(screen.getByText('Alternar responsáveis'));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    // O Sheet fecha pelo próprio X: não recebe o X do aside.
+    expect(screen.queryByRole('button', { name: 'Fechar painel de responsáveis' })).toBeNull();
+  });
+
+  it.each([
+    ['desktop', true],
+    ['celular', false],
+  ])(
+    'a barra da Lista aparece uma vez, na linha das abas mas fora da rolagem delas (%s)',
+    (_label, desktop) => {
+      isDesktopMock.value = desktop;
+      renderLista('/entregas?view=list');
+
+      const toggles = screen.getAllByText('Alternar responsáveis');
+      expect(toggles).toHaveLength(1);
+      const toggle = toggles[0];
+      // Fora da rolagem das abas, que escondia a barra no fim da rolagem, mas na
+      // mesma linha flex: o CSS decide se cabe ao lado das abas ou quebra.
+      const tabsRow = screen.getByRole('tablist', { name: 'Modos de visualização' }).parentElement;
+      expect(tabsRow).not.toContainElement(toggle);
+      expect(tabsRow?.parentElement).toContainElement(toggle);
+      // E antes da tabela na ordem do documento.
+      expect(
+        toggle.compareDocumentPosition(screen.getByText(/^List view:/)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    },
+  );
+
+  it('fora da vista Lista a barra não aparece', () => {
+    renderLista('/entregas?view=kanban');
+    expect(screen.queryByText('Alternar responsáveis')).toBeNull();
+  });
+
+  it('fechar o painel lateral pelo X devolve o foco ao botão Responsáveis da barra', () => {
+    renderLista('/entregas?view=list');
+    const toggle = screen.getByText('Alternar responsáveis');
+    fireEvent.click(toggle);
+    const close = screen.getByRole('button', { name: 'Fechar painel de responsáveis' });
+    // É o X quem tem o foco quando o usuário o aciona; fireEvent.click não o move.
+    close.focus();
+    expect(close).toHaveFocus();
+
+    fireEvent.click(close);
+
+    expect(screen.queryByText(/Contagens:/)).toBeNull();
+    expect(toggle).toHaveFocus();
+  });
+
+  it('fechar o Sheet do celular devolve o foco ao botão Responsáveis da barra', async () => {
+    isDesktopMock.value = false;
+    renderLista('/entregas?view=list');
+    const toggle = screen.getByText('Alternar responsáveis');
+    fireEvent.click(toggle);
+    await screen.findByRole('dialog');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // O FocusScope do Radix devolve o foco num setTimeout depois de desmontar.
+    await waitFor(() => expect(toggle).toHaveFocus());
+  });
+
+  describe('postados na Lista de Publicações', () => {
+    const avulso = (id: number, titulo: string, status: string, responsavel_id: number) => ({
+      id,
+      workflow_id: null,
+      cliente_id: 10,
+      titulo,
+      tipo: 'feed',
+      status,
+      responsavel_id,
+      scheduled_at: null,
+    });
+
+    beforeEach(() => {
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          avulso(21, 'Rascunho da Ana', 'rascunho', 7),
+          avulso(22, 'Postado do Bruno', 'postado', 8),
+          avulso(23, 'Postado da Ana', 'postado', 7),
+        ],
+        isLoading: false,
+        isError: false,
+      } as never);
+    });
+
+    it('ficam ocultos por padrão e o botão da barra os mostra, gravando postados=1', () => {
+      renderLista('/entregas?view=list&mode=publicacoes');
+      expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+      expect(screen.getByText('Postados ocultos: 2')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Alternar postados (2, ocultos)'));
+
+      expect(screen.getByText('Posts list view: 3')).toBeInTheDocument();
+      expect(screen.getByText('Postados ocultos: 0')).toBeInTheDocument();
+      expect(screen.getByText('Alternar postados (2, visíveis)')).toBeInTheDocument();
+      expect(screen.getByTestId('current-path')).toHaveTextContent(
+        /^\/entregas\?view=list&mode=publicacoes&postados=1$/,
+      );
+    });
+
+    it('postados=1 na URL abre com eles visíveis', () => {
+      renderLista('/entregas?view=list&mode=publicacoes&postados=1');
+      expect(screen.getByText('Posts list view: 3')).toBeInTheDocument();
+    });
+
+    it('o filtro de status do post decide: com Postado marcado eles aparecem e o botão some', () => {
+      renderLista('/entregas?view=list&mode=publicacoes&pstatus=postado');
+      expect(screen.getByText('Posts list view: 2')).toBeInTheDocument();
+      expect(screen.queryByText(/Alternar postados/)).toBeNull();
+    });
+
+    it('o Kanban de Publicações segue mostrando os postados', () => {
+      renderLista('/entregas?mode=publicacoes');
+      expect(screen.getByText('Posts kanban view: 3')).toBeInTheDocument();
+    });
+
+    it('as contagens do painel Responsáveis seguem o que a Lista mostra', () => {
+      renderLista('/entregas?view=list&mode=publicacoes');
+      fireEvent.click(screen.getByText('Alternar responsáveis'));
+      expect(screen.getByText('Contagens: 7=1')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Alternar postados (2, ocultos)'));
+      expect(screen.getByText('Contagens: 7=2,8=1')).toBeInTheDocument();
+    });
+
+    it('a Lista de Fluxos não tem o botão de postados', () => {
+      renderLista('/entregas?view=list');
+      expect(screen.queryByText(/Alternar postados/)).toBeNull();
+    });
+  });
+});
+
+describe('EntregasPage on phones (< 768px)', () => {
+  beforeEach(() => {
+    viewportMock.phone = true;
+    localStorage.clear();
+    tourMock.startEntregasTour.mockReset();
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+  });
+
+  it('never auto-starts the tour and has no "Ver tour novamente"', () => {
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(tourMock.startEntregasTour).not.toHaveBeenCalled();
+    expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
+  });
+
+  it('replaces the desktop header, tabs and filters with the phone header', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Entregas');
+    expect(screen.getByRole('button', { name: 'Buscar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Filtros' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Modo' })).toBeInTheDocument();
+    // Desktop chrome is gone: the view tablist, the inline pills and the explainer.
+    expect(screen.queryByRole('tablist', { name: 'Modos de visualização' })).toBeNull();
+    expect(screen.queryByText(/^FiltersMode:/)).toBeNull();
+    expect(screen.queryByText('Como funciona esta página')).toBeNull();
+  });
+
+  it('the + button offers Novo fluxo and Post avulso', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: 'Novo' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Novo' });
+    expect(within(sheet).getByRole('button', { name: 'Post avulso' })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Novo fluxo' }));
+    expect(await screen.findByText('WizardMock')).toBeInTheDocument();
+  });
+
+  it('the title menu switches views and reaches Templates and Como funciona', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: /Trocar visualização/ }));
+    const menu = await screen.findByRole('dialog', { name: 'Visualizações' });
+    expect(within(menu).getByText('Visualizações salvas')).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('button', { name: 'Salvar visualização atual' }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole('button', { name: 'Visão geral' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('button', { name: /Exibir como: Visão geral/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Trocar visualização/ }));
+    const again = await screen.findByRole('dialog', { name: 'Visualizações' });
+    fireEvent.click(within(again).getByRole('button', { name: 'Templates' }));
+    expect(await screen.findByText('Templates modal')).toBeInTheDocument();
+  });
+
+  it('filters: the sheet applies, chips show each value, and Limpar clears', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    fireEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Atrasados' }));
+    expect(within(sheet).getByRole('button', { name: /^Ver \d+$/ })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Ver \d+$/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Filtros, 1 ativos' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remover filtro Status: Atrasados' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
+    expect(screen.queryByRole('button', { name: /Remover filtro/ })).toBeNull();
+  });
+});
+
+describe('EntregasPage: Vidro toolbar', () => {
+  beforeEach(() => {
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    tourMock.startEntregasTour.mockReset();
+    limitsMock.features = null;
+    localStorage.clear();
+    // Dismissed explainer: the header shows its "Como funciona" reopen button.
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  function renderInShell(
+    vidroShell: boolean,
+    entry = '/entregas',
+    cards: unknown[] = [makeCard({ deadline: { estourado: true, urgente: false } })],
+  ) {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [],
+      templates: [],
+      cards,
+      activeWorkflows: [wfFixture],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
+      postProcessesVisible: false,
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+    return render(
+      <VidroToolbarHarness vidroShell={vidroShell}>{pageTree(entry)}</VidroToolbarHarness>,
+    );
+  }
+
+  it('fills the toolbar: title, counts subtitle, accessories, actions, Novo and the view tabs', async () => {
+    renderInShell(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Entregas');
+
+    // Title row on top, the counts line under it: the title never has to share its row with them.
+    const heading = h1s[0].closest('.vidro-toolbar-heading');
+    expect(heading).not.toBeNull();
+    const counts = screen.getByText('1 fluxo');
+    expect(counts.closest('.vidro-toolbar-subtitle')?.parentElement).toBe(heading);
+    // Native tooltip: a data-tooltip would be clipped by the subtitle's overflow.
+    expect(counts.closest('[title="Totais gerais, sem filtros"]')).not.toBeNull();
+    // Overdue leads the line as a pill that filters the board.
+    const atrasados = screen.getByRole('button', { name: '1 atrasado' });
+    expect(atrasados.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    expect(atrasados).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText(/fluxos ativos:/)).toBeNull();
+
+    // One help button holds the description, the explainer and the tour.
+    const help = screen.getByRole('button', { name: 'Ajuda' });
+    expect(help.closest('.vidro-toolbar')).not.toBeNull();
+    expect(
+      screen
+        .getByText('Acompanhe o andamento das entregas e fluxos ativos.')
+        .closest('.vidro-toolbar'),
+    ).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar [data-tooltip]')).toBeNull();
+
+    const comoFunciona = screen.getAllByRole('button', { name: /como funciona/i });
+    expect(comoFunciona).toHaveLength(1);
+    expect(comoFunciona[0].closest('.vidro-toolbar')).not.toBeNull();
+    const replay = screen.getAllByRole('button', { name: 'Ver tour novamente' });
+    expect(replay).toHaveLength(1);
+    expect(replay[0].closest('.vidro-toolbar')).not.toBeNull();
+
+    const templates = screen.getAllByRole('button', { name: 'Templates' });
+    expect(templates).toHaveLength(1);
+    expect(templates[0].closest('.vidro-toolbar')).not.toBeNull();
+
+    const novo = screen.getAllByRole('button', { name: 'Novo' });
+    expect(novo).toHaveLength(1);
+    expect(novo[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
+
+    // The view switcher is one dropdown in the toolbar, naming the current view.
+    expect(screen.queryByRole('tablist', { name: 'Modos de visualização' })).toBeNull();
+    const viewPicker = document.querySelector('.vidro-view-picker') as HTMLElement;
+    expect(viewPicker.closest('.vidro-toolbar')).not.toBeNull();
+    expect(viewPicker).toHaveTextContent('Kanban');
+    const views = screen.getByRole('group', { name: 'Modos de visualização' });
+    expect(within(views).getAllByRole('menuitemradio')).toHaveLength(6);
+    expect(within(views).getByRole('menuitemradio', { name: /Kanban/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    // The in-page header is gone, and the vistas row (picker + board toggles) moved into the toolbar.
+    expect(document.querySelector('header.header')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vidro-toolbar')).not.toBeNull();
+  });
+
+  it('filters the board to overdue from the pill and clears it on a second click', async () => {
+    renderInShell(true, '/entregas', [
+      makeCard({
+        workflow: { id: 1, titulo: 'Atrasado A', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: true, urgente: false },
+      }),
+      makeCard({
+        workflow: { id: 2, titulo: 'Em dia B', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: false, urgente: false },
+      }),
+      makeCard({
+        workflow: { id: 3, titulo: 'Urgente C', cliente_id: 10, status: 'ativo' },
+        deadline: { estourado: false, urgente: true },
+      }),
+    ]);
+    expect(
+      await screen.findByText('Kanban view: Atrasado A, Em dia B, Urgente C'),
+    ).toBeInTheDocument();
+
+    const pill = screen.getByRole('button', { name: '1 atrasado' });
+    fireEvent.click(pill);
+    expect(screen.getByText('Kanban view: Atrasado A')).toBeInTheDocument();
+    expect(pill).toHaveAttribute('aria-pressed', 'true');
+
+    // The other pill swaps the filter instead of stacking on it.
+    fireEvent.click(screen.getByRole('button', { name: '1 urgente' }));
+    expect(screen.getByText('Kanban view: Urgente C')).toBeInTheDocument();
+    expect(pill).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: '1 urgente' }));
+    expect(screen.getByText('Kanban view: Atrasado A, Em dia B, Urgente C')).toBeInTheDocument();
+  });
+
+  it('opens the fluxos kanban from a view that cannot show the filter', async () => {
+    renderInShell(true, '/entregas?view=fila');
+    expect(await screen.findByText(/^Fila view:/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '1 atrasado' }));
+
+    expect(await screen.findByText(/^Kanban view:/)).toBeInTheDocument();
+    expect(document.querySelector('.vidro-view-picker')).toHaveTextContent('Kanban');
+    expect(screen.getByRole('button', { name: '1 atrasado' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('puts the vista picker and the Etapas/Status toggle in the toolbar, the busca out of it', async () => {
+    renderInShell(true);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    const etapas = screen.getByRole('button', { name: 'Etapas' });
+    expect(etapas.closest('.vista-tabs__controls')).not.toBeNull();
+    expect(etapas.closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelector('.vista-picker')?.closest('.vidro-toolbar')).not.toBeNull();
+    expect(document.querySelectorAll('.vista-tabs')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Etapas' })).toHaveLength(1);
+    // The busca rides the template tabs row (KanbanView) on the Fluxos board, never the toolbar.
+    expect(
+      screen.queryByPlaceholderText('Buscar fluxo...')?.closest('.vidro-toolbar') ?? null,
+    ).toBeNull();
+  });
+
+  it('puts the busca at the end of the filter pills off the Fluxos board', async () => {
+    renderInShell(true, '/entregas?view=list');
+    expect(await screen.findByText(/^List view:/)).toBeInTheDocument();
+
+    const busca = screen.getByPlaceholderText('Buscar fluxo...');
+    expect(busca.closest('.vidro-toolbar')).toBeNull();
+    expect(busca.closest('[data-testid="entregas-filters"]')).not.toBeNull();
+  });
+
+  it('classic shell keeps the Etapas/Status toggle out of the vista row', async () => {
+    renderInShell(false);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    expect(screen.getByRole('button', { name: 'Etapas' }).closest('.vista-tabs')).toBeNull();
+    expect(document.querySelector('.vista-picker')).toBeNull();
+  });
+
+  it('switches the view from the toolbar dropdown and drops the replay link off the kanban', async () => {
+    renderInShell(true);
+    await screen.findAllByRole('heading', { level: 1 });
+
+    const lista = screen.getByRole('menuitemradio', { name: /Lista/ });
+    expect(lista.closest('.vidro-toolbar')).not.toBeNull();
+    fireEvent.click(lista);
+
+    expect(await screen.findByText(/^List view:/)).toBeInTheDocument();
+    expect(document.querySelector('.vidro-view-picker')).toHaveTextContent('Lista');
+    expect(screen.queryByRole('button', { name: 'Ver tour novamente' })).toBeNull();
+  });
+
+  it('leaves no empty filters row on Minha fila', async () => {
+    const { container } = renderInShell(true, '/entregas?view=fila');
+    expect(await screen.findByText(/^Fila view:/)).toBeInTheDocument();
+
+    expect(container.querySelector('div.flex.flex-wrap.items-center.gap-3')).toBeNull();
+    expect(container.querySelector('div.no-scrollbar.flex-1')).toBeNull();
+  });
+
+  it('keeps the filters but drops the empty view-controls strip on Visão geral', async () => {
+    const { container } = renderInShell(true, '/entregas?view=chart');
+    expect(await screen.findByText(/^Chart view:/)).toBeInTheDocument();
+
+    const row = container.querySelector('div.flex.flex-wrap.items-center.gap-3');
+    expect(row).not.toBeNull();
+    expect(row).toHaveTextContent('FiltersMode:');
+    expect(container.querySelector('div.no-scrollbar.flex-1')).toBeNull();
+  });
+
+  it('keeps the in-page header and tabs when the shell is classic', async () => {
+    renderInShell(false);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Entregas');
+    expect(h1s[0].closest('header.header')).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    const tablist = screen.getByRole('tablist', { name: 'Modos de visualização' });
+    expect(tablist).not.toHaveClass('vidro-seg');
+    expect(screen.getByText(/fluxos ativos: 1/).tagName).toBe('P');
+    expect(document.querySelector('[title="Totais gerais, sem filtros"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: '1 atrasado' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ajuda' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ver tour novamente' })).toBeInTheDocument();
+    expect(document.querySelectorAll('[data-tour="novo-fluxo-btn"]')).toHaveLength(1);
   });
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 /** Sub-pixel rounding slack when comparing scrollLeft against the scroll extents. */
 const EDGE_TOLERANCE = 2;
@@ -42,6 +43,7 @@ export function ScrollableTabs({
   activeKey?: string | number;
   className?: string;
 }) {
+  const { t } = useTranslation('hubBriefing');
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -105,10 +107,18 @@ export function ScrollableTabs({
       {canScrollRight && <span className="hub-tabs-fade hub-tabs-fade-right" aria-hidden="true" />}
 
       {canScrollLeft && (
-        <ScrollButton side="left" label="Ver seções anteriores" onClick={() => scrollByPage(-1)} />
+        <ScrollButton
+          side="left"
+          label={t('tabs.scrollPrev', 'Ver seções anteriores')}
+          onClick={() => scrollByPage(-1)}
+        />
       )}
       {canScrollRight && (
-        <ScrollButton side="right" label="Ver mais seções" onClick={() => scrollByPage(1)} />
+        <ScrollButton
+          side="right"
+          label={t('tabs.scrollNext', 'Ver mais seções')}
+          onClick={() => scrollByPage(1)}
+        />
       )}
     </div>
   );

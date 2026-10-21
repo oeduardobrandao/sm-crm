@@ -176,8 +176,8 @@ CREATE TRIGGER equipe_mensagens_feature_gate
 
 -- ============ NOTIFICACOES ============
 -- ATENCAO: lista copiada da definicao MAIS RECENTE no momento de escrever
--- (hoje 20260815000004_instagram_automation_rpcs.sql, 22 valores) e apenas
--- ACRESCENTA 'team_message'. Este arquivo passa a ser a definicao mais
+-- (hoje 20261011000001_post_references.sql) e apenas ACRESCENTA
+-- 'team_message'. Este arquivo passa a ser a definicao mais
 -- recente: a proxima migration copia DAQUI.
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (
@@ -192,6 +192,9 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (
     'instagram_connected_by_client',
     'post_publish_failed', 'storage_autoclean_report',
     'instagram_automation_failed',
+    'event_invited', 'event_updated', 'event_cancelled', 'event_rsvp', 'event_reminder',
+    'event_client_rsvp', 'event_reschedule_requested', 'event_guest_rsvp',
+    'post_client_reference',
     'team_message'
   )
 );

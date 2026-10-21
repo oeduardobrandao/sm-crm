@@ -72,4 +72,21 @@ describe('AppearancePopover', () => {
     fireEvent.click(screen.getByRole('button', { name: /Aparência/ }));
     expect(screen.queryByRole('button', { name: 'usar cor da marca' })).not.toBeInTheDocument();
   });
+
+  it('arraste do seletor de cor repassa a mesma coalesceKey (um passo só no desfazer)', () => {
+    const onChange = vi.fn();
+    render(
+      <AppearancePopover layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Aparência/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Cor de destaque/ }));
+    const native = screen.getByTestId('estudio-color-native');
+    fireEvent.change(native, { target: { value: '#112233' } });
+    fireEvent.change(native, { target: { value: '#445566' } });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    const [k1, k2] = onChange.mock.calls.map((c) => c[1]);
+    expect(k1).toEqual(expect.any(String));
+    expect(k2).toBe(k1);
+    expect(onChange.mock.calls[1][0].accent).toBe('#445566');
+  });
 });

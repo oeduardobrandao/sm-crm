@@ -234,6 +234,27 @@ describe('instagram service', () => {
       expect(fetchSpy.mock.calls[0][0]).toContain('/instagram-publish/retry/789');
     });
 
+    it('sends no body when clearCollaborators is not requested', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+      await retryInstagramPublish(1);
+      expect((fetchSpy.mock.calls[0][1] as RequestInit).body).toBeUndefined();
+      await retryInstagramPublish(1, {});
+      expect((fetchSpy.mock.calls[1][1] as RequestInit).body).toBeUndefined();
+      await retryInstagramPublish(1, { clearCollaborators: false });
+      expect((fetchSpy.mock.calls[2][1] as RequestInit).body).toBeUndefined();
+    });
+
+    it('sends clearCollaborators: true in the JSON body when requested', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(jsonResponse({ ok: true }));
+      await retryInstagramPublish(1, { clearCollaborators: true });
+      expect(fetchSpy.mock.calls[0][0]).toContain('/instagram-publish/retry/1');
+      expect((fetchSpy.mock.calls[0][1] as RequestInit).body).toBe(
+        JSON.stringify({ clearCollaborators: true }),
+      );
+    });
+
     it('throws on wrong status', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         jsonResponse({ error: 'Apenas posts com falha podem ser reenviados.' }, { status: 422 }),

@@ -3,6 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState, type ReactElement } from 'react';
 
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: {}, isLoading: false }),
+}));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../../../store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../store')>()),
   updateCliente: vi.fn(),
@@ -12,6 +16,7 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+import { toast } from 'sonner';
 import { updateCliente, type Cliente } from '../../../store';
 import { useAuth } from '../../../context/AuthContext';
 import { ClienteEditDialog } from '../ClienteEditDialog';
@@ -76,6 +81,27 @@ describe('ClienteEditDialog', () => {
     expect(screen.queryByText('Valor Mensal')).not.toBeInTheDocument();
   });
 
+  it('hides the Notion URL field for a client that never had one', () => {
+    renderDialog(<ClienteEditDialog cliente={CLIENTE} open onOpenChange={vi.fn()} />);
+    expect(screen.queryByText('URL do Notion')).not.toBeInTheDocument();
+  });
+
+  it('shows and keeps the Notion URL field editable for a client that already has one', async () => {
+    mockedUpdateCliente.mockResolvedValue(undefined);
+    const cliente = { ...CLIENTE, notion_page_url: 'https://notion.so/aurora' };
+    renderDialog(<ClienteEditDialog cliente={cliente} open onOpenChange={vi.fn()} />);
+
+    expect(screen.getByDisplayValue('https://notion.so/aurora')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
+    expect(mockedUpdateCliente).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ notion_page_url: 'https://notion.so/aurora' }),
+    );
+  });
+
   it('rejects a blank name without calling updateCliente', async () => {
     renderDialog(
       <ClienteEditDialog cliente={{ ...CLIENTE, nome: '' }} open onOpenChange={vi.fn()} />,
@@ -96,7 +122,7 @@ describe('ClienteEditDialog', () => {
     await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
     expect(mockedUpdateCliente).toHaveBeenCalledWith(
       42,
-      expect.objectContaining({ nome: 'Aurora Estética' }),
+      expect.objectContaining({ nome: 'Aurora Estética', plataformas_padrao: ['instagram'] }),
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['cliente', 42] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
@@ -112,6 +138,19 @@ describe('ClienteEditDialog', () => {
 
     await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('turns a plan-feature rejection into readable copy instead of the DB code', async () => {
+    mockedUpdateCliente.mockRejectedValue(new Error('feature_disabled:feature_multiplatform'));
+    renderDialog(<ClienteEditDialog cliente={CLIENTE} open onOpenChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O recurso "Plataformas por fluxo" não está disponível no seu plano.',
+      ),
+    );
   });
 
   it('strips valor_mensal from the write payload when access is not true', async () => {

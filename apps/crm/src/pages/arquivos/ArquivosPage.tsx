@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
@@ -38,21 +39,27 @@ import { BulkActionBar } from './components/BulkActionBar';
 import { useSelection } from './hooks/useSelection';
 import { UsageMeter } from '@/components/usage/UsageMeter';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
+import { useAuth } from '@/context/AuthContext';
 import type { SortBy } from './components/FileGrid';
 import type { FileRecord, FolderContents } from './types';
 import type { PostMedia } from '../../store';
 import { openExternalUrl } from '@/utils/security';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { PhoneArquivosView } from './phone/PhoneArquivosView';
+import { PhoneFolderPickerSheet } from './phone/PhoneFolderPickerSheet';
+import { PhoneNameSheet } from './phone/PhoneNameSheet';
 
-function useIsMobile(breakpoint = 900) {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint);
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, [breakpoint]);
-  return isMobile;
+/** `?pasta=<id>` on phones: each folder is a pushed screen with its own history entry. */
+function parseFolderParam(value: string | null): number | null {
+  if (!value) return null;
+  const id = parseInt(value, 10);
+  return isNaN(id) ? null : id;
 }
+
+/** History state marking a folder entry pushed from inside Arquivos (Back pops it). */
+const FOLDER_PUSH_STATE = { arquivosFolderPush: true } as const;
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: 'name', label: 'Nome' },
@@ -61,9 +68,25 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 export default function ArquivosPage() {
-  const isMobile = useIsMobile();
+  // Phone (< 768): the kit view, folders in the URL. Tablet (768-900): the earlier
+  // touch view, unchanged. Desktop (>= 901): folder tree + grid.
+  const isAbovePhone = useIsDesktop(768);
+  const isDesktop = useIsDesktop(901);
+  const isPhone = !isAbovePhone;
+  const isMobile = isAbovePhone && !isDesktop;
+  const inToolbar = usePageToolbar({ title: 'Arquivos' });
   const isOwner = useIsWorkspaceOwner();
-  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
+  const { can } = useAuth();
+  // No role check existed here before Task 14 -- any authenticated member
+  // could upload, create folders, and bulk-delete. AGENT_ROLE_PRESET.
+  // arquivos is 'editar' (lib/permissions.ts), so this preserves full access
+  // for every legacy chassis role; only a CUSTOM role can now differ.
+  const canEditFiles = can('arquivos', 'editar') === true;
+  const [stateFolderId, setCurrentFolderId] = useState<number | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const currentFolderId = isPhone ? parseFolderParam(searchParams.get('pasta')) : stateFolderId;
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortBy>('name');
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
@@ -187,9 +210,12 @@ export default function ArquivosPage() {
   }));
 
   const createFolderMutation = useMutation({
-    mutationFn: (name: string) => createFolder(name, createFolderParent ?? null),
-    onMutate: async (name) => {
-      const parentId = createFolderParent ?? null;
+    // The parent travels with the call: the dialog resets createFolderParent as it closes,
+    // which happens before mutationFn runs (onMutate awaits), so reading the state there
+    // created every subfolder at the root.
+    mutationFn: ({ name, parentId }: { name: string; parentId: number | null }) =>
+      createFolder(name, parentId),
+    onMutate: async ({ name, parentId }) => {
       await queryClient.cancelQueries({ queryKey: ['folder-contents', parentId] });
       const previous = queryClient.getQueryData<FolderContents>(['folder-contents', parentId]);
       queryClient.setQueryData<FolderContents>(['folder-contents', parentId], (old) => {
@@ -373,6 +399,216 @@ export default function ArquivosPage() {
     }
   }
 
+  const selectedSplit = () => {
+    const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+    const folderIds = [...selection.selectedIds].filter((id) =>
+      data?.subfolders.some((f) => f.id === id),
+    );
+    return { fileIds, folderIds };
+  };
+
+  if (isPhone) {
+    const openFolder = (id: number) =>
+      setSearchParams(
+        (prev) => {
+          prev.set('pasta', String(id));
+          return prev;
+        },
+        { state: FOLDER_PUSH_STATE },
+      );
+    const goBack = () => {
+      if ((location.state as { arquivosFolderPush?: boolean } | null)?.arquivosFolderPush) {
+        navigate(-1);
+        return;
+      }
+      // Opened straight on a folder (deep link, reload): replace with the parent.
+      const parentId = breadcrumbs.length >= 2 ? breadcrumbs[breadcrumbs.length - 2].id : null;
+      setSearchParams(
+        (prev) => {
+          if (parentId === null) prev.delete('pasta');
+          else prev.set('pasta', String(parentId));
+          return prev;
+        },
+        { replace: true },
+      );
+    };
+    const deleteTotal =
+      (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0);
+    const blockedCount = deleteConfirm?.blocked?.length ?? 0;
+    const deleteMessage =
+      deleteConfirm?.stage === 'partial'
+        ? `${blockedCount} ${blockedCount === 1 ? 'item está' : 'itens estão'} em uso e ${
+            blockedCount === 1 ? 'não pode' : 'não podem'
+          } ser ${blockedCount === 1 ? 'excluído' : 'excluídos'}.${
+            deleteTotal > 0
+              ? ` Deseja excluir os outros ${deleteTotal}?`
+              : ' Nenhum item pode ser excluído.'
+          }`
+        : `Tem certeza que deseja excluir ${deleteTotal} ${
+            deleteTotal === 1 ? 'item' : 'itens'
+          }? Esta ação não pode ser desfeita.`;
+
+    return (
+      <div className="flex flex-col">
+        <FileUploader
+          folderId={currentFolderId}
+          onUploadComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ['folder-contents', currentFolderId] });
+            queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
+          }}
+          triggerRef={uploaderRef}
+          canUpload={canEditFiles}
+        >
+          <PhoneArquivosView
+            breadcrumbs={breadcrumbs}
+            subfolders={subfolders}
+            files={files}
+            storage={storage}
+            isLoading={isLoading}
+            currentFolderId={currentFolderId}
+            onOpenFolder={openFolder}
+            onBack={goBack}
+            onFileAction={handleFileAction}
+            onUploadClick={() => uploaderRef.current?.openFilePicker()}
+            onCreateFolder={() => setCreateFolderParent(currentFolderId)}
+            onActionComplete={() => {
+              queryClient.invalidateQueries({ queryKey: ['folder-contents', currentFolderId] });
+              queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+            }}
+            selectedIds={selection.selectedIds}
+            selectionCount={selection.count}
+            onToggleSelect={selection.toggle}
+            onClearSelection={selection.clear}
+            onBulkMove={() => setPickerMode('move')}
+            onBulkCopy={() => setPickerMode('copy')}
+            onBulkZip={() => {
+              const { fileIds, folderIds } = selectedSplit();
+              if (folderIds.length === 1 && fileIds.length === 0) {
+                zipMutation.mutate({ folder_id: folderIds[0] });
+              } else {
+                zipMutation.mutate({ file_ids: fileIds });
+              }
+            }}
+            onBulkDelete={() => {
+              const { fileIds, folderIds } = selectedSplit();
+              setDeleteConfirm({ fileIds, folderIds, stage: 'confirm' });
+            }}
+            isBusy={
+              bulkMoveMutation.isPending ||
+              bulkDeleteMutation.isPending ||
+              copyFileMutation.isPending ||
+              copyFolderMutation.isPending ||
+              zipMutation.isPending
+            }
+            onRequestMove={(id) => {
+              selection.clear();
+              selection.toggle(id);
+              setPickerMode('move');
+            }}
+            onRequestCopy={(id) => {
+              selection.clear();
+              selection.toggle(id);
+              setPickerMode('copy');
+            }}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+            canEdit={canEditFiles}
+            isOwner={isOwner}
+          />
+        </FileUploader>
+        <PostMediaLightbox
+          media={lightboxMedia}
+          initialIndex={lightboxIndex}
+          open={lightboxOpen}
+          onOpenChange={setLightboxOpen}
+        />
+        <PhoneNameSheet
+          open={createFolderParent !== undefined}
+          onOpenChange={(open) => {
+            if (!open) setCreateFolderParent(undefined);
+          }}
+          title="Nova pasta"
+          placeholder="Nome da pasta"
+          confirmLabel="Criar"
+          onConfirm={(name) => {
+            createFolderMutation.mutate({ name, parentId: createFolderParent ?? null });
+            setCreateFolderParent(undefined);
+          }}
+        />
+        <PhoneFolderPickerSheet
+          open={pickerMode === 'move'}
+          onOpenChange={(open) => {
+            if (!open) setPickerMode(null);
+          }}
+          title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+          confirmLabel="Mover"
+          isLoading={bulkMoveMutation.isPending}
+          sourceFolderIds={selectedSplit().folderIds}
+          currentFolderId={currentFolderId}
+          onConfirm={(destId) => {
+            const { fileIds, folderIds } = selectedSplit();
+            bulkMoveMutation.mutate({ fileIds, folderIds, destinationId: destId });
+            setPickerMode(null);
+          }}
+        />
+        <PhoneFolderPickerSheet
+          open={pickerMode === 'copy'}
+          onOpenChange={(open) => {
+            if (!open) setPickerMode(null);
+          }}
+          title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+          confirmLabel="Copiar"
+          isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
+          sourceFolderIds={[]}
+          currentFolderId={null}
+          onConfirm={(destId) => {
+            const { fileIds, folderIds } = selectedSplit();
+            for (const fid of fileIds) {
+              copyFileMutation.mutate({ fileId: fid, destinationId: destId });
+            }
+            for (const fid of folderIds) {
+              copyFolderMutation.mutate({ folderId: fid, destinationId: destId });
+            }
+            setPickerMode(null);
+            selection.clear();
+          }}
+        />
+        <PhoneConfirmSheet
+          open={deleteConfirm !== null}
+          title={
+            deleteConfirm?.stage === 'partial'
+              ? 'Alguns itens não podem ser excluídos'
+              : 'Excluir itens?'
+          }
+          message={deleteMessage}
+          onCancel={() => setDeleteConfirm(null)}
+          actions={
+            deleteTotal > 0
+              ? [
+                  {
+                    label: 'Excluir',
+                    destructive: true,
+                    onSelect: () => {
+                      const target = deleteConfirm;
+                      // Cleared first: the partial stage (items in use) reopens the
+                      // sheet with its own copy, and a failure leaves it reopenable.
+                      setDeleteConfirm(null);
+                      if (target) {
+                        bulkDeleteMutation.mutate({
+                          fileIds: target.fileIds,
+                          folderIds: target.folderIds,
+                        });
+                      }
+                    },
+                  },
+                ]
+              : []
+          }
+        />
+      </div>
+    );
+  }
+
   if (isMobile) {
     return (
       <div className="page-full-bleed flex flex-col">
@@ -383,6 +619,7 @@ export default function ArquivosPage() {
             queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
           }}
           triggerRef={uploaderRef}
+          canUpload={canEditFiles}
         >
           <MobileArquivosView
             breadcrumbs={breadcrumbs}
@@ -434,6 +671,7 @@ export default function ArquivosPage() {
               copyFolderMutation.isPending ||
               zipMutation.isPending
             }
+            canEdit={canEditFiles}
           />
         </FileUploader>
         <PostMediaLightbox
@@ -447,7 +685,9 @@ export default function ArquivosPage() {
           onOpenChange={(open) => {
             if (!open) setCreateFolderParent(undefined);
           }}
-          onConfirm={(name) => createFolderMutation.mutate(name)}
+          onConfirm={(name) =>
+            createFolderMutation.mutate({ name, parentId: createFolderParent ?? null })
+          }
         />
         <FolderPickerModal
           open={pickerMode === 'move'}
@@ -568,14 +808,17 @@ export default function ArquivosPage() {
         className="flex flex-col border-r border-[var(--border-color)] bg-[var(--card-bg)] flex-shrink-0"
         style={{ width: 260 }}
       >
-        <div className="px-4 pt-5 pb-3 border-b border-[var(--border-color)]">
-          <h1
-            className="text-xl font-bold text-[var(--text-main)] leading-tight"
-            style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}
-          >
-            Arquivos
-          </h1>
-        </div>
+        {/* The strip only holds the title, so it goes with it under the Vidro toolbar. */}
+        {!inToolbar && (
+          <div className="px-4 pt-5 pb-3 border-b border-[var(--border-color)]">
+            <h1
+              className="text-xl font-bold text-[var(--text-main)] leading-tight"
+              style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}
+            >
+              Arquivos
+            </h1>
+          </div>
+        )}
         <FolderTree
           selectedFolderId={currentFolderId}
           onSelectFolder={setCurrentFolderId}
@@ -615,22 +858,26 @@ export default function ArquivosPage() {
 
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Upload */}
-            <button
-              className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
-              onClick={() => uploaderRef.current?.openFilePicker()}
-            >
-              <Upload className="h-4 w-4" />
-              Enviar arquivo
-            </button>
+            {canEditFiles && (
+              <button
+                className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
+                onClick={() => uploaderRef.current?.openFilePicker()}
+              >
+                <Upload className="h-4 w-4" />
+                Enviar arquivo
+              </button>
+            )}
 
             {/* New folder for current location */}
-            <button
-              onClick={() => setCreateFolderParent(currentFolderId)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-            >
-              <FolderPlus className="h-4 w-4" />
-              Nova pasta
-            </button>
+            {canEditFiles && (
+              <button
+                onClick={() => setCreateFolderParent(currentFolderId)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                <FolderPlus className="h-4 w-4" />
+                Nova pasta
+              </button>
+            )}
 
             {/* Filter popover */}
             <FilterPopover filter={filter} onChange={setFilter} />
@@ -688,6 +935,7 @@ export default function ArquivosPage() {
             queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
           }}
           triggerRef={uploaderRef}
+          canUpload={canEditFiles}
         >
           <div className="flex-1 overflow-y-auto p-5">
             <FileGrid
@@ -719,6 +967,7 @@ export default function ArquivosPage() {
               }}
               onDrop={handleDrop}
               classifySelection={classifySelection}
+              canEdit={canEditFiles}
             />
             {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
               <div className="text-center py-4">
@@ -769,6 +1018,7 @@ export default function ArquivosPage() {
         isMoving={bulkMoveMutation.isPending}
         isCopying={copyFileMutation.isPending || copyFolderMutation.isPending}
         isDeleting={bulkDeleteMutation.isPending}
+        canEdit={canEditFiles}
       />
 
       <PostMediaLightbox
@@ -782,7 +1032,9 @@ export default function ArquivosPage() {
         onOpenChange={(open) => {
           if (!open) setCreateFolderParent(undefined);
         }}
-        onConfirm={(name) => createFolderMutation.mutate(name)}
+        onConfirm={(name) =>
+          createFolderMutation.mutate({ name, parentId: createFolderParent ?? null })
+        }
       />
       <FolderPickerModal
         open={pickerMode === 'move'}

@@ -4,6 +4,7 @@
 // packages/import-parsers/src/types.ts: edge function code must not import
 // from packages/ — deploy bundling only follows paths under
 // supabase/functions/.
+import type { ContentFormat } from "../_shared/platform-registry.ts";
 
 export type ClienteRef = { type: "existing"; clienteId: number } | { type: "created"; sourceKey: string };
 
@@ -37,7 +38,7 @@ export interface CommitPostRow {
   titulo: string;
   conteudo: Record<string, unknown> | null;
   conteudoPlain: string;
-  tipo: "feed" | "reels" | "stories" | "carrossel";
+  tipo: ContentFormat;
   status: string;
   scheduledAt: string | null;
   publishedAt: string | null;

@@ -9,6 +9,9 @@ import {
   mapBestTimes,
 } from "./mappers.ts";
 import { DAY_INDEX } from "../_shared/report-template/render.ts";
+import { BEST_TIMES_TIMEZONE } from "../_shared/sao-paulo-date.ts";
+
+const timezone = BEST_TIMES_TIMEZONE;
 
 // ---------------------------------------------------------------------------
 // Weekday mapping — the silent-failure risk
@@ -60,7 +63,7 @@ Deno.test("mapBestTimes labels grid rows with the same convention", () => {
     () => Array.from({ length: 24 }, (_, h) => (h === 10 ? 1 : 0)),
   );
 
-  const slots = mapBestTimes({ heatmap, counts });
+  const slots = mapBestTimes({ heatmap, counts, timezone });
   assertEquals(slots.length, 7);
   for (const [idx, label] of WRITER_INDEX_TO_LABEL) {
     const slot = slots[idx];
@@ -122,6 +125,7 @@ function realCacheShape() {
     totalPosts: 12,
     labels_days: ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"],
     labels_hours: Array.from({ length: 24 }, (_, h) => `${h}h`),
+    timezone,
   };
 }
 
@@ -145,6 +149,7 @@ Deno.test("mapBestTimes renames topSlots `value` to `avg_engagement`", () => {
       { day: 3, hour: 6, value: 9.9 },
       { day: 1, hour: 19, value: 7.8 },
     ],
+    timezone,
   });
   assertEquals(slots, [
     { day: "Qui", hour: 6, avg_engagement: 9.9 },
@@ -166,10 +171,10 @@ Deno.test("mapBestTimes returns [] for malformed / empty input instead of throwi
   assertEquals(mapBestTimes({}), []);
   assertEquals(mapBestTimes("nonsense"), []);
   assertEquals(mapBestTimes(42), []);
-  assertEquals(mapBestTimes({ heatmap: "not-an-array" }), []);
-  assertEquals(mapBestTimes({ heatmap: null, counts: null }), []);
-  assertEquals(mapBestTimes({ heatmap: [null, 5, {}] }), []);
-  assertEquals(mapBestTimes({ topSlots: "nope" }), []);
+  assertEquals(mapBestTimes({ heatmap: "not-an-array", timezone }), []);
+  assertEquals(mapBestTimes({ heatmap: null, counts: null, timezone }), []);
+  assertEquals(mapBestTimes({ heatmap: [null, 5, {}], timezone }), []);
+  assertEquals(mapBestTimes({ topSlots: "nope", timezone }), []);
   // Rows with an unusable day/hour are dropped, not emitted with a wrong day.
   assertEquals(mapBestTimes([{ day: 99, hour: 1 }, { day: 1, hour: "x" }]), []);
 });
@@ -390,4 +395,10 @@ Deno.test("mapBestTimes drops null rows inside a flat array", () => {
     mapBestTimes([null, { day: 2, hour: 11, value: 4.5 }]),
     [{ day: "Qua", hour: 11, avg_engagement: 4.5 }],
   );
+});
+
+Deno.test("mapBestTimes drops a legacy UTC-bucketed row (no São Paulo marker)", () => {
+  const { timezone: _tz, ...legacy } = realCacheShape();
+  assertEquals(mapBestTimes(legacy), []);
+  assertEquals(mapBestTimes({ ...legacy, timezone: "UTC" }), []);
 });

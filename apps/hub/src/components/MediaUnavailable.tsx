@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ImageOff } from 'lucide-react';
 
 export interface MediaUnavailableProps {
@@ -7,6 +8,7 @@ export interface MediaUnavailableProps {
 }
 
 export function MediaUnavailable({ size = 'full', className = '' }: MediaUnavailableProps) {
+  const { t } = useTranslation('hubPostCard');
   return (
     <div
       className={`flex h-full w-full flex-col items-center justify-center gap-1.5 ${className}`}
@@ -16,7 +18,9 @@ export function MediaUnavailable({ size = 'full', className = '' }: MediaUnavail
         className={size === 'compact' ? 'h-4 w-4 opacity-60' : 'h-6 w-6 opacity-60'}
         aria-hidden="true"
       />
-      {size === 'full' && <span className="text-xs font-medium">Mídia indisponível</span>}
+      {size === 'full' && (
+        <span className="text-xs font-medium">{t('media.unavailable', 'Mídia indisponível')}</span>
+      )}
     </div>
   );
 }

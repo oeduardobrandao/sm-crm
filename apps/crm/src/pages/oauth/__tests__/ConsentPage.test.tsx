@@ -59,9 +59,10 @@ beforeEach(() => {
     data: { redirect_url: 'https://claude.ai/cb?error=denied' },
     error: null,
   });
-  listWorkspaces.mockResolvedValue([
-    { id: 'conta-1', name: 'Agência X', role: 'owner', feature_mcp: true },
-  ]);
+  listWorkspaces.mockResolvedValue({
+    workspaces: [{ id: 'conta-1', name: 'Agência X', role: 'owner', feature_mcp: true }],
+    platform_admin: false,
+  });
   recordGrant.mockResolvedValue({ ok: true });
 });
 
@@ -109,5 +110,59 @@ describe('ConsentPage', () => {
     );
     expect(await screen.findByText(/Pedido de autorização inválido/)).toBeInTheDocument();
     expect(getDetails).not.toHaveBeenCalled();
+  });
+
+  it('mostra "Administração da plataforma" só para platform admins e envia target platform', async () => {
+    listWorkspaces.mockResolvedValue({
+      workspaces: [{ id: 'conta-1', name: 'Agência X', role: 'owner', feature_mcp: true }],
+      platform_admin: true,
+    });
+    renderPage();
+    const adminOption = await screen.findByRole('button', {
+      name: /Administração da plataforma/,
+    });
+    fireEvent.click(adminOption);
+
+    // Escopos trocam para os do admin, com o preset de leitura marcado.
+    expect(screen.getByLabelText('Artigos de suporte (leitura)')).toBeChecked();
+    expect(screen.getByLabelText('Artigos de suporte (escrita)')).not.toBeChecked();
+    expect(screen.queryByLabelText('Posts (leitura)')).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Artigos de suporte (escrita)'));
+    fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+
+    await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+    expect(recordGrant).toHaveBeenCalledWith({
+      authorization_id: 'auth-1',
+      target: 'platform',
+      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read', 'kb:write'],
+    });
+    await waitFor(() => expect(approve).toHaveBeenCalledWith('auth-1'));
+  });
+
+  it('não mostra a opção de administração para quem não é platform admin', async () => {
+    renderPage();
+    await screen.findByText('Agência X');
+    expect(screen.queryByText(/Administração da plataforma/)).toBeNull();
+  });
+
+  it('platform admin sem workspace elegível ainda consegue autorizar o admin', async () => {
+    listWorkspaces.mockResolvedValue({ workspaces: [], platform_admin: true });
+    renderPage();
+    await screen.findByRole('button', { name: /Administração da plataforma/ });
+
+    // A opção de plataforma já vem pré-selecionada — nenhum clique necessário — com os
+    // escopos de leitura do admin marcados (não os escopos de workspace).
+    expect(screen.getByLabelText('Artigos de suporte (leitura)')).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Autorizar' })).not.toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+
+    await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+    expect(recordGrant).toHaveBeenCalledWith({
+      authorization_id: 'auth-1',
+      target: 'platform',
+      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read'],
+    });
   });
 });

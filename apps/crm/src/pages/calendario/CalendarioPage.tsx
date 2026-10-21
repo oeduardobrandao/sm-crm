@@ -1,17 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Globe, Flag } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -24,8 +13,7 @@ import {
   getMembros,
   getTransacoes,
   getWorkflows,
-  getWorkflowEtapas,
-  addTransacao,
+  getWorkflowEtapasByWorkflowIds,
   formatDate,
   getAllClienteDatas,
   type Cliente,
@@ -34,8 +22,10 @@ import {
   type ClienteData,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { formatDeadlineStatus } from './deadlineStatus';
+import { itensDoDia, refPagamento } from './financeiroDia';
 import { dotColorMap, type NicheCalendarDef } from './nicheCalendars/types';
 import {
   NICHE_CALENDARS,
@@ -43,17 +33,16 @@ import {
   readStoredNicheKey,
   writeStoredNicheKey,
 } from './nicheCalendars/registry';
+import { calcularPrazos, workflowsAtivosIds, type DeadlineEvent } from './camadas/prazos';
+import { useConfirmarPagamento } from './camadas/useConfirmarPagamento';
+import { Skeleton } from '@/components/ui/skeleton';
+import { CalendarSkeleton } from '@/components/ui/skeletons';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { CalendarioClassicoPhone } from './phone/CalendarioClassicoPhone';
 
-// ---- Types ----
-interface DeadlineEvent {
-  workflowTitle: string;
-  etapaNome: string;
-  clienteNome: string;
-  clienteCor: string;
-  deadlineDate: Date;
-  diasRestantes: number;
-  estourado: boolean;
-}
+// Lazy: FullCalendar is heavy and workspaces without feature_agenda never render it.
+const AgendaTab = lazy(() => import('./agenda/AgendaTab'));
 
 // ---- Financeiro Calendar ----
 function FinanceiroCalendar({
@@ -71,16 +60,9 @@ function FinanceiroCalendar({
   datasImportantes: ClienteData[];
   canSeeFinancials: FinancialAccess;
 }) {
-  const qc = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date().getDate());
-  const [confirmPayload, setConfirmPayload] = useState<{
-    refId: string;
-    desc: string;
-    val: number;
-    cat: string;
-    tipo: 'entrada' | 'saida';
-  } | null>(null);
+  const { pedirConfirmacao, dialog: confirmDialog } = useConfirmarPagamento(canSeeFinancials);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -110,39 +92,14 @@ function FinanceiroCalendar({
 
   const isPaid = (refId: string) => transacoes.some((t) => t.referencia_agendamento === refId);
 
-  // Branch on the explicit capability, never on a nullable financial value: a
-  // legitimately null retainer is indistinguishable from a masked one, and
-  // Number(null) is 0, so inference would render phantom R$ 0 entries.
-  const selectedIncomes =
-    canSeeFinancials !== true
-      ? []
-      : clientes.filter(
-          (c) =>
-            c.data_pagamento === selectedDay &&
-            c.status === 'ativo' &&
-            currentDate.getMonth() === currentDate.getMonth(),
-        );
-  const selectedExpenses =
-    canSeeFinancials !== true ? [] : membros.filter((m) => m.data_pagamento === selectedDay);
-  const selectedDeadlines = deadlineEvents.filter(
-    (d) =>
-      d.deadlineDate.getDate() === selectedDay &&
-      d.deadlineDate.getMonth() === month &&
-      d.deadlineDate.getFullYear() === year,
-  );
-
-  // Birthday events for this month (recurring annually by month+day — stored as MM-DD)
-  const birthdayClients = clientes.filter((c) => {
-    if (!c.data_aniversario) return false;
-    const [bdMm, bdDd] = c.data_aniversario.split('-').map(Number);
-    return bdMm - 1 === month && bdDd === selectedDay;
-  });
-
-  // Important dates for this month/day
-  const selectedDatas = datasImportantes.filter((d) => {
-    const dt = new Date(d.data + 'T00:00:00');
-    return dt.getMonth() === month && dt.getDate() === selectedDay && dt.getFullYear() === year;
-  });
+  const fontes = { clientes, membros, deadlineEvents, datasImportantes, canSeeFinancials };
+  const {
+    incomes: selectedIncomes,
+    expenses: selectedExpenses,
+    deadlines: selectedDeadlines,
+    birthdays: birthdayClients,
+    datas: selectedDatas,
+  } = itensDoDia(fontes, year, month, selectedDay);
 
   const handleConfirm = (
     refId: string,
@@ -151,30 +108,7 @@ function FinanceiroCalendar({
     cat: string,
     tipo: 'entrada' | 'saida',
   ) => {
-    setConfirmPayload({ refId, desc, val, cat, tipo });
-  };
-
-  const handleConfirmExecute = async () => {
-    if (!confirmPayload) return;
-    const { refId, desc, val, cat, tipo } = confirmPayload;
-    try {
-      await addTransacao({
-        descricao: desc,
-        detalhe: 'Baixa efetuada pelo Calendário',
-        categoria: cat,
-        valor: val,
-        data: new Date().toISOString().split('T')[0],
-        tipo,
-        status: 'pago',
-        referencia_agendamento: refId,
-      });
-      toast.success('Pagamento confirmado!');
-      qc.invalidateQueries({ queryKey: ['transacoes'] });
-    } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro');
-    } finally {
-      setConfirmPayload(null);
-    }
+    pedirConfirmacao({ refId, desc, val, cat, tipo });
   };
 
   return (
@@ -222,27 +156,13 @@ function FinanceiroCalendar({
             ))}
             {Array.from({ length: daysInMonth }, (_, i) => {
               const d = i + 1;
-              const dayIncomes =
-                canSeeFinancials !== true
-                  ? []
-                  : clientes.filter((c) => c.data_pagamento === d && c.status === 'ativo');
-              const dayExpenses =
-                canSeeFinancials !== true ? [] : membros.filter((m) => m.data_pagamento === d);
-              const dayDeadlines = deadlineEvents.filter(
-                (de) =>
-                  de.deadlineDate.getDate() === d &&
-                  de.deadlineDate.getMonth() === month &&
-                  de.deadlineDate.getFullYear() === year,
-              );
-              const dayBirthdays = clientes.filter((c) => {
-                if (!c.data_aniversario) return false;
-                const [bdMm, bdDd] = c.data_aniversario.split('-').map(Number);
-                return bdMm - 1 === month && bdDd === d;
-              });
-              const dayDatas = datasImportantes.filter((di) => {
-                const dt = new Date(di.data + 'T00:00:00');
-                return dt.getMonth() === month && dt.getDate() === d && dt.getFullYear() === year;
-              });
+              const {
+                incomes: dayIncomes,
+                expenses: dayExpenses,
+                deadlines: dayDeadlines,
+                birthdays: dayBirthdays,
+                datas: dayDatas,
+              } = itensDoDia(fontes, year, month, d);
               const hasEvents =
                 dayIncomes.length > 0 ||
                 dayExpenses.length > 0 ||
@@ -320,7 +240,7 @@ function FinanceiroCalendar({
             ) : (
               <>
                 {selectedIncomes.map((c) => {
-                  const refId = `cliente_${c.id}_${year}_${String(month + 1).padStart(2, '0')}`;
+                  const refId = refPagamento('cliente', c.id, year, month);
                   const paid = isPaid(refId);
                   return (
                     <div key={c.id} className="scheduled-item">
@@ -369,7 +289,7 @@ function FinanceiroCalendar({
                 })}
 
                 {selectedExpenses.map((m) => {
-                  const refId = `membro_${m.id}_${year}_${String(month + 1).padStart(2, '0')}`;
+                  const refId = refPagamento('membro', m.id, year, month);
                   const paid = isPaid(refId);
                   return (
                     <div key={m.id} className="scheduled-item">
@@ -515,26 +435,7 @@ function FinanceiroCalendar({
         </div>
       </div>
 
-      <AlertDialog
-        open={confirmPayload !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmPayload(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Agendamento</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmPayload &&
-                `Confirmar o recebimento/pagamento agendado de ${confirmPayload.desc} (${formatFinancialBRL(confirmPayload.val, canSeeFinancials)})?`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmExecute}>Confirmar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {confirmDialog}
     </>
   );
 }
@@ -700,9 +601,17 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
   );
 }
 
-// ---- Main Page ----
-export default function CalendarioPage() {
+// ---- Classic page (flag off) ----
+/** The page from before the Agenda: the "Calendário" and "Datas Comemorativas"
+ *  tabs. With `feature_agenda` on, both become layers of the Agenda instead. */
+function CalendarioClassico() {
+  const isPhone = !useIsDesktop(768);
   const [activeTab, setActiveTab] = useState<'financeiro' | 'comemorativas'>('financeiro');
+
+  useEffect(() => {
+    const nome = activeTab === 'financeiro' ? 'Calendário' : 'Datas Comemorativas';
+    document.title = `${nome} | Mesaas`;
+  }, [activeTab]);
   const nicheKeys = NICHE_CALENDARS.map((n) => n.key);
   const [activeNicheKey, setActiveNicheKey] = useState(() =>
     readStoredNicheKey(nicheKeys, DEFAULT_NICHE_KEY),
@@ -738,73 +647,73 @@ export default function CalendarioPage() {
     queryFn: getAllClienteDatas,
   });
 
-  // Build deadline events from active workflows
-  const { data: deadlineEvents = [] } = useQuery({
+  // Active stages of the active workflows (same key and value as the Agenda's
+  // "Prazos de entrega" layer); the deadlines are computed at render.
+  const { data: etapasPorWorkflow } = useQuery({
     queryKey: ['calendar-deadlines', workflows.map((w) => w.id).join(',')],
-    queryFn: async () => {
-      const activeWfs = workflows.filter((w) => w.status === 'ativo');
-      const etapasResults = await Promise.all(activeWfs.map((w) => getWorkflowEtapas(w.id!)));
-      const events: DeadlineEvent[] = [];
-      activeWfs.forEach((w, idx) => {
-        const etapas = etapasResults[idx];
-        const activeEtapa = etapas.find((e) => e.status === 'ativo');
-        if (!activeEtapa || !activeEtapa.iniciado_em) return;
-        const cliente = clientes.find((c) => c.id === w.cliente_id);
-        const inicio = new Date(activeEtapa.iniciado_em);
-        const deadlineDate = new Date(inicio);
-        if (activeEtapa.tipo_prazo === 'uteis') {
-          let added = 0;
-          while (added < activeEtapa.prazo_dias) {
-            deadlineDate.setDate(deadlineDate.getDate() + 1);
-            const dow = deadlineDate.getDay();
-            if (dow !== 0 && dow !== 6) added++;
-          }
-        } else {
-          deadlineDate.setDate(deadlineDate.getDate() + activeEtapa.prazo_dias);
-        }
-        const now = new Date();
-        const diffMs = deadlineDate.getTime() - now.getTime();
-        const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        events.push({
-          workflowTitle: w.titulo,
-          etapaNome: activeEtapa.nome,
-          clienteNome: cliente?.nome || '—',
-          clienteCor: cliente?.cor || '#888',
-          deadlineDate,
-          diasRestantes,
-          estourado: diasRestantes < 0,
-        });
-      });
-      return events;
-    },
+    queryFn: () => getWorkflowEtapasByWorkflowIds(workflowsAtivosIds(workflows)),
     enabled: workflows.length > 0,
   });
+  const deadlineEvents = useMemo<DeadlineEvent[]>(
+    () => (etapasPorWorkflow ? calcularPrazos(workflows, etapasPorWorkflow, clientes) : []),
+    [workflows, etapasPorWorkflow, clientes],
+  );
+
+  const titulo = activeTab === 'financeiro' ? 'Calendário' : activeNiche.title;
+  const subtitulo = activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle;
+  const calendarTabs = (
+    <div className="calendar-tabs animate-up">
+      <button
+        className={`calendar-tab${activeTab === 'financeiro' ? ' active' : ''}`}
+        onClick={() => setActiveTab('financeiro')}
+      >
+        Calendário
+      </button>
+      <button
+        className={`calendar-tab${activeTab === 'comemorativas' ? ' active' : ''}`}
+        onClick={() => setActiveTab('comemorativas')}
+      >
+        Datas Comemorativas
+      </button>
+    </div>
+  );
+  const inToolbar = usePageToolbar({
+    title: titulo,
+    subtitle: subtitulo,
+    segmented: calendarTabs,
+  });
+
+  if (isPhone) {
+    return (
+      <CalendarioClassicoPhone
+        aba={activeTab}
+        onAbaChange={setActiveTab}
+        clientes={clientes}
+        membros={membros}
+        transacoes={transacoes}
+        deadlineEvents={deadlineEvents}
+        datasImportantes={datasImportantes}
+        canSeeFinancials={canSeeFinancials}
+        niche={activeNiche}
+        onNicheChange={handleNicheChange}
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
-        <div className="header-title">
-          <h1>{activeTab === 'financeiro' ? 'Calendário' : activeNiche.title}</h1>
-          <p style={{ color: 'var(--text-muted)' }}>
-            {activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle}
-          </p>
-        </div>
-      </header>
+      {!inToolbar && (
+        <>
+          <header className="header animate-up">
+            <div className="header-title">
+              <h1>{titulo}</h1>
+              <p style={{ color: 'var(--text-muted)' }}>{subtitulo}</p>
+            </div>
+          </header>
 
-      <div className="calendar-tabs animate-up">
-        <button
-          className={`calendar-tab${activeTab === 'financeiro' ? ' active' : ''}`}
-          onClick={() => setActiveTab('financeiro')}
-        >
-          Calendário
-        </button>
-        <button
-          className={`calendar-tab${activeTab === 'comemorativas' ? ' active' : ''}`}
-          onClick={() => setActiveTab('comemorativas')}
-        >
-          Datas Comemorativas
-        </button>
-      </div>
+          {calendarTabs}
+        </>
+      )}
 
       <div className="animate-up">
         {activeTab === 'financeiro' ? (
@@ -838,4 +747,87 @@ export default function CalendarioPage() {
       </div>
     </div>
   );
+}
+
+// ---- Agenda page (flag on) ----
+/** No tab bar: the old tabs live on as layers of the Agenda. `?evento=` and
+ *  `?data=` are read by AgendaTab itself. */
+function AgendaPagina() {
+  const isPhone = !useIsDesktop(768);
+  useEffect(() => {
+    document.title = 'Agenda | Mesaas';
+  }, []);
+
+  const inToolbar = usePageToolbar({
+    title: 'Agenda',
+    subtitle: 'Eventos, reuniões e gravações da equipe.',
+  });
+
+  // Phones: AgendaTab draws its own page header (title, period, filters, "+").
+  if (isPhone) {
+    return (
+      <Suspense fallback={<CalendarSkeleton />}>
+        <AgendaTab />
+      </Suspense>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {!inToolbar && (
+        <header className="header animate-up">
+          <div className="header-title">
+            <h1>Agenda</h1>
+            <p style={{ color: 'var(--text-muted)' }}>Eventos, reuniões e gravações da equipe.</p>
+          </div>
+        </header>
+      )}
+
+      <div className="animate-up">
+        <Suspense fallback={<CalendarSkeleton />}>
+          <AgendaTab />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+function CalendarioEsqueleto() {
+  return (
+    <div
+      role="status"
+      aria-label="Carregando calendário"
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
+    >
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-72" />
+      </div>
+      <Skeleton className="h-[560px] w-full rounded-xl" />
+    </div>
+  );
+}
+
+// ---- Main Page ----
+export default function CalendarioPage() {
+  // Agenda ships behind the `feature_agenda` plan flag. On: the Agenda alone, with
+  // the old tabs folded into its layers. Off, unknown or failed to load: the page
+  // that existed before the Agenda. Only while the limits are loading is there a
+  // skeleton, so the page never flashes the old tabs before switching.
+  const { features, isLoading } = useWorkspaceLimits();
+  const agendaAtiva = features?.feature_agenda === true;
+
+  // App route outside usePageMeta: each branch sets the tab title; the one from
+  // before the route is captured at first render (ahead of any child effect) and
+  // restored on unmount so it doesn't leak into the next route.
+  const [tituloAnterior] = useState(() => document.title);
+  useEffect(
+    () => () => {
+      document.title = tituloAnterior;
+    },
+    [tituloAnterior],
+  );
+
+  if (isLoading) return <CalendarioEsqueleto />;
+  return agendaAtiva ? <AgendaPagina /> : <CalendarioClassico />;
 }

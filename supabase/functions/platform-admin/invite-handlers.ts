@@ -1,10 +1,10 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { getAuthStatesByEmails, cancelInvite, inviteOrResend } from "../_shared/invite-actions.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { computeInviteFlags, createMessage, resendOutcomeMessage, validateCreateInvite, validateResendTarget } from "./invites-enrich.ts";
 
 export async function handleGetWorkspaceInvites(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string },
   headers: Record<string, string>,
 ) {
@@ -49,7 +49,7 @@ export async function handleGetWorkspaceInvites(
 }
 
 export async function handleAdminCancelInvite(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string; invite_id?: string },
   adminUserId: string,
   headers: Record<string, string>,
@@ -87,7 +87,7 @@ export async function handleAdminCancelInvite(
 }
 
 export async function handleAdminResendInvite(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string; invite_id?: string; confirm_cross_workspace?: unknown },
   adminUserId: string,
   headers: Record<string, string>,
@@ -101,7 +101,7 @@ export async function handleAdminResendInvite(
   // would send an admin chasing the wrong problem. Throwing lands on the
   // dispatcher's generic 500.
   const { data: invite, error: inviteError } = await svc.from("invites")
-    .select("id, conta_id, email, role, status, invited_by")
+    .select("id, conta_id, email, role, role_id, status, invited_by")
     .eq("id", body.invite_id).eq("conta_id", body.workspace_id).maybeSingle();
   if (inviteError) throw inviteError;
   const invalid = validateResendTarget(invite);
@@ -120,6 +120,7 @@ export async function handleAdminResendInvite(
     email: invite.email,
     role: invite.role,
     invitedBy: invite.invited_by, // preserve the ORIGINAL inviter
+    roleId: invite.role_id ?? null,
     redirectBase,
   }, {
     addOnboarded: false, // admin resend never adds a member (finding 1)
@@ -152,7 +153,7 @@ export async function handleAdminResendInvite(
 }
 
 export async function handleAdminCreateInvite(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: unknown; email?: unknown; role?: unknown; confirm_cross_workspace?: unknown },
   adminUserId: string,
   headers: Record<string, string>,
@@ -183,6 +184,14 @@ export async function handleAdminCreateInvite(
     email: input.email,
     role: input.role,
     invitedBy: adminUserId, // honest attribution: the admin who actually sent it
+    // Explicit, not omitted: this support tool has no concept of custom
+    // papéis at all (validateCreateInvite only accepts admin/agent), but
+    // inviteOrResend's roleId is tri-state — omitting the field here would
+    // read as "legacy caller, inherit whatever role_id a prior pending
+    // invite for this email already carries", silently resurrecting a
+    // custom papel from an unrelated earlier invite instead of the plain
+    // admin/agent role this admin explicitly picked.
+    roleId: null,
     redirectBase,
   }, {
     addOnboarded: false, // a support tool never silently grants membership

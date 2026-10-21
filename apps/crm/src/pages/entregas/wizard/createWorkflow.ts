@@ -2,6 +2,7 @@ import type { Cliente, Membro, Workflow, WorkflowTemplate } from '../../../store
 import { addWorkflow, addWorkflowEtapa, addWorkflowTemplate, removeWorkflow } from '../../../store';
 import { computeDeliveryDeadlines, getNextDeliveryDate } from '../hooks/useEntregasData';
 import type { EtapaFormData } from '../components/SortableEtapaList';
+import type { PlatformId } from '@mesaas/platforms';
 import { mapEntitlementError, entitlementMessage } from '@/lib/entitlement-errors';
 
 export type WizardSource =
@@ -21,6 +22,7 @@ export interface WizardCreateInput {
   templateName: string;
   cliente: Cliente | undefined;
   membros: Membro[];
+  plataformas: PlatformId[];
 }
 
 /**
@@ -73,6 +75,7 @@ export async function createWorkflowFromWizard(
       template = await addWorkflowTemplate({
         nome: input.templateName.trim(),
         modo_prazo: input.modoPrazo,
+        plataformas: input.plataformas,
         etapas: valid.map((e) => ({
           nome: e.nome,
           prazo_dias: e.prazo,
@@ -106,6 +109,7 @@ export async function createWorkflowFromWizard(
     etapa_atual: 0,
     recorrente: input.recorrente,
     modo_prazo: input.modoPrazo,
+    plataformas: input.plataformas,
   });
   try {
     const now = new Date().toISOString();

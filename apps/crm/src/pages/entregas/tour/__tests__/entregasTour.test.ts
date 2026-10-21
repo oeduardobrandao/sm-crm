@@ -16,7 +16,13 @@ vi.mock('driver.js', () => ({
   driver: driverFactory,
 }));
 
-import { TOUR_STEP_DEFS, buildTourSteps, startEntregasTour, tourStorageKey } from '../entregasTour';
+import {
+  TOUR_STEP_DEFS,
+  TOUR_STEP_DEFS_POST_PROCESSES,
+  buildTourSteps,
+  startEntregasTour,
+  tourStorageKey,
+} from '../entregasTour';
 
 describe('entregas tour', () => {
   it('defines 6 steps with the expected selectors', () => {
@@ -116,5 +122,24 @@ describe('startEntregasTour completion vs dismissal', () => {
     capturedConfig.current.onDestroyStarted();
     expect(onDismiss).toHaveBeenCalledWith(5);
     expect(onComplete).not.toHaveBeenCalled();
+  });
+});
+
+describe('tour com posts individuais', () => {
+  it('a variante tem os mesmos 6 seletores e não afirma que só fluxos são cards', () => {
+    expect(TOUR_STEP_DEFS_POST_PROCESSES.map((s) => s.selector)).toEqual(
+      TOUR_STEP_DEFS.map((s) => s.selector),
+    );
+    expect(TOUR_STEP_DEFS_POST_PROCESSES[0].description).toMatch(/Posts individuais/);
+    expect(TOUR_STEP_DEFS_POST_PROCESSES[2].description).toMatch(/Os posts de um fluxo/);
+    expect(TOUR_STEP_DEFS[2].description).toBe(
+      'Os posts ficam dentro do card. Clique no card para abrir o painel e criar posts.',
+    );
+  });
+
+  it('startEntregasTour escolhe a variante pela opção postProcesses', () => {
+    document.body.innerHTML = '<div data-tour="wf-card"></div>';
+    startEntregasTour({ onComplete: vi.fn(), onDismiss: vi.fn(), postProcesses: true });
+    expect(capturedConfig.current.steps[0].popover.description).toMatch(/Posts individuais/);
   });
 });

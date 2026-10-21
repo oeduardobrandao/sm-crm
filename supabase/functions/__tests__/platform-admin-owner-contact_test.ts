@@ -26,6 +26,7 @@ function makeFakeSvc(opts: {
   membersError?: Error;
   profilesError?: Error;
   workspacesError?: Error;
+  membersPageCap?: number;
 }) {
   const db = {
     from(table: string) {
@@ -35,22 +36,37 @@ function makeFakeSvc(opts: {
             in: (_col: string, ids: string[]) => ({
               eq: (_col2: string, _role: string) => ({
                 order: (col1: string, o1: { ascending: boolean }) => ({
-                  order: (col2: string, o2: { ascending: boolean }) => {
-                    if (opts.membersError) {
-                      return Promise.resolve({ data: null, error: opts.membersError });
-                    }
-                    const filtered = opts.members.filter((m) => ids.includes(m.workspace_id));
-                    const sorted = [...filtered].sort((a, b) => {
-                      const av = String((a as unknown as Record<string, unknown>)[col1]);
-                      const bv = String((b as unknown as Record<string, unknown>)[col1]);
-                      const c1 = av.localeCompare(bv) * (o1.ascending ? 1 : -1);
-                      if (c1 !== 0) return c1;
-                      const av2 = String((a as unknown as Record<string, unknown>)[col2]);
-                      const bv2 = String((b as unknown as Record<string, unknown>)[col2]);
-                      return av2.localeCompare(bv2) * (o2.ascending ? 1 : -1);
-                    });
-                    return Promise.resolve({ data: sorted, error: null });
-                  },
+                  order: (col2: string, o2: { ascending: boolean }) => ({
+                    order: (col3: string, o3: { ascending: boolean }) => ({
+                      range: (from: number, to: number) => {
+                        if (opts.membersError) {
+                          return Promise.resolve({ data: null, error: opts.membersError });
+                        }
+                        const filtered = opts.members.filter((m) => ids.includes(m.workspace_id));
+                        const sortCols: Array<[string, { ascending: boolean }]> = [
+                          [col1, o1],
+                          [col2, o2],
+                          [col3, o3],
+                        ];
+                        const sorted = [...filtered].sort((a, b) => {
+                          for (const [col, o] of sortCols) {
+                            const av = String((a as unknown as Record<string, unknown>)[col]);
+                            const bv = String((b as unknown as Record<string, unknown>)[col]);
+                            const c = av.localeCompare(bv) * (o.ascending ? 1 : -1);
+                            if (c !== 0) return c;
+                          }
+                          return 0;
+                        });
+                        // Emulate a PostgREST-style page cap independent of the
+                        // caller's requested range, so a single un-paginated
+                        // request would truncate silently.
+                        const cap = opts.membersPageCap ?? Infinity;
+                        const pageEnd = Math.min(to + 1, from + cap, sorted.length);
+                        const page = from >= sorted.length ? [] : sorted.slice(from, pageEnd);
+                        return Promise.resolve({ data: page, error: null });
+                      },
+                    }),
+                  }),
                 }),
               }),
             }),
@@ -186,6 +202,37 @@ Deno.test("a workspace with no owner-role row has no entry in the result map", a
   assert(!result.has("ws-2"), "ws-2 has no owner-role member and should have no entry");
 });
 
+Deno.test("paginates a chunk's owner-membership rows past the fake's page cap, earliest owner survives", async () => {
+  // Simulates a single 500-workspace chunk whose combined owner-role rows
+  // exceed PostgREST's un-ranged response cap (1000 on hosted Supabase; here
+  // a small membersPageCap stands in for it). Without fetchAllRows this
+  // fake would truncate the un-ranged select to the first page and could
+  // drop ws-1's earliest owner row entirely.
+  const N = 12;
+  const members: Member[] = [];
+  const profiles: Profile[] = [];
+  for (let i = 0; i < N; i++) {
+    // All rows belong to ws-1 so the earliest-joined_at row must survive
+    // pagination to be picked as the owner.
+    members.push({
+      workspace_id: "ws-1",
+      user_id: `user-${i}`,
+      joined_at: `2026-01-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+    });
+    profiles.push({ id: `user-${i}`, nome: `Name ${i}`, telefone: null, marketing_opt_in: false });
+  }
+  // user-0 has the earliest joined_at and should win the tie-break.
+  const svc = makeFakeSvc({
+    members,
+    profiles,
+    membersPageCap: 3,
+    getUserById: (id) => Promise.resolve({ data: { user: { id, email: `${id}@example.com` } } }),
+  });
+
+  const result = await fetchOwnerContacts(svc, ["ws-1"]);
+  assertEquals(result.get("ws-1")?.name, "Name 0");
+});
+
 Deno.test("empty workspaceIds returns an empty map without querying", async () => {
   const svc = makeFakeSvc({
     members: [],
@@ -242,7 +289,9 @@ Deno.test("workspace_members query failure propagates instead of being swallowed
     await fetchOwnerContacts(svc, ["ws-1"]);
   } catch (err) {
     threw = true;
-    assertEquals((err as Error).message, "db down");
+    // Now routed through fetchAllRows, which wraps the underlying error
+    // message rather than passing it through verbatim.
+    assertEquals((err as Error).message, "paginated read failed at offset 0: db down");
   }
   assert(threw, "expected fetchOwnerContacts to throw on a membership-query failure");
 });

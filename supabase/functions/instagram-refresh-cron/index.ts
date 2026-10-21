@@ -11,6 +11,12 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
 
+// The candidates select and the batch attempt-stamp update below are awaited state-relevant
+// PostgREST calls with no bound otherwise — a stalled request hangs until the isolate is
+// killed, bypassing both the non-fatal stamp-failure log branch and the outer catch below.
+// Matches billing-downgrade-cron/handler.ts's DB_TIMEOUT_MS pattern.
+const DB_TIMEOUT_MS = 10_000;
+
 // --- Token Encryption Utility (Duplicated for standalone function) ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
   const enc = new TextEncoder();
@@ -74,17 +80,57 @@ Deno.serve(createInstagramRefreshCronHandler({
 
       const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
+      // This cron does slow serial network work per row (Instagram token refresh + avatar
+      // re-cache, one round-trip per account) — draining every eligible row in one isolate
+      // trades silent truncation for a wall-clock death. A cap with token_expires_at ordering
+      // turns overflow into a safe backlog: the soonest-to-expire accounts always go first, and
+      // the cadence (well inside the 30-day window) retries whatever didn't fit. This is why
+      // this select deliberately does NOT use fetchAllRows.
+      //
+      // A cap alone starves, though: an account that fails refresh with a transient error (or
+      // is in an internal workspace and gets filtered below) never advances token_expires_at,
+      // so it keeps sorting at the head of this window and re-consumes the whole batch every
+      // run forever — exactly the failure mode instagram-sync-cron/select.ts documents and
+      // fixes with attempt stamping. last_refresh_attempt_at is the primary sort key for the
+      // same reason: it's stamped for the WHOLE selected batch (see below) regardless of
+      // outcome, so a persistently failing — or internal, or filtered-for-any-reason — account
+      // rotates to the back on the very next run instead of pinning the head.
+      const REFRESH_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get('REFRESH_BATCH_LIMIT') || '200', 10) || 200);
+
       const { data: candidates, error } = await supabase
         .from('instagram_accounts')
-        .select('id, encrypted_access_token, clientes!inner(conta_id)')
+        .select('id, encrypted_access_token, last_refresh_attempt_at, clientes!inner(conta_id)')
         .eq('authorization_status', 'active')
         .not('encrypted_access_token', 'is', null)
         .neq('encrypted_access_token', '')
-        .lte('token_expires_at', thirtyDaysFromNow);
+        .lte('token_expires_at', thirtyDaysFromNow)
+        .order('last_refresh_attempt_at', { ascending: true, nullsFirst: true })
+        .order('token_expires_at', { ascending: true, nullsFirst: false })
+        .order('id', { ascending: true })
+        .limit(REFRESH_BATCH_LIMIT)
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
 
       if (error) throw error;
       if (!candidates || candidates.length === 0) {
         return new Response("No tokens need refreshing", { status: 200 });
+      }
+
+      // Stamp the attempt for the WHOLE selected batch BEFORE any refresh work or the internal-
+      // workspace filter below — mirrors instagram-sync-cron/index.ts's "stamp before syncing"
+      // fix for the same starvation mode (see the rationale comment on REFRESH_BATCH_LIMIT
+      // above). Stamping before, not after, means an account whose refresh kills the invocation
+      // still rotates to the back on the next run. Stamping BEFORE the internal filter is
+      // deliberate too: an internal-workspace account that gets skipped below is just as
+      // capable of pinning the head of this ordering forever as a transient-failure account is,
+      // so it must rotate exactly the same way. A stamp failure is logged but not fatal — the
+      // next run re-reads the real ordering either way.
+      const { error: stampError } = await supabase
+        .from('instagram_accounts')
+        .update({ last_refresh_attempt_at: new Date().toISOString() })
+        .in('id', candidates.map((a: any) => a.id))
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+      if (stampError) {
+        console.error(`[IG-REFRESH-CRON] Failed to stamp last_refresh_attempt_at: ${stampError.message}`);
       }
 
       // Internal/seed workspaces hold placeholder tokens that can never decrypt;

@@ -14,7 +14,12 @@ vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 
-vi.mock('@/store', () => ({ updateWorkflowPost: vi.fn(), reorderBoardPosts: vi.fn() }));
+vi.mock('@/store', () => ({
+  updateWorkflowPost: vi.fn(),
+  reorderBoardPosts: vi.fn(),
+  isFinalClientApprovalCycle: vi.fn(() => true),
+  cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
+}));
 
 // Mock dnd-kit so tests don't need to simulate real pointer/touch events in
 // jsdom (same approach as WorkflowCalendarView.test.tsx / CalendarGrid.test.tsx):
@@ -50,6 +55,7 @@ vi.mock('@dnd-kit/core', () => ({
   },
   DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
   PointerSensor: class {},
+  MouseSensor: class {},
   TouchSensor: class {},
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
@@ -107,6 +113,10 @@ import { updateWorkflowPost, reorderBoardPosts } from '@/store';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockReorder = vi.mocked(reorderBoardPosts);
@@ -180,6 +190,7 @@ function makeBoardCard(overrides: Record<string, unknown> = {}): BoardCard {
     membro: { id: 7, nome: 'Ana Silva' },
     cliente: { id: 1, nome: 'Aurora', cor: '#0f766e' },
     clienteAvatarUrl: undefined,
+    allEtapas: [],
     deadline: { estourado: false, urgente: false, diasRestantes: 2, horasRestantes: 0 },
     ...overrides,
   } as BoardCard;
@@ -295,6 +306,68 @@ describe('PostsKanbanView', () => {
     expect(pills).toEqual(['Publicando…']);
   });
 
+  describe('selo "Aguarda aprovação"', () => {
+    const etapa = (ordem: number, nome: string, tipo: string, status: string) => ({
+      ordem,
+      nome,
+      tipo,
+      status,
+    });
+    const twoOpenApprovals = [
+      etapa(1, 'Aprovação da Copy', 'aprovacao_cliente', 'ativo'),
+      etapa(2, 'Mídia', 'padrao', 'pendente'),
+      etapa(3, 'Aprovação da Mídia', 'aprovacao_cliente', 'pendente'),
+    ];
+
+    it('shows on an approved flow post while a later client approval is still open', () => {
+      renderWithQuery(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[makePost({ status: 'aprovado_cliente' })]}
+          cardsByWorkflowId={new Map([[10, makeBoardCard({ allEtapas: twoOpenApprovals })]])}
+        />,
+      );
+      expect(screen.getByText(/Aguarda aprovação/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Aprovação da Mídia/)).toBeInTheDocument();
+    });
+
+    it('is absent once this is the last open approval, or when the post is not approved', () => {
+      const lastApproval = [
+        etapa(1, 'Aprovação da Copy', 'aprovacao_cliente', 'concluido'),
+        etapa(3, 'Aprovação da Mídia', 'aprovacao_cliente', 'ativo'),
+      ];
+      const { rerender } = renderWithQuery(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[makePost({ status: 'aprovado_cliente' })]}
+          cardsByWorkflowId={new Map([[10, makeBoardCard({ allEtapas: lastApproval })]])}
+        />,
+      );
+      expect(screen.queryByText(/Aguarda aprovação/)).toBeNull();
+
+      rerender(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[makePost({ status: 'enviado_cliente' })]}
+          cardsByWorkflowId={new Map([[10, makeBoardCard({ allEtapas: twoOpenApprovals })]])}
+        />,
+      );
+      expect(screen.queryByText(/Aguarda aprovação/)).toBeNull();
+    });
+
+    it('shows on an avulso post from the awaited-approval map', () => {
+      const avulso = makePost({ workflow_id: null, status: 'aprovado_cliente' });
+      renderWithQuery(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[avulso]}
+          awaitedApprovalByPostId={new Map([[avulso.id, 'Aprovação da Mídia']])}
+        />,
+      );
+      expect(screen.getByText(/Aguarda aprovação/)).toBeInTheDocument();
+    });
+  });
+
   it('shows the client avatar (img when cached, initials fallback otherwise)', () => {
     const withAvatar = new Map([
       [10, makeBoardCard({ clienteAvatarUrl: 'https://cdn.example/avatar.jpg' })],
@@ -366,7 +439,7 @@ describe('PostsKanbanView', () => {
       <PostsKanbanView {...baseProps} posts={[makePost()]} cardsByWorkflowId={overdue} />,
     );
     const prazo = screen.getByText('3d atr.');
-    expect(prazo).toHaveStyle({ color: '#ef4444' });
+    expect(prazo).toHaveStyle({ color: 'var(--danger)' });
   });
 
   it('falls back for missing titulo, date and workflow card', () => {
@@ -779,5 +852,31 @@ describe('PostsKanbanView', () => {
 
       expect(onColumnSortChange).toHaveBeenCalledWith('rascunho', 'antigos');
     });
+  });
+});
+
+describe('destination chips (P2, feature_multiplatform)', () => {
+  const withTargets = () =>
+    makePost({
+      status: 'aprovado_cliente',
+      instagram_media_id: 'm1',
+      targets: [
+        { platform: 'instagram', status: 'pendente' },
+        { platform: 'geral', status: 'pendente' },
+      ],
+    });
+
+  it('flag off: no chips (unchanged card)', () => {
+    renderWithQuery(<PostsKanbanView {...baseProps} posts={[withTargets()]} />);
+    expect(screen.queryByTestId('destination-chips')).toBeNull();
+  });
+
+  it('flag on: one chip per destination', () => {
+    renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[withTargets()]} multiplatformEnabled />,
+    );
+    const chips = screen.getByTestId('destination-chips');
+    expect(within(chips).getByLabelText('Instagram: Publicado')).toBeInTheDocument();
+    expect(within(chips).getByLabelText('Geral: Disponível')).toBeInTheDocument();
   });
 });

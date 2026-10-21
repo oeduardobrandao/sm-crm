@@ -18,6 +18,28 @@ export interface CommentThread {
   resolved_by: string | null;
   created_at: string;
   resolved_at: string | null;
+  /** 'conteudo' = TipTap mark inside conteudo; 'ig_caption' = offsets into ig_caption. */
+  field: 'conteudo' | 'ig_caption';
+  /** UTF-16 code-unit offsets into ig_caption. Null for 'conteudo' threads and orphans. */
+  anchor_start: number | null;
+  anchor_end: number | null;
+  /** Caption threads only: the anchored passage no longer exists in the caption. */
+  orphaned: boolean;
+}
+
+export interface CommentAnchor {
+  field: 'ig_caption';
+  start: number;
+  end: number;
+}
+
+/** One entry of save_ig_caption's `p_anchors`. Orphans carry null offsets and no quoted_text. */
+export interface CaptionAnchorPatch {
+  id: number;
+  anchor_start: number | null;
+  anchor_end: number | null;
+  orphaned: boolean;
+  quoted_text?: string;
 }
 
 export interface PostComment {
@@ -58,6 +80,7 @@ export async function createCommentThread(
   postId: number,
   quotedText: string,
   firstComment: string,
+  anchor?: CommentAnchor,
 ): Promise<CommentThreadWithComments> {
   const profile = await getCurrentProfile();
   if (!profile) throw new Error('No profile');
@@ -69,6 +92,9 @@ export async function createCommentThread(
       conta_id: profile.conta_id,
       quoted_text: quotedText,
       created_by: profile.id,
+      ...(anchor
+        ? { field: anchor.field, anchor_start: anchor.start, anchor_end: anchor.end }
+        : {}),
     })
     .select()
     .single();
@@ -137,5 +163,29 @@ export async function reopenCommentThread(threadId: number): Promise<void> {
 
 export async function deleteCommentThread(threadId: number): Promise<void> {
   const { error } = await supabase.from('post_comment_threads').delete().eq('id', threadId);
+  if (error) throw error;
+}
+
+/**
+ * Saves the Instagram caption AND re-anchors its comment threads in one
+ * transaction (RPC), so re-anchored offsets never describe text the DB doesn't hold.
+ * Thread creation (`createCommentThread`) is not range-checked against the caption: the UI
+ * flushes and re-verifies the quoted slice first, and `validateAnchors` orphans a stray one.
+ *
+ * `anchors` must contain ONLY this post's `ig_caption` threads. The RPC range-checks every
+ * non-orphaned entry (`anchor_end` <= UTF-16 length of the caption) BEFORE it filters by
+ * post/field, so a foreign or stale entry aborts the whole save (`anchor_out_of_range`)
+ * and rolls the caption back too.
+ */
+export async function saveIgCaption(
+  postId: number,
+  caption: string,
+  anchors: CaptionAnchorPatch[],
+): Promise<void> {
+  const { error } = await supabase.rpc('save_ig_caption', {
+    p_post_id: postId,
+    p_caption: caption,
+    p_anchors: anchors,
+  });
   if (error) throw error;
 }

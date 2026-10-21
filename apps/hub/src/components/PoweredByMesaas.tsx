@@ -12,7 +12,7 @@ export function PoweredByMesaas() {
 
   return (
     <div className="flex items-center justify-center gap-2 pt-10 pb-2">
-      <span className="text-[11.5px] hub-tx3">powered by</span>
+      <span className="text-[12px] hub-tx3">powered by</span>
       <svg
         width="15"
         height="10"
@@ -45,7 +45,7 @@ export function PoweredByMesaas() {
           </linearGradient>
         </defs>
       </svg>
-      <span className="text-[11.5px] font-semibold hub-tx2">mesaas</span>
+      <span className="text-[12px] font-semibold hub-tx2">mesaas</span>
     </div>
   );
 }

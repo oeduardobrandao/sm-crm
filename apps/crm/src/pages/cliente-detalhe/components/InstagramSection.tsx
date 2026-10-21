@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { ReportSkeleton } from '@/components/ui/skeletons';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { renderInstagramOverviewCard } from '@/components/instagram/InstagramOverviewCard';
@@ -9,6 +10,10 @@ import { renderInstagramFollowerChart } from '@/components/instagram/InstagramFo
 import { renderInstagramConnectButton } from '@/components/instagram/InstagramConnectButton';
 import { LatestInstagramPosts } from '@/components/instagram/LatestInstagramPosts';
 import { ConnectLinkRow } from '@/components/instagram/ConnectLinkDialog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { ConnectLinkCells } from '../phone/ConnectLinkCells';
+import '../phone/clienteDetalhePhone.css';
 
 // Isolated component for imperative Instagram widgets. Extracted verbatim from
 // the pre-split ClienteDetalhePage (see git history at d30adeea) into its own
@@ -31,6 +36,7 @@ export function InstagramSection({
   onNavigateAnalytics: () => void;
 }) {
   const { t, i18n } = useTranslation('clients');
+  const isPhone = !useIsDesktop(768);
   const igOverviewRef = useRef<HTMLDivElement>(null);
   const igChartRef = useRef<HTMLDivElement>(null);
   const igConnectRef = useRef<HTMLDivElement>(null);
@@ -78,15 +84,53 @@ export function InstagramSection({
       if (igChartRef.current)
         renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
     }
-  }, [loadingIg, igSummary, clienteId, refetchIg, i18n.language]);
+    // isPhone: the two layouts mount their own ref divs, so crossing 768px re-renders.
+  }, [loadingIg, igSummary, clienteId, refetchIg, i18n.language, isPhone]);
+
+  const synced = !loadingIg && !!igSummary?.account?.last_synced_at;
+
+  if (isPhone) {
+    // Same widgets, kit chrome around them. The ref divs stay unconditionally mounted.
+    return (
+      <div id="ig-container" className="phone-cli-social">
+        {loadingIg && <ReportSkeleton />}
+        {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
+          <div className="phone-cli-card phone-cli-social__syncing">
+            <Spinner size="lg" />
+            <p>{t('detail.igSyncing')}</p>
+          </div>
+        )}
+        <div ref={igOverviewRef} />
+        <div ref={igChartRef} />
+        {synced && <LatestInstagramPosts clienteId={clienteId} />}
+        {synced && (
+          <GroupedList aria-label="Instagram" className="phone-cli-wrap">
+            <Cell
+              label={t('detail.viewFullAnalytics').replace(/\s*→\s*$/, '')}
+              onClick={onNavigateAnalytics}
+            />
+            <Cell
+              label={t('detail.autoPublishTitle')}
+              subtitle={t('detail.autoPublishDesc')}
+              disabled={autoPublishLoading}
+              switch={{
+                checked: autoPublish,
+                onCheckedChange: (checked) => void handleAutoPublishToggle(checked),
+              }}
+            />
+          </GroupedList>
+        )}
+        <div ref={igConnectRef} />
+        {!loadingIg && !isNaN(clienteId) && (
+          <ConnectLinkCells clienteId={clienteId} clienteEmail={clienteEmail} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div id="ig-container" style={{ marginBottom: '1.5rem' }}>
-      {loadingIg && (
-        <div className="flex justify-center p-4">
-          <Spinner size="lg" />
-        </div>
-      )}
+      {loadingIg && <ReportSkeleton />}
       {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
         <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
           <Spinner size="lg" />

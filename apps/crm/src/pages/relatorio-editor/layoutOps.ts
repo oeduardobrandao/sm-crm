@@ -24,6 +24,7 @@ const DEFAULT_SIZE: Partial<Record<BlockType, BlockSize>> = {
   kpi_posts_count: 'third',
   kpi_profile_views: 'third',
   kpi_website_clicks: 'third',
+  kpi_follows: 'third',
   audience_gender: 'half',
   audience_age: 'half',
   audience_cities: 'half',
@@ -50,6 +51,18 @@ export function resizeBlock(layout: ReportLayout, id: string, delta: 1 | -1): Re
   if (next === current) return layout;
   const blocks = [...layout.blocks];
   blocks[idx] = { ...blocks[idx], size: SIZE_ORDER[next] };
+  return { ...layout, blocks };
+}
+
+/** Largura direta (o "Usar meia largura" do bloco de imagem). Capa é sempre
+ * full; mesmo valor, id inexistente ou capa = MESMA referência. */
+export function setBlockSize(layout: ReportLayout, id: string, size: BlockSize): ReportLayout {
+  const idx = layout.blocks.findIndex((b) => b.id === id);
+  if (idx < 0) return layout;
+  const b = layout.blocks[idx];
+  if (b.type === 'cover' || b.size === size) return layout;
+  const blocks = [...layout.blocks];
+  blocks[idx] = { ...b, size };
   return { ...layout, blocks };
 }
 

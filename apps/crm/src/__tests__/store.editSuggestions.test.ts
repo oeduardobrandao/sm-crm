@@ -84,7 +84,22 @@ describe('store edit suggestions', () => {
     await store.acceptEditSuggestion(42);
 
     const call = getCalls('rpc:accept_edit_suggestion', 'rpc').at(-1)!;
-    expect(call.payload).toEqual({ p_suggestion_id: 42 });
+    expect(call.payload).toEqual({ p_suggestion_id: 42, p_expected_updated_at: null });
+  });
+
+  it('acceptEditSuggestion passes the version the team reviewed', async () => {
+    mockedSupabase.__queueSupabaseRpc('accept_edit_suggestion', {
+      data: null,
+      error: null,
+    });
+
+    await store.acceptEditSuggestion(42, '2026-09-28T12:00:00.123456+00:00');
+
+    const call = getCalls('rpc:accept_edit_suggestion', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({
+      p_suggestion_id: 42,
+      p_expected_updated_at: '2026-09-28T12:00:00.123456+00:00',
+    });
   });
 
   it('rejectEditSuggestion calls the RPC with suggestion id', async () => {

@@ -239,6 +239,22 @@ Deno.test("tiktok-integration: /auth with feature_tiktok=true returns an authori
   assert(body.url.includes("state="));
 });
 
+Deno.test("tiktok-integration: /auth requests the scope list without video.upload", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: true, error: null });
+  db.queue("oauth_states", "delete", { data: null, error: null });
+  db.queue("oauth_states", "insert", { data: null, error: null });
+  const { storage } = makeStorage();
+  const handler = makeHandler(db, storage);
+  const res = await handler(authedRequest("/auth/5"));
+  const body = await res.json();
+  const scope = new URL(body.url).searchParams.get("scope");
+  assertEquals(scope, "user.info.basic,user.info.profile,user.info.stats,video.list,video.publish");
+});
+
 // ─── (d) bad state signature at /callback -> redirect with tt_error=1 ──────────────────
 
 Deno.test("tiktok-integration: callback with bad state signature -> redirect with tt_error=1", async () => {
@@ -294,7 +310,7 @@ Deno.test("tiktok-integration: callback happy path upserts BOTH encrypted tokens
       new Request(`http://x/tiktok-integration/callback?code=abc123&state=${encodeURIComponent(state)}`, { method: "GET" }),
     );
     assertEquals(res.status, 302);
-    assertEquals(res.headers.get("location"), "https://app.example.com/clientes/42");
+    assertEquals(res.headers.get("location"), "https://app.example.com/clientes/42?tt_connected=1");
 
     const upsertCall = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "upsert");
     assert(upsertCall, "expected a tiktok_accounts upsert");

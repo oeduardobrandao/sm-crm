@@ -1,0 +1,60 @@
+{
+  "page": {
+    "description": "The information guiding your project's strategy.",
+    "noBriefings": "No briefing available yet.",
+    "noQuestions": "No questions in this briefing yet.",
+    "generalSection": "General"
+  },
+  "tabs": {
+    "briefingsLabel": "Briefings",
+    "sectionsLabel": "Briefing sections",
+    "scrollPrev": "See previous sections",
+    "scrollNext": "See more sections"
+  },
+  "question": {
+    "placeholder": "Type your answer or record an audio…",
+    "audioResponseLabel": "Audio answer",
+    "saving": "Saving…",
+    "saved": "✓ Saved",
+    "saveError": "Could not save. Try again.",
+    "saveTextError": "Could not save the text. Try again.",
+    "transcriptionDone": "Transcription added to the answer.",
+    "transcriptionPending": "Transcription pending.",
+    "transcriptionFailed": "Could not transcribe this audio.",
+    "retry": "Try again",
+    "retrying": "Transcribing…",
+    "remove": "Remove audio",
+    "removing": "Removing…"
+  },
+  "errors": {
+    "uploadFailed": "Could not upload the audio.",
+    "transcribeFailed": "Could not transcribe.",
+    "removeFailed": "Could not remove the audio.",
+    "unsupportedFormat": "Unsupported audio format: {{mime}}",
+    "unknownFormat": "unknown",
+    "emptyRecording": "Empty recording. Try again.",
+    "audioTooLarge": "Audio larger than 15 MB. Record a shorter clip.",
+    "quotaExceeded": "The plan's storage space is full. Contact the agency to free up space.",
+    "genericUploadFailure": "The audio upload failed. Try again.",
+    "genericUnavailable": "Couldn't complete this right now. Try again shortly.",
+    "questionNotFound": "This question is no longer available. Reload the page.",
+    "audioNotFound": "The audio wasn't found. Record it again.",
+    "unsupportedFileType": "Audio format not supported in this browser."
+  },
+  "recorder": {
+    "record": "Record audio",
+    "uploading": "Uploading audio…",
+    "transcribing": "Transcribing…",
+    "maxDuration": "Up to {{duration}} per answer.",
+    "stop": "Stop",
+    "stopAria": "Stop recording",
+    "remainingWarning": "{{remaining}} left. Recording stops on its own at the limit.",
+    "progressAria": "Recording time",
+    "previewLabel": "Preview",
+    "sending": "Sending…",
+    "send": "Send",
+    "discard": "Discard",
+    "micPermissionDenied": "Allow microphone access in the browser to record.",
+    "micUnavailable": "Could not access the microphone."
+  }
+}

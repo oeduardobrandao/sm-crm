@@ -28,6 +28,7 @@ vi.mock('@dnd-kit/core', () => ({
   },
   DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
   PointerSensor: class {},
+  MouseSensor: class {},
   TouchSensor: class {},
   KeyboardSensor: class {},
   closestCenter: () => null,
@@ -108,7 +109,7 @@ describe('WorkflowCalendarView', () => {
   it('shows loading state', () => {
     mockGetClientePosts.mockReturnValue(new Promise(() => {})); // never resolves
     renderWithQuery(<WorkflowCalendarView {...baseProps} />);
-    expect(screen.getByText('Carregando calendário...')).toBeTruthy();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
   });
 
   it('renders sidebar and calendar grid after data loads', async () => {

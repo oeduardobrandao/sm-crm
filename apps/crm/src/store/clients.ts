@@ -1,5 +1,6 @@
 import { supabase, getUserId, getContaId } from './core';
 import { applyTemplateToClient } from './hub';
+import type { PlatformId } from '@mesaas/platforms';
 
 export interface Cliente {
   id?: number;
@@ -21,6 +22,21 @@ export interface Cliente {
   send_report_email?: boolean;
   include_ai_analysis?: boolean;
   foto_url?: string | null;
+  /**
+   * Agenda a publicação sozinho quando o CLIENTE aprova pelo Hub
+   * (supabase/functions/hub-approve/handler.ts:152-185). Já vinha selecionado em
+   * CLIENTE_SAFE_COLUMNS e exposto por clientes_v; só faltava no tipo. A CRM lê
+   * este campo para avisar quando uma aprovação manual deveria ter agendado.
+   */
+  auto_publish_on_approval?: boolean;
+  // Central de Notificações, Fase 2 (spec 2026-09-02): "Pendências do Hub" digest
+  // opt-in. event_email_unsub_at is set when the client clicks the unsubscribe
+  // link in one of those emails — reactivating requires an explicit confirm in
+  // the UI, not just flipping the switch back on.
+  send_event_email?: boolean;
+  event_email_unsub_at?: string | null;
+  /** Plataformas padrão dos fluxos novos do cliente (text[]; default {instagram}). */
+  plataformas_padrao?: PlatformId[];
 }
 
 export interface ClienteEndereco {
@@ -39,6 +55,17 @@ export interface ClienteEndereco {
   updated_at?: string;
 }
 
+export interface ClienteLink {
+  id?: number;
+  cliente_id: number;
+  conta_id?: string;
+  titulo: string;
+  url: string;
+  descricao?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ClienteData {
   id?: number;
   cliente_id: number;
@@ -46,6 +73,17 @@ export interface ClienteData {
   titulo: string;
   data: string;
   created_at?: string;
+}
+
+/**
+ * Alphabetical comparator for client pickers (dropdowns, selects, comboboxes).
+ * `getClientes()` itself stays newest-first (see PAGE_SIZE comment below) --
+ * useGuideSignals.ts relies on that order to find the most recently created
+ * client, so callers that need alphabetical order sort at their own call site
+ * with this shared comparator instead of resorting the shared fetch.
+ */
+export function sortClientesByNome<T extends { nome: string }>(clientes: T[]): T[] {
+  return [...clientes].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
 /**
@@ -57,7 +95,7 @@ export interface ClienteData {
  * read — it falls back to a `GenericStringError` result type.
  */
 const CLIENTE_SAFE_COLUMNS =
-  'id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status, created_at, notion_page_url, data_pagamento, especialidade, data_aniversario, dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis, foto_url';
+  'id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status, created_at, notion_page_url, data_pagamento, especialidade, data_aniversario, dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis, foto_url, send_event_email, event_email_unsub_at, plataformas_padrao';
 
 // Supabase's REST layer applies a project-level max-rows cap (commonly 1000), so
 // an unbounded `.select('*')` is silently truncated once a workspace has more
@@ -202,6 +240,52 @@ export async function updateClienteEndereco(
 
 export async function removeClienteEndereco(id: number): Promise<void> {
   const { error } = await supabase.from('cliente_enderecos').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// =============================================
+// CLIENTE LINKS CRUD
+// =============================================
+
+export async function getClienteLinks(clienteId: number): Promise<ClienteLink[]> {
+  const { data, error } = await supabase
+    .from('cliente_links')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addClienteLink(
+  l: Omit<ClienteLink, 'id' | 'conta_id' | 'created_at' | 'updated_at'>,
+): Promise<ClienteLink> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('cliente_links')
+    .insert({ ...l, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateClienteLink(
+  id: number,
+  l: Partial<Omit<ClienteLink, 'id' | 'conta_id' | 'created_at' | 'updated_at'>>,
+): Promise<ClienteLink> {
+  const { data, error } = await supabase
+    .from('cliente_links')
+    .update({ ...l, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeClienteLink(id: number): Promise<void> {
+  const { error } = await supabase.from('cliente_links').delete().eq('id', id);
   if (error) throw error;
 }
 

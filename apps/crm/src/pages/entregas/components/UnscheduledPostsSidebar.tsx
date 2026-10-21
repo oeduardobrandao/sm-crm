@@ -5,7 +5,9 @@ import { LOCKED_STATUSES } from './CalendarGrid';
 
 interface UnscheduledPostsSidebarProps {
   posts: ClientePost[];
-  currentWorkflowId: number;
+  /** `null` = contexto de post avulso: o conjunto "nosso" são os avulsos do
+   *  cliente (`workflow_id === null`), e todo post de fluxo é que é estrangeiro. */
+  currentWorkflowId: number | null;
 }
 
 function DraggablePostCard({ post }: { post: ClientePost }) {
@@ -33,7 +35,7 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
         <span className="sidebar-tipo-badge" style={{ background: colors.bg, color: colors.text }}>
           {TIPO_LABELS[post.tipo]}
         </span>
-        <span className="sidebar-workflow-label">{post.workflow_titulo}</span>
+        <span className="sidebar-workflow-label">{post.workflow_titulo ?? 'Avulso'}</span>
       </div>
     </div>
   );
@@ -43,6 +45,7 @@ export function UnscheduledPostsSidebar({
   posts,
   currentWorkflowId,
 }: UnscheduledPostsSidebarProps) {
+  const isAvulsoContext = currentWorkflowId === null;
   const { setNodeRef, isOver } = useDroppable({ id: 'unscheduled-zone' });
   const { active } = useDndContext();
   const draggingPost = active?.data.current?.post as ClientePost | undefined;
@@ -86,7 +89,7 @@ export function UnscheduledPostsSidebar({
         </div>
         <div className="sidebar-legend-item sidebar-legend-item--ownership">
           <span className="sidebar-legend-swatch" />
-          De outro workflow
+          {isAvulsoContext ? 'De um fluxo' : 'De outro workflow'}
         </div>
       </div>
     </div>

@@ -19,25 +19,40 @@ export const explainerStorageKey = (contaId: string) => `entregas_explainer_dism
  *
  * Every claim is drawn from live behaviour, not aspiration: the etapa/post
  * split is `workflows.etapa_atual` vs `workflow_posts.status`; the re-arm is
- * `completeEtapaWithRearm`; template propagation is
- * `propagateTemplateToWorkflows`, which rewrites `pendente` and `ativo` etapas
- * (never `concluido`, and never `status`/`iniciado_em`/`concluido_em`).
+ * `completeEtapaWithRearm`; template propagation is `saveWorkflowTemplate`
+ * (`update_workflow_template`), which updates `pendente` and `ativo` etapas
+ * field by field, only where the fluxo still holds the template's previous
+ * value (never `concluido`, and never `status`/`iniciado_em`/`concluido_em`).
  */
-export function ComoFuncionaPanel({ onDismiss }: { onDismiss: () => void }) {
+export function ComoFuncionaPanel({
+  onDismiss,
+  postProcessesEnabled = false,
+  embedded = false,
+}: {
+  onDismiss: () => void;
+  postProcessesEnabled?: boolean;
+  /** Inside a phone sheet: the sheet carries the title and the close button. */
+  embedded?: boolean;
+}) {
   return (
-    <section className="ex-panel" aria-labelledby="entregas-explainer-title">
-      <div className="ex-head">
-        <h2 id="entregas-explainer-title">Como funciona esta página</h2>
-        <button
-          type="button"
-          className="ex-close"
-          onClick={onDismiss}
-          aria-label="Fechar explicação"
-          title="Fechar — você pode reabrir em “Como funciona”"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+    <section
+      className={embedded ? 'ex-panel ex-panel--embedded' : 'ex-panel'}
+      aria-labelledby={embedded ? undefined : 'entregas-explainer-title'}
+    >
+      {!embedded && (
+        <div className="ex-head">
+          <h2 id="entregas-explainer-title">Como funciona esta página</h2>
+          <button
+            type="button"
+            className="ex-close"
+            onClick={onDismiss}
+            aria-label="Fechar explicação"
+            title="Fechar — você pode reabrir em “Como funciona”"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <div className="ex-grid">
         {/* ── Os objetos ─ containment shown by indentation, not described in prose */}
@@ -50,21 +65,38 @@ export function ComoFuncionaPanel({ onDismiss }: { onDismiss: () => void }) {
           <ol className="ex-tree">
             <li className="ex-tree-l0">
               <span className="ex-term">Fluxo</span>
-              <span className="ex-def">um ciclo de entrega de um cliente — o card do kanban</span>
+              <span className="ex-def">
+                {postProcessesEnabled
+                  ? 'um ciclo de entrega de um cliente: um card do kanban'
+                  : 'um ciclo de entrega de um cliente — o card do kanban'}
+              </span>
             </li>
             <li className="ex-tree-l1">
               <span className="ex-term">Etapas</span>
-              <span className="ex-def">as fases do fluxo — só uma fica ativa por vez</span>
+              <span className="ex-def">
+                {postProcessesEnabled
+                  ? 'as fases do fluxo ou do post individual: só uma fica ativa por vez'
+                  : 'as fases do fluxo — só uma fica ativa por vez'}
+              </span>
             </li>
             <li className="ex-tree-l2">
               <span className="ex-term">Posts</span>
               <span className="ex-def">o conteúdo em si, cada um com o seu status</span>
             </li>
+            {postProcessesEnabled && (
+              <li className="ex-tree-l0">
+                <span className="ex-term">Post individual</span>
+                <span className="ex-def">
+                  um post com etapas próprias, sem fluxo: também é um card do kanban
+                </span>
+              </li>
+            )}
           </ol>
 
           <p className="ex-aside">
             <span className="ex-term">Modelo</span> é o esqueleto reutilizável de um fluxo. Editá-lo
-            reescreve só as etapas <strong>ainda não iniciadas</strong> dos fluxos que o usam.
+            atualiza as etapas <strong>em aberto</strong> dos fluxos que o usam, mas mantém o que
+            foi ajustado no próprio fluxo, como um prazo ou responsável diferente.
           </p>
         </article>
 
@@ -98,8 +130,9 @@ export function ComoFuncionaPanel({ onDismiss }: { onDismiss: () => void }) {
             adiante devolve os posts aprovados para Rascunho.
           </p>
           <p className="ex-aside">
-            Um post também pode existir sem fluxo (publicação avulsa): ele anda só pelo trilho de
-            status, no quadro de Publicações.
+            {postProcessesEnabled
+              ? 'Um post também pode existir sem fluxo: avulso, andando só pelo trilho de status no quadro de Publicações, ou individual, com etapas próprias no quadro de Fluxos.'
+              : 'Um post também pode existir sem fluxo (publicação avulsa): ele anda só pelo trilho de status, no quadro de Publicações.'}
           </p>
         </article>
 

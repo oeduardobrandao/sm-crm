@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { LayoutList } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutList } from 'lucide-react';
 import {
   getWorkflowsByCliente,
-  getWorkflowEtapas,
+  getWorkflowEtapasByWorkflowIds,
   getDeadlineInfo,
   getMembros,
   hasLaterApprovalEtapa,
@@ -14,34 +14,54 @@ import {
   approvePostsInternally,
   sendPostsToCliente,
   duplicateWorkflow,
-  getWorkflowPostsCounts,
-  getWorkflowApprovedPostsCounts,
-  getWorkflowClearedClientePostsCounts,
-  getWorkflowRevisaoInternaCounts,
-  getWorkflowAwaitingClientePostsCounts,
+  getWorkflowPostStats,
   getConcludedWorkflowsByCliente,
-  getWorkflowPosts,
-  getWorkflowPostsWithProperties,
+  getConcludedWorkflowSummaries,
+  getClientePosts,
   updateWorkflowPost,
   getClientes,
   getWorkspaceSlug,
   getHubToken,
   getWorkflowTemplates,
+  getVigentePostProcessesByCliente,
   type Workflow,
   type WorkflowEtapa,
 } from '@/store';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { HistoryDrawer } from '@/pages/entregas/components/HistoryDrawer';
 import { WorkflowCard } from '@/pages/entregas/components/WorkflowCard';
 import { WorkflowDrawer } from '@/pages/entregas/components/WorkflowDrawer';
+import { PostProcessCard } from '@/pages/entregas/components/PostProcessCard';
+import { StandalonePostDrawer } from '@/pages/entregas/components/StandalonePostDrawer';
+import { AutoScheduleBatchDialog } from '@/pages/entregas/components/AutoScheduleBatchDialog';
 import {
   EditWorkflowModal,
   ForwardConfirmDialog,
   RevertConfirmDialog,
   ClientApprovalChoiceDialog,
+  RecurringWorkflowDialog,
 } from '@/pages/entregas/components/WorkflowModals';
+import { PostProcessCardMenu, WorkflowCardMenu } from '@/pages/entregas/phone/cardMenus';
+import {
+  PhonePostProcessCard,
+  PhoneWorkflowCard,
+  type WorkflowCardCounts,
+} from '@/pages/entregas/phone/PhoneBoardCards';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useOverlayHistoryEntry } from '@/hooks/useOverlayHistoryEntry';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import type { BoardCard } from '@/pages/entregas/hooks/useEntregasData';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '@/pages/entregas/advanceEtapa';
-import { getWorkflowCovers } from '@/services/postMedia';
+import { decideApprovalAdvance } from '@/pages/entregas/approvalAdvance';
+import { toPostEntity, type PostEntity } from '@/pages/entregas/boardEntity';
+import {
+  canConcluir,
+  forwardLabelFor,
+  previousStepOf,
+  type ProcessTarget,
+} from '@/pages/entregas/postProcessCommands';
+import { usePostProcessCommands } from '@/pages/entregas/hooks/usePostProcessCommands';
+import { getWorkflowCovers, getPostCovers } from '@/services/postMedia';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,12 +74,86 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ResponsiveCardRail } from '../ResponsiveCardRail';
 import { ClientePostCalendar, type PostCalendarEvent } from '../components/ClientePostCalendar';
+import { ClientePostCalendarPhone } from '../components/ClientePostCalendarPhone';
+import { PhoneEmptyCard } from '../phone/PhoneRows';
+import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 interface WorkflowWithEtapas {
   workflow: Workflow;
   etapas: WorkflowEtapa[];
 }
+
+/** Mesma projeção de PostEntity -> ProcessTarget do quadro de Fluxos
+ *  (views/KanbanView.tsx's targetOf) -- comando e drag chamam o MESMO alvo lá;
+ *  aqui não há drag, só o botão, mas o alvo precisa ser idêntico. */
+function targetOf(p: PostEntity): ProcessTarget {
+  return {
+    process: p.process,
+    post: {
+      id: p.process.post_id,
+      titulo: p.titulo,
+      status: p.process.post.status,
+      cliente_id: p.process.post.cliente_id,
+    },
+  };
+}
+
+/**
+ * Left/right "there's more" affordances for a horizontally-scrolling rail
+ * (.cliente-deliveries-rail--carousel, style.css). The right arrow shows
+ * while the rail overflows and hasn't been scrolled to its end; the left
+ * arrow only appears once the user has actually scrolled right, so at rest
+ * (scrollLeft === 0) there's nothing to go "back" to yet.
+ */
+function RailScrollArrows({ railRef }: { railRef: React.RefObject<HTMLDivElement | null> }) {
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el) return;
+    const update = () => {
+      setCanLeft(el.scrollLeft > 4);
+      setCanRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, [railRef]);
+
+  return (
+    <>
+      {canLeft && (
+        <button
+          type="button"
+          className="cliente-rail-arrow cliente-rail-arrow--left"
+          aria-label="Ver anteriores"
+          onClick={() => railRef.current?.scrollBy({ left: -300, behavior: 'smooth' })}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      )}
+      {canRight && (
+        <button
+          type="button"
+          className="cliente-rail-arrow cliente-rail-arrow--right"
+          aria-label="Ver mais"
+          onClick={() => railRef.current?.scrollBy({ left: 300, behavior: 'smooth' })}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      )}
+    </>
+  );
+}
+
+const EMPTY_COUNTS: Map<number, number> = new Map();
 
 /**
  * "Entregas" tab: active workflow board, post delivery calendar, and
@@ -75,7 +169,12 @@ interface WorkflowWithEtapas {
  * (`workflowsByCliente`, `membros`, the five posts-count queries,
  * `workflow-covers`, `concluded-by-cliente`, `concluded-summaries-cliente`,
  * plus `clientes` — lazily, only once the edit-workflow modal opens, since
- * that modal's client-reassign dropdown needs the full portfolio). It
+ * that modal's client-reassign dropdown needs the full portfolio). Individual
+ * posts (post_processes, spec 2026-09-10) share the same domain and follow
+ * the same gate as the Fluxos board (`feature_post_processes`): only the
+ * client's ACTIVE processes render as cards here (`post-processes-cliente`,
+ * `post-covers-cliente`) — concluded ones stay out of "Histórico de entregas"
+ * for now, since there is no post-process equivalent of HistoryDrawer yet. It
  * deliberately never fetches Instagram (`igSummary`) data — that belongs to
  * the Redes sociais tab — so `BoardCard.clienteAvatarUrl` is always left
  * `undefined` here; `WorkflowCard` already falls back to a colored-initials
@@ -97,13 +196,38 @@ export default function EntregasTab() {
   const { t: tc } = useTranslation();
   const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
+  const isPhone = !useIsDesktop(768);
+  const fluxosRailRef = useRef<HTMLDivElement>(null);
+  const postsRailRef = useRef<HTMLDivElement>(null);
+
   const [historyWorkflow, setHistoryWorkflow] = useState<Workflow | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
+  const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | undefined>(undefined);
+  const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [editCardModal, setEditCardModal] = useState<BoardCard | null>(null);
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<BoardCard | null>(null);
-  const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
+  const [approvalChoice, setApprovalChoice] = useState<{
+    card: BoardCard;
+    willRearm: boolean;
+  } | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
+  // Aviso de agendamento automático em lote (spec 2026-09-17, peça 2):
+  // schedulingEnabled é o gate incondicional (feature_post_scheduling);
+  // tiktokEnabled é o gate ADICIONAL só para post tiktok/both (decisão 5 da
+  // spec), aplicado por post DENTRO do AutoScheduleBatchDialog.
+  const { features } = useWorkspaceLimits();
+  const schedulingEnabled = features?.feature_post_scheduling === true;
+  const tiktokEnabled = features?.feature_tiktok === true;
+  const postProcessesEnabled = features?.feature_post_processes === true;
+  // Carrega o booleano do gate de segurança (fix B da revisão final) junto do
+  // id, capturado no momento em que !willRearm foi checado em
+  // handleApproveInternally -- AutoScheduleBatchDialog agora exige essa prop e
+  // a usa como seu próprio gate interno, não recalculado depois no render.
+  const [batchSchedule, setBatchSchedule] = useState<{
+    workflowId: number;
+    isFinalApprovalCycle: boolean;
+  } | null>(null);
 
   const { data: clienteWorkflowsRaw } = useQuery({
     queryKey: ['workflowsByCliente', clienteId],
@@ -129,30 +253,7 @@ export default function EntregasTab() {
 
   const { data: concludedSummaries = [] } = useQuery({
     queryKey: ['concluded-summaries-cliente', concludedWfs.map((w) => w.id).join(',')],
-    queryFn: async () => {
-      return Promise.all(
-        concludedWfs.map(async (workflow) => {
-          const [etapas, posts] = await Promise.all([
-            getWorkflowEtapas(workflow.id!),
-            getWorkflowPosts(workflow.id!),
-          ]);
-          const firstStart = etapas.find((e) => e.iniciado_em)?.iniciado_em;
-          const concludedEtapas = etapas.filter((e) => e.concluido_em);
-          const lastEnd =
-            concludedEtapas.length > 0
-              ? concludedEtapas[concludedEtapas.length - 1].concluido_em
-              : null;
-          const totalDays =
-            firstStart && lastEnd
-              ? Math.round(
-                  (new Date(lastEnd).getTime() - new Date(firstStart).getTime()) /
-                    (1000 * 60 * 60 * 24),
-                )
-              : null;
-          return { workflow, postCount: posts.length, totalDays, completedAt: lastEnd ?? null };
-        }),
-      );
-    },
+    queryFn: () => getConcludedWorkflowSummaries(concludedWfs),
     enabled: concludedWfs.length > 0,
   });
 
@@ -190,10 +291,12 @@ export default function EntregasTab() {
       setWorkflowsWithEtapas([]);
       return;
     }
-    Promise.all(
-      activeWfs.map(async (w) => ({ workflow: w, etapas: await getWorkflowEtapas(w.id!) })),
-    )
-      .then(setWorkflowsWithEtapas)
+    getWorkflowEtapasByWorkflowIds(activeWfs.map((w) => w.id!))
+      .then((byWorkflow) =>
+        setWorkflowsWithEtapas(
+          activeWfs.map((w) => ({ workflow: w, etapas: byWorkflow.get(w.id!) ?? [] })),
+        ),
+      )
       .catch(() => setWorkflowsWithEtapas([]));
   }, [clienteWorkflowsRaw]);
 
@@ -202,36 +305,53 @@ export default function EntregasTab() {
     [workflowsWithEtapas],
   );
 
-  const { data: postsCounts = new Map<number, number>() } = useQuery({
+  // Same query (key and fetch) as the Entregas board in useEntregasData.
+  const { data: postStats } = useQuery({
     queryKey: ['workflow-posts-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowPostsCounts(activeWorkflowIds),
+    queryFn: () => getWorkflowPostStats(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const { data: approvedPostsCounts = new Map<number, number>() } = useQuery({
-    queryKey: ['workflow-approved-posts-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowApprovedPostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const { data: clearedClienteCounts = new Map<number, number>() } = useQuery({
-    queryKey: ['workflow-cleared-cliente-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowClearedClientePostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const { data: revisaoInternaCounts = new Map<number, number>() } = useQuery({
-    queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const { data: awaitingClienteCounts = new Map<number, number>() } = useQuery({
-    queryKey: ['workflow-awaiting-cliente-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowAwaitingClientePostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
+  const postsCounts = postStats?.total ?? EMPTY_COUNTS;
+  const approvedPostsCounts = postStats?.aprovadoCliente ?? EMPTY_COUNTS;
+  const clearedClienteCounts = postStats?.clearedCliente ?? EMPTY_COUNTS;
+  const revisaoInternaCounts = postStats?.revisaoInterna ?? EMPTY_COUNTS;
+  const awaitingClienteCounts = postStats?.enviadoCliente ?? EMPTY_COUNTS;
   const { data: workflowCovers } = useQuery({
     queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
+
+  // Posts individuais (post_processes) deste cliente -- gated pela mesma flag
+  // que o quadro de Fluxos (feature_post_processes). "Vigente" inclui
+  // ativo+concluido; só os ativos entram no rail abaixo, os concluídos ficam
+  // de fora por ora (não há um equivalente de HistoryDrawer para processo
+  // individual ainda).
+  const { data: postProcesses = [] } = useQuery({
+    queryKey: ['post-processes-cliente', clienteId],
+    queryFn: () => getVigentePostProcessesByCliente(clienteId),
+    enabled: !isNaN(clienteId) && postProcessesEnabled,
+  });
+  const activePostProcesses = useMemo(
+    () => postProcesses.filter((p) => p.estado === 'ativo'),
+    [postProcesses],
+  );
+  const activeProcessPostIds = useMemo(
+    () => activePostProcesses.map((p) => p.post_id),
+    [activePostProcesses],
+  );
+  const { data: postCovers } = useQuery({
+    queryKey: ['post-covers-cliente', activeProcessPostIds.join(',')],
+    queryFn: () => getPostCovers(activeProcessPostIds),
+    enabled: activeProcessPostIds.length > 0,
+  });
+
+  const postEntities: PostEntity[] = useMemo(() => {
+    if (!cliente) return [];
+    return activePostProcesses
+      .map((process) => toPostEntity(process, { clientes: [cliente], membros, covers: postCovers }))
+      .filter((e): e is PostEntity => e !== null);
+  }, [activePostProcesses, cliente, membros, postCovers]);
 
   const boardCards: BoardCard[] = useMemo(() => {
     if (!cliente) return [];
@@ -265,8 +385,36 @@ export default function EntregasTab() {
       .filter(Boolean) as BoardCard[];
   }, [workflowsWithEtapas, cliente, membros, workflowCovers, hubToken, workspaceSlug]);
 
-  // Post calendar: fetch posts with scheduled_at for all active workflows
-  const [postCalendarEvents, setPostCalendarEvents] = useState<PostCalendarEvent[]>([]);
+  // Post calendar: every scheduled post of the client's active workflows PLUS
+  // its posts avulsos (getClientePosts merges both). Same ['clientePosts',
+  // clienteId] key as WorkflowDrawer / StandalonePostDrawer, so a reschedule
+  // inside either drawer refreshes the calendar too.
+  const { data: clientePosts = [] } = useQuery({
+    queryKey: ['clientePosts', clienteId],
+    queryFn: () => getClientePosts(clienteId),
+    enabled: !isNaN(clienteId),
+  });
+  const postCalendarEvents = useMemo(() => {
+    const events: PostCalendarEvent[] = [];
+    for (const post of clientePosts) {
+      if (!post.scheduled_at) continue;
+      const m = post.scheduled_at.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      const parsed = m
+        ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+        : new Date(post.scheduled_at);
+      if (isNaN(parsed.getTime())) continue;
+      events.push({
+        postId: post.id,
+        postTitle: post.titulo || t('detail.noTitle'),
+        workflowId: post.workflow_id,
+        workflowTitle: post.workflow_titulo,
+        date: parsed,
+        tipo: post.tipo,
+        status: post.status,
+      });
+    }
+    return events;
+  }, [clientePosts, t]);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -274,93 +422,8 @@ export default function EntregasTab() {
   const [selectedPostDay, setSelectedPostDay] = useState<number | null>(new Date().getDate());
   const [postUpdating, setPostUpdating] = useState<number | null>(null);
 
-  useEffect(() => {
-    const activeWfs = (clienteWorkflowsRaw ?? []).filter((w) => w.status === 'ativo');
-    if (activeWfs.length === 0) {
-      setPostCalendarEvents([]);
-      return;
-    }
-    let cancelled = false;
-    Promise.all(
-      activeWfs.map(async (wf) => {
-        const posts = await getWorkflowPostsWithProperties(wf.id!);
-        return posts.map((p) => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
-      }),
-    )
-      .then((results) => {
-        if (cancelled) return;
-        const events: PostCalendarEvent[] = [];
-        for (const posts of results) {
-          for (const post of posts) {
-            if (post.scheduled_at) {
-              const m = post.scheduled_at.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              const parsed = m
-                ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-                : new Date(post.scheduled_at);
-              if (!isNaN(parsed.getTime())) {
-                events.push({
-                  postId: post.id!,
-                  postTitle: post.titulo || t('detail.noTitle'),
-                  workflowId: post._wfId,
-                  workflowTitle: post._wfTitle,
-                  date: parsed,
-                  tipo: post.tipo,
-                  status: post.status,
-                });
-              }
-            }
-          }
-        }
-        setPostCalendarEvents(events);
-      })
-      .catch(() => {
-        if (!cancelled) setPostCalendarEvents([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [clienteWorkflowsRaw]);
-
   const refreshPostCalendar = () => {
-    const activeWfs = (clienteWorkflowsRaw ?? []).filter((w) => w.status === 'ativo');
-    if (activeWfs.length === 0) {
-      setPostCalendarEvents([]);
-      return;
-    }
-    Promise.all(
-      activeWfs.map(async (wf) => {
-        const posts = await getWorkflowPostsWithProperties(wf.id!);
-        return posts.map((p) => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
-      }),
-    )
-      .then((results) => {
-        const events: PostCalendarEvent[] = [];
-        for (const posts of results) {
-          for (const post of posts) {
-            if (post.scheduled_at) {
-              const m = post.scheduled_at.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              const parsed = m
-                ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-                : new Date(post.scheduled_at);
-              if (!isNaN(parsed.getTime())) {
-                events.push({
-                  postId: post.id!,
-                  postTitle: post.titulo || t('detail.noTitle'),
-                  workflowId: post._wfId,
-                  workflowTitle: post._wfTitle,
-                  date: parsed,
-                  tipo: post.tipo,
-                  status: post.status,
-                });
-              }
-            }
-          }
-        }
-        setPostCalendarEvents(events);
-      })
-      .catch(() => {
-        toast.error(t('detail.calendarUpdateError'));
-      });
+    queryClient.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
   };
 
   const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
@@ -370,7 +433,11 @@ export default function EntregasTab() {
       toast.success(
         newStatus === 'agendado' ? t('detail.postScheduled') : t('detail.postMarkedPosted'),
       );
-      refreshPostCalendar();
+      // refreshCards, not just the calendar: a post avulso with an active
+      // process renders its status on the PostProcessCard
+      // (['post-processes-cliente']), and a fluxo post's status feeds the
+      // workflow card counts.
+      refreshCards();
     } catch {
       toast.error(t('detail.postStatusError'));
     } finally {
@@ -381,16 +448,37 @@ export default function EntregasTab() {
   const refreshCards = () => {
     queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
     queryClient.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-covers'] });
     queryClient.invalidateQueries({ queryKey: ['concluded-by-cliente', clienteId] });
     queryClient.invalidateQueries({ queryKey: ['concluded-summaries-cliente'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-events'] });
+    queryClient.invalidateQueries({ queryKey: ['post-processes-cliente', clienteId] });
+    queryClient.invalidateQueries({ queryKey: ['post-covers-cliente'] });
     refreshPostCalendar();
   };
+
+  const postProcessCommands = usePostProcessCommands({ onRefresh: refreshCards });
+
+  // Phones: the concluded fluxo's history is a pushed screen (in place of the tab, under
+  // its own nav bar) and the two drawers are full-screen; each gets a history entry so
+  // Back (the iOS edge swipe included) closes it instead of leaving the client. Same
+  // single-boolean entry for both drawers as EntregasPage. Desktop is unchanged.
+  const historyFaceOpen = isPhone && historyWorkflow !== null;
+  useOverlayHistoryEntry(historyFaceOpen, () => setHistoryWorkflow(null));
+  useOverlayHistoryEntry(isPhone && (drawerCard !== null || standalonePostId !== null), () => {
+    setDrawerCard(null);
+    setDrawerInitialPostId(undefined);
+    setStandalonePostId(null);
+  });
+  useClientePhoneHeader({ hideNavBar: historyFaceOpen });
+
+  const countsFor = (workflowId: number): WorkflowCardCounts => ({
+    postsCount: postsCounts.get(workflowId) ?? 0,
+    approvedPostsCount: approvedPostsCounts.get(workflowId) ?? 0,
+    clearedClienteCount: clearedClienteCounts.get(workflowId) ?? 0,
+    revisaoInternaCount: revisaoInternaCounts.get(workflowId) ?? 0,
+    awaitingClienteCount: awaitingClienteCounts.get(workflowId) ?? 0,
+  });
 
   useEffect(() => {
     if (drawerCard) {
@@ -411,15 +499,18 @@ export default function EntregasTab() {
     setForwardTarget(null);
     if (!card) return;
 
-    const total = postsCounts.get(card.workflow.id!) ?? 0;
-    // "Cleared" (approved / scheduled / posted / publish-failed), not just
-    // aprovado_cliente — a workflow whose approved posts are already scheduled
-    // should advance without prompting the approval dialog.
-    const cleared = clearedClienteCounts.get(card.workflow.id!) ?? 0;
-    const allCleared = total > 0 && cleared === total;
+    const decision = decideApprovalAdvance({
+      tipo: card.etapa.tipo,
+      // "Cleared" (approved / scheduled / posted / publish-failed), not just
+      // aprovado_cliente — a workflow whose approved posts are already scheduled
+      // should advance without prompting the approval dialog.
+      total: postsCounts.get(card.workflow.id!) ?? 0,
+      cleared: clearedClienteCounts.get(card.workflow.id!) ?? 0,
+      temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, card.etapa.id!),
+    });
 
-    if (card.etapa.tipo === 'aprovacao_cliente' && !allCleared) {
-      setApprovalChoiceCard(card);
+    if (decision.kind === 'choose') {
+      setApprovalChoice({ card, willRearm: decision.willRearm });
       return;
     }
 
@@ -438,13 +529,35 @@ export default function EntregasTab() {
   };
 
   const handleApproveInternally = async () => {
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    const card = approvalChoice?.card;
+    const willRearm = approvalChoice?.willRearm === true;
+    setApprovalChoice(null);
     if (!card) return;
     try {
       await approvePostsInternally(card.workflow.id!);
+      // Spec peça 2 / decisão 4: assim que a escrita de aprovação resolve. Fica
+      // ANTES do avanço de etapa de propósito -- se completeEtapaForAdvance
+      // lançar, o catch abaixo mostra o erro do avanço, mas os posts já estão
+      // aprovados e o aviso de agendamento continua válido.
+      //
+      // isFinalApprovalCycle: !willRearm -- capturado AQUI, no mesmo instante em
+      // que willRearm foi checado, e carregado junto do workflowId (fix B da
+      // revisão final). AutoScheduleBatchDialog agora exige essa prop como seu
+      // próprio gate interno.
+      if (!willRearm && schedulingEnabled && card.cliente?.auto_publish_on_approval === true) {
+        setBatchSchedule({ workflowId: card.workflow.id!, isFinalApprovalCycle: !willRearm });
+      }
       const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!);
       if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
+        // Recurring-completion wins over the batch-schedule nudge (fix round 1's
+        // render-time gate). Fix round 2: also CLEAR batchSchedule here, not
+        // just suppress it -- otherwise, once the recurring dialog is dismissed
+        // (recurringWfId -> null again), the gate flips back open and the nudge
+        // resurfaces for a workflow already dealt with. Fix G (revisão final):
+        // id-guarded like KanbanView's equivalent clear, not unconditional --
+        // harmless here in practice (same card, same tick) but keeps the two
+        // call sites' clear semantics identical.
+        setBatchSchedule((prev) => (prev?.workflowId === card.workflow.id ? null : prev));
         setRecurringWfId(card.workflow.id!);
       } else {
         refreshCards();
@@ -457,8 +570,8 @@ export default function EntregasTab() {
   };
 
   const handleSendToPortal = async () => {
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    const card = approvalChoice?.card;
+    setApprovalChoice(null);
     if (!card) return;
     try {
       await sendPostsToCliente(card.workflow.id!);
@@ -470,8 +583,8 @@ export default function EntregasTab() {
   };
 
   const handleAdvanceWithoutApproval = async () => {
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    const card = approvalChoice?.card;
+    setApprovalChoice(null);
     if (!card) return;
     try {
       // Literal contract of this option: post statuses are left alone, so no re-arm.
@@ -518,9 +631,189 @@ export default function EntregasTab() {
     setRecurringWfId(null);
   };
 
+  const handlePostEntityClick = (entity: PostEntity) => {
+    setDrawerCard(null);
+    setDrawerInitialPostId(undefined);
+    setStandalonePostId(entity.process.post_id);
+  };
+
+  const handlePostAttached = (workflowId: number, postId: number) => {
+    setStandalonePostId(null);
+    // AttachToFluxoDialog only invalidates ['post-processes'] (the Fluxos-board
+    // key), never this tab's ['post-processes-cliente', clienteId] -- without
+    // this, the now-encerrado process stays rendered as a stale active card.
+    refreshCards();
+    const card = boardCards.find((c) => c.workflow.id === workflowId);
+    if (!card) return;
+    setDrawerInitialPostId(postId);
+    setDrawerCard(card);
+  };
+
+  // Rendered in both branches below: a client whose only scheduled posts are
+  // avulsos without a process has no board cards, and the calendar must still show.
+  const PostCalendar = isPhone ? ClientePostCalendarPhone : ClientePostCalendar;
+  const postCalendar = (
+    <PostCalendar
+      events={postCalendarEvents}
+      calendarMonth={calendarMonth}
+      onMonthChange={(d) => {
+        setCalendarMonth(d);
+        setSelectedPostDay(null);
+      }}
+      selectedPostDay={selectedPostDay}
+      onSelectDay={(day) => setSelectedPostDay(day)}
+      postUpdating={postUpdating}
+      onPostStatusUpdate={handlePostStatusUpdate}
+      onOpenPost={(postId, workflowId) => {
+        if (workflowId == null) {
+          setDrawerCard(null);
+          setDrawerInitialPostId(undefined);
+          setStandalonePostId(postId);
+          return;
+        }
+        const card = boardCards.find((candidate) => candidate.workflow.id === workflowId);
+        if (!card) return;
+        setStandalonePostId(null);
+        setDrawerInitialPostId(postId);
+        setDrawerCard(card);
+      }}
+    />
+  );
+
+  const openWorkflow = (card: BoardCard) => {
+    setStandalonePostId(null);
+    setDrawerInitialPostId(undefined);
+    setDrawerCard(card);
+  };
+  const forwardPostEntity = (entity: PostEntity) =>
+    canConcluir(entity.process)
+      ? postProcessCommands.concluir(targetOf(entity))
+      : postProcessCommands.avancar(targetOf(entity));
+
+  const phoneContent = historyFaceOpen ? (
+    <HistoryDrawer
+      variant="page"
+      workflow={historyWorkflow!}
+      clienteName={cliente?.nome}
+      onClose={() => setHistoryWorkflow(null)}
+    />
+  ) : (
+    <div id="sec-entregas" className="phone-cli-ent">
+      {boardCards.length === 0 && postEntities.length === 0 && (
+        <section className="phone-cli-ent__section" aria-label={t('detail.activeDeliveries')}>
+          <h2 className="phone-group__header">{t('detail.activeDeliveries')}</h2>
+          <PhoneEmptyCard
+            title={t('detail.noActiveDeliveries')}
+            hint={t('detail.noActiveDeliveriesHint')}
+          />
+        </section>
+      )}
+      {boardCards.length > 0 && (
+        <section className="phone-cli-ent__section" aria-labelledby="cli-ent-fluxos">
+          <h2 id="cli-ent-fluxos" className="phone-group__header">
+            {t('detail.fluxos')}
+          </h2>
+          <ul className="phone-cli-ent__cards">
+            {boardCards.map((card) => (
+              <li key={card.workflow.id}>
+                <WorkflowCardMenu
+                  card={card}
+                  membros={membros}
+                  onRefresh={refreshCards}
+                  onOpenPosts={() => openWorkflow(card)}
+                  onEdit={() => setEditCardModal(card)}
+                  onForward={() => handleForwardClick(card)}
+                  onRevert={() => handleRevertClick(card)}
+                  preview={
+                    <PhoneWorkflowCard card={card} counts={countsFor(card.workflow.id!)} preview />
+                  }
+                >
+                  {({ triggerProps }) => (
+                    <PhoneWorkflowCard
+                      card={card}
+                      counts={countsFor(card.workflow.id!)}
+                      onOpen={() => openWorkflow(card)}
+                      onForward={() => handleForwardClick(card)}
+                      triggerProps={triggerProps}
+                    />
+                  )}
+                </WorkflowCardMenu>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {postEntities.length > 0 && (
+        <section className="phone-cli-ent__section" aria-labelledby="cli-ent-posts">
+          <h2 id="cli-ent-posts" className="phone-group__header">
+            {t('detail.individualPosts')}
+          </h2>
+          <ul className="phone-cli-ent__cards">
+            {postEntities.map((entity) => (
+              <li key={entity.id}>
+                <PostProcessCardMenu
+                  entity={entity}
+                  onOpen={() => handlePostEntityClick(entity)}
+                  onForward={() => forwardPostEntity(entity)}
+                  forwardLabel={forwardLabelFor(entity.process)}
+                  canRevert={previousStepOf(entity.process) != null}
+                  onRevert={() => postProcessCommands.voltar(targetOf(entity))}
+                  onRemoveProcess={() => postProcessCommands.remover(targetOf(entity))}
+                  preview={<PhonePostProcessCard entity={entity} preview />}
+                >
+                  {({ triggerProps }) => (
+                    <PhonePostProcessCard
+                      entity={entity}
+                      onOpen={() => handlePostEntityClick(entity)}
+                      onForward={() => forwardPostEntity(entity)}
+                      forwardLabel={forwardLabelFor(entity.process)}
+                      triggerProps={triggerProps}
+                    />
+                  )}
+                </PostProcessCardMenu>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {postCalendar}
+
+      {concludedSummaries.length > 0 && (
+        <GroupedList
+          header={t('detail.deliveryHistory')}
+          className="phone-cli-wrap"
+          aria-label={t('detail.deliveryHistory')}
+        >
+          {concludedSummaries.map((s) => (
+            <Cell
+              key={s.workflow.id}
+              label={s.workflow.titulo}
+              subtitle={[
+                t('detail.postCount', { count: s.postCount }),
+                s.totalDays !== null ? t('detail.dayCount', { count: s.totalDays }) : null,
+                s.completedAt
+                  ? `${t('detail.concluded')} ${new Date(s.completedAt).toLocaleDateString(
+                      dateLocale,
+                      { day: '2-digit', month: 'short' },
+                    )}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              onClick={() => setHistoryWorkflow(s.workflow)}
+            />
+          ))}
+        </GroupedList>
+      )}
+    </div>
+  );
+
   return (
     <>
-      {boardCards.length === 0 ? (
+      {isPhone ? (
+        phoneContent
+      ) : boardCards.length === 0 && postEntities.length === 0 ? (
         <div id="sec-entregas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.activeDeliveries')}
@@ -540,49 +833,90 @@ export default function EntregasTab() {
               {t('detail.noActiveDeliveriesHint')}
             </p>
           </div>
+          {postCalendar}
         </div>
       ) : (
         <div id="sec-entregas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.activeDeliveries')}
           </h3>
-          <ResponsiveCardRail className="cliente-deliveries-rail">
-            {boardCards.map((card) => (
-              <WorkflowCard
-                key={card.workflow.id}
-                card={card}
-                onClick={() => setDrawerCard(card)}
-                onEditClick={() => setEditCardModal(card)}
-                onPostsClick={() => setDrawerCard(card)}
-                onForwardClick={() => handleForwardClick(card)}
-                onRevertClick={() => handleRevertClick(card)}
-                onRefresh={refreshCards}
-                membros={membros}
-                postsCount={postsCounts.get(card.workflow.id!) ?? 0}
-                approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
-                clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
-                revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
-                awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
-              />
-            ))}
-          </ResponsiveCardRail>
+          {boardCards.length > 0 && (
+            <div style={{ marginBottom: postEntities.length > 0 ? '1.5rem' : 0 }}>
+              <h4
+                className="text-sm font-semibold tracking-tight mb-2 text-foreground"
+                style={{ opacity: 0.7 }}
+              >
+                {t('detail.fluxos')}
+              </h4>
+              <div style={{ position: 'relative' }}>
+                <ResponsiveCardRail
+                  ref={fluxosRailRef}
+                  className="cliente-deliveries-rail cliente-deliveries-rail--carousel"
+                >
+                  {boardCards.map((card) => (
+                    <WorkflowCard
+                      key={card.workflow.id}
+                      card={card}
+                      onClick={() => {
+                        setDrawerInitialPostId(undefined);
+                        setDrawerCard(card);
+                      }}
+                      onEditClick={() => setEditCardModal(card)}
+                      onPostsClick={() => {
+                        setDrawerInitialPostId(undefined);
+                        setDrawerCard(card);
+                      }}
+                      onForwardClick={() => handleForwardClick(card)}
+                      onRevertClick={() => handleRevertClick(card)}
+                      onRefresh={refreshCards}
+                      membros={membros}
+                      postsCount={postsCounts.get(card.workflow.id!) ?? 0}
+                      approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
+                      clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
+                      revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+                      awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
+                    />
+                  ))}
+                </ResponsiveCardRail>
+                <RailScrollArrows railRef={fluxosRailRef} />
+              </div>
+            </div>
+          )}
+          {postEntities.length > 0 && (
+            <div>
+              <h4
+                className="text-sm font-semibold tracking-tight mb-2 text-foreground"
+                style={{ opacity: 0.7 }}
+              >
+                {t('detail.individualPosts')}
+              </h4>
+              <div style={{ position: 'relative' }}>
+                <ResponsiveCardRail
+                  ref={postsRailRef}
+                  className="cliente-deliveries-rail cliente-deliveries-rail--carousel cliente-individual-posts-rail"
+                >
+                  {postEntities.map((entity) => (
+                    <PostProcessCard
+                      key={entity.id}
+                      entity={entity}
+                      onClick={() => handlePostEntityClick(entity)}
+                      onForwardClick={() =>
+                        canConcluir(entity.process)
+                          ? postProcessCommands.concluir(targetOf(entity))
+                          : postProcessCommands.avancar(targetOf(entity))
+                      }
+                      onRevertClick={() => postProcessCommands.voltar(targetOf(entity))}
+                      canRevert={previousStepOf(entity.process) != null}
+                      forwardLabel={forwardLabelFor(entity.process)}
+                    />
+                  ))}
+                </ResponsiveCardRail>
+                <RailScrollArrows railRef={postsRailRef} />
+              </div>
+            </div>
+          )}
 
-          <ClientePostCalendar
-            events={postCalendarEvents}
-            calendarMonth={calendarMonth}
-            onMonthChange={(d) => {
-              setCalendarMonth(d);
-              setSelectedPostDay(null);
-            }}
-            selectedPostDay={selectedPostDay}
-            onSelectDay={(day) => setSelectedPostDay(day)}
-            postUpdating={postUpdating}
-            onPostStatusUpdate={handlePostStatusUpdate}
-            onOpenCard={(workflowId) => {
-              const card = boardCards.find((candidate) => candidate.workflow.id === workflowId);
-              if (card) setDrawerCard(card);
-            }}
-          />
+          {postCalendar}
         </div>
       )}
 
@@ -624,38 +958,50 @@ export default function EntregasTab() {
         </div>
       )}
 
-      {/* Recurring workflow confirm */}
-      <AlertDialog
-        open={recurringWfId !== null}
-        onOpenChange={(open) => {
-          if (!open) {
+      {/* Recurring workflow confirm. Phones: the kit confirm sheet (RecurringWorkflowDialog's
+          phone branch); desktop keeps this dialog and its own copy. */}
+      {isPhone ? (
+        <RecurringWorkflowDialog
+          open={recurringWfId !== null}
+          onConfirm={() => void handleRecurringConfirm()}
+          onCancel={() => {
             setRecurringWfId(null);
             queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('detail.workflowCompleted')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('detail.workflowRecurring')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setRecurringWfId(null);
-                queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
-              }}
-            >
-              {tc('actions.no')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleRecurringConfirm}>
-              {t('detail.createNewCycle')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          }}
+        />
+      ) : (
+        <AlertDialog
+          open={recurringWfId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRecurringWfId(null);
+              queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('detail.workflowCompleted')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('detail.workflowRecurring')}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setRecurringWfId(null);
+                  queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
+                }}
+              >
+                {tc('actions.no')}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleRecurringConfirm}>
+                {t('detail.createNewCycle')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
-      {historyWorkflow && (
+      {historyWorkflow && !isPhone && (
         <HistoryDrawer
           workflow={historyWorkflow}
           clienteName={cliente?.nome}
@@ -665,10 +1011,23 @@ export default function EntregasTab() {
 
       {drawerCard && (
         <WorkflowDrawer
+          key={`${drawerCard.workflow.id}-${drawerInitialPostId ?? ''}`}
           card={drawerCard}
           membros={membros}
+          initialPostId={drawerInitialPostId}
           onClose={() => setDrawerCard(null)}
           onRefresh={refreshCards}
+        />
+      )}
+
+      {standalonePostId != null && (
+        <StandalonePostDrawer
+          key={standalonePostId}
+          postId={standalonePostId}
+          membros={membros}
+          onClose={() => setStandalonePostId(null)}
+          onRefresh={refreshCards}
+          onAttached={handlePostAttached}
         />
       )}
 
@@ -693,7 +1052,7 @@ export default function EntregasTab() {
 
       <ForwardConfirmDialog
         open={!!forwardTarget}
-        workflowTitle={forwardTarget?.workflow.titulo ?? ''}
+        entityTitle={forwardTarget?.workflow.titulo ?? ''}
         nextEtapaName={
           forwardTarget
             ? (forwardTarget.allEtapas.find((e) => e.ordem === forwardTarget.etapaIdx + 1)?.nome ??
@@ -705,23 +1064,35 @@ export default function EntregasTab() {
       />
       <RevertConfirmDialog
         open={!!revertTarget}
-        workflowTitle={revertTarget?.workflow.titulo ?? ''}
+        entityTitle={revertTarget?.workflow.titulo ?? ''}
         onConfirm={handleRevertConfirm}
         onCancel={() => setRevertTarget(null)}
       />
       <ClientApprovalChoiceDialog
-        open={!!approvalChoiceCard}
-        workflowTitle={approvalChoiceCard?.workflow.titulo ?? ''}
-        willRearm={
-          approvalChoiceCard
-            ? hasLaterApprovalEtapa(approvalChoiceCard.allEtapas, approvalChoiceCard.etapa.id!)
-            : false
-        }
+        open={!!approvalChoice}
+        entityTitle={approvalChoice?.card.workflow.titulo ?? ''}
+        willRearm={approvalChoice?.willRearm ?? false}
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
         onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
-        onCancel={() => setApprovalChoiceCard(null)}
+        onCancel={() => setApprovalChoice(null)}
       />
+      <AutoScheduleBatchDialog
+        // Exclusão mútua com o AlertDialog "Recurring workflow confirm" acima
+        // (fix pós-review da Task 4): os dois vivem neste mesmo componente, e a
+        // mesma chamada de handleApproveInternally pode setar batchSchedule
+        // e depois, via completeEtapaForAdvance devolvendo concluido+recorrente,
+        // setar recurringWfId também -- o de conclusão de ciclo tem precedência.
+        workflowId={recurringWfId == null ? (batchSchedule?.workflowId ?? null) : null}
+        tiktokFeatureEnabled={tiktokEnabled}
+        isFinalApprovalCycle={batchSchedule?.isFinalApprovalCycle ?? false}
+        onClose={() => setBatchSchedule(null)}
+        onScheduled={() => {
+          setBatchSchedule(null);
+          refreshCards();
+        }}
+      />
+      {postProcessCommands.dialogs}
     </>
   );
 }

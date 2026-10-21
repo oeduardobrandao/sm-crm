@@ -1,28 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Edit2, Wallet, CheckCircle2, Clock } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SkeletonStatus, TableSkeleton } from '@/components/ui/skeletons';
 import {
   Table,
   TableBody,
@@ -31,18 +15,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  getMembros,
-  getTransacoes,
-  formatDate,
-  getInitials,
-  updateMembro,
-  type Membro,
-} from '../../store';
+import { getMembros, getTransacoes, formatDate, getInitials } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
-import { formatFinancialBRL, stripFinancialFields } from '@/lib/financialAccess';
+import { formatFinancialBRL } from '@/lib/financialAccess';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
+import { MembroFormDialog } from '../equipe/MembroFormDialog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { MembroDetalhePhone } from './phone/MembroDetalhePhone';
 
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
@@ -51,25 +32,13 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 export default function MembroDetalhePage() {
-  const { role, canSeeFinancials } = useAuth();
-  const isAgent = role === 'agent';
+  const { canSeeFinancials, can } = useAuth();
+  const canEditTeam = can('equipe', 'editar') === true;
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [fNome, setFNome] = useState('');
-  const [fCargo, setFCargo] = useState('');
-  const [fTipo, setFTipo] = useState<Membro['tipo']>('clt');
-  const [fCusto, setFCusto] = useState('');
-  const [fDiaPag, setFDiaPag] = useState('');
-
-  // The edit modal can hold a custo_mensal value in its form state. On live
-  // revocation, close it rather than let the value linger on screen.
-  useEffect(() => {
-    if (canSeeFinancials !== true) setModalOpen(false);
-  }, [canSeeFinancials]);
+  // Below 768px: a pushed screen with the phone nav bar (PLAN F2d).
+  const isPhone = !useIsDesktop(768);
 
   const { data: membros = [], isLoading: loadingMembros } = useQuery({
     queryKey: ['membros'],
@@ -77,7 +46,7 @@ export default function MembroDetalhePage() {
   });
   // getTransacoes returns raw financial rows: this page is not a financial
   // route, so the route guard never covers it. Gate the fetch on the
-  // capability itself, not just `!isAgent` (a restricted admin is not an
+  // capability itself, not just `canEditTeam` (a restricted admin is not an
   // agent either).
   const { data: transacoesRaw = [], isLoading: loadingTx } = useQuery({
     queryKey: ['transacoes'],
@@ -91,6 +60,62 @@ export default function MembroDetalhePage() {
 
   const membro = membros.find((m) => m.id?.toString() === id);
 
+  const membroTx = transacoes.filter(
+    (t) =>
+      (membro && t.descricao?.includes(membro.nome)) ||
+      t.referencia_agendamento?.includes(`membro_${id}`),
+  );
+  const totalPago = membroTx.filter((t) => t.status === 'pago').reduce((s, t) => s + t.valor, 0);
+  const pendente = membroTx.filter((t) => t.status === 'agendado').reduce((s, t) => s + t.valor, 0);
+
+  const openEdit = () => {
+    if (!membro) return;
+    setModalOpen(true);
+  };
+
+  const backButton = (
+    <Button variant="outline" onClick={() => navigate('/equipe')}>
+      <ArrowLeft className="h-4 w-4" /> Voltar
+    </Button>
+  );
+  const primaryAction = canEditTeam ? (
+    <Button variant="outline" onClick={openEdit}>
+      <Edit2 className="h-4 w-4" /> Editar
+    </Button>
+  ) : undefined;
+
+  const inToolbar = usePageToolbar(
+    membro
+      ? { leading: backButton, title: membro.nome, primary: primaryAction }
+      : loadingMembros
+        ? { leading: backButton, title: null }
+        : null,
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <MembroDetalhePhone
+          membro={membro}
+          loadingMembro={loadingMembros}
+          canEditTeam={canEditTeam}
+          canSeeFinancials={canSeeFinancials}
+          transacoes={membroTx}
+          loadingTransacoes={canSeeFinancials === true && loadingTx}
+          totalPago={totalPago}
+          pendente={pendente}
+          onEdit={openEdit}
+        />
+        <MembroFormDialog
+          open={modalOpen}
+          membro={membro ?? null}
+          membros={membros}
+          onOpenChange={setModalOpen}
+        />
+      </>
+    );
+  }
+
   if (!loadingMembros && !membro) {
     return (
       <div style={{ padding: '2rem' }}>
@@ -102,74 +127,39 @@ export default function MembroDetalhePage() {
     );
   }
 
-  const membroTx = transacoes.filter(
-    (t) =>
-      (membro && t.descricao?.includes(membro.nome)) ||
-      t.referencia_agendamento?.includes(`membro_${id}`),
-  );
-  const totalPago = membroTx.filter((t) => t.status === 'pago').reduce((s, t) => s + t.valor, 0);
-  const pendente = membroTx.filter((t) => t.status === 'agendado').reduce((s, t) => s + t.valor, 0);
-
-  const openEdit = () => {
-    if (!membro) return;
-    setFNome(membro.nome);
-    setFCargo(membro.cargo || '');
-    setFTipo(membro.tipo);
-    setFCusto(membro.custo_mensal ? String(membro.custo_mensal) : '');
-    setFDiaPag(membro.data_pagamento ? String(membro.data_pagamento) : '');
-    setModalOpen(true);
-  };
-
-  const handleSave = async () => {
-    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
-    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
-      toast.error('Dia de pagamento deve ser entre 1 e 31.');
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        nome: fNome,
-        cargo: fCargo,
-        tipo: fTipo,
-        custo_mensal: fCusto ? Number(fCusto) : null,
-        data_pagamento: diaPag,
-      } as Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>;
-      await updateMembro(
-        Number(id),
-        stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']),
-      );
-      toast.success('Membro atualizado');
-      qc.invalidateQueries({ queryKey: ['membros'] });
-      setModalOpen(false);
-    } catch {
-      toast.error('Erro ao salvar');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const avatarClass = avatarColorClass(membro?.id ?? membro?.nome);
 
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <Button variant="outline" onClick={() => navigate('/equipe')}>
-          <ArrowLeft className="h-4 w-4" /> Voltar
-        </Button>
-        {!isAgent && (
-          <div className="header-actions">
-            <Button variant="outline" onClick={openEdit}>
-              <Edit2 className="h-4 w-4" /> Editar
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {(loadingMembros || loadingTx) && (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          {backButton}
+          {canEditTeam && <div className="header-actions">{primaryAction}</div>}
         </div>
+      )}
+
+      {loadingMembros && !membro && (
+        <SkeletonStatus>
+          <div className="flex items-center gap-4" style={{ margin: '1.5rem 0' }}>
+            <Skeleton className="h-14 w-14 shrink-0 rounded-full" />
+            <div className="flex flex-col gap-2 min-w-0 flex-1">
+              <Skeleton className="h-6 w-48 max-w-full" />
+              <Skeleton className="h-3.5 w-32 max-w-full" />
+            </div>
+          </div>
+          {canEditTeam && (
+            <div
+              className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+              style={{ marginBottom: '1.5rem' }}
+            >
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-20" />
+              ))}
+            </div>
+          )}
+          <Skeleton className="h-28 w-full" />
+        </SkeletonStatus>
       )}
 
       {membro && (
@@ -187,7 +177,7 @@ export default function MembroDetalhePage() {
             </div>
           </div>
 
-          {!isAgent && (
+          {canEditTeam && (
             <StatCardGrid style={{ marginBottom: '1.5rem' }}>
               {(
                 [
@@ -232,12 +222,12 @@ export default function MembroDetalhePage() {
               <div>
                 <strong>Tipo:</strong> {TIPO_LABEL[membro.tipo]}
               </div>
-              {!isAgent && (
+              {canEditTeam && (
                 <div>
                   <strong>Dia de Pagamento:</strong> {membro.data_pagamento ?? '—'}
                 </div>
               )}
-              {!isAgent && (
+              {canEditTeam && (
                 <div>
                   <strong>Custo Mensal:</strong>{' '}
                   {formatFinancialBRL(membro.custo_mensal, canSeeFinancials)}
@@ -246,10 +236,12 @@ export default function MembroDetalhePage() {
             </div>
           </div>
 
-          {!isAgent && (
+          {canEditTeam && (
             <>
               <h3 style={{ marginBottom: 12 }}>Transações</h3>
-              {canSeeFinancials === true ? (
+              {canSeeFinancials === true && loadingTx ? (
+                <TableSkeleton rows={3} columns={5} />
+              ) : canSeeFinancials === true ? (
                 <div className="card">
                   <Table>
                     <TableHeader>
@@ -293,66 +285,12 @@ export default function MembroDetalhePage() {
         </>
       )}
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent onConfirmClose={() => setModalOpen(false)}>
-          <DialogHeader>
-            <DialogTitle>Editar Membro</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Nome *</Label>
-              <Input value={fNome} onChange={(e) => setFNome(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Cargo *</Label>
-              <Input value={fCargo} onChange={(e) => setFCargo(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Tipo</Label>
-              <Select value={fTipo} onValueChange={(v) => setFTipo(v as Membro['tipo'])}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="clt">CLT</SelectItem>
-                  <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
-                  <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {canSeeFinancials === true && (
-              <div className="space-y-1">
-                <Label>Custo Mensal (R$)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={fCusto}
-                  onChange={(e) => setFCusto(e.target.value)}
-                />
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label>Dia de Pagamento (1-31)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={31}
-                value={fDiaPag}
-                onChange={(e) => setFDiaPag(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />} Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MembroFormDialog
+        open={modalOpen}
+        membro={membro ?? null}
+        membros={membros}
+        onOpenChange={setModalOpen}
+      />
     </div>
   );
 }

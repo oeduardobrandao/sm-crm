@@ -1,0 +1,68 @@
+/* Login is pinned to the light look of the approved boards (gold gradient, white glass card, black
+   button) whatever the Admin theme or Liquid Glass say. The tokens are keyed on `html[data-theme]`
+   and inherit, so the light values are re-declared here for this subtree only. Nothing global is
+   touched or persisted. Colours live in this file so the TSX stays hex-free. */
+.admin-login-light {
+  color-scheme: light;
+
+  --background: 220 17% 95%;
+  --foreground: 220 14% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 14% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 14% 10%;
+  --primary: 48 96% 53%;
+  --primary-foreground: 220 14% 7%;
+  --primary-hover: 45 88% 40%;
+  --secondary: 220 14% 93%;
+  --secondary-foreground: 220 14% 10%;
+  --muted: 220 14% 94%;
+  /* Deliberately darker than the Admin light value (220 9% 46%): the subtitle sits straight on the
+     gold gradient on phones and needs the board's #374151 to stay legible. */
+  --muted-foreground: 215 14% 27%;
+  --dim-foreground: 218 11% 65%;
+  --accent: 220 14% 92%;
+  --accent-foreground: 220 14% 10%;
+  --destructive: 7 88% 61%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 154 60% 53%;
+  --warning: 30 87% 61%;
+  /* Admin light text tokens (globals.css). Login renders none of the .text-* status
+     utilities today; declared so the pin stays complete. */
+  --primary-text: 32 81% 29%;
+  --success-text: 155 75% 26%;
+  --warning-text: 25 90% 34%;
+  --destructive-text: 5 76% 42%;
+  --border: 220 14% 88%;
+  --input: 220 14% 93%;
+  --ring: 48 96% 53%;
+  --radius: 0.75rem;
+  background: linear-gradient(160deg, #eaf0dc 0%, #eab308 100%);
+  color: hsl(var(--foreground));
+}
+
+/* The black logo always shows here: the white one would vanish on the white card. `dark:` variants
+   match through the html ancestor, so they are overridden explicitly. */
+.admin-login-light .admin-login-logo-black {
+  display: block !important;
+}
+.admin-login-light .admin-login-logo-white {
+  display: none !important;
+}
+
+/* Error copy on the light card: #991b1b clears 4.5:1 where the destructive fill token does not. */
+.admin-login-light .admin-login-error {
+  color: #991b1b;
+}
+
+/* On phones the error sits on the gradient, not on a card: a light pill keeps it above 4.5:1 even
+   near the #eab308 end. */
+.admin-login-light .admin-login-error--pill {
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.admin-login-light .admin-login-card {
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.16);
+}

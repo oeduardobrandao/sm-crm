@@ -3,12 +3,21 @@
   "agentPending": {
     "title": "Minhas pendências",
     "semVinculo": "Seu usuário ainda não está vinculado a um membro da equipe. Peça a um administrador para fazer o vínculo na página Equipe.",
-    "vazio": "Tudo em dia! Nenhuma pendência atribuída a você.",
+    "vazio": "Nenhuma tarefa atribuída a você.",
     "tarefas": "Tarefas",
-    "etapas": "Entregas · etapas",
-    "posts": "Entregas · posts",
-    "verTodas": "Ver todas",
-    "verEntregas": "Ver entregas"
+    "verTodas": "Ver todas"
+  },
+  "minhaFila": {
+    "title": "Minha fila",
+    "verFila": "Ver minha fila",
+    "vazio": "Nada na sua fila.",
+    "mais": "+{{n}} na fila",
+    "publica": "publica {{data}}",
+    "semData": "sem data de publicação",
+    "erro": "Não foi possível carregar a fila. Recarregue a página.",
+    "semMembro": "Vincule seu usuário a um membro da equipe para ver sua fila aqui.",
+    "abrirEquipe": "Vincular na Equipe",
+    "semMembroAgent": "Peça a um administrador para vincular seu usuário na página Equipe."
   },
   "cards": {
     "today": "Hoje",
@@ -188,5 +197,93 @@
       "semResposta": "{{days}}d sem resposta"
     },
     "noMembership": "Você não tem mais acesso a este workspace. Troque de workspace ou peça a um administrador para convidar você de novo."
+  },
+  "inicio": {
+    "scope": {
+      "label": "Escopo dos prazos",
+      "agencia": "Agência",
+      "meus": "Só meus"
+    },
+    "prazos": "Prazos",
+    "tiles": {
+      "atrasado": "Atrasados",
+      "hoje": "Hoje",
+      "proximos": "Próximos 7 dias"
+    },
+    "tileSub": {
+      "clients_one": "{{count}} cliente",
+      "clients_other": "{{count}} clientes",
+      "oldest_one": "o mais antigo há {{count}} dia",
+      "oldest_other": "o mais antigo há {{count}} dias",
+      "tarefas_one": "{{count}} tarefa",
+      "tarefas_other": "{{count}} tarefas",
+      "etapas_one": "{{count}} etapa",
+      "etapas_other": "{{count}} etapas",
+      "posts_one": "{{count}} post",
+      "posts_other": "{{count}} posts",
+      "outros_one": "{{count}} outro",
+      "outros_other": "{{count}} outros",
+      "nothing": "Nada aqui"
+    },
+    "barsLabel": "Itens por dia nos próximos 7 dias: {{list}}",
+    "groupBy": "Agrupar por",
+    "modes": {
+      "cliente": "Cliente",
+      "responsavel": "Responsável",
+      "dia": "Dia"
+    },
+    "semCliente": "Sem cliente",
+    "semResponsavel": "Sem responsável",
+    "semData": "Sem data",
+    "groupMeta": {
+      "oldest_one": "O mais antigo venceu há {{count}} dia",
+      "oldest_other": "O mais antigo venceu há {{count}} dias",
+      "next": "Próximo: {{date}}",
+      "clients": "{{names}}",
+      "clientsMore": "{{names}} e mais {{count}}"
+    },
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} itens",
+    "moreItems_one": "Mostrar mais {{count}} item",
+    "moreItems_other": "Mostrar mais {{count}} itens",
+    "listEmpty": {
+      "atrasado": "Nada atrasado.",
+      "hoje": "Nada para hoje.",
+      "proximos": "Nada nos próximos 7 dias."
+    },
+    "mineMissing": "Seu usuário não está vinculado a um membro da equipe, então não há itens só seus. Peça o vínculo na página Equipe.",
+    "health": {
+      "acao": "Pedem ação",
+      "cols": {
+        "cliente": "Cliente",
+        "situacao": "Situação",
+        "seguidores": "Seguidores · 28d",
+        "engajamento": "Engajamento",
+        "alcance": "Alcance · 28d",
+        "ultimoPost": "Último post",
+        "producao": "Produção",
+        "acao": "Ação"
+      },
+      "why": {
+        "reconectar": "Autorização expirada ou revogada",
+        "desconectado": "Instagram não conectado",
+        "sem_sincronizar_one": "Última sincronização há {{count}} dia",
+        "sem_sincronizar_other": "Última sincronização há {{count}} dias",
+        "sincronizando": "Primeira sincronização em andamento",
+        "sem_dados": "Ainda sem dados suficientes",
+        "inativo_one": "{{count}} dia sem postar",
+        "inativo_other": "{{count}} dias sem postar",
+        "inativoNever": "Nenhum post publicado",
+        "reach": "Alcance caiu {{pct}}%",
+        "followers": "Seguidores caíram {{pct}}%",
+        "lastPost_one": "Último post há {{count}} dia",
+        "lastPost_other": "Último post há {{count}} dias",
+        "generic": "Desempenho abaixo do normal"
+      },
+      "entregas": "Entregas",
+      "showing": "Mostrando {{shown}} de {{total}}",
+      "showAll": "Mostrar todos",
+      "showLess": "Mostrar menos"
+    }
   }
 }

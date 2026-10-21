@@ -9,9 +9,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'apps/crm/src'),
       '@mesaas/i18n': path.resolve(__dirname, 'packages/i18n/index.ts'),
       '@mesaas/ui': path.resolve(__dirname, 'packages/ui'),
+      '@mesaas/ios-kit': path.resolve(__dirname, 'packages/ios-kit'),
       '@mesaas/report-blocks': path.resolve(__dirname, 'packages/report-blocks'),
       '@mesaas/import-parsers': path.resolve(__dirname, 'packages/import-parsers/index.ts'),
       '@mesaas/app-lifecycle': path.resolve(__dirname, 'packages/app-lifecycle/index.ts'),
+      '@mesaas/link-policy': path.resolve(__dirname, 'packages/link-policy/index.ts'),
+      '@mesaas/text-diff': path.resolve(__dirname, 'packages/text-diff/index.ts'),
+      '@mesaas/platforms': path.resolve(__dirname, 'supabase/functions/_shared/platform-registry.ts'),
+      '@mesaas/tiktok-messages': path.resolve(__dirname, 'supabase/functions/_shared/tiktok-messages.ts'),
       '@shared': path.resolve(__dirname, 'supabase/functions/_shared'),
     },
   },
@@ -33,6 +38,7 @@ export default defineConfig({
       'packages/**/*.{test,spec}.{ts,tsx}',
       'test/**/*.{test,spec}.{ts,tsx}',
       'scripts/**/*.test.mjs',
+      'scripts/**/*.test.ts',
       // Scoped to e2e/screenshots/__tests__ today (safety.ts unit tests).
       // Correct as-is, but this glob is repo-wide under e2e/** -- if a future
       // __tests__ dir appears elsewhere under e2e/ (e.g. alongside actual
@@ -47,6 +53,7 @@ export default defineConfig({
         'apps/crm/src/**/*.{ts,tsx}',
         'apps/hub/src/**/*.{ts,tsx}',
         'packages/import-parsers/src/**/*.{ts,tsx}',
+        'packages/ios-kit/src/**/*.{ts,tsx}',
       ],
       exclude: ['**/*.d.ts', '**/__tests__/**'],
     },

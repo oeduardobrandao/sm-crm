@@ -92,6 +92,8 @@ function makeCancelSvc(opts: {
   onboarding?: boolean;
   hasPassword?: boolean | null;
   memberships?: string[];
+  /** OTHER workspaces holding a pending invite for the same email. */
+  pendingElsewhere?: string[];
 }) {
   const audits: any[] = [];
   const svc: any = {
@@ -102,15 +104,27 @@ function makeCancelSvc(opts: {
     } },
     rpc: (_fn: string, _p: any) => Promise.resolve({ data: opts.hasPassword ?? null, error: null }),
     from: (table: string) => {
+      // `invites` is read (pending-elsewhere capture) and written (delete) on
+      // the same thenable; a fresh api per from() keeps this flag per-chain.
+      let isDelete = false;
       const api: any = {
-        select: () => api, eq: () => api, neq: () => api, in: () => api, delete: () => api,
+        select: () => api, eq: () => api, neq: () => api, in: () => api,
+        delete: () => { isDelete = true; return api; },
         insert: (row: any) => { if (table === "audit_log") audits.push(row); return Promise.resolve({ error: null }); },
         maybeSingle: () => {
           if (table === "invites") return Promise.resolve({ data: opts.invite, error: null });
           if (table === "profiles") return Promise.resolve({ data: opts.onboarding !== undefined ? { onboarding_complete: opts.onboarding } : null, error: null });
           return Promise.resolve({ data: null, error: null });
         },
-        then: (r: (x: any) => unknown) => Promise.resolve(r(table === "workspace_members" ? { data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null } : { data: null, error: null })),
+        then: (r: (x: any) => unknown) => {
+          if (table === "workspace_members" && !isDelete) {
+            return Promise.resolve(r({ data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null }));
+          }
+          if (table === "invites" && !isDelete) {
+            return Promise.resolve(r({ data: (opts.pendingElsewhere ?? []).map((c) => ({ conta_id: c })), error: null }));
+          }
+          return Promise.resolve(r({ data: null, error: null }));
+        },
       };
       return api;
     },
@@ -130,18 +144,45 @@ Deno.test("handleAdminCancelInvite: missing invite → 404", async () => {
   assertEquals(res.status, 404);
 });
 
-Deno.test("handleAdminCancelInvite: global delete audits EACH affected workspace with one operation_id", async () => {
+Deno.test("handleAdminCancelInvite: a lone-tie orphan is deleted and audited on its one workspace", async () => {
   const svc = makeCancelSvc({
     invite: { id: "i1", conta_id: "c1", email: "a@x.com", status: "pending" },
     authUser: { id: "u1", email_confirmed_at: null }, // never confirmed → reinvite class → delete
+    onboarding: false, hasPassword: false, memberships: ["c1"], pendingElsewhere: [],
+  });
+  const res = await handleAdminCancelInvite(svc, { workspace_id: "c1", invite_id: "i1" }, "admin1", H);
+  assertEquals(res.status, 200);
+  assertEquals(JSON.parse(await res.text()).deleted_user, true);
+  const audits = svc._audits();
+  assertEquals(audits.length, 1);
+  assertEquals(audits[0].conta_id, "c1");
+  assertEquals(audits[0].metadata.deleted_user, true);
+});
+
+/**
+ * Blast-radius rule (revisão externa, P1) at the handler level. Note what this
+ * changes about the audit fan-out: with the global delete now vetoed whenever
+ * another workspace has a tie, `cancelInvite` can only ever report the single
+ * acted-on workspace, so the multi-workspace fan-out loop in
+ * handleAdminCancelInvite is unreachable FROM CANCEL. The loop stays because
+ * the resend and create routes still produce multi-workspace
+ * affectedWorkspaceIds, via inviteOrResend's opt-in confirmCrossWorkspace path
+ * — which is deliberate there (the delete is a means to an invite the caller
+ * actually asked for) and has no counterpart in a cancel.
+ */
+Deno.test("handleAdminCancelInvite: a cross-workspace tie vetoes the delete, and only c1 is audited", async () => {
+  const svc = makeCancelSvc({
+    invite: { id: "i1", conta_id: "c1", email: "a@x.com", status: "pending" },
+    authUser: { id: "u1", email_confirmed_at: null },
     onboarding: false, hasPassword: false, memberships: ["c1", "c2"],
   });
   const res = await handleAdminCancelInvite(svc, { workspace_id: "c1", invite_id: "i1" }, "admin1", H);
   assertEquals(res.status, 200);
+  assertEquals(JSON.parse(await res.text()).deleted_user, false);
   const audits = svc._audits();
-  assertEquals(audits.length, 2); // one per affected workspace
-  assertEquals(new Set(audits.map((a: any) => a.conta_id)), new Set(["c1", "c2"]));
-  assertEquals(new Set(audits.map((a: any) => a.metadata.operation_id)).size, 1); // shared id
+  assertEquals(audits.length, 1, "c2 was never touched, so it has nothing to audit");
+  assertEquals(audits[0].conta_id, "c1");
+  assertEquals(audits[0].metadata.deleted_user, false);
 });
 
 Deno.test("handleAdminResendInvite: missing invite → 404", async () => {
@@ -262,7 +303,7 @@ function makeCreateSvc(opts: {
   hasPassword?: boolean | null;
   memberships?: string[];
   otherPendingWorkspaceIds?: string[];
-  invite?: { id: string; conta_id: string; email: string; role: string; status: string; invited_by: string } | null;
+  invite?: { id: string; conta_id: string; email: string; role: string; role_id?: string | null; status: string; invited_by: string } | null;
 } = {}) {
   const audits: any[] = [];
   const inserts: Array<{ table: string; row: any }> = [];
@@ -464,4 +505,45 @@ Deno.test("handleAdminResendInvite: audits the NEW invite id, not the one delete
   const audits = svc._audits();
   assertEquals(audits.length, 1);
   assertEquals(audits[0].resource_id, "created-invite"); // NOT "old-invite" — that row is gone
+});
+
+Deno.test("handleAdminResendInvite: selects and re-passes the original invite's role_id (Task 6)", async () => {
+  // authUser: null routes through the brand-new-user path (sendNewUserInvite),
+  // so the freshly inserted `invites` row is the one to inspect.
+  const svc = makeCreateSvc({
+    invite: { id: "old-invite", conta_id: "ws", email: "new@x.com", role: "agent", role_id: "role-9", status: "pending", invited_by: "owner1" },
+    authUser: null, members: 1,
+  });
+  const res = await handleAdminResendInvite(svc as any, { workspace_id: "ws", invite_id: "old-invite" }, "admin1", H);
+  assertEquals(res.status, 200);
+  const inviteRow = svc._inserts().find((i: any) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, "role-9");
+});
+
+Deno.test("handleAdminResendInvite: a legacy invite with NO role_id re-sends with role_id: null (regression)", async () => {
+  const svc = makeCreateSvc({
+    invite: { id: "old-invite", conta_id: "ws", email: "new@x.com", role: "agent", status: "pending", invited_by: "owner1" },
+    authUser: null, members: 1,
+  });
+  const res = await handleAdminResendInvite(svc as any, { workspace_id: "ws", invite_id: "old-invite" }, "admin1", H);
+  assertEquals(res.status, 200);
+  const inviteRow = svc._inserts().find((i: any) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, null);
+});
+
+Deno.test("handleAdminResendInvite: a stale invite carrying role_id + a STRONGER legacy role re-sends with role='agent' (chassis rule, finding 1)", async () => {
+  // The exact shape finding 1 is about: an invite row written before the
+  // write-time fix (or otherwise inconsistent) has role='admin' alongside a
+  // still-live role_id. The platform-admin resend goes through the SAME
+  // inviteOrResend choke point as invite-user, so it must self-heal the row
+  // to role='agent' on every resend, not just propagate the stale value.
+  const svc = makeCreateSvc({
+    invite: { id: "old-invite", conta_id: "ws", email: "new@x.com", role: "admin", role_id: "role-9", status: "pending", invited_by: "owner1" },
+    authUser: null, members: 1,
+  });
+  const res = await handleAdminResendInvite(svc as any, { workspace_id: "ws", invite_id: "old-invite" }, "admin1", H);
+  assertEquals(res.status, 200);
+  const inviteRow = svc._inserts().find((i: any) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, "role-9");
+  assertEquals(inviteRow?.row.role, "agent"); // NOT "admin"
 });

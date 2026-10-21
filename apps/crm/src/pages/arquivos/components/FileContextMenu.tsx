@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Pencil, Trash2, Download, Info, ArrowRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
@@ -25,9 +25,18 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { renameFolder, deleteFolder, renameFile, deleteFile } from '@/services/fileService';
+import { FileApiError } from '@/services/fileApiError';
+import { fileInUseMessage } from '../fileInUse';
 import { FolderInfoModal } from './FolderInfoModal';
 import type { Folder, FileRecord } from '../types';
-import { sanitizeExternalUrl } from '@/utils/security';
+import { openExternalUrl, sanitizeExternalUrl } from '@/utils/security';
+import {
+  ContextMenu,
+  type ContextMenuAction,
+  type ContextMenuTriggerProps,
+} from '@/components/mobile/ContextMenu';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { PhoneNameSheet } from '../phone/PhoneNameSheet';
 
 function truncateName(name: string, max = 40): string {
   if (name.length <= max) return name;
@@ -41,13 +50,32 @@ function truncateName(name: string, max = 40): string {
 }
 
 interface FileContextMenuProps {
-  children: React.ReactElement;
+  /**
+   * The target. Desktop: one element that receives `onContextMenu` (right-click). Phone:
+   * the hold target; pass a function to also get the props of an explicit "…" trigger.
+   */
+  children: React.ReactElement | ((api: { triggerProps: ContextMenuTriggerProps }) => ReactNode);
   item: Folder | FileRecord;
+  /**
+   * `phone`: the kit's long-press ContextMenu with a lifted preview, rename in a sheet and
+   * an action-sheet confirm (iOS Safari never fires `contextmenu` on a long-press, so the
+   * desktop menu is unreachable there). Defaults to the right-click menu.
+   */
+  variant?: 'desktop' | 'phone';
+  /** Phone only: compact copy of the item shown above the menu. */
+  preview?: ReactNode;
+  /** Phone only: no menu (selection mode owns the tap). */
+  disabled?: boolean;
   type: 'folder' | 'file';
   onActionComplete: () => void;
   onRename?: () => void;
   onRequestMove?: () => void;
   onRequestCopy?: () => void;
+  /** `can('arquivos', 'editar') === true`. Required (not defaulted) so every
+   * caller (FileGrid.tsx, MobileArquivosView.tsx) makes this decision
+   * explicitly. Hides Renomear/Excluir; Informações/Download stay visible
+   * (read-only). */
+  canEdit: boolean;
 }
 
 interface MenuPosition {
@@ -63,6 +91,10 @@ export function FileContextMenu({
   onRename,
   onRequestMove,
   onRequestCopy,
+  canEdit,
+  variant = 'desktop',
+  preview,
+  disabled,
 }: FileContextMenuProps) {
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -130,19 +162,15 @@ export function FileContextMenu({
   }
 
   function openDelete() {
-    if (!isFolder && file && file.reference_count > 0) {
-      toast.error(
-        `Este arquivo está vinculado a ${file.reference_count} post(s). Desvincule primeiro.`,
-      );
-      closeMenu();
-      return;
-    }
     setDeleteOpen(true);
     closeMenu();
   }
 
   async function handleRename() {
-    const trimmed = renameValue.trim();
+    await renameTo(renameValue.trim());
+  }
+
+  async function renameTo(trimmed: string) {
     if (!trimmed || trimmed === item.name) {
       setRenameOpen(false);
       return;
@@ -177,9 +205,8 @@ export function FileContextMenu({
       onActionComplete();
       setDeleteOpen(false);
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : '';
-      if (errorMsg.includes('file_in_use')) {
-        toast.error('Este arquivo está em uso e não pode ser excluído.');
+      if (err instanceof FileApiError && err.body.error === 'file_in_use') {
+        toast.error(fileInUseMessage(err.body));
       } else {
         toast.error('Erro ao excluir');
       }
@@ -190,9 +217,109 @@ export function FileContextMenu({
 
   const isSystemFolder = isFolder && folder?.source === 'system';
 
+  if (variant === 'phone') {
+    const kindLabel = isFolder ? 'pasta' : 'arquivo';
+    const first: ContextMenuAction[] = [];
+    if (canEdit)
+      first.push({ label: 'Renomear', icon: <Pencil aria-hidden="true" />, onSelect: openRename });
+    first.push({ label: 'Informações', icon: <Info aria-hidden="true" />, onSelect: openInfo });
+    if (!isFolder && file?.url) {
+      const url = file.url;
+      first.push({
+        label: 'Download',
+        icon: <Download aria-hidden="true" />,
+        // Inside the tap: a new tab opened after the menu's history pop is popup-blocked.
+        immediate: true,
+        onSelect: () => {
+          openExternalUrl(url);
+        },
+      });
+    }
+    const sections: ContextMenuAction[][] = [first];
+    if (canEdit) {
+      sections.push([
+        {
+          label: 'Mover para…',
+          icon: <ArrowRight aria-hidden="true" />,
+          onSelect: () => onRequestMove?.(),
+        },
+        {
+          label: 'Copiar para…',
+          icon: <Copy aria-hidden="true" />,
+          onSelect: () => onRequestCopy?.(),
+        },
+      ]);
+    }
+    if (isSystemFolder) {
+      sections.push([
+        {
+          label: 'Pasta do sistema: não pode ser excluída',
+          icon: <Trash2 aria-hidden="true" />,
+          disabled: true,
+          onSelect: () => {},
+        },
+      ]);
+    } else if (canEdit) {
+      sections.push([
+        {
+          label: 'Excluir',
+          icon: <Trash2 aria-hidden="true" />,
+          destructive: true,
+          onSelect: openDelete,
+        },
+      ]);
+    }
+
+    return (
+      <>
+        <ContextMenu
+          label={`Ações de ${item.name}`}
+          sections={sections}
+          preview={preview}
+          disabled={disabled}
+        >
+          {children}
+        </ContextMenu>
+        <PhoneNameSheet
+          open={renameOpen}
+          onOpenChange={setRenameOpen}
+          title={`Renomear ${kindLabel}`}
+          initialValue={item.name}
+          placeholder={isFolder ? 'Nome da pasta' : 'Nome do arquivo'}
+          confirmLabel="Salvar"
+          busyLabel="Salvando…"
+          busy={isSaving}
+          onConfirm={(name) => void renameTo(name)}
+        />
+        <PhoneConfirmSheet
+          open={deleteOpen}
+          title={`Excluir ${kindLabel}?`}
+          message={
+            isFolder
+              ? `A pasta "${truncateName(item.name)}" e todos os seus arquivos serão excluídos permanentemente. Esta ação não pode ser desfeita.`
+              : `O arquivo "${truncateName(item.name)}" será excluído permanentemente. Esta ação não pode ser desfeita.`
+          }
+          onCancel={() => setDeleteOpen(false)}
+          actions={[
+            {
+              label: 'Excluir',
+              destructive: true,
+              onSelect: () => {
+                // Closed before the request, so a failure leaves the confirm reopenable.
+                setDeleteOpen(false);
+                void handleDelete();
+              },
+            },
+          ]}
+        />
+        <FolderInfoModal open={infoOpen} onOpenChange={setInfoOpen} item={item} type={type} />
+      </>
+    );
+  }
+
   return (
     <>
-      <Slot onContextMenu={handleContextMenu}>{children}</Slot>
+      <Slot onContextMenu={handleContextMenu}>{children as React.ReactElement}</Slot>
 
       {/* Context menu */}
       {menuPos &&
@@ -204,14 +331,16 @@ export function FileContextMenu({
             style={{ top: menuPos.y, left: menuPos.x }}
           >
             {/* Rename */}
-            <button
-              role="menuitem"
-              onClick={openRename}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-              Renomear
-            </button>
+            {canEdit && (
+              <button
+                role="menuitem"
+                onClick={openRename}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                Renomear
+              </button>
+            )}
 
             {/* Info */}
             <button
@@ -239,33 +368,37 @@ export function FileContextMenu({
             )}
 
             {/* Move to… */}
-            <button
-              role="menuitem"
-              onClick={() => {
-                closeMenu();
-                onRequestMove?.();
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-            >
-              <ArrowRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-              Mover para…
-            </button>
+            {canEdit && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  onRequestMove?.();
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                <ArrowRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                Mover para…
+              </button>
+            )}
 
             {/* Copy to… */}
-            <button
-              role="menuitem"
-              onClick={() => {
-                closeMenu();
-                onRequestCopy?.();
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-            >
-              <Copy className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-              Copiar para…
-            </button>
+            {canEdit && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  onRequestCopy?.();
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                <Copy className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                Copiar para…
+              </button>
+            )}
 
             {/* Separator before delete */}
-            <div className="my-1 h-px bg-[var(--border-color)]" />
+            {(canEdit || isSystemFolder) && <div className="my-1 h-px bg-[var(--border-color)]" />}
 
             {/* Delete */}
             {isSystemFolder ? (
@@ -274,14 +407,16 @@ export function FileContextMenu({
                 Pasta do sistema — não pode ser excluída
               </div>
             ) : (
-              <button
-                role="menuitem"
-                onClick={openDelete}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--danger)] hover:bg-[var(--surface-hover)] transition-colors"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Excluir
-              </button>
+              canEdit && (
+                <button
+                  role="menuitem"
+                  onClick={openDelete}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--danger)] hover:bg-[var(--surface-hover)] transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Excluir
+                </button>
+              )
             )}
           </div>,
           document.body,

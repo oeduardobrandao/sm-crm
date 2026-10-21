@@ -86,6 +86,10 @@ vi.mock('@/components/ui/dropdown-menu', () => {
   return { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem };
 });
 
+// Esta suíte cobre o layout de desktop; o do celular (abaixo de 768px) tem a sua
+// própria em *.phone.test.tsx. jsdom responde false a todo matchMedia.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import RelatorioEditorPage from '../RelatorioEditorPage';
 
 // A suíte global (test/vitest.setup.ts) roda vi.restoreAllMocks() em todo
@@ -137,7 +141,25 @@ function renderPage(qc = new QueryClient({ defaultOptions: { queries: { retry: f
   };
 }
 
+// jsdom não tem DragEvent: Event com um dataTransfer de mentira (só types).
+function dropOnDocument(types: string[]) {
+  const ev = new Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, 'dataTransfer', { value: { types, dropEffect: 'copy' } });
+  document.body.dispatchEvent(ev);
+  return ev.defaultPrevented;
+}
+
 describe('RelatorioEditorPage (editor)', () => {
+  it('arquivo solto fora das áreas não descarrega o editor; arrasto de texto passa', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    const { unmount } = renderPage();
+    await screen.findByLabelText('Título do relatório');
+    expect(dropOnDocument(['Files'])).toBe(true);
+    expect(dropOnDocument(['text/plain', 'text/html'])).toBe(false);
+    unmount();
+    expect(dropOnDocument(['Files'])).toBe(false);
+  });
+
   it('renderiza topbar de edição: título editável, mês, Aparência e Adicionar widget', async () => {
     getReportDocMock.mockResolvedValue(doc());
     renderPage();
@@ -212,6 +234,32 @@ describe('RelatorioEditorPage (editor)', () => {
       );
       expect(ids).toEqual(['a', 'b']);
     });
+  });
+
+  it('botões Desfazer/Refazer do cabeçalho percorrem as edições de layout', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const ids = () =>
+      [...document.querySelectorAll('[data-block-id]')].map((el) =>
+        el.getAttribute('data-block-id'),
+      );
+    const undo = screen.getByRole('button', { name: 'Desfazer' });
+    const redo = screen.getByRole('button', { name: 'Refazer' });
+    expect(undo).toBeDisabled();
+    expect(redo).toBeDisabled();
+
+    fireEvent.click(screen.getAllByLabelText('Excluir bloco')[1]);
+    expect(ids()).toEqual(['a']);
+    expect(undo).toBeEnabled();
+
+    fireEvent.click(undo);
+    expect(ids()).toEqual(['a', 'b']);
+    expect(undo).toBeDisabled();
+    expect(redo).toBeEnabled();
+
+    fireEvent.click(redo);
+    expect(ids()).toEqual(['a']);
   });
 
   it('Adicionar widget insere no fim e destaca', async () => {

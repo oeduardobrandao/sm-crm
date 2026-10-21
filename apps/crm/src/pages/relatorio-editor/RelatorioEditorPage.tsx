@@ -13,7 +13,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
-import type { BlockType, ReportBlock } from '@mesaas/report-blocks/types';
+import { DocSkeleton } from '@/components/ui/skeletons';
+import type { ReportBlock } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import {
   exportReportPdf,
@@ -23,6 +24,11 @@ import {
 } from '../../services/reportDocs';
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
+import { useBlockEditing } from './useBlockEditing';
+import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
+import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
+import { UndoRedoButtons } from './UndoRedoButtons';
+import { useStuckHeader } from './useStuckHeader';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
@@ -30,16 +36,11 @@ import { LayersPanel } from './LayersPanel';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import { AppearancePopover } from './AppearancePopover';
-import {
-  insertBlockAt,
-  moveBlock,
-  normalizeCoverSize,
-  removeBlock,
-  restoreBlock,
-  updateBlockConfig,
-  updateBlockText,
-} from './layoutOps';
-import { applyTemplateLayout } from './templateOps';
+import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
+import { applyTemplateLayout, layoutHasFilledImage } from './templateOps';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
+import { ReportExportBar, ReportPhoneView } from './phone/ReportPhoneView';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
@@ -57,18 +58,34 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   // de um render anterior e aplicaria updates sobre estado obsoleto.
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  const history = useLayoutHistory(layout, applyLayout);
+  const commit = history.commit;
+  const { sentinelRef, headerRef, stuck } = useStuckHeader();
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  // Posição de inserção do próximo widget: null = fim do documento. Setada
-  // pelos pontos de inserção do painel de camadas antes de abrir o drawer.
-  const [insertAt, setInsertAt] = useState<number | null>(null);
+  const {
+    drawerOpen,
+    setDrawerOpen,
+    highlightId,
+    highlightAndScroll,
+    openWidgetDrawer,
+    handleInsert,
+    handleRemoveBlock,
+  } = useBlockEditing(layoutRef, commit);
+
   const [saveTplOpen, setSaveTplOpen] = useState(false);
   const [applyTplOpen, setApplyTplOpen] = useState(false);
-  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Celular (D27): só leitura e exportação. Os hooks acima continuam montados (a
+  // ordem não muda quando a largura cruza 768px) e "Aplicar template" grava pelo
+  // mesmo autosave do desktop.
+  const isPhone = !useIsDesktop(768);
+  // URL do PDF gerado no celular: vira o link "Abrir PDF" que a pessoa toca.
+  const [phonePdfUrl, setPhonePdfUrl] = useState<string | null>(null);
+  // O PDF reflete o layout e os dados do momento em que foi gerado.
+  useEffect(() => {
+    setPhonePdfUrl(null);
+  }, [layout, snapshot]);
 
   // Link "Ver como cliente": só existe quando o Hub tem um token ativo, não
   // expirado, e o workspace tem slug. Mesma checagem de validade que o
@@ -116,6 +133,24 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     }
   }
 
+  // Celular: a mesma exportação, sem abrir aba por código. Depois do await o
+  // toque original já expirou e o iOS Safari bloqueia a aba nova; a barra passa
+  // a mostrar um link "Abrir PDF" (ReportExportBar) para um toque novo.
+  async function handleExportPdfPhone() {
+    setExporting(true);
+    setPhonePdfUrl(null);
+    const toastId = toast.loading('Gerando PDF... isso pode levar até um minuto.');
+    try {
+      const { url } = await exportReportPdf(doc.id);
+      setPhonePdfUrl(url);
+      toast.success('PDF gerado. Toque em Abrir PDF.', { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF', { id: toastId });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleRefreshData() {
     setRefreshing(true);
     try {
@@ -129,61 +164,57 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     }
   }
 
-  // Nenhum dos dois timers sobrevive a um unmount: sem isso, um insert seguido
-  // de navegação dispara o callback depois que jsdom já derrubou a árvore
-  // (scrollIntoView é undefined lá) ou tenta setHighlightId num componente
-  // desmontado, vazando pro próximo arquivo de teste que rodar em seguida.
-  useEffect(
-    () => () => {
-      if (highlightTimer.current) clearTimeout(highlightTimer.current);
-      if (scrollTimer.current) clearTimeout(scrollTimer.current);
-    },
-    [],
+  const applyTemplateDialog = (
+    <ApplyTemplateDialog
+      open={applyTplOpen}
+      onOpenChange={setApplyTplOpen}
+      warnImagesRemoved={layoutHasFilledImage(layout)}
+      onApply={(tpl) => {
+        commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
+        toast.success('Template aplicado.');
+      }}
+    />
   );
 
-  // Exclusão com desfazer: o toast carrega a posição de origem (idx) — sem
-  // ela, "Desfazer" reinseriria sempre no fim, perdendo a ordem do usuário.
-  function handleRemoveBlock(id: string) {
-    const idx = layoutRef.current.blocks.findIndex((b) => b.id === id);
-    const block = layoutRef.current.blocks[idx];
-    if (!block) return;
-    applyLayout(removeBlock(layoutRef.current, id));
-    toast('Bloco excluído.', {
-      action: {
-        label: 'Desfazer',
-        onClick: () => applyLayout(restoreBlock(layoutRef.current, block, idx)),
-      },
-    });
-  }
-
-  function highlightAndScroll(id: string) {
-    setHighlightId(id);
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    highlightTimer.current = setTimeout(() => setHighlightId(null), 2500);
-    if (scrollTimer.current) clearTimeout(scrollTimer.current);
-    scrollTimer.current = setTimeout(() => {
-      // jsdom não implementa scrollIntoView (undefined no protótipo do
-      // elemento) — o `?.()` opcional no MÉTODO, não só no querySelector,
-      // evita o TypeError que corrompe o próximo arquivo de teste.
-      document
-        .querySelector(`[data-block-id="${id}"]`)
-        ?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    }, 50);
-  }
-
-  function openWidgetDrawer(at: number | null) {
-    setInsertAt(at);
-    setDrawerOpen(true);
-  }
-
-  function handleInsert(type: BlockType) {
-    const { layout: next, newId } = insertBlockAt(
-      layoutRef.current,
-      type,
-      insertAt ?? layoutRef.current.blocks.length,
+  if (isPhone) {
+    const clientName = snapshot.account.client_name;
+    return (
+      <>
+        <ReportPhoneView
+          title={title}
+          subtitle={clientName ? `${clientName} · ${snapshot.period.label}` : snapshot.period.label}
+          fallbackTo={`/analytics/${doc.client_id}`}
+          layout={layout}
+          snapshot={snapshot}
+          actions={[
+            {
+              label: refreshing ? 'Atualizando…' : 'Atualizar dados',
+              disabled: refreshing,
+              onSelect: handleRefreshData,
+            },
+            ...(hubViewLink
+              ? [
+                  {
+                    label: 'Ver como cliente',
+                    // Dentro do toque: window.open fora do gesto é bloqueado no iOS.
+                    immediate: true,
+                    onSelect: () => window.open(hubViewLink.url, '_blank', 'noopener'),
+                  },
+                ]
+              : []),
+            { label: 'Aplicar template', onSelect: () => setApplyTplOpen(true) },
+          ]}
+          bottomBar={
+            <ReportExportBar
+              exporting={exporting}
+              pdfUrl={phonePdfUrl}
+              onExport={handleExportPdfPhone}
+            />
+          }
+        />
+        {applyTemplateDialog}
+      </>
     );
-    applyLayout(next);
-    highlightAndScroll(newId);
   }
 
   // Padding vive em .rb-editor-with-rail (style.css): inline aqui
@@ -191,33 +222,28 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   // painel de camadas.
   return (
     <div className="rb-editor-with-rail">
+      <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
+        ref={headerRef}
+        className="rb-editor-header"
+        data-stuck={stuck || undefined}
         style={{
           maxWidth: 880,
           margin: '0 auto 1.25rem',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.75rem',
+          gap: '0.5rem 0.75rem',
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ flex: 1, minWidth: 220 }}>
+        <div className="rb-editor-title">
           <input
             aria-label="Título do relatório"
+            className="rb-editor-title-input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            style={{
-              width: '100%',
-              border: 'none',
-              background: 'transparent',
-              fontSize: '1.35rem',
-              fontWeight: 700,
-              letterSpacing: '-1px',
-              color: 'var(--text-main)',
-              outline: 'none',
-            }}
           />
-          <p style={{ margin: '0.15rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          <p className="rb-editor-subtitle">
             {snapshot.period.label}
             {saving && (
               <span className="drawer-saving-indicator" style={{ marginLeft: '0.6rem' }}>
@@ -226,50 +252,65 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             )}
           </p>
         </div>
-        <AppearancePopover layout={layout} snapshot={snapshot} onChange={applyLayout} />
-        <Button size="sm" onClick={() => openWidgetDrawer(null)}>
-          <Plus className="h-3.5 w-3.5" /> Adicionar widget
-        </Button>
-        <Button size="sm" disabled={exporting} onClick={handleExportPdf}>
-          {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />} Exportar PDF
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" aria-label="Ações do relatório">
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setSaveTplOpen(true)}>
-              Salvar como template
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setApplyTplOpen(true)}>
-              Aplicar template
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={refreshing} onSelect={handleRefreshData}>
-              {refreshing ? 'Atualizando…' : 'Atualizar dados'}
-            </DropdownMenuItem>
-            {hubViewLink && (
-              <DropdownMenuItem onSelect={() => window.open(hubViewLink.url, '_blank', 'noopener')}>
-                Ver como cliente
+        <div className="rb-editor-actions">
+          <UndoRedoButtons
+            canUndo={history.canUndo}
+            canRedo={history.canRedo}
+            onUndo={history.undo}
+            onRedo={history.redo}
+          />
+          <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
+          <Button size="sm" onClick={() => openWidgetDrawer(null)}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar widget
+          </Button>
+          <Button size="sm" disabled={exporting} onClick={handleExportPdf}>
+            {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />} Exportar PDF
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" aria-label="Ações do relatório">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setSaveTplOpen(true)}>
+                Salvar como template
               </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem onSelect={() => setApplyTplOpen(true)}>
+                Aplicar template
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={refreshing} onSelect={handleRefreshData}>
+                {refreshing ? 'Atualizando…' : 'Atualizar dados'}
+              </DropdownMenuItem>
+              {hubViewLink && (
+                <DropdownMenuItem
+                  onSelect={() => window.open(hubViewLink.url, '_blank', 'noopener')}
+                >
+                  Ver como cliente
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
 
       <EditorCanvas
         layout={layout}
         snapshot={snapshot}
-        onChange={applyLayout}
+        onChange={commit}
         onRemoveBlock={handleRemoveBlock}
-        onConfigChange={(id, patch) => applyLayout(updateBlockConfig(layoutRef.current, id, patch))}
+        onConfigChange={(id, patch) =>
+          commit(updateBlockConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
+        }
         highlightId={highlightId}
+        imageContext={{ mode: 'report', clientId: doc.client_id }}
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor
             key={block.id}
             block={block}
-            onTextChange={(id, json) => applyLayout(updateBlockText(layoutRef.current, id, json))}
+            onTextChange={(id, json) =>
+              commit(updateBlockText(layoutRef.current, id, json), `text:${id}`)
+            }
           />
         )}
       />
@@ -277,9 +318,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        onReorder={(activeId, overId) =>
-          applyLayout(moveBlock(layoutRef.current, activeId, overId))
-        }
+        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
         onLocate={highlightAndScroll}
         onAddAt={openWidgetDrawer}
         onAddEnd={() => openWidgetDrawer(null)}
@@ -291,19 +330,15 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         onOpenChange={setSaveTplOpen}
         getLayout={() => layoutRef.current}
       />
-      <ApplyTemplateDialog
-        open={applyTplOpen}
-        onOpenChange={setApplyTplOpen}
-        onApply={(tpl) => {
-          applyLayout(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
-          toast.success('Template aplicado.');
-        }}
-      />
+      {applyTemplateDialog}
     </div>
   );
 }
 
 export default function RelatorioEditorPage() {
+  // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
+  usePreventStrayFileDrop();
+  const isPhone = !useIsDesktop(768);
   const { id } = useParams<{ id: string }>();
   const { data: doc, isLoading } = useQuery({
     queryKey: ['report-doc', id],
@@ -315,16 +350,14 @@ export default function RelatorioEditorPage() {
   });
 
   if (isLoading) {
-    return (
-      <div style={{ display: 'grid', placeItems: 'center', minHeight: '50vh' }}>
-        <Spinner />
-      </div>
-    );
+    // Same 880px column as the editor header and canvas.
+    return <DocSkeleton style={{ maxWidth: 880, margin: '0 auto' }} />;
   }
 
   if (!doc || !doc.data_snapshot) {
     return (
-      <div style={{ padding: '2rem' }}>
+      <div style={{ padding: isPhone ? 0 : '2rem' }}>
+        {isPhone && <PhoneNavBar fallbackTo="/analytics" />}
         <p style={{ color: 'var(--text-muted)' }}>Relatório não encontrado.</p>
       </div>
     );

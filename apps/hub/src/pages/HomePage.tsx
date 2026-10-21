@@ -1,26 +1,23 @@
+import { useCallback, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Palette,
-  FileText,
-  BookOpen,
-  Lightbulb,
-  ChevronRight,
-  CheckSquare,
-  ArrowRight,
-} from 'lucide-react';
+import { ChevronRight, CheckSquare, ArrowRight, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
-import { fetchPosts } from '../api';
+import { hubAgendaPeriodoQuery, hubPostsQuery, hubPostsRangeQuery } from '../queries';
+import type { HubAgendaItem } from '../types';
+import { HubDialog } from '../components/ui/HubDialog';
+import { AgendaCard } from './agenda/AgendaCard';
+import { mergeById } from '../lib/mergeById';
+import { isInProduction, localMonthRange } from '../lib/postView';
 import { PostCalendar } from '../components/PostCalendar';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
 import { ClientAvatar } from '../components/ClientAvatar';
-
-const RESOURCE_LINKS = [
-  { label: 'Marca', icon: Palette, path: '/marca' },
-  { label: 'Páginas', icon: FileText, path: '/paginas' },
-  { label: 'Briefing', icon: BookOpen, path: '/briefing' },
-  { label: 'Ideias', icon: Lightbulb, path: '/ideias' },
-];
+import { HomeAgenda } from './agenda/HomeAgenda';
+import { useHubLook } from '../hooks/useHubLook';
+import { HomePagePauta } from './HomePagePauta';
+import { RESOURCE_LINKS } from './home/resourceLinks';
+import { CalendarSkeleton } from '../components/Skeleton';
 
 const CALENDAR_STATUSES = new Set([
   'enviado_cliente',
@@ -30,27 +27,62 @@ const CALENDAR_STATUSES = new Set([
   'postado',
 ]);
 
-function formatNextPost(scheduledAt: string): string {
+function formatNextPost(scheduledAt: string, lang: string = 'pt-BR'): string {
   const date = new Date(scheduledAt);
-  const weekday = date.toLocaleDateString('pt-BR', { weekday: 'short' });
-  const time = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const weekday = date.toLocaleDateString(lang, { weekday: 'short' });
+  const time = date.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
   return `${weekday.replace('.', '')} ${time}`;
 }
 
 export function HomePage() {
+  const { t, i18n } = useTranslation('hubHome');
   const { bootstrap, token } = useHub();
   const { workspace } = useParams<{ workspace: string }>();
   const navigate = useNavigate();
+  const look = useHubLook();
   const base = `/${workspace}/hub/${token}`;
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['hub-posts', token],
-    queryFn: () => fetchPosts(token),
-  });
+  const { data, isLoading } = useQuery(hubPostsQuery(token));
 
   const allPosts = data?.posts ?? [];
   const pendingCount = allPosts.filter((p) => p.status === 'enviado_cliente').length;
-  const posts = allPosts.filter((p) => CALENDAR_STATUSES.has(p.status));
+  const posts = allPosts.filter((p) => CALENDAR_STATUSES.has(p.status) || isInProduction(p));
+
+  // Months that start before the shell's window are fetched on demand by scheduled_at range
+  // (the shell holds every post scheduled after the cutoff, so later months are complete).
+  const [shown, setShown] = useState<{ year: number; month: number } | null>(null);
+  const handleMonthChange = useCallback(
+    (year: number, month: number) => setShown({ year, month }),
+    [],
+  );
+  const historyCutoff = data?.historyCutoff ?? null;
+  const monthRange = shown ? localMonthRange(shown.year, shown.month) : null;
+  const needsRange =
+    monthRange !== null &&
+    historyCutoff !== null &&
+    Date.parse(monthRange.from) < Date.parse(historyCutoff);
+  const rangeQuery = useQuery({
+    ...hubPostsRangeQuery(token, monthRange?.from ?? '', monthRange?.to ?? ''),
+    enabled: needsRange,
+  });
+  // Plain computation: `posts` is a fresh filter every render, so a memo would never hit.
+  // Shared events: every month shown, whatever historyCutoff says (the shell has none).
+  const agendaAtiva = bootstrap.feature_agenda === true;
+  const periodoQuery = useQuery({
+    ...hubAgendaPeriodoQuery(token, monthRange?.from ?? '', monthRange?.to ?? ''),
+    enabled: agendaAtiva && monthRange !== null,
+  });
+  const [eventoAberto, setEventoAberto] = useState<HubAgendaItem | null>(null);
+  // The open card follows the month query (an answer patches it), falling back to the
+  // clicked snapshot while that month refetches or after the event left it.
+  const eventoAtual = eventoAberto
+    ? (periodoQuery.data?.find((i) => i.ocorrencia_id === eventoAberto.ocorrencia_id) ??
+      eventoAberto)
+    : null;
+
+  const calendarPosts = mergeById(posts, needsRange ? (rangeQuery.data?.posts ?? []) : []).filter(
+    (p) => CALENDAR_STATUSES.has(p.status) || isInProduction(p),
+  );
 
   const now = new Date();
   const thisMonthCount = allPosts.filter((p) => {
@@ -73,22 +105,105 @@ export function HomePage() {
   const nextPost = upcoming[0];
 
   const firstName = bootstrap.cliente_nome.split(' ')[0];
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const nextPostLabel = nextPost ? formatNextPost(nextPost.scheduled_at!, dateLocale) : '—';
 
   const kpis = [
-    { label: 'Posts este mês', value: String(thisMonthCount), hint: 'Feed, Reels, Stories' },
     {
-      label: 'Aprovações pendentes',
+      label: t('home.kpi.postsThisMonth.label', 'Posts este mês'),
+      value: String(thisMonthCount),
+      hint: t('home.kpi.postsThisMonth.hint', 'Imagem, Vídeo vertical, Stories'),
+    },
+    {
+      label: t('home.kpi.pendingApprovals.label', 'Aprovações pendentes'),
       value: String(pendingCount),
-      hint: pendingCount ? `${pendingCount} para revisar` : 'Tudo em dia',
+      hint: pendingCount
+        ? t('home.kpi.pendingApprovals.hintCount', '{{count}} para revisar', {
+            count: pendingCount,
+          })
+        : t('home.kpi.pendingApprovals.hintZero', 'Tudo em dia'),
       onClick: () => navigate(`${base}/aprovacoes`),
     },
-    { label: 'Taxa de aprovação', value: approvalRate, hint: 'Aprovados vs. correção' },
     {
-      label: 'Próximo post',
-      value: nextPost ? formatNextPost(nextPost.scheduled_at!) : '—',
-      hint: nextPost?.titulo ?? 'Nada agendado',
+      label: t('home.kpi.approvalRate.label', 'Taxa de aprovação'),
+      value: approvalRate,
+      hint: t('home.kpi.approvalRate.hint', 'Aprovados vs. correção'),
+    },
+    {
+      label: t('home.kpi.nextPost.label', 'Próximo post'),
+      value: nextPostLabel,
+      hint: nextPost?.titulo ?? t('home.kpi.nextPost.hintEmpty', 'Nada agendado'),
     },
   ];
+
+  const calendarBody = isLoading ? (
+    <CalendarSkeleton />
+  ) : (
+    <PostCalendar
+      posts={calendarPosts}
+      eventos={agendaAtiva ? (periodoQuery.data ?? []) : undefined}
+      eventosErro={agendaAtiva && periodoQuery.isError && !periodoQuery.isFetching}
+      onRetryEventos={() => void periodoQuery.refetch()}
+      onEventoClick={setEventoAberto}
+      onMonthChange={handleMonthChange}
+      loading={needsRange && rangeQuery.isFetching}
+      notice={
+        needsRange && rangeQuery.isError && !rangeQuery.isFetching ? (
+          <p className="mb-3 flex items-center gap-2 text-[12.5px] hub-tx2">
+            {t('calendar.rangeError', 'Não foi possível carregar este mês.')}
+            <button
+              type="button"
+              onClick={() => void rangeQuery.refetch()}
+              className="font-semibold underline"
+            >
+              {t('calendar.rangeRetry', 'Tentar novamente')}
+            </button>
+          </p>
+        ) : null
+      }
+    />
+  );
+
+  const eventDialog = eventoAtual && (
+    <HubDialog open onRequestClose={() => setEventoAberto(null)} title={eventoAtual.titulo}>
+      {/* Bottom sheet on mobile, centered card on desktop. */}
+      <div className="w-full md:max-w-[520px] self-end md:self-center max-h-full overflow-y-auto px-3 pb-3 md:p-0">
+        <div className="flex justify-end mb-2">
+          <button
+            type="button"
+            onClick={() => setEventoAberto(null)}
+            aria-label={t('calendar.fecharEvento', 'Fechar')}
+            className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--hub-card)] hub-txt shadow-sm"
+          >
+            <X size={17} aria-hidden="true" />
+          </button>
+        </div>
+        <AgendaCard item={eventoAtual} token={token} agora={Date.now()} />
+      </div>
+    </HubDialog>
+  );
+
+  if (look === 'pauta') {
+    return (
+      <HomePagePauta
+        base={base}
+        token={token}
+        firstName={firstName}
+        posts={allPosts}
+        loading={isLoading}
+        pendingCount={pendingCount}
+        agendaEnabled={agendaAtiva}
+        kpis={{
+          thisMonth: String(thisMonthCount),
+          pending: String(pendingCount),
+          approvalRate,
+          nextPost: nextPostLabel,
+        }}
+        calendar={calendarBody}
+        eventDialog={eventDialog}
+      />
+    );
+  }
 
   return (
     <div className="hub-fade-up flex flex-col gap-6">
@@ -100,7 +215,7 @@ export function HomePage() {
         />
         <p className="text-[13px] font-medium hub-tx3 mb-1.5 mt-4">{bootstrap.workspace.name}</p>
         <h1 className="font-display font-medium text-[clamp(2rem,5vw,3rem)] leading-[1.04] tracking-tight hub-txt mb-1.5">
-          Olá, <em className="italic font-normal">{firstName}</em> 👋
+          {t('home.greeting', 'Olá,')} <em className="italic font-normal">{firstName}</em> 👋
         </h1>
       </section>
 
@@ -158,8 +273,10 @@ export function HomePage() {
           </span>
           <span className="flex-1 text-sm font-medium hub-txt">
             {pendingCount === 1
-              ? 'Você tem 1 post aguardando aprovação'
-              : `Você tem ${pendingCount} posts aguardando aprovação`}
+              ? t('home.pendingBanner.singular', 'Você tem 1 post aguardando aprovação')
+              : t('home.pendingBanner.plural', 'Você tem {{count}} posts aguardando aprovação', {
+                  count: pendingCount,
+                })}
           </span>
           <ArrowRight
             size={16}
@@ -168,23 +285,29 @@ export function HomePage() {
         </button>
       )}
 
-      <section className="hub-card p-5">
-        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Calendário</h3>
-        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">Próximas publicações</div>
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin h-5 w-5 rounded-full border-2 border-stone-300 border-t-stone-900" />
-          </div>
-        ) : (
-          <PostCalendar posts={posts} />
-        )}
-      </section>
+      {bootstrap.feature_agenda && <HomeAgenda token={token} base={base} />}
 
       <section className="hub-card p-5">
-        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Recursos</h3>
-        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">Acesso rápido</div>
+        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">
+          {t('home.calendarSection.title', 'Calendário')}
+        </h3>
+        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">
+          {t('home.calendarSection.subtitle', 'Próximas publicações')}
+        </div>
+        {calendarBody}
+      </section>
+
+      {eventDialog}
+
+      <section className="hub-card p-5">
+        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">
+          {t('home.resources.title', 'Recursos')}
+        </h3>
+        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">
+          {t('home.resources.subtitle', 'Acesso rápido')}
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {RESOURCE_LINKS.map(({ label, icon: Icon, path }) => (
+          {RESOURCE_LINKS.map(({ labelKey, label, icon: Icon, path }) => (
             <button
               key={path}
               onClick={() => navigate(`${base}${path}`)}
@@ -194,7 +317,7 @@ export function HomePage() {
                 <Icon size={16} strokeWidth={1.75} />
               </span>
               <span className="flex items-center gap-1 text-[14px] font-medium hub-txt">
-                {label}
+                {t(labelKey, label)}
                 <ChevronRight
                   size={14}
                   className="hub-tx3 group-hover:translate-x-0.5 transition-transform"

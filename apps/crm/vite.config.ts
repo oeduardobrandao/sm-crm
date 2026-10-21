@@ -13,16 +13,33 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, './src'),
         '@mesaas/i18n': path.resolve(__dirname, '../../packages/i18n/index.ts'),
         '@mesaas/ui': path.resolve(__dirname, '../../packages/ui'),
+        '@mesaas/ios-kit': path.resolve(__dirname, '../../packages/ios-kit'),
         '@mesaas/report-blocks': path.resolve(__dirname, '../../packages/report-blocks'),
         '@mesaas/import-parsers': path.resolve(__dirname, '../../packages/import-parsers/index.ts'),
         '@mesaas/app-lifecycle': path.resolve(__dirname, '../../packages/app-lifecycle/index.ts'),
+        '@mesaas/link-policy': path.resolve(__dirname, '../../packages/link-policy/index.ts'),
+        '@mesaas/text-diff': path.resolve(__dirname, '../../packages/text-diff/index.ts'),
+        '@mesaas/platforms': path.resolve(
+          __dirname,
+          '../../supabase/functions/_shared/platform-registry.ts',
+        ),
+        '@mesaas/tiktok-messages': path.resolve(
+          __dirname,
+          '../../supabase/functions/_shared/tiktok-messages.ts',
+        ),
       },
     },
+    // The FFmpeg wrapper resolves its worker relative to its module URL.
+    // Prebundling relocates that URL without copying worker.js.
+    optimizeDeps: { exclude: ['@ffmpeg/ffmpeg'] },
     server: {
       allowedHosts: ['.trycloudflare.com'],
     },
     build: {
       outDir: '../../dist',
+      // Read at runtime by prefetchBuildAssets. Outside /assets/ on purpose: it must not be
+      // cached as immutable.
+      manifest: 'build-manifest.json',
     },
   };
 });

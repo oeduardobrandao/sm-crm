@@ -1,6 +1,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 // Follows WorkflowDrawer.test.tsx's pattern: stub every heavy leaf component so
@@ -8,16 +10,29 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // delete flows) is actually exercised. AttachToFluxoDialog is stubbed away entirely --
 // its own behavior is covered by AttachToFluxoDialog.test.tsx.
 
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
+// `can` e um vi.fn() para cada teste poder negar uma permissao especifica.
+const authMock = vi.hoisted(() => ({ can: vi.fn() }));
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'user-1' }, role: 'owner', loading: false, profile: null }),
+  useAuth: () => ({
+    user: { id: 'user-1' },
+    role: 'owner',
+    loading: false,
+    profile: null,
+    can: authMock.can,
+  }),
 }));
 
+const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({
     limits: null,
-    features: null,
+    features: limitsMock.features,
     planName: null,
     isLoading: false,
     isUnlimited: true,
@@ -63,6 +78,7 @@ vi.mock('@/store', () => ({
   removeWorkflowPost: vi.fn(),
   replyToPostApproval: vi.fn(),
   createCommentThread: vi.fn(),
+  saveIgCaption: vi.fn(),
   addPostComment: vi.fn(),
   updatePostComment: vi.fn(),
   deletePostComment: vi.fn(),
@@ -72,21 +88,53 @@ vi.mock('@/store', () => ({
   acceptEditSuggestion: vi.fn(),
   rejectEditSuggestion: vi.fn(),
   syncMentions: vi.fn(),
+  getVigentePostProcess: vi.fn(async () => null),
+  getPostProcessEvents: vi.fn(async () => []),
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
+  // Consumed by ApplyProcessDialog, which this drawer mounts in its header for the
+  // "Aplicar processo" action -- the module-namespace mock below must list every
+  // export imported anywhere in that subtree, even in tests that never open it.
+  getWorkflowTemplates: vi.fn(async () => []),
+  getClientes: vi.fn(async () => []),
+  applyPostProcess: vi.fn(),
+  // Consumed by DuplicateDialog ("Duplicar post" no cabecalho).
+  clonePost: vi.fn(),
+  cloneWorkflow: vi.fn(),
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+// PostEditorBody and WorkflowDrawer read client references from this module by path.
+vi.mock('@/store/postReferences', () => ({
+  getPostReferences: vi.fn(async () => []),
+  getPostReferenceCounts: vi.fn(async () => ({})),
+  deletePostReference: vi.fn(),
+}));
 
 vi.mock('@/services/inlineImage', () => ({
   uploadInlineImage: vi.fn(),
   extractR2Keys: vi.fn(() => []),
   injectSignedUrls: vi.fn((content: unknown) => content),
+  stripSignedUrls: vi.fn((content: unknown) => content),
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
 
 // Heavy leaf components -- stubbed out so only StandalonePostDrawer/PostEditorBody's own
 // logic runs (same stub set as WorkflowDrawer.test.tsx).
+// O stub expõe um botão que dispara onUpdate, para armar o autosave do conteúdo.
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
-  PostEditor: () => <div data-testid="post-editor-stub" />,
+  PostEditor: ({
+    onUpdate,
+  }: {
+    onUpdate?: (json: Record<string, unknown>, plain: string) => void;
+  }) => (
+    <div data-testid="post-editor-stub">
+      <button type="button" onClick={() => onUpdate?.({ type: 'doc' }, 'novo texto')}>
+        Editar conteúdo
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
   PropertyPanel: () => <div data-testid="property-panel-stub" />,
@@ -108,6 +156,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
 }));
 vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
   ScheduleButton: () => <div data-testid="schedule-button-stub" />,
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({
@@ -125,13 +174,30 @@ vi.mock('@/pages/entregas/components/ReadOnlyTipTap', () => ({
 vi.mock('../AttachToFluxoDialog', () => ({
   AttachToFluxoDialog: () => <div data-testid="attach-to-fluxo-stub" />,
 }));
+// A view do calendário tem DnD, queries próprias e grade de mês -- só interessa
+// aqui QUE ela é montada, e com qual escopo de posse (currentWorkflowId).
+vi.mock('../WorkflowCalendarView', () => ({
+  WorkflowCalendarView: ({ currentWorkflowId }: { currentWorkflowId: number | null }) => (
+    <div data-testid="calendar-view-stub" data-current-workflow={String(currentWorkflowId)} />
+  ),
+}));
 
 import { StandalonePostDrawer } from '../StandalonePostDrawer';
-import { getStandalonePost, updateWorkflowPost, removeWorkflowPost } from '@/store';
+import {
+  getStandalonePost,
+  getVigentePostProcess,
+  getPostStatusEvents,
+  updateWorkflowPost,
+  removeWorkflowPost,
+  transitionPostProcess,
+} from '@/store';
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);
+const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
+const mockGetPostStatusEvents = vi.mocked(getPostStatusEvents);
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockRemove = vi.mocked(removeWorkflowPost);
+const mockTransition = vi.mocked(transitionPostProcess);
 
 function basePost(overrides: Record<string, unknown> = {}) {
   return {
@@ -158,23 +224,73 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
   const onRefresh = vi.fn();
   const onAttached = vi.fn();
   const utils = render(
-    <QueryClientProvider client={qc}>
-      <StandalonePostDrawer
-        postId={5}
-        membros={[]}
-        onClose={onClose}
-        onRefresh={onRefresh}
-        onAttached={onAttached}
-        {...props}
-      />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <StandalonePostDrawer
+          postId={5}
+          membros={[]}
+          onClose={onClose}
+          onRefresh={onRefresh}
+          onAttached={onAttached}
+          {...props}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
   return { ...utils, onClose, onRefresh, onAttached };
 }
 
+// ── Fixtures dos comandos do processo individual (Task 7) ────────────────────
+const postFixture = basePost();
+
+function processStep(ordem: number, estado: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id: ordem + 1,
+    ordem,
+    nome: `Etapa ${ordem}`,
+    estado,
+    tipo: 'padrao',
+    responsavel_id: null,
+    prazo_dias: null,
+    tipo_prazo: null,
+    prazo_efetivo: null,
+    iniciado_em: null,
+    ...overrides,
+  };
+}
+
+// Etapa 1 ativa de 3 (0 concluída, 1 ativa, 2 pendente): tem etapa anterior
+// (Voltar etapa) e uma pendente adiante (Avançar etapa, não Concluir).
+const processFixture = {
+  id: 9,
+  post_id: 5,
+  estado: 'ativo',
+  etapa_atual: 1,
+  revisao: 3,
+  template_id: null,
+  template_nome: null,
+  origem_descricao: null,
+  steps: [processStep(0, 'concluido'), processStep(1, 'ativo'), processStep(2, 'pendente')],
+};
+
+// Última etapa ativa (nenhuma pendente adiante): canConcluir() = true.
+const lastStepActiveSteps = [
+  processStep(0, 'concluido'),
+  processStep(1, 'concluido'),
+  processStep(2, 'ativo'),
+];
+
+// Etapa ativa de aprovação do cliente, para a dica da seção de produção.
+const approvalActiveProcessFixture = {
+  ...processFixture,
+  steps: [processStep(0, 'concluido'), processStep(1, 'ativo', { tipo: 'aprovacao_cliente' })],
+};
+
 describe('StandalonePostDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    limitsMock.features = null;
+    authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'owner' })));
     mockGetStandalonePost.mockResolvedValue(basePost() as never);
     mockUpdate.mockResolvedValue({} as never);
     mockRemove.mockResolvedValue(undefined as never);
@@ -188,12 +304,123 @@ describe('StandalonePostDrawer', () => {
     expect(screen.queryByTestId('property-panel-stub')).not.toBeInTheDocument();
   });
 
+  describe('aba Calendário', () => {
+    it('troca o editor pelo calendário do cliente e volta, marcando a aba ativa', async () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      const calendarTab = await screen.findByRole('tab', { name: 'Calendário' });
+      const postTab = screen.getByRole('tab', { name: 'Post' });
+      expect(postTab.getAttribute('aria-selected')).toBe('true');
+      expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
+
+      fireEvent.click(calendarTab);
+
+      expect(screen.getByTestId('calendar-view-stub')).toBeInTheDocument();
+      expect(screen.queryByTestId('post-editor-stub')).not.toBeInTheDocument();
+      expect(calendarTab.getAttribute('aria-selected')).toBe('true');
+
+      fireEvent.click(postTab);
+
+      expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
+      expect(screen.queryByTestId('calendar-view-stub')).not.toBeInTheDocument();
+    });
+
+    it('escopa a posse nos posts avulsos do cliente (currentWorkflowId null), não num fluxo', async () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Calendário' }));
+
+      expect(screen.getByTestId('calendar-view-stub').getAttribute('data-current-workflow')).toBe(
+        'null',
+      );
+    });
+  });
+
   it('shows the Avulso chip in the header subtitle', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
     expect(await screen.findByText('Avulso')).toBeInTheDocument();
     expect(screen.getByText('Marca X', { exact: false })).toBeInTheDocument();
+  });
+
+  it('copies the universal CRM link (?post=) for the post', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copiar link do post' }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/entregas?post=5`),
+    );
+  });
+
+  it("renders a Histórico button populated with the post's real status events", async () => {
+    mockGetPostStatusEvents.mockResolvedValue([
+      {
+        id: 1,
+        post_id: 5,
+        from_status: 'rascunho',
+        to_status: 'aprovado_cliente',
+        source: 'client',
+        actor_user_id: null,
+        actor_name: null,
+        post_approval_id: null,
+        from_custom_status_id: null,
+        to_custom_status_id: null,
+        from_custom_nome: null,
+        to_custom_nome: null,
+        created_at: '2026-06-03T12:00:00Z',
+      },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByTestId('post-editor-stub');
+    fireEvent.click(screen.getByTitle('Histórico do post'));
+
+    expect(await screen.findByText('Histórico')).toBeInTheDocument();
+    expect(screen.getByText('Aprovado pelo cliente')).toBeInTheDocument();
+    expect(screen.getByText('Cliente')).toBeInTheDocument();
+  });
+
+  it('Duplicar post abre o diálogo quando pode editar entregas', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByTitle('Duplicar post'));
+    expect(await screen.findByRole('heading', { name: 'Duplicar post' })).toBeInTheDocument();
+  });
+
+  it('com o conteúdo salvando, o botão Duplicar post fica desabilitado', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const btn = await screen.findByTitle('Duplicar post');
+    expect(btn).toBeEnabled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar conteúdo' }));
+    expect(screen.getByTitle('Duplicar post')).toBeDisabled();
+
+    // Depois do debounce o save termina e o botão volta.
+    await waitFor(() => expect(screen.getByTitle('Duplicar post')).toBeEnabled(), {
+      timeout: 3000,
+    });
+  });
+
+  it('sem permissão de editar entregas não mostra o botão Duplicar post', async () => {
+    const owner = makeCan(fakeMembership({ role: 'owner' }));
+    authMock.can.mockImplementation((module, action) =>
+      module === 'entregas' && action === 'editar' ? false : owner(module, action),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByTitle('Remover post');
+    expect(screen.queryByTitle('Duplicar post')).not.toBeInTheDocument();
   });
 
   it('deletes the post through the confirm dialog and closes the drawer', async () => {
@@ -268,5 +495,252 @@ describe('StandalonePostDrawer', () => {
       }),
     );
     expect(screen.queryByText('Post aprovado')).not.toBeInTheDocument();
+  });
+
+  it('flag desligada sem processo: tag "Avulso" (consulta o processo, que vem nulo)', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    const { getVigentePostProcess } = await import('@/store');
+    (getVigentePostProcess as any).mockResolvedValueOnce(null);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByText('Avulso')).toBeInTheDocument();
+    expect(getVigentePostProcess).toHaveBeenCalledWith(5);
+    expect(screen.queryByText(/Avulso · Sem processo/)).toBeNull();
+  });
+
+  it('flag desligada com processo existente: tag "Individual · <etapa>" e seção de produção visíveis', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    const { getVigentePostProcess } = await import('@/store');
+    (getVigentePostProcess as any).mockResolvedValueOnce({
+      id: 9,
+      post_id: 5,
+      estado: 'ativo',
+      etapa_atual: 1,
+      template_id: null,
+      template_nome: null,
+      origem_descricao: null,
+      steps: [
+        {
+          id: 1,
+          ordem: 0,
+          nome: 'Copy',
+          estado: 'ignorado',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+        {
+          id: 2,
+          ordem: 1,
+          nome: 'Design',
+          estado: 'ativo',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByText('Individual · Design')).toBeInTheDocument();
+    expect(screen.getByText('Produção')).toBeInTheDocument();
+  });
+
+  it('flag ligada sem processo: tag "Avulso · Sem processo"', async () => {
+    limitsMock.features = { feature_post_processes: true };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByText('Avulso · Sem processo')).toBeInTheDocument();
+    const { getVigentePostProcess } = await import('@/store');
+    expect(getVigentePostProcess).toHaveBeenCalledWith(5);
+  });
+
+  it('flag ligada com processo ativo: tag "Individual · <etapa>" e seção Produção', async () => {
+    limitsMock.features = { feature_post_processes: true };
+    const { getVigentePostProcess } = await import('@/store');
+    // Set the value BEFORE mounting: the query fires on mount, and a `Once`
+    // value is consumed by whichever call happens next.
+    (getVigentePostProcess as any).mockResolvedValueOnce({
+      id: 9,
+      post_id: 5,
+      estado: 'ativo',
+      etapa_atual: 1,
+      template_id: null,
+      template_nome: null,
+      origem_descricao: null,
+      steps: [
+        {
+          id: 1,
+          ordem: 0,
+          nome: 'Copy',
+          estado: 'ignorado',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+        {
+          id: 2,
+          ordem: 1,
+          nome: 'Design',
+          estado: 'ativo',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { membros: [{ id: 1, nome: 'Ana' }] }); // the select (and its label) only renders with membros
+    expect(await screen.findByText('Individual · Design')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Produção/ })).toBeInTheDocument();
+    expect(screen.getByText('Responsável do post')).toBeInTheDocument();
+  });
+
+  it('processo ativo sem etapa ativa: activeStepName cai em etapa_atual em vez de "Processo concluído"', async () => {
+    // Mirrors toPostEntity's fallback in boardEntity.ts (`steps.find(estado ===
+    // 'ativo') ?? steps.find(ordem === etapa_atual)`): a DB invariant keeps an
+    // ativo process with exactly one ativo etapa, but the header must not
+    // mislabel it as concluded if that invariant is ever violated.
+    limitsMock.features = { feature_post_processes: true };
+    const { getVigentePostProcess } = await import('@/store');
+    (getVigentePostProcess as any).mockResolvedValueOnce({
+      id: 9,
+      post_id: 5,
+      estado: 'ativo',
+      etapa_atual: 1,
+      template_id: null,
+      template_nome: null,
+      origem_descricao: null,
+      steps: [
+        {
+          id: 1,
+          ordem: 0,
+          nome: 'Copy',
+          estado: 'concluido',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+        {
+          id: 2,
+          ordem: 1,
+          nome: 'Design',
+          estado: 'pendente',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { membros: [{ id: 1, nome: 'Ana' }] });
+    expect(await screen.findByText('Individual · Design')).toBeInTheDocument();
+    expect(screen.queryByText('Individual · Processo concluído')).not.toBeInTheDocument();
+  });
+
+  it('processo ativo: cabeçalho com Voltar etapa / Avançar etapa / Remover processo, mesmo com a flag desligada', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    mockGetVigentePostProcess.mockResolvedValueOnce(processFixture as never); // etapa 1 ativa de 3, próxima pendente
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('button', { name: 'Avançar etapa' });
+    expect(screen.getByRole('button', { name: 'Voltar etapa' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remover processo' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Concluir processo' })).toBeNull();
+  });
+
+  it('última etapa ativa: "Concluir processo" no lugar de "Avançar etapa"; concluído: "Reabrir processo"', async () => {
+    mockGetVigentePostProcess.mockResolvedValueOnce({
+      ...processFixture,
+      etapa_atual: 2,
+      steps: lastStepActiveSteps,
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('button', { name: 'Concluir processo' });
+    expect(screen.queryByRole('button', { name: 'Avançar etapa' })).toBeNull();
+  });
+
+  it('post aprovado_cliente em etapa de aprovação: dica "Cliente aprovou. Avançar etapa?" na seção', async () => {
+    mockGetStandalonePost.mockResolvedValueOnce({
+      ...postFixture,
+      status: 'aprovado_cliente',
+    } as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(approvalActiveProcessFixture as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByText('Cliente aprovou. Avançar etapa?');
+  });
+
+  // Reviewer finding on Task 7 round 1: `approvalActiveProcessFixture`'s active
+  // aprovacao_cliente step (ordem 1) has no later pendente step, so canConcluir()
+  // is already true here -- this IS the last-step case. The hint used to always
+  // wire onProcessAvancar to commands.avancar, so clicking it on this exact
+  // fixture opened ForwardConfirmDialog with an empty next-step name and the RPC
+  // rejected with no_next_step. Clicking through actually exercises that path
+  // instead of only asserting the hint's text appears.
+  it('post aprovado_cliente na última etapa de aprovação: clicar na dica CONCLUI o processo, não avança', async () => {
+    mockGetStandalonePost.mockResolvedValueOnce({
+      ...postFixture,
+      status: 'aprovado_cliente',
+    } as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(approvalActiveProcessFixture as never);
+    mockTransition.mockResolvedValueOnce({
+      ok: true,
+      revisao: 4,
+      post_status: 'aprovado_cliente',
+      post_status_changed: false,
+      steps: [],
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = renderDrawer(qc);
+    await screen.findByText('Cliente aprovou. Avançar etapa?');
+
+    const hintButton = container.querySelector('.post-production-hint button') as HTMLButtonElement;
+    expect(hintButton).toBeTruthy();
+    expect(hintButton).toHaveTextContent('Concluir processo');
+    fireEvent.click(hintButton);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir' }));
+
+    await waitFor(() => expect(mockTransition).toHaveBeenCalledTimes(1));
+    expect(mockTransition.mock.calls[0][0]).toMatchObject({
+      command: 'concluir',
+    });
+    expect(mockTransition.mock.calls[0][0]).not.toMatchObject({ command: 'avancar' });
+  });
+
+  it('sem processo + flag ligada: "Aplicar processo" no cabeçalho; flag desligada: ausente', async () => {
+    limitsMock.features = { feature_post_processes: true };
+    mockGetVigentePostProcess.mockResolvedValueOnce(null);
+    const qc1 = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = renderDrawer(qc1);
+    await screen.findByRole('button', { name: 'Aplicar processo' });
+    unmount();
+
+    limitsMock.features = { feature_post_processes: false };
+    mockGetVigentePostProcess.mockResolvedValueOnce(null);
+    const qc2 = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc2);
+    await screen.findByText('Avulso');
+    expect(screen.queryByRole('button', { name: 'Aplicar processo' })).toBeNull();
   });
 });

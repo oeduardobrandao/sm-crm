@@ -1,23 +1,43 @@
-// Autosave do editor de blocos, no padrão inline da casa (WorkflowDrawer:448):
+// Autosave do editor de blocos (relatório ou modelo, via AutosaveTarget), no padrão inline da casa (WorkflowDrawer:448):
 // otimista no estado, saving liga ANTES do debounce, clearTimeout do anterior,
 // validateLayout como gate final antes do PostgREST.
 // Em falha: retém o payload, re-tenta com backoff (5s, 15s, 30s). Esgotado o
 // cap, para de tentar (payload continua retido, sem novo timer) até que uma
 // edição nova ou o unmount reabram o ciclo. Nova edição zera o contador.
 import { useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { updateReportDoc } from '../../services/reportDocs';
 
 const LAYOUT_DEBOUNCE_MS = 1500;
 const TITLE_DEBOUNCE_MS = 400;
 const RETRY_DELAYS_MS = [5000, 15000, 30000];
-const SAVE_ERROR_MSG = 'Erro ao salvar o relatório';
 // Mesmo id em toda falha de autosave: sonner substitui o toast existente em
 // vez de empilhar um novo a cada retry (uma falha persistente não deve virar
 // uma pilha de toasts idênticos na tela).
 const SAVE_ERROR_TOAST = { id: 'report-autosave-error' };
+
+/** Onde o autosave grava: relatório (report_documents) ou modelo (report_templates). */
+export interface AutosaveTarget {
+  save(id: string, patch: { layout?: ReportLayout; title?: string }): Promise<void>;
+  /** Query de detalhe que o editor lê com staleTime: Infinity. */
+  cacheKey(id: string): QueryKey;
+  /** Campo do registro em cache que guarda o título. */
+  titleField: 'title' | 'name';
+  errorMessage: string;
+  /** Chamado só após um save bem-sucedido (nunca em falha). Ex.: invalidar
+   *  uma lista que espelha esse registro em outra tela (F2, revisão final). */
+  onSaved?: (qc: QueryClient, id: string) => void | Promise<void>;
+}
+
+export const REPORT_DOC_TARGET: AutosaveTarget = {
+  save: (id, patch) => updateReportDoc(id, patch),
+  cacheKey: (id) => ['report-doc', id],
+  titleField: 'title',
+  errorMessage: 'Erro ao salvar o relatório',
+};
 
 // Cadeia de save POR DOCUMENTO, viva no módulo e não na instância do hook:
 // a fila de uma instância desmontada e a da montagem seguinte do mesmo doc
@@ -40,8 +60,16 @@ function appendToDocChain(docId: string, task: () => Promise<void>): void {
   docSaveChains.set(docId, next);
 }
 
-export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout; title: string }) {
+export function useLayoutAutosave(
+  docId: string,
+  initial: { layout: ReportLayout; title: string },
+  target: AutosaveTarget = REPORT_DOC_TARGET,
+) {
   const qc = useQueryClient();
+  // Por ref: os timers e o flush de unmount leem o target vigente sem
+  // depender do closure do render em que foram agendados.
+  const targetRef = useRef(target);
+  targetRef.current = target;
   const [layout, setLayout] = useState<ReportLayout>(initial.layout);
   const [title, setTitleState] = useState(initial.title);
   const [saving, setSaving] = useState(false);
@@ -49,6 +77,8 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   const layoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleDirty = useRef(false);
+  const [titleDirtyState, setTitleDirtyState] = useState(false);
+  const [titleSaving, setTitleSaving] = useState(false);
   const pendingLayout = useRef<ReportLayout | null>(null);
   const docIdRef = useRef(docId);
   const titleRef = useRef(title);
@@ -70,6 +100,13 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     setSaving(value);
   }
 
+  // Mirrors `titleDirty` into state so the unsaved-work registry (a render-time boolean)
+  // covers the title's debounce and retry window, exactly like the beforeunload guard does.
+  function setTitleDirty(value: boolean) {
+    titleDirty.current = value;
+    setTitleDirtyState(value);
+  }
+
   useEffect(
     () => () => {
       if (layoutTimer.current) clearTimeout(layoutTimer.current);
@@ -85,12 +122,13 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
         const check = validateLayout(pending);
         if (check.ok) {
           const id = docIdRef.current;
-          qc.setQueryData(['report-doc', id], (old: unknown) =>
+          qc.setQueryData(targetRef.current.cacheKey(id), (old: unknown) =>
             old ? { ...(old as object), layout: pending } : old,
           );
           appendToDocChain(id, async () => {
             try {
-              await updateReportDoc(id, { layout: pending });
+              await targetRef.current.save(id, { layout: pending });
+              await targetRef.current.onSaved?.(qc, id);
             } catch (err) {
               console.error('[relatorio-editor] flush de unmount falhou:', err);
             }
@@ -100,12 +138,13 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
       if (titleDirty.current) {
         const id = docIdRef.current;
         const titleToSave = titleRef.current;
-        qc.setQueryData(['report-doc', id], (old: unknown) =>
-          old ? { ...(old as object), title: titleToSave } : old,
+        qc.setQueryData(targetRef.current.cacheKey(id), (old: unknown) =>
+          old ? { ...(old as object), [targetRef.current.titleField]: titleToSave } : old,
         );
         appendToDocChain(id, async () => {
           try {
-            await updateReportDoc(id, { title: titleToSave });
+            await targetRef.current.save(id, { title: titleToSave });
+            await targetRef.current.onSaved?.(qc, id);
           } catch (err) {
             console.error('[relatorio-editor] flush de unmount falhou:', err);
           }
@@ -133,22 +172,23 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
         if (!check.ok) {
           // Bug de layoutOps se chegar aqui: nada de request com payload inválido.
           console.error('[relatorio-editor] layout inválido no autosave:', check);
-          toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
+          toast.error(targetRef.current.errorMessage, SAVE_ERROR_TOAST);
           if (pendingLayout.current === null) setSavingState(false);
           return;
         }
         try {
-          await updateReportDoc(docIdRef.current, { layout: toSave });
+          await targetRef.current.save(docIdRef.current, { layout: toSave });
           // Cache canônico pós-save: sem isso, uma reentrada na SPA dentro do
           // gcTime serve o doc PRÉ-edição e o próximo save clobbera o que
           // acabou de ser persistido (achado C1).
-          qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
+          qc.setQueryData(targetRef.current.cacheKey(docIdRef.current), (old: unknown) =>
             old ? { ...(old as object), layout: toSave } : old,
           );
           retryCount.current = 0;
+          await targetRef.current.onSaved?.(qc, docIdRef.current);
         } catch (err) {
           console.error('[relatorio-editor] autosave falhou:', err);
-          toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
+          toast.error(targetRef.current.errorMessage, SAVE_ERROR_TOAST);
           // Retém o payload: navegação ainda flusha no unmount. Se ainda houver
           // delay no backoff, agenda o próximo retry; esgotado, retém SEM
           // agendar (para de bombardear o backend até uma edição nova ou o
@@ -174,26 +214,37 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     titleTimer.current = setTimeout(() => {
       titleTimer.current = null;
       appendToDocChain(docIdRef.current, async () => {
-        if (!titleDirty.current) return;
-        titleDirty.current = false;
+        if (!titleDirty.current) {
+          setTitleSaving(false);
+          return;
+        }
+        setTitleDirty(false);
         const toSave = titleRef.current;
         try {
-          await updateReportDoc(docIdRef.current, { title: toSave });
+          await targetRef.current.save(docIdRef.current, { title: toSave });
           // Cache canônico pós-save — mesmo racional do layout (achado C1).
-          qc.setQueryData(['report-doc', docIdRef.current], (old: unknown) =>
-            old ? { ...(old as object), title: toSave } : old,
+          qc.setQueryData(targetRef.current.cacheKey(docIdRef.current), (old: unknown) =>
+            old ? { ...(old as object), [targetRef.current.titleField]: toSave } : old,
           );
           titleRetryCount.current = 0;
+          await targetRef.current.onSaved?.(qc, docIdRef.current);
+          // A newer edit is queued behind this request: stay held until its own flush settles.
+          if (!titleDirty.current) setTitleSaving(false);
         } catch (err) {
           console.error('[relatorio-editor] save de título falhou:', err);
-          toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
+          toast.error(targetRef.current.errorMessage, SAVE_ERROR_TOAST);
           // Mesmo tratamento do layout: retenta com backoff até esgotar
           // RETRY_DELAYS_MS, depois retém a dirty flag sem novo timer.
-          titleDirty.current = true;
+          setTitleDirty(true);
           const delay = RETRY_DELAYS_MS[titleRetryCount.current];
           if (delay !== undefined) {
             titleRetryCount.current += 1;
             scheduleTitleFlush(delay);
+          } else {
+            // Esgotado: para de tentar, mas a dirty flag continua true e segura o
+            // registro sozinha até uma edição nova ou o unmount.
+            // A newer edit is queued behind this request: stay held until its own flush settles.
+            if (!titleDirty.current) setTitleSaving(false);
           }
         }
       });
@@ -211,7 +262,8 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
 
   function setTitle(next: string) {
     setTitleState(next);
-    titleDirty.current = true;
+    setTitleDirty(true);
+    setTitleSaving(true);
     titleRetryCount.current = 0;
     scheduleTitleFlush(TITLE_DEBOUNCE_MS);
   }
@@ -230,6 +282,10 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
+
+  // A pending layout, a pending or in-flight title, or a layout save in flight must all
+  // finish before any silent version swap.
+  useUnsavedWork(saving || titleDirtyState || titleSaving);
 
   return { layout, applyLayout, title, setTitle, saving };
 }

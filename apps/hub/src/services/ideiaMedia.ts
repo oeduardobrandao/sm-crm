@@ -1,3 +1,5 @@
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
+import { i18n } from '@mesaas/i18n';
 import { presignIdeiaImage, finalizeIdeiaImage } from '../api';
 import type { IdeiaImage } from '../types';
 
@@ -6,17 +8,21 @@ export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
 export function validateIdeiaImage(file: File) {
   if (!IMAGE_MIME.includes(file.type)) {
-    throw new Error(`Tipo de arquivo não suportado: ${file.type}`);
+    throw new Error(
+      i18n.t('hubIdeas:images.unsupportedType', 'Tipo de arquivo não suportado: {{type}}', {
+        type: file.type,
+      }),
+    );
   }
   if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
-    throw new Error('Imagem maior que 25 MB');
+    throw new Error(i18n.t('hubIdeas:images.tooLarge', 'Imagem maior que 25 MB'));
   }
 }
 
 const THUMB_SIZE = 256;
 const BLUR_SIZE = 16;
 
-function probeImage(file: File): Promise<{ width: number; height: number }> {
+export function probeImage(file: File): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -32,13 +38,14 @@ function probeImage(file: File): Promise<{ width: number; height: number }> {
   });
 }
 
-function generateThumbnail(file: File): Promise<File> {
+/** WebP thumbnail whose longest edge is at most `maxEdge` px (never upscaled). */
+export function generateThumbnail(file: File, maxEdge: number = THUMB_SIZE): Promise<File> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const scale = Math.min(THUMB_SIZE / img.naturalWidth, THUMB_SIZE / img.naturalHeight, 1);
+      const scale = Math.min(maxEdge / img.naturalWidth, maxEdge / img.naturalHeight, 1);
       const w = Math.max(1, Math.round(img.naturalWidth * scale));
       const h = Math.max(1, Math.round(img.naturalHeight * scale));
       const canvas = document.createElement('canvas');
@@ -62,7 +69,7 @@ function generateThumbnail(file: File): Promise<File> {
   });
 }
 
-function generateBlur(file: File): Promise<string> {
+export function generateBlur(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -85,21 +92,35 @@ function generateBlur(file: File): Promise<string> {
   });
 }
 
-function putToR2(url: string, file: File): Promise<void> {
+export function putToR2(url: string, body: Blob, contentType: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url);
-    xhr.setRequestHeader('Content-Type', file.type);
+    xhr.setRequestHeader('Content-Type', contentType);
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
-        : reject(new Error(`Upload falhou: ${xhr.status}`));
-    xhr.onerror = () => reject(new Error('Erro de rede no upload'));
-    xhr.send(file);
+        : reject(
+            new Error(
+              i18n.t('hubIdeas:images.uploadFailed', 'Upload falhou: {{status}}', {
+                status: xhr.status,
+              }),
+            ),
+          );
+    xhr.onerror = () =>
+      reject(new Error(i18n.t('hubIdeas:images.networkError', 'Erro de rede no upload')));
+    xhr.send(body);
   });
 }
 
-export async function uploadIdeiaImage(args: {
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadIdeiaImage(
+  ...args: Parameters<typeof uploadIdeiaImageUnguarded>
+): ReturnType<typeof uploadIdeiaImageUnguarded> {
+  return trackUnsavedWork(uploadIdeiaImageUnguarded(...args));
+}
+
+async function uploadIdeiaImageUnguarded(args: {
   token: string;
   ideiaId: string;
   file: File;
@@ -123,8 +144,8 @@ export async function uploadIdeiaImage(args: {
   });
 
   await Promise.all([
-    putToR2(signed.upload_url, file),
-    putToR2(signed.thumbnail_upload_url, thumb),
+    putToR2(signed.upload_url, file, file.type),
+    putToR2(signed.thumbnail_upload_url, thumb, 'image/webp'),
   ]);
 
   return finalizeIdeiaImage(token, ideiaId, {

@@ -102,7 +102,7 @@ Deno.test("validateMedia: story wrong format fails", () => {
     media({ mime_type: "image/gif" }) as never,
   ], { forStories: true });
   assertEquals(errors.length, 1);
-  assertEquals(errors[0].message, "Imagens devem estar em formato JPEG");
+  assertEquals(errors[0].message, "Imagens devem estar em formato JPEG ou PNG");
 });
 
 Deno.test("validateForScheduling: story with no caption and valid connected account passes", async () => {

@@ -66,7 +66,7 @@ export function renderInstagramOverviewCard(
   // Translation values from static JSON, user data escaped via escapeHTML/sanitizeUrl
   // All dynamic values are either escaped (escapeHTML/sanitizeUrl) or computed numbers (daysLeft)
   container.innerHTML = `
-    <div class="card animate-up" style="position: relative; margin-bottom: 1.5rem;">
+    <div class="card animate-up instagram-overview" style="position: relative; margin-bottom: 1.5rem;">
 
       ${statusBanner}
 
@@ -75,7 +75,7 @@ export function renderInstagramOverviewCard(
          <div class="instagram-overview__metadata" style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${escapeHTML(account.username || t('instagram.account'))}
-                <i class="fa-brands fa-instagram" aria-hidden="true" style="color: #E1306C; font-size: 1.2rem;"></i>
+                <i class="ph ph-instagram-logo" aria-hidden="true" style="color: #E1306C; font-size: 1.2rem;"></i>
             </h3>
             <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
               <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">${escapeHTML(updatedDate)}</p>
@@ -88,7 +88,7 @@ export function renderInstagramOverviewCard(
          </div>
       </div>
 
-      <div class="kpi-grid instagram-overview__account-kpis" style="margin-bottom: 1.5rem;">
+      <div class="kpi-grid instagram-overview__account-kpis" style="--kpi-cols: 3; margin-bottom: 1.5rem;">
          <div class="kpi-card">
             <span class="kpi-label">${escapeHTML(t('instagram.followers'))}</span>
             <span class="kpi-value">${numFmt(account.follower_count)}</span>
@@ -104,7 +104,7 @@ export function renderInstagramOverviewCard(
       </div>
 
       <h4 style="margin-bottom: 1rem; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">${escapeHTML(t('instagram.metricsTitle'))}</h4>
-      <div class="kpi-grid">
+      <div class="kpi-grid instagram-overview__metric-kpis" style="--kpi-cols: 4;">
          <div class="kpi-card">
             <span class="kpi-label"><i class="ph ph-users" aria-hidden="true"></i> ${escapeHTML(t('instagram.reach'))}</span>
             <span class="kpi-value">${numFmt(account.reach_28d)}</span>

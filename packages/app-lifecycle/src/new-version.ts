@@ -32,8 +32,19 @@ export interface WatchForNewVersionOptions {
   onNewVersion: () => void;
 }
 
+export interface NewVersionWatcher {
+  /** Stop polling and drop the listeners. */
+  stop: () => void;
+  /**
+   * Check now, even with the tab hidden (the interval keeps its hidden gate). Resolves true
+   * when the server answered with a comparable document, false on a failure, a document
+   * without hashed assets, or once stopped.
+   */
+  check: () => Promise<boolean>;
+}
+
 /**
- * Poll for a new deploy. Returns a stop function.
+ * Poll for a new deploy.
  *
  * The first successful poll sets the baseline rather than the current DOM: Vite
  * appends `<link rel="modulepreload">` tags for lazily loaded chunks at runtime, so
@@ -43,10 +54,10 @@ export function watchForNewVersion({
   documentUrl,
   intervalMs = DEFAULT_INTERVAL_MS,
   onNewVersion,
-}: WatchForNewVersionOptions): () => void {
+}: WatchForNewVersionOptions): NewVersionWatcher {
   const url = documentUrl ?? window.location.href;
   let baseline: string | null = null;
-  let inFlight = false;
+  let inFlight: Promise<boolean> | null = null;
   let stopped = false;
 
   // `timer` is initialised below, after the functions that close over it. Nothing
@@ -58,36 +69,44 @@ export function watchForNewVersion({
     document.removeEventListener('visibilitychange', onVisible);
   }
 
-  async function check() {
-    if (stopped || inFlight || document.visibilityState === 'hidden') return;
-    inFlight = true;
+  async function fetchAndCompare(): Promise<boolean> {
     try {
       const response = await fetch(url, { cache: 'no-store', headers: { Accept: 'text/html' } });
-      if (!response.ok) return;
+      if (!response.ok) return false;
       const fingerprint = extractBuildFingerprint(await response.text());
-      if (fingerprint === null || stopped) return;
+      if (fingerprint === null || stopped) return false;
       if (baseline === null) {
         baseline = fingerprint;
-        return;
+        return true;
       }
       if (fingerprint !== baseline) {
         stop();
         onNewVersion();
       }
+      return true;
     } catch {
       // Offline or a transient failure. The next tick tries again.
-    } finally {
-      inFlight = false;
+      return false;
     }
   }
 
+  function check(force: boolean): Promise<boolean> {
+    if (stopped) return Promise.resolve(false);
+    if (inFlight) return inFlight;
+    if (!force && document.visibilityState === 'hidden') return Promise.resolve(false);
+    inFlight = fetchAndCompare().finally(() => {
+      inFlight = null;
+    });
+    return inFlight;
+  }
+
   function onVisible() {
-    if (document.visibilityState === 'visible') void check();
+    if (document.visibilityState === 'visible') void check(false);
   }
 
   document.addEventListener('visibilitychange', onVisible);
-  const timer = setInterval(() => void check(), intervalMs);
-  void check();
+  const timer = setInterval(() => void check(false), intervalMs);
+  void check(false);
 
-  return stop;
+  return { stop, check: () => check(true) };
 }

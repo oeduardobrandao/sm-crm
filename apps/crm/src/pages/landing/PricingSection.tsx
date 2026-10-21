@@ -18,16 +18,16 @@ const PLAN_MARKETING: Record<string, { description: string; cta: string; highlig
     cta: 'Começar grátis',
   },
   start: {
-    description: 'Para freelancers que estão começando.',
+    description: 'Para freelancers montando a carteira.',
     cta: 'Começar teste grátis',
   },
   pro: {
-    description: 'Para freelancers com carteira consolidada.',
+    description: 'Para freelancers com a carteira cheia.',
     cta: 'Começar teste grátis',
     highlight: true,
   },
   max: {
-    description: 'Para micro-agências e equipes completas.',
+    description: 'Para agências com equipe.',
     cta: 'Começar teste grátis',
   },
 };
@@ -129,13 +129,13 @@ export function PricingSection() {
     <section ref={pricingRef} className="lp-pad" id="pricing">
       <div className="lp-container">
         <div className="section-head reveal">
-          <h2>Um plano que cresce junto com a sua agência.</h2>
+          <h2>Comece pequeno e cresça sem trocar de ferramenta.</h2>
           <p>
-            Comece com o plano Free e mude de plano quando quiser. Sem fidelidade — cancele a
-            qualquer momento.
+            Comece no plano Free e suba quando fizer sentido. Sem fidelidade, cancele a qualquer
+            momento.
           </p>
           <div className="pricing-promo-note">
-            30 dias grátis em qualquer plano pago. Sem código, cancele quando quiser.
+            30 dias grátis em qualquer plano pago. Sem cupom. Cancele quando quiser.
           </div>
         </div>
 

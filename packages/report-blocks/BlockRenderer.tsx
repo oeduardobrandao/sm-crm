@@ -20,6 +20,7 @@ import { BestTimesBlock } from './blocks/BestTimesBlock';
 import { TopPostsBlock } from './blocks/TopPostsBlock';
 import { PostListBlock } from './blocks/PostListBlock';
 import { TagsTableBlock } from './blocks/TagsTableBlock';
+import { ImageBlock } from './blocks/ImageBlock';
 
 export interface BlockProps {
   block: ReportBlock;
@@ -43,6 +44,7 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   kpi_posts_count: KpiCardBlock,
   kpi_profile_views: KpiCardBlock,
   kpi_website_clicks: KpiCardBlock,
+  kpi_follows: KpiCardBlock,
   chart_followers: FollowerChartBlock,
   chart_formats: FormatCardsBlock,
   audience_gender: AudienceGenderBlock,
@@ -53,6 +55,7 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   top_posts: TopPostsBlock,
   post_list: PostListBlock,
   tags_table: TagsTableBlock,
+  image: ImageBlock,
 };
 
 export const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;

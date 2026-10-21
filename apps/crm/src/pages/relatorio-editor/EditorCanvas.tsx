@@ -3,7 +3,7 @@
 // pacote fica para view/print; aqui as células nunca colapsam (rb-mode-edit).
 import type { CSSProperties, ReactNode } from 'react';
 import { useState } from 'react';
-import { GripVertical, Minus, Plus, Trash2 } from 'lucide-react';
+import { GripVertical, Minus, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
@@ -28,15 +28,21 @@ import { resolveReportTheme } from '@mesaas/report-blocks/theme';
 import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
 import { blockHasData } from '@mesaas/report-blocks/data-presence';
 import type {
+  BlockSize,
   BlockType,
   ReportBlock,
   ReportDocSnapshot,
   ReportLayout,
 } from '@mesaas/report-blocks/types';
 import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
-import { moveBlock, removeBlock, resizeBlock } from './layoutOps';
+import { moveBlock, removeBlock, resizeBlock, setBlockSize } from './layoutOps';
 import { CoverEditor } from './CoverEditor';
 import { SectionHeaderEditor } from './SectionHeaderEditor';
+import {
+  IMAGE_SETTINGS_TOGGLE_ATTR,
+  ImageBlockEditor,
+  type ImageEditorContext,
+} from './ImageBlockEditor';
 
 // Placeholder do modo edição para widget sem dado no snapshot: a view/print
 // omite o bloco (guard de cada widget), mas no editor uma célula vazia parece
@@ -62,6 +68,8 @@ interface SortableCellProps {
   onRemove: () => void;
   renderTextBlock?: (block: ReportBlock) => ReactNode;
   onConfigChange?: (id: string, patch: Record<string, unknown>) => void;
+  imageContext?: ImageEditorContext;
+  onSizeChange: (size: BlockSize) => void;
 }
 
 function SortableCell({
@@ -72,6 +80,8 @@ function SortableCell({
   onRemove,
   renderTextBlock,
   onConfigChange,
+  imageContext,
+  onSizeChange,
 }: SortableCellProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
@@ -89,11 +99,27 @@ function SortableCell({
     ? BLOCK_COMPONENTS[block.type]
     : undefined;
   const isText = TEXT_BLOCK_TYPES.includes(block.type);
+  const [imgSettingsOpen, setImgSettingsOpen] = useState(false);
+  // Sem contexto (ou sem onConfigChange) o bloco Imagem renderiza como na view.
+  const imageEditing =
+    block.type === 'image' && onConfigChange && imageContext
+      ? { onConfigChange, context: imageContext }
+      : null;
   const body =
     isText && renderTextBlock ? (
       renderTextBlock(block)
     ) : block.type === 'cover' && onConfigChange ? (
       <CoverEditor block={block} snapshot={snapshot} onConfigChange={onConfigChange} />
+    ) : imageEditing ? (
+      <ImageBlockEditor
+        block={block}
+        snapshot={snapshot}
+        context={imageEditing.context}
+        onConfigChange={imageEditing.onConfigChange}
+        onSizeChange={onSizeChange}
+        settingsOpen={imgSettingsOpen}
+        onSettingsOpenChange={setImgSettingsOpen}
+      />
     ) : block.type === 'section_header' && onConfigChange ? (
       <SectionHeaderEditor block={block} onConfigChange={onConfigChange} />
     ) : Component && !blockHasData(block, snapshot) ? (
@@ -137,6 +163,18 @@ function SortableCell({
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
+            {imageEditing && (
+              <button
+                type="button"
+                className="rb-edit-btn"
+                aria-label="Ajustes da imagem"
+                aria-pressed={imgSettingsOpen}
+                {...{ [IMAGE_SETTINGS_TOGGLE_ATTR]: block.id }}
+                onClick={() => setImgSettingsOpen((v) => !v)}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+              </button>
+            )}
           </>
         )}
         <button
@@ -164,6 +202,8 @@ export interface EditorCanvasProps {
   onRemoveBlock?: (id: string) => void;
   /** Habilita a edição inline de config (cabeçalho de seção). */
   onConfigChange?: (id: string, patch: Record<string, unknown>) => void;
+  /** Habilita o editor do bloco Imagem; ausente = bloco renderiza como na view. */
+  imageContext?: ImageEditorContext;
 }
 
 export function EditorCanvas({
@@ -174,6 +214,7 @@ export function EditorCanvas({
   renderTextBlock,
   onRemoveBlock,
   onConfigChange,
+  imageContext,
 }: EditorCanvasProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -228,6 +269,11 @@ export function EditorCanvas({
               }
               renderTextBlock={renderTextBlock}
               onConfigChange={onConfigChange}
+              imageContext={imageContext}
+              onSizeChange={(size) => {
+                const next = setBlockSize(layout, block.id, size);
+                if (next !== layout) onChange(next);
+              }}
             />
           ))}
         </div>

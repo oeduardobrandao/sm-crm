@@ -1,7 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// These suites cover the desktop table/toolbar; the phone branch has its own *Phone tests.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
+import { toLocalISODate } from '@/utils/postDate';
 import { ListView } from '../ListView';
+import type { PostEntity } from '../../boardEntity';
 
 function makeCard(overrides: Record<string, unknown> = {}) {
   return {
@@ -40,6 +45,17 @@ function getRenderedTitles(container: HTMLElement) {
     (row) => row.querySelector('td')?.textContent,
   );
 }
+
+const groupHeads = () =>
+  Array.from(document.querySelectorAll('.list-group-toggle')).map((b) =>
+    b.getAttribute('aria-label'),
+  );
+/** 'YYYY-MM-DD' local de hoje + n dias (data_limite da etapa). */
+const isoDay = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return toLocalISODate(d);
+};
 
 describe('ListView', () => {
   it('renders the empty state when no cards match the filters', () => {
@@ -115,5 +131,177 @@ describe('ListView', () => {
     fireEvent.click(screen.getByText('Cliente'));
 
     expect(onSortChange).toHaveBeenCalledWith({ column: 'cliente', direction: 'desc' });
+  });
+
+  it('agrupa por prazo da etapa: Atrasado primeiro, Sem prazo por último', () => {
+    const cards = [
+      makeCard({
+        workflow: { id: 1, titulo: 'Fluxo A' },
+        etapa: { id: 11, nome: 'Copy', data_limite: isoDay(1) },
+      }),
+      makeCard({
+        workflow: { id: 2, titulo: 'Fluxo B' },
+        etapa: { id: 12, nome: 'Copy', data_limite: isoDay(-3) },
+        deadline: { estourado: true, urgente: false, diasRestantes: -3, horasRestantes: 0 },
+      }),
+      makeCard({ workflow: { id: 3, titulo: 'Fluxo C' }, etapa: { id: 13, nome: 'Copy' } }),
+    ];
+    render(
+      <ListView
+        cards={cards}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+        groupBy="prazo"
+      />,
+    );
+    expect(groupHeads()).toEqual(['Atrasado (1)', 'Amanhã (1)', 'Sem prazo (1)']);
+  });
+
+  it('agrupa pelo responsável da etapa e recolhe um grupo', () => {
+    const cards = [
+      makeCard({
+        workflow: { id: 1, titulo: 'Fluxo da Ana' },
+        etapa: { id: 11, nome: 'Copy', responsavel_id: 7 },
+        membro: { id: 7, nome: 'Ana' },
+      }),
+      makeCard({
+        workflow: { id: 2, titulo: 'Fluxo sem dono' },
+        etapa: { id: 12, nome: 'Copy' },
+        membro: undefined,
+      }),
+    ];
+    render(
+      <ListView
+        cards={cards}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+        groupBy="responsavel"
+      />,
+    );
+    expect(groupHeads()).toEqual(['Ana (1)', 'Sem responsável (1)']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ana (1)' }));
+
+    expect(screen.queryByText('Fluxo da Ana')).toBeNull();
+    expect(screen.getByText('Fluxo sem dono')).toBeInTheDocument();
+  });
+
+  it('Fechar todos recolhe os grupos e Abrir todos reabre', () => {
+    const cards = [
+      makeCard({
+        workflow: { id: 1, titulo: 'Fluxo da Ana' },
+        etapa: { id: 11, nome: 'Copy', responsavel_id: 7 },
+        membro: { id: 7, nome: 'Ana' },
+      }),
+      makeCard({
+        workflow: { id: 2, titulo: 'Fluxo sem dono' },
+        etapa: { id: 12, nome: 'Copy' },
+        membro: undefined,
+      }),
+    ];
+    render(
+      <ListView
+        cards={cards}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+        groupBy="responsavel"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+    expect(screen.queryByText('Fluxo da Ana')).toBeNull();
+    expect(screen.queryByText('Fluxo sem dono')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir todos' }));
+
+    expect(screen.getByText('Fluxo da Ana')).toBeInTheDocument();
+    expect(screen.getByText('Fluxo sem dono')).toBeInTheDocument();
+  });
+});
+
+function makePostEntity(titulo: string, dias: number): PostEntity {
+  return {
+    kind: 'post',
+    id: 'post:9',
+    process: { id: 9, post_id: 90, post: { cliente_id: 1 } } as never,
+    step: {} as never,
+    templateId: null,
+    steps: [],
+    etapaOrdem: 0,
+    etapaNome: 'Copy',
+    responsavel: { id: 2, nome: 'Bia' } as never,
+    prazoEfetivo: null,
+    posicao: 0,
+    deadline: { diasRestantes: dias, horasRestantes: 0, estourado: false, urgente: false },
+    cliente: { id: 1, nome: 'Aurora', cor: '#0f766e' } as never,
+    titulo,
+  };
+}
+
+describe('ListView com posts individuais', () => {
+  it('lista o post com a tag Individual, etapa e responsável da etapa, e abre pelo onPostClick', () => {
+    const onPostClick = vi.fn();
+    render(
+      <ListView
+        cards={[makeCard() as never]}
+        postEntities={[makePostEntity('Post Z', 1)]}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+        onPostClick={onPostClick}
+      />,
+    );
+    expect(screen.getByText('Individual')).toBeInTheDocument();
+    expect(screen.getByText('Bia')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Post Z'));
+    expect(onPostClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'post:9' }));
+  });
+
+  it('ordena fluxos e posts juntos por prazo', () => {
+    render(
+      <ListView
+        cards={[makeCard() as never]} // 3d restantes
+        postEntities={[makePostEntity('Post Z', 1)]}
+        sort={{ column: 'prazo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+      />,
+    );
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('Post Z');
+    expect(rows[1]).toHaveTextContent('Fluxo Base');
+  });
+
+  it('sem cards mas com posts não mostra o estado vazio', () => {
+    render(
+      <ListView
+        cards={[]}
+        postEntities={[makePostEntity('Post Z', 1)]}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Nenhuma entrega encontrada. Ajuste os filtros.')).toBeNull();
+  });
+
+  it('mostra "Sem prazo" para um post sem prazo efetivo, em vez de "0h restantes"', () => {
+    // prazoEfetivo null + deadline zerado (fallback de deadlineFromPrazoEfetivo):
+    // exatamente o estado de uma etapa não ativada ou com prazo limpo.
+    render(
+      <ListView
+        cards={[]}
+        postEntities={[makePostEntity('Post Sem Prazo', 0)]}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Sem prazo')).toBeInTheDocument();
+    expect(screen.queryByText('0h restantes')).toBeNull();
   });
 });

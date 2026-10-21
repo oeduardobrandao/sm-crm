@@ -10,9 +10,15 @@ export const membroSchema = z
       .string()
       .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
     crmUserId: z.string().optional(),
+    // Papel of the linked CRM account: '' = leave as is, otherwise
+    // 'admin' | 'agent' | 'custom:<uuid>' (same encoding as inviteRole).
+    crmRole: z.string(),
     inviteEnabled: z.boolean(),
     inviteEmail: z.string(),
-    inviteRole: z.enum(['admin', 'agent']),
+    // 'admin' | 'agent' | 'custom:<uuid>' — the custom-role encoding is
+    // decoded (and its uuid shape validated) by the server, mirroring
+    // manage-workspace-user's own `role`/`roleId` split (Task 5).
+    inviteRole: z.string().min(1),
   })
   .superRefine((v, ctx) => {
     if (v.inviteEnabled && !/^\S+@\S+\.\S+$/.test(v.inviteEmail.trim())) {
@@ -33,6 +39,7 @@ export const MEMBRO_FORM_DEFAULTS: MembroFormValues = {
   custo: '',
   diaPag: '',
   crmUserId: '',
+  crmRole: '',
   inviteEnabled: false,
   inviteEmail: '',
   inviteRole: 'agent',

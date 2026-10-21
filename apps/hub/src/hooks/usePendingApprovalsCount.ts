@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchPosts } from '../api';
+import { hubPostsQuery } from '../queries';
 
+// Every enviado_cliente post is in the bounded shell, whatever its date.
 export function usePendingApprovalsCount(token: string): number {
-  const { data } = useQuery({ queryKey: ['hub-posts', token], queryFn: () => fetchPosts(token) });
+  const { data } = useQuery(hubPostsQuery(token));
   return (data?.posts ?? []).filter((p) => p.status === 'enviado_cliente').length;
 }

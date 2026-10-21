@@ -15,18 +15,28 @@
   --secondary: 220 14% 93%;
   --secondary-foreground: 220 14% 10%;
   --muted: 220 14% 94%;
-  --muted-foreground: 220 9% 46%;
-  --dim-foreground: 218 11% 65%;
+  --muted-foreground: 220 9% 43%;
+  --dim-foreground: 220 9% 44%;
   --accent: 220 14% 92%;
   --accent-foreground: 220 14% 10%;
   --destructive: 7 88% 61%;
   --destructive-foreground: 0 0% 100%;
   --success: 154 60% 53%;
   --warning: 30 87% 61%;
+  /* Text variants of the status/brand colours (see the .text-* rules below). The fills above
+     stay bright for buttons and badge tints; as text they are 1.4-3.3:1 on white. These reach
+     4.5:1 on --card and on --background, and on a 10% badge tint over --card. */
+  --primary-text: 32 81% 29%;
+  --success-text: 155 75% 26%;
+  --warning-text: 25 90% 34%;
+  --destructive-text: 5 76% 42%;
   --border: 220 14% 88%;
   --input: 220 14% 93%;
   --ring: 48 96% 53%;
   --radius: 0.75rem;
+  --chart-1: 243 75% 64%;
+  --chart-2: 173 58% 42%;
+  --chart-3: 330 70% 60%;
 }
 
 [data-theme='dark'] {
@@ -43,16 +53,39 @@
   --secondary-foreground: 220 14% 92%;
   --muted: 220 14% 12%;
   --muted-foreground: 218 11% 65%;
-  --dim-foreground: 215 14% 34%;
+  --dim-foreground: 217 10% 56%;
   --accent: 220 14% 14%;
   --accent-foreground: 220 14% 92%;
   --destructive: 7 88% 61%;
   --destructive-foreground: 0 0% 100%;
   --success: 154 60% 53%;
   --warning: 30 87% 61%;
+  --primary-text: 48 96% 53%;
+  --success-text: 154 60% 53%;
+  --warning-text: 30 87% 61%;
+  --destructive-text: 7 90% 65%;
   --border: 220 14% 16%;
   --input: 220 14% 16%;
   --ring: 48 96% 53%;
+  --chart-1: 243 85% 72%;
+  --chart-2: 173 55% 52%;
+  --chart-3: 330 75% 68%;
+}
+
+/* Status/brand colours used as TEXT read the text tokens. Same specificity as the Tailwind
+   utilities and later in the cascade, so these win over them while variants such as
+   hover:/disabled: (higher specificity) still apply. Fills (bg-*, border-*) are untouched. */
+.text-primary {
+  color: hsl(var(--primary-text));
+}
+.text-success {
+  color: hsl(var(--success-text));
+}
+.text-warning {
+  color: hsl(var(--warning-text));
+}
+.text-destructive {
+  color: hsl(var(--destructive-text));
 }
 
 body {
@@ -70,7 +103,7 @@ body {
 }
 
 /* ── Native <select> — custom chevron with breathing room from the edge ──── */
-select {
+select:not(.phone-field__select) {
   appearance: none;
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
@@ -137,7 +170,7 @@ select {
 .post-editor-content .ProseMirror strong { font-weight: 700; }
 .post-editor-content .ProseMirror em { font-style: italic; }
 .post-editor-content .ProseMirror u { text-decoration: underline; }
-.post-editor-content .ProseMirror a { color: hsl(var(--primary)); text-decoration: underline; cursor: pointer; }
+.post-editor-content .ProseMirror a { color: hsl(var(--primary-text)); text-decoration: underline; cursor: pointer; }
 
 .post-editor-content .ProseMirror h2 { font-size: 1.35rem; font-weight: 700; margin: 1em 0 0.4em; }
 .post-editor-content .ProseMirror h3 { font-size: 1.1rem; font-weight: 600; margin: 0.8em 0 0.3em; }
@@ -192,7 +225,7 @@ select {
   border-radius: 4px;
   border: 1px solid hsl(var(--border));
   background: transparent;
-  color: hsl(var(--destructive));
+  color: hsl(var(--destructive-text));
   cursor: pointer;
 }
 
@@ -402,4 +435,4 @@ select {
 /* ── Iframe wrapper ────────────────────────────────────────── */
 .iframe-wrapper { margin: 0.75em 0; border-radius: 8px; overflow: hidden; }
 .iframe-wrapper iframe { width: 100%; min-height: 400px; border: none; }
-.iframe-blocked { padding: 1rem; color: hsl(var(--destructive)); font-size: 0.85rem; }
+.iframe-blocked { padding: 1rem; color: hsl(var(--destructive-text)); font-size: 0.85rem; }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react';
+import { useState, useRef, useEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -17,8 +17,10 @@ import {
   Eye,
   MousePointerClick,
   TrendingUp,
+  ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
-import { StatCard } from '@/components/StatCard';
+import { StatCard, type StatTone } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,6 +35,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { PageSkeleton } from '@/components/ui/skeletons';
 import {
   Table,
   TableBody,
@@ -69,6 +72,10 @@ import { sanitizeUrl } from '../../utils/security';
 import { formatRate } from '../../lib/ig-rates';
 import { syncInstagramData } from '../../services/instagram';
 import { HelpTooltip } from '../../components/help/HelpTooltip';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
+import { AnalyticsPhone, type AccountSortCol } from './phone/AnalyticsPhone';
 
 Chart.register(...registerables);
 
@@ -418,6 +425,8 @@ export default function AnalyticsPage() {
   const [drawerFormatFilter, setDrawerFormatFilter] = useState<string>('all');
   const [drawerDateFrom, setDrawerDateFrom] = useState<string>('');
   const [drawerDateTo, setDrawerDateTo] = useState<string>('');
+  // Phones (below 768px) get the FAnalytics layout; tablet and desktop keep this one.
+  const isPhone = !useIsDesktop(768);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['portfolio-summary', days],
@@ -514,6 +523,16 @@ export default function AnalyticsPage() {
     matureViewsRankedPosts,
   ]);
 
+  const resetDrawer = () => {
+    setDrawerSort(null);
+    setDrawerOrderBy('views');
+    setDrawerAsc(false);
+    setDrawerClientFilter('all');
+    setDrawerFormatFilter('all');
+    setDrawerDateFrom('');
+    setDrawerDateTo('');
+  };
+
   const handleSyncAll = async () => {
     if (!data?.accounts.length) return;
     setSyncing(true);
@@ -536,17 +555,91 @@ export default function AnalyticsPage() {
     refetch();
   };
 
+  const syncResultText = syncResult ? (
+    <span
+      style={{
+        fontSize: '0.8rem',
+        color: syncResult.failed > 0 ? 'var(--warning)' : 'var(--success)',
+      }}
+    >
+      {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
+      {syncResult.failed > 0 &&
+        `, ${syncResult.failed} falhou: ${syncResult.failedNames.join(', ')}`}
+    </span>
+  ) : null;
+  const syncButton = (
+    <Button
+      onClick={handleSyncAll}
+      disabled={syncing || !data?.accounts.length}
+      size="sm"
+      variant="outline"
+    >
+      <RefreshCw className={`h-4 w-4${syncing ? ' animate-spin' : ''}`} />
+      {syncing ? 'Sincronizando...' : 'Sincronizar'}
+    </Button>
+  );
+  const sortedClientOptions = [...(data?.accounts ?? [])]
+    .sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'))
+    .filter((a, i, arr) => arr.findIndex((x) => x.client_id === a.client_id) === i); // dedupe
+  const filterControls = (
+    <>
+      <Select value={clienteFilter} onValueChange={setClienteFilter}>
+        <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto">
+          <SelectValue placeholder="Todos os clientes" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todos os clientes</SelectItem>
+          {sortedClientOptions.map((a) => (
+            <SelectItem key={a.client_id} value={String(a.client_id)}>
+              {a.client_name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
+        <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[130px] shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="7">7 dias</SelectItem>
+          <SelectItem value="28">28 dias</SelectItem>
+          <SelectItem value="90">90 dias</SelectItem>
+        </SelectContent>
+      </Select>
+    </>
+  );
+  const inToolbar = usePageToolbar(
+    isLoading
+      ? null
+      : {
+          title: 'Analytics',
+          actions: (
+            <>
+              {filterControls}
+              {syncResultText}
+            </>
+          ),
+          primary: syncButton,
+        },
+  );
+
   if (isLoading) {
-    return (
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
-      >
-        <Spinner size="lg" />
-      </div>
-    );
+    return <PageSkeleton body="report" />;
   }
 
   if (error || !data) {
+    if (isPhone) {
+      return (
+        <div className="phone-kit phone-an">
+          <PhonePageHeader title="Analytics" />
+          <p className="phone-an-error" role="alert">
+            Erro ao carregar analytics:{' '}
+            {error instanceof Error ? error.message : 'Erro desconhecido'}
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="card">
         <p style={{ color: 'var(--danger)' }}>
@@ -652,69 +745,246 @@ export default function AnalyticsPage() {
     return sortDirection === 'asc' ? (valA > valB ? 1 : -1) : valA < valB ? 1 : -1;
   });
 
-  const sortedClientOptions = [...accounts]
-    .sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'))
-    .filter((a, i, arr) => arr.findIndex((x) => x.client_id === a.client_id) === i); // dedupe
+  // Leader cards. Classic: one StatCard each. Vidro: one "Destaques" card, so the KPI block
+  // stays a single row.
+  const highlights: AnalyticsHighlight[] = [];
+  if (filteredAccounts.length > 0 && summary.bestByEngagement) {
+    highlights.push({
+      key: 'engagement',
+      label: 'Melhor engajamento',
+      icon: Heart,
+      tone: 'green',
+      name: summary.bestByEngagement.client_name,
+      sub: formatPct(summary.bestByEngagement.engagement_rate_avg),
+      short: formatPct(summary.bestByEngagement.engagement_rate_avg),
+    });
+  }
+  if (
+    filteredAccounts.length > 0 &&
+    summary.mostImproved &&
+    summary.mostImproved.follower_delta > 0
+  ) {
+    highlights.push({
+      key: 'growth',
+      label: 'Maior crescimento',
+      icon: TrendingUp,
+      tone: 'amber',
+      name: summary.mostImproved.client_name,
+      sub: `+${formatNumber(summary.mostImproved.follower_delta)} seguidores`,
+      short: `+${formatNumber(summary.mostImproved.follower_delta)}`,
+    });
+  }
+  if (bestByViews && (bestByViews.impressions_28d || 0) > 0) {
+    highlights.push({
+      key: 'views',
+      label: 'Mais visualizações',
+      icon: Eye,
+      tone: 'blue',
+      name: bestByViews.client_name,
+      sub: `${formatNumber(bestByViews.impressions_28d || 0)} visualizações 28d`,
+      short: formatNumber(bestByViews.impressions_28d || 0),
+    });
+  }
+  if (mostFollowers) {
+    highlights.push({
+      key: 'followers',
+      label: 'Mais seguidores',
+      icon: Users,
+      tone: 'violet',
+      name: mostFollowers.client_name,
+      sub: `${formatNumber(mostFollowers.follower_count)} seguidores`,
+      short: formatNumber(mostFollowers.follower_count),
+    });
+  }
+  if (mostPosts && mostPosts.posts_last_30d > 0) {
+    highlights.push({
+      key: 'posts',
+      label: 'Mais ativo',
+      icon: Zap,
+      tone: 'slate',
+      name: mostPosts.client_name,
+      sub: `${mostPosts.posts_last_30d} posts em 30d`,
+      short: `${mostPosts.posts_last_30d} posts`,
+    });
+  }
+
+  const silentChips = (
+    <>
+      {silentAccounts.map((a) => {
+        const daysSince = a.last_post_at
+          ? Math.floor((Date.now() - new Date(a.last_post_at).getTime()) / 86400000)
+          : null;
+        return (
+          <Link key={a.client_id} to={`/analytics/${a.client_id}`} className="silent-account-chip">
+            <span
+              className="avatar"
+              style={{
+                width: 24,
+                height: 24,
+                fontSize: '0.6rem',
+                background: a.client_cor,
+              }}
+            >
+              {a.client_sigla}
+            </span>
+            <span>{a.client_name}</span>
+            <span className="badge badge-warning badge--sm">
+              {daysSince !== null ? `${daysSince}d sem postar` : 'Sem posts'}
+            </span>
+          </Link>
+        );
+      })}
+    </>
+  );
+
+  const kpiGrid = (
+    <StatCardGrid
+      className="analytics-kpi-scroll animate-up"
+      maxCols={inToolbar && highlights.length > 0 ? 6 : 5}
+    >
+      <StatCard
+        label="Contas conectadas"
+        icon={Instagram}
+        tone="pink"
+        value={
+          <>
+            {summary.connected}{' '}
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+              / {summary.total}
+            </span>
+          </>
+        }
+        sub={`${summary.growing} crescendo`}
+      />
+      <StatCard
+        label="Seguidores totais"
+        icon={Users}
+        tone="blue"
+        value={formatNumber(totalFollowers)}
+        sub={`${summary.declining} em declínio`}
+      />
+      <StatCard
+        label="Visualizações totais (28d)"
+        icon={Eye}
+        tone="violet"
+        value={formatNumber(totalViews)}
+        sub="Soma de todas as contas"
+      />
+      <StatCard
+        label="Engajamento médio"
+        icon={Heart}
+        tone="amber"
+        value={formatPct(avgEngagement)}
+        sub="Média de todas as contas"
+      />
+      <StatCard
+        label="Cliques no link (28d)"
+        icon={MousePointerClick}
+        tone="green"
+        value={formatNumber(avgWebsiteClicks)}
+        sub="Média por conta"
+      />
+      {inToolbar ? (
+        highlights.length > 0 && <AnalyticsHighlights items={highlights} />
+      ) : (
+        <>
+          {highlights.map((h) => (
+            <StatCard
+              key={h.key}
+              label={h.label}
+              icon={h.icon}
+              tone={h.tone}
+              compactValue
+              value={h.name}
+              sub={h.sub}
+            />
+          ))}
+        </>
+      )}
+    </StatCardGrid>
+  );
+
+  if (isPhone) {
+    return (
+      <AnalyticsPhone
+        accounts={filteredAccounts}
+        sortedAccounts={sortedAccounts}
+        clientOptions={sortedClientOptions}
+        clienteFilter={clienteFilter}
+        onClienteFilter={setClienteFilter}
+        days={days}
+        onDays={setDays}
+        syncing={syncing}
+        canSync={data.accounts.length > 0}
+        onSync={handleSyncAll}
+        syncResult={syncResult}
+        silentAccounts={silentAccounts}
+        kpis={kpiGrid}
+        bestPosts={viewsRankedPosts}
+        worstPosts={matureViewsRankedPosts}
+        sortColumn={sortColumn as AccountSortCol}
+        sortDirection={sortDirection}
+        onSortColumn={(col) => {
+          setSortColumn(col);
+          setSortDirection('desc');
+        }}
+        onToggleDirection={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
+        specialtyStats={specialtyStats}
+        drawer={{
+          mode: drawerSort,
+          open: (mode) => {
+            setDrawerSort(mode);
+            setDrawerAsc(mode === 'worst');
+          },
+          close: resetDrawer,
+          posts: drawerPosts,
+          total:
+            drawerSort === 'worst'
+              ? matureViewsRankedPosts.length
+              : (data.allRankedPosts?.length ?? 0),
+          orderBy: drawerOrderBy,
+          setOrderBy: setDrawerOrderBy,
+          asc: drawerAsc,
+          setAsc: setDrawerAsc,
+          format: drawerFormatFilter,
+          setFormat: setDrawerFormatFilter,
+          client: drawerClientFilter,
+          setClient: setDrawerClientFilter,
+          clients: drawerClients,
+          dateFrom: drawerDateFrom,
+          setDateFrom: setDrawerDateFrom,
+          dateTo: drawerDateTo,
+          setDateTo: setDrawerDateTo,
+        }}
+      />
+    );
+  }
 
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <header className="header header--flush animate-up">
-        <div className="header-title">
-          <h1>Analytics</h1>
-        </div>
-        <div className="header-actions">
-          {syncResult && (
-            <span
-              style={{
-                fontSize: '0.8rem',
-                color: syncResult.failed > 0 ? 'var(--warning)' : 'var(--success)',
-              }}
-            >
-              {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
-              {syncResult.failed > 0 &&
-                `, ${syncResult.failed} falhou: ${syncResult.failedNames.join(', ')}`}
-            </span>
-          )}
-          <Button
-            onClick={handleSyncAll}
-            disabled={syncing || !data?.accounts.length}
-            size="sm"
-            variant="outline"
-          >
-            <RefreshCw className={`h-4 w-4${syncing ? ' animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar'}
-          </Button>
-        </div>
-      </header>
+      {!inToolbar && (
+        <header className="header header--flush animate-up">
+          <div className="header-title">
+            <h1>Analytics</h1>
+          </div>
+          <div className="header-actions">
+            {syncResultText}
+            {syncButton}
+          </div>
+        </header>
+      )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <Select value={clienteFilter} onValueChange={setClienteFilter}>
-          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto">
-            <SelectValue placeholder="Todos os clientes" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os clientes</SelectItem>
-            {sortedClientOptions.map((a) => (
-              <SelectItem key={a.client_id} value={String(a.client_id)}>
-                {a.client_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Under Vidro the filters sit in the toolbar (actions), not on a row of their own. */}
+      {!inToolbar && (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>{filterControls}</div>
+      )}
 
-        <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[130px] shrink-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">7 dias</SelectItem>
-            <SelectItem value="28">28 dias</SelectItem>
-            <SelectItem value="90">90 dias</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {silentAccounts.length > 0 && (
+      {silentAccounts.length > 0 && inToolbar && (
+        <SilentAccountsLine names={silentAccounts.map((a) => a.client_name)}>
+          {silentChips}
+        </SilentAccountsLine>
+      )}
+      {silentAccounts.length > 0 && !inToolbar && (
         <div className="analytics-callout analytics-callout--with-icon animate-up" role="status">
           <AlertTriangle className="h-5 w-5 analytics-callout__icon" aria-hidden />
           <div className="analytics-callout__body">
@@ -726,136 +996,12 @@ export default function AnalyticsPage() {
                   : `${silentAccounts.length} contas sem postar no período`}
               </span>
             </div>
-            <div className="analytics-callout__chips">
-              {silentAccounts.map((a) => {
-                const daysSince = a.last_post_at
-                  ? Math.floor((Date.now() - new Date(a.last_post_at).getTime()) / 86400000)
-                  : null;
-                return (
-                  <Link
-                    key={a.client_id}
-                    to={`/analytics/${a.client_id}`}
-                    className="silent-account-chip"
-                  >
-                    <span
-                      className="avatar"
-                      style={{
-                        width: 24,
-                        height: 24,
-                        fontSize: '0.6rem',
-                        background: a.client_cor,
-                      }}
-                    >
-                      {a.client_sigla}
-                    </span>
-                    <span>{a.client_name}</span>
-                    <span className="badge badge-warning badge--sm">
-                      {daysSince !== null ? `${daysSince}d sem postar` : 'Sem posts'}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
+            <div className="analytics-callout__chips">{silentChips}</div>
           </div>
         </div>
       )}
 
-      <StatCardGrid className="analytics-kpi-scroll animate-up">
-        <StatCard
-          label="Contas conectadas"
-          icon={Instagram}
-          tone="pink"
-          value={
-            <>
-              {summary.connected}{' '}
-              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                / {summary.total}
-              </span>
-            </>
-          }
-          sub={`${summary.growing} crescendo`}
-        />
-        <StatCard
-          label="Seguidores totais"
-          icon={Users}
-          tone="blue"
-          value={formatNumber(totalFollowers)}
-          sub={`${summary.declining} em declínio`}
-        />
-        <StatCard
-          label="Visualizações totais (28d)"
-          icon={Eye}
-          tone="violet"
-          value={formatNumber(totalViews)}
-          sub="Soma de todas as contas"
-        />
-        <StatCard
-          label="Engajamento médio"
-          icon={Heart}
-          tone="amber"
-          value={formatPct(avgEngagement)}
-          sub="Média de todas as contas"
-        />
-        <StatCard
-          label="Cliques no link (28d)"
-          icon={MousePointerClick}
-          tone="green"
-          value={formatNumber(avgWebsiteClicks)}
-          sub="Média por conta"
-        />
-        {filteredAccounts.length > 0 && summary.bestByEngagement && (
-          <StatCard
-            label="Melhor engajamento"
-            icon={Heart}
-            tone="green"
-            compactValue
-            value={summary.bestByEngagement.client_name}
-            sub={formatPct(summary.bestByEngagement.engagement_rate_avg)}
-          />
-        )}
-        {filteredAccounts.length > 0 &&
-          summary.mostImproved &&
-          summary.mostImproved.follower_delta > 0 && (
-            <StatCard
-              label="Maior crescimento"
-              icon={TrendingUp}
-              tone="amber"
-              compactValue
-              value={summary.mostImproved.client_name}
-              sub={`+${formatNumber(summary.mostImproved.follower_delta)} seguidores`}
-            />
-          )}
-        {bestByViews && (bestByViews.impressions_28d || 0) > 0 && (
-          <StatCard
-            label="Mais visualizações"
-            icon={Eye}
-            tone="blue"
-            compactValue
-            value={bestByViews.client_name}
-            sub={`${formatNumber(bestByViews.impressions_28d || 0)} visualizações 28d`}
-          />
-        )}
-        {mostFollowers && (
-          <StatCard
-            label="Mais seguidores"
-            icon={Users}
-            tone="violet"
-            compactValue
-            value={mostFollowers.client_name}
-            sub={`${formatNumber(mostFollowers.follower_count)} seguidores`}
-          />
-        )}
-        {mostPosts && mostPosts.posts_last_30d > 0 && (
-          <StatCard
-            label="Mais ativo"
-            icon={Zap}
-            tone="slate"
-            compactValue
-            value={mostPosts.client_name}
-            sub={`${mostPosts.posts_last_30d} posts em 30d`}
-          />
-        )}
-      </StatCardGrid>
+      {kpiGrid}
 
       {/* Top posts */}
       {viewsRankedPosts.length > 0 && (
@@ -1625,15 +1771,7 @@ export default function AnalyticsPage() {
       <Sheet
         open={drawerSort !== null}
         onOpenChange={(open) => {
-          if (!open) {
-            setDrawerSort(null);
-            setDrawerOrderBy('views');
-            setDrawerAsc(false);
-            setDrawerClientFilter('all');
-            setDrawerFormatFilter('all');
-            setDrawerDateFrom('');
-            setDrawerDateTo('');
-          }
+          if (!open) resetDrawer();
         }}
       >
         <SheetContent side="right" className="!w-full !max-w-xl overflow-y-auto">
@@ -1935,6 +2073,80 @@ export default function AnalyticsPage() {
           </div>
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+interface AnalyticsHighlight {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  tone: StatTone;
+  name: string;
+  /** Classic StatCard footer. */
+  sub: string;
+  /** The number alone, for the Vidro Destaques rows. */
+  short: string;
+}
+
+/** Vidro: the leader cards folded into one KPI cell, one row per leader. */
+function AnalyticsHighlights({ items }: { items: AnalyticsHighlight[] }) {
+  return (
+    <div className="kpi-card analytics-highlights">
+      <div className="kpi-card-head">
+        <span className="kpi-label">Destaques</span>
+      </div>
+      <ul className="analytics-highlights__list">
+        {items.map(({ key, label, icon: Icon, tone, name, short }) => (
+          <li key={key} className="analytics-highlights__row">
+            <span className="kpi-icon analytics-highlights__icon" data-tone={tone} aria-hidden>
+              <Icon className="h-3.5 w-3.5" />
+            </span>
+            <span className="analytics-highlights__text">
+              <span className="analytics-highlights__label">{label}</span>
+              <span className="analytics-highlights__name">{name}</span>
+            </span>
+            <span className="analytics-highlights__metric">{short}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function silentNamesText(names: string[]): string {
+  if (names.length <= 3) {
+    return names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
+  }
+  return `${names.slice(0, 3).join(', ')} e mais ${names.length - 3}`;
+}
+
+/** Vidro: "Contas silenciosas" as one line; the account chips open below on demand. */
+function SilentAccountsLine({ names, children }: { names: string[]; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="analytics-silent-line animate-up" role="status">
+      <div className="analytics-silent-line__row">
+        <AlertTriangle className="h-4 w-4 analytics-silent-line__icon" aria-hidden />
+        <strong className="analytics-silent-line__title">
+          {names.length === 1 ? '1 conta silenciosa' : `${names.length} contas silenciosas`}
+        </strong>
+        <span className="analytics-silent-line__names">
+          {silentNamesText(names)} sem postar no período
+        </span>
+        <button
+          type="button"
+          className="analytics-silent-line__toggle"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? 'Ocultar' : 'Ver contas'}
+          <ChevronDown className={`h-3.5 w-3.5${open ? ' rotate-180' : ''}`} aria-hidden />
+        </button>
+      </div>
+      {open && <div className="analytics-callout__chips">{children}</div>}
     </div>
   );
 }

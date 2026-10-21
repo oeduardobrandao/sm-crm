@@ -14,6 +14,7 @@ const Command = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive
     ref={ref}
+    data-slot="command"
     className={cn(
       'flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground',
       className,
@@ -23,11 +24,32 @@ const Command = React.forwardRef<
 ));
 Command.displayName = CommandPrimitive.displayName;
 
-const CommandDialog = ({ children, ...props }: DialogProps) => {
+type CommandDialogProps = DialogProps & {
+  /** Props repassadas ao <Command> interno (ex.: `shouldFilter: false` para filtro próprio). */
+  commandProps?: React.ComponentPropsWithoutRef<typeof CommandPrimitive>;
+  /** Classes extras do DialogContent (ex.: largura maior que o `max-w-lg` padrão). */
+  contentClassName?: string;
+  /** `fullscreen` cobre a tela toda (busca no celular); sem botão de fechar embutido. */
+  layout?: 'default' | 'fullscreen';
+};
+
+const CommandDialog = ({
+  children,
+  commandProps,
+  contentClassName,
+  layout,
+  ...props
+}: CommandDialogProps) => {
   return (
     <Dialog {...props}>
-      <DialogContent className="overflow-hidden p-0 shadow-lg">
-        <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+      <DialogContent
+        layout={layout}
+        className={cn('overflow-hidden p-0 shadow-lg', contentClassName)}
+      >
+        <Command
+          {...commandProps}
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
+        >
           {children}
         </Command>
       </DialogContent>
@@ -43,6 +65,7 @@ const CommandInput = React.forwardRef<
     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
     <CommandPrimitive.Input
       ref={ref}
+      data-slot="command-input"
       className={cn(
         'flex h-11 w-full rounded-md bg-transparent py-3 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
         className,
@@ -110,6 +133,7 @@ const CommandItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.Item
     ref={ref}
+    data-slot="command-item"
     className={cn(
       "relative flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none data-[disabled=true]:pointer-events-none data-[selected='true']:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
       className,

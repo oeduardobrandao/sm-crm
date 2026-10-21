@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { signEmail } from "./sign.ts";
+import { getOrCreateCrispToken } from "./session.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -9,6 +10,15 @@ const CRISP_IDENTITY_SECRET = Deno.env.get("CRISP_IDENTITY_SECRET") ??
   (() => {
     throw new Error("CRISP_IDENTITY_SECRET is required");
   })();
+
+// Per-request bound on every call the client below makes (getUser and the
+// crisp_sessions upsert). The CRM gives the whole invoke 5s
+// (AuthContext.tsx, `timeout: 5000`) and falls back to an UNSIGNED push when
+// that fires, so a stalled PostgREST call on the new, best-effort upsert would
+// cost the user the signature too -- exactly what best-effort is meant to
+// rule out. Two sequential calls at 2s each stay inside the client's 5s.
+// Same shape as crisp-sync-cron's bounded global fetch.
+const REQUEST_TIMEOUT_MS = 2_000;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const cors = buildCorsHeaders(req);
@@ -22,7 +32,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // Service-role client + getUser(token). NOT an anon client: this project's
     // tokens are ES256 and an anon client cannot verify them.
-    const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      global: {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          fetch(input, {
+            ...init,
+            signal: init?.signal
+              ? AbortSignal.any([init.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+              : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }),
+      },
+    });
     const { data, error } = await svc.auth.getUser(token);
     // email_confirmed_at is required, not just a present email: GoTrue can
     // resolve a session for an account that registered but never confirmed
@@ -42,7 +62,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // worse than having no identity verification at all, because the badge would
     // then be actively misleading.
     const signature = await signEmail(data.user.email, CRISP_IDENTITY_SECRET);
-    return json({ signature });
+
+    // Session Continuity token, best-effort: null on any failure, in which
+    // case the response simply omits crispToken and the CRM leaves whatever
+    // binding it already has untouched (spec, Data flow step 3, "absent").
+    // Same JWT trust boundary as the signature: user id from the verified
+    // token, never from the request.
+    const crispToken = await getOrCreateCrispToken(svc, data.user.id);
+    return json(crispToken ? { signature, crispToken } : { signature });
   } catch (err) {
     return internalServerError(json, "crisp-identity", err);
   }

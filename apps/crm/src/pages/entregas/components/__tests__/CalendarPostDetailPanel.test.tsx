@@ -138,6 +138,18 @@ describe('CalendarPostDetailPanel', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/entregas?post=42');
     });
 
+    it('no calendário de um post avulso (avulso = nosso) oferece só "Abrir post completo", sem duplicar com "Abrir publicação"', () => {
+      const onOpenPost = vi.fn();
+      renderPanel({ post: avulsoPost, isCurrentWorkflow: true, onOpenPost });
+
+      expect(screen.queryByRole('button', { name: /Abrir publicação/ })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /Abrir post completo/ }));
+      expect(onOpenPost).toHaveBeenCalled();
+      expect(mockNavigate).not.toHaveBeenCalled();
+      // E o avulso passa a poder perder a data, como qualquer post nosso.
+      expect(screen.getByRole('button', { name: /Remover data/ })).toBeInTheDocument();
+    });
+
     it('still allows rescheduling (drag/picker) an unlocked post avulso, but hides "Remover data"', () => {
       renderPanel({ post: avulsoPost, isCurrentWorkflow: false, isLocked: false });
       expect(screen.getByText('Reagendar')).toBeInTheDocument();
@@ -168,10 +180,10 @@ describe('CalendarPostDetailPanel', () => {
   });
 
   it('forwards day markers to the reschedule picker', async () => {
-    const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Feed' }]]);
+    const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Imagem' }]]);
     renderPanel({ isCurrentWorkflow: true, isLocked: false, dayMarkers: markers });
     fireEvent.click(screen.getByRole('button', { name: /jul 2026|Selecionar data e hora/i }));
-    expect(await screen.findByTitle('1 Feed')).toBeInTheDocument();
+    expect(await screen.findByTitle('1 Imagem')).toBeInTheDocument();
   });
 
   it('falls back to the empty-thumbnail icon instead of a broken image when the cover is permanently lost (no source change — the component already treats a null thumbnail_url/url as no cover)', async () => {
@@ -244,5 +256,19 @@ describe('CalendarPostDetailPanel', () => {
   it('não mostra o selo em post normal', () => {
     renderPanel();
     expect(screen.queryByText('Teste')).toBeNull();
+  });
+
+  it('lista os colaboradores do Instagram quando existem', () => {
+    renderPanel({ post: { ...post, ig_collaborators: ['a', 'b'] } });
+    expect(screen.getByText('Colaboradores')).toBeTruthy();
+    expect(screen.getByText('@a, @b')).toBeTruthy();
+  });
+
+  it('não mostra a linha Colaboradores sem colaboradores (vazio ou ausente)', () => {
+    const { unmount } = renderPanel({ post: { ...post, ig_collaborators: [] } });
+    expect(screen.queryByText('Colaboradores')).toBeNull();
+    unmount();
+    renderPanel();
+    expect(screen.queryByText('Colaboradores')).toBeNull();
   });
 });

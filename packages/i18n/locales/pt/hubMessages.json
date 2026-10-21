@@ -1,0 +1,30 @@
+{
+  "title": "Mensagens",
+  "subtitle": "Toda a conversa com a equipe em um só lugar: mensagens, aprovações e sugestões.",
+  "disabled": {
+    "description": "Este recurso ainda não está disponível no seu plano. Fale com sua agência para saber mais."
+  },
+  "loading": "Carregando…",
+  "loadPrevious": "Carregar mensagens anteriores",
+  "loadError": "Não foi possível carregar as mensagens.",
+  "emptyState": "Nenhuma mensagem ainda. Envie a primeira!",
+  "events": {
+    "editSuggestion": "Você sugeriu edições no texto",
+    "approved": "Você aprovou o post",
+    "correctionRequested": "Você pediu correção"
+  },
+  "defaultAuthorName": "Equipe",
+  "defaultPostTitle": "Post",
+  "postSuffix": {
+    "correction": " · correção",
+    "approved": " · aprovação"
+  },
+  "reply": "Responder",
+  "replyingTo": "Respondendo sobre:",
+  "cancelReply": "Cancelar resposta",
+  "composer": {
+    "placeholderReply": "Responder sobre o post…",
+    "placeholderDefault": "Enviar mensagem…"
+  },
+  "send": "Enviar"
+}

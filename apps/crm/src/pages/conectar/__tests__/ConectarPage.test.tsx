@@ -46,6 +46,7 @@ describe('ConectarPage', () => {
     await waitFor(() => expect(screen.getByRole('button')).toBeInTheDocument());
     expect(screen.getByText(/Clínica X/)).toBeInTheDocument();
     expect(screen.getByText(/Agência Y/)).toBeInTheDocument();
+    expect(screen.getByText('connect.trustLine')).toBeInTheDocument();
   });
 
   test('clicking connect navigates to the Instagram url', async () => {

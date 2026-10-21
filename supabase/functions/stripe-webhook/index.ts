@@ -22,6 +22,14 @@ import {
 } from "../_shared/stripe-amount.ts";
 import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
 import { notifyOwnerOfFailure } from "../_shared/dunning-notify.ts";
+import {
+  applyCommissionAdjustment,
+  disputeClosedIsLoss,
+  invoicePriceId,
+  recordInvoiceCommission,
+  resolveChargeInvoiceId,
+  type CommissionInvoice,
+} from "../_shared/affiliate-commission.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -34,6 +42,8 @@ const STRIPE_WEBHOOK_SECRET =
 // Per-request bound for the denied-checkout cancel, so a stalled Stripe call throws promptly
 // (→ 5xx → redelivery) instead of running to the SDK's 80s default and an Edge kill.
 const STRIPE_CANCEL_TIMEOUT_MS = 10_000;
+// Same bound for the affiliate refund/dispute path's charge re-read.
+const STRIPE_READ_TIMEOUT_MS = 10_000;
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -89,6 +99,40 @@ async function handleEvent(svc: SupabaseClient, event: Stripe.Event) {
     }
     case "invoice.payment_failed": {
       await handlePaymentFailed(svc, event.data.object as Stripe.Invoice);
+      break;
+    }
+    // Programa de afiliados (só Stripe gera comissão). Os quatro eventos abaixo precisam
+    // estar ativos no endpoint do webhook no painel do Stripe.
+    case "invoice.paid": {
+      const outcome = await recordInvoiceCommission(
+        svc,
+        event.data.object as unknown as CommissionInvoice,
+        event.created,
+        { retrieveInvoicePriceId: retrieveInvoicePriceIdForAffiliate },
+      );
+      if (outcome === "recorded") {
+        console.log(`[stripe-webhook] affiliate commission recorded for invoice ${event.data.object.id}`);
+      }
+      break;
+    }
+    case "charge.refunded": {
+      const charge = event.data.object as Stripe.Charge;
+      const invoiceId = await resolveChargeInvoiceId(charge, retrieveChargeForAffiliate);
+      if (invoiceId) {
+        await applyCommissionAdjustment(svc, invoiceId, { refundedAmountCents: charge.amount_refunded });
+      }
+      break;
+    }
+    case "charge.dispute.created":
+    case "charge.dispute.closed": {
+      const dispute = event.data.object as Stripe.Dispute;
+      const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id;
+      const invoiceId = await resolveChargeInvoiceId({ id: chargeId }, retrieveChargeForAffiliate);
+      if (invoiceId) {
+        await applyCommissionAdjustment(svc, invoiceId, {
+          disputed: event.type === "charge.dispute.created" ? true : disputeClosedIsLoss(dispute.status),
+        });
+      }
       break;
     }
     default:
@@ -319,6 +363,16 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
     },
     { logPrefix: "[stripe-webhook]" },
   );
+}
+
+async function retrieveInvoicePriceIdForAffiliate(id: string): Promise<string | null> {
+  const invoice = await stripe.invoices.retrieve(id, undefined, { timeout: STRIPE_READ_TIMEOUT_MS });
+  return invoicePriceId(invoice as unknown as CommissionInvoice);
+}
+
+async function retrieveChargeForAffiliate(id: string) {
+  const charge = await stripe.charges.retrieve(id, undefined, { timeout: STRIPE_READ_TIMEOUT_MS });
+  return charge as unknown as { invoice?: string | { id: string } | null };
 }
 
 async function resolveWorkspaceId(

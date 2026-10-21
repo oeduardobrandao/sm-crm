@@ -312,24 +312,6 @@ describe('store workflow posts', () => {
     expect(preview.responsavel_id).toBeNull();
   });
 
-  it('getWorkflowAwaitingClientePostsCounts returns an empty map when no workflow ids are given', async () => {
-    const result = await store.getWorkflowAwaitingClientePostsCounts([]);
-    expect(result.size).toBe(0);
-  });
-
-  it('getWorkflowAwaitingClientePostsCounts counts enviado_cliente posts per workflow', async () => {
-    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
-      data: [{ workflow_id: 1 }, { workflow_id: 1 }, { workflow_id: 2 }],
-      error: null,
-    });
-    const result = await store.getWorkflowAwaitingClientePostsCounts([1, 2]);
-    expect(result.get(1)).toBe(2);
-    expect(result.get(2)).toBe(1);
-    const call = getCalls('workflow_posts', 'select').at(-1)!;
-    expect(call.modifiers).toContainEqual({ method: 'in', args: ['workflow_id', [1, 2]] });
-    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['status', 'enviado_cliente'] });
-  });
-
   it('sendPostsToCliente updates aprovado_interno posts to enviado_cliente', async () => {
     mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', { data: null, error: null });
 
@@ -339,6 +321,31 @@ describe('store workflow posts', () => {
     expect(call.payload).toEqual({ status: 'enviado_cliente' });
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['workflow_id', 5] });
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['status', 'aprovado_interno'] });
+  });
+
+  it('sendPostToCliente updates ONE post to enviado_cliente, conditional on the status the caller saw', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: { id: 42, status: 'enviado_cliente' },
+      error: null,
+    });
+
+    const result = await store.sendPostToCliente(42, 'rascunho');
+
+    expect(result).toEqual({ id: 42, status: 'enviado_cliente' });
+    const call = getCalls('workflow_posts', 'update').at(-1)!;
+    expect(call.payload).toEqual({ status: 'enviado_cliente' });
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 42] });
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['status', 'rascunho'] });
+    expect(call.modifiers).toContainEqual({ method: 'maybeSingle', args: [] });
+  });
+
+  it('sendPostToCliente returns null when the status already moved (zero rows matched)', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: null,
+      error: null,
+    });
+
+    expect(await store.sendPostToCliente(42, 'aprovado_interno')).toBeNull();
   });
 
   it('approvePostsInternally updates all non-final posts to aprovado_cliente', async () => {
@@ -360,43 +367,109 @@ describe('store workflow posts', () => {
     expect(result).toEqual([]);
   });
 
-  it('getWorkflowPostResponsaveis returns a map of workflow_id to responsavel arrays', async () => {
-    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+  it('getWorkflowPostStats makes no request for an empty id list', async () => {
+    const stats = await store.getWorkflowPostStats([]);
+    expect(stats.total.size).toBe(0);
+    expect(stats.responsaveis.size).toBe(0);
+    expect(getCalls('rpc:get_workflow_post_stats')).toHaveLength(0);
+  });
+
+  it('getWorkflowPostStats splits the RPC rows into per-status maps', async () => {
+    mockedSupabase.__queueSupabaseRpc('get_workflow_post_stats', {
       data: [
-        { workflow_id: 5, responsavel_id: 10 },
-        { workflow_id: 5, responsavel_id: 20 },
-        { workflow_id: 7, responsavel_id: 10 },
+        {
+          workflow_id: 5,
+          total: 4,
+          aprovado_cliente: 1,
+          cleared_cliente: 3,
+          enviado_cliente: 0,
+          revisao_interna: 1,
+          responsavel_ids: [10, 20],
+        },
+        {
+          workflow_id: 7,
+          total: 2,
+          aprovado_cliente: 0,
+          cleared_cliente: 0,
+          enviado_cliente: 2,
+          revisao_interna: 0,
+          responsavel_ids: [],
+        },
       ],
       error: null,
     });
 
-    const map = await store.getWorkflowPostResponsaveis([5, 7]);
+    const stats = await store.getWorkflowPostStats([5, 7, 9]);
 
-    expect(map.get(5)).toEqual([10, 20]);
-    expect(map.get(7)).toEqual([10]);
-    const call = getCalls('workflow_posts', 'select').at(-1)!;
-    expect(call.modifiers).toContainEqual({ method: 'in', args: ['workflow_id', [5, 7]] });
-    expect(call.modifiers).toContainEqual({ method: 'not', args: ['responsavel_id', 'is', null] });
-  });
-
-  it('getWorkflowPostResponsaveis deduplicates responsavel_id per workflow', async () => {
-    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
-      data: [
-        { workflow_id: 5, responsavel_id: 10 },
-        { workflow_id: 5, responsavel_id: 10 },
-        { workflow_id: 5, responsavel_id: 10 },
-      ],
-      error: null,
+    expect(getCalls('rpc:get_workflow_post_stats')[0].payload).toEqual({
+      p_workflow_ids: [5, 7, 9],
     });
-
-    const map = await store.getWorkflowPostResponsaveis([5]);
-
-    expect(map.get(5)).toEqual([10]);
+    expect(stats.total).toEqual(
+      new Map([
+        [5, 4],
+        [7, 2],
+      ]),
+    );
+    // Zero counts and empty responsavel lists are left out, so every map reads
+    // like the old per-status queries did: a missing key means none.
+    expect(stats.aprovadoCliente).toEqual(new Map([[5, 1]]));
+    expect(stats.clearedCliente).toEqual(new Map([[5, 3]]));
+    expect(stats.enviadoCliente).toEqual(new Map([[7, 2]]));
+    expect(stats.revisaoInterna).toEqual(new Map([[5, 1]]));
+    expect(stats.responsaveis).toEqual(new Map([[5, [10, 20]]]));
+    expect(stats.total.has(9)).toBe(false);
   });
 
-  it('getWorkflowPostResponsaveis returns empty map for empty input', async () => {
-    const map = await store.getWorkflowPostResponsaveis([]);
-    expect(map.size).toBe(0);
+  it('getWorkflowPostStats chunks ids so no response hits the 1000-row cap', async () => {
+    const ids = Array.from({ length: 1001 }, (_, i) => i + 1);
+    mockedSupabase.__queueSupabaseRpc(
+      'get_workflow_post_stats',
+      {
+        data: [
+          {
+            workflow_id: 1,
+            total: 1,
+            aprovado_cliente: 0,
+            cleared_cliente: 0,
+            enviado_cliente: 0,
+            revisao_interna: 0,
+            responsavel_ids: [],
+          },
+        ],
+        error: null,
+      },
+      {
+        data: [
+          {
+            workflow_id: 1001,
+            total: 2,
+            aprovado_cliente: 0,
+            cleared_cliente: 0,
+            enviado_cliente: 0,
+            revisao_interna: 0,
+            responsavel_ids: [],
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const stats = await store.getWorkflowPostStats([...ids, 1]);
+
+    const calls = getCalls('rpc:get_workflow_post_stats');
+    expect(
+      calls.map((c) => (c.payload as { p_workflow_ids: number[] }).p_workflow_ids.length),
+    ).toEqual([1000, 1]);
+    expect(stats.total.get(1)).toBe(1);
+    expect(stats.total.get(1001)).toBe(2);
+  });
+
+  it('getWorkflowPostStats throws on an RPC error', async () => {
+    mockedSupabase.__queueSupabaseRpc('get_workflow_post_stats', {
+      data: null,
+      error: { message: 'boom' },
+    });
+    await expect(store.getWorkflowPostStats([1])).rejects.toBeTruthy();
   });
 
   it('getPostApprovals queries with in filter', async () => {
@@ -716,7 +789,9 @@ describe('posts avulsos', () => {
     expect(result).toMatchObject({ id: 300, titulo: 'Post avulso', cliente_nome: 'Beto' });
     expect((result as { clientes?: unknown }).clientes).toBeUndefined();
     const call = getCalls('workflow_posts', 'select').at(-1)!;
-    expect(call.selectArgs).toContainEqual(['*, clientes(nome)']);
+    expect(call.selectArgs).toContainEqual([
+      '*, clientes(nome), targets_state:post_targets(platform,status,error,permalink,external_id,retry_count,processing_at)',
+    ]);
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 300] });
     expect(call.modifiers).toContainEqual({ method: 'maybeSingle', args: [] });
   });
@@ -1061,6 +1136,42 @@ describe('posts avulsos', () => {
     expect(result.map((p) => p.id)).toEqual([1, 2, 30]);
   });
 
+  it('getActivePosts embeds post_targets on both arms and maps them sorted', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'P',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: null,
+            ordem: 0,
+            workflows: { titulo: 'F', cliente_id: 7, status: 'ativo', clientes: { nome: 'Y' } },
+            post_targets: [
+              { platform: 'geral', status: 'pendente' },
+              { platform: 'instagram', status: 'pendente' },
+            ],
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    );
+    const [post] = await store.getActivePosts();
+    expect(post.targets?.map((t) => t.platform)).toEqual(['instagram', 'geral']);
+    // getCalls tipa as entradas sem selectArgs, que o mock grava (test/shared/supabaseMock.ts).
+    const selects = getCalls('workflow_posts', 'select') as unknown as Array<{
+      selectArgs?: unknown[][];
+    }>;
+    for (const call of selects) {
+      expect(String(call.selectArgs?.[0]?.[0])).toContain('post_targets(platform, status)');
+    }
+  });
+
   it('getClientePosts filters the avulso arm by cliente_id and workflow_id null', async () => {
     mockedSupabase.__queueSupabaseResult(
       'workflow_posts',
@@ -1097,12 +1208,103 @@ describe('posts avulsos', () => {
         workflow_titulo: null,
         platform: undefined,
         ig_trial_strategy: null,
+        ig_collaborators: [],
       },
     ]);
 
     const calls = getCalls('workflow_posts', 'select');
     expect(calls[1].modifiers).toContainEqual({ method: 'eq', args: ['cliente_id', 9] });
     expect(calls[1].modifiers).toContainEqual({ method: 'is', args: ['workflow_id', null] });
+  });
+
+  it('getClientePosts selects ig_collaborators and maps a missing value to []', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'Com colab',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: null,
+            ordem: 0,
+            ig_collaborators: ['dra.julia', 'clinicaviva'],
+            workflows: { titulo: 'Fluxo' },
+          },
+          {
+            id: 2,
+            workflow_id: 5,
+            titulo: 'Cache antigo',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: null,
+            ordem: 1,
+            ig_collaborators: null,
+            workflows: { titulo: 'Fluxo' },
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    );
+    const result = await store.getClientePosts(9);
+    expect(result.find((p) => p.id === 1)?.ig_collaborators).toEqual(['dra.julia', 'clinicaviva']);
+    expect(result.find((p) => p.id === 2)?.ig_collaborators).toEqual([]);
+    const selects = getCalls('workflow_posts', 'select') as unknown as Array<{
+      selectArgs?: unknown[][];
+    }>;
+    for (const call of selects) {
+      expect(String(call.selectArgs?.[0]?.[0])).toContain('ig_collaborators');
+    }
+  });
+
+  it('getScheduledPosts selects ig_collaborators and maps undefined to []', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'select',
+      {
+        data: [
+          {
+            id: 1,
+            workflow_id: 5,
+            titulo: 'A',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: '2026-06-16T17:00:00.000Z',
+            ordem: 0,
+            ig_collaborators: ['nutri.ana'],
+            workflows: { titulo: 'F', cliente_id: 7, status: 'ativo', clientes: { nome: 'Y' } },
+          },
+          {
+            id: 3,
+            workflow_id: 5,
+            titulo: 'B',
+            tipo: 'feed',
+            status: 'rascunho',
+            scheduled_at: '2026-06-17T17:00:00.000Z',
+            ordem: 1,
+            workflows: { titulo: 'F', cliente_id: 7, status: 'ativo', clientes: { nome: 'Y' } },
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    );
+    const result = await store.getScheduledPosts(
+      '2026-06-01T03:00:00.000Z',
+      '2026-07-01T03:00:00.000Z',
+    );
+    expect(result.find((p) => p.id === 1)?.ig_collaborators).toEqual(['nutri.ana']);
+    expect(result.find((p) => p.id === 3)?.ig_collaborators).toEqual([]);
+    const selects = getCalls('workflow_posts', 'select') as unknown as Array<{
+      selectArgs?: unknown[][];
+    }>;
+    for (const call of selects) {
+      expect(String(call.selectArgs?.[0]?.[0])).toContain('ig_collaborators');
+    }
   });
 
   it('getAssignedPendingPosts merges the wired arm with the avulso arm, sorted by created_at across both', async () => {

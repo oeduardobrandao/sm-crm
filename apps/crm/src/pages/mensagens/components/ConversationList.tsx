@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowDownUp, Info, Search } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { ClienteAvatar } from './Avatars';
 import { conversaPreview, formatTime, sortConversas, type ConversasSort } from '../mensagensLogic';
 
@@ -12,6 +13,21 @@ interface ConversationListProps {
   clientesById: Map<number, Cliente>;
   onSelect: (clienteId: number) => void;
   className?: string;
+  /** True when the desktop Vidro toolbar shows the page title (MensagensPage). */
+  hideTitle?: boolean;
+}
+
+/** The info icon next to the "Mensagens" title, in the list header or the Vidro toolbar. */
+export function MensagensInfoTooltip() {
+  return (
+    <span
+      data-tooltip="Toda a comunicação com os clientes, agrupada por conversa. Cada item leva ao post de origem."
+      data-tooltip-dir="right"
+      style={{ display: 'flex' }}
+    >
+      <Info className="h-4 w-4 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
 }
 
 export function ConversationList({
@@ -22,6 +38,7 @@ export function ConversationList({
   clientesById,
   onSelect,
   className = '',
+  hideTitle = false,
 }: ConversationListProps) {
   const [sort, setSort] = useState<ConversasSort>('recentes');
   const [busca, setBusca] = useState('');
@@ -37,17 +54,13 @@ export function ConversationList({
   return (
     <div className={`flex flex-col ${className}`}>
       <div className="border-b border-[var(--border-color)] px-4 pt-4 pb-3">
-        <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-[var(--text-main)]">Mensagens</h1>
-          <span
-            data-tooltip="Toda a comunicação com os clientes, agrupada por conversa. Cada item leva ao post de origem."
-            data-tooltip-dir="right"
-            style={{ display: 'flex' }}
-          >
-            <Info className="h-4 w-4 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
-        </div>
-        <div className="mt-3" style={{ position: 'relative' }}>
+        {!hideTitle && (
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-[var(--text-main)]">Mensagens</h1>
+            <MensagensInfoTooltip />
+          </div>
+        )}
+        <div className={hideTitle ? undefined : 'mt-3'} style={{ position: 'relative' }}>
           <Search
             className="h-4 w-4"
             style={{
@@ -79,9 +92,7 @@ export function ConversationList({
       </div>
 
       <div className="flex-1 overflow-y-auto mensagens-list-scroll">
-        {isLoading && (
-          <p className="py-10 text-center text-sm text-[var(--text-muted)]">Carregando…</p>
-        )}
+        {isLoading && <ListSkeleton rows={6} avatar className="px-4 py-3" />}
         {isError && (
           <p className="py-10 text-center text-sm text-[var(--text-muted)]">
             Não foi possível carregar as conversas.

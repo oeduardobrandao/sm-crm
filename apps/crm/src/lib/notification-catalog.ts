@@ -4,6 +4,7 @@ export type NotificationCategory =
   | 'aprovacoes_hub'
   | 'entregas_fluxo'
   | 'equipe'
+  | 'agenda'
   | 'integracoes'
   | 'sistema';
 
@@ -11,6 +12,7 @@ export const CATEGORY_ORDER: NotificationCategory[] = [
   'aprovacoes_hub',
   'entregas_fluxo',
   'equipe',
+  'agenda',
   'integracoes',
   'sistema',
 ];
@@ -19,6 +21,7 @@ export const CATEGORY_LABELS: Record<NotificationCategory, string> = {
   aprovacoes_hub: 'Aprovações e Hub',
   entregas_fluxo: 'Entregas e fluxo',
   equipe: 'Equipe',
+  agenda: 'Agenda',
   integracoes: 'Integrações',
   sistema: 'Sistema',
 };
@@ -33,6 +36,8 @@ export interface NotificationCatalogEntry {
 
 const RESP_ADMINS = 'responsável pelo item + donos e admins';
 const ADMINS = 'donos e admins';
+const PARTICIPANTES = 'Participantes do evento';
+const ORGANIZADOR_OU_ADMINS = 'Organizador do evento (ou donos e admins)';
 
 export const NOTIFICATION_CATALOG = {
   post_approved: {
@@ -59,7 +64,14 @@ export const NOTIFICATION_CATALOG = {
   post_edit_suggestion: {
     category: 'aprovacoes_hub',
     label: 'Sugestão de edição',
-    when: 'o cliente sugere uma alteração de legenda no Hub',
+    when: 'o cliente sugere ou atualiza uma alteração de texto ou legenda no Hub',
+    recipients: RESP_ADMINS,
+    emailEligible: false,
+  },
+  post_client_reference: {
+    category: 'aprovacoes_hub',
+    label: 'Referências do cliente',
+    when: 'o cliente anexa fotos, vídeos, PDFs ou links a um post no Hub',
     recipients: RESP_ADMINS,
     emailEligible: false,
   },
@@ -159,6 +171,62 @@ export const NOTIFICATION_CATALOG = {
     label: 'Menções',
     when: 'alguém menciona você com @',
     recipients: 'somente quem foi mencionado',
+    emailEligible: true,
+  },
+  event_invited: {
+    category: 'agenda',
+    label: 'Convites para eventos',
+    when: 'alguém adiciona você a um evento',
+    recipients: PARTICIPANTES,
+    emailEligible: true,
+  },
+  event_updated: {
+    category: 'agenda',
+    label: 'Eventos alterados',
+    when: 'muda o horário, o local ou a repetição de um evento seu',
+    recipients: PARTICIPANTES,
+    emailEligible: true,
+  },
+  event_cancelled: {
+    category: 'agenda',
+    label: 'Eventos cancelados',
+    when: 'um evento seu é cancelado ou você é removido dele',
+    recipients: PARTICIPANTES,
+    emailEligible: true,
+  },
+  event_rsvp: {
+    category: 'agenda',
+    label: 'Respostas aos seus convites',
+    when: 'um participante responde a um evento que você organizou',
+    recipients: 'Organizador do evento',
+    emailEligible: false,
+  },
+  event_client_rsvp: {
+    category: 'agenda',
+    label: 'Cliente respondeu a um evento',
+    when: 'o cliente confirma ou recusa um evento compartilhado com ele',
+    recipients: ORGANIZADOR_OU_ADMINS,
+    emailEligible: true,
+  },
+  event_guest_rsvp: {
+    category: 'agenda',
+    label: 'Convidado externo respondeu a um evento',
+    when: 'um convidado externo confirma ou recusa um evento seu',
+    recipients: ORGANIZADOR_OU_ADMINS,
+    emailEligible: true,
+  },
+  event_reschedule_requested: {
+    category: 'agenda',
+    label: 'Cliente pediu para remarcar',
+    when: 'o cliente pede para remarcar um evento compartilhado com ele',
+    recipients: ORGANIZADOR_OU_ADMINS,
+    emailEligible: true,
+  },
+  event_reminder: {
+    category: 'agenda',
+    label: 'Lembretes de eventos',
+    when: 'no horário dos lembretes que você definiu',
+    recipients: PARTICIPANTES,
     emailEligible: true,
   },
   team_message: {

@@ -38,13 +38,45 @@ export function getBucket(): string {
   return _bucket;
 }
 
-export async function signPutUrl(key: string, mimeType: string, expiresSeconds = 900) {
-  const cmd = new PutObjectCommand({ Bucket: getBucket(), Key: key, ContentType: mimeType });
+/** Presigned PUT bound to the declared size: ContentLength entra em X-Amz-SignedHeaders
+ * (content-length;host), então um corpo de outro tamanho falha a assinatura no R2 em vez
+ * de gravar e só ser pego (quando é) no HEAD do finalize. O navegador define o
+ * Content-Length pelo Blob enviado; o chamador só precisa declarar o MESMO Blob.
+ * Lança se o tamanho não for um inteiro positivo: o chamador valida antes (400). */
+export async function signPutUrl(
+  key: string,
+  mimeType: string,
+  sizeBytes: number,
+  expiresSeconds = 900,
+) {
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) {
+    throw new Error(`signPutUrl: invalid size ${sizeBytes}`);
+  }
+  const cmd = new PutObjectCommand({
+    Bucket: getBucket(),
+    Key: key,
+    ContentType: mimeType,
+    ContentLength: sizeBytes,
+  });
   return getSignedUrl(getR2(), cmd, { expiresIn: expiresSeconds });
 }
 
-export async function signGetUrl(key: string, expiresSeconds = 3600) {
-  const cmd = new GetObjectCommand({ Bucket: getBucket(), Key: key });
+/** Content-Disposition de download (RFC 6266 + RFC 5987). encodeURIComponent deixa
+ * ' ( ) * ! sem escapar; ' encerraria o ext-value, então os cinco viram %XX. */
+export function attachmentDisposition(filename: string): string {
+  const encoded = encodeURIComponent(filename)
+    .replace(/['()*!]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename*=UTF-8''${encoded}`;
+}
+
+/** downloadName (opcional) faz o R2 servir o objeto como anexo com esse nome
+ * (post-references download_url). Sem ele a URL é idêntica à de antes. */
+export async function signGetUrl(key: string, expiresSeconds = 3600, downloadName?: string) {
+  const cmd = new GetObjectCommand({
+    Bucket: getBucket(),
+    Key: key,
+    ...(downloadName ? { ResponseContentDisposition: attachmentDisposition(downloadName) } : {}),
+  });
   return getSignedUrl(getR2(), cmd, { expiresIn: expiresSeconds });
 }
 
@@ -60,25 +92,43 @@ export async function headObject(key: string): Promise<{ contentLength: number; 
   }
 }
 
-/** Cópia via presign + fetch puro, SEM apagar a origem (metade "copy" do
- * trashObject; reusa exatamente a técnica documentada lá, incluindo o aviso
- * de NÃO enviar x-amz-copy-source como header -- o presigner o embute na
- * query string e duplicá-lo dá 403 SignatureDoesNotMatch, causa raiz do
- * incidente de 2026-08). Lança em falha. */
-export async function copyObjectSigned(sourceKey: string, destKey: string): Promise<void> {
+/** CopyObject via presign + fetch puro. x-amz-copy-source PRECISA ir como
+ * header ASSINADO (unhoistableHeaders) E ser enviado no fetch. O default do
+ * presigner -- hoistar para a query string -- produz uma URL que o R2 aceita
+ * com 200 mas trata como PUT comum de corpo vazio: a query x-amz-copy-source
+ * é IGNORADA e o destino nasce com 0 bytes (comprovado contra o R2 real em
+ * 2026-09-02; era a causa do "size mismatch" do automation-media e de todo
+ * trash/ pós-2026-08-22 ficar vazio). O 403 SignatureDoesNotMatch do
+ * incidente de 2026-08 vinha de enviar o header SEM assiná-lo junto -- a
+ * correção é assinar E enviar, nunca omitir. Uma cópia real responde XML
+ * <CopyObjectResult>; corpo sem isso = PUT vazio, e falhar alto aqui é o que
+ * impede a regressão silenciosa. */
+async function copyViaSignedFetch(sourceKey: string, destKey: string): Promise<Response> {
   const copySource = `${getBucket()}/${encodeURIComponent(sourceKey).replace(/%2F/g, "/")}`;
   const cmd = new CopyObjectCommand({
     Bucket: getBucket(),
     CopySource: copySource,
     Key: destKey,
   });
-  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
-  const res = await fetch(url, { method: "PUT", signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => "");
+  const url = await getSignedUrl(getR2(), cmd, {
+    expiresIn: 300,
+    unhoistableHeaders: new Set(["x-amz-copy-source"]),
+  });
+  return await fetch(url, {
+    method: "PUT",
+    headers: { "x-amz-copy-source": copySource },
+    signal: AbortSignal.timeout(30_000),
+  });
+}
+
+/** Cópia SEM apagar a origem (metade "copy" do trashObject). Lança em falha,
+ * inclusive no 200-sem-CopyObjectResult (ver copyViaSignedFetch). */
+export async function copyObjectSigned(sourceKey: string, destKey: string): Promise<void> {
+  const res = await copyViaSignedFetch(sourceKey, destKey);
+  const bodyText = await res.text().catch(() => "");
+  if (!res.ok || !bodyText.includes("<CopyObjectResult")) {
     throw new Error(`r2 copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
   }
-  await res.body?.cancel();
 }
 
 /** HEAD via presign + fetch puro (mesmo racional de putObject/deleteObject:
@@ -108,67 +158,164 @@ export async function headObjectSigned(
 export async function trashObject(key: string): Promise<void> {
   // Presign + plain fetch, same as deleteObject above: the SDK's own transport
   // is the documented edge-runtime hang path, and this function sits on the
-  // deletion drains — a hang here stalls every queue.
-  //
-  // Do NOT also set x-amz-copy-source as a request header: getSignedUrl hoists
-  // it into the presigned URL's query string (X-Amz-SignedHeaders ends up
-  // "host" only — copy-source is never a signed header for this presigner).
-  // Sending it again as a header duplicates a value R2 never signed, and R2
-  // rejects that mismatch with 403 SignatureDoesNotMatch — confirmed via a
-  // response-body capture against prod (this was the entire root cause of the
-  // 2026-08 deletion-drain incident: every trashObject() call failed at 100%
-  // from the day the vault feature shipped). The query string alone is what
-  // AWS's own presigning contract expects the receiver to read.
-  const copySource = `${getBucket()}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
-  const cmd = new CopyObjectCommand({
-    Bucket: getBucket(),
-    CopySource: copySource,
-    Key: `trash/${key}`,
-  });
-  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
-  const res = await fetch(url, {
-    method: "PUT",
-    signal: AbortSignal.timeout(30_000),
-  });
+  // deletion drains — a hang here stalls every queue. The copy-source signing
+  // contract (signed header, sent on the fetch) lives in copyViaSignedFetch.
+  const res = await copyViaSignedFetch(key, `trash/${key}`);
   // 404 = the source is already gone — either a previous attempt moved it to
   // trash/ before a downstream step failed, or the object never existed. In
   // both cases there is nothing left to preserve, so the retry must proceed
   // (deleteObject below also treats 404 as done). Without this, a partially
   // successful drain row retries into a copy-404 forever, exhausts its
   // attempts, and the Stream delete behind it is never reached.
-  if (!res.ok && res.status !== 404) {
+  const bodyText = await res.text().catch(() => "");
+  if (res.status !== 404) {
     // Diagnostic: R2's XML error body names the actual rejection (e.g.
     // SignatureDoesNotMatch vs AccessDenied) that a bare status code can't
     // distinguish — surfaced via file_deletions.last_error for the next failure.
-    const bodyText = await res.text().catch(() => "");
-    throw new Error(`r2 trash copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
+    // A 200 whose body lacks <CopyObjectResult> is a copy the R2 silently
+    // downgraded to an empty PUT (the 2026-08→09 zero-byte-trash bug): treat
+    // it as failure BEFORE deleting the original, or the undo window is a lie.
+    if (!res.ok || !bodyText.includes("<CopyObjectResult")) {
+      throw new Error(`r2 trash copy failed: ${res.status}${bodyText ? ` ${bodyText.slice(0, 300)}` : ""}`);
+    }
   }
-  await res.body?.cancel();
   await deleteObject(key);
 }
 
+export interface TrashPage {
+  objects: Array<{ key: string; lastModified: Date }>;
+  nextToken: string | null;
+}
+
+/** Minimal XML entity unescape for ListObjectsV2 response fields. R2 escapes
+ * the five predefined entities (and may use numeric references) in <Key> and
+ * <NextContinuationToken>; anything fancier does not occur in an S3 listing. */
+function unescapeXml(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+/** Parses a ListObjectsV2 XML body into purgeTrash's page shape. Exported
+ * for tests only. Regex over a schema'd, flat S3 listing (no nested
+ * <Contents>), not a general XML parser. */
+export function parseListObjectsXml(xml: string): TrashPage {
+  const objects: Array<{ key: string; lastModified: Date }> = [];
+  for (const m of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+    const block = m[1];
+    const key = block.match(/<Key>([\s\S]*?)<\/Key>/)?.[1];
+    const lastModified = block.match(/<LastModified>([\s\S]*?)<\/LastModified>/)?.[1];
+    if (!key || !lastModified) continue;
+    const when = new Date(unescapeXml(lastModified));
+    if (isNaN(when.getTime())) continue;
+    objects.push({ key: unescapeXml(key), lastModified: when });
+  }
+  const truncated = /<IsTruncated>\s*true\s*<\/IsTruncated>/.test(xml);
+  const nextToken = xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/)?.[1];
+  return {
+    objects,
+    nextToken: truncated ? (nextToken != null ? unescapeXml(nextToken) : null) : null,
+  };
+}
+
+/** ONE page of the trash/ prefix. Presign + plain fetch + AbortSignal, NOT
+ * getR2().send(): the aws-sdk transport is the documented edge-runtime hang
+ * path (AGENTS.md; same rationale as deleteObject/getObjectBytes below), so
+ * the listing goes out as a presigned GET and the XML comes back through
+ * fetch with a hard 30s bound. Real implementation for purgeTrash's
+ * `listPage` seam. */
+async function realListTrashPage(token: string | undefined): Promise<TrashPage> {
+  const cmd = new ListObjectsV2Command({
+    Bucket: getBucket(),
+    Prefix: "trash/",
+    ContinuationToken: token,
+  });
+  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`r2 trash list failed: ${res.status}${text ? ` ${text.slice(0, 300)}` : ""}`);
+  }
+  return parseListObjectsXml(text);
+}
+
+export interface PurgeTrashOpts {
+  maxPerRun?: number;
+  startToken?: string | null;
+  deadlineMs?: number;
+  // test seams; default to the real implementations
+  listPage?: (token: string | undefined) => Promise<TrashPage>;
+  deleteFn?: (key: string) => Promise<void>;
+  nowFn?: () => number;
+}
+
+export interface PurgeTrashResult {
+  purged: number;
+  nextToken: string | null;
+  cycleCompleted: boolean;
+}
+
 /** Permanently removes trash/ entries older than `olderThanDays`, at most
- * `maxPerRun` per call. Bounded and last-resort-safe: a listing error deletes
- * nothing. Returns the number purged. */
-export async function purgeTrash(olderThanDays: number, maxPerRun = 200): Promise<number> {
-  const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+ * `maxPerRun` per call (default 500), bounded by `deadlineMs` (default 55s)
+ * checked between pages so a slow/large trash/ prefix can't blow the caller's
+ * own watchdog. Checkpointed via `startToken`/`nextToken` — see
+ * post-media-cleanup-cron/index.ts, which persists the returned `nextToken`
+ * in `cron_scan_state` the same way the orphan scan does. A listing error on
+ * a stale/invalid continuation token is retried once from the head of the
+ * prefix before propagating. */
+export async function purgeTrash(olderThanDays: number, opts: PurgeTrashOpts = {}): Promise<PurgeTrashResult> {
+  const { maxPerRun = 500, deadlineMs = 55_000, nowFn = Date.now } = opts;
+  const listPage = opts.listPage ?? realListTrashPage;
+  const deleteFn = opts.deleteFn ?? deleteObject;
+  const cutoff = nowFn() - olderThanDays * 24 * 60 * 60 * 1000;
+  const startedAt = nowFn();
   let purged = 0;
-  let token: string | undefined;
-  do {
-    const res = await getR2().send(
-      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: "trash/", ContinuationToken: token }),
-      { abortSignal: AbortSignal.timeout(30_000) },
-    );
-    for (const obj of res.Contents ?? []) {
-      if (purged >= maxPerRun) return purged;
-      if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) {
-        await deleteObject(obj.Key);
+  // Token that PRODUCED the page currently being processed. Persisting this
+  // (not nextToken) on an early exit means an interrupted page is re-listed,
+  // never skipped: deletes are idempotent (deleteObject treats 404 as done).
+  let pageToken: string | null = opts.startToken ?? null;
+  let retriedFromNull = false;
+  while (true) {
+    let page: TrashPage;
+    try {
+      page = await listPage(pageToken ?? undefined);
+    } catch (e) {
+      if (pageToken !== null && !retriedFromNull) {
+        // Stale/invalid continuation token (R2 InvalidArgument): restart cycle.
+        console.error("purgeTrash: list failed with token, restarting from head", e);
+        pageToken = null;
+        retriedFromNull = true;
+        continue;
+      }
+      throw e;
+    }
+    for (const obj of page.objects) {
+      if (purged >= maxPerRun) return { purged, nextToken: pageToken, cycleCompleted: false };
+      // Checked before EVERY delete, not just between pages: a single page can
+      // hold ~1000 aged objects, and at worst case ~10s per delete (see
+      // deleteObject's own timeout) a page can blow well past the deadline on
+      // its own. Exiting mid-page returns `pageToken` — the token that
+      // PRODUCED this page, same as the cap-exit above — so the interrupted
+      // page is re-listed in full next run rather than skipping the objects
+      // after the one we stopped on.
+      if (nowFn() - startedAt >= deadlineMs) return { purged, nextToken: pageToken, cycleCompleted: false };
+      if (obj.lastModified.getTime() < cutoff) {
+        await deleteFn(obj.key);
         purged++;
       }
     }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined;
-  } while (token);
-  return purged;
+    if (page.nextToken === null) return { purged, nextToken: null, cycleCompleted: true };
+    pageToken = page.nextToken;
+    // Belt for a page with few/no aged objects (the per-delete check above
+    // never ran, or ran only briefly): still bound how long a run keeps
+    // listing before returning.
+    if (nowFn() - startedAt >= deadlineMs) return { purged, nextToken: pageToken, cycleCompleted: false };
+  }
 }
 
 export async function deleteObject(key: string): Promise<void> {
@@ -188,23 +335,51 @@ export async function deleteObject(key: string): Promise<void> {
   }
 }
 
-export async function listOrphanKeys(prefix: string, olderThanMs: number): Promise<string[]> {
+export interface OrphanKeyPage {
+  /** Aged keys from THIS page only. R2 returns at most 1000 objects per page,
+   * so this array is bounded no matter how large the prefix is. */
+  keys: string[];
+  /** Token to pass back for the next page; null once the prefix is exhausted. */
+  nextToken: string | null;
+}
+
+/**
+ * ONE page of a prefix listing, filtered to objects older than `olderThanMs`.
+ *
+ * Deliberately not a loop. The previous `listOrphanKeys()` paged the ENTIRE
+ * prefix into one array before returning, which grew with the bucket and not
+ * with the workload: on prod it died with WORKER_RESOURCE_LIMIT (2026-08-13),
+ * killing the cron stages queued behind it. Callers now spend a fixed page
+ * budget per run and persist `nextToken` (see cron_scan_state) to resume.
+ *
+ * An empty `keys` with a non-null `nextToken` is normal and NOT a stop
+ * condition — it just means every object on that page was younger than the
+ * cutoff. Only `nextToken === null` ends the sweep.
+ */
+export async function listOrphanKeyPage(
+  prefix: string,
+  olderThanMs: number,
+  token?: string | null,
+): Promise<OrphanKeyPage> {
   const cutoff = Date.now() - olderThanMs;
-  const out: string[] = [];
-  let token: string | undefined;
-  do {
-    // Belt for the same edge-runtime hang class as deleteObject above: bound each
-    // page fetch so a stalled listing fails the run instead of freezing it.
-    const res = await getR2().send(
-      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: prefix, ContinuationToken: token }),
-      { abortSignal: AbortSignal.timeout(30_000) },
-    );
-    for (const obj of res.Contents ?? []) {
-      if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) out.push(obj.Key);
-    }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined;
-  } while (token);
-  return out;
+  // Belt for the same edge-runtime hang class as deleteObject above: bound the
+  // page fetch so a stalled listing fails the run instead of freezing it.
+  const res = await getR2().send(
+    new ListObjectsV2Command({
+      Bucket: getBucket(),
+      Prefix: prefix,
+      ContinuationToken: token ?? undefined,
+    }),
+    { abortSignal: AbortSignal.timeout(30_000) },
+  );
+  const keys: string[] = [];
+  for (const obj of res.Contents ?? []) {
+    if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) keys.push(obj.Key);
+  }
+  return {
+    keys,
+    nextToken: res.IsTruncated ? (res.NextContinuationToken ?? null) : null,
+  };
 }
 
 export async function copyObject(sourceKey: string, destKey: string): Promise<void> {
@@ -255,16 +430,43 @@ export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
   }
 }
 
+/** Streaming GET via presign + fetch (the SDK transport is the documented
+ * edge-runtime hang path). Bounds time-to-first-byte only; body stalls are
+ * the caller's job (file-zip wraps with a per-chunk stall guard) because a
+ * total AbortSignal would kill legitimately large slow bodies. */
+export async function getObjectStreamSigned(key: string): Promise<ReadableStream<Uint8Array> | null> {
+  const ac = new AbortController();
+  // Cleared in `finally` (not after the await): a fetch that REJECTS before
+  // headers would otherwise leave the timer live for its full 15s, and a zip
+  // over many unavailable objects would pile one orphan timer per failure.
+  const headerTimer = setTimeout(() => ac.abort(), 15_000);
+  try {
+    const url = await signGetUrl(key, 300);
+    const res = await fetch(url, { signal: ac.signal });
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
+    return res.body;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(headerTimer);
+  }
+}
+
 export async function putObject(
   key: string,
   bytes: Uint8Array,
   contentType: string,
 ): Promise<void> {
-  const url = await signPutUrl(key, contentType, 300);
+  const url = await signPutUrl(key, contentType, bytes.byteLength, 300);
   const res = await fetch(url, {
     method: "PUT",
     headers: { "Content-Type": contentType },
-    body: bytes,
+    // BodyInit wants Uint8Array<ArrayBuffer>; re-view the same bytes (no copy)
+    // so a generically typed Uint8Array<ArrayBufferLike> still type-checks.
+    body: new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength),
     signal: AbortSignal.timeout(OBJECT_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {

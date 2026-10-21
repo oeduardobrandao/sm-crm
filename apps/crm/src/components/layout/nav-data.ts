@@ -1,4 +1,4 @@
-import type { FinancialAccess } from '@/lib/financialAccess';
+import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 
 export interface NavItem {
   id: string;
@@ -8,6 +8,12 @@ export interface NavItem {
   icon: string;
   /** Open the route in a new browser tab instead of in-app SPA navigation. */
   newTab?: boolean;
+  /**
+   * Public page outside the CRM shell (no AppLayout). The phone Mais sheet opens it in a
+   * new tab/window like `newTab`, so the user never lands outside the shell with no tab
+   * bar and no way back. Desktop navigation is unaffected.
+   */
+  outsideShell?: boolean;
   /** Renders as an inert row with a "coming soon" badge instead of a working link. */
   disabled?: boolean;
   /** Flag off: em vez de sumir, renderiza esmaecido com cadeado, clicável
@@ -79,10 +85,10 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: 'gestao',
-    label: 'Gestao',
-    labelKey: 'nav.gestao',
-    icon: 'ph-folder',
+    id: 'producao',
+    label: 'Producao',
+    labelKey: 'nav.producao',
+    icon: 'ph-kanban',
     items: [
       {
         id: 'entregas',
@@ -92,18 +98,18 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-kanban',
       },
       {
-        id: 'tarefas',
-        route: '/tarefas',
-        label: 'Tarefas',
-        labelKey: 'nav.tarefas',
-        icon: 'ph-list-checks',
-      },
-      {
         id: 'post-express',
         route: '/post-express',
         label: 'Post Express',
         labelKey: 'nav.postExpress',
         icon: 'ph-paper-plane-tilt',
+      },
+      {
+        id: 'analytics-fluxos',
+        route: '/analytics-fluxos',
+        label: 'Fluxos',
+        labelKey: 'nav.fluxos',
+        icon: 'ph-flow-arrow',
       },
       {
         id: 'automacoes',
@@ -112,6 +118,21 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.automacoes',
         icon: 'ph-robot',
         showLockedWhenGated: true,
+      },
+    ],
+  },
+  {
+    id: 'operacao',
+    label: 'Operacao',
+    labelKey: 'nav.operacao',
+    icon: 'ph-folder',
+    items: [
+      {
+        id: 'tarefas',
+        route: '/tarefas',
+        label: 'Tarefas',
+        labelKey: 'nav.tarefas',
+        icon: 'ph-list-checks',
       },
       {
         id: 'arquivos',
@@ -156,21 +177,6 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.instagram',
         icon: 'ph-instagram-logo',
       },
-      {
-        id: 'analytics-tiktok',
-        route: '/analytics/tiktok',
-        label: 'TikTok',
-        labelKey: 'nav.tiktok',
-        icon: 'ph-tiktok-logo',
-        disabled: true,
-      },
-      {
-        id: 'analytics-fluxos',
-        route: '/analytics-fluxos',
-        label: 'Fluxos',
-        labelKey: 'nav.fluxos',
-        icon: 'ph-flow-arrow',
-      },
     ],
   },
   {
@@ -195,7 +201,6 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
     label: 'Configuracoes',
     labelKey: 'nav.configuracoes',
     icon: 'ph-gear',
-    isBottom: true,
     items: [
       {
         id: 'configuracao',
@@ -210,6 +215,7 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         label: 'Privacidade',
         labelKey: 'nav.privacidade',
         icon: 'ph-shield-check',
+        outsideShell: true,
       },
     ],
   },
@@ -243,64 +249,75 @@ const NAV_FEATURE: Record<string, string | string[]> = {
   automacoes: 'feature_instagram_automation',
 };
 
+/**
+ * Maps nav item id -> the module/action `can()` must grant 'ver'/'editar' on
+ * for the item to survive the filter below. One single truth table replaces
+ * the two hand-rolled role blocks this used to have (agent-only exclusions,
+ * and the financial restricted-admin block) — `can()`'s own truth table
+ * (derivePermission, lib/permissions.ts) already reproduces both byte-for-byte
+ * for every legacy role, so nothing here re-encodes role literals.
+ *
+ * Ids with no entry (dashboard, ajuda, configuracao, novidades,
+ * politica-de-privacidade) are outside the permission
+ * catalog and always pass through unfiltered here.
+ */
+/** Exported so MobileNav.tsx's fixed primary bar (dashboard/clientes/
+ * analytics/entregas, rendered outside the `getNavGroups`-driven "Mais"
+ * sheet) can gate on the exact same table instead of a second, hand-rolled
+ * mapping that could silently drift from this one. */
+export const NAV_MODULE: Partial<Record<string, [PermissionModule, PermissionAction]>> = {
+  calendario: ['calendario', 'ver'],
+  leads: ['leads', 'ver'],
+  clientes: ['clientes', 'ver'],
+  entregas: ['entregas', 'ver'],
+  'post-express': ['entregas', 'ver'],
+  tarefas: ['tarefas', 'ver'],
+  aprovacoes: ['aprovacoes', 'ver'],
+  arquivos: ['arquivos', 'ver'],
+  ideias: ['ideias', 'ver'],
+  mensagens: ['clientes', 'ver'],
+  financeiro: ['financeiro', 'ver'],
+  contratos: ['contratos', 'ver'],
+  equipe: ['equipe', 'ver'],
+  analytics: ['analytics', 'ver'],
+  'analytics-fluxos': ['analytics', 'ver'],
+  automacoes: ['automacoes', 'ver'],
+  importar: ['clientes', 'editar'],
+};
+
 export function getNavGroups(
-  role: string,
   features: Record<string, boolean> | null,
-  canSeeFinancials: FinancialAccess,
   workspaceRole: 'owner' | 'admin' | 'agent' | null,
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
 ): NavGroup[] {
+  // `workspaceRole` has no owner-only filter to drive today -- the nav item
+  // it used to gate ('cobranca') doesn't exist in ALL_NAV_GROUPS above (dead
+  // code, removed). Kept in the signature rather than dropped: all three call
+  // sites already resolve it from useAuth(), and a future owner-only item
+  // (e.g. billing, if it returns to the nav) would need it immediately.
+  void workspaceRole;
+
   let groups = ALL_NAV_GROUPS;
 
-  // Billing is owner-only.
-  if (role !== 'owner') {
-    groups = groups.map((g) =>
-      g.id === 'config' ? { ...g, items: g.items.filter((i) => i.id !== 'cobranca') } : g,
-    );
-  }
-
-  if (role === 'agent') {
-    groups = groups
-      .map((g) => {
-        if (g.id === 'crm') return { ...g, items: g.items.filter((i) => i.id !== 'leads') };
-        if (g.id === 'gestao')
-          return {
-            ...g,
-            // `equipe` is included because ProtectedRoute redirects agents away
-            // from /equipe. Leaving the link visible rendered an item that
-            // bounced them to /dashboard.
-            items: g.items.filter(
-              (i) => i.id !== 'financeiro' && i.id !== 'contratos' && i.id !== 'equipe',
-            ),
-          };
-        return g;
-      })
-      .filter((g) => g.items.length > 0);
-  }
-
-  // Restricted admins lose the financial routes. Owners are never restricted,
-  // and agents already lost them above.
-  //
-  // Sourced from `workspaceRole` (workspace_members for the ACTIVE workspace),
-  // NOT the profile-derived `role`: switchWorkspace never writes
-  // profiles.role, so an owner in workspace A who is a restricted admin in B
-  // would otherwise keep seeing Financeiro/Contratos while working in B — the
-  // link then bounces to the restriction screen, which is exactly the
-  // flash-then-bounce this feature set exists to remove. Accepted cost:
-  // workspaceRole is null until membership resolves, so an owner's financial
-  // nav items appear a beat later instead of immediately — a brief flicker,
-  // traded against a persistently wrong nav for multi-workspace users.
-  //
-  // Fails CLOSED on 'unknown'/null, matching formatFinancialBRL: flashing a nav item
-  // that then bounces to a restriction screen is worse than a brief absence.
-  if (workspaceRole !== 'owner' && canSeeFinancials !== true) {
-    groups = groups
-      .map((g) =>
-        g.id === 'gestao'
-          ? { ...g, items: g.items.filter((i) => i.id !== 'financeiro' && i.id !== 'contratos') }
-          : g,
-      )
-      .filter((g) => g.items.length > 0);
-  }
+  // Single permission filter for every module-backed nav item. Fails CLOSED
+  // on 'unknown' for EVERY gated id, not just the old financial pair
+  // (anti-flash: a nav item that appears then bounces to a
+  // restriction/redirect on click is worse than a brief absence during
+  // membership hydration — same trade-off `formatFinancialBRL` makes). This
+  // is a conscious choice, not an accident of `=== true`: the ROUTE itself
+  // (ProtectedRoute/routePermissions.ts) stays NEUTRAL on 'unknown' instead
+  // (renders children), so a user stuck in an error/unresolved state can
+  // still navigate to a page by typing its URL even while its nav link is
+  // hidden — the nav and the route are allowed to disagree here on purpose.
+  groups = groups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => {
+        const gate = NAV_MODULE[i.id];
+        return !gate || can(gate[0], gate[1]) === true;
+      }),
+    }))
+    .filter((g) => g.items.length > 0);
 
   // Hide feature-gated nav items when the flag is explicitly false, unless
   // the item opts into staying visible-but-locked.
@@ -330,16 +347,126 @@ export function getNavGroups(
   return groups;
 }
 
+/**
+ * A nav item's route is "active" for a pathname on an exact match or a
+ * child path, never on an unrelated route that merely shares a text prefix
+ * -- plain `pathname.startsWith(route)` marks '/analytics-fluxos' active for
+ * the '/analytics' (Instagram) item too, since the string '/analytics-fluxos'
+ * starts with '/analytics'. Requiring the boundary '/' after `route` rules
+ * that out while still matching real sub-routes like '/analytics/tiktok'.
+ */
+export function isNavRouteActive(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
 export function getMoreSheetGroups(
-  role: string,
   features: Record<string, boolean> | null,
-  canSeeFinancials: FinancialAccess,
   workspaceRole: 'owner' | 'admin' | 'agent' | null,
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
+  /** Ids already on the tab bar. Defaults to the old fixed bar. */
+  excludeIds: readonly string[] = PRIMARY_NAV_IDS,
 ): NavGroup[] {
-  return getNavGroups(role, features, canSeeFinancials, workspaceRole)
+  return getNavGroups(features, workspaceRole, can)
     .map((g) => ({
       ...g,
-      items: g.items.filter((i) => !PRIMARY_NAV_IDS.includes(i.id)),
+      items: g.items.filter((i) => !excludeIds.includes(i.id)),
     }))
     .filter((g) => g.items.length > 0);
+}
+
+/** One slot of the phone tab bar. `navId` is the nav-data item it stands for. */
+export interface PhoneTab {
+  navId: string;
+  route: string;
+  label: string;
+  labelKey: string;
+}
+
+const PHONE_TAB: Record<string, PhoneTab> = {
+  dashboard: { navId: 'dashboard', route: '/dashboard', label: 'Início', labelKey: 'nav.home' },
+  entregas: { navId: 'entregas', route: '/entregas', label: 'Entregas', labelKey: 'nav.entregas' },
+  // With feature_agenda on, /calendario IS the Agenda (CalendarioPage renders AgendaPagina).
+  calendario: {
+    navId: 'calendario',
+    route: '/calendario',
+    label: 'Agenda',
+    labelKey: 'nav.agenda',
+  },
+  mensagens: {
+    navId: 'mensagens',
+    route: '/mensagens',
+    label: 'Mensagens',
+    labelKey: 'nav.mensagens',
+  },
+  clientes: { navId: 'clientes', route: '/clientes', label: 'Clientes', labelKey: 'nav.clientes' },
+  analytics: {
+    navId: 'analytics',
+    route: '/analytics',
+    label: 'Analytics',
+    labelKey: 'nav.analytics',
+  },
+};
+
+/** Preferred tabs in bar order (D18). */
+const PHONE_PRIMARY_IDS = ['dashboard', 'entregas', 'calendario', 'mensagens'] as const;
+/** Fill a missing tab's slot, in this order. Otherwise they head the Mais sheet. */
+const PHONE_FALLBACK_IDS = ['clientes', 'analytics'] as const;
+export const PHONE_TAB_SLOTS = 4;
+
+export interface PhoneNav {
+  /** Up to four tabs; "Mais" is the fifth slot, always rendered by MobileNav. */
+  tabs: PhoneTab[];
+  /** Clientes / Analytics when they didn't make the bar, shown first in Mais. */
+  shortcuts: NavItem[];
+  /** Everything else for the Mais sheet, minus what is on the bar or in `shortcuts`. */
+  moreGroups: NavGroup[];
+}
+
+/**
+ * Phone tab bar (D18): Início, Entregas, Agenda, Mensagens, Mais.
+ *
+ * Availability comes from `getNavGroups`, the same permission and plan filter as the
+ * sidebar, so the bar can't offer a page the sidebar hides. Agenda additionally needs
+ * `agendaEnabled` (the workspace's `feature_agenda`): without it `/calendario` is the
+ * editorial calendar, which stays in Mais as "Calendário". This is deliberately NOT a
+ * `calendario` entry in NAV_FEATURE, which would hide that calendar on desktop too.
+ *
+ * A tab that isn't available gives its slot to Clientes, then Analytics, so the bar
+ * keeps five items whenever enough pages are available.
+ */
+export function getPhoneNav(
+  features: Record<string, boolean> | null,
+  workspaceRole: 'owner' | 'admin' | 'agent' | null,
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
+  { agendaEnabled }: { agendaEnabled: boolean },
+): PhoneNav {
+  const groups = getNavGroups(features, workspaceRole, can);
+  const usable = new Map<string, NavItem>();
+  for (const group of groups) {
+    for (const item of group.items) {
+      if (!item.locked && !item.disabled) usable.set(item.id, item);
+    }
+  }
+  const isAvailable = (id: string) => usable.has(id) && (id !== 'calendario' || agendaEnabled);
+
+  const fallbacks = PHONE_FALLBACK_IDS.filter((id) => usable.has(id));
+  const tabIds: string[] = [];
+  for (const id of PHONE_PRIMARY_IDS) {
+    if (isAvailable(id)) tabIds.push(id);
+    else if (fallbacks.length > 0) tabIds.push(fallbacks.shift()!);
+  }
+  // A missing tab with no fallback left just shrinks the bar; leftovers stay for Mais.
+  const tabs = tabIds.slice(0, PHONE_TAB_SLOTS).map((id) => PHONE_TAB[id]);
+  const onBar = new Set(tabs.map((t) => t.navId));
+  // Named as on the tab bar ("Analytics", not the sidebar's "Instagram" under an
+  // Analytics heading): in Mais they sit on their own, without that heading.
+  const shortcuts = PHONE_FALLBACK_IDS.filter((id) => usable.has(id) && !onBar.has(id)).map(
+    (id) => ({ ...usable.get(id)!, label: PHONE_TAB[id].label, labelKey: PHONE_TAB[id].labelKey }),
+  );
+  const exclude = [...onBar, ...shortcuts.map((s) => s.id)];
+  return {
+    tabs,
+    shortcuts,
+    moreGroups: getMoreSheetGroups(features, workspaceRole, can, exclude),
+  };
 }

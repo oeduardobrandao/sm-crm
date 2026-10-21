@@ -31,6 +31,9 @@ type FilterOp =
   | { op: "lte"; column: string; value: number }
   | { op: "in"; column: string; values: unknown[] };
 
+/** Postgres hosted default: an un-ranged select silently truncates here. */
+const DB_MAX_ROWS = 1000;
+
 function matchesRow(row: Row, filters: FilterOp[]): boolean {
   return filters.every((f) => {
     switch (f.op) {
@@ -60,6 +63,8 @@ type ErrorHook = (table: string, op: "select" | "update" | "delete", filters: Fi
 
 function makeSelectChain(table: string, rows: Row[], errorOn?: ErrorHook) {
   const filters: FilterOp[] = [];
+  const orders: Array<{ column: string; ascending: boolean }> = [];
+  let rangeSpec: { from: number; to: number } | null = null;
   // deno-lint-ignore no-explicit-any
   const chain: any = {
     eq(column: string, value: unknown) {
@@ -90,10 +95,35 @@ function makeSelectChain(table: string, rows: Row[], errorOn?: ErrorHook) {
       filters.push({ op: "in", column, values });
       return chain;
     },
+    order(column: string, options?: { ascending?: boolean }) {
+      orders.push({ column, ascending: options?.ascending ?? true });
+      return chain;
+    },
+    range(from: number, to: number) {
+      rangeSpec = { from, to };
+      return chain;
+    },
     then(onFulfilled: (v: { data: Row[] | null; error: DbError | null }) => unknown) {
       const err = errorOn?.(table, "select", filters) ?? null;
       if (err) return Promise.resolve(onFulfilled({ data: null, error: err }));
-      const data = rows.filter((r) => matchesRow(r, filters));
+      let data = rows.filter((r) => matchesRow(r, filters));
+      if (orders.length > 0) {
+        data = [...data].sort((a, b) => {
+          for (const o of orders) {
+            const av = a[o.column] as number | string;
+            const bv = b[o.column] as number | string;
+            if (av === bv) continue;
+            const cmp = av < bv ? -1 : 1;
+            return o.ascending ? cmp : -cmp;
+          }
+          return 0;
+        });
+      }
+      // Emulate hosted PostgREST's silent db-max-rows truncation: an
+      // un-ranged select never returns more than DB_MAX_ROWS, exactly like
+      // the real database this fake stands in for -- that's the behavior
+      // fetchAllRows's .range() paging exists to work around.
+      data = rangeSpec ? data.slice(rangeSpec.from, rangeSpec.to + 1) : data.slice(0, DB_MAX_ROWS);
       return Promise.resolve(onFulfilled({ data, error: null }));
     },
   };
@@ -134,6 +164,62 @@ interface Seed {
   workflows?: Row[];
   post_file_links?: Row[];
   files?: Row[];
+  post_processes?: Row[];
+  /** `{ message }` to make the express_cleanup_delete_avulso_drafts RPC error out. */
+  rpcError?: DbError;
+  /**
+   * Hook run right before the RPC emulation reads `tables`, so a test can
+   * mutate state "between the handler's pre-filter and the RPC's own delete"
+   * -- e.g. insert an in-flight `post_processes` row -- to reproduce the race
+   * the RPC itself is meant to close.
+   */
+  beforeRpc?: () => void;
+}
+
+/**
+ * Emulates `express_cleanup_delete_avulso_drafts` (migration
+ * 20260918000004): removes from `workflow_posts` every id in `p_ids` that is
+ * still `is_express`, `workflow_id IS NULL`, `status = 'rascunho'` and has no
+ * `ativo` row in `post_processes`, reading `tables` fresh at call time (not
+ * the ids the handler pre-filtered), and returns the deleted ids.
+ */
+function makeRpc(
+  tables: Record<string, Row[]>,
+  seed: Pick<Seed, "rpcError" | "beforeRpc">,
+  calls: Array<{ name: string; args: Record<string, unknown> }>,
+) {
+  return (name: string, args: Record<string, unknown>) => {
+    calls.push({ name, args });
+    seed.beforeRpc?.();
+    if (name !== "express_cleanup_delete_avulso_drafts") {
+      return Promise.resolve({ data: null, error: { message: "unknown rpc" } });
+    }
+    if (seed.rpcError) {
+      return Promise.resolve({ data: null, error: seed.rpcError });
+    }
+    const ids = (args.p_ids as number[] | undefined) ?? [];
+    const wfPosts = tables.workflow_posts;
+    const deleted: number[] = [];
+    for (let i = wfPosts.length - 1; i >= 0; i--) {
+      const row = wfPosts[i];
+      const id = row.id as number;
+      if (!ids.includes(id)) continue;
+      const isDeletableAvulsoDraft = row.is_express === true &&
+        (row.workflow_id === null || row.workflow_id === undefined) &&
+        row.status === "rascunho";
+      if (!isDeletableAvulsoDraft) continue;
+      // Migration 20260919000002 widened the spared states to `ativo` and
+      // `concluido`; only `encerrado` remains deletable.
+      const hasActiveProcess = tables.post_processes.some(
+        (p) => p.post_id === id && (p.estado === "ativo" || p.estado === "concluido"),
+      );
+      if (hasActiveProcess) continue;
+      deleted.push(id);
+      wfPosts.splice(i, 1);
+    }
+    deleted.sort((a, b) => a - b);
+    return Promise.resolve({ data: deleted, error: null });
+  };
 }
 
 function makeFakeDb(seed: Seed, errorOn?: ErrorHook) {
@@ -142,7 +228,9 @@ function makeFakeDb(seed: Seed, errorOn?: ErrorHook) {
     workflows: seed.workflows ?? [],
     post_file_links: seed.post_file_links ?? [],
     files: seed.files ?? [],
+    post_processes: seed.post_processes ?? [],
   };
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
   const db: ExpressPostCleanupDb = {
     from(table: string) {
@@ -167,9 +255,10 @@ function makeFakeDb(seed: Seed, errorOn?: ErrorHook) {
         },
       };
     },
+    rpc: makeRpc(tables, seed, rpcCalls),
   };
 
-  return { db, tables };
+  return { db, tables, rpcCalls };
 }
 
 const CUTOFF = "2026-08-28T00:00:00.000Z";
@@ -217,6 +306,39 @@ Deno.test("pass1: leaves a workflow alone when a post is still rascunho", async 
   const result = await runExpressPostCleanupCron(db, CUTOFF);
   assertEquals(result.concluded, 0);
   assertEquals(tables.workflows[0].status, "ativo");
+});
+
+Deno.test("pass1: paginates past db-max-rows and chunks the workflow id lookup, so tail workflows still get concluded", async () => {
+  // 600 workflows x 2 posts each = 1200 rows, past the fake's 1000-row
+  // db-max-rows cap -- fetchAllRows must page through .range() to see the
+  // tail. 600 candidate ids also exceeds chunk()'s default size of 500, so
+  // the workflows lookup must go out in 2 chunks: an errorOn hook fails any
+  // .in() call carrying more than 500 values, which would trip if the
+  // lookup were sent unchunked.
+  const workflowCount = 600;
+  const workflows: Row[] = [];
+  const workflow_posts: Row[] = [];
+  for (let i = 1; i <= workflowCount; i++) {
+    workflows.push({ id: i, titulo: `Post Express - Cliente ${i}`, status: "ativo", created_at: OLD });
+    workflow_posts.push(
+      { id: i * 10, workflow_id: i, is_express: true, status: "postado", created_at: OLD },
+      { id: i * 10 + 1, workflow_id: i, is_express: true, status: "postado", created_at: OLD },
+    );
+  }
+  const { db, tables } = makeFakeDb(
+    { workflows, workflow_posts },
+    (table, op, filters) =>
+      table === "workflows" && op === "select" &&
+        filters.some((f) => f.op === "in" && f.values.length > 500)
+        ? { message: "URI too long" }
+        : null,
+  );
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.concluded, workflowCount);
+  assert(
+    tables.workflows.every((w) => w.status === "concluido"),
+    "every workflow, including ones past row 1000, must be concluded",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -328,17 +450,15 @@ Deno.test("pass3: keeps a file the avulso draft shared with something else", asy
   assertEquals(tables.files.length, 1);
 });
 
-Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place when the bulk delete errors", async () => {
-  const { db, tables } = makeFakeDb(
-    {
-      workflow_posts: [
-        { id: 30, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
-      ],
-      post_file_links: [{ post_id: 30, file_id: 200 }],
-      files: [{ id: 200, reference_count: 0 }],
-    },
-    (table, op) => (table === "workflow_posts" && op === "delete" ? { message: "db down" } : null),
-  );
+Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place when the bulk delete RPC errors", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 30, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    post_file_links: [{ post_id: 30, file_id: 200 }],
+    files: [{ id: 200, reference_count: 0 }],
+    rpcError: { message: "db down" },
+  });
   const result = await runExpressPostCleanupCron(db, CUTOFF);
   assertEquals(result.avulso_deleted, 0);
   assertEquals(result.avulso_failed, 1);
@@ -349,6 +469,50 @@ Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place whe
   assertEquals(result.deleted, 0);
   assertEquals(result.skipped, 0);
   assertEquals(result.failed, 0);
+});
+
+Deno.test("pass3: chunks the post_processes, post_file_links and deleteOrphanFiles lookups past 500 ids, and every orphan file still gets deleted", async () => {
+  // 1200 abandoned avulso drafts, each with its own distinct orphan file --
+  // past the fake's 1000-row db-max-rows cap (so the draft scan itself must
+  // paginate) AND past chunk()'s default 500-id size (so every downstream
+  // .in() lookup keyed off this batch -- post_processes, post_file_links,
+  // and deleteOrphanFiles's own files select -- must split into chunks: 500
+  // + 500 + 200). An errorOn hook fails any select on those three tables
+  // whose "in" filter carries more than 500 values, which would trip if any
+  // of them were sent unchunked. Distinct 1:1 file ids (not shared/deduped)
+  // mean the only way all 1200 files end up deleted is if every chunk's
+  // results made it through the full pipeline -- deleteOrphanFiles's read,
+  // in particular, previously returned only its own single (truncated)
+  // page, silently orphaning the rest.
+  const draftCount = 1200;
+  const workflow_posts: Row[] = [];
+  const post_file_links: Row[] = [];
+  const files: Row[] = [];
+  for (let i = 1; i <= draftCount; i++) {
+    workflow_posts.push({
+      id: i,
+      workflow_id: null,
+      cliente_id: 5,
+      is_express: true,
+      status: "rascunho",
+      created_at: OLD,
+    });
+    post_file_links.push({ post_id: i, file_id: i });
+    files.push({ id: i, reference_count: 0 });
+  }
+  const { db, tables } = makeFakeDb(
+    { workflow_posts, post_file_links, files },
+    (table, op, filters) =>
+      (table === "post_processes" || table === "post_file_links" || table === "files") &&
+        op === "select" &&
+        filters.some((f) => f.op === "in" && f.values.length > 500)
+        ? { message: "URI too long" }
+        : null,
+  );
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, draftCount);
+  assertEquals(tables.workflow_posts.length, 0);
+  assertEquals(tables.files.length, 0, "all 1200 orphan file ids must reach deletion, none left behind");
 });
 
 Deno.test("pass3: leaves an avulso express draft younger than the cutoff untouched", async () => {
@@ -384,6 +548,86 @@ Deno.test("pass3: leaves a parented express draft untouched (workflow_id set, no
   assertEquals(result.avulso_deleted, 0);
   assertEquals(result.deleted, 0, "not title-prefixed, so pass 2 does not touch it either");
   assertEquals(tables.workflow_posts.length, 1);
+});
+
+Deno.test("pass 3 poupa rascunho express avulso com processo individual ativo", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 1, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+      { id: 2, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    post_processes: [{ id: 10, post_id: 2, estado: "ativo" }],
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 1);
+  assertEquals(result.avulso_skipped_with_process, 1);
+  assertEquals(tables.workflow_posts.map((p) => p.id), [2]);
+});
+
+Deno.test("pass3: poupa rascunho avulso cujo processo individual esta concluido (migration 20260919000002)", async () => {
+  // The handler's own pre-filter only checks estado === "ativo", so a
+  // `concluido` process does not spare the draft there -- it reaches the
+  // RPC as deletable. The RPC (migration 20260919000002) is authoritative
+  // and now spares `ativo` AND `concluido`, so this is a late spare: it
+  // counts in avulso_skipped_with_process, not avulso_deleted.
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 3, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    post_processes: [{ id: 11, post_id: 3, estado: "concluido" }],
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 0);
+  assertEquals(result.avulso_skipped_with_process, 1);
+  assertEquals(tables.workflow_posts.length, 1);
+});
+
+Deno.test("pass3: apaga rascunho avulso cujo processo individual esta encerrado", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 3, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    post_processes: [{ id: 11, post_id: 3, estado: "encerrado" }],
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 1);
+  assertEquals(result.avulso_skipped_with_process, 0);
+  assertEquals(tables.workflow_posts.length, 0);
+});
+
+Deno.test("pass 3 conta como poupado o rascunho que ganhou processo entre o filtro e o delete", async () => {
+  // The handler's own post_processes pre-filter sees no active process (the
+  // seed starts empty), so it hands the draft to the RPC as deletable. The
+  // race the RPC itself must close is reproduced with `beforeRpc`: right
+  // before the fake RPC reads `post_processes`, a process is inserted for
+  // this post -- as if post_processes_requires_avulso had committed a brand
+  // new individual process in the window between the handler's pre-filter
+  // and the RPC's own delete. The RPC must re-check and spare the post.
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 4, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    beforeRpc: () => {
+      tables.post_processes.push({ id: 12, post_id: 4, estado: "ativo" });
+    },
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 0);
+  assertEquals(result.avulso_skipped_with_process, 1);
+  assertEquals(tables.workflow_posts.length, 1, "post that gained a process must survive");
+});
+
+Deno.test("pass3: marca falha quando a RPC atomica erra", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 5, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    rpcError: { message: "boom" },
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 0);
+  assertEquals(result.avulso_failed, 1);
+  assertEquals(tables.workflow_posts.length, 1, "failed RPC must not remove the draft");
 });
 
 // ---------------------------------------------------------------------------
@@ -447,9 +691,10 @@ Deno.test("run: throws when the pass 1 candidate select fails", async () => {
     await runExpressPostCleanupCron(db, CUTOFF);
   } catch (e) {
     threw = true;
-    // The handler re-throws the PostgREST error object as-is (never wraps
-    // it), so the caught value is the `{ message }` shape, not a string.
-    assertEquals((e as DbError).message, "boom");
+    // Pass 1's primary select now goes through fetchAllRows, which wraps
+    // any page error in its own Error rather than rethrowing the PostgREST
+    // error object as-is -- it still carries the original message text.
+    assert((e as Error).message.includes("boom"));
   }
   assert(threw, "expected runExpressPostCleanupCron to throw");
 });
@@ -469,7 +714,8 @@ Deno.test("run: throws when the pass 3 draft select fails", async () => {
     await runExpressPostCleanupCron(db, CUTOFF);
   } catch (e) {
     threw = true;
-    assertEquals((e as DbError).message, "kaput");
+    // Same fetchAllRows wrapping as pass 1's error test above.
+    assert((e as Error).message.includes("kaput"));
   }
   assert(threw, "expected runExpressPostCleanupCron to throw");
 });

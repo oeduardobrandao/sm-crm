@@ -19,6 +19,7 @@ function api(overrides: Partial<GuideApi>): GuideApi {
     recordAutoOpen: vi.fn(),
     recordTrailCompleted: vi.fn(),
     isOpen: false,
+    autoOpen: 'no',
     currentPageId: null,
     latestClienteId: null,
     signalValues: {},

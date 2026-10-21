@@ -41,3 +41,16 @@ describe('buildEffectiveNavFeatures', () => {
     });
   });
 });
+
+describe('buildEffectiveNavFeatures with contacts', () => {
+  it('keeps automacoes visible when only contacts remain', () => {
+    expect(buildEffectiveNavFeatures({ feature_instagram_automation: false }, false, true)).toEqual(
+      { feature_instagram_automation: true },
+    );
+  });
+  it('stays hidden with neither', () => {
+    expect(
+      buildEffectiveNavFeatures({ feature_instagram_automation: false }, false, false),
+    ).toEqual({ feature_instagram_automation: false });
+  });
+});

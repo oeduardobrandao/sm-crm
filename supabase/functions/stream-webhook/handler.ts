@@ -5,6 +5,7 @@
 // message this handler already understood; only a genuine internal failure returns 5xx.
 
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import type { StreamVideoInfo } from "../_shared/stream.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = any;
@@ -12,11 +13,41 @@ type DbClient = any;
 export interface StreamWebhookDeps {
   createDb: () => DbClient;
   verifySignature: (body: string, header: string | null) => Promise<boolean>;
+  /** Authoritative playback details for a tutorial video (kb_videos) once Stream says ready. */
+  getStreamVideo: (uid: string) => Promise<StreamVideoInfo>;
 }
 
 interface StreamWebhookPayload {
   uid?: string;
   status?: { state?: string };
+}
+
+/** Patch for a pending kb_videos row, or null to leave it pending (refresh-kb-video in the Admin
+ * resolves it later). Playback fields come from the Stream API, not the webhook body, so the
+ * handler never depends on the delivery's shape; `ready` is never written without an HLS url. */
+async function kbVideoPatch(
+  deps: StreamWebhookDeps,
+  uid: string,
+  mapped: "ready" | "error",
+): Promise<Record<string, unknown> | null> {
+  if (mapped === "error") return { stream_status: "error", stream_upload_expires_at: null };
+  try {
+    const info = await deps.getStreamVideo(uid);
+    if (info.state !== "ready" || !info.hls) {
+      console.warn("[stream-webhook:kb-settle] not ready yet", uid, info.state);
+      return null;
+    }
+    return {
+      stream_status: "ready",
+      duration_seconds: info.duration,
+      hls_url: info.hls,
+      thumbnail_url: info.thumbnail,
+      stream_upload_expires_at: null,
+    };
+  } catch (err) {
+    console.error("[stream-webhook:kb-settle] stream lookup failed", uid, err);
+    return null;
+  }
 }
 
 export function createStreamWebhookHandler(deps: StreamWebhookDeps) {
@@ -57,6 +88,29 @@ export function createStreamWebhookHandler(deps: StreamWebhookDeps) {
         .eq("stream_uid", uid)
         .eq("stream_status", "pending");
       if (error) return internalServerError(json, "stream-webhook:settle", error);
+
+      // Tutoriais da Central de Ajuda. Uids do Stream são únicos na conta, então no máximo uma
+      // das duas tabelas casa. Mesma guarda monotônica (só sai de pending) que files.
+      const { data: kbRows, error: kbErr } = await svc
+        .from("kb_videos")
+        .select("id")
+        .eq("stream_uid", uid)
+        .eq("stream_status", "pending")
+        .limit(1);
+      if (kbErr) return internalServerError(json, "stream-webhook:kb-settle", kbErr);
+      const kbRow = ((kbRows ?? []) as Array<{ id: number }>)[0];
+      if (kbRow) {
+        const patch = await kbVideoPatch(deps, uid, mapped);
+        if (patch) {
+          const { error: updErr } = await svc
+            .from("kb_videos")
+            .update(patch)
+            .eq("id", kbRow.id)
+            .eq("stream_uid", uid)
+            .eq("stream_status", "pending");
+          if (updErr) return internalServerError(json, "stream-webhook:kb-settle", updErr);
+        }
+      }
     } catch (err) {
       return internalServerError(json, "stream-webhook:settle", err);
     }

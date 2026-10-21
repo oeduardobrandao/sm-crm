@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  ReactNode,
+} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { User } from '@supabase/supabase-js';
 import {
@@ -10,7 +18,24 @@ import {
 } from '../lib/supabase';
 import { getMyMembership, type MyMembership } from '../store/workspace';
 import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
+import {
+  computePermissionTransitions,
+  derivePermission,
+  type PermissionAction,
+  type PermissionCheck,
+  type PermissionModule,
+} from '../lib/permissions';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
+import { clearPopupSession } from '../hooks/popupSession';
+import { resetVidroLook } from '../lib/vidroLook';
+import {
+  clearCrispSessionCache,
+  readCrispSessionCache,
+  writeCrispSessionCache,
+} from '../lib/crispSession';
+import { getConsent } from '../lib/consent';
+import { useConsent } from '../lib/useConsent';
+import { purgeSupportStorage } from '../lib/legacyStorage';
 
 interface Profile {
   id: string;
@@ -37,6 +62,88 @@ export const FINANCIAL_QUERY_KEYS = [
   'dashboardStats',
 ];
 
+/**
+ * Query-cache keys to purge (downgrade) or invalidate (upgrade) per module on
+ * a live permission transition — the generalized, per-module counterpart of
+ * FINANCIAL_QUERY_KEYS above, which stays module-specific to `financeiro` and
+ * keeps covering the already-tested financial block untouched (see the
+ * comment on its own purge in applyMembership below).
+ *
+ * Keys are the real first-array-element query keys used across the CRM
+ * (verified with `grep -rn "queryKey: \['" apps/crm/src --include='*.ts*'`,
+ * not the placeholder list from the original task brief, which included keys
+ * that don't exist anywhere in the codebase — e.g. a literal `'workflow'` or
+ * `'posts'` key. TanStack Query's removeQueries/invalidateQueries match by
+ * exact positional equality of the leading key segments, so a key that is
+ * merely a *substring* of a real one (`'workflow'` vs. the real
+ * `'workflow-templates'`) never matches anything and would have been a
+ * silent no-op purge.
+ *
+ * Deliberately NOT exhaustive down to every parameterized per-item key in the
+ * app (e.g. every `workflow-posts-with-props` variant) — this is
+ * defense-in-depth over an in-memory cache for a tab that never refetches on
+ * its own, not the enforcement boundary (RLS + has_permission_for already
+ * deny the underlying read). Covers each module's primary/list-level
+ * queries, the same level of care FINANCIAL_QUERY_KEYS already applies to
+ * `financeiro`.
+ *
+ * `aprovacoes` and `configuracoes` are intentionally `[]`: `aprovacoes` has
+ * no CRM route mounted yet (see routePermissions.ts's own comment on the
+ * same module) and `configuracoes` never holds module-scoped list data of
+ * its own.
+ */
+export const MODULE_QUERY_KEYS: Record<PermissionModule, string[]> = {
+  financeiro: ['transacoes', 'dashboardStats'],
+  contratos: ['contratos'],
+  clientes: ['cliente', 'clientes', 'clientePosts', 'clienteDatas'],
+  equipe: ['membros', 'workspace-users', 'invites'],
+  leads: ['leads'],
+  entregas: [
+    'workflows',
+    'workflow-templates',
+    'workflow-grid',
+    'workflow-posts-with-props',
+    'workflow-posts-counts',
+    'active-posts',
+    'scheduled-posts',
+    'concluded-workflows',
+    'concluded-summaries',
+    'standalone-post',
+    'post-approvals',
+    'post-media',
+    'post-preview',
+    'post-targets',
+    'board-platforms',
+  ],
+  calendario: ['calendar-deadlines', 'allClienteDatas', 'agenda-ocorrencias'],
+  aprovacoes: [],
+  arquivos: ['folder-contents', 'folder-tree', 'folder-info'],
+  ideias: ['ideias', 'hub-ideias-all', 'ideia-images'],
+  tarefas: ['tarefas', 'subtarefas', 'tarefa-tags'],
+  analytics: [
+    'portfolio-summary',
+    'analytics-overview',
+    'analytics-history',
+    'analytics-posts',
+    'analytics-times',
+    'analytics-reports',
+    'stories-analytics',
+    'report-docs',
+    'report-templates',
+  ],
+  automacoes: [
+    'instagram-automations',
+    'instagram-automations-count',
+    'instagram-automation-sends',
+    'ig-automation-ready-account',
+    'automation-production-covers',
+    'instagram-contacts',
+    'instagram-contact-counts',
+    'instagram-contacts-count',
+  ],
+  configuracoes: [],
+};
+
 interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
@@ -60,6 +167,13 @@ interface AuthContextValue {
    */
   membershipResolved: boolean | 'error';
   canSeeFinancials: FinancialAccess;
+  /**
+   * Permission check for the active workspace membership. `'unknown'` while
+   * membership hasn't resolved yet (same tri-state reasoning as
+   * `canSeeFinancials`) — mirrors `derivePermission` from `lib/permissions.ts`
+   * 1:1, never re-implements the role/preset semantics here.
+   */
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
   loading: boolean;
   refetchProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -74,13 +188,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [workspaceRole, setWorkspaceRole] = useState<'owner' | 'admin' | 'agent' | null>(null);
   const [membershipResolved, setMembershipResolved] = useState<boolean | 'error'>(false);
   const [canSeeFinancials, setCanSeeFinancials] = useState<FinancialAccess>('unknown');
+  /**
+   * Full membership row (role + can_see_financials + role_id + permissions)
+   * for the active workspace. `workspaceRole`/`canSeeFinancials` above are
+   * derived from this same source and reset together with it everywhere —
+   * this is purely additive state powering `can()`, not a second source of
+   * truth. `null` while unresolved, same as `workspaceRole`.
+   */
+  const [membership, setMembership] = useState<MyMembership | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);
   /**
-   * Counts CRISP IDENTITY RESETS only — bumped at exactly the two places that
-   * push `['do', 'session:reset']` (the user-change branch of
-   * onAuthStateChange, and signOut) and nowhere else.
+   * Counts CRISP IDENTITY RESETS only. It is bumped at exactly three places: the user-change
+   * branch of onAuthStateChange, signOut, and the consent-revoke effect (support consent
+   * withdrawn). Each bump goes with a `['do', 'session:reset']` push for an OUTGOING identity.
+   *
+   * There are FIVE session:reset push sites in total: those three, the Session Continuity
+   * rebind inside the identify effect, and the mid-download teardown in lib/crispLoader.ts.
+   * The last two deliberately do NOT bump this counter. The rebind is a same-identity
+   * self-correction (binding the widget to the current user's own token), not an identity
+   * going away, so there is no in-flight response for a stale identity to fence off. Bumping
+   * it there would make the effect's own post-await guard reject the very pushes the rebind is
+   * about to make. The loader's teardown only runs after the consent-revoke effect above has
+   * already bumped for that same revoke. Do not "fix" either into bumping.
    *
    * Deliberately NOT `authGeneration`, which the Crisp identify effect used to
    * compare against. `authGeneration` moves on EVERY onAuthStateChange event —
@@ -98,6 +229,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const profileRequestId = useRef(0);
   const activeUserId = useRef<string | null>(null);
   const userId = user?.id;
+
+  // Crisp only runs with the visitor's support consent (cookie-consent spec). Read reactively so
+  // a grant through the dialog re-runs the identify effects below without a reload.
+  const supportConsent = useConsent()?.support === true;
+  const prevSupportConsent = useRef(supportConsent);
+
+  // Revoke: mirror signOut's Crisp teardown, in the same order and for the same reason. The
+  // generation bump comes first so a crisp-identity response already in flight can never
+  // re-identify the reset session; the token/cache go next (crisp_session_v1 is Mesaas-owned,
+  // so a leftover would make the `matches` check in the identify effect skip the rebind on a
+  // later re-grant); only then the widget reset and hide. The widget script cannot be unloaded,
+  // so this is best effort until the next reload, where consentEffects purges what is left.
+  useEffect(() => {
+    const revoked = prevSupportConsent.current && !supportConsent;
+    prevSupportConsent.current = supportConsent;
+    if (!revoked) return;
+    crispResetGeneration.current += 1;
+    window.CRISP_TOKEN_ID = null;
+    clearCrispSessionCache();
+    try {
+      window.$crisp?.push(['do', 'session:reset']);
+      window.$crisp?.push(['do', 'chat:hide']);
+    } catch {
+      // Never let a support-tooling nicety break auth.
+    }
+    purgeSupportStorage();
+  }, [supportConsent]);
 
   useEffect(() => {
     let active = true;
@@ -135,8 +293,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // rendering with A's profile/canSeeFinancials/query cache until B's
       // membership resolved: a brief cross-account exposure. Match `signOut`
       // below (clearProfileCache, all four resets, queryClient.clear()).
-      const userChanged = activeUserId.current !== nextUserId;
+      const previousUserId = activeUserId.current;
+      const userChanged = previousUserId !== nextUserId;
       if (userChanged) profileRequestId.current += 1;
+      // The Vidro attribute belongs to the outgoing user. An in-place change (another tab signing
+      // in or out) never runs signOut(), and AppLayout re-seeds useVidro from the attribute, so drop
+      // it here. Not on the first session (previousUserId null): that is the pre-paint's own user.
+      if (userChanged && previousUserId !== null) resetVidroLook();
       activeUserId.current = nextUserId;
       setUser(nextUser);
       setSessionReady(true);
@@ -145,6 +308,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setWorkspaceRole(null);
         setCanSeeFinancials('unknown');
+        setMembership(null);
         setMembershipResolved(false);
         // Without this, posthog-js keeps A's distinct_id: it never switches
         // identity on a second identify() call without an explicit reset()
@@ -162,12 +326,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // try, so an in-flight crisp-identity response for the OUTGOING
         // identity can never land after this reset (see the identify effect).
         crispResetGeneration.current += 1;
+        // Session Continuity: B must not inherit A's token binding either.
+        // Immediately before the reset push is safe HERE (unlike signOut,
+        // which has to clear before its await): this handler runs
+        // synchronously start to finish.
+        window.CRISP_TOKEN_ID = null;
+        clearCrispSessionCache();
         try {
           window.$crisp?.push(['do', 'session:reset']);
         } catch {
           // Never let a support-tooling nicety break auth.
         }
         queryClient.clear();
+        // Same shared-machine reasoning as resetAnalytics()/Crisp above: B
+        // must not inherit A's popup shown/skipped/closed state
+        // (sessionStorage, per-tab). Mirrors `signOut` below.
+        clearPopupSession();
         // A non-null nextUser still has hydration ahead of it (the
         // profile-fetch effect below, keyed on userId, takes over `loading`
         // from here). Raising it back to true -- rather than leaving it at
@@ -203,6 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setWorkspaceRole(null);
       setMembershipResolved(false);
       setCanSeeFinancials('unknown');
+      setMembership(null);
       setLoading(false);
       return;
     }
@@ -232,10 +407,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Joins the existing guarded hydration flow so `loading` covers it too.
         // On failure resolve to 'unknown', NEVER to a boolean.
         try {
-          const membership = await getMyMembership();
+          const membershipRow = await getMyMembership();
           if (!active || profileRequestId.current !== requestId) return;
-          setWorkspaceRole(membership?.role ?? null);
-          setCanSeeFinancials(deriveFinancialAccess(membership));
+          setWorkspaceRole(membershipRow?.role ?? null);
+          setCanSeeFinancials(deriveFinancialAccess(membershipRow));
+          setMembership(membershipRow);
           // The lookup ran to completion -- `membership === null` here means
           // it genuinely found no row, not that it failed. Either way this
           // is a real, resolved answer about membership.
@@ -244,6 +420,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!active || profileRequestId.current !== requestId) return;
           setWorkspaceRole(null);
           setCanSeeFinancials('unknown');
+          setMembership(null);
           // The lookup THREW (network/RLS blip) -- membership was never
           // actually determined. Must stay distinguishable from a genuine
           // "no row found" (`true`, above) so callers don't tell a real
@@ -268,6 +445,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [sessionReady, userId]);
+
+  // Latest known display name, for the Session Continuity rebind inside the
+  // identify effect below. That effect is keyed on [userId, user?.email] on
+  // purpose (a name change must not re-invoke crisp-identity), so it cannot
+  // read `profile?.nome` from its own closure without going stale: the
+  // profile usually resolves AFTER the effect has started. A ref mirror gives
+  // the rebind whatever name is known at push time, if any. Same
+  // backstop-mirror pattern as canSeeFinancialsRef / membershipRef below.
+  const profileNomeRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    profileNomeRef.current = profile?.nome;
+  }, [profile?.nome]);
 
   // Crisp identification, split out from the profile-hydration effect above
   // on purpose: that effect is keyed on [sessionReady, userId] so an email or
@@ -309,14 +498,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // TOKEN_REFRESHED arriving mid-invoke made this guard drop a valid push and,
   // because the deps below do not change on a refresh, left the user
   // unidentified in Crisp for the entire mount.
+  //
+  // Consent: this effect is inert without support consent (no crisp-identity invoke, no pushes,
+  // no cache writes) and re-runs on a grant. The post-await getConsent() check covers a revoke
+  // that lands mid-flight in addition to the generation guard.
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !supportConsent) return;
     let active = true;
     const initialCrispResetGeneration = crispResetGeneration.current;
 
     (async () => {
       if (!user?.email) return;
       let signature: string | undefined;
+      let crispToken: string | undefined;
       try {
         // Explicit timeout: browser fetch has no default one, and
         // functions-js resolves rather than throws on genuine errors -- but
@@ -326,7 +520,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // exists for. This repo has been bitten before by unbounded I/O in
         // state-setting handlers (R2 presign) -- same fix here.
         const { data } = await supabase.functions.invoke('crisp-identity', { timeout: 5000 });
-        signature = (data as { signature?: string } | null)?.signature;
+        const payload = data as { signature?: string; crispToken?: unknown } | null;
+        signature = payload?.signature;
+        // Absent whenever the function's best-effort upsert failed (or on
+        // any transport failure). Treated below as "nothing to reconcile",
+        // never as a signal to tear an existing binding down.
+        crispToken =
+          typeof payload?.crispToken === 'string' && payload.crispToken
+            ? payload.crispToken
+            : undefined;
       } catch {
         // Signing is best-effort. A failure means the session shows as
         // Unverified in the inbox, which is the pre-existing behaviour and is
@@ -336,7 +538,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // unmount race, `crispResetGeneration` closes the session:reset race
       // (see the comment above this effect) that `active` cannot, because it
       // is only cleared asynchronously by React's own cleanup.
-      if (!active || crispResetGeneration.current !== initialCrispResetGeneration) return;
+      if (
+        !active ||
+        crispResetGeneration.current !== initialCrispResetGeneration ||
+        getConsent()?.support !== true
+      ) {
+        return;
+      }
+
+      // Session Continuity reconciliation. Placed AFTER the guard above on
+      // purpose: a write before it could let a response for an already
+      // signed-out identity bind the NEXT person on a shared machine to the
+      // outgoing user's token, and that binding persists across reloads.
+      //
+      //   token absent  -> nothing continuity-related happens (not a
+      //                    mismatch, not a clear); the identity push below
+      //                    proceeds exactly as before.
+      //   token matches the cached { userId, token } for THIS user
+      //                 -> no-op: Crisp's own cookie already resumes the
+      //                    bound session across reloads (verified against
+      //                    the production widget).
+      //   otherwise     -> live rebind: set CRISP_TOKEN_ID, reset so the
+      //                    widget re-reads it, re-establish identity on the
+      //                    fresh session below, then record the pair.
+      //
+      // The rebind's session:reset deliberately does NOT bump
+      // crispResetGeneration; see that ref's declaration.
+      let reboundTo: string | null = null;
+      if (crispToken) {
+        const cached = readCrispSessionCache();
+        const matches = cached !== null && cached.userId === userId && cached.token === crispToken;
+        if (!matches) {
+          reboundTo = crispToken;
+          window.CRISP_TOKEN_ID = crispToken;
+          try {
+            window.$crisp?.push(['do', 'session:reset']);
+          } catch {
+            // Never let a support-tooling nicety break auth.
+          }
+        }
+      }
 
       try {
         // Second element is the identity signature. Crisp marks the session
@@ -349,15 +590,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Never let a support-tooling nicety break auth.
       }
+
+      if (reboundTo) {
+        // A reset starts a fresh local session that has forgotten every trait
+        // set on the prior one. user:email was just re-pushed above; the
+        // nickname has to be re-established here too, because the separate
+        // nickname effect is keyed on [userId, profile?.nome], which a rebind
+        // alone never changes, so it would not re-fire on its own.
+        const nome = profileNomeRef.current;
+        if (nome) {
+          try {
+            window.$crisp?.push(['set', 'user:nickname', [nome]]);
+          } catch {
+            // Never let a support-tooling nicety break auth.
+          }
+        }
+        writeCrispSessionCache(userId, reboundTo);
+      }
     })();
 
     return () => {
       active = false;
     };
-  }, [userId, user?.email]);
+  }, [userId, user?.email, supportConsent]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !supportConsent) return;
     if (profile?.nome) {
       try {
         window.$crisp?.push(['set', 'user:nickname', [profile.nome]]);
@@ -365,7 +623,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Never let a support-tooling nicety break auth.
       }
     }
-  }, [userId, profile?.nome]);
+  }, [userId, profile?.nome, supportConsent]);
 
   // Backstop mirror: keeps the ref in sync with every OTHER setCanSeeFinancials
   // call site (the userChanged reset, both branches of the hydration effect,
@@ -381,6 +639,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     canSeeFinancialsRef.current = canSeeFinancials;
   }, [canSeeFinancials]);
+
+  // Same backstop-mirror pattern as canSeeFinancialsRef immediately above,
+  // for the same reason: applyMembership below (the realtime handler) needs
+  // to compare the INCOMING payload's role_id against the membership this
+  // context already has, and it needs that comparison to be correct even
+  // when two applyMembership calls land in the same commit (no render, and
+  // so no chance for this passive effect to run, in between them) -- see
+  // applyMembership's own comment for exactly that race. Every other
+  // setMembership call site (the userChanged reset, both branches of the
+  // hydration effect, fetchProfile's no-session reset, and signOut) sets
+  // React state directly and never goes through applyMembership, so nothing
+  // else keeps this ref current for those -- this passive effect is what
+  // catches up on the next render.
+  const membershipRef = useRef<MyMembership | null>(null);
+  useEffect(() => {
+    membershipRef.current = membership;
+  }, [membership]);
 
   // Live revocation.
   //
@@ -402,10 +677,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const workspaceId = profile?.conta_id;
     if (!userId || !workspaceId) return;
 
-    const applyMembership = (
-      next: { workspace_id?: string; role?: string; can_see_financials?: boolean } | null,
-    ) => {
-      setWorkspaceRole(next ? ((next.role as 'owner' | 'admin' | 'agent') ?? null) : null);
+    // Ordering + teardown guard for every getMyMembership() round trip this
+    // effect instance starts (the channel's role_id-transition refetch below
+    // AND the 60s poll). Bumped before each such call, and the value at call
+    // time is captured by fetchAndApplyMembership()'s closure; its `.then`
+    // only calls applyMembership if the captured value still matches when
+    // the request resolves. Closes two races neither getMyMembership() nor
+    // applyMembership() can see on their own:
+    //  1. Ordering: two refetches can be in flight at once (e.g. a role_id
+    //     transition immediately followed by another one, or a channel
+    //     refetch racing the 60s poll) and resolve out of order over the
+    //     network — without this, an OLDER response landing AFTER a NEWER
+    //     one would silently overwrite the correct, more recent state with
+    //     stale data.
+    //  2. Teardown: bumped again in this effect's own cleanup below, so a
+    //     refetch still in flight when the effect tears down (workspace
+    //     switch, sign-out, unmount) can never reach applyMembership
+    //     afterwards. Without this, a late resolution to `null` (e.g. the
+    //     user was already removed from the OLD workspace right as they
+    //     switched away from it) would fake a "genuinely removed" state for
+    //     whatever identity/workspace the NEXT effect run is now tracking.
+    // A plain closure-scoped counter, not a component-level useRef: its
+    // lifetime is exactly this effect instance's, same as `channel`/`poll`
+    // below, so it needs no separate reset logic — a fresh one is created,
+    // and the old one stops mattering, every time this effect re-runs.
+    let membershipFetchSeq = 0;
+
+    const applyMembership = (next: MyMembership | null) => {
+      // Captured before ANY state/ref mutation below (including
+      // `membershipRef.current = next` a few lines down) — feeds the
+      // generalized per-module purge at the bottom of this function via
+      // computePermissionTransitions(previousMembership, next). Same
+      // read-before-overwrite discipline as `canSeeFinancialsRef` below, and
+      // for the identical reason: two applyMembership calls can land
+      // back-to-back with no render in between (see that block's comment),
+      // so this must be the last value THIS handler itself applied, never a
+      // lagging render-committed one.
+      const previousMembership = membershipRef.current;
+
+      setWorkspaceRole(next?.role ?? null);
       // Both callers of applyMembership (the realtime UPDATE payload and the
       // poll's getMyMembership() result) only ever invoke it with a genuine,
       // resolved answer -- the poll's own `.catch(() => {})` below swallows
@@ -419,8 +729,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // exactly what a deletion resolves to via getMyMembership() — derives
       // to 'unknown' here too: it masks financial values and fails the route
       // guard neutral instead of keeping a stale role/grant alive.
-      const nowAllowed = deriveFinancialAccess(next as MyMembership | null);
+      const nowAllowed = deriveFinancialAccess(next);
       setCanSeeFinancials(nowAllowed);
+      setMembership(next);
+      // Mirrors canSeeFinancialsRef's own synchronous assignment just below —
+      // the channel handler's role_id comparison (see its comment) needs
+      // membershipRef.current to already reflect THIS call, not last render's
+      // value, the moment the next payload arrives.
+      membershipRef.current = next;
 
       // Read the ref BEFORE overwriting it, then overwrite it synchronously
       // (not via the passive mirror effect above). The ref must lead the
@@ -494,6 +810,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       }
+
+      // Generalized, per-module counterpart of the financial-only block just
+      // above — that block stays exactly as-is (it purges a broader,
+      // hand-picked key set for a subtly different signal: financial columns
+      // masked INSIDE clientes/membros rows, not just standalone
+      // financeiro/contratos data) and keeps covering the scenarios already
+      // tested for it. This one is additive: it fires for EVERY
+      // PermissionModule, financeiro/contratos included, so a transition on
+      // ANY module (not only the financial one) purges or invalidates that
+      // module's own query-cache keys too. Running both for financeiro/
+      // contratos is intentional and harmless — removeQueries/
+      // invalidateQueries are idempotent for a key with no matching queries.
+      //
+      // Uses `previousMembership`, captured at the very top of this function
+      // BEFORE `membershipRef.current` was overwritten a few lines up — the
+      // exact same back-to-back-calls-in-one-commit race the ref reads above
+      // exist to close (see this function's opening comment).
+      const { downgraded, upgraded } = computePermissionTransitions(previousMembership, next);
+      for (const module of downgraded) {
+        for (const key of MODULE_QUERY_KEYS[module]) {
+          queryClient.removeQueries({ queryKey: [key] });
+        }
+      }
+      for (const module of upgraded) {
+        for (const key of MODULE_QUERY_KEYS[module]) {
+          queryClient.invalidateQueries({ queryKey: [key] });
+        }
+      }
+    };
+
+    // Shared by both getMyMembership() call sites below (the channel's
+    // role_id-transition refetch and the 60s poll) so the ordering/teardown
+    // guard above is implemented exactly once, not duplicated and liable to
+    // drift between the two.
+    const fetchAndApplyMembership = () => {
+      const seq = ++membershipFetchSeq;
+      void getMyMembership()
+        .then((next) => {
+          // Stale (superseded by a later fetch) or this effect instance has
+          // already torn down (see the cleanup below) — either way, dropping
+          // silently is correct: a fresher call already applied the current
+          // truth, or there is no current subscription left to apply it to.
+          if (seq !== membershipFetchSeq) return;
+          applyMembership(next);
+        })
+        .catch(() => {});
     };
 
     // wm_select_same_workspace (migration 20260612120000) lets this user read
@@ -528,9 +890,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             workspace_id?: string;
             role?: string;
             can_see_financials?: boolean;
+            role_id?: string | null;
           };
           if (row.workspace_id !== workspaceId) return;
-          applyMembership(row);
+          // The realtime UPDATE payload is the raw workspace_members row — it
+          // never carries the joined workspace_roles.permissions the way
+          // getMyMembership() does. Applying it directly is only correct for
+          // a member whose custom-role assignment did NOT just change
+          // (role_id null before and after, the plain legacy path). A row
+          // that now points at a custom role, or that just stopped pointing
+          // at one, needs the full embed to know its `permissions` — re-fetch
+          // through getMyMembership() rather than guess at that here.
+          if (row.role_id != null || row.role_id !== (membershipRef.current?.role_id ?? null)) {
+            fetchAndApplyMembership();
+          } else {
+            // Bump the shared seq FIRST: this direct apply never goes through
+            // fetchAndApplyMembership(), so without this an OLDER refetch the
+            // wr: channel (or the 60s poll) already had in flight would still
+            // see its captured `seq === membershipFetchSeq` when it resolves
+            // afterwards, and overwrite this newer, already-applied raw row
+            // with its stale result.
+            membershipFetchSeq += 1;
+            applyMembership({ ...row, role_id: null, permissions: null } as MyMembership);
+          }
+        },
+      )
+      .subscribe();
+
+    // Companion subscription: an owner/admin editing a CUSTOM ROLE's
+    // `permissions` (Configurações → Papéis) changes what every member
+    // assigned to that role can do, but writes NO row in workspace_members —
+    // the channel above, filtered on `workspace_members`, never fires for it.
+    // Without this, a role edit would sit invisible until the 60s poll (the
+    // one below) happens to catch it.
+    //
+    // Filtered on `conta_id=eq.${workspaceId}` (not the edited role's id,
+    // which this client doesn't know ahead of time) — any role edit in the
+    // workspace triggers a refetch. Routed through fetchAndApplyMembership(),
+    // never applied directly from the payload: this table's row IS
+    // `workspace_roles`, not this member's `workspace_members` row, so there
+    // is no "raw row" to apply here even for the plain case — only
+    // getMyMembership()'s embed can say whether THIS member's `role_id`
+    // actually points at the role that just changed. An edit to a role this
+    // member does NOT hold produces a harmless refetch that resolves to the
+    // same membership (computePermissionTransitions sees no transition,
+    // financeiro's own ref comparison sees no change either) — the seq guard
+    // above (shared with the wm: channel and the poll) still applies here, so
+    // an in-flight refetch from this channel can never race the others out of
+    // order or survive this effect's teardown.
+    const rolesChannel = supabase
+      .channel(`wr:${userId}:${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workspace_roles',
+          filter: `conta_id=eq.${workspaceId}`,
+        },
+        () => {
+          fetchAndApplyMembership();
         },
       )
       .subscribe();
@@ -544,14 +963,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // now lets that `null` flow through instead of early-returning — see its
     // comment for what that derives to.
     const poll = setInterval(() => {
-      void getMyMembership()
-        .then(applyMembership)
-        .catch(() => {});
+      fetchAndApplyMembership();
     }, 60_000);
 
     return () => {
+      // Bumped BEFORE clearInterval/removeChannel below, not after: it only
+      // needs to happen before this closure is torn down, and doing it first
+      // makes the invalidation unconditional on cleanup even if a future
+      // edit made either of the lines below throw. Any getMyMembership()
+      // call fetchAndApplyMembership() started that is still in flight now
+      // has a `seq` that can never match `membershipFetchSeq` again, so its
+      // `.then` drops the result instead of calling applyMembership() after
+      // this effect (and whatever workspace/identity it was tracking) is
+      // gone.
+      membershipFetchSeq += 1;
       clearInterval(poll);
       void supabase.removeChannel(channel);
+      void supabase.removeChannel(rolesChannel);
     };
   }, [userId, profile?.conta_id, queryClient]);
 
@@ -562,6 +990,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setWorkspaceRole(null);
       setMembershipResolved(false);
       setCanSeeFinancials('unknown');
+      // Mirrors workspaceRole/canSeeFinancials above -- this is a 5th
+      // no-session reset site beyond the four the rest of this file's
+      // comments call out (userChanged, the hydration effect's own
+      // no-userId branch, its getMyMembership() catch, and signOut).
+      // Leaving it out would let a stale membership answer survive a
+      // refetchProfile() call made with no active session, so `can()`
+      // and canSeeFinancials/workspaceRole could disagree about whether
+      // the caller has ANY membership at all.
+      setMembership(null);
       setLoading(false);
       return;
     }
@@ -585,26 +1022,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     authGeneration.current += 1;
-    // Paired with the `['do', 'session:reset']` push below, but bumped HERE,
-    // before the first await: an in-flight crisp-identity response for the
-    // outgoing user can resolve during `await supabaseSignOut()`, so the
-    // counter has to have moved already for the identify effect's post-await
-    // guard to see it. Same reasoning as authGeneration on the line above.
+    // Paired with the `['do', 'session:reset']` push a few lines below, but
+    // bumped HERE, before the first await: an in-flight crisp-identity
+    // response for the outgoing user can resolve during `await
+    // supabaseSignOut()`, so the counter has to have moved already for the
+    // identify effect's post-await guard to see it. Same reasoning as
+    // authGeneration on the line above.
     crispResetGeneration.current += 1;
-    profileRequestId.current += 1;
-    await supabaseSignOut();
-    // Prevent the next user on a shared machine from being merged into this identity.
-    resetAnalytics();
-    // Same shared-machine reasoning as resetAnalytics() above, but for Crisp:
-    // without this, the next person on this browser inherits the outgoing
-    // user's identified Crisp contact (their email/nickname) and their
-    // support messages land on it. Guarded because a support-tooling failure
-    // must never break sign-out, a security-relevant path.
+    // Session Continuity teardown, synchronously and BEFORE the await below
+    // -- including the reset push ITSELF, not just the local clears (an
+    // earlier revision of this code left the push after the await, matching
+    // this file's older, pre-existing placement for the identity-verification
+    // reset -- an external review caught that this doesn't go far enough: if
+    // `supabaseSignOut()` rejects or hangs, nothing after it ever runs, so a
+    // push placed there would leave Crisp's own cookie-persisted session
+    // bound to the outgoing user's token AND identified email indefinitely,
+    // and the next person on a shared machine would see it, unhidden, on
+    // /login). Moving the push earlier costs nothing: worst case on a
+    // signOut() failure is an unnecessary reset while still logged in, which
+    // self-heals the next time this effect re-runs. Guarded because a
+    // support-tooling failure must never break sign-out, a security-relevant
+    // path.
+    window.CRISP_TOKEN_ID = null;
+    clearCrispSessionCache();
     try {
       window.$crisp?.push(['do', 'session:reset']);
     } catch {
       // Never let a support-tooling nicety break auth.
     }
+    profileRequestId.current += 1;
+    await supabaseSignOut();
+    // Prevent the next user on a shared machine from being merged into this identity.
+    resetAnalytics();
     clearProfileCache();
     activeUserId.current = null;
     setUser(null);
@@ -613,11 +1062,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setWorkspaceRole(null);
     setMembershipResolved(false);
     setCanSeeFinancials('unknown');
+    setMembership(null);
     setLoading(false);
     // Drop all cached per-user data (entitlements, notifications, …) so the next
     // account that logs in never sees the previous user's plan/limits.
     queryClient.clear();
+    // Same shared-machine reasoning: the next user in this tab must not inherit
+    // this user's popup shown/skipped/closed state (sessionStorage, per-tab).
+    clearPopupSession();
   };
+
+  const can = useCallback(
+    (module: PermissionModule, action: PermissionAction = 'ver') =>
+      derivePermission(membership, module, action),
+    [membership],
+  );
 
   return (
     <AuthContext.Provider
@@ -628,6 +1087,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         workspaceRole,
         membershipResolved,
         canSeeFinancials,
+        can,
         loading,
         refetchProfile: fetchProfile,
         signOut,

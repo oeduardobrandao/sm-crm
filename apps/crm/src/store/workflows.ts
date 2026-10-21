@@ -1,5 +1,8 @@
 import { supabase, getUserId, getContaId } from './core';
-import { resetApprovedPostsForNextCycle } from './posts';
+import { getWorkflowPostsCounts, resetApprovedPostsForNextCycle } from './posts';
+import { fetchAllPaged, fetchAllPagedByIds } from './paging';
+import { toLocalISODate } from '../utils/postDate';
+import type { PlatformId } from '@mesaas/platforms';
 
 // =============================================
 // WORKFLOW TEMPLATES
@@ -19,6 +22,7 @@ export interface WorkflowTemplate {
   nome: string;
   etapas: WorkflowTemplateEtapa[];
   modo_prazo?: 'padrao' | 'data_fixa' | 'data_entrega';
+  plataformas?: PlatformId[];
   created_at?: string;
 }
 
@@ -45,39 +49,57 @@ export async function addWorkflowTemplate(
   return data;
 }
 
-export async function updateWorkflowTemplate(
-  id: number,
-  t: Partial<Omit<WorkflowTemplate, 'id' | 'user_id' | 'conta_id'>>,
-): Promise<WorkflowTemplate> {
-  const { data, error } = await supabase
-    .from('workflow_templates')
-    .update(t)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
 export async function removeWorkflowTemplate(id: number): Promise<void> {
   const { error } = await supabase.from('workflow_templates').delete().eq('id', id);
   if (error) throw error;
 }
 
+const TEMPLATE_SAVE_ERRORS: Record<string, string> = {
+  template_invalid:
+    'Revise as etapas do template: cada etapa precisa de nome e prazo inteiro entre 0 e 999.',
+  invalid_responsavel: 'Um dos responsáveis não faz mais parte da equipe.',
+  template_not_found: 'Template não encontrado.',
+};
+
+export function mapTemplateSaveError(message: string): string {
+  for (const [code, friendly] of Object.entries(TEMPLATE_SAVE_ERRORS)) {
+    if (message.includes(code)) return friendly;
+  }
+  return 'Erro ao salvar template.';
+}
+
 /**
- * Propagate template step changes to `pendente`/`ativo` workflow_etapas of active workflows
- * using this template, and backfill (as `pendente`) any template step whose `ordem` has no
- * workflow_etapas row yet — appending a new step to a template reaches workflows created
- * before the edit. Server-side now — see `propagate_template_to_workflows` in
- * supabase/migrations/20260828000010_propagate_template_backfill_new_steps.sql for the full
- * behavioral spec (it reads the template's `etapas` jsonb directly, so the caller no longer
- * passes it).
+ * Saves a template and propagates it to active fluxos in one transaction via the
+ * `update_workflow_template` RPC (supabase/migrations/20260925130002_template_propagation_preserve_overrides.sql).
+ * Per field, a fluxo etapa only follows the template when its value still matches the
+ * template's previous value; values customized on the fluxo are kept. Steps the fluxo
+ * doesn't have yet are appended as `pendente`.
  */
-export async function propagateTemplateToWorkflows(templateId: number): Promise<void> {
-  const { error } = await supabase.rpc('propagate_template_to_workflows', {
-    p_template_id: templateId,
+export async function saveWorkflowTemplate(
+  id: number,
+  t: {
+    nome: string;
+    etapas: WorkflowTemplateEtapa[];
+    modo_prazo: 'padrao' | 'data_fixa' | 'data_entrega';
+    plataformas: PlatformId[];
+  },
+): Promise<void> {
+  const { error } = await supabase.rpc('update_workflow_template', {
+    p_template_id: id,
+    p_nome: t.nome,
+    p_etapas: t.etapas,
+    p_modo_prazo: t.modo_prazo,
   });
-  if (error) throw error;
+  if (error) throw new Error(mapTemplateSaveError(error.message));
+
+  // Separado do RPC de propósito (plano P1, desvio 3): update_workflow_template
+  // não conhece a coluna, e perder só a lista de plataformas é recuperável no
+  // próximo save.
+  const { error: platErr } = await supabase
+    .from('workflow_templates')
+    .update({ plataformas: t.plataformas })
+    .eq('id', id);
+  if (platErr) throw new Error('Template salvo, mas as plataformas não foram gravadas.');
 }
 
 // =============================================
@@ -92,11 +114,13 @@ export interface Workflow {
   template_id?: number | null;
   status: 'ativo' | 'concluido' | 'arquivado';
   etapa_atual: number;
+  concluido_em?: string | null;
   recorrente: boolean;
   modo_prazo?: 'padrao' | 'data_fixa' | 'data_entrega';
   link_notion?: string | null;
   link_drive?: string | null;
   position?: number;
+  plataformas?: PlatformId[];
   created_at?: string;
   created_via?: 'human' | 'agent';
 }
@@ -164,20 +188,18 @@ export async function updateWorkflow(
   return data;
 }
 
+/** Grava a ordem manual de um lote de fluxos numa única chamada atômica
+ *  (RPC reorder_workflow_positions). Sempre enviar a coluna INTEIRA, não só os
+ *  cards visíveis: a RPC grava exatamente o que recebe. */
 export async function updateWorkflowPositions(
   updates: { id: number; position: number }[],
 ): Promise<void> {
-  await Promise.all(
-    updates.map(({ id, position }) =>
-      supabase
-        .from('workflows')
-        .update({ position })
-        .eq('id', id)
-        .then(({ error }) => {
-          if (error) throw error;
-        }),
-    ),
-  );
+  if (updates.length === 0) return;
+  const { error } = await supabase.rpc('reorder_workflow_positions', {
+    p_workflow_ids: updates.map((u) => u.id),
+    p_positions: updates.map((u) => u.position),
+  });
+  if (error) throw error;
 }
 
 export async function removeWorkflow(id: number): Promise<void> {
@@ -262,47 +284,90 @@ export async function getWorkflowEtapas(workflowId: number): Promise<WorkflowEta
   return data || [];
 }
 
+/**
+ * Etapas of many workflows at once: one request per IN_FILTER_CHUNK ids instead
+ * of one getWorkflowEtapas call per workflow. Every requested id gets an entry
+ * (empty when it has no etapas), each list in `ordem` order like getWorkflowEtapas.
+ */
+export async function getWorkflowEtapasByWorkflowIds(
+  workflowIds: number[],
+): Promise<Map<number, WorkflowEtapa[]>> {
+  const map = new Map<number, WorkflowEtapa[]>(workflowIds.map((id) => [id, []]));
+  if (workflowIds.length === 0) return map;
+  const rows = await fetchAllPagedByIds(workflowIds, async (chunk, from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_etapas')
+      .select('*')
+      .in('workflow_id', chunk)
+      .order('workflow_id', { ascending: true })
+      .order('ordem', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as WorkflowEtapa[];
+  });
+  for (const row of rows) map.get(row.workflow_id)?.push(row);
+  return map;
+}
+
+export interface ConcludedWorkflowSummary {
+  workflow: Workflow;
+  postCount: number;
+  totalDays: number | null;
+  completedAt: string | null;
+}
+
+/**
+ * Summary line per concluded workflow (Concluídos and the client's Entregas
+ * tab): first etapa start, last concluded etapa end, and post count. Two bulk
+ * reads for the whole list, never two requests per workflow.
+ */
+export async function getConcludedWorkflowSummaries(
+  workflows: Workflow[],
+): Promise<ConcludedWorkflowSummary[]> {
+  const ids = workflows.map((w) => w.id!);
+  const [etapasByWorkflow, postCounts] = await Promise.all([
+    getWorkflowEtapasByWorkflowIds(ids),
+    getWorkflowPostsCounts(ids),
+  ]);
+  return workflows.map((workflow) => {
+    const etapas = etapasByWorkflow.get(workflow.id!) ?? [];
+    const firstStart = etapas.find((e) => e.iniciado_em)?.iniciado_em;
+    const concludedEtapas = etapas.filter((e) => e.concluido_em);
+    const lastEnd =
+      concludedEtapas.length > 0 ? concludedEtapas[concludedEtapas.length - 1].concluido_em : null;
+    const totalDays =
+      firstStart && lastEnd
+        ? Math.round(
+            (new Date(lastEnd).getTime() - new Date(firstStart).getTime()) / (1000 * 60 * 60 * 24),
+          )
+        : null;
+    return {
+      workflow,
+      postCount: postCounts.get(workflow.id!) ?? 0,
+      totalDays,
+      completedAt: lastEnd ?? null,
+    };
+  });
+}
+
 export async function getAllActiveEtapas(): Promise<
   (WorkflowEtapa & { workflow_titulo?: string; cliente_nome?: string; cliente_id?: number })[]
 > {
-  const { data, error } = await supabase
-    .from('workflow_etapas')
-    .select('*, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))')
-    .eq('workflows.status', 'ativo')
-    .order('ordem', { ascending: true });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
+  const rows = await fetchAllPaged(async (from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_etapas')
+      .select('*, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))')
+      .eq('workflows.status', 'ativo')
+      .order('ordem', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return data || [];
+  });
+  return rows.map((row: any) => ({
     ...row,
     workflow_titulo: row.workflows?.titulo,
-    cliente_id: row.workflows?.cliente_id,
-    cliente_nome: row.workflows?.clientes?.nome,
-    workflows: undefined,
-  }));
-}
-
-export async function getAllEtapasWithWorkflow(): Promise<
-  (WorkflowEtapa & {
-    workflow_titulo?: string;
-    workflow_status?: string;
-    workflow_created_at?: string;
-    template_id?: number | null;
-    cliente_id?: number;
-    cliente_nome?: string;
-  })[]
-> {
-  const { data, error } = await supabase
-    .from('workflow_etapas')
-    .select(
-      '*, workflows!inner(titulo, status, created_at, template_id, cliente_id, clientes!inner(nome))',
-    )
-    .order('ordem', { ascending: true });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
-    ...row,
-    workflow_titulo: row.workflows?.titulo,
-    workflow_status: row.workflows?.status,
-    workflow_created_at: row.workflows?.created_at,
-    template_id: row.workflows?.template_id,
     cliente_id: row.workflows?.cliente_id,
     cliente_nome: row.workflows?.clientes?.nome,
     workflows: undefined,
@@ -365,6 +430,67 @@ export function hasLaterApprovalEtapa(etapas: WorkflowEtapa[], etapaId: number):
   const current = etapas.find((e) => e.id === etapaId);
   if (!current) return false;
   return etapas.some((e) => e.tipo === 'aprovacao_cliente' && e.ordem > current.ordem);
+}
+
+/**
+ * Espelho no cliente de `isFinalApprovalCycle` do `hub-approve`
+ * (supabase/functions/hub-approve/handler.ts:25-43, branch `workflow_id != null`
+ * nas linhas 29-43):
+ * conta as etapas `aprovacao_cliente` do fluxo que ainda NÃO estão `concluido` e
+ * exige menos de 2. Com duas ou mais abertas, a aprovação atual pertence a um
+ * ciclo anterior (fluxo de dupla aprovação) e agendar agora publicaria antes da
+ * segunda aprovação do cliente -- exatamente o bug do PR #400.
+ *
+ * MANTENHA OS DOIS EM SINCRONIA. A regra do servidor é a canônica; este espelho
+ * existe porque nenhuma escrita de status feita pela CRM passa por `hub-approve`.
+ * Os testes de apps/crm/src/store/__tests__/finalApprovalCycle.test.ts usam as
+ * mesmas formas de etapa que supabase/functions/__tests__/hub-functions_test.ts.
+ *
+ * Diferença deliberada em relação ao servidor: lista VAZIA devolve false. No
+ * servidor uma lista vazia significa "fluxo sem etapa de aprovação" (express,
+ * legado) e é final; aqui significa "não temos as etapas deste post" (post
+ * avulso, card não carregado), e aí o aviso não deve aparecer -- fail closed,
+ * mesma postura do `return false` do servidor quando o lookup falha.
+ */
+export function isFinalClientApprovalCycle(etapas: WorkflowEtapa[]): boolean {
+  if (etapas.length === 0) return false;
+  const openApprovalEtapas = etapas.filter(
+    (e) => e.tipo === 'aprovacao_cliente' && e.status !== 'concluido',
+  ).length;
+  return openApprovalEtapas < 2;
+}
+
+/**
+ * Os dois campos derivados de `card` que `shouldOfferAutoSchedule` sempre
+ * recebe da mesma forma em três pontos de chamada (PostsKanbanView.tsx x2,
+ * WorkflowDrawer.tsx x1) -- fix F da revisão final. Os demais campos de cada
+ * chamada (`status`, `platform`, `schedulingFeatureEnabled`,
+ * `tiktokFeatureEnabled`) legitimamente diferem por call site e continuam
+ * montados à mão ali; só este par é a duplicação real.
+ *
+ * `card` nulo/undefined (post ainda sem card carregado, ou call site com
+ * `card?`) devolve os dois `false` -- fail closed, mesma postura de
+ * `isFinalClientApprovalCycle` para uma lista de etapas vazia.
+ *
+ * Assinatura estrutural (não `BoardCard` importado): mora aqui, e não em
+ * autoScheduleNudge.ts, porque já tem o conhecimento do formato de etapas de
+ * `isFinalClientApprovalCycle`; usar um tipo estrutural evita importar
+ * `Cliente` de `./clients` só por um campo opcional.
+ */
+export function cardAutoScheduleGates(
+  card:
+    | {
+        cliente?: { auto_publish_on_approval?: boolean | null } | null;
+        allEtapas: WorkflowEtapa[];
+      }
+    | null
+    | undefined,
+): { autoPublishOnApproval: boolean; isFinalApprovalCycle: boolean } {
+  if (!card) return { autoPublishOnApproval: false, isFinalApprovalCycle: false };
+  return {
+    autoPublishOnApproval: card.cliente?.auto_publish_on_approval === true,
+    isFinalApprovalCycle: isFinalClientApprovalCycle(card.allEtapas),
+  };
 }
 
 export interface CompleteEtapaWithRearmResult {
@@ -506,6 +632,7 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
     etapa_atual: 0,
     recorrente: workflow.recorrente,
     modo_prazo: modoPrazo,
+    plataformas: workflow.plataformas,
   });
 
   try {
@@ -546,6 +673,22 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
 }
 
 /**
+ * Duplica um fluxo no estado atual (RPC duplicate_workflow, 20261002000021):
+ * mesmas etapas e datas, todos os posts com a mídia. Diferente de
+ * `duplicateWorkflow`, que é a cópia de recorrência e volta para a etapa 0.
+ * `toRascunho` vale para todos os posts (mesma regra de `clonePost`).
+ * Devolve o id do fluxo novo; o erro da RPC sobe cru.
+ */
+export async function cloneWorkflow(workflowId: number, toRascunho: boolean): Promise<number> {
+  const { data, error } = await supabase.rpc('duplicate_workflow', {
+    p_workflow_id: workflowId,
+    p_to_rascunho: toRascunho,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
+/**
  * Internal helper: compute data_limite for each step given a delivery date.
  * Exported as computeDeliveryDeadlines from useEntregasData.ts for UI use.
  * The anchor (aprovacao_cliente) step gets the delivery date.
@@ -562,7 +705,7 @@ export function _computeDeliveryDeadlines(
   if (anchorIdx === -1) return new Map();
 
   const result = new Map<number, string>();
-  const toISO = (d: Date) => d.toISOString().split('T')[0];
+  const toISO = toLocalISODate;
 
   // Anchor step gets delivery date
   result.set(sorted[anchorIdx].ordem, toISO(deliveryDate));
@@ -626,19 +769,28 @@ export function getDeadlineInfo(etapa: WorkflowEtapa): {
   // FIRST: if a fixed deadline date is set, calculate relative to it directly
   // (applies to data_fixa and data_entrega modes — step may still be pending)
   if (etapa.data_limite) {
-    const limite = new Date(etapa.data_limite);
-    // data_limite is a date (no time), treat end of that day as midnight start of next day
-    limite.setDate(limite.getDate() + 1);
-    const msRestantes = limite.getTime() - now.getTime();
-    const totalHorasRestantes = Math.floor(msRestantes / (1000 * 60 * 60));
-    const diasRestantes = Math.floor(totalHorasRestantes / 24);
-    const horasRestantes = totalHorasRestantes % 24;
-    return {
-      diasRestantes,
-      horasRestantes,
-      estourado: msRestantes < 0,
-      urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
-    };
+    // 'YYYY-MM-DD' — build via local components, same as etapaDeadlineDateOf
+    // (pages/entregas/etapaPrazo.ts): new Date('YYYY-MM-DD') parses as UTC
+    // midnight, which in a UTC-negative zone like Brazil (UTC-3) turns "end of
+    // day" into 21:00 local -- estourado flips true 3h before the day is
+    // actually over. Unparseable input falls through to the branches below,
+    // same guard etapaDeadlineDateOf uses.
+    const [y, m, d] = etapa.data_limite.slice(0, 10).split('-').map(Number);
+    if (y && m && d) {
+      const limite = new Date(y, m - 1, d);
+      // data_limite is a date (no time), treat end of that day as local midnight of next day
+      limite.setDate(limite.getDate() + 1);
+      const msRestantes = limite.getTime() - now.getTime();
+      const totalHorasRestantes = Math.floor(msRestantes / (1000 * 60 * 60));
+      const diasRestantes = Math.floor(totalHorasRestantes / 24);
+      const horasRestantes = totalHorasRestantes % 24;
+      return {
+        diasRestantes,
+        horasRestantes,
+        estourado: msRestantes < 0,
+        urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
+      };
+    }
   }
 
   if (etapa.status !== 'ativo' || !etapa.iniciado_em) {

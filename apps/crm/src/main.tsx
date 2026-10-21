@@ -1,10 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { installDeployRecovery, watchForNewVersion } from '@mesaas/app-lifecycle';
+import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
-import { initAnalytics } from './lib/analytics';
-import { showNewVersionToast } from './lib/new-version-toast';
+import { installConsentEffects } from './lib/consentEffects';
+import { captureReferral } from './lib/referral';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
@@ -22,24 +22,32 @@ import ptBrand from '../../../packages/i18n/locales/pt/brand.json';
 import enBrand from '../../../packages/i18n/locales/en/brand.json';
 import ptAutomations from '../../../packages/i18n/locales/pt/automations.json';
 import enAutomations from '../../../packages/i18n/locales/en/automations.json';
-import App from './App';
+import App, { queryClient } from './App';
 import '../style.css';
+import './styles/vidro.css';
+import './styles/vidro-body/tokens.css';
+import './styles/vidro-body/buttons.css';
+import './styles/vidro-body/tables.css';
+import './styles/vidro-body/cards.css';
+import './styles/vidro-body/badges.css';
+import './styles/vidro-body/forms.css';
+import './styles/vidro-body/controls.css';
+import './styles/vidro-body/boards.css';
+import './styles/vidro-body/overlays.css';
+import './styles/vidro-body/chat.css';
+import './styles/vidro-body/compositions.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();
-watchForNewVersion({ onNewVersion: showNewVersionToast });
 
 initSentry();
 
-// PostHog pulls in ~108 KiB of lazy extensions (recorder, surveys, web-vitals) as soon as it
-// boots. Initializing on idle keeps all of that off the landing page's critical path without
-// losing any feature: `capture_pageview` still fires on init with the current URL, and every
-// capture/identify helper no-ops safely until then (PageSpeed: third-party payload).
-if ('requestIdleCallback' in window) {
-  requestIdleCallback(() => initAnalytics(), { timeout: 3000 });
-} else {
-  setTimeout(() => initAnalytics(), 1500);
-}
+// PostHog and the Crisp widget start only after the visitor's consent (lib/consentEffects.ts);
+// with consent already stored they still load on idle, off the landing page's critical path.
+installConsentEffects();
+
+// Programa de afiliados: grava o ?ref= de qualquer página do site para o cadastro (lib/referral.ts).
+captureReferral(window.location.search);
 
 initI18n({
   pt: {
@@ -66,9 +74,13 @@ initI18n({
 
 // Minimal DATA router (single splat route; App keeps its own descendant <Routes>). It was
 // introduced because `useBlocker` needs data-router context, for the Estúdio autosave's
-// dirty-navigation blocker; Estúdio is retired and nothing uses `useBlocker` today, but the
-// data router is kept because swapping back to <BrowserRouter> is a behaviour change for no
-// benefit. Route matching/links are unchanged: every internal link navigates by absolute path.
+// dirty-navigation blocker. Estúdio is retired; today the data router is what lets
+// `installSilentUpdate` register its navigation blocker. Route matching/links are unchanged:
+// every internal link navigates by absolute path.
 const router = createBrowserRouter([{ path: '*', element: <App /> }]);
+
+// A deploy while this tab is open: move to the new build at the next route change, or once
+// the tab has been hidden or idle for a while, never starting over unsaved work or an in-flight mutation.
+installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);

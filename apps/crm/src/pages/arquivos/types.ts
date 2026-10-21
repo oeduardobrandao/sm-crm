@@ -6,7 +6,7 @@ export interface Folder {
   parent_id: number | null;
   name: string;
   source: 'system' | 'user';
-  source_type: 'client' | 'workflow' | 'post' | null;
+  source_type: 'client' | 'workflow' | 'post' | 'root_clients' | 'client_reports' | null;
   source_id: number | null;
   name_overridden: boolean;
   position: number;

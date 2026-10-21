@@ -1,0 +1,535 @@
+import { useEffect, useMemo, useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm, useWatch } from 'react-hook-form';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
+import { GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { useAuth } from '@/context/AuthContext';
+import { captureEvent } from '@/lib/analytics';
+import { stripFinancialFields } from '@/lib/financialAccess';
+import { supabase } from '@/lib/supabase';
+import { inviteUser } from '@/services/invite';
+import {
+  addMembro,
+  getWorkspaceRoles,
+  getWorkspaceUsers,
+  setMembroCrmUser,
+  updateMembro,
+  updateWorkspaceUserRole,
+  type Membro,
+} from '@/store';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { inviteSuccessMessage } from '../configuracao/inviteHelpers';
+import { InviteSection } from './InviteSection';
+import { computeSeatState, derivePendingInvites, membroInviteErrorMessage } from './inviteSupport';
+import { MEMBRO_FORM_DEFAULTS, membroSchema, type MembroFormValues } from './membroForm';
+
+type WorkspaceUserRow = { id: string; nome?: string; role: string; role_id: string | null };
+
+// 'admin' | 'agent' | 'custom:<uuid>' -- a custom papel always carries role_id
+// (the server pins its chassis role to 'agent'), so role_id decides the form.
+const encodeRole = (u: WorkspaceUserRow) => (u.role_id ? `custom:${u.role_id}` : u.role);
+
+interface MembroFormDialogProps {
+  open: boolean;
+  membro: Membro | null;
+  membros: Membro[];
+  onOpenChange: (open: boolean) => void;
+}
+
+export function MembroFormDialog({ open, membro, membros, onOpenChange }: MembroFormDialogProps) {
+  const qc = useQueryClient();
+  const { canSeeFinancials, can, workspaceRole, profile, user } = useAuth();
+  const canManageWorkspace = can('equipe', 'editar') === true;
+  const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
+  const [saving, setSaving] = useState(false);
+  const form = useForm<MembroFormValues>({
+    resolver: zodResolver(membroSchema),
+    defaultValues: MEMBRO_FORM_DEFAULTS,
+  });
+  const inviteEnabled = useWatch({ control: form.control, name: 'inviteEnabled' });
+  const crmUserId = useWatch({ control: form.control, name: 'crmUserId' });
+  const tipo = useWatch({ control: form.control, name: 'tipo' });
+  const crmRole = useWatch({ control: form.control, name: 'crmRole' });
+  // Phone rows follow the dialog primitive, which becomes a sheet only inside the phone
+  // shell (PhoneLayoutContext); a dialog rendered elsewhere keeps the desktop fields.
+  const { isPhone } = usePhoneLayout();
+
+  const { data: workspaceUsers = [] } = useQuery({
+    queryKey: ['workspace-users'],
+    queryFn: getWorkspaceUsers,
+    enabled: canManageWorkspace,
+  });
+  // Users already linked to a DIFFERENT membro can't be picked again --
+  // set_membro_crm_user rejects it (membros_conta_crm_user_unique), so keep
+  // it out of the dropdown instead of letting the save fail.
+  const linkedElsewhere = useMemo(
+    () =>
+      new Set(
+        membros
+          .filter((m) => m.id !== membro?.id && m.crm_user_id)
+          .map((m) => m.crm_user_id as string),
+      ),
+    [membros, membro?.id],
+  );
+  const availableWorkspaceUsers = useMemo(
+    () => workspaceUsers.filter((u: { id: string }) => !linkedElsewhere.has(u.id)),
+    [workspaceUsers, linkedElsewhere],
+  );
+  const { data: workspaceRoles = [] } = useQuery({
+    queryKey: ['workspace-roles'],
+    queryFn: getWorkspaceRoles,
+    enabled: canAssignRoles,
+  });
+  // update-role is owner/admin only, and the server refuses to touch yourself
+  // or an owner unless the caller is an owner (MembrosTab's canActOnMember).
+  const linkedUser = (workspaceUsers as WorkspaceUserRow[]).find((u) => u.id === crmUserId);
+  const canEditLinkedRole =
+    canAssignRoles &&
+    !!linkedUser &&
+    linkedUser.id !== user?.id &&
+    (linkedUser.role !== 'owner' || workspaceRole === 'owner');
+  const currentLinkedRole = linkedUser ? encodeRole(linkedUser) : '';
+  const { limits, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
+  const { data: pendingInviteRows = [] } = useQuery({
+    queryKey: ['invites', 'equipe-pending', profile?.conta_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invites')
+        .select('id, email, role, membro_id, expires_at, status')
+        .eq('conta_id', profile!.conta_id)
+        .eq('status', 'pending');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canManageWorkspace && !!profile?.conta_id,
+  });
+  const { display: pendingInvites, seatCount: pendingSeatCount } = useMemo(
+    () => derivePendingInvites(pendingInviteRows),
+    [pendingInviteRows],
+  );
+  const pendingByMembroId = useMemo(
+    () =>
+      new Map(
+        pendingInvites
+          .filter((invite) => invite.membro_id != null)
+          .map((invite) => [invite.membro_id as number, invite]),
+      ),
+    [pendingInvites],
+  );
+  const seat = computeSeatState({
+    isLoading: limitsLoading,
+    isUnlimited,
+    maxTeamMembers: limits === null ? undefined : limits.max_team_members,
+    membersCount: workspaceUsers.length,
+    pendingCount: pendingSeatCount,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    form.reset(
+      membro
+        ? {
+            ...MEMBRO_FORM_DEFAULTS,
+            nome: membro.nome,
+            cargo: membro.cargo || '',
+            tipo: membro.tipo,
+            custo: membro.custo_mensal ? String(membro.custo_mensal) : '',
+            diaPag: membro.data_pagamento ? String(membro.data_pagamento) : '',
+            crmUserId: membro.crm_user_id ?? '',
+          }
+        : MEMBRO_FORM_DEFAULTS,
+    );
+  }, [form, membro, open]);
+
+  // The dialog can hold a custo_mensal value in form state. On live
+  // revocation, close it rather than let the value linger on screen.
+  useEffect(() => {
+    if (canSeeFinancials !== true) onOpenChange(false);
+  }, [canSeeFinancials, onOpenChange]);
+
+  const { errors } = form.formState;
+
+  const onSubmit = async (values: MembroFormValues) => {
+    const diaPag = values.diaPag ? parseInt(values.diaPag, 10) : undefined;
+    setSaving(true);
+    try {
+      const payload: Omit<Membro, 'id' | 'user_id' | 'conta_id' | 'avatar_url'> = {
+        nome: values.nome,
+        cargo: values.cargo,
+        tipo: values.tipo,
+        custo_mensal: values.custo ? Number(values.custo) : null,
+        data_pagamento: diaPag,
+      };
+      const safePayload = stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']);
+      const desiredCrmUser =
+        values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
+      let membroId: number | undefined;
+
+      if (membro?.id) {
+        const currentCrmUser = membro.crm_user_id ?? null;
+        if (desiredCrmUser !== currentCrmUser) {
+          await setMembroCrmUser(membro.id, desiredCrmUser);
+        }
+        await updateMembro(membro.id, safePayload);
+        membroId = membro.id;
+      } else {
+        const created = await addMembro({
+          ...safePayload,
+          avatar_url: '',
+        } as Omit<Membro, 'id' | 'user_id' | 'conta_id'>);
+        membroId = created.id;
+      }
+
+      let roleFailed = false;
+      const desiredRole = values.crmRole;
+      if (
+        canEditLinkedRole &&
+        desiredCrmUser !== null &&
+        desiredRole &&
+        desiredRole !== currentLinkedRole
+      ) {
+        try {
+          await updateWorkspaceUserRole(
+            desiredCrmUser,
+            desiredRole.startsWith('custom:')
+              ? { roleId: desiredRole.slice(7) }
+              : { role: desiredRole as 'admin' | 'agent' },
+          );
+        } catch (err) {
+          roleFailed = true;
+          toast.error(
+            'Membro salvo, mas não foi possível alterar a função: ' + (err as Error).message,
+          );
+        }
+      }
+
+      const wantsInvite =
+        values.inviteEnabled && canManageWorkspace && membroId != null && desiredCrmUser === null;
+      if (wantsInvite) {
+        try {
+          const encodedRole = values.inviteRole;
+          const isCustomRole = encodedRole.startsWith('custom:');
+          const role = isCustomRole ? 'agent' : (encodedRole as 'admin' | 'agent');
+          const result = isCustomRole
+            ? await inviteUser(values.inviteEmail.trim(), role, membroId, encodedRole.slice(7))
+            : await inviteUser(values.inviteEmail.trim(), role, membroId);
+          toast.success(inviteSuccessMessage(result));
+          captureEvent('invite_sent', { source: 'equipe' });
+        } catch (err) {
+          toast.error(membroInviteErrorMessage(err));
+        }
+      } else if (!roleFailed) {
+        toast.success(membro?.id ? 'Membro atualizado' : 'Membro adicionado');
+      }
+
+      qc.invalidateQueries({ queryKey: ['membros'] });
+      qc.invalidateQueries({ queryKey: ['workspace-users'] });
+      qc.invalidateQueries({ queryKey: ['invites'] });
+      onOpenChange(false);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message === 'crm_user_already_linked'
+          ? 'Esta conta CRM já está vinculada a outro membro deste workspace'
+          : 'Erro ao salvar';
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent aria-describedby={undefined} onConfirmClose={() => onOpenChange(false)}>
+        <DialogHeader>
+          <DialogTitle>{membro ? 'Editar Membro' : 'Adicionar Membro'}</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {isPhone ? (
+              <>
+                <GroupedList aria-label="Membro">
+                  <FormRow
+                    label="Nome *"
+                    error={errors.nome?.message}
+                    input={{ ...form.register('nome'), autoComplete: 'off' }}
+                  />
+                  <FormRow
+                    label="Cargo *"
+                    error={errors.cargo?.message}
+                    input={{ ...form.register('cargo'), autoComplete: 'off' }}
+                  />
+                </GroupedList>
+                <GroupedList>
+                  <PickerCell
+                    label="Tipo"
+                    options={[
+                      { value: 'clt', label: 'CLT' },
+                      { value: 'freelancer_mensal', label: 'Freelancer Mensal' },
+                      { value: 'freelancer_demanda', label: 'Freelancer Demanda' },
+                    ]}
+                    value={tipo}
+                    onChange={(v) => v && form.setValue('tipo', v, { shouldDirty: true })}
+                  />
+                  {canSeeFinancials === true && (
+                    <FormRow
+                      label="Custo Mensal (R$)"
+                      error={errors.custo?.message}
+                      input={{
+                        ...form.register('custo'),
+                        type: 'number',
+                        inputMode: 'decimal',
+                        min: 0,
+                        step: 0.01,
+                        placeholder: '0,00',
+                      }}
+                    />
+                  )}
+                  <FormRow
+                    label="Dia de Pagamento (1-31)"
+                    error={errors.diaPag?.message}
+                    input={{
+                      ...form.register('diaPag'),
+                      type: 'number',
+                      inputMode: 'numeric',
+                      min: 1,
+                      max: 31,
+                    }}
+                  />
+                </GroupedList>
+                {canManageWorkspace && !!membro && (
+                  <GroupedList footer="Vincular um membro a um usuário do workspace permite que ele acesse o CRM e veja suas atribuições.">
+                    <PickerCell
+                      label="Conta CRM"
+                      searchable={availableWorkspaceUsers.length > 8}
+                      emptyOption={{ label: 'Não vinculado' }}
+                      options={availableWorkspaceUsers.map((u: { id: string; nome?: string }) => ({
+                        value: u.id,
+                        label: u.nome || u.id,
+                      }))}
+                      value={crmUserId || null}
+                      onChange={(v) => {
+                        form.setValue('crmUserId', v ?? '', { shouldDirty: true });
+                        form.setValue('crmRole', '');
+                      }}
+                    />
+                    {canEditLinkedRole && (
+                      <PickerCell
+                        label="Função no workspace"
+                        options={[
+                          { value: 'admin', label: 'Admin' },
+                          { value: 'agent', label: 'Agente' },
+                          ...workspaceRoles.map((r) => ({
+                            value: `custom:${r.id}`,
+                            label: r.nome,
+                          })),
+                        ]}
+                        value={crmRole || currentLinkedRole || null}
+                        onChange={(v) => v && form.setValue('crmRole', v, { shouldDirty: true })}
+                      />
+                    )}
+                  </GroupedList>
+                )}
+              </>
+            ) : (
+              <>
+                <FormField
+                  control={form.control}
+                  name="nome"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nome *</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="cargo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cargo *</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="tipo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="clt">CLT</SelectItem>
+                          <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
+                          <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {canSeeFinancials === true && (
+                  <FormField
+                    control={form.control}
+                    name="custo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Custo Mensal (R$)</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={0} step={0.01} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                <FormField
+                  control={form.control}
+                  name="diaPag"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Dia de Pagamento (1-31)</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={1} max={31} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {canManageWorkspace && !!membro && (
+                  <FormField
+                    control={form.control}
+                    name="crmUserId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Conta CRM</FormLabel>
+                        <Select
+                          value={field.value ? field.value : '__none__'}
+                          onValueChange={(value) => {
+                            field.onChange(value === '__none__' ? '' : value);
+                            form.setValue('crmRole', '');
+                          }}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Não vinculado" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="__none__">Não vinculado</SelectItem>
+                            {availableWorkspaceUsers.map((user: { id: string; nome?: string }) => (
+                              <SelectItem key={user.id} value={user.id}>
+                                {user.nome || user.id}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Vincular um membro a um usuário do workspace permite que ele acesse o CRM
+                          e veja suas atribuições.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {canEditLinkedRole && (
+                  <FormField
+                    control={form.control}
+                    name="crmRole"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Função no workspace</FormLabel>
+                        <Select
+                          value={field.value || currentLinkedRole}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="agent">Agente</SelectItem>
+                            {workspaceRoles.map((r) => (
+                              <SelectItem key={r.id} value={`custom:${r.id}`}>
+                                {r.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </>
+            )}
+            {canManageWorkspace && !membro?.crm_user_id && (
+              <InviteSection
+                form={form}
+                seat={seat}
+                pendingInvite={membro?.id ? (pendingByMembroId.get(membro.id) ?? null) : null}
+                canManageWorkspace={canManageWorkspace}
+                canAssignRoles={canAssignRoles}
+                phone={isPhone}
+              />
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving && <Spinner size="sm" />}{' '}
+                {inviteEnabled && !crmUserId ? 'Salvar e convidar' : 'Salvar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

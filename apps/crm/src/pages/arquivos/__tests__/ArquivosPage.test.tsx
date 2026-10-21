@@ -1,6 +1,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 vi.mock('@/services/fileService', () => ({
   getFolderContents: vi.fn(),
@@ -8,12 +10,21 @@ vi.mock('@/services/fileService', () => ({
   uploadFile: vi.fn(),
 }));
 
+// Desktop layout (>= 901px); the phone branch has its own suite, ArquivosPage.phone.test.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
   },
 }));
+
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('@/context/AuthContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/context/AuthContext')>();
+  return { ...actual, useAuth: useAuthMock };
+});
 
 import { getFolderContents, createFolder } from '@/services/fileService';
 import { toast } from 'sonner';
@@ -25,6 +36,7 @@ const mockedToast = vi.mocked(toast);
 
 // Import the page component after mocks
 import ArquivosPage from '../ArquivosPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function makeFolder(overrides: Partial<Folder> = {}): Folder {
   return {
@@ -80,7 +92,11 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   });
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    );
   };
 }
 
@@ -88,6 +104,7 @@ describe('ArquivosPage', () => {
   beforeEach(() => {
     mockedGetFolderContents.mockReset();
     mockedCreateFolder.mockReset();
+    useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'owner' })) });
   });
 
   it('renders sidebar with FolderTree and heading', async () => {
@@ -107,6 +124,38 @@ describe('ArquivosPage', () => {
     // There may be multiple "Nova pasta" (one in tree, one in toolbar)
     const novaPastaButtons = screen.getAllByText('Nova pasta');
     expect(novaPastaButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * Task 14: ArquivosPage had NO role check at all before this task -- any
+   * authenticated member could upload, create folders, and bulk-delete.
+   * `AGENT_ROLE_PRESET.arquivos` is 'editar' (lib/permissions.ts), so gating
+   * the toolbar's "Enviar arquivo" button on `can('arquivos', 'editar') ===
+   * true` preserves that for every legacy chassis role byte-for-byte; only a
+   * CUSTOM role (role_id set) can now differ from full access.
+   */
+  it('hides the toolbar Enviar arquivo button for a custom role without arquivos:editar', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+    });
+    mockedGetFolderContents.mockResolvedValue(makeFolderContents());
+
+    render(<ArquivosPage />, { wrapper: createWrapper() });
+
+    expect(screen.queryByText('Enviar arquivo')).not.toBeInTheDocument();
+  });
+
+  it('shows the toolbar Enviar arquivo button for a custom role with arquivos:editar (the fix)', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { arquivos: 'editar' } }),
+      ),
+    });
+    mockedGetFolderContents.mockResolvedValue(makeFolderContents());
+
+    render(<ArquivosPage />, { wrapper: createWrapper() });
+
+    expect(screen.getByText('Enviar arquivo')).toBeInTheDocument();
   });
 
   it('renders view mode toggle buttons', async () => {
@@ -268,6 +317,37 @@ describe('ArquivosPage', () => {
       await waitFor(() => {
         expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
       });
+    });
+  });
+  describe('Vidro toolbar', () => {
+    function renderVidro(vidroShell: boolean) {
+      const Wrapper = createWrapper();
+      return render(
+        <Wrapper>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <ArquivosPage />
+          </VidroToolbarHarness>
+        </Wrapper>,
+      );
+    }
+
+    it('puts the title in the toolbar and keeps the folder tree and pane toolbar', async () => {
+      mockedGetFolderContents.mockResolvedValue(makeFolderContents());
+      const { container } = renderVidro(true);
+      const h1s = await screen.findAllByRole('heading', { level: 1 });
+      expect(h1s).toHaveLength(1);
+      expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+      expect(h1s[0]).toHaveTextContent('Arquivos');
+      expect(container.querySelector('aside h1')).toBeNull();
+      expect(screen.getAllByText('Enviar arquivo')).toHaveLength(1);
+    });
+
+    it('keeps the aside title when the Vidro shell is off', async () => {
+      mockedGetFolderContents.mockResolvedValue(makeFolderContents());
+      const { container } = renderVidro(false);
+      expect(container.querySelector('.vidro-toolbar')).toBeNull();
+      const h1 = screen.getByRole('heading', { level: 1, name: 'Arquivos' });
+      expect(h1.closest('aside')).not.toBeNull();
     });
   });
 });

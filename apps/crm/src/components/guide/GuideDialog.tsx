@@ -1,11 +1,22 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, type ElementType, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { captureEvent } from '../../lib/analytics';
+import { BottomSheet } from '../mobile/BottomSheet';
+import { useSheetActions } from '../mobile/sheetActions';
+import { usePhoneLayout } from '../layout/PhoneLayoutContext';
 import { useGuide } from './GuideContext';
-import { requiredSignals, type GuidePage, type GuideTrail } from './guideContent';
+import { GuideLeaveContext } from './guideLeave';
+import {
+  GUIDE_HOME_VIDEO,
+  GUIDE_MORE_SERIES,
+  requiredSignals,
+  type GuidePage,
+  type GuideTrail,
+} from './guideContent';
+import { GuideMoreVideos, GuideVideoSlot } from './GuideVideoSlot';
 
 const seg = (on: boolean): React.CSSProperties => ({
   flex: 1,
@@ -14,9 +25,34 @@ const seg = (on: boolean): React.CSSProperties => ({
   background: on ? 'var(--primary-color)' : 'var(--border-color)',
 });
 
+/**
+ * Inside the phone sheet: provides `leave(to)` (close without dismissing, then navigate
+ * once the sheet's history entry is popped) to the body and to the video slots.
+ */
+function PhoneGuideLeave({
+  onLeave,
+  children,
+}: {
+  onLeave: () => void;
+  children: (leave: (to: string) => void) => ReactNode;
+}) {
+  const { closeThen } = useSheetActions();
+  const navigate = useNavigate();
+  const leave = (to: string) => {
+    onLeave();
+    closeThen(() => navigate(to));
+  };
+  return <GuideLeaveContext.Provider value={leave}>{children(leave)}</GuideLeaveContext.Provider>;
+}
+
 export default function GuideDialog() {
   const g = useGuide();
   const navigate = useNavigate();
+  // On phones (inside the shell) the guide is a bottom sheet; outside the shell, and on
+  // tablet/desktop, the centered dialog.
+  const { isPhone } = usePhoneLayout();
+  /** The phone sheet is closing for a page action: close without dismissing the guide. */
+  const closingForActionRef = useRef(false);
 
   const page =
     g?.currentPageId != null
@@ -32,10 +68,14 @@ export default function GuideDialog() {
 
   if (!g) return null;
 
-  const runAction = (p: GuidePage) => {
-    if (!p.action) return;
+  const startAction = (p: GuidePage) => {
     captureEvent('guide_action_clicked', { page: p.id });
     g.setLastPage(p.id);
+  };
+
+  const runAction = (p: GuidePage) => {
+    if (!p.action) return;
+    startAction(p);
     g.closeForAction();
     navigate(p.action.to({ latestClienteId: g.latestClienteId }));
   };
@@ -43,43 +83,82 @@ export default function GuideDialog() {
   const firstPageOf = (trailId: string) =>
     g.trails.find((t) => t.id === trailId)?.pages[0]?.id ?? null;
 
+  const renderBody = (onAction: (p: GuidePage) => void) =>
+    page && trail ? (
+      <PageView
+        page={page}
+        trail={trail}
+        phone={isPhone}
+        onBack={() => {
+          const idx = trail.pages.findIndex((p) => p.id === page.id);
+          g.goTo(idx > 0 ? trail.pages[idx - 1].id : null);
+        }}
+        onHome={() => g.goTo(null)}
+        onNext={() => {
+          const idx = trail.pages.findIndex((p) => p.id === page.id);
+          if (page.bridgeTo) return g.goTo(firstPageOf(page.bridgeTo));
+          if (page.conclude) return g.concludeGuide();
+          g.goTo(idx < trail.pages.length - 1 ? trail.pages[idx + 1].id : null);
+        }}
+        onAction={() => onAction(page)}
+        signalValues={g.signalValues}
+        trails={g.trails}
+      />
+    ) : (
+      <HomeView
+        trails={g.trails}
+        doneIds={g.doneIds}
+        totals={g.totals}
+        phone={isPhone}
+        onStart={(t) => {
+          const next = t.pages.find((p) => !g.doneIds.has(p.id)) ?? t.pages[0];
+          g.goTo(next.id);
+        }}
+        onClose={() => g.close()}
+      />
+    );
+
+  if (isPhone) {
+    return (
+      <BottomSheet
+        open={g.isOpen}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (closingForActionRef.current) {
+            closingForActionRef.current = false;
+            g.closeForAction();
+          } else {
+            g.close();
+          }
+        }}
+        title="Guia de primeiros passos"
+        hideTitle
+        className="guide-sheet"
+      >
+        <PhoneGuideLeave
+          onLeave={() => {
+            closingForActionRef.current = true;
+          }}
+        >
+          {(leave) =>
+            renderBody((p) => {
+              if (!p.action) return;
+              startAction(p);
+              leave(p.action.to({ latestClienteId: g.latestClienteId }));
+            })
+          }
+        </PhoneGuideLeave>
+      </BottomSheet>
+    );
+  }
+
   return (
     <Dialog open={g.isOpen} onOpenChange={(open) => (!open ? g.close() : undefined)}>
       <DialogContent
         aria-describedby={undefined}
         style={{ maxWidth: 640, width: 'calc(100vw - 2rem)' }}
       >
-        {page && trail ? (
-          <PageView
-            page={page}
-            trail={trail}
-            onBack={() => {
-              const idx = trail.pages.findIndex((p) => p.id === page.id);
-              g.goTo(idx > 0 ? trail.pages[idx - 1].id : null);
-            }}
-            onHome={() => g.goTo(null)}
-            onNext={() => {
-              const idx = trail.pages.findIndex((p) => p.id === page.id);
-              if (page.bridgeTo) return g.goTo(firstPageOf(page.bridgeTo));
-              if (page.conclude) return g.concludeGuide();
-              g.goTo(idx < trail.pages.length - 1 ? trail.pages[idx + 1].id : null);
-            }}
-            onAction={() => runAction(page)}
-            signalValues={g.signalValues}
-            trails={g.trails}
-          />
-        ) : (
-          <HomeView
-            trails={g.trails}
-            doneIds={g.doneIds}
-            totals={g.totals}
-            onStart={(t) => {
-              const next = t.pages.find((p) => !g.doneIds.has(p.id)) ?? t.pages[0];
-              g.goTo(next.id);
-            }}
-            onClose={() => g.close()}
-          />
-        )}
+        {renderBody(runAction)}
       </DialogContent>
     </Dialog>
   );
@@ -89,28 +168,31 @@ function HomeView({
   trails,
   doneIds,
   totals,
+  phone,
   onStart,
   onClose,
 }: {
   trails: GuideTrail[];
   doneIds: Set<string>;
   totals: { done: number; total: number };
+  /** In the phone sheet the sheet owns the dialog title, so this one is a plain heading. */
+  phone?: boolean;
   onStart(t: GuideTrail): void;
   onClose(): void;
 }) {
+  const Title: ElementType = phone ? 'h2' : DialogTitle;
   const pct = totals.total > 0 ? Math.round((totals.done / totals.total) * 100) : 0;
   return (
     <div>
       <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
         Guia de primeiros passos
       </p>
-      <DialogTitle style={{ fontSize: '1.25rem', margin: '4px 0 0' }}>
-        Bem-vindo ao Mesaas
-      </DialogTitle>
+      <Title style={{ fontSize: '1.25rem', margin: '4px 0 0' }}>Bem-vindo ao Mesaas</Title>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '6px 0 0' }}>
         Três trilhas curtas, em páginas rápidas de ler. Feche quando quiser: o guia continua de onde
         parou.
       </p>
+      <GuideVideoSlot slug={GUIDE_HOME_VIDEO} pageId="home" variant="featured" />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 4px' }}>
         <div
           aria-hidden="true"
@@ -216,6 +298,7 @@ function HomeView({
 function PageView({
   page,
   trail,
+  phone,
   onBack,
   onHome,
   onNext,
@@ -225,6 +308,7 @@ function PageView({
 }: {
   page: GuidePage;
   trail: GuideTrail;
+  phone?: boolean;
   onBack(): void;
   onHome(): void;
   onNext(): void;
@@ -232,6 +316,7 @@ function PageView({
   signalValues: Partial<Record<string, boolean>>;
   trails: GuideTrail[];
 }) {
+  const Title: ElementType = phone ? 'h2' : DialogTitle;
   const idx = trail.pages.findIndex((p) => p.id === page.id);
   // Só recapitula sinais de páginas que de fato existem no plano do workspace: um t1p4
   // (Hub) removido por entitlement não deve deixar rastro no fechamento da trilha t1.
@@ -273,7 +358,7 @@ function PageView({
           <span key={p.id} style={seg(i <= idx)} />
         ))}
       </div>
-      <DialogTitle style={{ fontSize: '1.05rem', margin: 0 }}>{page.title}</DialogTitle>
+      <Title style={{ fontSize: '1.05rem', margin: 0 }}>{page.title}</Title>
       <p
         style={{
           fontSize: '0.85rem',
@@ -318,6 +403,8 @@ function PageView({
             })}
         </ul>
       )}
+      {page.videoSlug && <GuideVideoSlot slug={page.videoSlug} pageId={page.id} variant="inline" />}
+      {page.conclude && <GuideMoreVideos seriesSlug={GUIDE_MORE_SERIES} pageId={page.id} />}
       {page.action && (
         <div
           style={{

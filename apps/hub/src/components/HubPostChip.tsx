@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { ArrowUpRight, FileText, GitBranch } from 'lucide-react';
-import { fetchPosts } from '../api';
-import { CLIENT_STATUS_LABELS, TIPO_LABELS } from '../lib/postView';
+import { hubPostQuery, hubPostsQuery } from '../queries';
+import { clientStatusOf, getClientStatusLabel, getTipoLabel } from '../lib/postView';
 
 interface Props {
   postId: number;
@@ -36,18 +37,23 @@ function placementFor(el: HTMLElement | null): 'above' | 'below' {
   return room < CARD_ESTIMATE_PX ? 'below' : 'above';
 }
 
-/** Linked-post chip with a hover preview fed entirely from the already-cached
- * hub-posts payload (thumbnail, tipo/status, fluxo). No extra endpoint. */
+/** Linked-post chip with a hover preview fed from the already-cached hub-posts
+ * shell (thumbnail, tipo/status, fluxo). Posts outside the shell fall back to a
+ * single-post fetch. */
 export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
+  const { t } = useTranslation('hubPostCard');
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<'above' | 'below'>('above');
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data } = useQuery({
-    queryKey: ['hub-posts', token],
-    queryFn: () => fetchPosts(token),
-    enabled: open,
+  const { data } = useQuery({ ...hubPostsQuery(token), enabled: open });
+  const fromShell = data?.posts.find((p) => p.id === postId);
+  // Message chips can point at posts older than the shell: fetch just that one, only while
+  // the card is open (at most one hub-read hit per post per staleTime).
+  const { data: singleData } = useQuery({
+    ...hubPostQuery(token, postId),
+    enabled: open && data !== undefined && !fromShell,
   });
 
   function scheduleOpen() {
@@ -61,7 +67,7 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
     setOpen(false);
   }
 
-  const post = open ? data?.posts.find((p) => p.id === postId) : undefined;
+  const post = open ? (fromShell ?? singleData?.posts.find((p) => p.id === postId)) : undefined;
   const first = post?.media?.[0];
   const thumb = first ? (first.thumbnail_url ?? (first.kind === 'image' ? first.url : null)) : null;
 
@@ -81,7 +87,7 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
       >
         <FileText size={13} className="shrink-0" style={{ color: 'var(--hub-tx3)' }} />
         <span>
-          {titulo ?? 'Ver post'}
+          {titulo ?? t('postChip.viewPost', 'Ver post')}
           {suffix ?? ''}
         </span>
         <ArrowUpRight size={11} className="shrink-0" style={{ color: 'var(--hub-tx3)' }} />
@@ -100,16 +106,16 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
             <div className="text-sm font-semibold hub-txt">{post.titulo}</div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span
-                className="rounded-full px-2 py-0.5 text-[11px] font-semibold hub-tx2"
+                className="rounded-full px-2 py-0.5 text-[12px] font-semibold hub-tx2"
                 style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
               >
-                {TIPO_LABELS[post.tipo] ?? post.tipo}
+                {getTipoLabel(t, post.tipo)}
               </span>
               <span
-                className="rounded-full px-2 py-0.5 text-[11px] font-semibold hub-tx2"
+                className="rounded-full px-2 py-0.5 text-[12px] font-semibold hub-tx2"
                 style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
               >
-                {CLIENT_STATUS_LABELS[post.status] ?? post.status}
+                {getClientStatusLabel(t, clientStatusOf(post))}
               </span>
             </div>
             {post.workflow_titulo && (

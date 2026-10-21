@@ -163,7 +163,7 @@ begin
       (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
       values (v_ws, v_cli1, 'TikTok', array['x'], 'y', v_post_tt);
   exception when sqlstate 'P0001' then
-    assert sqlerrm like '%tiktok-only post%', format('wrong msg: %s', sqlerrm);
+    assert sqlerrm like '%must be an instagram post%', format('wrong msg: %s', sqlerrm);
     v_rejected := true;
   end;
   assert v_rejected, 'post so-TikTok nao pode ser alvo de automacao do Instagram';

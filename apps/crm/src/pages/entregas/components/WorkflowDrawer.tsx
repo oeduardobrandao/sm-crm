@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useId } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   X,
   Plus,
@@ -19,6 +20,10 @@ import {
   Minimize2,
   History,
   MoreVertical,
+  Copy,
+  CopyPlus,
+  CalendarClock,
+  Paperclip,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -31,7 +36,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
+import { CardListSkeleton } from '@/components/ui/skeletons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +47,7 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -60,11 +66,14 @@ import {
   removeWorkflowPost,
   reorderWorkflowPosts,
   sendPostsToCliente,
+  sendSelectedPostsToCliente,
+  isSendableFromSelection,
   getPostApprovals,
   getPostStatusEvents,
   replyToPostApproval,
   getPostCommentThreads,
   createCommentThread,
+  saveIgCaption,
   addPostComment,
   updatePostComment,
   deletePostComment,
@@ -77,19 +86,30 @@ import {
   rejectEditSuggestion,
   getClientePosts,
   syncMentions,
-  detachPostsFromWorkflow,
+  getPostProcessEvents,
   type MovePostsResult,
   type Workflow,
   type WorkflowEtapa,
   type WorkflowPost,
   type PostApproval,
   type PostStatusEvent,
+  type PostProcessEvent,
   type Membro,
   type PostPropertyValue,
   type CommentThreadWithComments,
+  type CaptionAnchorPatch,
+  type CommentAnchor,
   type PostEditSuggestion,
   type ClientePost,
+  type DetachPostsResult,
+  type DetachKeepingProcessResult,
+  isFinalClientApprovalCycle,
+  cardAutoScheduleGates,
 } from '../../../store';
+import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
+import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
+import { AutoScheduleBadge } from './AutoScheduleBadge';
+import { AutoScheduleBatchDialog } from './AutoScheduleBatchDialog';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
@@ -102,6 +122,9 @@ import { WorkflowCalendarView } from './WorkflowCalendarView';
 import { WorkflowGridView } from './WorkflowGridView';
 import { WorkflowHistoryView } from './WorkflowHistoryView';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
+import { CopyLinkButton } from '@/components/CopyLinkButton';
+import { copyAppLink } from '@/lib/copyAppLink';
+import { buildHubPostLink } from '@/lib/hubLinks';
 import {
   TIPO_LABELS,
   getPostPublishState,
@@ -115,24 +138,30 @@ import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { MovePostsToFluxoDialog } from './MovePostsToFluxoDialog';
+import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
+import { DetachPostsDialog } from './DetachPostsDialog';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { Badge } from '@/components/ui/badge';
+// By path, not through the '../../../store' barrel: the drawer test harnesses mock '@/store'
+// with explicit factories, so a new barrel export would be missing from every one of them.
+import { getPostReferenceCounts } from '@/store/postReferences';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
+  FluxoPhoneHeader,
+  FluxoPhonePostsToolbar,
+  FluxoPhoneSelectionBar,
+  FluxoPhonePostRow,
+  type FluxoPhoneListMode,
+} from '../phone/FluxoPhone';
+import '../phone/fluxoSheet.css';
+import { useIsPhoneEditor } from './postEditorPhone/useIsPhoneEditor';
+import { PhoneEditorScreen, type PhoneEditorScreenApi } from './postEditorPhone/PhoneEditorScreen';
+import type { PhoneMenuAction } from './postEditorPhone/types';
 
-/** Maps detach_posts_from_flow's identifier-style RPC errors (see
- *  supabase/migrations/20260830000004_post_detach_attach_rpcs.sql) to PT copy.
- *  `post_not_found` is the only identifier that can realistically surface here
- *  (a post selected in this very drawer got deleted from another tab/session
- *  between render and confirm) -- everything else (post_ids_required,
- *  workspace_not_found) can't happen from this call site, so they fall back
- *  to the generic message rather than getting their own copy. */
-function getDetachErrorToast(err: unknown): string {
-  const message =
-    err && typeof err === 'object' && 'message' in err
-      ? (err as { message?: unknown }).message
-      : undefined;
-  if (message === 'post_not_found') {
-    return 'Um ou mais posts não foram encontrados.';
-  }
-  return 'Erro ao desmembrar posts';
-}
+// Stable empty array so the fallback in `useQuery({ data: processEvents = ... })` never
+// changes identity across renders when the flag is off or the query hasn't resolved yet.
+const EMPTY_PROCESS_EVENTS: PostProcessEvent[] = [];
+const EMPTY_REFERENCE_COUNTS: Record<number, number> = {};
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -151,6 +180,9 @@ interface WorkflowDrawerProps {
     workflowId: number,
     seed?: { workflow: Workflow; etapas: WorkflowEtapa[] },
   ) => void;
+  /** Desmembrar mantendo etapas: a página revela o card no quadro (spec §4.1).
+   *  Sem o callback (EntregasTab), só refresh. */
+  onDetachedKeepingProcess?: (postIds: number[]) => void;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -162,20 +194,62 @@ export function WorkflowDrawer({
   onRefresh,
   initialPostId,
   onOpenWorkflow,
+  onDetachedKeepingProcess,
 }: WorkflowDrawerProps) {
   const workflowId = card.workflow.id!;
   const qc = useQueryClient();
+  const { features } = useWorkspaceLimits();
+  const keepStepsEnabled = features?.feature_post_processes === true;
+  const schedulingEnabled = features?.feature_post_scheduling === true;
+  const tiktokEnabled = features?.feature_tiktok === true;
+  const [nudgePost, setNudgePost] = useState<AutoSchedulePromptPost | null>(null);
+  /** Fluxo cujo diálogo de agendamento em lote está aberto (spec peça 3,
+   *  resumo do cabeçalho). Este drawer não tem um diálogo de fluxo recorrente
+   *  para disputar com este, então não precisa da guarda de mútua exclusão
+   *  que KanbanView/EntregasTab aplicam ao mesmo diálogo. */
+  const [batchScheduleWfId, setBatchScheduleWfId] = useState<number | null>(null);
+
+  /** Um só lugar para os gates da spec, usado pelos dois pontos de escrita de
+   *  status abaixo e pelo indicador persistente da linha do post. `platform` vem
+   *  da linha atualizada porque o gate de feature_tiktok depende dela. */
+  const offerAutoSchedule = (updated: WorkflowPost): boolean =>
+    shouldOfferAutoSchedule({
+      status: updated.status,
+      platform: updated.platform,
+      schedulingFeatureEnabled: schedulingEnabled,
+      tiktokFeatureEnabled: tiktokEnabled,
+      ...cardAutoScheduleGates(card),
+    });
+
+  const maybeNudge = (updated: WorkflowPost) => {
+    if (!offerAutoSchedule(updated)) return;
+    setNudgePost({
+      id: updated.id!,
+      titulo: updated.titulo,
+      platform: updated.platform,
+      scheduled_at: updated.scheduled_at ?? null,
+      tiktok_settings: updated.tiktok_settings,
+    });
+  };
 
   // Expanded post id (accordion). Seeded from initialPostId when opened from the
   // calendar; the call site keys the drawer by initialPostId so a new target remounts.
   const [expandedId, setExpandedId] = useState<number | null>(initialPostId ?? null);
+  // Post a deep link, the calendar or "Novo Post" pointed at: once its row is in the DOM the body
+  // scrolls so the whole expanded post is visible, not just its trigger row.
+  const [scrollTargetId, setScrollTargetId] = useState<number | null>(initialPostId ?? null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   const [replyText, setReplyText] = useState<Record<number, string>>({});
   const [sendingReply, setSendingReply] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
+  // "Enviar ao cliente" from the selection bar: ids awaiting the confirm dialog.
+  const [sendSelectedTarget, setSendSelectedTarget] = useState<number[] | null>(null);
+  const [isSendingSelected, setIsSendingSelected] = useState(false);
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+  useUnsavedWork(savingIds.size > 0);
   const [pendingEditPost, setPendingEditPost] = useState<WorkflowPost | null>(null);
   const [pendingEditData, setPendingEditData] = useState<{
     json: Record<string, unknown>;
@@ -200,13 +274,34 @@ export function WorkflowDrawer({
   // dialog only ever shows when that batch covers every post of this workflow.
   const [selectedPostIds, setSelectedPostIds] = useState<Set<number>>(new Set());
   const [detachTarget, setDetachTarget] = useState<number[] | null>(null);
-  const [archiveEmptyFlow, setArchiveEmptyFlow] = useState(false);
-  const [isDetaching, setIsDetaching] = useState(false);
   // Mover para outro fluxo: same two entry points as detach (selection bar +
   // per-post kebab); the dialog itself carries the destination choice.
   const [moveTarget, setMoveTarget] = useState<number[] | null>(null);
+  // Duplicar post: entry point is the per-post kebab; the dialog owns the RPC.
+  const [duplicateTarget, setDuplicateTarget] = useState<DuplicateTarget | null>(null);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Phone layout (< 768px): the drawer becomes a full-screen iOS screen. Its history entry is
+  // owned by EntregasPage (one useOverlayHistoryEntry for the drawer), so nothing here pushes one.
+  const isPhone = !useIsDesktop(768);
+  /** Phone only: Selecionar and Reordenar are explicit modes (D20: drag is never a hold). */
+  const [phoneListMode, setPhoneListMode] = useState<FluxoPhoneListMode>('normal');
+  const phonePanelId = `fluxo-${useId().replace(/:/g, '')}`;
+
+  // On phones a TouchSensor arms on a 250ms hold so a swipe still scrolls (the
+  // WorkflowCalendarView pattern); the handle it listens on only exists in Reordenar mode.
+  const touchSensor = useSensor(TouchSensor, {
+    activationConstraint: { delay: 250, tolerance: 8 },
+  });
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    isPhone ? touchSensor : null,
+  );
+
+  // Phone (C4): the expanded post opens as its own pushed screen instead of inline.
+  // Contract for the phone list: setting `expandedId` (the row's onToggle, a deep link's
+  // initialPostId, "Novo Post", Duplicar) opens it; clearing it closes it.
+  const isPhoneEditor = useIsPhoneEditor();
+  const phoneScreenRef = useRef<PhoneEditorScreenApi | null>(null);
 
   // ── Data queries ──────────────────────────────────────────────────────────
 
@@ -273,6 +368,22 @@ export function WorkflowDrawer({
     ? (localOrder.map((id) => posts.find((p) => p.id === id)).filter(Boolean) as WorkflowPost[])
     : posts;
 
+  useEffect(() => {
+    if (scrollTargetId == null || drawerView !== 'posts') return;
+    const body = bodyRef.current;
+    const item = body?.querySelector<HTMLElement>(`[data-post-id="${scrollTargetId}"]`);
+    // Posts still loading: re-runs when they land.
+    if (!body || !item) return;
+    setScrollTargetId(null);
+    const bodyRect = body.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    if (itemRect.top >= bodyRect.top && itemRect.bottom <= bodyRect.bottom) return;
+    // Align the post's top with the body's padding edge. An expanded post is
+    // usually taller than the drawer, so this shows as much of it as fits.
+    const paddingTop = parseFloat(getComputedStyle(body).paddingTop) || 0;
+    body.scrollTop += itemRect.top - bodyRect.top - paddingTop;
+  }, [scrollTargetId, drawerView, posts]);
+
   const postIds = posts.map((p) => p.id).filter(Boolean) as number[];
   const { data: approvals = [] } = useQuery({
     queryKey: ['post-approvals', postIds.join(',')],
@@ -286,13 +397,39 @@ export function WorkflowDrawer({
     enabled: postIds.length > 0,
   });
 
+  // Histórico de processo dos posts do fluxo (spec §5.4): um post vinculado
+  // depois de ter tido processo carrega os eventos do processo encerrado.
+  // Sempre que houver posts: histórico de processo encerrado é história, não
+  // criação (PO 2026-09-11).
+  const { data: processEvents = EMPTY_PROCESS_EVENTS } = useQuery({
+    queryKey: ['post-process-events', postIds.join(',')],
+    queryFn: () => getPostProcessEvents(postIds),
+    enabled: postIds.length > 0,
+  });
+
   const { data: editSuggestions = [] } = useQuery({
     queryKey: ['post-edit-suggestions', postIds.join(',')],
     queryFn: () => getPostEditSuggestions(postIds),
     enabled: postIds.length > 0,
   });
 
-  const { user, role } = useAuth();
+  // Client references per post for the collapsed row's badge: one RLS-scoped select of post_id
+  // for the whole workflow, counted client-side. Keyed by workflow (not by postIds), so a post
+  // added later is picked up through refresh() below, which invalidates this key; the
+  // references section's delete invalidates the ['post-reference-counts'] prefix.
+  const { data: referenceCounts = EMPTY_REFERENCE_COUNTS } = useQuery({
+    queryKey: ['post-reference-counts', workflowId],
+    queryFn: () => getPostReferenceCounts(postIds),
+    enabled: postIds.length > 0,
+  });
+
+  const { user, role, can } = useAuth();
+  const canDuplicate = can('entregas', 'editar') === true;
+  // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
+  // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
+  // legacy agent already gets full write on instagram_comment_automations
+  // everywhere else; only this drawer shortcut denied it.
+  const canManageAutomations = can('automacoes', 'editar') === true;
 
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
@@ -335,6 +472,9 @@ export function WorkflowDrawer({
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
+    qc.invalidateQueries({ queryKey: ['post-content-versions'] });
+    qc.invalidateQueries({ queryKey: ['post-process-events'] });
+    qc.invalidateQueries({ queryKey: ['post-reference-counts', workflowId] });
     qc.invalidateQueries({ queryKey: ['workflow-events', workflowId] });
     // Field changes (incl. scheduled_at, tipo) must also refresh the day-dot markers other
     // rows' date pickers derive from this same client-wide query — see the ['clientePosts',
@@ -388,6 +528,7 @@ export function WorkflowDrawer({
       });
       refresh();
       setExpandedId(newPost.id!);
+      setScrollTargetId(newPost.id!);
     } catch {
       toast.error('Erro ao criar post');
     }
@@ -422,8 +563,9 @@ export function WorkflowDrawer({
         return;
       }
       try {
-        await updateWorkflowPost(id, statusKeyToPatch(key));
+        const updated = await updateWorkflowPost(id, statusKeyToPatch(key));
         refresh();
+        maybeNudge(updated);
       } catch {
         toast.error('Erro ao atualizar post');
       }
@@ -432,8 +574,10 @@ export function WorkflowDrawer({
     try {
       await updateWorkflowPost(id, { [field]: value } as Partial<WorkflowPost>);
       refresh();
+      return true;
     } catch {
       toast.error('Erro ao atualizar post');
+      return false;
     }
   };
 
@@ -442,8 +586,9 @@ export function WorkflowDrawer({
     const { id, newStatusKey } = pendingStatusChange;
     setPendingStatusChange(null);
     try {
-      await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
+      const updated = await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
       refresh();
+      maybeNudge(updated);
     } catch {
       toast.error('Erro ao atualizar status');
     }
@@ -525,6 +670,22 @@ export function WorkflowDrawer({
     refresh();
   };
 
+  /** Block sending if any of these posts has a video without a thumbnail. Shared by the
+   *  header button and the selection bar so neither path bypasses the other's guard. */
+  const blockedByMissingThumbnail = async (toSend: WorkflowPost[]): Promise<boolean> => {
+    const mediaByPost = await Promise.all(
+      toSend.map(async (p) => ({ post: p, media: await listPostMedia(p.id!) })),
+    );
+    const blocked = mediaByPost.filter((m) => hasVideoMissingThumbnail(m.media));
+    if (blocked.length > 0) {
+      toast.error(
+        `Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`,
+      );
+      return true;
+    }
+    return false;
+  };
+
   const handleSendToCliente = async () => {
     const readyPosts = posts.filter((p) => p.status === 'aprovado_interno');
     if (readyPosts.length === 0) {
@@ -532,17 +693,7 @@ export function WorkflowDrawer({
       return;
     }
 
-    // Block sending if any ready post has a video without a thumbnail.
-    const mediaByPost = await Promise.all(
-      readyPosts.map(async (p) => ({ post: p, media: await listPostMedia(p.id!) })),
-    );
-    const blocked = mediaByPost.filter((m) => hasVideoMissingThumbnail(m.media));
-    if (blocked.length > 0) {
-      toast.error(
-        `Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`,
-      );
-      return;
-    }
+    if (await blockedByMissingThumbnail(readyPosts)) return;
 
     setIsSending(true);
     try {
@@ -556,6 +707,51 @@ export function WorkflowDrawer({
       toast.error('Erro ao enviar posts ao cliente');
     } finally {
       setIsSending(false);
+    }
+  };
+
+  /** Selection bar: sends the selected posts from any team-owned status, not only
+   *  aprovado_interno. Posts already in the portal, approved or scheduled are skipped. */
+  const openSendSelected = () => {
+    const sendable = posts.filter(
+      (p) => p.id != null && selectedPostIds.has(p.id) && isSendableFromSelection(p.status),
+    );
+    if (sendable.length === 0) {
+      toast.error(
+        'Nenhum dos posts selecionados pode ser enviado. Eles já estão no portal, aprovados ou agendados.',
+      );
+      return;
+    }
+    setSendSelectedTarget(sendable.map((p) => p.id!));
+  };
+
+  const confirmSendSelected = async () => {
+    const ids = sendSelectedTarget;
+    setSendSelectedTarget(null);
+    if (!ids || ids.length === 0) return;
+    const toSend = posts.filter((p) => p.id != null && ids.includes(p.id));
+    setIsSendingSelected(true);
+    try {
+      if (await blockedByMissingThumbnail(toSend)) return;
+      const sent = await sendSelectedPostsToCliente(workflowId, ids);
+      const skipped = selectedPostIds.size - sent;
+      if (sent === 0) {
+        toast.error('Nenhum post foi enviado. Eles mudaram de status, atualize e tente de novo.');
+      } else {
+        toast.success(
+          `${sent} post${sent > 1 ? 's' : ''} enviado${sent > 1 ? 's' : ''} ao cliente!` +
+            (skipped > 0
+              ? ` ${skipped} ${skipped > 1 ? 'ficaram' : 'ficou'} de fora (já no portal, aprovado ou agendado).`
+              : ''),
+        );
+        setSelectedPostIds(new Set());
+      }
+      refresh();
+      onRefresh();
+    } catch {
+      toast.error('Erro ao enviar posts ao cliente');
+    } finally {
+      setIsSendingSelected(false);
     }
   };
 
@@ -591,42 +787,39 @@ export function WorkflowDrawer({
 
   const clearSelection = useCallback(() => setSelectedPostIds(new Set()), []);
 
+  /** Phone: switching modes. Leaving Selecionar drops the selection, like Cancelar on iOS. */
+  const changePhoneListMode = useCallback((mode: FluxoPhoneListMode) => {
+    setPhoneListMode(mode);
+    if (mode !== 'select') setSelectedPostIds(new Set());
+  }, []);
+
   const openDetachConfirm = useCallback((ids: number[]) => {
-    setArchiveEmptyFlow(false);
     setDetachTarget(ids);
   }, []);
 
-  const handleConfirmDetach = async () => {
-    if (!detachTarget) return;
-    const ids = detachTarget;
-    // Total selection: every post currently in this workflow is part of this
-    // batch -- only then does archiving the now-empty flow make sense, so
-    // only then does the confirm dialog even offer the checkbox.
-    const isTotalSelection = ids.length === posts.length;
-    const archive = isTotalSelection && archiveEmptyFlow;
-    setIsDetaching(true);
-    try {
-      const result = await detachPostsFromWorkflow(ids, archive);
-      const n = result.detached;
-      toast.success(`${n} post${n === 1 ? '' : 's'} desmembrado${n === 1 ? '' : 's'}`);
-      setSelectedPostIds(new Set());
-      setDetachTarget(null);
-      setArchiveEmptyFlow(false);
-      if (archive) {
-        // The flow itself got archived along with the last posts leaving it --
-        // this drawer no longer has anything left to show, so close it instead
-        // of refreshing its own (now pointless) queries.
-        onRefresh();
-        onClose();
-      } else {
-        refresh();
-        onRefresh();
-      }
-    } catch (err) {
-      toast.error(getDetachErrorToast(err));
-    } finally {
-      setIsDetaching(false);
+  const afterDetach = (n: number, archived: boolean) => {
+    toast.success(`${n} post${n === 1 ? '' : 's'} desmembrado${n === 1 ? '' : 's'}`);
+    setSelectedPostIds(new Set());
+    setDetachTarget(null);
+    if (archived) {
+      // The flow itself got archived along with the last posts leaving it --
+      // this drawer no longer has anything left to show, so close it instead
+      // of refreshing its own (now pointless) queries.
+      onRefresh();
+      onClose();
+    } else {
+      refresh();
+      onRefresh();
     }
+  };
+
+  const handleDetachedWithoutProcess = (result: DetachPostsResult, archived: boolean) =>
+    afterDetach(result.detached, archived);
+
+  const handleDetachedKeepingProcess = (result: DetachKeepingProcessResult, archived: boolean) => {
+    const ids = result.processes.map((p) => p.post_id);
+    afterDetach(result.detached, archived);
+    onDetachedKeepingProcess?.(ids);
   };
 
   // Posts left for another flow (new or existing): this drawer's list just
@@ -655,7 +848,8 @@ export function WorkflowDrawer({
   const handleAcceptSuggestion = useCallback(
     async (suggestion: PostEditSuggestion) => {
       try {
-        await acceptEditSuggestion(suggestion.id);
+        // The version on screen: the client may have saved a newer one since.
+        await acceptEditSuggestion(suggestion.id, suggestion.updated_at);
         // accept_edit_suggestion writes workflow_posts.conteudo server-side,
         // bypassing updateWorkflowPost -- sync mentions here so @-mentions in
         // an accepted client suggestion still land in the mencoes ledger.
@@ -677,6 +871,14 @@ export function WorkflowDrawer({
             .map((ref) => ref.id);
           await syncMentions('workflow_post', suggestion.post_id, membroIds);
         }
+        // Wait for the posts query to actually land the accepted content before
+        // bumping editorVersions (which remounts <PostEditor> via its key prop).
+        // PostEditor's TipTap instance is only ever hydrated once, at mount --
+        // remounting while ['workflow-posts-with-props'] is still serving the
+        // stale pre-suggestion doc hydrates the editor with that stale doc, and
+        // the next autosave (even a non-user content-normalization update) writes
+        // it back over the suggestion we just accepted.
+        await qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
         setEditorVersions((prev) => ({
           ...prev,
           [suggestion.post_id]: (prev[suggestion.post_id] ?? 0) + 1,
@@ -684,11 +886,17 @@ export function WorkflowDrawer({
         toast.success('Sugestão aceita!');
         refresh();
         onRefresh();
-      } catch {
+      } catch (err) {
+        // PostgrestError is a plain object, not an Error instance.
+        if (String((err as { message?: unknown })?.message ?? '').includes('suggestion_changed')) {
+          toast.error('A sugestão foi atualizada pelo cliente. Revise a nova versão.');
+          refresh();
+          return;
+        }
         toast.error('Erro ao aceitar sugestão');
       }
     },
-    [refresh, onRefresh],
+    [refresh, onRefresh, qc, workflowId],
   );
 
   const handleRejectSuggestion = useCallback((id: number) => {
@@ -711,12 +919,30 @@ export function WorkflowDrawer({
   // ── Comment thread handlers ───────────────────────────────────────────────
 
   const handleCreateComment = useCallback(
-    async (postId: number, quotedText: string, comment: string) => {
-      const thread = await createCommentThread(postId, quotedText, comment);
+    async (postId: number, quotedText: string, comment: string, anchor?: CommentAnchor) => {
+      const thread = await createCommentThread(postId, quotedText, comment, anchor);
       await refetchComments();
       return thread.id;
     },
     [refetchComments],
+  );
+
+  // Caption text + anchors commit atomically. Refetch the THREADS first and refresh the
+  // post second: the field's draft keeps shadowing props until the post refetch lands,
+  // by which time the threads already carry the saved offsets (the other order lets the
+  // draft drop while threads are stale, orphaning repeated quotes in memory).
+  const handleSaveCaption = useCallback(
+    async (postId: number, text: string, anchors: CaptionAnchorPatch[]) => {
+      try {
+        await saveIgCaption(postId, text, anchors);
+      } catch (err) {
+        toast.error('Erro ao atualizar post');
+        throw err;
+      }
+      await refetchComments();
+      refresh();
+    },
+    [refresh, refetchComments],
   );
 
   const handleReplyToComment = useCallback(
@@ -771,6 +997,61 @@ export function WorkflowDrawer({
     ['enviado_cliente', 'aprovado_cliente', 'correcao_cliente'].includes(p.status),
   ).length;
   const readyToSend = orderedPosts.filter((p) => p.status === 'aprovado_interno').length;
+  /** Posts que passaram os gates de shouldOfferAutoSchedule e estão esperando um agendamento que não
+   *  vai acontecer sozinho (spec peça 3, resumo do cabeçalho). */
+  const awaitingAutoScheduleCount = orderedPosts.filter((p) => offerAutoSchedule(p)).length;
+
+  // ── Phone editor (C4) ─────────────────────────────────────────────────────
+  const phoneExpandedPost =
+    isPhoneEditor && expandedId != null
+      ? (orderedPosts.find((p) => p.id === expandedId) ?? null)
+      : null;
+  /** Everything the desktop row's buttons and kebab offer for one post. Mover and
+   *  Desmembrar can close this drawer when they finish, so they run over the drawer
+   *  after the editor screen has closed (its history entry popped first). */
+  const phoneMenuActions = (post: WorkflowPost): PhoneMenuAction[] => {
+    const id = post.id!;
+    const actions: PhoneMenuAction[] = [
+      {
+        label: 'Copiar link',
+        immediate: true,
+        onSelect: () => void copyAppLink(`/entregas?post=${id}`),
+      },
+    ];
+    if (card.hubUrl) {
+      const hubUrl = card.hubUrl;
+      actions.push({
+        label: 'Copiar link da postagem',
+        immediate: true,
+        onSelect: () => {
+          navigator.clipboard.writeText(buildHubPostLink(hubUrl, id)).then(
+            () => toast.success('Link copiado!'),
+            () => toast.error('Não foi possível copiar o link.'),
+          );
+        },
+      });
+    }
+    if (canDuplicate) {
+      actions.push({
+        label: 'Duplicar',
+        // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+        disabled: savingIds.has(id),
+        onSelect: () => setDuplicateTarget({ kind: 'post', postId: id, status: post.status }),
+      });
+    }
+    actions.push(
+      {
+        label: 'Mover para outro fluxo',
+        onSelect: () => phoneScreenRef.current?.closeThen(() => setMoveTarget([id])),
+      },
+      {
+        label: 'Desmembrar do fluxo',
+        onSelect: () => phoneScreenRef.current?.closeThen(() => openDetachConfirm([id])),
+      },
+      { label: 'Excluir post', destructive: true, onSelect: () => handleDeletePost(id) },
+    );
+    return actions;
+  };
 
   // The archive-empty-flow checkbox in the detach confirm dialog only shows when the
   // pending batch covers every post currently in this workflow.
@@ -784,75 +1065,121 @@ export function WorkflowDrawer({
       <div className="drawer-overlay" onClick={onClose} />
 
       {/* Panel */}
-      <div className={`drawer-panel${isFullscreen ? ' fullscreen' : ''}`}>
+      <div
+        className={
+          isPhone
+            ? 'drawer-panel phone-kit phone-ent-fluxo'
+            : `drawer-panel${isFullscreen ? ' fullscreen' : ''}`
+        }
+      >
         {/* Header */}
-        <div className="drawer-header">
-          <div className="drawer-header-info">
-            <div className="drawer-header-title">{card.workflow.titulo}</div>
-            <div className="drawer-header-subtitle">
-              {card.cliente?.nome || '—'} &bull; Etapa: {card.etapa.nome}
+        {isPhone ? (
+          <FluxoPhoneHeader
+            workflowId={workflowId}
+            title={card.workflow.titulo}
+            clienteNome={card.cliente?.nome}
+            etapaNome={card.etapa.nome}
+            readyToSend={readyToSend}
+            isSending={isSending}
+            onSend={handleSendToCliente}
+            onClose={onClose}
+            view={drawerView}
+            onViewChange={setDrawerView}
+            panelId={phonePanelId}
+            tabIdPrefix={phonePanelId}
+          />
+        ) : (
+          <div className="drawer-header">
+            <div className="drawer-header-info">
+              <div className="drawer-header-title">{card.workflow.titulo}</div>
+              <div className="drawer-header-subtitle">
+                {card.cliente?.nome || '—'} &bull; Etapa: {card.etapa.nome}
+              </div>
             </div>
-          </div>
-          <div className="drawer-header-actions">
-            {readyToSend > 0 && (
+            <div className="drawer-header-actions">
+              {readyToSend > 0 && (
+                <button
+                  className="drawer-send-btn"
+                  onClick={handleSendToCliente}
+                  disabled={isSending}
+                  title={`Enviar ${readyToSend} post${readyToSend > 1 ? 's' : ''} aprovados ao cliente`}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Enviar ao cliente ({readyToSend})
+                </button>
+              )}
+              <div className="drawer-view-toggle" role="tablist">
+                <button
+                  className={`drawer-calendar-btn${drawerView === 'posts' ? ' active' : ''}`}
+                  onClick={() => setDrawerView('posts')}
+                  title="Ver posts"
+                >
+                  Posts
+                </button>
+                <button
+                  className={`drawer-calendar-btn${drawerView === 'grid' ? ' active' : ''}`}
+                  onClick={() => setDrawerView('grid')}
+                  title="Ver a grade do Instagram do cliente"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  Grade
+                </button>
+                <button
+                  className={`drawer-calendar-btn${drawerView === 'calendar' ? ' active' : ''}`}
+                  onClick={() => setDrawerView('calendar')}
+                  title="Ver calendário do cliente"
+                >
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  Calendário
+                </button>
+                <button
+                  className={`drawer-calendar-btn${drawerView === 'history' ? ' active' : ''}`}
+                  onClick={() => setDrawerView('history')}
+                  title="Ver histórico do fluxo"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  Histórico
+                </button>
+              </div>
+              <CopyLinkButton
+                path={`/entregas?drawer=${workflowId}`}
+                label="Copiar link do fluxo"
+                className="drawer-close-btn"
+              />
               <button
-                className="drawer-send-btn"
-                onClick={handleSendToCliente}
-                disabled={isSending}
-                title={`Enviar ${readyToSend} post${readyToSend > 1 ? 's' : ''} aprovados ao cliente`}
+                className="drawer-close-btn drawer-fullscreen-btn"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? 'Recolher' : 'Expandir'}
               >
-                <Send className="h-3.5 w-3.5" />
-                Enviar ao cliente ({readyToSend})
-              </button>
-            )}
-            <div className="drawer-view-toggle" role="tablist">
-              <button
-                className={`drawer-calendar-btn${drawerView === 'posts' ? ' active' : ''}`}
-                onClick={() => setDrawerView('posts')}
-                title="Ver posts"
-              >
-                Posts
-              </button>
-              <button
-                className={`drawer-calendar-btn${drawerView === 'grid' ? ' active' : ''}`}
-                onClick={() => setDrawerView('grid')}
-                title="Ver a grade do Instagram do cliente"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Grade
-              </button>
-              <button
-                className={`drawer-calendar-btn${drawerView === 'calendar' ? ' active' : ''}`}
-                onClick={() => setDrawerView('calendar')}
-                title="Ver calendário do cliente"
-              >
-                <CalendarIcon className="h-3.5 w-3.5" />
-                Calendário
-              </button>
-              <button
-                className={`drawer-calendar-btn${drawerView === 'history' ? ' active' : ''}`}
-                onClick={() => setDrawerView('history')}
-                title="Ver histórico do fluxo"
-              >
-                <History className="h-3.5 w-3.5" />
-                Histórico
+                {isFullscreen ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
               </button>
             </div>
             <button
-              className="drawer-close-btn drawer-fullscreen-btn"
-              onClick={toggleFullscreen}
-              title={isFullscreen ? 'Recolher' : 'Expandir'}
+              className="drawer-close-btn drawer-dismiss-btn"
+              onClick={onClose}
+              title="Fechar"
             >
-              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </button>
-            <button className="drawer-close-btn" onClick={onClose} title="Fechar">
               <X className="h-5 w-5" />
             </button>
           </div>
-        </div>
+        )}
 
         {/* Posts section */}
-        <div className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}`}>
+        <div
+          ref={bodyRef}
+          className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}${isPhone ? ' phone-ent-fluxo__body' : ''}`}
+          {...(isPhone
+            ? {
+                id: phonePanelId,
+                role: 'tabpanel',
+                'aria-labelledby': `${phonePanelId}-${drawerView}`,
+              }
+            : {})}
+        >
           {drawerView === 'calendar' ? (
             <WorkflowCalendarView
               clienteId={clienteId}
@@ -864,6 +1191,7 @@ export function WorkflowDrawer({
               onOpenPost={(postId) => {
                 setDrawerView('posts');
                 setExpandedId(postId);
+                setScrollTargetId(postId);
               }}
               onBack={() => setDrawerView('posts')}
             />
@@ -873,22 +1201,147 @@ export function WorkflowDrawer({
             <WorkflowHistoryView workflowId={workflowId} />
           ) : (
             <>
-              <div className="drawer-section-header">
-                <span className="drawer-section-title">
-                  Posts
-                  {clientFacingCount > 0 && (
-                    <span className="drawer-post-count">
-                      {approvedCount} de {clientFacingCount} aprovados pelo cliente
-                    </span>
-                  )}
-                </span>
-                <button className="drawer-add-post-btn" onClick={handleAddPost}>
-                  <Plus className="h-3.5 w-3.5" /> Novo Post
-                </button>
-              </div>
+              {isPhone ? (
+                <FluxoPhonePostsToolbar
+                  mode={phoneListMode}
+                  onModeChange={changePhoneListMode}
+                  postsCount={posts.length}
+                  approvedCount={approvedCount}
+                  clientFacingCount={clientFacingCount}
+                  awaitingAutoScheduleCount={awaitingAutoScheduleCount}
+                  onBatchSchedule={() => setBatchScheduleWfId(workflowId)}
+                  onAddPost={handleAddPost}
+                  onSelectAll={selectAllPosts}
+                />
+              ) : (
+                <div className="drawer-section-header">
+                  <span className="drawer-section-title">
+                    Posts
+                    {clientFacingCount > 0 && (
+                      <span className="drawer-post-count">
+                        {approvedCount} de {clientFacingCount} aprovados pelo cliente
+                      </span>
+                    )}
+                    {awaitingAutoScheduleCount > 0 && (
+                      <button
+                        type="button"
+                        className="auto-schedule-badge auto-schedule-badge--action"
+                        onClick={() => setBatchScheduleWfId(workflowId)}
+                        title="Agendar de uma vez os posts aprovados que ainda têm data válida."
+                      >
+                        <CalendarClock className="h-3 w-3" aria-hidden="true" />
+                        {awaitingAutoScheduleCount} aguardando agendamento automático
+                      </button>
+                    )}
+                  </span>
+                  <button className="drawer-add-post-btn" onClick={handleAddPost}>
+                    <Plus className="h-3.5 w-3.5" /> Novo Post
+                  </button>
+                </div>
+              )}
 
-              {selectedPostIds.size > 0 && (
-                <div className="drawer-selection-bar" data-testid="drawer-selection-bar">
+              {isLoading ? (
+                <CardListSkeleton rows={4} />
+              ) : posts.length === 0 ? (
+                <div className="drawer-empty">
+                  Nenhum post ainda. Clique em "Novo Post" para começar.
+                </div>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={orderedPosts.map((p) => p.id!)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className={`drawer-posts-list${isPhone ? ' phone-ent-fluxo__list' : ''}`}>
+                      {orderedPosts.map((post) => (
+                        <SortablePostItem
+                          key={post.id}
+                          post={post}
+                          hubUrl={card.hubUrl}
+                          templateId={card.workflow.template_id}
+                          workflowId={workflowId}
+                          clienteId={clienteId}
+                          clientePosts={clientePosts}
+                          isExpanded={!isPhoneEditor && expandedId === post.id}
+                          isSaving={savingIds.has(post.id!)}
+                          approvals={approvals.filter((a) => a.post_id === post.id)}
+                          statusEvents={statusEvents.filter((e) => e.post_id === post.id)}
+                          processEvents={processEvents.filter((e) => e.post_id === post.id)}
+                          editSuggestion={
+                            editSuggestions.find((s) => s.post_id === post.id) ?? null
+                          }
+                          referenceCount={referenceCounts[post.id!] ?? 0}
+                          membros={membros}
+                          replyText={replyText[post.id!] || ''}
+                          sendingReply={sendingReply === post.id}
+                          commentThreads={commentThreads.filter((t) => t.post_id === post.id)}
+                          currentUserId={user?.id}
+                          currentUserRole={role}
+                          canManageAutomations={canManageAutomations}
+                          workspaceUsers={workspaceUsers}
+                          hasMedia={(post as any).has_media ?? false}
+                          hasInstagramAccount={hasInstagramAccount}
+                          igAccountStatus={igAccountStatus}
+                          hasActiveTikTokAccount={hasActiveTikTokAccount}
+                          ttAccountStatus={ttAccountStatus}
+                          isSelected={selectedPostIds.has(post.id!)}
+                          onSelectChange={(checked) => toggleSelectPost(post.id!, checked)}
+                          onDetachRequest={() => openDetachConfirm([post.id!])}
+                          onMoveRequest={() => setMoveTarget([post.id!])}
+                          onDuplicateRequest={
+                            canDuplicate
+                              ? () =>
+                                  setDuplicateTarget({
+                                    kind: 'post',
+                                    postId: post.id!,
+                                    status: post.status,
+                                  })
+                              : undefined
+                          }
+                          onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
+                          onDelete={() => handleDeletePost(post.id!)}
+                          onFieldChange={(field, value) =>
+                            handleFieldChange(post.id!, field, value)
+                          }
+                          onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
+                          onReplyChange={(text) =>
+                            setReplyText((prev) => ({ ...prev, [post.id!]: text }))
+                          }
+                          onReplySend={() => handleReply(post.id!)}
+                          onRefresh={refresh}
+                          onCreateComment={handleCreateComment}
+                          onSaveCaption={handleSaveCaption}
+                          onReplyToComment={handleReplyToComment}
+                          onResolveThread={handleResolveThread}
+                          onReopenThread={handleReopenThread}
+                          onEditComment={handleEditComment}
+                          onDeleteComment={handleDeleteComment}
+                          editorVersion={editorVersions[post.id!] ?? 0}
+                          onAcceptSuggestion={handleAcceptSuggestion}
+                          onRejectSuggestion={handleRejectSuggestion}
+                          showAutoScheduleBadge={offerAutoSchedule(post)}
+                          onAutoScheduleClick={() => maybeNudge(post)}
+                          phoneListMode={isPhone ? phoneListMode : undefined}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
+
+              {/* Floating: sticky to the bottom of the scrolling drawer body, so the
+                  actions stay in reach while the user scrolls a long list. */}
+              {!isPhone && selectedPostIds.size > 0 && (
+                <div
+                  className="drawer-selection-bar"
+                  role="toolbar"
+                  aria-label="Ações da seleção"
+                  data-testid="drawer-selection-bar"
+                >
                   <span className="drawer-selection-bar-count">
                     {selectedPostIds.size} selecionado{selectedPostIds.size === 1 ? '' : 's'}
                   </span>
@@ -901,6 +1354,14 @@ export function WorkflowDrawer({
                     Selecionar todos
                   </button>
                   <div className="drawer-selection-bar-actions">
+                    <button
+                      type="button"
+                      className="drawer-selection-bar-btn drawer-selection-bar-btn--primary"
+                      onClick={openSendSelected}
+                      disabled={isSendingSelected}
+                    >
+                      <Send className="h-3.5 w-3.5" /> Enviar ao cliente
+                    </button>
                     <button
                       type="button"
                       className="drawer-selection-bar-btn"
@@ -926,85 +1387,98 @@ export function WorkflowDrawer({
                 </div>
               )}
 
-              {isLoading ? (
-                <div className="drawer-empty">Carregando...</div>
-              ) : posts.length === 0 ? (
-                <div className="drawer-empty">
-                  Nenhum post ainda. Clique em "Novo Post" para começar.
-                </div>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={orderedPosts.map((p) => p.id!)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="drawer-posts-list">
-                      {orderedPosts.map((post) => (
-                        <SortablePostItem
-                          key={post.id}
-                          post={post}
-                          hubUrl={card.hubUrl}
-                          templateId={card.workflow.template_id}
-                          workflowId={workflowId}
-                          clienteId={clienteId}
-                          clientePosts={clientePosts}
-                          isExpanded={expandedId === post.id}
-                          isSaving={savingIds.has(post.id!)}
-                          approvals={approvals.filter((a) => a.post_id === post.id)}
-                          statusEvents={statusEvents.filter((e) => e.post_id === post.id)}
-                          editSuggestion={
-                            editSuggestions.find((s) => s.post_id === post.id) ?? null
-                          }
-                          membros={membros}
-                          replyText={replyText[post.id!] || ''}
-                          sendingReply={sendingReply === post.id}
-                          commentThreads={commentThreads.filter((t) => t.post_id === post.id)}
-                          currentUserId={user?.id}
-                          currentUserRole={role}
-                          workspaceUsers={workspaceUsers}
-                          hasMedia={(post as any).has_media ?? false}
-                          hasInstagramAccount={hasInstagramAccount}
-                          igAccountStatus={igAccountStatus}
-                          hasActiveTikTokAccount={hasActiveTikTokAccount}
-                          ttAccountStatus={ttAccountStatus}
-                          isSelected={selectedPostIds.has(post.id!)}
-                          onSelectChange={(checked) => toggleSelectPost(post.id!, checked)}
-                          onDetachRequest={() => openDetachConfirm([post.id!])}
-                          onMoveRequest={() => setMoveTarget([post.id!])}
-                          onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
-                          onDelete={() => handleDeletePost(post.id!)}
-                          onFieldChange={(field, value) =>
-                            handleFieldChange(post.id!, field, value)
-                          }
-                          onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
-                          onReplyChange={(text) =>
-                            setReplyText((prev) => ({ ...prev, [post.id!]: text }))
-                          }
-                          onReplySend={() => handleReply(post.id!)}
-                          onRefresh={refresh}
-                          onCreateComment={handleCreateComment}
-                          onReplyToComment={handleReplyToComment}
-                          onResolveThread={handleResolveThread}
-                          onReopenThread={handleReopenThread}
-                          onEditComment={handleEditComment}
-                          onDeleteComment={handleDeleteComment}
-                          editorVersion={editorVersions[post.id!] ?? 0}
-                          onAcceptSuggestion={handleAcceptSuggestion}
-                          onRejectSuggestion={handleRejectSuggestion}
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
-                </DndContext>
+              {isPhone && phoneListMode === 'select' && (
+                <FluxoPhoneSelectionBar
+                  count={selectedPostIds.size}
+                  onMove={() => setMoveTarget(Array.from(selectedPostIds))}
+                  onDetach={() => openDetachConfirm(Array.from(selectedPostIds))}
+                  onSend={openSendSelected}
+                  sending={isSendingSelected}
+                />
               )}
             </>
           )}
         </div>
       </div>
+
+      {/* ── Phone only (C4): the expanded post as its own pushed screen, with its own
+          history entry on top of the drawer's. Desktop never opens it. ── */}
+      {isPhoneEditor && (
+        <PhoneEditorScreen
+          open={phoneExpandedPost != null}
+          onClose={() => setExpandedId(null)}
+          label="Editor do post"
+          apiRef={phoneScreenRef}
+        >
+          {phoneExpandedPost && (
+            <PostEditorBody
+              key={phoneExpandedPost.id}
+              layout="phone"
+              phone={{
+                onBack: () => setExpandedId(null),
+                subtitle: `${card.cliente?.nome || '—'} · ${card.workflow.titulo}`,
+                clientName: card.cliente?.nome,
+                saving: savingIds.has(phoneExpandedPost.id!),
+                menuActions: phoneMenuActions(phoneExpandedPost),
+                sendToClient: {
+                  count: readyToSend,
+                  sending: isSending,
+                  onSend: handleSendToCliente,
+                },
+                autoSchedule: offerAutoSchedule(phoneExpandedPost)
+                  ? {
+                      needsDate: !isEligibleToScheduleNow(phoneExpandedPost.scheduled_at),
+                      onClick: () => maybeNudge(phoneExpandedPost),
+                    }
+                  : null,
+                processEvents: processEvents.filter((e) => e.post_id === phoneExpandedPost.id),
+              }}
+              post={phoneExpandedPost}
+              templateId={card.workflow.template_id}
+              workflowId={workflowId}
+              clienteId={clienteId}
+              clientePosts={clientePosts}
+              isExpanded
+              approvals={approvals.filter((a) => a.post_id === phoneExpandedPost.id)}
+              statusEvents={statusEvents.filter((e) => e.post_id === phoneExpandedPost.id)}
+              editSuggestion={
+                editSuggestions.find((s) => s.post_id === phoneExpandedPost.id) ?? null
+              }
+              membros={membros}
+              replyText={replyText[phoneExpandedPost.id!] || ''}
+              sendingReply={sendingReply === phoneExpandedPost.id}
+              commentThreads={commentThreads.filter((t) => t.post_id === phoneExpandedPost.id)}
+              currentUserId={user?.id}
+              currentUserRole={role}
+              canManageAutomations={canManageAutomations}
+              workspaceUsers={workspaceUsers}
+              hasInstagramAccount={hasInstagramAccount}
+              igAccountStatus={igAccountStatus}
+              hasActiveTikTokAccount={hasActiveTikTokAccount}
+              ttAccountStatus={ttAccountStatus}
+              onFieldChange={(field, value) =>
+                handleFieldChange(phoneExpandedPost.id!, field, value)
+              }
+              onContentUpdate={(json, plain) => scheduleContentSave(phoneExpandedPost, json, plain)}
+              onReplyChange={(text) =>
+                setReplyText((prev) => ({ ...prev, [phoneExpandedPost.id!]: text }))
+              }
+              onReplySend={() => handleReply(phoneExpandedPost.id!)}
+              onRefresh={refresh}
+              onCreateComment={handleCreateComment}
+              onSaveCaption={handleSaveCaption}
+              onReplyToComment={handleReplyToComment}
+              onResolveThread={handleResolveThread}
+              onReopenThread={handleReopenThread}
+              onEditComment={handleEditComment}
+              onDeleteComment={handleDeleteComment}
+              editorVersion={editorVersions[phoneExpandedPost.id!] ?? 0}
+              onAcceptSuggestion={handleAcceptSuggestion}
+              onRejectSuggestion={handleRejectSuggestion}
+            />
+          )}
+        </PhoneEditorScreen>
+      )}
 
       <AlertDialog
         open={!!pendingDeleteId}
@@ -1072,6 +1546,30 @@ export function WorkflowDrawer({
         </AlertDialogContent>
       </AlertDialog>
 
+      <AutoSchedulePromptDialog
+        post={nudgePost}
+        onClose={() => setNudgePost(null)}
+        onScheduled={() => {
+          setNudgePost(null);
+          refresh();
+        }}
+      />
+
+      <AutoScheduleBatchDialog
+        workflowId={batchScheduleWfId}
+        tiktokFeatureEnabled={tiktokEnabled}
+        // Computado fresco aqui: `card` é uma prop estável deste drawer (um só
+        // fluxo por vida do componente), então não precisa de um estado próprio
+        // para carregar o booleano até o render, ao contrário de KanbanView e
+        // EntregasTab (board com vários cards).
+        isFinalApprovalCycle={isFinalClientApprovalCycle(card.allEtapas)}
+        onClose={() => setBatchScheduleWfId(null)}
+        onScheduled={() => {
+          setBatchScheduleWfId(null);
+          refresh();
+        }}
+      />
+
       <AlertDialog
         open={!!pendingRejectSuggestionId}
         onOpenChange={(open) => {
@@ -1095,53 +1593,54 @@ export function WorkflowDrawer({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirmation dialog for desmembrar do fluxo (single post or bulk selection) */}
+      {/* Confirmation dialog for "Enviar ao cliente" from the selection bar */}
       <AlertDialog
-        open={!!detachTarget}
+        open={!!sendSelectedTarget}
         onOpenChange={(open) => {
-          if (!open) {
-            setDetachTarget(null);
-            setArchiveEmptyFlow(false);
-          }
+          if (!open) setSendSelectedTarget(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Desmembrar do fluxo?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Enviar {sendSelectedTarget?.length ?? 0} post
+              {(sendSelectedTarget?.length ?? 0) === 1 ? '' : 's'} ao cliente?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Os posts selecionados viram publicações avulsas de {card.cliente?.nome || '—'}. Eles
-              continuam no quadro de Publicações e no portal do cliente, mas saem deste fluxo.
+              {(sendSelectedTarget?.length ?? 0) === 1
+                ? 'O post fica visível'
+                : 'Os posts ficam visíveis'}{' '}
+              no portal do cliente, aguardando aprovação.
+              {sendSelectedTarget && selectedPostIds.size > sendSelectedTarget.length
+                ? selectedPostIds.size - sendSelectedTarget.length === 1
+                  ? ' 1 dos selecionados já está no portal, aprovado ou agendado, e fica como está.'
+                  : ` ${selectedPostIds.size - sendSelectedTarget.length} dos selecionados já estão no portal, aprovados ou agendados, e ficam como estão.`
+                : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {isTotalDetachSelection && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="detach-archive-empty-flow"
-                checked={archiveEmptyFlow}
-                onCheckedChange={(checked) => setArchiveEmptyFlow(checked === true)}
-                aria-label="Arquivar o fluxo depois de desmembrar"
-              />
-              <Label htmlFor="detach-archive-empty-flow">
-                Arquivar o fluxo depois de desmembrar
-              </Label>
-            </div>
-          )}
           <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setDetachTarget(null);
-                setArchiveEmptyFlow(false);
-              }}
-              disabled={isDetaching}
-            >
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDetach} disabled={isDetaching}>
-              {isDetaching ? 'Desmembrando...' : 'Desmembrar'}
-            </AlertDialogAction>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSendSelected}>Enviar ao cliente</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirmation dialog for desmembrar do fluxo (single post or bulk selection) */}
+      {detachTarget && (
+        <DetachPostsDialog
+          open
+          onClose={() => setDetachTarget(null)}
+          card={card}
+          posts={detachTarget.map((id) => ({
+            id,
+            titulo: posts.find((p) => p.id === id)?.titulo ?? null,
+          }))}
+          isTotalSelection={isTotalDetachSelection}
+          keepStepsEnabled={keepStepsEnabled}
+          onDetachedWithoutProcess={handleDetachedWithoutProcess}
+          onDetachedKeepingProcess={handleDetachedKeepingProcess}
+        />
+      )}
 
       <MovePostsToFluxoDialog
         open={!!moveTarget}
@@ -1151,6 +1650,17 @@ export function WorkflowDrawer({
         sourceEtapas={card.allEtapas}
         isTotalSelection={(moveTarget?.length ?? 0) === posts.length}
         onMoved={handleMoved}
+      />
+
+      <DuplicateDialog
+        target={duplicateTarget}
+        onClose={() => setDuplicateTarget(null)}
+        onDuplicated={(newId) => {
+          refresh();
+          setExpandedId(newId);
+          setScrollTargetId(newId);
+          toast.success('Post duplicado');
+        }}
       />
     </>
   );
@@ -1169,13 +1679,17 @@ interface SortablePostItemProps {
   isSaving: boolean;
   approvals: PostApproval[];
   statusEvents: PostStatusEvent[];
+  processEvents: PostProcessEvent[];
   editSuggestion: PostEditSuggestion | null;
+  /** Client references on this post (Hub uploads and links), for the collapsed-row badge. */
+  referenceCount: number;
   membros: Membro[];
   replyText: string;
   sendingReply: boolean;
   commentThreads: CommentThreadWithComments[];
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
+  canManageAutomations: boolean;
   workspaceUsers: { id: string; nome: string; avatar_url: string }[];
   hasMedia: boolean;
   hasInstagramAccount: boolean;
@@ -1186,14 +1700,22 @@ interface SortablePostItemProps {
   onSelectChange: (checked: boolean) => void;
   onDetachRequest: () => void;
   onMoveRequest: () => void;
+  /** "Duplicar post". Ausente quando o usuário não pode editar entregas. */
+  onDuplicateRequest?: () => void;
   onToggle: () => void;
   onDelete: () => void;
-  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
+  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void | Promise<unknown>;
   onContentUpdate: (json: Record<string, unknown>, plain: string) => void;
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
   onRefresh: () => void;
-  onCreateComment: (postId: number, quotedText: string, comment: string) => Promise<number>;
+  onCreateComment: (
+    postId: number,
+    quotedText: string,
+    comment: string,
+    anchor?: CommentAnchor,
+  ) => Promise<number>;
+  onSaveCaption: (postId: number, text: string, anchors: CaptionAnchorPatch[]) => Promise<void>;
   onReplyToComment: (threadId: number, content: string) => Promise<void>;
   onResolveThread: (threadId: number) => Promise<void>;
   onReopenThread: (threadId: number) => Promise<void>;
@@ -1202,6 +1724,13 @@ interface SortablePostItemProps {
   editorVersion: number;
   onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
   onRejectSuggestion: (id: number) => void;
+  /** True quando este post passou os gates do aviso de agendamento
+   *  automático (spec peça 3). Calculado pelo drawer, não pela linha. */
+  showAutoScheduleBadge: boolean;
+  /** Abre o aviso para este post. */
+  onAutoScheduleClick: () => void;
+  /** Set only on phones (< 768px): the trigger row becomes FluxoPhonePostRow in this mode. */
+  phoneListMode?: FluxoPhoneListMode;
 }
 
 function SortablePostItem({
@@ -1215,13 +1744,16 @@ function SortablePostItem({
   isSaving,
   approvals,
   statusEvents,
+  processEvents,
   editSuggestion,
+  referenceCount,
   membros,
   replyText,
   sendingReply,
   commentThreads,
   currentUserId,
   currentUserRole,
+  canManageAutomations,
   workspaceUsers,
   hasMedia,
   hasInstagramAccount,
@@ -1232,6 +1764,7 @@ function SortablePostItem({
   onSelectChange,
   onDetachRequest,
   onMoveRequest,
+  onDuplicateRequest,
   onToggle,
   onDelete,
   onFieldChange,
@@ -1240,6 +1773,7 @@ function SortablePostItem({
   onReplySend,
   onRefresh,
   onCreateComment,
+  onSaveCaption,
   onReplyToComment,
   onResolveThread,
   onReopenThread,
@@ -1248,6 +1782,9 @@ function SortablePostItem({
   editorVersion,
   onAcceptSuggestion,
   onRejectSuggestion,
+  showAutoScheduleBadge,
+  onAutoScheduleClick,
+  phoneListMode,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
@@ -1272,99 +1809,164 @@ function SortablePostItem({
     <div
       ref={setNodeRef}
       style={style}
+      data-post-id={post.id}
       className={`drawer-post-item${isExpanded ? ' expanded' : ''}`}
     >
       {/* Accordion trigger */}
-      <div className="drawer-post-trigger" onClick={onToggle}>
-        <div className="drawer-post-trigger-left">
-          <Checkbox
-            className="drawer-post-select-checkbox"
-            checked={isSelected}
-            onCheckedChange={(checked) => onSelectChange(checked === true)}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`Selecionar ${post.titulo || 'post sem título'}`}
-          />
-          <span
-            className="drawer-drag-handle"
-            {...attributes}
-            {...listeners}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GripVertical className="h-4 w-4" />
-          </span>
-          {isExpanded ? (
-            <ChevronDown className="h-4 w-4 drawer-post-chevron" />
-          ) : (
-            <ChevronRight className="h-4 w-4 drawer-post-chevron" />
-          )}
-          <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
-          <span
-            className={`drawer-post-visibility${isExternallyVisible ? ' is-visible' : ''}`}
-            title={
-              isExternallyVisible ? VISIBILITY_BADGE_LABEL.visible : VISIBILITY_BADGE_LABEL.internal
-            }
-            aria-label={
-              isExternallyVisible ? VISIBILITY_BADGE_LABEL.visible : VISIBILITY_BADGE_LABEL.internal
-            }
-          >
-            {isExternallyVisible ? (
-              <Eye className="h-3.5 w-3.5" />
+      {phoneListMode ? (
+        <FluxoPhonePostRow
+          post={post}
+          mode={phoneListMode}
+          hubUrl={hubUrl}
+          isExpanded={isExpanded}
+          isSaving={isSaving}
+          isSelected={isSelected}
+          hasMedia={hasMedia}
+          editSuggestion={editSuggestion}
+          referenceCount={referenceCount}
+          commentCount={commentThreads.length}
+          approvals={approvals}
+          statusEvents={statusEvents}
+          processEvents={processEvents}
+          showAutoScheduleBadge={showAutoScheduleBadge}
+          onAutoScheduleClick={onAutoScheduleClick}
+          dragHandleProps={{ ...attributes, ...listeners }}
+          onToggle={onToggle}
+          onSelectChange={onSelectChange}
+          onDuplicateRequest={onDuplicateRequest}
+          onMoveRequest={onMoveRequest}
+          onDetachRequest={onDetachRequest}
+          onDelete={onDelete}
+        />
+      ) : (
+        <div className="drawer-post-trigger" onClick={onToggle}>
+          <div className="drawer-post-trigger-left">
+            <Checkbox
+              className="drawer-post-select-checkbox"
+              checked={isSelected}
+              onCheckedChange={(checked) => onSelectChange(checked === true)}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Selecionar ${post.titulo || 'post sem título'}`}
+            />
+            <span
+              className="drawer-drag-handle"
+              {...attributes}
+              {...listeners}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="h-4 w-4" />
+            </span>
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 drawer-post-chevron" />
             ) : (
-              <EyeOff className="h-3.5 w-3.5" />
+              <ChevronRight className="h-4 w-4 drawer-post-chevron" />
             )}
-          </span>
-          <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
-          {hasMedia && (
-            <span className="drawer-post-media-badge" title="Mídia anexada">
-              <ImageIcon className="h-3.5 w-3.5" />
-            </span>
-          )}
-          {editSuggestion && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800">
-              Sugestão pendente
-            </span>
-          )}
-          {commentThreads.length > 0 && (
+            <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
             <span
-              className="drawer-post-comment-badge"
-              title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}
+              className={`drawer-post-visibility${isExternallyVisible ? ' is-visible' : ''}`}
+              title={
+                isExternallyVisible
+                  ? VISIBILITY_BADGE_LABEL.visible
+                  : VISIBILITY_BADGE_LABEL.internal
+              }
+              aria-label={
+                isExternallyVisible
+                  ? VISIBILITY_BADGE_LABEL.visible
+                  : VISIBILITY_BADGE_LABEL.internal
+              }
             >
-              <MessageSquare className="h-3 w-3" />
-              {commentThreads.length}
+              {isExternallyVisible ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5" />
+              )}
             </span>
-          )}
+            <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+            {hasMedia && (
+              <span className="drawer-post-media-badge" title="Mídia anexada">
+                <ImageIcon className="h-3.5 w-3.5" />
+              </span>
+            )}
+            {editSuggestion && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800">
+                Sugestão pendente
+              </span>
+            )}
+            {referenceCount > 0 && (
+              <Badge
+                variant="info"
+                size="sm"
+                className="inline-flex items-center gap-1"
+                title="Referências enviadas pelo cliente no Hub"
+              >
+                <Paperclip className="h-3 w-3" aria-hidden="true" />
+                {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
+              </Badge>
+            )}
+            {commentThreads.length > 0 && (
+              <span
+                className="drawer-post-comment-badge"
+                title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}
+              >
+                <MessageSquare className="h-3 w-3" />
+                {commentThreads.length}
+              </span>
+            )}
+          </div>
+          <div className="drawer-post-trigger-right" onClick={(e) => e.stopPropagation()}>
+            {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
+            <PostTimelinePopover
+              post={post}
+              events={statusEvents}
+              approvals={approvals}
+              processEvents={processEvents}
+            />
+            {publishIso ? (
+              <span
+                className="drawer-post-date"
+                title={`${isPublished ? 'Publicado em' : 'Agendado para'} ${formatPostDateFull(publishIso)}`}
+              >
+                {formatPostDate(publishIso)}
+              </span>
+            ) : (
+              <span className="drawer-post-date drawer-post-date--empty">A definir</span>
+            )}
+            <PostStatusChip post={post} registry={statusRegistry} />
+            {showAutoScheduleBadge && (
+              <AutoScheduleBadge
+                onClick={onAutoScheduleClick}
+                needsDate={!isEligibleToScheduleNow(post.scheduled_at)}
+              />
+            )}
+            <CopyPostLinkButton hubUrl={hubUrl} postId={post.id!} />
+            <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="drawer-kebab-btn" title="Mais ações">
+                  <MoreVertical className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => copyAppLink(`/entregas?post=${post.id}`)}>
+                  <Copy className="h-3.5 w-3.5" />
+                  Copiar link do post
+                </DropdownMenuItem>
+                {onDuplicateRequest && (
+                  // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+                  <DropdownMenuItem onClick={onDuplicateRequest} disabled={isSaving}>
+                    <CopyPlus className="h-3.5 w-3.5" />
+                    Duplicar post
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={onMoveRequest}>Mover para outro fluxo</DropdownMenuItem>
+                <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-        <div className="drawer-post-trigger-right" onClick={(e) => e.stopPropagation()}>
-          {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
-          <PostTimelinePopover post={post} events={statusEvents} approvals={approvals} />
-          {publishIso ? (
-            <span
-              className="drawer-post-date"
-              title={`${isPublished ? 'Publicado em' : 'Agendado para'} ${formatPostDateFull(publishIso)}`}
-            >
-              {formatPostDate(publishIso)}
-            </span>
-          ) : (
-            <span className="drawer-post-date drawer-post-date--empty">A definir</span>
-          )}
-          <PostStatusChip post={post} registry={statusRegistry} />
-          <CopyPostLinkButton hubUrl={hubUrl} postId={post.id!} />
-          <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="drawer-kebab-btn" title="Mais ações">
-                <MoreVertical className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onMoveRequest}>Mover para outro fluxo</DropdownMenuItem>
-              <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+      )}
 
       {/* Accordion content */}
       <PostEditorBody
@@ -1375,6 +1977,7 @@ function SortablePostItem({
         clientePosts={clientePosts}
         isExpanded={isExpanded}
         approvals={approvals}
+        statusEvents={statusEvents}
         editSuggestion={editSuggestion}
         membros={membros}
         replyText={replyText}
@@ -1382,6 +1985,7 @@ function SortablePostItem({
         commentThreads={commentThreads}
         currentUserId={currentUserId}
         currentUserRole={currentUserRole}
+        canManageAutomations={canManageAutomations}
         workspaceUsers={workspaceUsers}
         hasInstagramAccount={hasInstagramAccount}
         igAccountStatus={igAccountStatus}
@@ -1393,6 +1997,7 @@ function SortablePostItem({
         onReplySend={onReplySend}
         onRefresh={onRefresh}
         onCreateComment={onCreateComment}
+        onSaveCaption={onSaveCaption}
         onReplyToComment={onReplyToComment}
         onResolveThread={onResolveThread}
         onReopenThread={onReopenThread}

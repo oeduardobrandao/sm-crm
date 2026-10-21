@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
@@ -10,6 +11,13 @@ const store = vi.hoisted(() => ({
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
+  reorderFluxosBoard: vi.fn(),
+  // Fase 4: usePostProcessCommands (chamado incondicionalmente pelo
+  // KanbanView) importa estes três do store.
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  updateWorkflowPost: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),
   addWorkflowEtapa: vi.fn(),
@@ -18,8 +26,6 @@ const store = vi.hoisted(() => ({
   removeWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
   updateWorkflowEtapa: vi.fn(),
-  updateWorkflowTemplate: vi.fn(),
-  propagateTemplateToWorkflows: vi.fn(),
   getPropertyDefinitions: vi.fn(),
   deletePropertyDefinition: vi.fn(),
   getWorkflows: vi.fn(),
@@ -28,11 +34,7 @@ const store = vi.hoisted(() => ({
   getWorkflowTemplates: vi.fn(),
   getWorkflowEtapas: vi.fn(),
   getWorkflowPostsCounts: vi.fn(),
-  getWorkflowApprovedPostsCounts: vi.fn(),
-  getWorkflowClearedClientePostsCounts: vi.fn(),
-  getWorkflowRevisaoInternaCounts: vi.fn(),
-  getWorkflowAwaitingClientePostsCounts: vi.fn(),
-  getWorkflowPostResponsaveis: vi.fn(),
+  getWorkflowPostStats: vi.fn(),
   getWorkspaceSlug: vi.fn(),
 }));
 
@@ -55,6 +57,23 @@ vi.mock('../../components/WorkflowCard', () => ({
 
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
+// usePostProcessCommands usa useQueryClient (fase 4): todo render do
+// KanbanView agora precisa de um QueryClientProvider por cima. Este arquivo
+// usa `rerender`, então o wrapper vai pela opção `wrapper` do RTL -- ela é
+// reaplicada automaticamente em cada rerender, ao contrário de embrulhar o ui
+// manualmente (que perderia o provider na primeira chamada de rerender).
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function QueryWrapper({ children }: { children: React.ReactNode }) {
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+}
+function render(ui: React.ReactElement) {
+  return rtlRender(ui, { wrapper: QueryWrapper });
+}
 
 const etapa = {
   id: 11,

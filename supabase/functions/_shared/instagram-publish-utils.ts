@@ -3,9 +3,26 @@ import { CAROUSEL_MAX_ITEMS, validateMedia } from "./instagram-limits.ts";
 import type { MediaFile, ValidationError } from "./instagram-limits.ts";
 import { GRAPH_BASE, throwGraphError } from "./instagram-graph.ts";
 import { TRIAL_MEDIA_SHAPE_ERROR } from "./publish-error-codes.ts";
+import { normalizeCollaborators } from "./instagram-collaborators.ts";
 
 export { CAROUSEL_MAX_ITEMS, validateMedia };
 export type { MediaFile, ValidationError };
+
+// 10s was too tight: Meta's Graph API gets measurably slower under the load spike
+// every scheduler hits at round-hour marks (:00, :15, :30, :45), which was tripping
+// this on otherwise-healthy publishes (post-mortem 2026-09-18, posts 5172/4277/3049/
+// 4106/5545 -- all published fine on the cron's own retry a minute later). This is
+// the default for background work (the cron): it can afford a longer per-call
+// budget because a stalled attempt just retries on the next tick.
+const GRAPH_TIMEOUT_MS = 20_000;
+
+// publish-now (instagram-publish/handler.ts) runs synchronously inside an HTTP
+// request a CRM user is watching, and its own poll loops call these same
+// functions up to 12 times each (see pollContainerReady) -- at GRAPH_TIMEOUT_MS
+// that's minutes of hang on a click, not a background retry. Every fetch-issuing
+// function below takes an optional trailing timeoutMs so publish-now can pass
+// this shorter budget explicitly while the cron keeps the default.
+export const INTERACTIVE_GRAPH_TIMEOUT_MS = 10_000;
 
 // --- Token Decryption (duplicated across functions; centralized here) ---
 
@@ -74,10 +91,15 @@ export async function validateForScheduling(
 
   const { data: post } = await db
     .from("workflow_posts")
-    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy")
+    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy, ig_collaborators, platform")
     .eq("id", postId)
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
+  // Post sem Instagram nem TikTok (só Geral): nada o publicaria; agendá-lo
+  // o deixaria preso em 'agendado'. Spec 2026-09-29, fase P1.
+  if (post.platform === "other") {
+    return { ok: false, errors: ["Este post não tem destino com publicação automática."] };
+  }
   const isStory = post.tipo === "stories";
 
   if (!opts?.skipDateCheck) {
@@ -110,7 +132,10 @@ export async function validateForScheduling(
           `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
       );
     }
-    const mediaErrors = validateMedia(mediaFiles, { forStories: isStory });
+    const mediaErrors = validateMedia(mediaFiles, {
+      forStories: isStory,
+      isCarousel: !isStory && mediaFiles.length > 1,
+    });
     for (const e of mediaErrors) errors.push(e.message);
   }
 
@@ -120,6 +145,15 @@ export async function validateForScheduling(
     const isSingleVideo = mediaFiles.length === 1 && mediaFiles[0].kind === "video";
     if (post.tipo !== "reels" || !isSingleVideo) errors.push(TRIAL_MEDIA_SHAPE_ERROR);
   }
+
+  // Colaboradores (spec 2026-10-19): os CHECKs e o trigger do banco já tornam
+  // estas combinações impossíveis; a checagem aqui faz "Agendar" falhar na hora.
+  const collaboratorError = collaboratorsConflict(
+    normalizeCollaborators(post.ig_collaborators),
+    post.ig_trial_strategy,
+    post.tipo,
+  );
+  if (collaboratorError) errors.push(collaboratorError);
 
   // No workflow lookup: post.cliente_id (selected above) is authoritative for
   // both attached and avulso posts, so a workflow row is never required here.
@@ -158,6 +192,30 @@ export async function validateForScheduling(
   };
 }
 
+// --- Collaborators (spec 2026-10-19) ---
+
+/** The Graph `collaborators` param goes in the JSON body as an array (as the
+ * spike sent it), and only when there is at least one name. Carousel children
+ * and stories never get it. */
+function withCollaborators(body: Record<string, unknown>, collaborators?: string[]): void {
+  if (collaborators && collaborators.length > 0) body.collaborators = collaborators;
+}
+
+/** Combinations Instagram does not accept (and the DB CHECK/trigger forbid):
+ * the error message, or null when the combination is fine. */
+function collaboratorsConflict(
+  collaborators: string[],
+  trialStrategy: string | null | undefined,
+  tipo: string | null | undefined,
+): string | null {
+  if (collaborators.length === 0) return null;
+  if (trialStrategy === "manual" || trialStrategy === "auto") {
+    return "Reels de teste não aceitam colaboradores.";
+  }
+  if (tipo === "stories") return "Stories não aceitam colaboradores.";
+  return null;
+}
+
 // --- Graph API Helpers ---
 
 export async function createSingleImageContainer(
@@ -165,11 +223,15 @@ export async function createSingleImageContainer(
   token: string,
   imageUrl: string,
   caption: string,
+  opts?: { timeoutMs?: number; collaborators?: string[] },
 ): Promise<{ id: string }> {
+  const body: Record<string, unknown> = { image_url: imageUrl, caption, access_token: token };
+  withCollaborators(body, opts?.collaborators);
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image_url: imageUrl, caption, access_token: token }),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) {
@@ -185,25 +247,31 @@ export async function createVideoContainer(
   token: string,
   videoUrl: string,
   caption: string,
-  coverUrl?: string,
-  trialStrategy?: IgTrialStrategy | null,
+  opts?: {
+    coverUrl?: string;
+    trialStrategy?: IgTrialStrategy | null;
+    timeoutMs?: number;
+    collaborators?: string[];
+  },
 ): Promise<{ id: string }> {
-  const body: Record<string, string> = {
+  const body: Record<string, unknown> = {
     video_url: videoUrl,
     caption,
     media_type: "REELS",
     access_token: token,
   };
-  if (coverUrl) body.cover_url = coverUrl;
-  if (trialStrategy) {
+  if (opts?.coverUrl) body.cover_url = opts.coverUrl;
+  if (opts?.trialStrategy) {
     body.trial_params = JSON.stringify({
-      graduation_strategy: trialStrategy === "auto" ? "SS_PERFORMANCE" : "MANUAL",
+      graduation_strategy: opts.trialStrategy === "auto" ? "SS_PERFORMANCE" : "MANUAL",
     });
   }
+  withCollaborators(body, opts?.collaborators);
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -214,6 +282,7 @@ export async function createStoryImageContainer(
   igUserId: string,
   token: string,
   imageUrl: string,
+  timeoutMs = GRAPH_TIMEOUT_MS,
 ): Promise<{ id: string }> {
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
@@ -223,6 +292,7 @@ export async function createStoryImageContainer(
       image_url: imageUrl,
       access_token: token,
     }),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -233,6 +303,7 @@ export async function createStoryVideoContainer(
   igUserId: string,
   token: string,
   videoUrl: string,
+  timeoutMs = GRAPH_TIMEOUT_MS,
 ): Promise<{ id: string }> {
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
@@ -242,6 +313,7 @@ export async function createStoryVideoContainer(
       video_url: videoUrl,
       access_token: token,
     }),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -253,6 +325,7 @@ export async function createCarouselChildContainer(
   token: string,
   mediaUrl: string,
   isVideo: boolean,
+  timeoutMs = GRAPH_TIMEOUT_MS,
 ): Promise<{ id: string }> {
   const body: Record<string, string | boolean> = {
     is_carousel_item: true,
@@ -268,6 +341,7 @@ export async function createCarouselChildContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -279,16 +353,20 @@ export async function createCarouselParentContainer(
   token: string,
   childIds: string[],
   caption: string,
+  opts?: { timeoutMs?: number; collaborators?: string[] },
 ): Promise<{ id: string }> {
+  const body: Record<string, unknown> = {
+    media_type: "CAROUSEL",
+    children: childIds.join(","),
+    caption,
+    access_token: token,
+  };
+  withCollaborators(body, opts?.collaborators);
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      media_type: "CAROUSEL",
-      children: childIds.join(","),
-      caption,
-      access_token: token,
-    }),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -314,13 +392,22 @@ export async function fetchPostMedia(db: DbClient, postId: number): Promise<Post
     .order("sort_order", { ascending: true });
 
   // deno-lint-ignore no-explicit-any
-  return (data ?? []).map((l: any) => ({
+  const rows: PostMediaRow[] = (data ?? []).map((l: any) => ({
     id: l.files.id,
     kind: l.files.kind,
     r2_key: l.files.r2_key,
     thumbnail_r2_key: l.files.thumbnail_r2_key,
     sort_order: l.sort_order,
   }));
+
+  // sort_order can have ties (confirmed: other handlers can write duplicate
+  // values). Tiebreak on id so this function's output is deterministic
+  // regardless of tie order returned by the query -- ensureCarouselChildren's
+  // sameFileSequence check compares this to persisted state index-by-index,
+  // and a tie-induced reorder with no real gallery change must not look like
+  // a sequence change.
+  rows.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  return rows;
 }
 
 export interface StorySegment {
@@ -376,9 +463,9 @@ async function setSegmentField(
 /** Create a STORIES container for every segment that lacks one; persist each id. */
 export async function createMissingStorySegmentContainers(
   db: DbClient,
-  opts: { postId: number; igUserId: string; token: string },
+  opts: { postId: number; igUserId: string; token: string; timeoutMs?: number },
 ): Promise<StorySegment[]> {
-  const { postId, igUserId, token } = opts;
+  const { postId, igUserId, token, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
   const segments = await ensureStorySegments(db, postId);
   const media = await fetchPostMedia(db, postId);
   const byFileId = new Map(media.map((m) => [m.id, m]));
@@ -390,8 +477,8 @@ export async function createMissingStorySegmentContainers(
     if (!file) throw new Error(`Story segment ${i}: media file ${seg.file_id} not found`);
     const url = await signGetUrl(file.r2_key, 7200);
     const container = file.kind === "video"
-      ? await createStoryVideoContainer(igUserId, token, url)
-      : await createStoryImageContainer(igUserId, token, url);
+      ? await createStoryVideoContainer(igUserId, token, url, timeoutMs)
+      : await createStoryImageContainer(igUserId, token, url, timeoutMs);
     seg.container_id = container.id;
     await setSegmentField(db, postId, i, "container_id", container.id);
   }
@@ -405,9 +492,16 @@ export async function createMissingStorySegmentContainers(
  */
 export async function publishReadyStorySegments(
   db: DbClient,
-  opts: { postId: number; igUserId: string; token: string; maxPolls?: number; intervalMs?: number },
+  opts: {
+    postId: number;
+    igUserId: string;
+    token: string;
+    maxPolls?: number;
+    intervalMs?: number;
+    timeoutMs?: number;
+  },
 ): Promise<{ segments: StorySegment[]; allDone: boolean }> {
-  const { postId, igUserId, token, maxPolls = 2, intervalMs = 3000 } = opts;
+  const { postId, igUserId, token, maxPolls = 2, intervalMs = 3000, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
   const segments = await ensureStorySegments(db, postId);
 
   for (let i = 0; i < segments.length; i++) {
@@ -416,14 +510,14 @@ export async function publishReadyStorySegments(
     if (!seg.container_id) break; // a container is still missing; container phase first
 
     const containerId = seg.container_id; // narrowed: non-null past the guard above
-    const status = await pollContainerReady(containerId, token, maxPolls, intervalMs);
+    const status = await pollContainerReady(containerId, token, maxPolls, intervalMs, timeoutMs);
     if (status === "IN_PROGRESS") break; // try again next cycle
     if (status === "ERROR") {
       seg.container_id = null;
       await setSegmentField(db, postId, i, "container_id", null);
       throw new Error(`Story segment ${i + 1} falhou no processamento do Instagram`);
     }
-    const result = await publishContainer(igUserId, token, containerId);
+    const result = await publishContainer(igUserId, token, containerId, timeoutMs);
     seg.media_id = result.id;
     await setSegmentField(db, postId, i, "media_id", result.id);
   }
@@ -449,6 +543,240 @@ export function selectStoryMediaId(segments: StorySegment[]): string | null {
   return null;
 }
 
+// --- Carousel children (resumable per-child state, mirrors story_segments) ---
+
+export interface CarouselChild {
+  file_id: number;
+  kind: "image" | "video";
+  container_id: string | null;
+  ready: boolean;
+}
+
+function sameFileSequence(children: CarouselChild[], media: PostMediaRow[]): boolean {
+  if (children.length !== media.length) return false;
+  return children.every((c, i) => c.file_id === media[i].id);
+}
+
+/**
+ * Idempotently ensure a carousel post has a `carousel_children` array (one entry
+ * per media, ordered). Returns the persisted array unchanged when its file_id
+ * sequence still matches post_file_links, preserving container_id/ready. Unlike
+ * ensureStorySegments it REBUILDS when the sequence differs: post_file_link_replace
+ * only blocks gallery swaps once instagram_container_id is set, and an in-flight
+ * carousel has none yet, so a swap mid-flight would otherwise leave stale file_ids
+ * that createMissingCarouselChildContainers could never resolve. Only the
+ * single-writer holding the publish_processing_at lock should call this.
+ */
+export async function ensureCarouselChildren(db: DbClient, postId: number): Promise<CarouselChild[]> {
+  const { data: post, error } = await db
+    .from("workflow_posts")
+    .select("carousel_children")
+    .eq("id", postId)
+    .single();
+  if (error) throw new Error(`Failed to read carousel children: ${error.message ?? error}`);
+  const media = await fetchPostMedia(db, postId);
+
+  const existing = (post?.carousel_children ?? null) as CarouselChild[] | null;
+  if (existing && existing.length > 0 && sameFileSequence(existing, media)) return existing;
+
+  const children: CarouselChild[] = media.map((m) => ({
+    file_id: m.id,
+    kind: m.kind === "video" ? "video" : "image",
+    container_id: null,
+    ready: false,
+  }));
+  await db.from("workflow_posts").update({ carousel_children: children }).eq("id", postId);
+  return children;
+}
+
+/** A non-story post with more than one media publishes as a carousel. */
+export async function isCarouselPost(
+  db: DbClient,
+  postId: number,
+  tipo?: string | null,
+): Promise<boolean> {
+  if (tipo === "stories") return false;
+  const media = await fetchPostMedia(db, postId);
+  return media.length > 1;
+}
+
+function carouselLimitMessage(count: number): string {
+  return (
+    `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
+    `(este post tem ${count}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
+    `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`
+  );
+}
+
+async function setCarouselChildField(
+  db: DbClient,
+  postId: number,
+  index: number,
+  field: "container_id" | "ready",
+  value: string | boolean | null,
+): Promise<void> {
+  // p_value is jsonb on the SQL side (ready is a boolean); JS null clears the field.
+  // deno-lint-ignore no-explicit-any
+  const { error } = await (db as any).rpc("set_carousel_child_field", {
+    p_post_id: postId,
+    p_index: index,
+    p_field: field,
+    p_value: value,
+  });
+  if (error) throw new Error(`Failed to persist carousel child ${field}: ${error.message ?? error}`);
+}
+
+/**
+ * Create a carousel-item container for every child that lacks one; persist each
+ * id the moment it exists (one RPC per success, never batched at the end) so a
+ * later tick resumes from the last created child instead of redoing the burst.
+ */
+export async function createMissingCarouselChildContainers(
+  db: DbClient,
+  opts: { postId: number; igUserId: string; token: string; timeoutMs?: number },
+): Promise<CarouselChild[]> {
+  const { postId, igUserId, token, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
+  const children = await ensureCarouselChildren(db, postId);
+  if (children.length > CAROUSEL_MAX_ITEMS) throw new Error(carouselLimitMessage(children.length));
+
+  const media = await fetchPostMedia(db, postId);
+  const byFileId = new Map(media.map((m) => [m.id, m]));
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (child.container_id) continue;
+    const file = byFileId.get(child.file_id);
+    if (!file) throw new Error(`Carousel child ${i}: media file ${child.file_id} not found`);
+    const url = await signGetUrl(file.r2_key, 7200);
+    const container = await createCarouselChildContainer(igUserId, token, url, child.kind === "video", timeoutMs);
+    child.container_id = container.id;
+    await setCarouselChildField(db, postId, i, "container_id", container.id);
+  }
+  return children;
+}
+
+/**
+ * Poll every child that has a container but is not yet ready. Round-based: one
+ * status check per pending child per round (in parallel), at most `maxPolls`
+ * rounds, so the wall clock is bounded by maxPolls * intervalMs no matter how
+ * many videos the carousel has. FINISHED -> ready:true (persisted). ERROR ->
+ * that child's container_id is cleared (persisted) so the next container phase
+ * recreates it, then throws; the wording classifies as MEDIA_UNSUPPORTED, same
+ * as a story segment ERROR. IN_PROGRESS after the budget is not an error:
+ * allReady=false tells the caller to leave the post for the next cron tick.
+ */
+export async function pollCarouselChildrenReady(
+  db: DbClient,
+  opts: {
+    postId: number;
+    igUserId: string;
+    token: string;
+    maxPolls?: number;
+    intervalMs?: number;
+    timeoutMs?: number;
+  },
+): Promise<{ children: CarouselChild[]; allReady: boolean }> {
+  const { postId, token, maxPolls = 2, intervalMs = 3000, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
+  const children = await ensureCarouselChildren(db, postId);
+
+  for (let round = 0; round < maxPolls; round++) {
+    const pending = children
+      .map((child, index) => ({ child, index }))
+      .filter(({ child }) => child.container_id && !child.ready);
+    if (pending.length === 0) break;
+
+    const statuses = await Promise.all(
+      pending.map(({ child }) => checkContainerStatus(child.container_id as string, token, timeoutMs)),
+    );
+
+    // Persist every FINISHED child first so a sibling's ERROR never discards
+    // progress made in the same round.
+    let errored: number | null = null;
+    for (let k = 0; k < pending.length; k++) {
+      const { child, index } = pending[k];
+      if (statuses[k] === "FINISHED") {
+        child.ready = true;
+        await setCarouselChildField(db, postId, index, "ready", true);
+      } else if (statuses[k] === "ERROR" && errored === null) {
+        errored = index;
+      }
+    }
+    if (errored !== null) {
+      children[errored].container_id = null;
+      await setCarouselChildField(db, postId, errored, "container_id", null);
+      throw new Error(`Item ${errored + 1} do carrossel falhou no processamento do Instagram`);
+    }
+
+    const stillPending = children.some((c) => c.container_id && !c.ready);
+    if (!stillPending) break;
+    if (round < maxPolls - 1) await new Promise((r) => setTimeout(r, intervalMs));
+  }
+
+  const allReady = children.length > 0 && children.every((c) => !!c.container_id && c.ready);
+  return { children, allReady };
+}
+
+export interface CarouselAdvanceResult {
+  /** The CAROUSEL parent container id; non-null exactly when allReady is true. */
+  containerId: string | null;
+  children: CarouselChild[];
+  allReady: boolean;
+}
+
+/**
+ * One resumable step of carousel container creation: create any missing child
+ * containers (persisting each), poll readiness within the budget, and assemble
+ * the CAROUSEL parent only once every child is FINISHED. allReady=false is NOT
+ * an error -- the caller clears the publish lock and lets the next cron tick
+ * call this again; persisted state makes the next call pick up where this one
+ * stopped. Throws on child ERROR, cap, trial-shape, or any Graph error (callers
+ * mark the post failed, as with createContainerForPost).
+ */
+export async function advanceCarouselContainer(
+  db: DbClient,
+  opts: {
+    postId: number;
+    igUserId: string;
+    token: string;
+    caption: string;
+    trialStrategy?: string | null;
+    collaborators?: string[] | null;
+    maxPolls?: number;
+    intervalMs?: number;
+    timeoutMs?: number;
+  },
+): Promise<CarouselAdvanceResult> {
+  const { postId, igUserId, token, caption, maxPolls, intervalMs, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
+  const collaborators = normalizeCollaborators(opts.collaborators);
+
+  // Defensive (the DB already forbids it): fail before any Graph call, and
+  // before the trial-shape throw below so the message names the real conflict.
+  // A carousel is never a story (isCarouselPost), so only the trial case applies.
+  const collaboratorError = collaboratorsConflict(collaborators, opts.trialStrategy, null);
+  if (collaboratorError) throw new Error(collaboratorError);
+
+  // Reel de teste nunca degrada em silêncio: fora do formato exato (reels + 1
+  // vídeo) falha alto com TRIAL_INELIGIBLE, igual a createContainerForPost.
+  if (opts.trialStrategy === "manual" || opts.trialStrategy === "auto") {
+    throw new Error(TRIAL_MEDIA_SHAPE_ERROR);
+  }
+
+  await createMissingCarouselChildContainers(db, { postId, igUserId, token, timeoutMs });
+  const { children, allReady } = await pollCarouselChildrenReady(db, {
+    postId, igUserId, token, maxPolls, intervalMs, timeoutMs,
+  });
+  if (!allReady) return { containerId: null, children, allReady: false };
+
+  const parent = await createCarouselParentContainer(
+    igUserId,
+    token,
+    children.map((c) => c.container_id as string),
+    caption,
+    { timeoutMs, collaborators },
+  );
+  return { containerId: parent.id, children, allReady: true };
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
@@ -465,7 +793,7 @@ export interface ContainerCreationResult {
  *   - publish-now passes useCover:true and does an IMMEDIATE coverless retry.
  *   - cron Phase 1 / schedule pass useCover:(retry_count === 0); the coverless
  *     retry is DEFERRED to a later cron cycle (where retry_count > 0).
- * Throws on no media or any Graph API error (callers mark the post failed).
+ * Throws on no media, on a carousel (see advanceCarouselContainer), or any Graph API error (callers mark the post failed).
  */
 export async function createContainerForPost(
   db: DbClient,
@@ -477,9 +805,20 @@ export async function createContainerForPost(
     useCover: boolean;
     tipo?: string;
     trialStrategy?: string | null;
+    collaborators?: string[] | null;
+    timeoutMs?: number;
   },
 ): Promise<ContainerCreationResult> {
-  const { igUserId, token, postId, caption, useCover, tipo } = opts;
+  const { igUserId, token, postId, caption, useCover, tipo, timeoutMs = GRAPH_TIMEOUT_MS } = opts;
+  // null/missing (e.g. a claim row from the old RPC) is []. Unlike the cover,
+  // collaborators are never dropped on a retry.
+  const collaborators = normalizeCollaborators(opts.collaborators);
+
+  // Defensive (the DB already forbids it): fail before reading media or
+  // calling Meta.
+  const collaboratorError = collaboratorsConflict(collaborators, opts.trialStrategy, tipo);
+  if (collaboratorError) throw new Error(collaboratorError);
+
   const media = await fetchPostMedia(db, postId);
 
   // Reel de teste nunca degrada em silêncio para post normal: o cliente
@@ -496,53 +835,52 @@ export async function createContainerForPost(
 
     const url = await signGetUrl(media[0].r2_key, 7200);
     const container = media[0].kind === "video"
-      ? await createStoryVideoContainer(igUserId, token, url)
-      : await createStoryImageContainer(igUserId, token, url);
+      ? await createStoryVideoContainer(igUserId, token, url, timeoutMs)
+      : await createStoryImageContainer(igUserId, token, url, timeoutMs);
     return { containerId: container.id };
   }
 
   if (media.length === 0) throw new Error("No media files found");
-  if (media.length > CAROUSEL_MAX_ITEMS) {
-    throw new Error(
-      `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
-        `(este post tem ${media.length}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
-        `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
-    );
-  }
+  if (media.length > CAROUSEL_MAX_ITEMS) throw new Error(carouselLimitMessage(media.length));
 
   const isCarousel = media.length > 1;
   const isSingleVideo = media.length === 1 && media[0].kind === "video";
 
   if (isCarousel) {
-    const childIds: string[] = [];
-    for (const m of media) {
-      const url = await signGetUrl(m.r2_key, 7200);
-      const child = await createCarouselChildContainer(igUserId, token, url, m.kind === "video");
-      childIds.push(child.id);
-    }
-    const parent = await createCarouselParentContainer(igUserId, token, childIds, caption);
-    return { containerId: parent.id };
+    // Carousels are resumable across cron ticks (carousel_children, mirroring
+    // story_segments) and go through advanceCarouselContainer; every caller
+    // branches on isCarouselPost / validation.media.length before reaching here.
+    // Throwing beats silently rebuilding every child in one synchronous burst,
+    // which is exactly what post 5093 (2026-09-17) died on.
+    throw new Error("Carousel posts must go through advanceCarouselContainer");
   }
 
   if (isSingleVideo) {
     const url = await signGetUrl(media[0].r2_key, 7200);
     const thumbKey = useCover ? media[0].thumbnail_r2_key : null;
     const coverUrl = thumbKey ? await signGetUrl(thumbKey, 7200) : undefined;
-    const container = await createVideoContainer(igUserId, token, url, caption, coverUrl, trial);
+    const container = await createVideoContainer(igUserId, token, url, caption, {
+      coverUrl,
+      trialStrategy: trial,
+      timeoutMs,
+      collaborators,
+    });
     return { containerId: container.id, coverVideoUrl: coverUrl ? url : undefined };
   }
 
   const url = await signGetUrl(media[0].r2_key, 7200);
-  const container = await createSingleImageContainer(igUserId, token, url, caption);
+  const container = await createSingleImageContainer(igUserId, token, url, caption, { timeoutMs, collaborators });
   return { containerId: container.id };
 }
 
 export async function checkContainerStatus(
   containerId: string,
   token: string,
+  timeoutMs = GRAPH_TIMEOUT_MS,
 ): Promise<"FINISHED" | "IN_PROGRESS" | "ERROR"> {
   const res = await fetch(
     `${GRAPH_BASE}/${containerId}?fields=status_code&access_token=${token}`,
+    { signal: AbortSignal.timeout(timeoutMs) },
   );
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -554,9 +892,10 @@ export async function pollContainerReady(
   token: string,
   maxPolls = 25,
   intervalMs = 5000,
+  timeoutMs = GRAPH_TIMEOUT_MS,
 ): Promise<"FINISHED" | "IN_PROGRESS" | "ERROR"> {
   for (let i = 0; i < maxPolls; i++) {
-    const status = await checkContainerStatus(containerId, token);
+    const status = await checkContainerStatus(containerId, token, timeoutMs);
     if (status !== "IN_PROGRESS") return status;
     await new Promise((r) => setTimeout(r, intervalMs));
   }
@@ -567,11 +906,13 @@ export async function publishContainer(
   igUserId: string,
   token: string,
   containerId: string,
+  timeoutMs = GRAPH_TIMEOUT_MS,
 ): Promise<{ id: string }> {
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media_publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ creation_id: containerId, access_token: token }),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -581,10 +922,12 @@ export async function publishContainer(
 export async function fetchPermalink(
   mediaId: string,
   token: string,
+  timeoutMs = GRAPH_TIMEOUT_MS,
 ): Promise<string | null> {
   try {
     const res = await fetch(
       `${GRAPH_BASE}/${mediaId}?fields=permalink&access_token=${token}`,
+      { signal: AbortSignal.timeout(timeoutMs) },
     );
     const data = await res.json();
     return data.permalink ?? null;

@@ -9,7 +9,10 @@ import type {
   WorkflowEtapa,
 } from '../../store';
 import type { FinancialAccess } from '../../lib/financialAccess';
-import { dayNum, etapaDeadlineDateOf } from '../entregas/etapaPrazo';
+import { dayDiff, dayNum, etapaDeadlineDateOf, startOfLocalDay } from '../entregas/etapaPrazo';
+
+// Re-exported: todayAgenda.test.ts and the dashboard hook import them from here.
+export { dayDiff, startOfLocalDay };
 import { STATUS_LABELS as POST_STATUS_LABELS } from '../entregas/postLabels';
 import type { ResolvablePost } from '../entregas/statusRegistry';
 import { parseDateOnly } from '../tarefas/tarefasLogic';
@@ -50,6 +53,8 @@ export interface AgendaItem {
   when: Date | null;
   href: string;
   responsavel?: { id: number; nome: string } | null;
+  /** The client the item belongs to, when it has one (Vidro groups the list by it). */
+  cliente?: { id: number | null; nome: string } | null;
   badge?: { label: string; className: AgendaBadgeClass } | null;
   /** Present only for kind 'tarefa' (enables the inline "concluir" checkbox). */
   tarefaId?: number;
@@ -136,22 +141,10 @@ function addDays(d: Date, n: number): Date {
   return c;
 }
 
-/** Local start of day; used for ISO range boundaries handed to queries. */
-export function startOfLocalDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
 /** [start of today, start of today + HORIZON_DAYS + 1) as ISO strings. */
 export function agendaRangeISO(now: Date): { startISO: string; endISO: string } {
   const start = startOfLocalDay(now);
   return { startISO: start.toISOString(), endISO: addDays(start, HORIZON_DAYS + 1).toISOString() };
-}
-
-/** Whole local days from `now`'s day to `when`'s day (negative = past). */
-export function dayDiff(when: Date, now: Date): number {
-  const a = startOfLocalDay(now);
-  const b = startOfLocalDay(when);
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
 /** null when outside the horizon (further than HORIZON_DAYS ahead). */
@@ -218,6 +211,10 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
   };
   const clienteById = new Map<number, Cliente>();
   for (const c of input.clientes) if (c.id != null) clienteById.set(c.id, c);
+  const clienteOf = (
+    id: number | null | undefined,
+    nome: string | null | undefined,
+  ): AgendaItem['cliente'] => (nome && nome.trim() ? { id: id ?? null, nome } : null);
 
   const push = (item: Omit<AgendaItem, 'bucket'>, bucket: AgendaBucket | null) => {
     if (!bucket) return;
@@ -238,6 +235,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
         when,
         href: `/tarefas?tarefa=${t.id}`,
         responsavel: responsavelOf(t.responsavel_id),
+        cliente: clienteOf(t.cliente_id, t.cliente_nome),
         badge: deadlineBadge(when, now, L),
         tarefaId: t.id,
         tarefaStatus: t.status,
@@ -261,6 +259,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
         when,
         href: `/entregas?drawer=${e.workflow_id}`,
         responsavel: responsavelOf(e.responsavel_id),
+        cliente: clienteOf(e.cliente_id, e.cliente_nome),
         badge: deadlineBadge(when, now, L),
       },
       bucketFor(when, now),
@@ -291,6 +290,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
         when,
         href: postHref(p),
         responsavel: responsavelOf(p.responsavel_id),
+        cliente: clienteOf(p.cliente_id, p.cliente_nome),
         badge: ready
           ? { label: L.agendado, className: 'deadline-ok' }
           : {
@@ -321,6 +321,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
           when: null,
           href: postHref(p),
           responsavel: responsavelOf(p.responsavel_id),
+          cliente: clienteOf(p.cliente_id, p.cliente_nome),
           badge: overdue
             ? { label: L.semResposta(days), className: 'deadline-warning' }
             : { label: L.aguardando, className: 'deadline-caution' },
@@ -343,6 +344,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
           when: null,
           href: postHref(p),
           responsavel: null,
+          cliente: clienteOf(null, p.cliente_nome),
           badge: {
             label: statusLabel(p),
             className: urgent ? 'deadline-warning' : 'deadline-caution',
@@ -371,6 +373,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
             when: today,
             href: `/clientes/${c.id}`,
             responsavel: null,
+            cliente: clienteOf(c.id, c.nome),
             badge: null,
           },
           'hoje',
@@ -407,6 +410,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
           when: today,
           href: `/clientes/${c.id}`,
           responsavel: null,
+          cliente: clienteOf(c.id, c.nome),
           badge: null,
         },
         'hoje',
@@ -426,6 +430,7 @@ export function buildTodayAgenda(input: AgendaInput): AgendaBuckets {
           when: today,
           href: cliente ? `/clientes/${cliente.id}` : '/calendario',
           responsavel: null,
+          cliente: cliente ? clienteOf(cliente.id, cliente.nome) : null,
           badge: null,
         },
         'hoje',

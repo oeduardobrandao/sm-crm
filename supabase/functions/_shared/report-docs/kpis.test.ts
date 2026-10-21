@@ -236,3 +236,28 @@ Deno.test("conta conectada no meio do mês não inventa ganho", () => {
   assertEquals(k.followers_gained.value, null); // era 7 no bug original
   assertEquals(k.followers_total.value, 4419);
 });
+
+Deno.test("follows: entradas brutas do mês (sem descontar saídas); prev = entradas do mês anterior", () => {
+  const k = computeKpis(base());
+  assertEquals(k.follows, { value: 120, unit: "count", prev: 70 });
+});
+
+Deno.test("follows: sem follows_and_unfollows no mês -> null, sem prev", () => {
+  const s = base();
+  s.accountMonth = { ...s.accountMonth, follows_and_unfollows: null };
+  const k = computeKpis(s);
+  assertEquals(k.follows, { value: null, unit: "count", prev: null });
+});
+
+Deno.test("follows: mês anterior sem dado -> prev null", () => {
+  const s = base();
+  s.accountPrevMonth = null;
+  const k = computeKpis(s);
+  assertEquals(k.follows, { value: 120, unit: "count", prev: null });
+});
+
+Deno.test("follows: rótulo distinto do saldo líquido", async () => {
+  const { KPI_LABELS_PT } = await import("./kpis.ts");
+  assertEquals(KPI_LABELS_PT.follows, "Seguidores conquistados");
+  assertEquals(KPI_LABELS_PT.followers_gained, "Novos seguidores");
+});

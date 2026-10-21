@@ -18,10 +18,15 @@ const SheetOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
+    data-slot="sheet-overlay"
     className={cn(
       // tailwindcss-animate is not registered, so the animate-in utilities are
       // inert; the sheet-overlay class carries the real fade (style.css).
-      'sheet-overlay fixed inset-0 z-50 bg-black/80',
+      // z-[9010] (matching Dialog's own overlay below) -- z-50 sat BELOW
+      // .topbar's z-index: 110, so the app's fixed top bar visually covered
+      // the top of every sheet-based drawer (IdeiaDrawer, TarefaDetailSheet,
+      // AnalyticsPage filters, AddWidgetDrawer, ...).
+      'sheet-overlay fixed inset-0 z-[9010] bg-black/80',
       className,
     )}
     {...props}
@@ -32,7 +37,7 @@ SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 // The sheet-pane--* classes carry the slide animations (style.css); the stock
 // slide-in-from-* utilities need tailwindcss-animate, which is not registered.
-const sheetVariants = cva('fixed z-50 gap-4 bg-background p-6 shadow-lg', {
+const sheetVariants = cva('fixed z-[9011] gap-4 bg-background p-6 shadow-lg', {
   variants: {
     side: {
       top: 'sheet-pane--top inset-x-0 top-0 border-b',
@@ -54,21 +59,45 @@ interface SheetContentProps
   overlayClassName?: string;
 }
 
+// Under the Vidro look, [data-slot='sheet-content'] gets backdrop-filter, which makes it the containing
+// block for position: fixed descendants: a DragOverlay or any other fixed element inside a sheet must be portaled.
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = 'right', className, children, overlayClassName, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay className={overlayClassName} />
-    <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
-      {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-    </SheetPrimitive.Content>
-  </SheetPortal>
-));
+>(({ side = 'right', className, children, overlayClassName, style, ...props }, ref) => {
+  const needsTopSafeArea = side !== 'bottom';
+
+  return (
+    <SheetPortal>
+      <SheetOverlay className={overlayClassName} />
+      <SheetPrimitive.Content
+        ref={ref}
+        data-slot="sheet-content"
+        className={cn(sheetVariants({ side }), className)}
+        style={
+          needsTopSafeArea
+            ? {
+                paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))',
+                ...style,
+              }
+            : style
+        }
+        {...props}
+      >
+        {children}
+        <SheetPrimitive.Close
+          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary"
+          style={
+            needsTopSafeArea ? { top: 'calc(1rem + env(safe-area-inset-top, 0px))' } : undefined
+          }
+        >
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  );
+});
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
@@ -90,7 +119,7 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Title
     ref={ref}
-    className={cn('text-lg font-semibold text-foreground', className)}
+    className={cn('text-xl font-bold tracking-[-0.05em] text-foreground', className)}
     {...props}
   />
 ));

@@ -9,6 +9,9 @@ export type PublishErrorCode =
   | "NO_MEDIA"
   | "MEDIA_UNSUPPORTED"
   | "TRIAL_INELIGIBLE"
+  | "CAPTION_TOO_LONG"
+  | "ACCOUNT_RESTRICTED"
+  | "COLLABORATOR_INVALID"
   | "CONTAINER_EXPIRED"
   | "RATE_LIMIT"
   | "IG_TRANSIENT"
@@ -23,6 +26,9 @@ export const NON_RETRYABLE_CODES: readonly PublishErrorCode[] = [
   "NO_MEDIA",
   "MEDIA_UNSUPPORTED",
   "TRIAL_INELIGIBLE",
+  "CAPTION_TOO_LONG",
+  "ACCOUNT_RESTRICTED",
+  "COLLABORATOR_INVALID",
 ] as const;
 
 /** Lançada pelos guards de publicação quando um post com Reel de teste não é
@@ -34,10 +40,13 @@ export const TRIAL_MEDIA_SHAPE_ERROR =
 const RATE_LIMIT_GRAPH_CODES = new Set([4, 9, 17, 32, 613]);
 // 2207026 = formato de vídeo não suportado pela Meta.
 const MEDIA_UNSUPPORTED_SUBCODES = new Set([2207026]);
+// 2207018 = a Meta não consegue acessar um dos `collaborators` (código 110).
+const COLLABORATOR_INVALID_SUBCODE = 2207018;
 
 interface ClassifiableError {
   message?: string;
   code?: string;
+  name?: string;
   graphCode?: number;
   graphSubcode?: number;
 }
@@ -47,7 +56,17 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
   const msg = (typeof e.message === "string" ? e.message : String(err ?? "")).toLowerCase();
   const graphCode = typeof e.graphCode === "number" ? e.graphCode : undefined;
 
+  // AbortSignal.timeout() no nosso fetch (nao um erro vindo da Meta): nao ha
+  // resposta HTTP pra classificar, so um DOMException local. Trata como
+  // instabilidade transiente -- o cron ja reprocessa no proximo tick, e o
+  // que estourou foi nossa wall-clock de 10s, nao necessariamente o Instagram.
+  if (
+    e.name === "TimeoutError" || e.name === "AbortError" ||
+    msg.includes("signal timed out")
+  ) return "IG_TRANSIENT";
+
   if (e.code === "TOKEN_EXPIRED" || graphCode === 190) return "TOKEN_EXPIRED";
+  if (e.graphSubcode === COLLABORATOR_INVALID_SUBCODE) return "COLLABORATOR_INVALID";
   if (msg.includes("reduce the amount of data")) return "MEDIA_TOO_LARGE";
   if (
     msg.includes("carrossel do instagram aceita no máximo") ||
@@ -67,6 +86,9 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
   // for capturado em staging/prod — não inventar regex para wording da Meta;
   // até lá cai em UNKNOWN (comportamento definido no spec).
   if (msg.includes("reel de teste exige exatamente um vídeo")) return "TRIAL_INELIGIBLE";
+  if (msg.includes("only photo or video can be accepted as media type")) return "MEDIA_UNSUPPORTED";
+  if (msg.includes("caption was too long")) return "CAPTION_TOO_LONG";
+  if (msg.includes("user access is restricted")) return "ACCOUNT_RESTRICTED";
   if (msg.includes("does not exist, cannot be loaded due to missing permissions")) {
     return "CONTAINER_EXPIRED";
   }
@@ -126,6 +148,21 @@ export const PUBLISH_ERROR_COPY: Record<PublishErrorCode, PublishErrorDisplay> =
     titulo: "Reel de teste não aceito",
     explicacao:
       "O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente.",
+  },
+  CAPTION_TOO_LONG: {
+    titulo: "Legenda acima do limite do Instagram",
+    explicacao:
+      "O Instagram aceita no máximo 2.200 caracteres na legenda. Reduza o texto na galeria e tente novamente.",
+  },
+  ACCOUNT_RESTRICTED: {
+    titulo: "Acesso da conta restrito pelo Instagram",
+    explicacao:
+      "O Instagram restringiu o acesso desta conta. Confira o aplicativo do Instagram por avisos ou restrições antes de tentar novamente.",
+  },
+  COLLABORATOR_INVALID: {
+    titulo: "O Instagram recusou um colaborador",
+    explicacao:
+      "Confira se o @ está certo e se o perfil é público. Edite os colaboradores e tente novamente.",
   },
   CONTAINER_EXPIRED: {
     titulo: "Publicação preparada expirou no Instagram",

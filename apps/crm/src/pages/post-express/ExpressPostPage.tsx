@@ -28,6 +28,10 @@ import {
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { publishInstagramPostNow } from '../../services/instagram';
 import { PostMediaGallery } from '../entregas/components/PostMediaGallery';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { ExpressPreview } from './ExpressPreview';
+import { ExpressPostPhone } from './ExpressPostPhone';
 
 interface DraftState {
   postId: number;
@@ -141,6 +145,8 @@ function StepIndicator({
 }
 
 export default function ExpressPostPage() {
+  // Celular (PLAN F4.5): mesmo estado e mesmos comandos, outro desenho (ExpressPostPhone).
+  const isPhone = !useIsDesktop(768);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useTranslation('posts');
@@ -447,35 +453,413 @@ export default function ExpressPostPage() {
     </label>
   );
 
-  return (
-    <div className="animate-up" style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}>
-      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <h1
-            style={{
-              fontFamily: 'var(--font-heading)',
-              fontSize: 'clamp(2rem, 4vw, 3.2rem)',
-              fontWeight: 900,
-            }}
-          >
-            {t('title')}
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-            {t('subtitle')}
-          </p>
-        </div>
+  const mediaMaxFiles =
+    isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1;
 
-        {eligibleClients.length === 0 && (
-          <div className="mb-4">
-            <PrerequisiteAlert
-              title="Nenhum cliente com Instagram configurado"
-              description="Para usar o Post Express, conecte uma conta Instagram em pelo menos um cliente."
-              actionLabel="Ir para Clientes →"
-              actionHref="/clientes"
-            />
+  const submitLabel =
+    mode === 'approval'
+      ? t('approval.button')
+      : t(isStory ? 'publish.buttonStories' : 'publish.button');
+
+  // Under the Vidro shell the submit button is the toolbar's primary action; the classic body keeps its own.
+  const inToolbar = usePageToolbar({
+    title: t('title'),
+    subtitle: t('subtitle'),
+    primary: (
+      <Button
+        data-testid="express-submit"
+        onClick={() => setConfirmOpen(true)}
+        disabled={!canPublish}
+      >
+        <Send className="h-4 w-4" /> {submitLabel}
+      </Button>
+    ),
+  });
+
+  const typeChip = effectiveType
+    ? (() => {
+        const typeInfo = getTypeLabel(effectiveType, t);
+        const Icon = typeInfo.icon;
+        const label =
+          isStory && mediaList.length > 1
+            ? `${typeInfo.label} · ${t('story.segments', { count: mediaList.length })}`
+            : typeInfo.label;
+        return (
+          <span
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
+            style={{ color: typeInfo.color, background: typeInfo.bg }}
+          >
+            <Icon className="h-3.5 w-3.5" /> {label}
+          </span>
+        );
+      })()
+    : null;
+
+  const accountWarningNotice = warningMessage && selectedClientId && (
+    <div
+      className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs mt-3"
+      style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
+    >
+      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+      <span>{warningMessage}</span>
+      <a
+        href={`/clientes/${selectedClientId}/redes-sociais`}
+        className="ml-auto underline font-medium whitespace-nowrap"
+        style={{ color: '#f55a42' }}
+      >
+        Reconectar →
+      </a>
+    </div>
+  );
+
+  const approvalNotice = mode === 'approval' && selectedClientId && !hubTokenLoading && (
+    <div className="mt-3">
+      {hubTokenUsable ? (
+        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <Link2 className="h-4 w-4 flex-shrink-0" style={{ color: '#3ecf8e' }} />
+          <span>{t('approval.hubLinkActive')}</span>
+        </div>
+      ) : (
+        <div
+          className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs"
+          style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
+        >
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span>{t('approval.noHubLink')}</span>
+          <a
+            href={`/clientes/${selectedClientId}`}
+            className="ml-auto underline font-medium whitespace-nowrap"
+            style={{ color: '#f55a42' }}
+          >
+            {t('approval.noHubLinkAction')} →
+          </a>
+        </div>
+      )}
+    </div>
+  );
+
+  const prerequisiteNotice = eligibleClients.length === 0 && (
+    <div className="mb-4">
+      <PrerequisiteAlert
+        title="Nenhum cliente com Instagram configurado"
+        description="Para usar o Post Express, conecte uma conta Instagram em pelo menos um cliente."
+        actionLabel="Ir para Clientes →"
+        actionHref="/clientes"
+      />
+    </div>
+  );
+
+  const confirmDialog = (
+    <AlertDialog
+      open={confirmOpen}
+      onOpenChange={(o) => {
+        if (!publishing) setConfirmOpen(o);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {publishing
+              ? t('publish.publishingTitle')
+              : mode === 'approval'
+                ? t('approval.confirmTitle')
+                : t('publish.confirmTitle')}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {publishing
+              ? t('publish.publishingDescription')
+              : mode === 'approval'
+                ? t('approval.confirmDescription')
+                : t('publish.confirmDescription')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {publishing && (
+          <div className="px-1">
+            <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
+              <span>{publishPct < 100 ? t('progress.sending') : t('progress.done')}</span>
+              <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
+            </div>
+            <div className="h-2 rounded-lg bg-stone-200 overflow-hidden">
+              <div
+                className="h-full rounded-lg transition-all duration-300 ease-out"
+                style={{
+                  width: `${publishPct}%`,
+                  background: publishPct < 100 ? '#E1306C' : '#3ecf8e',
+                }}
+              />
+            </div>
           </div>
         )}
+        {!publishing && (
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>{tc('actions.cancel')}</AlertDialogCancel>
+            {mode === 'approval' ? (
+              <Button onClick={handleSendForApproval} disabled={loading}>
+                {t('approval.sendAction')}
+              </Button>
+            ) : (
+              <Button onClick={handlePublishNow} style={{ background: '#E1306C', color: 'white' }}>
+                {t('publish_action')}
+              </Button>
+            )}
+          </AlertDialogFooter>
+        )}
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (isPhone) {
+    const typeInfo = effectiveType ? getTypeLabel(effectiveType, t) : null;
+    return (
+      <ExpressPostPhone
+        isStory={isStory}
+        onStoryChange={setIsStory}
+        loading={loading}
+        creatingDraft={creatingDraft}
+        clients={eligibleClients.map((c) => ({ id: c.id!, nome: c.nome }))}
+        selectedClientId={selectedClientId}
+        onClientChange={handleClientChange}
+        igAccount={igAccount ?? null}
+        warningMessage={warningMessage}
+        postId={draft?.postId ?? null}
+        mediaList={mediaList}
+        maxFiles={mediaMaxFiles}
+        onMediaChange={handleMediaChange}
+        typeChip={
+          typeInfo
+            ? {
+                label:
+                  isStory && mediaList.length > 1
+                    ? `${typeInfo.label} · ${t('story.segments', { count: mediaList.length })}`
+                    : typeInfo.label,
+                color: typeInfo.color,
+                bg: typeInfo.bg,
+                icon: typeInfo.icon,
+              }
+            : null
+        }
+        caption={caption}
+        onCaptionChange={setCaption}
+        maxCaption={MAX_CAPTION}
+        approvalAllowed={approvalAllowed}
+        mode={mode}
+        onModeChange={setMode}
+        hubTokenLoading={hubTokenLoading}
+        hubTokenUsable={hubTokenUsable}
+        canPublish={canPublish}
+        confirmOpen={confirmOpen}
+        onConfirmOpenChange={(o) => {
+          if (!publishing) setConfirmOpen(o);
+        }}
+        publishing={publishing}
+        publishPct={publishPct}
+        onPublishNow={handlePublishNow}
+        onSendForApproval={handleSendForApproval}
+      />
+    );
+  }
+
+  if (inToolbar) {
+    const readiness = canPublish
+      ? t(mode === 'approval' ? 'readiness.readyApproval' : 'readiness.ready')
+      : !draft
+        ? t('steps.needClient')
+        : mediaList.length === 0
+          ? t('readiness.needMedia')
+          : !step4Done
+            ? t('readiness.needCaption')
+            : null;
+    return (
+      <div className="animate-up express-vidro">
+        {prerequisiteNotice}
+        <div className="express-vidro__grid">
+          <div className="express-vidro__form">
+            <section className="express-vidro__section" aria-labelledby="express-format">
+              <div className="express-vidro__head">
+                <h2 id="express-format">{t('format.label')}</h2>
+              </div>
+              <div data-slot="toggle-group" role="group" aria-labelledby="express-format">
+                {([false, true] as const).map((story) => (
+                  <button
+                    key={String(story)}
+                    type="button"
+                    aria-pressed={isStory === story}
+                    data-slot="toggle-group-item"
+                    data-state={isStory === story ? 'on' : 'off'}
+                    onClick={() => setIsStory(story)}
+                    disabled={loading}
+                  >
+                    {story ? t('format.stories') : t('format.post')}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="express-vidro__section" aria-labelledby="express-client">
+              <div className="express-vidro__head">
+                <h2 id="express-client">{t('labels.client')}</h2>
+                {igAccount && (
+                  <span className="express-vidro__hint">@{igAccount.username ?? 'conta'}</span>
+                )}
+              </div>
+              <select
+                aria-labelledby="express-client"
+                className="express-vidro__select"
+                value={selectedClientId ?? ''}
+                onChange={(e) =>
+                  handleClientChange(e.target.value ? parseInt(e.target.value, 10) : null)
+                }
+                disabled={loading || creatingDraft}
+              >
+                <option value="">{t('select.client')}</option>
+                {eligibleClients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
+              {eligibleClients.length === 0 && (
+                <EmptyStateGuide
+                  icon="📸"
+                  title={t('empty.noClientsWithIg')}
+                  description="Conecte uma conta Instagram em um cliente para começar a publicar."
+                  actionLabel={t('empty.connectAccount')}
+                  actionHref="/clientes"
+                />
+              )}
+              {accountWarningNotice}
+            </section>
+
+            <section className="express-vidro__section" aria-labelledby="express-media">
+              <div className="express-vidro__head">
+                <h2 id="express-media">{t('labels.media')}</h2>
+                {typeChip}
+              </div>
+              {draft ? (
+                <PostMediaGallery
+                  postId={draft.postId}
+                  forStories={isStory}
+                  maxFiles={mediaMaxFiles}
+                  onChange={handleMediaChange}
+                />
+              ) : (
+                <p className="express-vidro__note">
+                  {creatingDraft ? t('empty.preparingDraft') : t('steps.needClient')}
+                </p>
+              )}
+            </section>
+
+            <section className="express-vidro__section" aria-labelledby="express-caption">
+              <div className="express-vidro__head">
+                <h2 id="express-caption">{t('labels.caption')}</h2>
+                {!isStory && (
+                  <span className="express-vidro__hint tabular-nums">
+                    {caption.length} / {MAX_CAPTION}
+                  </span>
+                )}
+              </div>
+              {isStory ? (
+                <p className="express-vidro__note">{t('story.captionHidden')}</p>
+              ) : (
+                <textarea
+                  aria-labelledby="express-caption"
+                  className="express-vidro__textarea"
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value.slice(0, MAX_CAPTION))}
+                  placeholder={t('captionPlaceholder')}
+                  disabled={!draft || loading}
+                  rows={6}
+                />
+              )}
+            </section>
+
+            <section className="express-vidro__section" aria-labelledby="express-send">
+              <div className="express-vidro__head">
+                <h2 id="express-send">{t('steps.send')}</h2>
+              </div>
+              {approvalAllowed && (
+                <div data-slot="toggle-group" role="group" aria-labelledby="express-send">
+                  {(['now', 'approval'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={mode === m}
+                      data-slot="toggle-group-item"
+                      data-state={mode === m ? 'on' : 'off'}
+                      onClick={() => setMode(m)}
+                      disabled={loading}
+                    >
+                      {m === 'now' ? t('mode.publishNow') : t('mode.approval')}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {approvalNotice}
+              <p className="express-vidro__note">
+                {t(mode === 'approval' ? 'approval.note' : 'publish.note')}
+              </p>
+            </section>
+          </div>
+
+          <aside className="express-vidro__preview" aria-labelledby="express-preview">
+            <div id="express-preview" className="express-vidro__preview-label">
+              {t('labels.preview')}
+            </div>
+            {draft && igAccount ? (
+              <ExpressPreview
+                igAccount={igAccount}
+                isStory={isStory}
+                mediaList={mediaList}
+                caption={caption}
+                emptyLabel={t('empty.mediaPlaceholder')}
+                fill
+              />
+            ) : (
+              <div className="express-vidro__preview-empty">{t('empty.mediaPlaceholder')}</div>
+            )}
+            {readiness && (
+              <p className="express-vidro__readiness" data-ready={canPublish ? 'true' : 'false'}>
+                {canPublish ? (
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <AlertCircle className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {readiness}
+              </p>
+            )}
+          </aside>
+        </div>
+        {confirmDialog}
+      </div>
+    );
+  }
+
+  return (
+    // Under Vidro the panel already pads the content.
+    <div
+      className="animate-up"
+      style={inToolbar ? undefined : { padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}
+    >
+      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+        {/* Header */}
+        {!inToolbar && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h1
+              style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: 'clamp(2rem, 4vw, 3.2rem)',
+                fontWeight: 900,
+              }}
+            >
+              {t('title')}
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+              {t('subtitle')}
+            </p>
+          </div>
+        )}
+
+        {prerequisiteNotice}
 
         {/* Vertical stepper: all steps on one page, top to bottom */}
         <div
@@ -569,22 +953,7 @@ export default function ExpressPostPage() {
                 </span>
               </div>
             )}
-            {warningMessage && selectedClientId && (
-              <div
-                className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs mt-3"
-                style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
-              >
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                <span>{warningMessage}</span>
-                <a
-                  href={`/clientes/${selectedClientId}/redes-sociais`}
-                  className="ml-auto underline font-medium whitespace-nowrap"
-                  style={{ color: '#f55a42' }}
-                >
-                  Reconectar →
-                </a>
-              </div>
-            )}
+            {accountWarningNotice}
           </div>
 
           {/* Step 3: Mídia */}
@@ -595,31 +964,11 @@ export default function ExpressPostPage() {
               <>
                 <PostMediaGallery
                   postId={draft.postId}
-                  maxFiles={
-                    isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1
-                  }
+                  forStories={isStory}
+                  maxFiles={mediaMaxFiles}
                   onChange={handleMediaChange}
                 />
-                {effectiveType && (
-                  <div className="mt-3">
-                    {(() => {
-                      const typeInfo = getTypeLabel(effectiveType, t);
-                      const Icon = typeInfo.icon;
-                      const label =
-                        isStory && mediaList.length > 1
-                          ? `${typeInfo.label} · ${t('story.segments', { count: mediaList.length })}`
-                          : typeInfo.label;
-                      return (
-                        <span
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
-                          style={{ color: typeInfo.color, background: typeInfo.bg }}
-                        >
-                          <Icon className="h-3.5 w-3.5" /> {label}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                )}
+                {typeChip && <div className="mt-3">{typeChip}</div>}
               </>
             ) : (
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -701,34 +1050,7 @@ export default function ExpressPostPage() {
               </div>
             )}
 
-            {mode === 'approval' && selectedClientId && !hubTokenLoading && (
-              <div className="mt-3">
-                {hubTokenUsable ? (
-                  <div
-                    className="flex items-center gap-2 text-xs"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    <Link2 className="h-4 w-4 flex-shrink-0" style={{ color: '#3ecf8e' }} />
-                    <span>{t('approval.hubLinkActive')}</span>
-                  </div>
-                ) : (
-                  <div
-                    className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs"
-                    style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
-                  >
-                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                    <span>{t('approval.noHubLink')}</span>
-                    <a
-                      href={`/clientes/${selectedClientId}`}
-                      className="ml-auto underline font-medium whitespace-nowrap"
-                      style={{ color: '#f55a42' }}
-                    >
-                      {t('approval.noHubLinkAction')} →
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
+            {approvalNotice}
 
             {/* Compact Instagram preview */}
             {draft && igAccount && (
@@ -739,111 +1061,13 @@ export default function ExpressPostPage() {
                 >
                   {t('labels.preview')}
                 </label>
-                <div
-                  className="rounded-lg overflow-hidden"
-                  style={{ background: '#000', padding: '0.75rem', maxWidth: '240px' }}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    {igAccount.profile_picture_url ? (
-                      <img
-                        src={igAccount.profile_picture_url}
-                        alt=""
-                        className="w-6 h-6 rounded-full"
-                        style={{ border: '1.5px solid #E1306C' }}
-                      />
-                    ) : (
-                      <div
-                        className="w-6 h-6 rounded-full"
-                        style={{ background: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)' }}
-                      />
-                    )}
-                    <span className="text-xs font-semibold" style={{ color: '#e8eaf0' }}>
-                      @{igAccount.username ?? 'conta'}
-                    </span>
-                  </div>
-                  <div
-                    className="rounded-lg overflow-hidden"
-                    style={{
-                      background: '#1a1e26',
-                      aspectRatio: isStory ? '9 / 16' : '1',
-                      maxWidth: isStory ? '150px' : undefined,
-                      margin: isStory ? '0 auto' : undefined,
-                      position: 'relative',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {isStory && mediaList.length > 1 && (
-                      <>
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: 6,
-                            left: 6,
-                            right: 6,
-                            display: 'flex',
-                            gap: 3,
-                            zIndex: 2,
-                          }}
-                        >
-                          {mediaList.map((m, i) => (
-                            <span
-                              key={m.id}
-                              style={{
-                                flex: 1,
-                                height: 2.5,
-                                borderRadius: 2,
-                                background: i === 0 ? '#fff' : 'rgba(255,255,255,0.35)',
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <span
-                          style={{
-                            position: 'absolute',
-                            top: 12,
-                            right: 8,
-                            zIndex: 2,
-                            color: '#fff',
-                            fontSize: '0.6rem',
-                            background: 'rgba(0,0,0,0.5)',
-                            padding: '1px 6px',
-                            borderRadius: 8,
-                          }}
-                        >
-                          1/{mediaList.length}
-                        </span>
-                      </>
-                    )}
-                    {mediaList.length > 0 && mediaList[0].url ? (
-                      mediaList[0].kind === 'video' ? (
-                        <video
-                          src={mediaList[0].url}
-                          poster={mediaList[0].thumbnail_url ?? undefined}
-                          muted
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <img
-                          src={mediaList[0].thumbnail_url ?? mediaList[0].url}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      )
-                    ) : (
-                      <span className="text-xs" style={{ color: '#4b5563' }}>
-                        {t('empty.mediaPlaceholder')}
-                      </span>
-                    )}
-                  </div>
-                  {!isStory && caption && (
-                    <p className="mt-2 text-xs leading-relaxed" style={{ color: '#9ca3af' }}>
-                      <strong style={{ color: '#e8eaf0' }}>@{igAccount.username ?? 'conta'}</strong>{' '}
-                      {caption.length > 100 ? caption.slice(0, 100) + '...' : caption}
-                    </p>
-                  )}
-                </div>
+                <ExpressPreview
+                  igAccount={igAccount}
+                  isStory={isStory}
+                  mediaList={mediaList}
+                  caption={caption}
+                  emptyLabel={t('empty.mediaPlaceholder')}
+                />
               </div>
             )}
 
@@ -854,10 +1078,7 @@ export default function ExpressPostPage() {
               className="w-full text-sm font-bold py-3 mt-4"
               style={{ borderRadius: '8px' }}
             >
-              <Send className="h-4 w-4 mr-2" />{' '}
-              {mode === 'approval'
-                ? t('approval.button')
-                : t(isStory ? 'publish.buttonStories' : 'publish.button')}
+              <Send className="h-4 w-4 mr-2" /> {submitLabel}
             </Button>
             {draft && (
               <p className="text-center text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
@@ -869,65 +1090,7 @@ export default function ExpressPostPage() {
       </div>
 
       {/* Confirmation Dialog */}
-      <AlertDialog
-        open={confirmOpen}
-        onOpenChange={(o) => {
-          if (!publishing) setConfirmOpen(o);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {publishing
-                ? t('publish.publishingTitle')
-                : mode === 'approval'
-                  ? t('approval.confirmTitle')
-                  : t('publish.confirmTitle')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {publishing
-                ? t('publish.publishingDescription')
-                : mode === 'approval'
-                  ? t('approval.confirmDescription')
-                  : t('publish.confirmDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {publishing && (
-            <div className="px-1">
-              <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
-                <span>{publishPct < 100 ? t('progress.sending') : t('progress.done')}</span>
-                <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
-              </div>
-              <div className="h-2 rounded-lg bg-stone-200 overflow-hidden">
-                <div
-                  className="h-full rounded-lg transition-all duration-300 ease-out"
-                  style={{
-                    width: `${publishPct}%`,
-                    background: publishPct < 100 ? '#E1306C' : '#3ecf8e',
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          {!publishing && (
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={loading}>{tc('actions.cancel')}</AlertDialogCancel>
-              {mode === 'approval' ? (
-                <Button onClick={handleSendForApproval} disabled={loading}>
-                  {t('approval.sendAction')}
-                </Button>
-              ) : (
-                <Button
-                  onClick={handlePublishNow}
-                  style={{ background: '#E1306C', color: 'white' }}
-                >
-                  {t('publish_action')}
-                </Button>
-              )}
-            </AlertDialogFooter>
-          )}
-        </AlertDialogContent>
-      </AlertDialog>
+      {confirmDialog}
     </div>
   );
 }

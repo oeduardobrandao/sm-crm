@@ -48,9 +48,12 @@ interface FileGridProps {
   onRequestCopy?: (id: number, type: 'file' | 'folder') => void;
   onDrop?: (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => void;
   classifySelection?: () => { fileIds: number[]; folderIds: number[] };
+  /** `can('arquivos', 'editar') === true`. Required (not defaulted) --
+   * threaded straight to FileContextMenu's own required `canEdit` prop. */
+  canEdit: boolean;
 }
 
-function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
+export function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
   return [...folders].sort((a, b) => {
     switch (sortBy) {
       case 'size':
@@ -64,7 +67,7 @@ function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
   });
 }
 
-function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
+export function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
   return [...files].sort((a, b) => {
     switch (sortBy) {
       case 'size':
@@ -97,6 +100,7 @@ export function FileGrid(props: FileGridProps) {
     onRequestCopy,
     onDrop,
     classifySelection,
+    canEdit,
   } = props;
   const queryClient = useQueryClient();
   const prefetchTimeout = useRef<number | undefined>(undefined);
@@ -248,7 +252,7 @@ export function FileGrid(props: FileGridProps) {
   if (viewMode === 'list') {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table data-slot="table" className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--border-color)] text-[var(--text-muted)] text-left">
               {selectionCount > 0 && <th className="pb-2 pr-2 w-8" />}
@@ -256,7 +260,7 @@ export function FileGrid(props: FileGridProps) {
               <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Tipo</th>
               <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Tamanho</th>
               <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Data</th>
-              <th className="pb-2 font-medium text-xs uppercase tracking-wide">Links</th>
+              <th className="pb-2 font-medium text-xs uppercase tracking-wide">Em uso</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
@@ -271,6 +275,7 @@ export function FileGrid(props: FileGridProps) {
                   onRename={() => setRenamingId({ id: folder.id, type: 'folder' })}
                   onRequestMove={() => onRequestMove?.(folder.id, 'folder')}
                   onRequestCopy={() => onRequestCopy?.(folder.id, 'folder')}
+                  canEdit={canEdit}
                 >
                   <tr
                     className={`hover:bg-[var(--surface-hover)] cursor-pointer transition-colors group${isSelected ? ' bg-[rgba(234,179,8,0.06)]' : ''}`}
@@ -366,6 +371,7 @@ export function FileGrid(props: FileGridProps) {
                   onRename={() => setRenamingId({ id: file.id, type: 'file' })}
                   onRequestMove={() => onRequestMove?.(file.id, 'file')}
                   onRequestCopy={() => onRequestCopy?.(file.id, 'file')}
+                  canEdit={canEdit}
                 >
                   <tr
                     className={`hover:bg-[var(--surface-hover)] cursor-pointer transition-colors group${isSelected ? ' bg-[rgba(234,179,8,0.06)]' : ''}`}
@@ -436,7 +442,10 @@ export function FileGrid(props: FileGridProps) {
                     </td>
                     <td className="py-2.5">
                       {file.reference_count > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
+                        <span
+                          title="Em uso em posts ou relatórios"
+                          className="inline-flex items-center gap-1 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]"
+                        >
                           <LinkIcon className="h-2.5 w-2.5" />
                           {file.reference_count}
                         </span>
@@ -471,6 +480,7 @@ export function FileGrid(props: FileGridProps) {
             onRename={() => setRenamingId({ id: folder.id, type: 'folder' })}
             onRequestMove={() => onRequestMove?.(folder.id, 'folder')}
             onRequestCopy={() => onRequestCopy?.(folder.id, 'folder')}
+            canEdit={canEdit}
           >
             <button
               onClick={() => {
@@ -517,6 +527,7 @@ export function FileGrid(props: FileGridProps) {
                   } catch {}
                 }
               }}
+              data-slot="card"
               className={`group relative flex flex-col items-center gap-2 p-4 rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}${dragOverFolderId === folder.id ? ' ring-2 ring-[var(--primary-color)] bg-[rgba(234,179,8,0.08)]' : ''}${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
             >
               {/* Hover checkbox */}
@@ -524,7 +535,7 @@ export function FileGrid(props: FileGridProps) {
                 className={`absolute top-2 left-2 w-5 h-5 rounded border-[1.5px] flex items-center justify-center text-[0.6rem] font-bold cursor-pointer z-10 transition-all ${
                   isSelected
                     ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[#12151a] opacity-100'
-                    : 'border-white/60 bg-black/40 opacity-0 group-hover:opacity-100'
+                    : 'border-white/60 bg-black/40 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100'
                 }`}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -582,6 +593,7 @@ export function FileGrid(props: FileGridProps) {
             onRename={() => setRenamingId({ id: file.id, type: 'file' })}
             onRequestMove={() => onRequestMove?.(file.id, 'file')}
             onRequestCopy={() => onRequestCopy?.(file.id, 'file')}
+            canEdit={canEdit}
           >
             <button
               onClick={() => {
@@ -595,6 +607,7 @@ export function FileGrid(props: FileGridProps) {
               draggable
               onDragStart={(e) => handleDragStart(e, file.id, 'file')}
               onDragEnd={handleDragEnd}
+              data-slot="card"
               className={`group flex flex-col rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}`}
             >
               {/* Thumbnail area */}
@@ -622,7 +635,7 @@ export function FileGrid(props: FileGridProps) {
                   className={`absolute top-2 left-2 w-5 h-5 rounded border-[1.5px] flex items-center justify-center text-[0.6rem] font-bold cursor-pointer z-10 transition-all ${
                     isSelected
                       ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[#12151a] opacity-100'
-                      : 'border-white/60 bg-black/40 opacity-0 group-hover:opacity-100'
+                      : 'border-white/60 bg-black/40 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100'
                   }`}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -637,7 +650,10 @@ export function FileGrid(props: FileGridProps) {
                 </div>
 
                 {file.reference_count > 0 && (
-                  <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--text-muted)]">
+                  <span
+                    title="Em uso em posts ou relatórios"
+                    className="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--text-muted)]"
+                  >
                     <LinkIcon className="h-2.5 w-2.5" />
                     {file.reference_count}
                   </span>

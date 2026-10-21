@@ -4,7 +4,7 @@ import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
-  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
 };
 
 interface HubEditSuggestionHandlerDeps {
@@ -74,13 +74,15 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
       return json({ error: "Link inválido." }, 404);
     }
 
-    const okRead = await deps.rateLimit(
-      db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
-    );
-    if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-
+    // No `hub-read` debit here: that key is one pool shared by every Hub
+    // function, and this endpoint only writes. Charging it too would cap
+    // autosave at half the shared read pool.
+    // Autosave budget (120 per 5 min), not the 30/h budget of discrete actions:
+    // the Hub editor saves ~1.5s after each typing pause, and 30/h locked clients
+    // out of saving for the rest of the hour (Sep 2026). Same value as the
+    // hub-briefing text answer.
     const okWrite = await deps.rateLimit(
-      db, `hub-write:hub-edit-suggestion:${hubToken.conta_id}:${hubToken.cliente_id}`, 30, 3600,
+      db, `hub-write:hub-edit-suggestion:${hubToken.conta_id}:${hubToken.cliente_id}`, 120, 300,
     );
     if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
@@ -134,14 +136,22 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
     });
 
     if (rpcError) {
+      // upsert_edit_suggestion re-checks the status under a row lock (migration
+      // 20260928150001): the team accepted/rejected/moved the post after the check above.
+      const message = (rpcError as { message?: unknown }).message;
+      if (typeof message === "string" && message.includes("post_not_pending")) {
+        return json({ error: "Post não está aguardando aprovação." }, 409);
+      }
       console.error("[hub-edit-suggestion] upsert failed:", rpcError);
       return json({ error: "Erro ao salvar sugestão." }, 500);
     }
 
     const rpcResult = result as { action: string; is_new: boolean; suggestion: unknown };
 
-    // Create notification only on first insert
-    if (rpcResult.is_new) {
+    // Notify on every save that leaves a pending suggestion: the first one and each later
+    // update (the RPC flags updates via metadata.updated and no-ops if the row was resolved
+    // in between). A revert to the original (`deleted`) sends nothing.
+    if (rpcResult.action !== "deleted") {
       const { error: notifErr } = await db.rpc("create_edit_suggestion_notification", {
         p_post_id: post_id,
       });

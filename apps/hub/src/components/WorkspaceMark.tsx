@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useHub } from '../HubContext';
+import { useHubLook } from '../hooks/useHubLook';
 
 /**
  * The agency's logo, shown beside the workspace name wherever that name appears
@@ -27,6 +28,7 @@ export function isWordmarkStyle(bootstrap: {
 
 export function WorkspaceMark({ size = 36 }: { size?: number }) {
   const { bootstrap, theme } = useHub();
+  const look = useHubLook();
   const { logo_url: logoUrl, name } = bootstrap.workspace;
   const ht = bootstrap.hub_theme;
   // Defense in depth, same gating as HubShell: customized: false reads
@@ -81,6 +83,24 @@ export function WorkspaceMark({ size = 36 }: { size?: number }) {
       >
         {name.trim()}
       </span>
+    );
+  }
+
+  if (look === 'pauta') {
+    return (
+      <div
+        style={{
+          ...box,
+          fontSize: Math.round(size * 0.42),
+          borderRadius: 'var(--hub-r-tile)',
+          background: 'var(--hub-primary)',
+          color: 'var(--hub-primary-fg)',
+        }}
+        aria-hidden="true"
+        className="flex items-center justify-center font-display hub-display-title flex-shrink-0"
+      >
+        {name.trim().charAt(0).toUpperCase()}
+      </div>
     );
   }
 

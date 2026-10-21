@@ -88,6 +88,16 @@ export default function PostCommentSummary({
                   }`}
                 />
                 <div className="comment-summary-content">
+                  {thread.field === 'ig_caption' && (
+                    <span className="comment-summary-badges">
+                      <span className="comment-summary-chip">Legenda</span>
+                      {thread.orphaned && (
+                        <span className="comment-summary-chip comment-summary-chip--muted">
+                          texto removido
+                        </span>
+                      )}
+                    </span>
+                  )}
                   {thread.quoted_text && (
                     <span className="comment-summary-quote">{thread.quoted_text}</span>
                   )}

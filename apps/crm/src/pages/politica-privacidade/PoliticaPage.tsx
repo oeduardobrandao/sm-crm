@@ -1,4 +1,5 @@
 import { usePageMeta } from '../../lib/usePageMeta';
+import { CookiePreferencesLink } from '../../components/consent/CookiePreferencesLink';
 
 export default function PoliticaPage() {
   usePageMeta('/politica-de-privacidade');
@@ -51,7 +52,49 @@ export default function PoliticaPage() {
             ),
           },
           {
-            title: '3. Compartilhamento de Dados',
+            title: '3. Contas de redes sociais conectadas (Instagram e TikTok)',
+            content: (
+              <>
+                <p>
+                  Quando você conecta a conta de um cliente no Instagram ou no TikTok, o Mesaas
+                  recebe da plataforma, com a autorização do titular da conta:
+                </p>
+                <ul>
+                  <li>
+                    Dados do perfil: nome de usuário, nome de exibição, foto e link do perfil;
+                  </li>
+                  <li>
+                    Estatísticas da conta, como seguidores, contas seguidas, curtidas e número de
+                    publicações;
+                  </li>
+                  <li>
+                    As publicações da própria conta e as métricas de cada uma, como visualizações,
+                    curtidas, comentários e compartilhamentos;
+                  </li>
+                  <li>Tokens de acesso, que guardamos criptografados.</li>
+                </ul>
+                <p>
+                  No Instagram, quando você ativa automações de comentários, também recebemos os
+                  comentários das publicações e o nome de usuário de quem comentou, para responder
+                  conforme as regras que você configurou.
+                </p>
+                <p>
+                  Usamos esses dados somente para mostrar o desempenho da conta ao seu workspace e
+                  para publicar na conta conectada o conteúdo que você ou o seu cliente aprovou e
+                  agendou no Mesaas. Não vendemos esses dados nem os usamos para publicidade.
+                </p>
+                <p>
+                  Você pode desconectar a conta a qualquer momento na aba Redes sociais do cliente.
+                  No TikTok, ao desconectar, revogamos o acesso junto à plataforma e apagamos os
+                  tokens e as publicações importadas. Também é possível remover o acesso nas
+                  configurações do próprio app do Instagram ou do TikTok. O histórico de métricas já
+                  coletado pode ser excluído a pedido, pelo nosso suporte.
+                </p>
+              </>
+            ),
+          },
+          {
+            title: '4. Compartilhamento de Dados',
             content: (
               <>
                 <p>
@@ -91,7 +134,7 @@ export default function PoliticaPage() {
             ),
           },
           {
-            title: '4. Segurança',
+            title: '5. Segurança',
             content: (
               <p>
                 Implementamos medidas técnicas e organizacionais rígidas (como criptografia de
@@ -101,7 +144,7 @@ export default function PoliticaPage() {
             ),
           },
           {
-            title: '5. Seus Direitos (LGPD)',
+            title: '6. Seus Direitos (LGPD)',
             content: (
               <>
                 <p>Você tem o direito de:</p>
@@ -116,7 +159,18 @@ export default function PoliticaPage() {
             ),
           },
           {
-            title: '6. Alterações nesta Política',
+            title: '7. Cookies e armazenamento',
+            content: (
+              <p>
+                Usamos armazenamento essencial e, com base em legítimo interesse, ferramentas de
+                monitoramento de erros e de medição agregada de acessos. Ferramentas de análise e de
+                chat de suporte só são ativadas com o seu consentimento. Veja a lista completa e
+                como retirar o consentimento na nossa <a href="/lgpd">página de LGPD</a>.
+              </p>
+            ),
+          },
+          {
+            title: '8. Alterações nesta Política',
             content: (
               <p>
                 Podemos atualizar esta política periodicamente. Avisaremos sobre mudanças
@@ -154,6 +208,10 @@ export default function PoliticaPage() {
         Última atualização: {new Date().toLocaleDateString('pt-BR')}
         <br />
         Mesaas - Gestão Inteligente
+      </p>
+
+      <p style={{ textAlign: 'center', marginTop: '1rem' }}>
+        <CookiePreferencesLink />
       </p>
     </div>
   );

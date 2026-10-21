@@ -1,0 +1,111 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, RouterProvider, createBrowserRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+vi.mock('../../lib/api', () => ({
+  getDeposits: vi.fn(() => new Promise(() => {})),
+  getMetricsHistory: vi.fn(() => new Promise(() => {})),
+  backfillMetrics: vi.fn(),
+}));
+vi.mock('react-chartjs-2', () => ({ Bar: () => null, Line: () => null }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+import MetricasPage from '../MetricasPage';
+
+// The global test setup runs vi.restoreAllMocks() after each test, which wipes the
+// factory-time implementations above, so re-arm them here.
+beforeEach(async () => {
+  const api = await import('../../lib/api');
+  vi.mocked(api.getDeposits).mockReturnValue(new Promise(() => {}) as never);
+  vi.mocked(api.getMetricsHistory).mockReturnValue(new Promise(() => {}) as never);
+});
+
+function renderPage(entry = '/') {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[entry]}>
+        <MetricasPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe('MetricasPage', () => {
+  it('renders the page header and the revenue section anchor by default', () => {
+    renderPage();
+    expect(screen.getByRole('heading', { name: 'Métricas' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Receita' })).toHaveAttribute('aria-selected', 'true');
+    expect(document.getElementById('mrr')).not.toBeNull();
+  });
+
+  it.each([
+    ['#mrr', 'Receita', 'mrr'],
+    ['#churn', 'Movimento e churn', 'churn'],
+    ['#depositos', 'Depósitos', 'depositos'],
+  ])('deep link %s opens the matching section and anchor', (hash, tab, id) => {
+    renderPage(`/${hash}`);
+    expect(screen.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
+    expect(document.getElementById(id)).not.toBeNull();
+  });
+
+  it('switches sections from the segmented control', () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: 'Depósitos' }));
+    expect(screen.getByRole('tab', { name: 'Depósitos' })).toHaveAttribute('aria-selected', 'true');
+    expect(document.getElementById('depositos')).not.toBeNull();
+    expect(document.getElementById('mrr')).toBeNull();
+  });
+
+  it('a tab click replaces the history entry instead of stacking one', async () => {
+    window.history.replaceState(null, '', '/admin/metricas');
+    const router = createBrowserRouter([{ path: '*', element: <MetricasPage /> }]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    try {
+      render(
+        <QueryClientProvider client={qc}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      );
+      const length = window.history.length;
+      const idx = (window.history.state as { idx: number }).idx;
+      fireEvent.click(screen.getByRole('tab', { name: 'Movimento e churn' }));
+      await waitFor(() => expect(window.location.hash).toBe('#churn'));
+      expect(window.history.length).toBe(length);
+      expect((window.history.state as { idx: number }).idx).toBe(idx);
+      expect(router.state.historyAction).toBe('REPLACE');
+    } finally {
+      router.dispose();
+    }
+  });
+
+  it('fetches deposits only once the Depósitos section is open', async () => {
+    const api = await import('../../lib/api');
+    renderPage();
+    expect(screen.getByRole('tab', { name: 'Receita' })).toHaveAttribute('aria-selected', 'true');
+    expect(api.getMetricsHistory).toHaveBeenCalled();
+    expect(api.getDeposits).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('tab', { name: 'Depósitos' }));
+    await waitFor(() => expect(api.getDeposits).toHaveBeenCalledTimes(1));
+  });
+
+  it('asks for confirmation before running the backfill and maps 403 to a production-only toast', async () => {
+    const { backfillMetrics } = await import('../../lib/api');
+    const { toast } = await import('sonner');
+    vi.mocked(backfillMetrics).mockRejectedValue(
+      Object.assign(new Error('Forbidden'), { status: 403 }),
+    );
+    const confirmSpy = vi
+      .spyOn(window, 'confirm')
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    renderPage();
+    const button = screen.getByRole('button', { name: /reconstruir histórico/i });
+    fireEvent.click(button);
+    expect(backfillMetrics).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Disponível só em produção'));
+    confirmSpy.mockRestore();
+  });
+});

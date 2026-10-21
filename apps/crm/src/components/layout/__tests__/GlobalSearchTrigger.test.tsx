@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,13 +15,25 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_key: string, fallback?: string) => fallback ?? _key }),
 }));
 
-vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ canSeeFinancials: false }),
-}));
-
-const { getWorkflowsMock, getAllWorkflowPostsMock } = vi.hoisted(() => ({
+const {
+  getWorkflowsMock,
+  getAllWorkflowPostsMock,
+  getKbSearchIndexMock,
+  getTarefasMock,
+  canTarefasRef,
+} = vi.hoisted(() => ({
   getWorkflowsMock: vi.fn(),
   getAllWorkflowPostsMock: vi.fn(),
+  getKbSearchIndexMock: vi.fn(),
+  getTarefasMock: vi.fn(),
+  canTarefasRef: { current: true as boolean },
+}));
+
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({
+    canSeeFinancials: false,
+    can: (module: string) => (module === 'tarefas' ? canTarefasRef.current : true),
+  }),
 }));
 
 vi.mock('@/store/clients', () => ({ getClientes: vi.fn().mockResolvedValue([]) }));
@@ -34,18 +46,48 @@ vi.mock('@/store/ideias', () => ({ getIdeias: vi.fn().mockResolvedValue([]) }));
 vi.mock('@/store/hub', () => ({ getAllHubPages: vi.fn().mockResolvedValue([]) }));
 vi.mock('@/store/workflows', () => ({ getWorkflows: getWorkflowsMock }));
 vi.mock('@/store/posts', () => ({ getAllWorkflowPosts: getAllWorkflowPostsMock }));
+vi.mock('@/store/kb', () => ({ getKbSearchIndex: getKbSearchIndexMock }));
+vi.mock('@/store/tarefas', () => ({ getTarefas: getTarefasMock }));
+vi.mock('@/store/postStatuses', () => ({
+  getPostStatusDefinitions: vi.fn().mockResolvedValue([]),
+}));
 
 import GlobalSearchTrigger from '../GlobalSearchTrigger';
+import GlobalSearchDialog from '../GlobalSearchDialog';
+import { PhoneLayoutProvider } from '../PhoneLayoutContext';
+import type { KbSearchEntry } from '@/store/kb';
 
-function renderTrigger() {
+function renderTrigger(variant?: 'topbar' | 'sidebar') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <GlobalSearchTrigger />
+        <GlobalSearchTrigger variant={variant} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+function openPalette() {
+  fireEvent.click(screen.getByRole('button', { name: /Buscar|Search/i }));
+}
+
+function typeQuery(text: string) {
+  fireEvent.change(screen.getByPlaceholderText('Buscar...'), { target: { value: text } });
+}
+
+const kbArticle = (over: Partial<KbSearchEntry> & { title: string; slug: string }) => ({
+  id: over.slug,
+  excerpt: null,
+  category: 'primeiros-passos',
+  tags: [],
+  ...over,
+});
+
+function pill(name: string) {
+  return screen
+    .getAllByRole('button', { pressed: undefined })
+    .find((b) => b.textContent?.startsWith(name));
 }
 
 describe('GlobalSearchTrigger', () => {
@@ -55,13 +97,53 @@ describe('GlobalSearchTrigger', () => {
     getAllWorkflowPostsMock.mockResolvedValue([
       { id: 31, workflow_id: 5, titulo: 'Carrossel amamentação', tipo: 'carrossel' },
     ]);
+    getKbSearchIndexMock.mockResolvedValue([]);
+    getTarefasMock.mockReset();
+    getTarefasMock.mockResolvedValue([]);
+    canTarefasRef.current = true;
+  });
+
+  it('finds tarefas and opens them through the ?tarefa= deep link', async () => {
+    getTarefasMock.mockResolvedValue([
+      { id: 9, titulo: 'Revisar briefing', status: 'em_andamento', cliente_nome: 'Clínica Vida' },
+    ]);
+    renderTrigger();
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('briefing');
+
+    expect(await screen.findByText('Clínica Vida · Em andamento')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Revisar briefing'));
+    expect(navigateMock).toHaveBeenCalledWith('/tarefas?tarefa=9');
+  });
+
+  it('leaves tarefas out without the tarefas permission', async () => {
+    canTarefasRef.current = false;
+    getTarefasMock.mockResolvedValue([{ id: 9, titulo: 'Revisar briefing', status: 'pendente' }]);
+    renderTrigger();
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('briefing');
+
+    expect(await screen.findByText('Nenhum resultado.')).toBeInTheDocument();
+    expect(getTarefasMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a hint instead of listing everything before the user types', async () => {
+    renderTrigger();
+    openPalette();
+
+    expect(await screen.findByText(/Digite para buscar/)).toBeInTheDocument();
+    expect(screen.queryByText('Julho')).toBeNull();
   });
 
   // A post result has to land on that post, not just on the fluxo that contains it.
   // /entregas takes &post=<id> alongside ?drawer=<workflowId> and expands it in the drawer.
   it('navigates a post result to the post itself, not just to its fluxo', async () => {
     renderTrigger();
-    fireEvent.click(screen.getByRole('button', { name: /Buscar|Search/i }));
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('carrossel');
 
     fireEvent.click(await screen.findByText('Carrossel amamentação'));
 
@@ -71,7 +153,9 @@ describe('GlobalSearchTrigger', () => {
   // The fluxo result is a WORKFLOW, so it correctly opens the whole card with no post.
   it('navigates a fluxo result to the fluxo alone', async () => {
     renderTrigger();
-    fireEvent.click(screen.getByRole('button', { name: /Buscar|Search/i }));
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('julho');
 
     fireEvent.click(await screen.findByText('Julho'));
 
@@ -79,29 +163,280 @@ describe('GlobalSearchTrigger', () => {
   });
 
   // A post avulso (no workflow_id) has nowhere to derive a `?drawer=` target from --
-  // the CARRIED FINDING from Task 12's review was that the old unguarded `${p.workflow_id}`
-  // produced a literal "drawer=null" for this case. It must instead use the universal
-  // `?post=` form and label itself distinctly from a wired post.
+  // it must use the universal `?post=` form and label itself distinctly from a wired post.
   it('navigates an avulso post result via the universal ?post= form, labelled Avulso', async () => {
     getAllWorkflowPostsMock.mockResolvedValue([
       { id: 42, workflow_id: null, titulo: 'Post fora de fluxo', tipo: 'feed' },
     ]);
     renderTrigger();
-    fireEvent.click(screen.getByRole('button', { name: /Buscar|Search/i }));
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('fora de fluxo');
 
-    fireEvent.click(await screen.findByText('Post fora de fluxo'));
+    expect(await screen.findByText('Avulso · Imagem')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Post fora de fluxo'));
 
     expect(navigateMock).toHaveBeenCalledWith('/entregas?post=42');
     expect(navigateMock).not.toHaveBeenCalledWith(expect.stringContaining('drawer'));
   });
 
-  it('shows Avulso next to the tipo for a post with no workflow', async () => {
+  it('matches by substring, not by scattered letters like the old fuzzy filter', async () => {
     getAllWorkflowPostsMock.mockResolvedValue([
-      { id: 42, workflow_id: null, titulo: 'Post fora de fluxo', tipo: 'feed' },
+      { id: 1, workflow_id: null, titulo: 'Como eu cuido do sorriso do Henrique', tipo: 'reels' },
+      { id: 2, workflow_id: null, titulo: 'Como postar no Instagram', tipo: 'feed' },
     ]);
     renderTrigger();
-    fireEvent.click(screen.getByRole('button', { name: /Buscar|Search/i }));
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('como postar');
 
-    expect(await screen.findByText('feed · Avulso')).toBeInTheDocument();
+    expect(await screen.findByText('Como postar no Instagram')).toBeInTheDocument();
+    expect(screen.queryByText('Como eu cuido do sorriso do Henrique')).toBeNull();
+  });
+
+  it('shows "Nenhum resultado." when nothing matches', async () => {
+    renderTrigger();
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('zzz');
+
+    expect(await screen.findByText('Nenhum resultado.')).toBeInTheDocument();
+  });
+
+  describe('Ajuda group', () => {
+    it('navigates a matching article to /ajuda/<slug> and shows its category', async () => {
+      getKbSearchIndexMock.mockResolvedValue([
+        kbArticle({
+          slug: 'como-conectar-instagram',
+          title: 'Como conectar o Instagram',
+          category: 'instagram-e-analytics',
+        }),
+        kbArticle({ slug: 'bem-vindo', title: 'Bem-vindo ao Mesaas' }),
+      ]);
+      renderTrigger();
+      openPalette();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('instagram');
+
+      expect(await screen.findByText('Como conectar o Instagram')).toBeInTheDocument();
+      expect(screen.getByText('Instagram & Analytics')).toBeInTheDocument();
+      expect(screen.queryByText('Bem-vindo ao Mesaas')).toBeNull();
+
+      fireEvent.click(screen.getByText('Como conectar o Instagram'));
+      expect(navigateMock).toHaveBeenCalledWith('/ajuda/como-conectar-instagram');
+    });
+
+    it('matches accent-insensitively via excerpt and tags', async () => {
+      getKbSearchIndexMock.mockResolvedValue([
+        kbArticle({ slug: 'automacoes', title: 'Automação de comentários' }),
+        kbArticle({ slug: 'cobranca', title: 'Cobrança e plano', tags: ['fatura'] }),
+        kbArticle({ slug: 'tour', title: 'Primeiro acesso', excerpt: 'Tour pelo painel' }),
+      ]);
+      renderTrigger();
+      openPalette();
+      await screen.findByText(/Digite para buscar/);
+
+      typeQuery('automacao');
+      expect(await screen.findByText('Automação de comentários')).toBeInTheDocument();
+
+      typeQuery('fatura');
+      expect(await screen.findByText('Cobrança e plano')).toBeInTheDocument();
+
+      typeQuery('tour');
+      expect(await screen.findByText('Primeiro acesso')).toBeInTheDocument();
+    });
+
+    it('caps at 5 articles in "Tudo" and offers "Ver todos em Ajuda" carrying the query', async () => {
+      getKbSearchIndexMock.mockResolvedValue(
+        Array.from({ length: 7 }, (_, i) =>
+          kbArticle({ slug: `post-${i + 1}`, title: `Post número ${i + 1}` }),
+        ),
+      );
+      renderTrigger();
+      openPalette();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('post');
+
+      expect(await screen.findByText('Ver todos em Ajuda')).toBeInTheDocument();
+      expect(screen.getByText('+2')).toBeInTheDocument();
+      expect(screen.getAllByText(/^Post número/)).toHaveLength(5);
+
+      fireEvent.click(screen.getByText('Ver todos em Ajuda'));
+      expect(navigateMock).toHaveBeenCalledWith('/ajuda?q=post');
+    });
+
+    it('does not hold the workspace results behind a slow article index', async () => {
+      getKbSearchIndexMock.mockReturnValue(new Promise(() => {}));
+      renderTrigger();
+      openPalette();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('julho');
+
+      expect(await screen.findByText('Julho')).toBeInTheDocument();
+    });
+  });
+
+  describe('type pills', () => {
+    beforeEach(() => {
+      getAllWorkflowPostsMock.mockResolvedValue(
+        Array.from({ length: 7 }, (_, i) => ({
+          id: i + 1,
+          workflow_id: 5,
+          titulo: `Post ${i + 1}`,
+          tipo: 'feed',
+        })),
+      );
+      getKbSearchIndexMock.mockResolvedValue([
+        kbArticle({ slug: 'primeiro-post', title: 'Como agendar seu primeiro post' }),
+      ]);
+    });
+
+    it('renders one pill per matching type with counts, "Tudo" pressed by default', async () => {
+      renderTrigger();
+      openPalette();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('post');
+
+      await screen.findByText('Ver todos em Postagens');
+      const group = screen.getByRole('group', { name: 'Filtrar por tipo' });
+      const pills = Array.from(group.querySelectorAll('button')).map((b) => ({
+        text: b.textContent,
+        pressed: b.getAttribute('aria-pressed'),
+      }));
+      expect(pills).toEqual([
+        { text: 'Tudo8', pressed: 'true' },
+        { text: 'Postagens7', pressed: 'false' },
+        { text: 'Ajuda1', pressed: 'false' },
+      ]);
+    });
+
+    it('caps posts at 5 in "Tudo" and shows all of them once the Postagens pill is selected', async () => {
+      renderTrigger();
+      openPalette();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('post');
+
+      await screen.findByText('Ver todos em Postagens');
+      expect(screen.getAllByText(/^Post \d$/)).toHaveLength(5);
+      expect(screen.getByText('Como agendar seu primeiro post')).toBeInTheDocument();
+
+      fireEvent.click(pill('Postagens')!);
+
+      await waitFor(() => expect(screen.getAllByText(/^Post \d$/)).toHaveLength(7));
+      expect(screen.queryByText('Como agendar seu primeiro post')).toBeNull();
+      expect(screen.queryByText('Ver todos em Postagens')).toBeNull();
+      expect(pill('Postagens')).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(pill('Tudo')!);
+      await waitFor(() => expect(screen.getAllByText(/^Post \d$/)).toHaveLength(5));
+    });
+
+    it('"Ver todos em <tipo>" selects that pill instead of leaving the palette', async () => {
+      renderTrigger();
+      openPalette();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('post');
+
+      fireEvent.click(await screen.findByText('Ver todos em Postagens'));
+
+      await waitFor(() => expect(screen.getAllByText(/^Post \d$/)).toHaveLength(7));
+      expect(navigateMock).not.toHaveBeenCalled();
+    });
+
+    it('falls back to "Tudo" when the selected type stops matching the new query', async () => {
+      renderTrigger();
+      openPalette();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('post');
+      fireEvent.click(await screen.findByText('Ver todos em Postagens'));
+      await waitFor(() => expect(screen.getAllByText(/^Post \d$/)).toHaveLength(7));
+
+      typeQuery('agendar');
+
+      expect(await screen.findByText('Como agendar seu primeiro post')).toBeInTheDocument();
+      expect(pill('Tudo')).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
+  // On phones (inside the shell, MobileNav's Mais > Buscar) the palette is a full screen
+  // with the field pinned at the top and an iOS "Cancelar" (FBusca), since the keyboard
+  // would cover the lower half of a centered dialog.
+  describe('on phones', () => {
+    function PhoneSearch({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+      const [open, setOpen] = React.useState(true);
+      return (
+        <GlobalSearchDialog
+          open={open}
+          onOpenChange={(next) => {
+            onOpenChange(next);
+            setOpen(next);
+          }}
+        />
+      );
+    }
+
+    function renderPhone(onOpenChange = vi.fn()) {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <PhoneLayoutProvider isPhone>
+              <PhoneSearch onOpenChange={onOpenChange} />
+            </PhoneLayoutProvider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      return onOpenChange;
+    }
+
+    it('renders full screen with the field and Cancelar on top', async () => {
+      renderPhone();
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveClass('phone-search', 'phone-kit', 'inset-0');
+      expect(dialog).not.toHaveClass('sm:max-w-3xl');
+      const bar = dialog.querySelector('.phone-search__bar')!;
+      expect(bar).toContainElement(screen.getByPlaceholderText('Buscar...'));
+      expect(bar).toContainElement(screen.getByRole('button', { name: 'Cancelar' }));
+      // Fullscreen has no built-in X; Cancelar is the way out.
+      expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    });
+
+    it('Cancelar closes the search', async () => {
+      const onOpenChange = renderPhone();
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('closes and navigates when a result is picked', async () => {
+      const onOpenChange = renderPhone();
+      await screen.findByText(/Digite para buscar/);
+      typeQuery('julho');
+      fireEvent.click(await screen.findByText('Julho'));
+
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(navigateMock).toHaveBeenCalledWith('/entregas?drawer=5');
+    });
+  });
+
+  it('renders the sidebar variant with its own class and still opens on Cmd+K', async () => {
+    renderTrigger('sidebar');
+    const button = screen.getByRole('button', { name: 'Buscar' });
+    expect(button).toHaveClass('search-trigger--sidebar');
+    expect(button).not.toHaveClass('search-trigger');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.keyDown(document, { key: 'k', metaKey: true });
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('keeps the centered palette outside the phone shell', async () => {
+    renderTrigger();
+    openPalette();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveClass('sm:max-w-3xl');
+    expect(dialog).not.toHaveClass('phone-search');
+    expect(screen.queryByRole('button', { name: 'Cancelar' })).toBeNull();
   });
 });

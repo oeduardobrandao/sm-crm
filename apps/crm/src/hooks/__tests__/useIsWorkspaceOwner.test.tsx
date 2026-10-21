@@ -2,6 +2,13 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { AuthContext } from '../../context/AuthContext';
 import { useIsWorkspaceOwner } from '../useIsWorkspaceOwner';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+
+// `useIsWorkspaceOwner` itself never calls `can` — but these fixtures used to
+// omit it from the AuthContextValue entirely, which would hand
+// `can === undefined` to the first consumer down the line that did call it
+// (Task 7 review note, addressed in Task 12). Each fixture below now carries
+// a real, derivePermission-backed `can` matching its own workspaceRole.
 
 describe('useIsWorkspaceOwner', () => {
   it('returns false when no provider', () => {
@@ -20,6 +27,7 @@ describe('useIsWorkspaceOwner', () => {
             workspaceRole: null,
             membershipResolved: false,
             canSeeFinancials: 'unknown',
+            can: makeCan(null),
             loading: false,
             refetchProfile: async () => {},
             signOut: async () => {},
@@ -44,6 +52,7 @@ describe('useIsWorkspaceOwner', () => {
             workspaceRole: 'owner',
             membershipResolved: true,
             canSeeFinancials: 'unknown',
+            can: makeCan(fakeMembership({ role: 'owner' })),
             loading: false,
             refetchProfile: async () => {},
             signOut: async () => {},
@@ -68,6 +77,7 @@ describe('useIsWorkspaceOwner', () => {
             workspaceRole: null,
             membershipResolved: true,
             canSeeFinancials: 'unknown',
+            can: makeCan(null),
             loading: false,
             refetchProfile: async () => {},
             signOut: async () => {},
@@ -92,6 +102,7 @@ describe('useIsWorkspaceOwner', () => {
             workspaceRole: null,
             membershipResolved: 'error',
             canSeeFinancials: 'unknown',
+            can: makeCan(null),
             loading: false,
             refetchProfile: async () => {},
             signOut: async () => {},

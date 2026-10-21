@@ -1,0 +1,18 @@
+import { describe, expect, it } from 'vitest';
+import { FEATURE_FLAG_KEYS, FEATURE_FLAG_LABELS } from '../api';
+
+describe('flags de plano no Admin', () => {
+  it('conhece feature_post_processes e feature_agenda e tem rótulo para cada flag', () => {
+    expect(FEATURE_FLAG_KEYS).toContain('feature_post_processes');
+    expect(FEATURE_FLAG_KEYS).toContain('feature_agenda');
+    expect(FEATURE_FLAG_LABELS.feature_agenda).toBe('Agenda');
+    expect(FEATURE_FLAG_KEYS).toContain('feature_multiplatform');
+    expect(FEATURE_FLAG_KEYS).toContain('feature_hub_pauta');
+    expect(FEATURE_FLAG_LABELS.feature_hub_pauta).toBe('Hub: visual Pauta');
+    expect(FEATURE_FLAG_KEYS).toContain('feature_crm_vidro');
+    expect(FEATURE_FLAG_LABELS.feature_crm_vidro).toBe('Visual vidro (CRM desktop)');
+    for (const key of FEATURE_FLAG_KEYS) {
+      expect(FEATURE_FLAG_LABELS[key], `sem rótulo para ${key}`).toBeTruthy();
+    }
+  });
+});

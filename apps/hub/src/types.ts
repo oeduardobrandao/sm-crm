@@ -1,3 +1,4 @@
+import type { ContentFormat } from '@mesaas/platforms';
 export interface WorkspaceInfo {
   name: string;
   logo_url: string | null;
@@ -25,6 +26,21 @@ export interface HubBootstrap {
   is_active: boolean;
   cliente_id: number;
   feature_mensagens: boolean;
+  /**
+   * Gravação de áudio no briefing (planos Pro e Max). Optional porque um bundle
+   * novo pode falar com um hub-bootstrap ainda antigo: ausente = desligado.
+   */
+  feature_briefing_audio?: boolean;
+  /**
+   * Agenda compartilhada com o cliente (plano com feature_agenda). Optional for the same
+   * reason: a hub-bootstrap deployed before the Agenda omits it, which means off.
+   */
+  feature_agenda?: boolean;
+  /**
+   * Identidade visual "Pauta" (feature_hub_pauta). Optional for the same reason as
+   * feature_agenda: absent = classic look.
+   */
+  feature_hub_pauta?: boolean;
   /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
   hub_theme?: HubThemeInfo;
 }
@@ -50,16 +66,22 @@ export interface HubPostMedia {
   media_lost_at?: string | null;
 }
 
+/** Why a post the client already saw is back with the agency (Hub-only, never stored). */
+export type EmProducaoReason = 'proxima_aprovacao' | 'correcao' | 'ajuste';
+
 export interface HubPost {
   id: number;
   titulo: string;
-  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  tipo: ContentFormat;
   /** Target platform(s) for publishing. Absent on stale/pre-migration cached payloads —
    * treat as 'instagram' (mirrors the DB default). */
-  platform?: 'instagram' | 'tiktok' | 'both';
+  platform?: 'instagram' | 'tiktok' | 'both' | 'other';
   /** Reel de teste (Instagram trial reel): publicado só para não-seguidores até
    * a graduação. Absent em payloads antigos em cache — tratar como null. */
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  /** Instagram collaborators (collab post), lowercase usernames without `@`. Absent em
+   * payloads antigos em cache — tratar como []. */
+  ig_collaborators?: string[];
   status:
     | 'rascunho'
     | 'revisao_interna'
@@ -91,6 +113,10 @@ export interface HubPost {
   cover_media: HubPostMedia | null;
   pending_suggestion: PendingEditSuggestion | null;
   suggestion_rejected_at: string | null;
+  /** Set by hub-posts when the post is back in an internal status after the client
+   * saw it. Absent on stale cached payloads and before the function deploy: treat
+   * as null (not in production). */
+  em_producao?: EmProducaoReason | null;
 }
 
 export interface HubPostProperty {
@@ -129,6 +155,40 @@ export interface PostApproval {
   comentario: string | null;
   is_workspace_user: boolean;
   created_at: string;
+  motivo?: CorrectionReason | null;
+}
+
+export type CorrectionReason = 'midia' | 'texto' | 'legenda' | 'outro';
+
+/** hub-post-history DTO. Sanitized server-side: no from_status, no actor names, no TipTap JSON. */
+export interface PostHistoryEvent {
+  id: number;
+  to_status:
+    | 'enviado_cliente'
+    | 'aprovado_cliente'
+    | 'correcao_cliente'
+    | 'agendado'
+    | 'postado'
+    | 'falha_publicacao';
+  source: 'client' | 'team' | 'system';
+  created_at: string;
+  post_approval_id: number | null;
+  /** Present only on enviado_cliente events: the text the client saw on that send. */
+  snapshot: { conteudo_plain: string | null; ig_caption: string | null } | null;
+}
+
+export interface PostHistoryApproval {
+  id: number;
+  action: 'aprovado' | 'correcao' | 'mensagem';
+  comentario: string | null;
+  motivo: CorrectionReason | null;
+  is_workspace_user: boolean;
+  created_at: string;
+}
+
+export interface PostHistoryResponse {
+  events: PostHistoryEvent[];
+  approvals: PostHistoryApproval[];
 }
 
 export interface HubBrand {
@@ -161,12 +221,29 @@ export interface HubPageFull extends HubPage {
   content: HubContentBlock[];
 }
 
-export interface HubContentBlock {
+export interface HubLegacyBlock {
   type: 'paragraph' | 'heading' | 'image' | 'link' | 'markdown';
   content: string;
   href?: string;
   level?: 1 | 2 | 3;
 }
+
+export interface HubRichTextBlock {
+  type: 'richtext';
+  /** Documento ProseMirror do TipTap. Lido por `RichTextContent`. */
+  doc: Record<string, unknown>;
+}
+
+export type HubContentBlock = HubLegacyBlock | HubRichTextBlock;
+
+export interface HubAudio {
+  url: string;
+  mime: string;
+  duration_seconds: number | null;
+  transcription_status: 'pending' | 'done' | 'failed' | null;
+  recorded_at: string | null;
+}
+export type BriefingAudio = HubAudio;
 
 export interface BriefingQuestion {
   id: string;
@@ -174,6 +251,20 @@ export interface BriefingQuestion {
   answer: string | null;
   section: string | null;
   display_order: number;
+  audio: BriefingAudio | null;
+}
+
+export interface BriefingAudioResponse {
+  ok: boolean;
+  answer: string | null;
+  transcript: string | null;
+  audio: BriefingAudio | null;
+}
+
+export interface IdeiaAudioResponse {
+  ok: boolean;
+  transcript: string | null;
+  audio: HubAudio | null;
 }
 
 export interface Briefing {
@@ -204,7 +295,8 @@ export interface IdeiaImage {
 export interface HubIdeia {
   id: string;
   titulo: string;
-  descricao: string;
+  // Optional: an ideia can be conveyed entirely through its audio recording instead.
+  descricao: string | null;
   links: string[];
   tipo: 'ideia' | 'solicitacao';
   status: 'nova' | 'em_analise' | 'aprovada' | 'descartada' | 'convertida' | 'concluida';
@@ -216,6 +308,8 @@ export interface HubIdeia {
   updated_at: string;
   ideia_reactions: IdeiaReaction[];
   images: IdeiaImage[];
+  origem: 'cliente' | 'agencia';
+  audio: (HubAudio & { transcript: string | null }) | null;
 }
 
 export interface InstagramProfile {
@@ -253,6 +347,16 @@ export interface HubPostsResponse {
   /** Workflows mid dual-approval: a later client-approval etapa is still open,
    * so approving now will NOT auto-schedule (mirrors hub-approve's guard). */
   autoPublishSuspendedWorkflowIds?: number[];
+  /** Posts avulsos com processo individual que ainda tem outra etapa de
+   * aprovação adiante: aprovar agora NÃO autoagenda (espelha hub-approve). */
+  autoPublishSuspendedPostIds?: number[];
+  /** Shell only: present when published posts older than the 90-day window exist. Opaque;
+   * pass it back as `before`. Absent from older backends, which return everything. */
+  olderCursor?: string | null;
+  /** Shell only: the window's start (ISO). Calendar months starting before it need a range fetch. */
+  historyCutoff?: string | null;
+  /** History pages only: the next page's cursor, null on the last page. */
+  nextCursor?: string | null;
 }
 
 export interface DashboardTopPost {
@@ -324,4 +428,66 @@ export interface MensagensCursor {
   before: string;
   beforeSource: MensagemFeedItem['source'];
   beforeItemId: number;
+}
+
+/** A pending reschedule request the client made for one occurrence. */
+export interface HubAgendaRemarcacao {
+  id: number;
+  inicio_sugerido: string;
+  fim_sugerido: string;
+  mensagem: string | null;
+  criado_em: string;
+}
+
+/**
+ * The fields every Agenda card shows: an occurrence as hub-agenda returns it, minus the
+ * client-only reschedule request. The guest invite page (agenda-convite) returns exactly this.
+ */
+export interface AgendaItemBase {
+  ocorrencia_id: number;
+  sequencia: number;
+  inicio: string;
+  fim: string;
+  dia_inteiro: boolean;
+  /** YYYY-MM-DD in `tz`. */
+  data_inicio_local: string;
+  /** YYYY-MM-DD in `tz`; exclusive for all-day occurrences. */
+  data_fim_local: string;
+  tz: string;
+  titulo: string;
+  descricao: string | null;
+  local: string | null;
+  link_reuniao: string | null;
+  /** Effective answer: null = waiting (never answered, or the start moved since). */
+  resposta: 'sim' | 'nao' | null;
+}
+
+/** One shared occurrence, as hub-agenda returns it (`Item` in the Agenda Hub plan). */
+export interface HubAgendaItem extends AgendaItemBase {
+  remarcacao: HubAgendaRemarcacao | null;
+}
+
+/** Keyset cursor for the next page (`apos_inicio` / `apos_id`). */
+export interface HubAgendaCursor {
+  inicio: string;
+  id: number;
+}
+
+export interface HubAgendaResponse {
+  itens: HubAgendaItem[];
+  proximo: HubAgendaCursor | null;
+}
+
+// ── Guest invite (agenda-convite) ───────────────────────────────────────────
+
+/** One occurrence on the guest invite page: `Item` without `remarcacao`; `resposta` is the guest's. */
+export type ConviteItem = AgendaItemBase;
+
+/** GET agenda-convite?token=T */
+export interface ConviteResponse {
+  workspace: { nome: string; brand_color: string | null; logo_url: string | null };
+  /** null when the organizer is no longer a member. */
+  organizador_nome: string | null;
+  titulo: string;
+  itens: ConviteItem[];
 }

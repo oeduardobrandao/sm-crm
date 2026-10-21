@@ -27,6 +27,9 @@ function baseWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
       currency: 'brl',
       interval: 'month',
       discount_label: null,
+      failed_payment_count: 0,
+      current_period_end: null,
+      provider: 'stripe',
     },
     ...overrides,
   };
@@ -44,6 +47,9 @@ describe('buildWorkspaceExportRows', () => {
           currency: 'brl',
           interval: 'year',
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
+          provider: 'stripe',
         },
       }),
     ]);
@@ -67,6 +73,9 @@ describe('buildWorkspaceExportRows', () => {
           currency: 'brl',
           interval: 'year',
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
+          provider: 'stripe',
         },
       }),
     ]);
@@ -86,7 +95,7 @@ describe('buildWorkspaceExportRows', () => {
     expect(rows[0].owner_name).toBe('');
     expect(rows[0].owner_email).toBe('');
     expect(rows[0].owner_telefone).toBe('');
-    expect(rows[0].owner_marketing_opt_in).toBe('no');
+    expect(rows[0].owner_marketing_opt_in).toBe('não');
   });
 
   it('blanks subscription columns when the workspace has no subscription', () => {
@@ -112,6 +121,9 @@ describe('buildWorkspaceExportRows', () => {
           currency: null,
           interval: null,
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
+          provider: 'stripe',
         },
       }),
     ]);
@@ -128,8 +140,55 @@ describe('buildWorkspaceExportRows', () => {
     expect(rows[0].last_activity_at).toBe('2026-08-20');
   });
 
-  it('renders overrides as yes/no', () => {
+  it('renders overrides as sim/não', () => {
     const rows = buildWorkspaceExportRows([baseWorkspace({ has_overrides: true })]);
-    expect(rows[0].has_overrides).toBe('yes');
+    expect(rows[0].has_overrides).toBe('sim');
+  });
+
+  it('exports the billing provider label', () => {
+    const rows = buildWorkspaceExportRows([baseWorkspace()]);
+    expect(rows[0].provider).toBe('Stripe');
+  });
+
+  it('labels a Pagar.me subscription as Pagar.me', () => {
+    const rows = buildWorkspaceExportRows([
+      baseWorkspace({
+        subscription: {
+          status: 'active',
+          plan_name: 'Max',
+          billing_interval: 'year',
+          amount_cents: 113880,
+          currency: 'brl',
+          interval: 'year',
+          discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
+          provider: 'pagarme',
+        },
+      }),
+    ]);
+    expect(rows[0].provider).toBe('Pagar.me');
+  });
+
+  it('blanks the provider when the payload has none or there is no subscription', () => {
+    const noProvider = buildWorkspaceExportRows([
+      baseWorkspace({
+        subscription: {
+          status: 'active',
+          plan_name: 'Pro',
+          billing_interval: 'month',
+          amount_cents: 9900,
+          currency: 'brl',
+          interval: 'month',
+          discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
+          provider: null,
+        },
+      }),
+    ]);
+    expect(noProvider[0].provider).toBe('');
+    const noSub = buildWorkspaceExportRows([baseWorkspace({ subscription: null })]);
+    expect(noSub[0].provider).toBe('');
   });
 });

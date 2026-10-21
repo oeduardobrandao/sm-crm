@@ -1,4 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 
@@ -16,6 +18,13 @@ import { fetchBootstrap } from '../../api';
 import { HubShell } from '../HubShell';
 
 const mockedFetchBootstrap = vi.mocked(fetchBootstrap);
+
+// HubShell reads bootstrap through React Query; a fresh client per render keeps
+// one test's cached bootstrap from answering the next.
+function render(ui: ReactElement) {
+  const qc = new QueryClient();
+  return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 describe('HubShell', () => {
   beforeEach(() => {
@@ -157,6 +166,58 @@ describe('HubShell', () => {
       hide_branding: false,
       default_appearance: 'light' as const,
     };
+
+    it('sets data-hub-look and loads Assinatura for a non-customized Pauta hub', async () => {
+      mockedFetchBootstrap.mockResolvedValue({
+        workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+        cliente_nome: 'Clínica Aurora',
+        is_active: true,
+        cliente_id: 14,
+        feature_mensagens: true,
+        feature_hub_pauta: true,
+        hub_theme: { ...CUSTOM_THEME_BASE, customized: false },
+      });
+      render(
+        <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+          <Routes>
+            <Route path="/:workspace/hub/:token" element={<HubShell />}>
+              <Route index element={<div>Página inicial do hub</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(screen.getByText('Página inicial do hub')).toBeInTheDocument());
+      expect(document.querySelector('.hub-root')?.getAttribute('data-hub-look')).toBe('pauta');
+      expect(document.querySelector('main')?.className).not.toContain('hub-noise');
+      const link = document.getElementById('hub-custom-fonts') as HTMLLinkElement;
+      expect(link.href).toContain('Bricolage+Grotesque');
+      expect(link.href).toContain('Figtree');
+      expect(document.querySelector('style')?.textContent).toContain('--hub-primary: #0f766e;');
+    });
+
+    it('classic: no data-hub-look, hub-noise kept, no font link', async () => {
+      mockedFetchBootstrap.mockResolvedValue({
+        workspace: { name: 'Mesaas', logo_url: null, brand_color: '#0f766e' },
+        cliente_nome: 'Clínica Aurora',
+        is_active: true,
+        cliente_id: 14,
+        feature_mensagens: true,
+        hub_theme: { ...CUSTOM_THEME_BASE, customized: false },
+      });
+      render(
+        <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+          <Routes>
+            <Route path="/:workspace/hub/:token" element={<HubShell />}>
+              <Route index element={<div>Página inicial do hub</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(screen.getByText('Página inicial do hub')).toBeInTheDocument());
+      expect(document.querySelector('.hub-root')?.hasAttribute('data-hub-look')).toBe(false);
+      expect(document.querySelector('main')?.className).toBe('hub-noise flex-1 md:pl-[240px]');
+      expect(document.getElementById('hub-custom-fonts')).toBeNull();
+    });
 
     it('renders with neutral defaults when hub_theme is absent (old-function fallback lock)', async () => {
       mockedFetchBootstrap.mockResolvedValue({

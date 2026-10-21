@@ -6,7 +6,6 @@ vi.mock('../../lib/supabase');
 
 import * as supabaseModule from '../../lib/supabase';
 import {
-  generateReport,
   getAccountMetrics,
   getAnalyticsOverview,
   getClientRateBaseline,
@@ -148,14 +147,6 @@ describe('analytics service', () => {
       },
       {
         data: [
-          { instagram_account_id: 10, posted_at: '2026-04-12T10:00:00.000Z' },
-          { instagram_account_id: 10, posted_at: '2026-04-10T10:00:00.000Z' },
-          { instagram_account_id: 20, posted_at: '2026-04-11T10:00:00.000Z' },
-        ],
-        error: null,
-      },
-      {
-        data: [
           {
             id: 1,
             instagram_account_id: 10,
@@ -186,6 +177,13 @@ describe('analytics service', () => {
         error: null,
       },
     );
+    mockedSupabase.__queueSupabaseResult('instagram_account_last_post', 'select', {
+      data: [
+        { instagram_account_id: 10, last_post_at: '2026-04-12T10:00:00.000Z' },
+        { instagram_account_id: 20, last_post_at: '2026-04-11T10:00:00.000Z' },
+      ],
+      error: null,
+    });
     mockedSupabase.__queueSupabaseResult('instagram_follower_history', 'select', {
       data: [
         { instagram_account_id: 10, date: '2026-03-20', follower_count: 2300 },
@@ -217,6 +215,15 @@ describe('analytics service', () => {
       client_name: 'Clínica Aurora',
       username: 'clinicaaurora',
       posts_last_30d: 2,
+      last_post_at: '2026-04-12T10:00:00.000Z',
+    });
+
+    // Latest post per account comes from the aggregate view, never from an
+    // unbounded instagram_posts fetch (PostgREST caps those at 1000 rows).
+    const lastPostCall = getLastCall('instagram_account_last_post');
+    expect(lastPostCall.modifiers).toContainEqual({
+      method: 'in',
+      args: ['instagram_account_id', [10, 20]],
     });
 
     const igCall = getLastCall('instagram_accounts');
@@ -457,18 +464,6 @@ describe('analytics service', () => {
     expect(summary.accounts[0].engagement_rate_avg).toBe(3);
   });
 
-  it('throws a friendly report generation error when the edge function fails', async () => {
-    fetchHarness.queueResponse({
-      ok: false,
-      status: 500,
-      json: { message: 'Falha ao gerar PDF para a cliente Clínica Aurora' },
-    });
-
-    await expect(generateReport(7, '2026-03')).rejects.toThrow(
-      'Falha ao gerar PDF para a cliente Clínica Aurora',
-    );
-  });
-
   it('attaches per-view rates to portfolio ranked posts', async () => {
     mockedSupabase.__queueSupabaseResult('clientes', 'select', {
       data: [
@@ -492,7 +487,10 @@ describe('analytics service', () => {
       data: [],
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', { data: [], error: null }); // latestPosts
+    mockedSupabase.__queueSupabaseResult('instagram_account_last_post', 'select', {
+      data: [],
+      error: null,
+    }); // latestPosts
     mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', {
       data: [
         {
@@ -624,6 +622,90 @@ describe('analytics service', () => {
     expect(posts[0].rates.like_rate).toBe(0.08);
     expect(posts[0].ig_score).not.toBeNull();
     expect(posts[1].ig_score).toBeNull(); // null sinks to bottom even desc
+  });
+
+  it('getPostsAnalytics maps action metrics to number|null and sorts them nulls last', async () => {
+    const base = {
+      instagram_account_id: 10,
+      media_type: 'CAROUSEL_ALBUM',
+      likes: 1,
+      comments: 0,
+      saved: 0,
+      shares: 0,
+      impressions: 100,
+      unavailable_metrics: [],
+    };
+    const rows = [
+      {
+        ...base,
+        id: 1,
+        posted_at: '2026-09-01T00:00:00Z',
+        reach: 1000,
+        follows: 5,
+        profile_visits: 0,
+      },
+      // pre-migration row: the action columns are simply absent
+      { ...base, id: 2, posted_at: '2026-09-02T00:00:00Z', reach: 1000 },
+      {
+        ...base,
+        id: 3,
+        posted_at: '2026-09-03T00:00:00Z',
+        reach: 37600,
+        follows: 75,
+        profile_visits: 328,
+        bio_link_clicks: 1,
+      },
+      {
+        ...base,
+        id: 4,
+        posted_at: '2026-09-04T00:00:00Z',
+        reach: 0,
+        follows: 2,
+        profile_visits: null,
+      },
+    ];
+    const queue = () => {
+      mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+        data: [{ id: 10, client_id: 1 }],
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', {
+        data: rows,
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseResult('instagram_post_tag_assignments', 'select', {
+        data: [],
+        error: null,
+      });
+    };
+
+    queue();
+    const desc = await getPostsAnalytics(1, 30, 'follows', 'desc');
+    expect(desc.posts.map((p) => p.id)).toEqual([3, 1, 4, 2]);
+    const pre = desc.posts.find((p) => p.id === 2)!;
+    expect(pre.follows).toBeNull();
+    expect(pre.profile_visits).toBeNull();
+    expect(pre.bio_link_clicks).toBeNull();
+    const top = desc.posts[0];
+    expect(top.profile_visits).toBe(328);
+    expect(top.bio_link_clicks).toBe(1);
+    expect(top.follows_per_mil_reach).toBeCloseTo(1.9947, 3);
+    expect(desc.posts.find((p) => p.id === 1)!.profile_visits).toBe(0); // real 0 kept
+    expect(desc.posts.find((p) => p.id === 4)!.follows_per_mil_reach).toBeNull(); // reach 0
+
+    queue();
+    const asc = await getPostsAnalytics(1, 30, 'follows', 'asc');
+    expect(asc.posts.map((p) => p.id)).toEqual([4, 1, 3, 2]);
+
+    queue();
+    const rate = await getPostsAnalytics(1, 30, 'follows_per_mil_reach', 'desc');
+    expect(rate.posts.map((p) => p.id).slice(0, 2)).toEqual([1, 3]); // 5/1000 > 75/37600
+    expect(
+      rate.posts
+        .map((p) => p.id)
+        .slice(2)
+        .sort(),
+    ).toEqual([2, 4]);
   });
 });
 

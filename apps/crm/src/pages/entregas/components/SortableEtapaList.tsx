@@ -4,6 +4,7 @@ import {
   DndContext,
   PointerSensor,
   KeyboardSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -31,6 +32,11 @@ import { HelpTooltip } from '@/components/help/HelpTooltip';
 import type { Membro } from '../../../store';
 
 export type ModoPrazo = 'padrao' | 'data_fixa' | 'data_entrega';
+
+// Mesmo teto de apply_post_process/update_post_process_step: acima disso,
+// tipo_prazo='uteis' trava o loop de computeDeadlineDate (1 iteracao por dia
+// util) para quem abrir o board/drawer, e o template nem chega a aplicar.
+export const MAX_PRAZO_DIAS = 999;
 
 // ---- Types ----
 export interface EtapaFormData {
@@ -73,6 +79,17 @@ export function nextHighlightToken(): number {
 /** The row a repeated "add custom etapa" click should re-focus instead of appending another. */
 export function findEmptyEtapa(etapas: EtapaFormData[]): EtapaFormData | undefined {
   return etapas.find((e) => !e.suggestionId && e.nome.trim() === '');
+}
+
+/**
+ * A row that would fail apply_post_process/update_post_process_step's
+ * prazo_dias bound. The row's own input clamps new entries to MAX_PRAZO_DIAS,
+ * but a template loaded from a row saved before that bound existed can still
+ * carry a stale value above it — callers writing etapas back to the server
+ * should block the save on this instead of letting the RPC reject it later.
+ */
+export function findInvalidPrazoEtapa(etapas: EtapaFormData[]): EtapaFormData | undefined {
+  return etapas.find((e) => e.nome.trim() && e.prazo > MAX_PRAZO_DIAS);
 }
 
 // ---- SortableEtapaRow component ----
@@ -165,7 +182,7 @@ function SortableEtapaRow(props: {
         <div
           {...listeners}
           className="shrink-0"
-          style={{ cursor: 'grab', color: 'var(--text-muted)' }}
+          style={{ cursor: 'grab', color: 'var(--text-muted)', touchAction: 'none' }}
         >
           <GripVertical className="h-4 w-4" />
         </div>
@@ -191,9 +208,16 @@ function SortableEtapaRow(props: {
             <Input
               type="number"
               min={1}
+              max={MAX_PRAZO_DIAS}
+              step={1}
               aria-label="Prazo em dias"
               value={prazo}
-              onChange={(e) => onChange('prazo', Number(e.target.value))}
+              onChange={(e) =>
+                onChange(
+                  'prazo',
+                  Math.max(0, Math.min(MAX_PRAZO_DIAS, Math.trunc(Number(e.target.value)) || 0)),
+                )
+              }
               className="h-8 w-14 text-center text-sm"
             />
             <Select value={tipoPrazo} onValueChange={(val) => onChange('tipoPrazo', val)}>
@@ -319,8 +343,12 @@ export function SortableEtapaList({
         : internalHighlight
       : (highlight ?? internalHighlight);
 
+  // TouchSensor arms on a 250ms hold (D20, the WorkflowCalendarView values): on touch
+  // screens a pointer-distance constraint loses to the browser's scroll. Listeners stay
+  // on the grip handle only, which also opts out of touch scrolling.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const handleDragEnd = (event: DragEndEvent) => {

@@ -9,6 +9,7 @@ import {
   TikTokApiError,
   EVENT_NO_LONGER_PUBLICALY_AVAILABLE,
   TIKTOK_API_BASE,
+  TIKTOK_SCOPES,
 } from "../_shared/tiktok.ts";
 
 /** Local stand-in for std's assertRejects — ./assert.ts deliberately stays tiny. */
@@ -181,4 +182,8 @@ Deno.test("tiktok-shared: tiktokFetch maps only scope_not_authorized to REVOKED,
   } finally {
     restore();
   }
+});
+
+Deno.test("tiktok-shared: TIKTOK_SCOPES requests only the demonstrated scopes (no video.upload)", () => {
+  assertEquals(TIKTOK_SCOPES, "user.info.basic,user.info.profile,user.info.stats,video.list,video.publish");
 });

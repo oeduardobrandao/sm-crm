@@ -1,9 +1,26 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import type { HubPostMedia } from '../types';
 import { MediaUnavailable } from './MediaUnavailable';
+
+/**
+ * A <video> with only max-width/max-height renders at its intrinsic resolution, and HLS
+ * starts on a low rendition, so a vertical Reel opened at ~240x430 CSS px. Give it the
+ * largest box that fits 90vw x 85vh at the stored aspect ratio; without stored dimensions
+ * fill that box and let object-contain letterbox.
+ */
+function videoBoxStyle(m: HubPostMedia): React.CSSProperties {
+  if (m.width && m.height) {
+    return {
+      width: `min(90vw, calc(85vh * ${m.width} / ${m.height}))`,
+      aspectRatio: `${m.width} / ${m.height}`,
+    };
+  }
+  return { width: '90vw', height: '85vh' };
+}
 
 interface PostMediaLightboxProps {
   media: HubPostMedia[];
@@ -19,6 +36,7 @@ export function PostMediaLightbox({
   onClose,
   onStaleUrl,
 }: PostMediaLightboxProps) {
+  const { t } = useTranslation('hubPostCard');
   const [idx, setIdx] = useState(initialIndex);
   const current = media[idx];
 
@@ -85,7 +103,7 @@ export function PostMediaLightbox({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[9005] flex items-center justify-center bg-black/90"
+      className="fixed inset-0 z-[9005] pointer-events-auto flex items-center justify-center bg-black/90"
       onClick={onClose}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
@@ -96,7 +114,7 @@ export function PostMediaLightbox({
           e.stopPropagation();
           onClose();
         }}
-        aria-label="Fechar"
+        aria-label={t('common:actions.close', 'Fechar')}
         className="fixed top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
       >
         <X className="h-5 w-5" />
@@ -110,7 +128,7 @@ export function PostMediaLightbox({
               e.stopPropagation();
               prev();
             }}
-            aria-label="Anterior"
+            aria-label={t('lightbox.previous', 'Anterior')}
             className="fixed left-4 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
           >
             <ChevronLeft className="h-5 w-5" />
@@ -121,7 +139,7 @@ export function PostMediaLightbox({
               e.stopPropagation();
               next();
             }}
-            aria-label="Próxima"
+            aria-label={t('lightbox.next', 'Próxima')}
             className="fixed right-4 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
           >
             <ChevronRight className="h-5 w-5" />
@@ -152,7 +170,8 @@ export function PostMediaLightbox({
             controls
             preload="auto"
             onFatalError={() => onStaleUrl?.()}
-            className="max-h-[85vh] max-w-[90vw] object-contain"
+            className="max-h-[85vh] max-w-[90vw] object-contain bg-black"
+            style={videoBoxStyle(current)}
           />
         )}
       </div>

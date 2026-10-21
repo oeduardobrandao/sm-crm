@@ -1,11 +1,19 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type React from 'react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Desktop layout by default; the "no celular" describe flips it (jsdom's matchMedia is
+// false, so without a mock this suite would render the phone branch).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
 vi.mock('@/store', () => ({
   getWorkflowsByCliente: vi.fn(),
   getWorkflowEtapas: vi.fn(),
+  getWorkflowEtapasByWorkflowIds: vi.fn(),
+  getConcludedWorkflowSummaries: vi.fn(),
   getDeadlineInfo: vi.fn(),
   getMembros: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
@@ -13,19 +21,24 @@ vi.mock('@/store', () => ({
   approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   duplicateWorkflow: vi.fn(),
-  getWorkflowPostsCounts: vi.fn(),
-  getWorkflowApprovedPostsCounts: vi.fn(),
-  getWorkflowClearedClientePostsCounts: vi.fn(),
-  getWorkflowRevisaoInternaCounts: vi.fn(),
-  getWorkflowAwaitingClientePostsCounts: vi.fn(),
+  getWorkflowPostStats: vi.fn(),
   getConcludedWorkflowsByCliente: vi.fn(),
   getWorkflowPosts: vi.fn(),
-  getWorkflowPostsWithProperties: vi.fn(),
+  getClientePosts: vi.fn(),
   updateWorkflowPost: vi.fn(),
   getClientes: vi.fn(),
   getWorkspaceSlug: vi.fn(),
   getHubToken: vi.fn(),
   getWorkflowTemplates: vi.fn(),
+  getVigentePostProcessesByCliente: vi.fn(),
+  // Consumed by the real usePostProcessCommands (not mocked — same rationale
+  // as completeEtapa/completeEtapaWithRearm below: this suite pins that the
+  // individual-post forward/revert buttons wire to the same commands the
+  // Fluxos board uses).
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  sendPostToCliente: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   // Consumed by the real advanceEtapa.ts (not mocked — the rearm decision
   // itself is covered by advanceEtapa.test.ts / KanbanRearm.test.tsx; this
   // suite pins that EntregasTab wires it exactly the same way).
@@ -38,8 +51,6 @@ vi.mock('@/store', () => ({
   removeWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
   updateWorkflowEtapa: vi.fn(),
-  updateWorkflowTemplate: vi.fn(),
-  propagateTemplateToWorkflows: vi.fn(),
   getPropertyDefinitions: vi.fn(),
   deletePropertyDefinition: vi.fn(),
 }));
@@ -48,8 +59,27 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+// Mutable so a future test can flip a feature on for just its own describe
+// block; every other test keeps the flags off (default null), same
+// mutable-features pattern as WorkflowDrawer.test.tsx. No test in THIS file
+// reassigns it yet, so `let` alone trips prefer-const.
+// eslint-disable-next-line prefer-const
+let mockFeatures: Record<string, boolean> | null = null;
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    get features() {
+      return mockFeatures;
+    },
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+  }),
+}));
+
 vi.mock('@/services/postMedia', () => ({
   getWorkflowCovers: vi.fn(),
+  getPostCovers: vi.fn(),
 }));
 
 vi.mock('@/pages/entregas/components/PropertyDefinitionPanel', () => ({
@@ -114,11 +144,136 @@ vi.mock('@/pages/entregas/components/WorkflowDrawer', () => ({
   ),
 }));
 
-vi.mock('@/pages/entregas/components/HistoryDrawer', () => ({
-  HistoryDrawer: ({ workflow, onClose }: { workflow: { titulo: string }; onClose: () => void }) => (
+// Individual posts (post_processes) card/drawer — same "not under test here"
+// rationale as WorkflowCard/WorkflowDrawer above.
+vi.mock('@/pages/entregas/components/PostProcessCard', () => ({
+  PostProcessCard: ({
+    entity,
+    onClick,
+    onForwardClick,
+    onRevertClick,
+  }: {
+    entity: { id: string; titulo: string };
+    onClick?: () => void;
+    onForwardClick?: () => void;
+    onRevertClick?: () => void;
+  }) => (
     <div>
+      <span>{entity.titulo}</span>
+      <button onClick={onClick}>open-post-{entity.id}</button>
+      <button onClick={onForwardClick}>forward-post-{entity.id}</button>
+      {onRevertClick && <button onClick={onRevertClick}>revert-post-{entity.id}</button>}
+    </div>
+  ),
+}));
+
+vi.mock('@/pages/entregas/components/StandalonePostDrawer', () => ({
+  StandalonePostDrawer: ({
+    postId,
+    onClose,
+    onAttached,
+  }: {
+    postId: number;
+    onClose: () => void;
+    onAttached: (workflowId: number, postId: number) => void;
+  }) => (
+    <div>
+      <span>StandalonePostDrawer open: {postId}</span>
+      <button onClick={onClose}>close-standalone-drawer</button>
+      <button onClick={() => onAttached(1, postId)}>attach-standalone-post</button>
+    </div>
+  ),
+}));
+
+vi.mock('@/pages/entregas/components/HistoryDrawer', () => ({
+  HistoryDrawer: ({
+    workflow,
+    onClose,
+    variant,
+  }: {
+    workflow: { titulo: string };
+    onClose: () => void;
+    variant?: string;
+  }) => (
+    <div data-variant={variant ?? 'drawer'} data-testid="history-drawer">
       <span>HistoryDrawer open: {workflow.titulo}</span>
       <button onClick={onClose}>close-history-drawer</button>
+    </div>
+  ),
+}));
+
+// Phone cards and their long-press menus (shipped Entregas phone code, with suites of
+// their own): stubs that expose the handlers EntregasTab wires.
+vi.mock('@/pages/entregas/phone/PhoneBoardCards', () => ({
+  PhoneWorkflowCard: ({
+    card,
+    counts,
+    onOpen,
+    onForward,
+    preview,
+  }: {
+    card: { workflow: { id: number; titulo: string } };
+    counts: { postsCount: number; clearedClienteCount: number };
+    onOpen?: () => void;
+    onForward?: () => void;
+    preview?: boolean;
+  }) =>
+    preview ? null : (
+      <div>
+        <span>{card.workflow.titulo}</span>
+        <span data-testid={`counts-${card.workflow.id}`}>
+          {counts.postsCount}/{counts.clearedClienteCount}
+        </span>
+        <button onClick={onOpen}>phone-open-card-{card.workflow.id}</button>
+        <button onClick={onForward}>phone-forward-card-{card.workflow.id}</button>
+      </div>
+    ),
+  PhonePostProcessCard: ({
+    entity,
+    onOpen,
+    preview,
+  }: {
+    entity: { id: string; titulo: string };
+    onOpen?: () => void;
+    preview?: boolean;
+  }) =>
+    preview ? null : (
+      <div>
+        <span>{entity.titulo}</span>
+        <button onClick={onOpen}>phone-open-post-{entity.id}</button>
+      </div>
+    ),
+}));
+vi.mock('@/pages/entregas/phone/cardMenus', () => ({
+  WorkflowCardMenu: ({
+    card,
+    onEdit,
+    onRevert,
+    children,
+  }: {
+    card: { workflow: { id: number } };
+    onEdit?: () => void;
+    onRevert?: () => void;
+    children: (api: { triggerProps: object }) => React.ReactNode;
+  }) => (
+    <div>
+      {children({ triggerProps: {} })}
+      <button onClick={onEdit}>menu-edit-{card.workflow.id}</button>
+      <button onClick={onRevert}>menu-revert-{card.workflow.id}</button>
+    </div>
+  ),
+  PostProcessCardMenu: ({
+    entity,
+    onRemoveProcess,
+    children,
+  }: {
+    entity: { id: string };
+    onRemoveProcess?: () => void;
+    children: (api: { triggerProps: object }) => React.ReactNode;
+  }) => (
+    <div>
+      {children({ triggerProps: {} })}
+      <button onClick={onRemoveProcess}>menu-remove-{entity.id}</button>
     </div>
   ),
 }));
@@ -126,6 +281,8 @@ vi.mock('@/pages/entregas/components/HistoryDrawer', () => ({
 import {
   getWorkflowsByCliente,
   getWorkflowEtapas,
+  getWorkflowEtapasByWorkflowIds,
+  getConcludedWorkflowSummaries,
   getDeadlineInfo,
   getMembros,
   hasLaterApprovalEtapa,
@@ -133,31 +290,34 @@ import {
   approvePostsInternally,
   sendPostsToCliente,
   duplicateWorkflow,
-  getWorkflowPostsCounts,
-  getWorkflowApprovedPostsCounts,
-  getWorkflowClearedClientePostsCounts,
-  getWorkflowRevisaoInternaCounts,
-  getWorkflowAwaitingClientePostsCounts,
+  getWorkflowPostStats,
   getConcludedWorkflowsByCliente,
   getWorkflowPosts,
-  getWorkflowPostsWithProperties,
+  getClientePosts,
   getClientes,
   getWorkspaceSlug,
   getHubToken,
   getWorkflowTemplates,
+  getVigentePostProcessesByCliente,
+  transitionPostProcess,
   completeEtapa,
   completeEtapaWithRearm,
   type Cliente,
+  type ClientePost,
   type Workflow,
   type WorkflowEtapa,
+  type PostProcessStep,
+  type PostProcessWithPost,
 } from '@/store';
 import { toast } from 'sonner';
-import { getWorkflowCovers } from '@/services/postMedia';
+import { getWorkflowCovers, getPostCovers } from '@/services/postMedia';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 import EntregasTab from '../EntregasTab';
 
 const mockedGetWorkflowsByCliente = vi.mocked(getWorkflowsByCliente);
 const mockedGetWorkflowEtapas = vi.mocked(getWorkflowEtapas);
+const mockedGetWorkflowEtapasByWorkflowIds = vi.mocked(getWorkflowEtapasByWorkflowIds);
+const mockedGetConcludedWorkflowSummaries = vi.mocked(getConcludedWorkflowSummaries);
 const mockedGetDeadlineInfo = vi.mocked(getDeadlineInfo);
 const mockedGetMembros = vi.mocked(getMembros);
 const mockedHasLaterApprovalEtapa = vi.mocked(hasLaterApprovalEtapa);
@@ -165,21 +325,18 @@ const mockedRevertEtapa = vi.mocked(revertEtapa);
 const mockedApprovePostsInternally = vi.mocked(approvePostsInternally);
 const mockedSendPostsToCliente = vi.mocked(sendPostsToCliente);
 const mockedDuplicateWorkflow = vi.mocked(duplicateWorkflow);
-const mockedGetWorkflowPostsCounts = vi.mocked(getWorkflowPostsCounts);
-const mockedGetWorkflowApprovedPostsCounts = vi.mocked(getWorkflowApprovedPostsCounts);
-const mockedGetWorkflowClearedClientePostsCounts = vi.mocked(getWorkflowClearedClientePostsCounts);
-const mockedGetWorkflowRevisaoInternaCounts = vi.mocked(getWorkflowRevisaoInternaCounts);
-const mockedGetWorkflowAwaitingClientePostsCounts = vi.mocked(
-  getWorkflowAwaitingClientePostsCounts,
-);
+const mockedGetWorkflowPostStats = vi.mocked(getWorkflowPostStats);
 const mockedGetConcludedWorkflowsByCliente = vi.mocked(getConcludedWorkflowsByCliente);
 const mockedGetWorkflowPosts = vi.mocked(getWorkflowPosts);
-const mockedGetWorkflowPostsWithProperties = vi.mocked(getWorkflowPostsWithProperties);
+const mockedGetClientePosts = vi.mocked(getClientePosts);
 const mockedGetClientes = vi.mocked(getClientes);
 const mockedGetWorkspaceSlug = vi.mocked(getWorkspaceSlug);
 const mockedGetHubToken = vi.mocked(getHubToken);
 const mockedGetWorkflowTemplates = vi.mocked(getWorkflowTemplates);
 const mockedGetWorkflowCovers = vi.mocked(getWorkflowCovers);
+const mockedGetVigentePostProcessesByCliente = vi.mocked(getVigentePostProcessesByCliente);
+const mockedGetPostCovers = vi.mocked(getPostCovers);
+const mockedTransitionPostProcess = vi.mocked(transitionPostProcess);
 const mockedCompleteEtapa = vi.mocked(completeEtapa);
 const mockedCompleteEtapaWithRearm = vi.mocked(completeEtapaWithRearm);
 const mockedToast = vi.mocked(toast);
@@ -228,6 +385,93 @@ function workflow(overrides: Partial<Workflow> = {}): Workflow {
   };
 }
 
+function processStep(
+  p: Partial<PostProcessStep> & { ordem: number; nome: string },
+): PostProcessStep {
+  return {
+    id: 200 + p.ordem,
+    conta_id: 'c',
+    process_id: 9,
+    tipo: 'padrao',
+    responsavel_id: null,
+    prazo_dias: null,
+    tipo_prazo: null,
+    prazo_efetivo: null,
+    estado: 'pendente',
+    iniciado_em: null,
+    concluido_em: null,
+    interrompido_em: null,
+    origem_etapa_ordem: null,
+    origem_etapa_nome: null,
+    ...p,
+  };
+}
+
+function postProcess(overrides: Partial<PostProcessWithPost> = {}): PostProcessWithPost {
+  return {
+    id: 9,
+    conta_id: 'c',
+    post_id: 77,
+    template_id: 5,
+    template_nome: 'Redes',
+    assinatura: '',
+    origem_workflow_id: null,
+    origem_descricao: null,
+    estado: 'ativo',
+    motivo_encerramento: null,
+    etapa_atual: 1,
+    modo_prazo: 'padrao',
+    board_position: 0,
+    revisao: 1,
+    created_by: null,
+    created_at: '2026-09-10T00:00:00Z',
+    updated_at: '2026-09-10T00:00:00Z',
+    concluido_em: null,
+    steps: [
+      processStep({ ordem: 0, nome: 'Copy', estado: 'ignorado' }),
+      processStep({
+        ordem: 1,
+        nome: 'Design',
+        estado: 'ativo',
+        responsavel_id: null,
+        prazo_efetivo: '2026-07-20T15:00:00.000Z',
+        iniciado_em: '2026-07-18T10:00:00Z',
+      }),
+      // A pending step after the active one keeps canConcluir() false, so the
+      // card's forward button dispatches `avancar` (not `concluir`) — the
+      // path this fixture's tests exercise.
+      processStep({ ordem: 2, nome: 'Publicação', estado: 'pendente' }),
+    ],
+    post: {
+      id: 77,
+      workflow_id: null,
+      cliente_id: 42,
+      cliente_nome: 'Aurora Estética',
+      workflow_titulo: null,
+      titulo: 'Post avulso X',
+      tipo: 'feed',
+      status: 'rascunho',
+      custom_status_id: null,
+      scheduled_at: null,
+      published_at: null,
+      ig_caption: null,
+      instagram_permalink: null,
+      publish_error: null,
+      publish_error_code: null,
+      ordem: 0,
+      responsavel_id: null,
+      platform: 'instagram',
+      tiktok_publish_status: null,
+      tiktok_publish_error: null,
+      tiktok_post_url: null,
+      instagram_media_id: null,
+      ig_trial_strategy: null,
+      board_ordem: null,
+    },
+    ...overrides,
+  };
+}
+
 function OutletContextProvider({ cliente }: { cliente: Cliente }) {
   return (
     <Outlet context={{ clienteId: cliente.id!, cliente } satisfies ClienteDetalheOutletContext} />
@@ -271,18 +515,28 @@ async function awaitCountsLoaded(total: number, cleared: number) {
 
 /** cleared/total feed the historical "allCleared" branch in handleForwardConfirm. */
 function mockCounts(cleared: number) {
-  mockedGetWorkflowPostsCounts.mockResolvedValue(new Map([[1, 2]]));
-  mockedGetWorkflowApprovedPostsCounts.mockResolvedValue(new Map());
-  mockedGetWorkflowClearedClientePostsCounts.mockResolvedValue(new Map([[1, cleared]]));
-  mockedGetWorkflowRevisaoInternaCounts.mockResolvedValue(new Map());
-  mockedGetWorkflowAwaitingClientePostsCounts.mockResolvedValue(new Map());
+  mockedGetWorkflowPostStats.mockResolvedValue({
+    total: new Map([[1, 2]]),
+    aprovadoCliente: new Map(),
+    clearedCliente: cleared > 0 ? new Map([[1, cleared]]) : new Map(),
+    enviadoCliente: new Map(),
+    revisaoInterna: new Map(),
+    responsaveis: new Map(),
+  });
 }
 
 describe('EntregasTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFeatures = null;
     mockedGetWorkflowsByCliente.mockResolvedValue([workflow()]);
     mockedGetWorkflowEtapas.mockResolvedValue([approvalEtapa, nextEtapa]);
+    mockedGetWorkflowEtapasByWorkflowIds.mockImplementation(
+      async (ids: number[]) => new Map(ids.map((id) => [id, [approvalEtapa, nextEtapa]])),
+    );
+    mockedGetConcludedWorkflowSummaries.mockImplementation(async (wfs) =>
+      wfs.map((w) => ({ workflow: w, postCount: 0, totalDays: null, completedAt: null })),
+    );
     mockedGetDeadlineInfo.mockReturnValue({
       diasRestantes: 2,
       horasRestantes: 0,
@@ -293,8 +547,22 @@ describe('EntregasTab', () => {
     mockedGetWorkflowTemplates.mockResolvedValue([]);
     mockedGetConcludedWorkflowsByCliente.mockResolvedValue([]);
     mockedGetWorkflowPosts.mockResolvedValue([]);
-    mockedGetWorkflowPostsWithProperties.mockResolvedValue([]);
+    mockedGetClientePosts.mockResolvedValue([]);
     mockedGetWorkflowCovers.mockResolvedValue(new Map());
+    mockedGetVigentePostProcessesByCliente.mockResolvedValue([]);
+    mockedGetPostCovers.mockResolvedValue(new Map());
+    mockedTransitionPostProcess.mockResolvedValue({
+      ok: true,
+      process_id: 9,
+      post_id: 77,
+      command: 'avancar',
+      estado: 'ativo',
+      etapa_atual: 1,
+      revisao: 2,
+      post_status: 'rascunho',
+      post_status_changed: false,
+      steps: [],
+    });
     mockedGetClientes.mockResolvedValue([]);
     mockedGetWorkspaceSlug.mockResolvedValue(null);
     mockedGetHubToken.mockResolvedValue(null);
@@ -360,11 +628,11 @@ describe('EntregasTab', () => {
       );
     });
 
-    it('"Avançar etapa sem alterar posts" uses plain completeEtapa, passes rearm:false, and never notifies', async () => {
+    it('"Avançar sem aprovação" uses plain completeEtapa, passes rearm:false, and never notifies', async () => {
       renderTab();
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Avançar etapa sem alterar posts'));
+      fireEvent.click(await screen.findByText('Avançar sem aprovação'));
       await waitFor(() => expect(mockedCompleteEtapa).toHaveBeenCalledWith(1, 11));
       expect(mockedCompleteEtapaWithRearm).not.toHaveBeenCalled();
       expect(mockedToast.info).not.toHaveBeenCalled();
@@ -374,7 +642,7 @@ describe('EntregasTab', () => {
       renderTab();
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Enviar ao portal do cliente'));
+      fireEvent.click(await screen.findByText('Enviar para o cliente aprovar'));
       await waitFor(() => expect(mockedSendPostsToCliente).toHaveBeenCalledWith(1));
       expect(mockedCompleteEtapa).not.toHaveBeenCalled();
       expect(mockedCompleteEtapaWithRearm).not.toHaveBeenCalled();
@@ -387,7 +655,7 @@ describe('EntregasTab', () => {
       renderTab();
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
-      expect(await screen.findByText(/voltarão para rascunho/i)).toBeInTheDocument();
+      expect(await screen.findByText(/voltam para rascunho/i)).toBeInTheDocument();
       expect(mockedHasLaterApprovalEtapa).toHaveBeenCalledWith([approvalEtapa, nextEtapa], 11);
 
       mockedHasLaterApprovalEtapa.mockReturnValue(false);
@@ -395,7 +663,77 @@ describe('EntregasTab', () => {
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
       expect(await screen.findByText('Aprovar internamente')).toBeInTheDocument();
-      expect(screen.queryByText(/voltarão para rascunho/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/voltam para rascunho/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // Fix A (revisão final): antes deste describe, `mockFeatures` era declarado
+  // mas NUNCA reatribuído para longe de `null` em nenhum teste deste arquivo,
+  // então schedulingEnabled/tiktokEnabled eram sempre false e
+  // handleApproveInternally jamais abria o AutoScheduleBatchDialog sob teste --
+  // zero cobertura comportamental para essa superfície nesta aba, apesar do
+  // mock (`mockFeatures`) já existir pronto para ligar. AutoScheduleBatchDialog
+  // NÃO é mockado neste arquivo (ao contrário de
+  // KanbanBatchAutoScheduleNudge.test.tsx), então os casos abaixo procuram o
+  // conteúdo real do AlertDialog.
+  describe('batch auto-schedule nudge after "Aprovar internamente" (spec peça 2 / fix A)', () => {
+    const futureIso = () => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+
+    function approvedPost(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 1,
+        titulo: 'Post A',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: futureIso(),
+        ...overrides,
+      };
+    }
+
+    it('opens the batch dialog once scheduling is enabled, the client auto-publishes, and the approval is not a rearm', async () => {
+      mockFeatures = { feature_post_scheduling: true };
+      // hasLaterApprovalEtapa -> false makes decideApprovalAdvance's willRearm
+      // false (approvalAdvance.ts: willRearm = temAprovacaoAdiante), the
+      // !willRearm half of the gate this test exercises. Mirrors how
+      // KanbanBatchAutoScheduleNudge.test.tsx's makeCard()/renderBoard()
+      // construct the non-rearm case for KanbanView's equivalent handler.
+      mockedHasLaterApprovalEtapa.mockReturnValue(false);
+      mockedGetWorkflowPosts.mockResolvedValue([approvedPost()] as never);
+      renderTab({ ...CLIENTE, auto_publish_on_approval: true });
+
+      // mockCounts(0) from beforeEach -> cleared !== total -> approval-choice dialog.
+      fireEvent.click(await screen.findByText('forward-card-1'));
+      fireEvent.click(await screen.findByText('Avançar'));
+      fireEvent.click(await screen.findByText('Aprovar internamente'));
+
+      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
+      expect(await screen.findByText('Agendar os posts aprovados?')).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /Agendar 1 post/ })).toBeInTheDocument();
+    });
+
+    it('does not end up open when the same advance also completes a recorrente workflow cycle', async () => {
+      mockFeatures = { feature_post_scheduling: true };
+      mockedHasLaterApprovalEtapa.mockReturnValue(false);
+      mockedGetWorkflowPosts.mockResolvedValue([approvedPost()] as never);
+      mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
+      mockedCompleteEtapaWithRearm.mockResolvedValue({
+        workflow: workflow({ status: 'concluido', recorrente: true }),
+        etapas: [],
+        rearmed: false,
+        rearmFailed: false,
+      });
+      renderTab({ ...CLIENTE, auto_publish_on_approval: true });
+
+      fireEvent.click(await screen.findByText('forward-card-1'));
+      fireEvent.click(await screen.findByText('Avançar'));
+      fireEvent.click(await screen.findByText('Aprovar internamente'));
+
+      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
+      // The recurring-completion dialog wins (its own workflowId={recurringWfId
+      // == null ? ... : null} render-time gate) -- settled state never shows
+      // both AlertDialogs at once.
+      expect(await screen.findByText('Criar Novo Ciclo')).toBeInTheDocument();
+      expect(screen.queryByText('Agendar os posts aprovados?')).not.toBeInTheDocument();
     });
   });
 
@@ -437,6 +775,9 @@ describe('EntregasTab', () => {
     mockedGetWorkflowPosts.mockResolvedValue([]);
     renderTab();
 
+    await waitFor(() =>
+      expect(mockedGetConcludedWorkflowSummaries).toHaveBeenCalledWith([concluded]),
+    );
     fireEvent.click(await screen.findByText('Ciclo Julho'));
     expect(await screen.findByText('HistoryDrawer open: Ciclo Julho')).toBeInTheDocument();
 
@@ -456,6 +797,75 @@ describe('EntregasTab', () => {
     );
   });
 
+  describe('post calendar', () => {
+    function todayISO() {
+      const d = new Date();
+      const p = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T12:00:00`;
+    }
+    function clientePost(overrides: Partial<ClientePost> = {}): ClientePost {
+      return {
+        id: 500,
+        workflow_id: null,
+        titulo: 'Post avulso de hoje',
+        tipo: 'feed',
+        status: 'aprovado_interno',
+        custom_status_id: null,
+        scheduled_at: todayISO(),
+        ordem: 0,
+        workflow_titulo: null,
+        ...overrides,
+      };
+    }
+
+    it('shows posts avulsos even with no active deliveries, and opens them in the standalone drawer', async () => {
+      mockedGetWorkflowsByCliente.mockResolvedValue([]);
+      mockedGetClientePosts.mockResolvedValue([clientePost()]);
+      renderTab();
+      expect(await screen.findByText('Post avulso de hoje')).toBeInTheDocument();
+      expect(screen.getByText('Post avulso')).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', { name: /Abrir publicação: Post avulso de hoje/i }),
+      );
+      expect(await screen.findByText('StandalonePostDrawer open: 500')).toBeInTheDocument();
+      expect(mockedGetClientePosts).toHaveBeenCalledWith(42);
+    });
+
+    it('refreshes the individual-post cards too after a calendar status change', async () => {
+      const { updateWorkflowPost } = await import('@/store');
+      vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
+      mockedGetClientePosts.mockResolvedValue([clientePost()]);
+      const { invalidateSpy } = renderTab();
+      await screen.findByText('Post avulso de hoje');
+      fireEvent.click(screen.getByRole('button', { name: /○ Agendar/ }));
+      await waitFor(() =>
+        expect(vi.mocked(updateWorkflowPost)).toHaveBeenCalledWith(500, { status: 'agendado' }),
+      );
+      await waitFor(() =>
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-processes-cliente', 42] }),
+      );
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientePosts', 42] });
+    });
+
+    it('opens a fluxo post in its workflow drawer', async () => {
+      mockedGetClientePosts.mockResolvedValue([
+        clientePost({
+          id: 501,
+          workflow_id: 1,
+          workflow_titulo: 'Posts Agosto',
+          titulo: 'Post do fluxo',
+        }),
+      ]);
+      renderTab();
+      await screen.findByText('open-card-1');
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Abrir publicação: Post do fluxo/i }),
+      );
+      expect(await screen.findByText('WorkflowDrawer open: Posts Agosto')).toBeInTheDocument();
+      expect(screen.queryByText(/StandalonePostDrawer open/)).not.toBeInTheDocument();
+    });
+  });
+
   describe('query isolation', () => {
     it('declares only Entregas/workflow-domain query keys, plus the narrow hub-url exception — nothing else from Instagram, Hub, or Financeiro', async () => {
       // `clientes` is included here even though EditWorkflowModal isn't open:
@@ -465,6 +875,12 @@ describe('EntregasTab', () => {
       // `workspace-slug`/`hub-token` are the one deliberate exception (see
       // EntregasTab.tsx's module doc): they exist only to compute
       // BoardCard.hubUrl, not to pull any Hub-domain content.
+      // `auto-schedule-batch-posts` is AutoScheduleBatchDialog's own useQuery
+      // (a workflow_posts read, same domain as everything else here): it is
+      // always mounted (workflowId gates only whether it fetches), so React
+      // Query registers the cache entry even with workflowId still null.
+      // `clientePosts` feeds the post calendar (fluxo posts + posts avulsos),
+      // shared with WorkflowDrawer / StandalonePostDrawer.
       const { queryClient } = renderTab();
       await screen.findByText('Posts Agosto');
 
@@ -484,13 +900,13 @@ describe('EntregasTab', () => {
             'concluded-summaries-cliente',
             'clientes',
             'workflow-posts-counts',
-            'workflow-approved-posts-counts',
-            'workflow-cleared-cliente-counts',
-            'workflow-revisao-interna-counts',
-            'workflow-awaiting-cliente-counts',
             'workflow-covers',
             'workspace-slug',
             'hub-token',
+            'auto-schedule-batch-posts',
+            'post-processes-cliente',
+            'post-covers-cliente',
+            'clientePosts',
           ]),
         );
       });
@@ -557,6 +973,200 @@ describe('EntregasTab', () => {
       renderTab();
       await screen.findByText('Posts Agosto');
       await waitFor(() => expect(screen.getByTestId('hub-url-1')).toHaveTextContent(''));
+    });
+  });
+
+  describe('individual posts (post_processes)', () => {
+    it('does not fetch or render individual posts when feature_post_processes is off', async () => {
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      expect(screen.queryByText('Post avulso X')).not.toBeInTheDocument();
+      expect(mockedGetVigentePostProcessesByCliente).not.toHaveBeenCalled();
+    });
+
+    it('renders an active individual post card alongside workflow cards when the flag is on', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      expect(await screen.findByText('Post avulso X')).toBeInTheDocument();
+      expect(mockedGetVigentePostProcessesByCliente).toHaveBeenCalledWith(42);
+    });
+
+    it('leaves out concluded individual posts (no history surface for them yet)', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([
+        postProcess({ estado: 'concluido' }),
+      ]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      expect(screen.queryByText('Post avulso X')).not.toBeInTheDocument();
+    });
+
+    it('opens and closes the standalone post drawer from the card', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      fireEvent.click(await screen.findByText('open-post-post:9'));
+      expect(await screen.findByText('StandalonePostDrawer open: 77')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('close-standalone-drawer'));
+      await waitFor(() =>
+        expect(screen.queryByText('StandalonePostDrawer open: 77')).not.toBeInTheDocument(),
+      );
+    });
+
+    it('refreshes the client process rail once a standalone post is attached to a workflow, so the now-closed process stops rendering as an active card', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      fireEvent.click(await screen.findByText('open-post-post:9'));
+      await screen.findByText('StandalonePostDrawer open: 77');
+
+      // AttachToFluxoDialog's own onAttached is what encerra'd the process
+      // (motivo_encerramento: 'vinculado'); simulate the next fetch dropping
+      // it from VIGENTES.
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([]);
+      fireEvent.click(screen.getByText('attach-standalone-post'));
+
+      await waitFor(() => expect(mockedGetVigentePostProcessesByCliente).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(screen.queryByText('StandalonePostDrawer open: 77')).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByText('Post avulso X')).not.toBeInTheDocument();
+    });
+
+    it('advances the process etapa via transitionPostProcess and refreshes', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      const { invalidateSpy } = renderTab();
+      await screen.findByText('Posts Agosto');
+      fireEvent.click(await screen.findByText('forward-post-post:9'));
+      fireEvent.click(await screen.findByText('Avançar'));
+      await waitFor(() =>
+        expect(mockedTransitionPostProcess).toHaveBeenCalledWith(
+          expect.objectContaining({ processId: 9, command: 'avancar' }),
+        ),
+      );
+      await waitFor(() =>
+        expect(invalidateSpy).toHaveBeenCalledWith({
+          queryKey: ['post-processes-cliente', 42],
+        }),
+      );
+    });
+  });
+
+  describe('no celular', () => {
+    beforeEach(() => {
+      desktop.value = false;
+    });
+    afterEach(() => {
+      desktop.value = true;
+    });
+
+    it('stacks phone cards instead of the desktop rail', async () => {
+      renderTab();
+      expect(await screen.findByText('phone-open-card-1')).toBeInTheDocument();
+      expect(screen.queryByText('open-card-1')).not.toBeInTheDocument();
+      expect(document.querySelector('.cliente-deliveries-rail')).toBeNull();
+      expect(screen.getByRole('heading', { level: 2, name: 'Fluxos' })).toBeInTheDocument();
+    });
+
+    it('opens the workflow drawer from the card and the edit modal from the menu', async () => {
+      renderTab();
+      fireEvent.click(await screen.findByText('phone-open-card-1'));
+      expect(await screen.findByText('WorkflowDrawer open: Posts Agosto')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('close-workflow-drawer'));
+
+      fireEvent.click(screen.getByText('menu-edit-1'));
+      expect(await screen.findByRole('dialog', { name: 'Editar Fluxo' })).toBeInTheDocument();
+    });
+
+    it('shows the empty state card when there are no active deliveries', async () => {
+      mockedGetWorkflowsByCliente.mockResolvedValue([]);
+      renderTab();
+      expect(await screen.findByText('Nenhuma entrega ativa no momento.')).toBeInTheDocument();
+    });
+
+    it('opens a concluded fluxo as a pushed history screen in place of the tab', async () => {
+      const concluded = workflow({ id: 2, status: 'concluido', titulo: 'Ciclo Julho' });
+      mockedGetConcludedWorkflowsByCliente.mockResolvedValue([concluded]);
+      mockedGetConcludedWorkflowSummaries.mockResolvedValue([
+        { workflow: concluded, postCount: 3, totalDays: 12, completedAt: null },
+      ] as never);
+      renderTab();
+
+      fireEvent.click(await screen.findByRole('button', { name: /Ciclo Julho/ }));
+      expect(await screen.findByTestId('history-drawer')).toHaveAttribute('data-variant', 'page');
+      // Render only what's visible: the board is gone while the history is up.
+      expect(screen.queryByText('phone-open-card-1')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('close-history-drawer'));
+      expect(await screen.findByText('phone-open-card-1')).toBeInTheDocument();
+    });
+
+    it('asks to create a new cycle in a confirm sheet when a recurring fluxo concludes', async () => {
+      mockCounts(2);
+      mockedCompleteEtapaWithRearm.mockResolvedValue({
+        workflow: workflow({ status: 'concluido', recorrente: true }),
+        etapas: [],
+        rearmed: false,
+        rearmFailed: false,
+      });
+      mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
+      renderTab();
+      await awaitCountsLoaded(2, 2);
+      fireEvent.click(await screen.findByText('phone-forward-card-1'));
+      const forward = await screen.findByRole('dialog');
+      fireEvent.click(within(forward).getByRole('button', { name: /Avançar/ }));
+
+      const sheet = await screen.findByRole('dialog', { name: 'Criar novo ciclo?' });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Criar novo ciclo' }));
+      await waitFor(() => expect(mockedDuplicateWorkflow).toHaveBeenCalledWith(1));
+    });
+
+    it('uses the phone post calendar and keeps the Agendar step', async () => {
+      const { updateWorkflowPost } = await import('@/store');
+      vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
+      const d = new Date();
+      const p = (n: number) => String(n).padStart(2, '0');
+      mockedGetClientePosts.mockResolvedValue([
+        {
+          id: 500,
+          workflow_id: null,
+          titulo: 'Post avulso de hoje',
+          tipo: 'feed',
+          status: 'aprovado_interno',
+          custom_status_id: null,
+          scheduled_at: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T12:00:00`,
+          ordem: 0,
+          workflow_titulo: null,
+        },
+      ]);
+      renderTab();
+
+      expect(await screen.findByText('Post avulso de hoje')).toBeInTheDocument();
+      expect(document.querySelector('.phone-ent-v-cal')).not.toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Agendar' }));
+      await waitFor(() =>
+        expect(vi.mocked(updateWorkflowPost)).toHaveBeenCalledWith(500, { status: 'agendado' }),
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', { name: /Abrir publicação: Post avulso de hoje/i }),
+      );
+      expect(await screen.findByText('StandalonePostDrawer open: 500')).toBeInTheDocument();
+    });
+
+    it('wires "Remover processo" on an individual post card menu', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      fireEvent.click(await screen.findByText('menu-remove-post:9'));
+      // usePostProcessCommands asks before removing (its own AlertDialog).
+      expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
     });
   });
 });

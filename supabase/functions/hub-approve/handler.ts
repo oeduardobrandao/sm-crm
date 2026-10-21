@@ -2,11 +2,68 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { validateForScheduling } from "../_shared/instagram-publish-utils.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
+import { MAX_REFERENCES_PER_POST } from "../_shared/post-references.ts";
 
 type DbClient = {
   from: (table: string) => any;
-  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
 };
+
+// Mirrors hub-mensagens' MAX_CONTENT and the post_approvals motivo CHECK
+// (20260925000014 value rule; motivo itself stays optional here, no DB
+// migration needed for that -- the CHECK already allows NULL): the DB
+// rejects any other value, this turns that into a 400 instead of a 500.
+const MAX_COMMENT_LENGTH = 4000;
+const CORRECTION_REASONS = ["legenda", "midia", "texto", "outro"];
+// Same list as apps/hub/src/lib/postView.ts VISIBLE_STATUSES and the
+// hub-post-history allowlist: the client may only comment on a post it can
+// see. A comment on an internal draft would be a client-authored
+// post_approvals row (never floor-filtered) dated before the first send.
+const HUB_VISIBLE_STATUSES = [
+  "enviado_cliente", "aprovado_cliente", "correcao_cliente", "agendado", "postado", "falha_publicacao",
+];
+
+/** reference_ids de uma correção (spec 2026-10-08): array de inteiros positivos
+ * seguros, sem duplicatas, no máximo o teto de referências do post. null = inválido. */
+function parseReferenceIds(raw: unknown): number[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_REFERENCES_PER_POST * 10) return null;
+  const ids = new Set<number>();
+  for (const v of raw) {
+    if (typeof v !== "number" || !Number.isSafeInteger(v) || v <= 0) return null;
+    ids.add(v);
+  }
+  return ids.size <= MAX_REFERENCES_PER_POST ? [...ids] : null;
+}
+
+/** Liga as referências já enviadas à correção recém-gravada. Não fatal: a correção
+ * vale e as referências ficam no nível do post. Só liga referências deste post, desta
+ * conta e ainda soltas (a posse do post já foi conferida contra o token). */
+async function linkReferencesToApproval(
+  db: DbClient,
+  approvalData: unknown,
+  ids: number[],
+  postId: unknown,
+  contaId: string,
+): Promise<void> {
+  const approvalId = typeof approvalData === "number" || typeof approvalData === "string"
+    ? Number(approvalData)
+    : NaN;
+  if (!Number.isSafeInteger(approvalId) || approvalId <= 0) {
+    console.error("[hub-approve] record_client_approval returned no approval id; references stay post-level");
+    return;
+  }
+  try {
+    const { error } = await db.from("post_references")
+      .update({ post_approval_id: approvalId })
+      .in("id", ids)
+      .eq("post_id", postId)
+      .eq("conta_id", contaId)
+      .is("post_approval_id", null);
+    if (error) console.error("[hub-approve] reference link failed (correction stands):", error);
+  } catch (e) {
+    console.error("[hub-approve] reference link threw (correction stands):", e);
+  }
+}
 
 // Dual-approval fluxos (e.g. copy approval → design → design approval) must not
 // auto-schedule on the first approval: the post still has production stages and
@@ -16,25 +73,56 @@ type DbClient = {
 // aprovacao_cliente etapas still open, this approval belongs to an earlier
 // cycle; only when at most one remains open is the approval final. Workflows
 // without approval etapas (express, legacy) keep today's behavior.
-async function isFinalApprovalCycle(db: DbClient, workflowId: number | null): Promise<boolean> {
-  // An avulso post (workflow_id null) has no workflow etapas at all, so there is
-  // no approval cycle to be mid-way through: it behaves as final, same as a
-  // workflow with no aprovacao_cliente etapas.
-  if (workflowId == null) return true;
-  const { data: etapas, error } = await db
-    .from("workflow_etapas")
-    .select("tipo, status")
-    .eq("workflow_id", workflowId);
-  if (error) {
-    // Fail closed: without the etapa picture a later approval cycle cannot be
-    // ruled out, so the auto-publish is skipped (the agency schedules manually,
-    // same as a failed validation) instead of risking a premature publish.
-    console.error("[hub-approve] etapa lookup failed:", error);
+//
+// Avulso (workflow_id null) mirrors this via post_processes/post_process_steps
+// (phase 2 writes these; today most avulso posts have no row there at all):
+// with an active execution, count its aprovacao_cliente steps still pendente or
+// ativo (herdado/ignorado/concluido do not count) and apply the same < 2 rule.
+// No active execution → final, same as today. Any lookup error fails closed.
+async function isFinalApprovalCycle(
+  db: DbClient,
+  post: { id: number; workflow_id: number | null },
+): Promise<boolean> {
+  if (post.workflow_id != null) {
+    const { data: etapas, error } = await db
+      .from("workflow_etapas")
+      .select("tipo, status")
+      .eq("workflow_id", post.workflow_id);
+    if (error) {
+      // Fail closed: without the etapa picture a later approval cycle cannot be
+      // ruled out, so the auto-publish is skipped (the agency schedules manually,
+      // same as a failed validation) instead of risking a premature publish.
+      console.error("[hub-approve] etapa lookup failed:", error);
+      return false;
+    }
+    const openApprovalEtapas = ((etapas ?? []) as { tipo?: string | null; status?: string | null }[])
+      .filter((e) => e.tipo === "aprovacao_cliente" && e.status !== "concluido").length;
+    return openApprovalEtapas < 2;
+  }
+
+  const { data: proc, error: procError } = await db
+    .from("post_processes")
+    .select("id")
+    .eq("post_id", post.id)
+    .eq("estado", "ativo")
+    .maybeSingle();
+  if (procError) {
+    console.error("[hub-approve] post_processes lookup failed:", procError);
     return false;
   }
-  const openApprovalEtapas = ((etapas ?? []) as { tipo?: string | null; status?: string | null }[])
-    .filter((e) => e.tipo === "aprovacao_cliente" && e.status !== "concluido").length;
-  return openApprovalEtapas < 2;
+  if (!proc) return true;
+
+  const { data: steps, error: stepsError } = await db
+    .from("post_process_steps")
+    .select("tipo, estado")
+    .eq("process_id", (proc as { id: number }).id);
+  if (stepsError) {
+    console.error("[hub-approve] post_process_steps lookup failed:", stepsError);
+    return false;
+  }
+  const openApprovalSteps = ((steps ?? []) as { tipo?: string | null; estado?: string | null }[])
+    .filter((s) => s.tipo === "aprovacao_cliente" && (s.estado === "pendente" || s.estado === "ativo")).length;
+  return openApprovalSteps < 2;
 }
 
 interface HubApproveHandlerDeps {
@@ -52,9 +140,43 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { token, post_id, action, comentario } = await req.json();
+    const { token, post_id, action, comentario, motivo, reference_ids } = await req.json();
     if (!token || !post_id || !action) return json({ error: "token, post_id and action required" }, 400);
     if (!["aprovado", "correcao", "mensagem"].includes(action)) return json({ error: "Invalid action" }, 400);
+
+    // Validated before any DB round-trip so a bad payload costs nothing.
+    const mensagemText = typeof comentario === "string" ? comentario.trim() : "";
+    if (action === "mensagem") {
+      if (!mensagemText) return json({ error: "Escreva um comentário." }, 400);
+      if (mensagemText.length > MAX_COMMENT_LENGTH) return json({ error: "Comentário muito longo." }, 400);
+    }
+    // motivo is optional for correcao; only its value is validated when present.
+    if (action === "correcao" && motivo != null && !CORRECTION_REASONS.includes(motivo)) {
+      return json({ error: "Motivo inválido." }, 400);
+    }
+    // reference_ids só valem na correção; validados antes de qualquer ida ao banco
+    // e ignorados em aprovado/mensagem.
+    let referenceIds: number[] = [];
+    if (action === "correcao" && reference_ids != null) {
+      const parsed = parseReferenceIds(reference_ids);
+      if (!parsed) return json({ error: "Referências inválidas." }, 400);
+      referenceIds = parsed;
+    }
+    // Same coercion mensagemText already applies (non-string silently becomes ""),
+    // except an empty trimmed comentario becomes null here: unlike mensagem, an
+    // omitted comentario is a valid, common case for correcao.
+    const correcaoComentarioRaw = typeof comentario === "string" ? comentario.trim() : "";
+    if (action === "correcao" && correcaoComentarioRaw.length > MAX_COMMENT_LENGTH) {
+      return json({ error: "Comentário muito longo." }, 400);
+    }
+    const correcaoComentario = correcaoComentarioRaw || null;
+    // aprovado gets the same trim + cap: without it a valid Hub token could
+    // store an unbounded string in post_approvals.comentario and forward it
+    // to the notification RPC.
+    if (action === "aprovado" && correcaoComentarioRaw.length > MAX_COMMENT_LENGTH) {
+      return json({ error: "Comentário muito longo." }, 400);
+    }
+    const approvalComentario = action === "mensagem" ? mensagemText : correcaoComentario;
 
     const db = deps.createDb();
 
@@ -90,30 +212,54 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     }
 
     if (action === "mensagem") {
-      // Message-only: no status change, keep the plain insert.
+      // Message-only: no status change, keep the plain insert. The client can
+      // only comment on a post it can already see (mirrors the
+      // enviado_cliente/correcao_cliente gate of the aprovado/correcao branch).
+      if (!HUB_VISIBLE_STATUSES.includes(post.status)) {
+        return json({ error: "Post ainda não foi enviado para o cliente." }, 400);
+      }
       const { error: insertError } = await db.from("post_approvals").insert({
         post_id,
         token,
         action,
-        comentario: comentario ?? null,
+        comentario: mensagemText,
         is_workspace_user: false,
       });
-      if (insertError) return json({ error: insertError.message }, 500);
+      if (insertError) {
+        console.error("[hub-approve] mensagem insert failed:", insertError);
+        return json({ error: "Erro ao registrar comentário." }, 500);
+      }
     } else {
       // aprovado | correcao must actually transition the post.
       if (!["enviado_cliente", "correcao_cliente"].includes(post.status)) {
         return json({ error: "Post não está aguardando revisão do cliente." }, 400);
       }
       const newStatus = action === "aprovado" ? "aprovado_cliente" : "correcao_cliente";
-      const { error: approvalErr } = await db.rpc("record_client_approval", {
+      const { data: approvalData, error: approvalErr } = await db.rpc("record_client_approval", {
         p_post_id: post_id,
         p_token: token,
         p_action: action,
-        p_comentario: comentario ?? null,
+        p_comentario: approvalComentario,
         p_is_workspace_user: false,
         p_new_status: newStatus,
+        p_motivo: action === "correcao" ? (motivo ?? null) : null,
       });
-      if (approvalErr) return json({ error: "Erro ao registrar aprovação." }, 500);
+      if (approvalErr) {
+        // record_client_approval refuses a client approval/correction while an edit
+        // suggestion is pending (migration 20260928150001): the status change would make the
+        // auto-reject trigger silently discard it.
+        const message = (approvalErr as { message?: unknown }).message;
+        if (typeof message === "string" && message.includes("pending_suggestion")) {
+          return json({ error: "Há uma sugestão de edição pendente." }, 409);
+        }
+        return json({ error: "Erro ao registrar aprovação." }, 500);
+      }
+      // record_client_approval já commitou (este UPDATE é outra requisição, sem lock).
+      // É seguro porque o post saiu de enviado_cliente: um finalize atrasado dá 409
+      // (post_not_pending) e nunca cria referência nova depois deste ponto.
+      if (referenceIds.length > 0) {
+        await linkReferencesToApproval(db, approvalData, referenceIds, post_id, hubToken.conta_id);
+      }
     }
 
     let scheduled = false;
@@ -124,7 +270,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         .eq("id", post.cliente_id)
         .single();
 
-      if (client?.auto_publish_on_approval && (await isFinalApprovalCycle(db, post.workflow_id))) {
+      if (client?.auto_publish_on_approval && (await isFinalApprovalCycle(db, post))) {
         // Express posts have no scheduled_at: approval IS the publish moment, so the
         // min-future date check is skipped and the post is stamped to publish now.
         const isExpress = post.is_express === true;
@@ -157,7 +303,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     const { error: notifErr } = await db.rpc("create_post_approval_notification", {
       p_post_id: post_id,
       p_action: action,
-      p_comentario: comentario ?? null,
+      p_comentario: approvalComentario,
     });
     if (notifErr) {
       console.error("[hub-approve] notification creation failed:", notifErr);

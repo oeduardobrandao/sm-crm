@@ -79,7 +79,7 @@ export function renderTikTokOverviewCard(
          <div style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${escapeHTML(displayLabel)}
-                <i class="fa-brands fa-tiktok" style="color: #000000; font-size: 1.1rem;"></i>
+                <i class="ph ph-tiktok-logo" aria-hidden="true" style="color: #000000; font-size: 1.1rem;"></i>
             </h3>
             <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">${escapeHTML(updatedDate as string)}</p>
          </div>
@@ -89,7 +89,7 @@ export function renderTikTokOverviewCard(
          </div>
       </div>
 
-      <div class="kpi-grid">
+      <div class="kpi-grid" style="--kpi-cols: 3;">
          <div class="kpi-card">
             <span class="kpi-label">${escapeHTML(t('tiktok.followers') as string)}</span>
             <span class="kpi-value">${numFmt(account.follower_count)}</span>

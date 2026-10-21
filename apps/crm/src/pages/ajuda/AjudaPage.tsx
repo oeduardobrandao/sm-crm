@@ -1,15 +1,27 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
+import { CardGridSkeleton } from '@/components/ui/skeletons';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
+import { filterArticles } from './filterArticles';
 import { SectionCard } from './components/SectionCard';
 import { ArticleCard } from './components/ArticleCard';
+import { VideoPlaylistHero } from './videos/VideoPlaylistHero';
+import { VideoResultCard } from './videos/VideoResultCard';
+import { useKbVideoSeries } from './videos/useKbVideos';
+import { filterVideos } from './videos/playlist';
+import { AjudaPhone } from './phone/AjudaPhone';
 
 export default function AjudaPage() {
-  const [search, setSearch] = useState('');
+  // `?q=` vem do item "Ver todos em Ajuda" da busca global (⌘K).
+  const [searchParams] = useSearchParams();
+  const isDesktop = useIsDesktop(768);
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
 
   const { data: articles = [], isLoading } = useQuery({
     queryKey: ['kb-articles'],
@@ -24,28 +36,46 @@ export default function AjudaPage() {
     })).filter((s) => s.count > 0);
   }, [articles]);
 
-  const filteredArticles = useMemo(() => {
-    if (!search.trim()) return [];
-    const q = search.toLowerCase();
-    return articles.filter(
-      (a) => a.title.toLowerCase().includes(q) || a.content_plain.toLowerCase().includes(q),
-    );
-  }, [articles, search]);
+  const filteredArticles = useMemo(() => filterArticles(articles, search), [articles, search]);
+
+  const { data: videoSeries = [] } = useKbVideoSeries();
+  const filteredVideos = useMemo(() => filterVideos(videoSeries, search), [videoSeries, search]);
 
   const isSearching = search.trim().length > 0;
 
+  const inToolbar = usePageToolbar({ title: 'Central de Ajuda' });
+
+  if (!isDesktop) {
+    return (
+      <AjudaPhone
+        search={search}
+        onSearchChange={setSearch}
+        requestedVideoSlug={searchParams.get('video')}
+        isLoading={isLoading}
+        isSearching={isSearching}
+        sections={sections}
+        articles={filteredArticles}
+        videos={filteredVideos}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="header">
-        <div className="header-title">
-          <h1>Central de Ajuda</h1>
+      {!inToolbar && (
+        <div className="header">
+          <div className="header-title">
+            <h1>Central de Ajuda</h1>
+          </div>
         </div>
-      </div>
+      )}
+
+      <VideoPlaylistHero requestedSlug={searchParams.get('video')} />
 
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-light)]" />
         <Input
-          placeholder="Buscar artigos..."
+          placeholder="Buscar vídeos e artigos..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
@@ -53,14 +83,12 @@ export default function AjudaPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Spinner size="lg" />
-        </div>
+        <CardGridSkeleton cards={6} />
       ) : isSearching ? (
-        filteredArticles.length === 0 ? (
+        filteredArticles.length === 0 && filteredVideos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-[0.9rem] text-[var(--text-light)]">
-              Nenhum artigo encontrado para esta busca.
+              Nenhum vídeo ou artigo encontrado para esta busca.
             </p>
           </div>
         ) : (
@@ -68,6 +96,9 @@ export default function AjudaPage() {
             className="grid gap-5"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}
           >
+            {filteredVideos.map((hit) => (
+              <VideoResultCard key={`video-${hit.video.id}`} hit={hit} />
+            ))}
             {filteredArticles.map((article) => (
               <ArticleCard key={article.id} article={article} />
             ))}

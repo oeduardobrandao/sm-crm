@@ -6,6 +6,8 @@ import { getCachedProfile } from './lib/supabase';
 import * as Sentry from '@sentry/react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
+import { BuildPrefetch } from './components/BuildPrefetch';
+import CookieConsent from './components/consent/CookieConsent';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -29,6 +31,9 @@ const BlogIndexPage = lazy(() => import('./pages/blog/BlogIndexPage'));
 const BlogPostPage = lazy(() => import('./pages/blog/BlogPostPage'));
 const PrecosPage = lazy(() => import('./pages/precos/PrecosPage'));
 const MarketingPage = lazy(() => import('./pages/marketing/MarketingPage'));
+const AfiliadosPage = lazy(() => import('./pages/afiliados/AfiliadosPage'));
+const AfiliadoPainelPage = lazy(() => import('./pages/afiliados/AfiliadoPainelPage'));
+const AfiliadoEntrarPage = lazy(() => import('./pages/afiliados/AfiliadoEntrarPage'));
 
 // Protected pages
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
@@ -41,7 +46,11 @@ const ClienteVisaoGeralTab = lazy(() => import('./pages/cliente-detalhe/tabs/Vis
 const ClienteEntregasTab = lazy(() => import('./pages/cliente-detalhe/tabs/EntregasTab'));
 const ClienteRedesSociaisTab = lazy(() => import('./pages/cliente-detalhe/tabs/RedesSociaisTab'));
 const ClienteRelatoriosTab = lazy(() => import('./pages/cliente-detalhe/tabs/RelatoriosTab'));
-const ClienteHubTab = lazy(() => import('./pages/cliente-detalhe/tabs/HubClienteTab'));
+const ClienteHubAcesso = lazy(() => import('./pages/cliente-detalhe/hub/AcessoPage'));
+const ClienteHubBriefing = lazy(() => import('./pages/cliente-detalhe/hub/BriefingPage'));
+const ClienteHubMarca = lazy(() => import('./pages/cliente-detalhe/hub/MarcaPage'));
+const ClienteHubPaginas = lazy(() => import('./pages/cliente-detalhe/hub/PaginasPage'));
+const ClienteHubIdeias = lazy(() => import('./pages/cliente-detalhe/hub/IdeiasPage'));
 const ClienteArquivosTab = lazy(() => import('./pages/cliente-detalhe/tabs/ArquivosTab'));
 const ClienteFinanceiroTab = lazy(() => import('./pages/cliente-detalhe/tabs/FinanceiroTab'));
 const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage'));
@@ -50,10 +59,12 @@ const LeadsPage = lazy(() => import('./pages/leads/LeadsPage'));
 const EquipePage = lazy(() => import('./pages/equipe/EquipePage'));
 const MembroDetalhePage = lazy(() => import('./pages/membro-detalhe/MembroDetalhePage'));
 const ConfiguracaoLayout = lazy(() => import('./pages/configuracao/ConfiguracaoLayout'));
+const ConfiguracaoIndex = lazy(() => import('./pages/configuracao/ConfiguracaoIndex'));
 const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
 const NotificacoesTab = lazy(() => import('./pages/configuracao/tabs/NotificacoesTab'));
 const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
 const MembrosTab = lazy(() => import('./pages/configuracao/tabs/MembrosTab'));
+const PapeisTab = lazy(() => import('./pages/configuracao/tabs/PapeisTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
 const StatusTab = lazy(() => import('./pages/configuracao/tabs/StatusTab'));
 const HubTab = lazy(() => import('./pages/configuracao/tabs/HubTab'));
@@ -68,6 +79,8 @@ const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const AnalyticsContaPage = lazy(() => import('./pages/analytics-conta/AnalyticsContaPage'));
 const AnalyticsFluxosPage = lazy(() => import('./pages/analytics-fluxos/AnalyticsFluxosPage'));
 const RelatorioEditorPage = lazy(() => import('./pages/relatorio-editor/RelatorioEditorPage'));
+const ModeloEditorPage = lazy(() => import('./pages/relatorio-editor/ModeloEditorPage'));
+const ModeloPadraoPage = lazy(() => import('./pages/relatorio-editor/ModeloPadraoPage'));
 const IdeiasPage = lazy(() => import('./pages/ideias/IdeiasPage'));
 const MensagensPage = lazy(() => import('./pages/mensagens/MensagensPage'));
 const ArquivosPage = lazy(() => import('./pages/arquivos/ArquivosPage'));
@@ -76,9 +89,10 @@ const ImportarPage = lazy(() => import('./pages/importar/ImportarPage'));
 const AjudaPage = lazy(() => import('./pages/ajuda/AjudaPage'));
 const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
 const ArtigoPage = lazy(() => import('./pages/ajuda/ArtigoPage'));
+const VideoPage = lazy(() => import('./pages/ajuda/VideoPage'));
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage'));
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
@@ -119,6 +133,7 @@ export default function App() {
     >
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <BuildPrefetch />
           <Toaster />
           <Suspense fallback={PageFallback}>
             <Routes>
@@ -140,6 +155,11 @@ export default function App() {
               />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/conectar/:token" element={<ConectarPage />} />
+              <Route path="/afiliados" element={<AfiliadosPage />} />
+              <Route path="/afiliados/entrar" element={<AfiliadoEntrarPage />} />
+              <Route path="/afiliados/painel" element={<AfiliadoPainelPage />} />
+              {/* Legado: links de acesso de 180 dias enviados antes do link mágico. */}
+              <Route path="/afiliados/painel/:token" element={<AfiliadoPainelPage />} />
               <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
               <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
               <Route path="/termos-de-uso" element={<TermosPage />} />
@@ -191,7 +211,14 @@ export default function App() {
                   <Route path="entregas" element={<ClienteEntregasTab />} />
                   <Route path="redes-sociais" element={<ClienteRedesSociaisTab />} />
                   <Route path="relatorios" element={<ClienteRelatoriosTab />} />
-                  <Route path="hub" element={<ClienteHubTab />} />
+                  <Route path="hub">
+                    <Route index element={<Navigate to="acesso" replace />} />
+                    <Route path="acesso" element={<ClienteHubAcesso />} />
+                    <Route path="briefing" element={<ClienteHubBriefing />} />
+                    <Route path="marca" element={<ClienteHubMarca />} />
+                    <Route path="paginas" element={<ClienteHubPaginas />} />
+                    <Route path="ideias" element={<ClienteHubIdeias />} />
+                  </Route>
                   <Route path="arquivos" element={<ClienteArquivosTab />} />
                   <Route path="financeiro" element={<ClienteFinanceiroTab />} />
                   {/* Unregistered sub-path: ClienteDetalhePage's own guard parses the
@@ -207,11 +234,13 @@ export default function App() {
                 <Route path="/equipe" element={<EquipePage />} />
                 <Route path="/equipe/:id" element={<MembroDetalhePage />} />
                 <Route path="/configuracao" element={<ConfiguracaoLayout />}>
-                  <Route index element={<Navigate to="/configuracao/perfil" replace />} />
+                  {/* Desktop: redirects to perfil. Phones: the Settings list. */}
+                  <Route index element={<ConfiguracaoIndex />} />
                   <Route path="perfil" element={<PerfilTab />} />
                   <Route path="notificacoes" element={<NotificacoesTab />} />
                   <Route path="workspace" element={<WorkspaceTab />} />
                   <Route path="membros" element={<MembrosTab />} />
+                  <Route path="papeis" element={<PapeisTab />} />
                   <Route path="relatorios" element={<RelatoriosTab />} />
                   <Route path="status" element={<StatusTab />} />
                   <Route path="hub" element={<HubTab />} />
@@ -226,6 +255,8 @@ export default function App() {
                 <Route path="/arquivos" element={<ArquivosPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/analytics/:id" element={<AnalyticsContaPage />} />
+                <Route path="/relatorios/modelos/padrao" element={<ModeloPadraoPage />} />
+                <Route path="/relatorios/modelos/:id" element={<ModeloEditorPage />} />
                 <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />
                 <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
                 <Route path="/ideias" element={<IdeiasPage />} />
@@ -237,12 +268,15 @@ export default function App() {
                 <Route path="/ajuda" element={<AjudaPage />} />
                 <Route path="/ajuda/secao/:category" element={<SecaoPage />} />
                 <Route path="/ajuda/secao" element={<Navigate to="/ajuda" replace />} />
+                <Route path="/ajuda/video/:slug" element={<VideoPage />} />
+                <Route path="/ajuda/video" element={<Navigate to="/ajuda" replace />} />
                 <Route path="/ajuda/:slug" element={<ArtigoPage />} />
               </Route>
 
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </Suspense>
+          <CookieConsent />
           <Analytics />
         </AuthProvider>
       </QueryClientProvider>

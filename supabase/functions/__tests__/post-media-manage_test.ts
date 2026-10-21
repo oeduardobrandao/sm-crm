@@ -10,9 +10,12 @@ function makeHandler(
 ) {
   return createPostMediaManageHandler({
     buildCorsHeaders,
-    createDb: () => db as never,
+    createDb: () => ({ ...db, rpc: (name: string, params: Record<string, unknown>) => {
+      const query = db.rpc(name, params);
+      return Object.assign(query, { abortSignal: (_signal: AbortSignal) => query });
+    } }) as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
-    signPutUrl: async (key, _mime) => `https://r2.example.com/put/${key}`,
+    signPutUrl: async (key, _mime, size) => `https://r2.example.com/put/${key}?len=${size}`,
     randomUUID: () => "thumb-uuid",
     ...overrides,
   });
@@ -114,6 +117,48 @@ Deno.test("post-media-manage: GET with workflow_ids returns covers grouped by wo
   assertEquals(body.covers[0].workflow_id, 7);
   assertEquals(body.covers[0].media.length, 1);
   assertEquals(body.covers[0].media[0].url, "https://signed.example.com/contas/conta-1/files/img.png");
+});
+
+Deno.test("post-media-manage: GET with workflow_ids picks each post's first slide by sort_order, ignoring a stale is_cover", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", {
+    data: [{ id: 50, workflow_id: 7, ordem: 0 }],
+    error: null,
+  });
+  db.queue("post_file_links", "select", {
+    data: [
+      { ...sampleLink, id: 2, is_cover: false, sort_order: 0, files: { ...sampleFile, id: 20, r2_key: "contas/conta-1/files/first.png" } },
+      { ...sampleLink, id: 1, is_cover: true, sort_order: 1 },
+    ],
+    error: null,
+  });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "?workflow_ids=7"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.covers.length, 1);
+  assertEquals(body.covers[0].media.length, 1);
+  assertEquals(body.covers[0].media[0].url, "https://signed.example.com/contas/conta-1/files/first.png");
+});
+
+Deno.test("post-media-manage: GET with post_ids picks the first slide by sort_order, ignoring a stale is_cover", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: [{ id: 50 }], error: null });
+  db.queue("post_file_links", "select", {
+    data: [
+      { ...sampleLink, id: 2, is_cover: false, sort_order: 0, files: { ...sampleFile, id: 20, r2_key: "contas/conta-1/files/first.png" } },
+      { ...sampleLink, id: 1, is_cover: true, sort_order: 1 },
+    ],
+    error: null,
+  });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "?post_ids=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.covers.length, 1);
+  assertEquals(body.covers[0].media.url, "https://signed.example.com/contas/conta-1/files/first.png");
 });
 
 Deno.test("post-media-manage: GET with empty workflow_ids returns empty covers", async () => {
@@ -418,11 +463,25 @@ Deno.test("post-media-manage: POST /id/thumbnail returns presigned URL for video
   };
   db.queue("post_file_links", "select", { data: videoLink, error: null });
   const handler = makeHandler(db);
-  const res = await handler(req("POST", "/1/thumbnail", { mime_type: "image/jpeg" }));
+  const res = await handler(req("POST", "/1/thumbnail", { mime_type: "image/jpeg", size_bytes: 2048 }));
   assertEquals(res.status, 200);
   const body = await readJson(res);
   assertEquals(body.thumbnail_r2_key, "contas/conta-1/files/thumb-uuid.thumb.jpg");
-  assertEquals(body.thumbnail_upload_url, "https://r2.example.com/put/contas/conta-1/files/thumb-uuid.thumb.jpg");
+  assertEquals(body.thumbnail_upload_url, "https://r2.example.com/put/contas/conta-1/files/thumb-uuid.thumb.jpg?len=2048");
+});
+
+Deno.test("post-media-manage: POST /id/thumbnail needs an integer size_bytes up to 10 MB", async () => {
+  for (const size of [undefined, 0, 1.5, "2048", 11 * 1024 * 1024]) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queue("post_file_links", "select", {
+      data: { ...sampleLink, files: { ...sampleFile, kind: "video", mime_type: "video/mp4" } },
+      error: null,
+    });
+    const res = await makeHandler(db)(req("POST", "/1/thumbnail", { mime_type: "image/jpeg", size_bytes: size }));
+    assertEquals(res.status, 400, `size ${size}`);
+    assertEquals((await readJson(res)).error, "thumbnail size out of range");
+  }
 });
 
 Deno.test("post-media-manage: POST /id/thumbnail for non-video returns 400", async () => {
@@ -484,4 +543,69 @@ Deno.test("post-media-manage: accepts thumbnail_r2_key from same workspace", asy
   const handler = makeHandler(db);
   const res = await handler(req("PATCH", "/1", { thumbnail_r2_key: "contas/conta-1/files/thumb.jpg" }));
   assertEquals(res.status, 200);
+});
+
+// Replacement is a transaction: no file or link mutation occurs outside its RPC.
+function setupReplace(db: ReturnType<typeof createSupabaseQueryMock>) {
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", {
+    data: { conta_id: "conta-1", active_workspace_id: "conta-1" }, error: null,
+  });
+}
+const replacement = { file_id: 20, expected_r2_key: sampleFile.r2_key };
+
+Deno.test("post-media-manage: replace passes authenticated workspace and source version to atomic RPC", async () => {
+  const db = createSupabaseQueryMock();
+  setupReplace(db);
+  const res = await makeHandler(db)(req("PATCH", "/1/replace", { ...replacement, conta_id: "attacker" }));
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { ok: true });
+  assertEquals(db.calls.find((call) => call.operation === "rpc")?.payload, {
+    p_link_id: 1, p_file_id: 20, p_expected_r2_key: sampleFile.r2_key,
+    p_conta_id: "conta-1", p_user_id: "user-1",
+  });
+  assert(!db.calls.some((call) => ["insert", "update", "delete"].includes(call.operation)));
+});
+
+Deno.test("post-media-manage: replace rejects null active workspace instead of using legacy conta_id", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const res = await makeHandler(db)(req("PATCH", "/1/replace", replacement));
+  assertEquals(res.status, 403);
+  assert(!db.calls.some((call) => call.operation === "rpc"));
+});
+
+for (const path of ["/1abc/replace", "/1.5/replace", "/-1/replace", "/9007199254740993/replace"]) {
+  Deno.test(`post-media-manage: replace rejects malformed link ${path}`, async () => {
+    const db = createSupabaseQueryMock(); setupReplace(db);
+    const res = await makeHandler(db)(req("PATCH", path, replacement));
+    assertEquals(res.status, 400);
+    assert(!db.calls.some((call) => call.operation === "rpc"));
+  });
+}
+for (const body of [null, {}, { file_id: "20", expected_r2_key: "x" },
+  { file_id: 1.5, expected_r2_key: "x" }, { file_id: 20, expected_r2_key: "" }]) {
+  Deno.test(`post-media-manage: replace rejects malformed body ${JSON.stringify(body)}`, async () => {
+    const db = createSupabaseQueryMock(); setupReplace(db);
+    const res = await makeHandler(db)(req("PATCH", "/1/replace", body));
+    assertEquals(res.status, 400);
+    assert(!db.calls.some((call) => call.operation === "rpc"));
+  });
+}
+for (const [code, status] of [["P0404", 404], ["P0409", 409], ["P0400", 400], ["P0403", 403], ["XX000", 500]] as const) {
+  Deno.test(`post-media-manage: replace maps ${code} without exposing database details`, async () => {
+    const db = createSupabaseQueryMock(); setupReplace(db);
+    db.queueRpc("post_file_link_replace", { data: null, error: { code, message: "secret database details" } });
+    const res = await makeHandler(db)(req("PATCH", "/1/replace", replacement));
+    assertEquals(res.status, status);
+    assert(!JSON.stringify(await readJson(res)).includes("secret database details"));
+  });
+}
+
+Deno.test("post-media-manage: thrown replacement failure becomes a generic server error", async () => {
+  const db = createSupabaseQueryMock(); setupReplace(db);
+  db.queueRpc("post_file_link_replace", () => Promise.reject(new Error("private connection detail")));
+  const res = await makeHandler(db)(req("PATCH", "/1/replace", replacement));
+  assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
 });

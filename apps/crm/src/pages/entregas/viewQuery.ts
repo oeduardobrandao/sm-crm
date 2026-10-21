@@ -6,15 +6,46 @@ import { isStatusKeyToken } from './statusRegistry';
 import type { StatusKey } from './statusRegistry';
 import { PRAZO_PRESET_ORDER } from './etapaPrazo';
 
-export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded';
+export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded' | 'fila';
 
-const VIEWS: readonly ActiveView[] = ['kanban', 'chart', 'calendar', 'list', 'concluded'];
+/** Spec §4.1: filtro de entidade do quadro de Fluxos. `fluxos` é o default do
+ *  parser/serializador para que vistas salvas antigas continuem casando por
+ *  igualdade de string enquanto o quadro estiver em Fluxos. */
+export type EntidadeFilter = 'todos' | 'fluxos' | 'posts';
+const ENTIDADES: readonly EntidadeFilter[] = ['todos', 'fluxos', 'posts'];
+
+/** "Agrupar por" da vista Lista. `prazo` é o default do parser/serializador e
+ *  sai da URL, para que vistas salvas antigas da Lista continuem casando por
+ *  igualdade de string. */
+export type ListGroupBy = 'prazo' | 'postagem' | 'cliente' | 'responsavel' | 'etapa' | 'nenhum';
+export const LIST_GROUP_BYS: readonly ListGroupBy[] = [
+  'prazo',
+  'postagem',
+  'cliente',
+  'responsavel',
+  'etapa',
+  'nenhum',
+];
+export const DEFAULT_LIST_GROUP_BY: ListGroupBy = 'prazo';
+
+const VIEWS: readonly ActiveView[] = ['kanban', 'chart', 'calendar', 'list', 'concluded', 'fila'];
 const STATUS_VALUES: readonly StatusFilter[] = ['atrasado', 'urgente', 'em_dia'];
 
 export interface EntregasViewState {
   view: ActiveView;
   /** Mode of the ACTIVE view (only meaningful for kanban/calendar/list). */
   mode: EntregasMode;
+  /** Only meaningful for kanban/list in mode 'entregas'. */
+  entidade: EntidadeFilter;
+  /** Only meaningful for view 'fila': the member chosen EXPLICITLY in the
+   *  picker. null = the logged-in user's own fila, which is what a URL or a
+   *  saved vista without `membro=` means for whoever opens it. */
+  filaMembro: number | null;
+  /** Only meaningful for view 'list': how the Lista splits its rows. */
+  listGroupBy: ListGroupBy;
+  /** Only meaningful for the Publicações Lista: posts já postados ficam ocultos
+   *  por padrão e `postados=1` os mostra. */
+  showPostados: boolean;
   filters: FilterState;
 }
 
@@ -30,6 +61,12 @@ export function serializeEntregasQuery(state: EntregasViewState): string {
   const p = new URLSearchParams();
   if (state.view !== 'kanban') p.set('view', state.view);
   if (state.mode !== 'entregas') p.set('mode', state.mode);
+  if (state.entidade !== 'fluxos') p.set('entidade', state.entidade);
+  if (state.view === 'fila' && state.filaMembro != null) p.set('membro', String(state.filaMembro));
+  if (state.view === 'list' && state.listGroupBy !== DEFAULT_LIST_GROUP_BY)
+    p.set('agrupar', state.listGroupBy);
+  if (state.view === 'list' && state.mode === 'publicacoes' && state.showPostados)
+    p.set('postados', '1');
 
   const f = state.filters;
   if (f.filterSearch) p.set('q', f.filterSearch);
@@ -55,6 +92,21 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
   const rawView = p.get('view') as ActiveView | null;
   const view = rawView && VIEWS.includes(rawView) ? rawView : 'kanban';
   const mode: EntregasMode = p.get('mode') === 'publicacoes' ? 'publicacoes' : 'entregas';
+
+  const rawEntidade = p.get('entidade') as EntidadeFilter | null;
+  const entidade: EntidadeFilter =
+    rawEntidade && ENTIDADES.includes(rawEntidade) ? rawEntidade : 'fluxos';
+
+  const rawMembro = p.get('membro');
+  const parsedMembro = rawMembro ? parseInt(rawMembro, 10) : NaN;
+  const filaMembro = view === 'fila' && !isNaN(parsedMembro) ? parsedMembro : null;
+
+  const rawAgrupar = p.get('agrupar') as ListGroupBy | null;
+  const listGroupBy: ListGroupBy =
+    view === 'list' && rawAgrupar && LIST_GROUP_BYS.includes(rawAgrupar)
+      ? rawAgrupar
+      : DEFAULT_LIST_GROUP_BY;
+  const showPostados = view === 'list' && mode === 'publicacoes' && p.get('postados') === '1';
 
   const nums = (key: string) =>
     p
@@ -86,5 +138,5 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     filterPrazoTo: day('ate'),
   };
 
-  return { view, mode, filters };
+  return { view, mode, entidade, filaMembro, listGroupBy, showPostados, filters };
 }

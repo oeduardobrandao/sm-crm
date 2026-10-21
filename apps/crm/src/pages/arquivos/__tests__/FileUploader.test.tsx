@@ -47,7 +47,12 @@ describe('FileUploader', () => {
   it('renders children', () => {
     const triggerRef = createRef<{ openFilePicker: () => void }>();
     render(
-      <FileUploader folderId={null} onUploadComplete={onUploadComplete} triggerRef={triggerRef}>
+      <FileUploader
+        folderId={null}
+        onUploadComplete={onUploadComplete}
+        triggerRef={triggerRef}
+        canUpload={true}
+      >
         <div>Content inside uploader</div>
       </FileUploader>,
       { wrapper: createWrapper() },
@@ -59,7 +64,12 @@ describe('FileUploader', () => {
   it('shows drag overlay text on drag over', () => {
     const triggerRef = createRef<{ openFilePicker: () => void }>();
     render(
-      <FileUploader folderId={null} onUploadComplete={onUploadComplete} triggerRef={triggerRef}>
+      <FileUploader
+        folderId={null}
+        onUploadComplete={onUploadComplete}
+        triggerRef={triggerRef}
+        canUpload={true}
+      >
         <div data-testid="drop-zone">Drop here</div>
       </FileUploader>,
       { wrapper: createWrapper() },
@@ -77,7 +87,12 @@ describe('FileUploader', () => {
   it('hides drag overlay on drag leave', () => {
     const triggerRef = createRef<{ openFilePicker: () => void }>();
     render(
-      <FileUploader folderId={null} onUploadComplete={onUploadComplete} triggerRef={triggerRef}>
+      <FileUploader
+        folderId={null}
+        onUploadComplete={onUploadComplete}
+        triggerRef={triggerRef}
+        canUpload={true}
+      >
         <div>Content</div>
       </FileUploader>,
       { wrapper: createWrapper() },
@@ -118,7 +133,12 @@ describe('FileUploader', () => {
 
     const triggerRef = createRef<{ openFilePicker: () => void }>();
     render(
-      <FileUploader folderId={5} onUploadComplete={onUploadComplete} triggerRef={triggerRef}>
+      <FileUploader
+        folderId={5}
+        onUploadComplete={onUploadComplete}
+        triggerRef={triggerRef}
+        canUpload={true}
+      >
         <div>Content</div>
       </FileUploader>,
       { wrapper: createWrapper() },
@@ -151,7 +171,12 @@ describe('FileUploader', () => {
 
     const triggerRef = createRef<{ openFilePicker: () => void }>();
     render(
-      <FileUploader folderId={null} onUploadComplete={onUploadComplete} triggerRef={triggerRef}>
+      <FileUploader
+        folderId={null}
+        onUploadComplete={onUploadComplete}
+        triggerRef={triggerRef}
+        canUpload={true}
+      >
         <div>Content</div>
       </FileUploader>,
       { wrapper: createWrapper() },
@@ -180,7 +205,12 @@ describe('FileUploader', () => {
 
     const triggerRef = createRef<{ openFilePicker: () => void }>();
     render(
-      <FileUploader folderId={null} onUploadComplete={onUploadComplete} triggerRef={triggerRef}>
+      <FileUploader
+        folderId={null}
+        onUploadComplete={onUploadComplete}
+        triggerRef={triggerRef}
+        canUpload={true}
+      >
         <div>Content</div>
       </FileUploader>,
       { wrapper: createWrapper() },
@@ -220,6 +250,63 @@ describe('FileUploader', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Concluído')).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Task 14 fix round 2 (external review): ArquivosPage's toolbar upload
+   * button was gated on `arquivos:editar`, but drag-and-drop onto this same
+   * wrapper stayed wide open regardless of the caller's `canUpload` value --
+   * a restricted viewer could bypass the hidden button entirely. `canUpload`
+   * is a required prop (no fail-open default) specifically to force every
+   * caller to make this decision explicitly.
+   */
+  describe('canUpload={false}', () => {
+    it('never shows the drag overlay', () => {
+      const triggerRef = createRef<{ openFilePicker: () => void }>();
+      render(
+        <FileUploader
+          folderId={null}
+          onUploadComplete={onUploadComplete}
+          triggerRef={triggerRef}
+          canUpload={false}
+        >
+          <div>Content</div>
+        </FileUploader>,
+        { wrapper: createWrapper() },
+      );
+
+      const wrapper = screen.getByText('Content').closest('[class*="relative"]')!;
+      fireEvent.dragOver(wrapper, { dataTransfer: { files: [] } });
+
+      expect(screen.queryByText('Solte os arquivos aqui')).not.toBeInTheDocument();
+    });
+
+    it('ignores a file drop entirely -- no upload call, no progress card', async () => {
+      const triggerRef = createRef<{ openFilePicker: () => void }>();
+      render(
+        <FileUploader
+          folderId={5}
+          onUploadComplete={onUploadComplete}
+          triggerRef={triggerRef}
+          canUpload={false}
+        >
+          <div>Content</div>
+        </FileUploader>,
+        { wrapper: createWrapper() },
+      );
+
+      const wrapper = screen.getByText('Content').closest('[class*="relative"]')!;
+      const file = createTestFile('blocked.jpg');
+
+      fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
+
+      // Give any (incorrect) async upload path a tick to fire.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockedUploadFile).not.toHaveBeenCalled();
+      expect(screen.queryByText('Enviando...')).not.toBeInTheDocument();
+      expect(onUploadComplete).not.toHaveBeenCalled();
     });
   });
 });

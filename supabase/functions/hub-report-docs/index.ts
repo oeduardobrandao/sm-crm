@@ -6,12 +6,20 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { checkRateLimit, getClientIP } from "../_shared/rate-limit.ts";
+import { signGetUrl } from "../_shared/r2.ts";
+import { isMediaProxyEnabled, signMediaUrl } from "../_shared/media-url.ts";
+import type { SignFn } from "./sign-images.ts";
 import { docHandler, listHandler, printDocHandler } from "./handlers.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const INTERNAL_FUNCTION_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET") ?? "";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Mesmo padrão de hub-posts/index.ts: media proxy (7 dias) ou presign R2 de 1h.
+const signImage: SignFn = isMediaProxyEnabled()
+  ? (key) => signMediaUrl(key)
+  : (key) => signGetUrl(key, 3600);
 
 Deno.serve(async (req: Request) => {
   const cors = buildCorsHeaders(req);
@@ -38,6 +46,7 @@ Deno.serve(async (req: Request) => {
         docId,
         pt,
         Math.floor(Date.now() / 1000),
+        signImage,
       );
       return doc ? json({ doc }) : json({ error: "Not found" }, 404);
     }
@@ -62,7 +71,7 @@ Deno.serve(async (req: Request) => {
     if (path.startsWith("/doc/")) {
       const docId = path.slice("/doc/".length);
       if (!UUID_RE.test(docId)) return json({ error: "Not found" }, 404);
-      const doc = await docHandler(db, hubToken, docId);
+      const doc = await docHandler(db, hubToken, docId, signImage);
       return doc ? json({ doc }) : json({ error: "Not found" }, 404);
     }
     return json({ error: "Not found" }, 404);

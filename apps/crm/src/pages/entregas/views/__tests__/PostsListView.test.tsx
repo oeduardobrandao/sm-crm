@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// These suites cover the desktop table/toolbar; the phone branch has its own *Phone tests.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Canonical-only registry (what the real hook returns while definitions load),
 // without dragging TanStack Query / the supabase client into this test.
 vi.mock('@/hooks/useStatusRegistry', async () => {
@@ -11,6 +14,38 @@ vi.mock('@/hooks/useStatusRegistry', async () => {
 import { PostsListView } from '../PostsListView';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
+import type { PostEntity } from '../../boardEntity';
+
+/** Processo individual ativo de um avulso: só os campos que a Lista projeta. */
+function postEntity(
+  postId: number,
+  etapaNome: string,
+  opts: { responsavelNome?: string; prazoEfetivo?: Date | null; estourado?: boolean } = {},
+): PostEntity {
+  return {
+    kind: 'post',
+    id: `post:${postId}`,
+    process: { id: postId, post_id: postId, steps: [] } as never,
+    step: { ordem: 1, nome: etapaNome, responsavel_id: 42 } as never,
+    templateId: null,
+    steps: [{ ordem: 1, nome: etapaNome, tipo: 'padrao' }],
+    etapaOrdem: 1,
+    etapaNome,
+    responsavel: opts.responsavelNome
+      ? ({ id: 42, nome: opts.responsavelNome } as never)
+      : undefined,
+    prazoEfetivo: opts.prazoEfetivo ?? null,
+    posicao: 0,
+    deadline: {
+      diasRestantes: opts.estourado ? -3 : 2,
+      horasRestantes: 0,
+      estourado: !!opts.estourado,
+      urgente: false,
+    },
+    cliente: undefined,
+    titulo: 'Post individual',
+  };
+}
 
 let nextId = 1;
 function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
@@ -68,6 +103,11 @@ function getRenderedTitles(container: HTMLElement) {
   );
 }
 
+const groupHeads = () =>
+  Array.from(document.querySelectorAll('.list-group-toggle')).map((b) =>
+    b.getAttribute('aria-label'),
+  );
+
 describe('PostsListView', () => {
   it('renders the filtered empty state when a filter narrows the list to nothing', () => {
     render(<PostsListView {...baseProps} posts={[]} filtersActive />);
@@ -88,6 +128,21 @@ describe('PostsListView', () => {
     expect(screen.queryByText('Nenhum post encontrado. Ajuste os filtros.')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Criar post avulso' }));
     expect(onCreateAvulso).toHaveBeenCalledTimes(1);
+  });
+
+  it('vazia só por postados ocultos, diz quantos estão ocultos em vez de oferecer criar um avulso', () => {
+    const { rerender } = render(
+      <PostsListView {...baseProps} posts={[]} filtersActive={false} hiddenPostados={3} />,
+    );
+    expect(
+      screen.getByText('Nenhum post a mostrar. 3 posts postados estão ocultos.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar post avulso' })).toBeNull();
+
+    rerender(<PostsListView {...baseProps} posts={[]} filtersActive hiddenPostados={1} />);
+    expect(
+      screen.getByText('Nenhum post a mostrar. 1 post postado está oculto.'),
+    ).toBeInTheDocument();
   });
 
   it('renders all columns including Etapa atual, Responsável and Prazo da etapa', () => {
@@ -287,7 +342,7 @@ describe('PostsListView', () => {
         ]}
       />,
     );
-    expect(screen.getByText('Reels')).toBeInTheDocument();
+    expect(screen.getByText('Vídeo vertical')).toBeInTheDocument();
     expect(screen.getByText('Carrossel')).toBeInTheDocument();
     expect(screen.getByText('Enviado ao cliente')).toBeInTheDocument();
     expect(screen.getByText('Postado')).toBeInTheDocument();
@@ -385,5 +440,214 @@ describe('PostsListView', () => {
   it('não mostra o selo em post normal', () => {
     render(<PostsListView {...baseProps} posts={[makePost({ ig_trial_strategy: null })]} />);
     expect(screen.queryByText('Teste')).toBeNull();
+  });
+
+  it('mostra o selo Collab N com a lista no title quando há colaboradores', () => {
+    render(<PostsListView {...baseProps} posts={[makePost({ ig_collaborators: ['a', 'b'] })]} />);
+    const badge = screen.getByText('Collab 2');
+    expect(badge.closest('.post-tipo-badge--collab')?.getAttribute('title')).toBe(
+      'Colaboradores: @a, @b',
+    );
+  });
+
+  it('não mostra o selo Collab com lista vazia ou ausente', () => {
+    const legacy = makePost();
+    delete (legacy as { ig_collaborators?: string[] }).ig_collaborators;
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[makePost({ titulo: 'Vazio', ig_collaborators: [] }), legacy]}
+      />,
+    );
+    expect(screen.queryByText(/^Collab/)).toBeNull();
+  });
+
+  it('mostra "Individual · <etapa>" para um avulso com processo, quando o mapa traz a etapa', () => {
+    const avulso = {
+      id: 1,
+      workflow_id: null,
+      cliente_id: 1,
+      cliente_nome: 'A',
+      workflow_titulo: null,
+      titulo: 'Post individual',
+      tipo: 'feed',
+      status: 'rascunho',
+      custom_status_id: null,
+      scheduled_at: null,
+      published_at: null,
+      ig_caption: null,
+      instagram_permalink: null,
+      publish_error: null,
+      publish_error_code: null,
+      ordem: 0,
+      responsavel_id: null,
+      platform: 'instagram',
+      tiktok_publish_status: null,
+      tiktok_publish_error: null,
+      tiktok_post_url: null,
+      instagram_media_id: null,
+      ig_trial_strategy: null,
+      board_ordem: null,
+    } as ActivePost;
+    render(
+      <PostsListView
+        posts={[avulso]}
+        isLoading={false}
+        openableWorkflowIds={new Set()}
+        onPostClick={vi.fn()}
+        onFluxoClick={vi.fn()}
+        cardsByWorkflowId={new Map()}
+        filtersActive={false}
+        onCreateAvulso={vi.fn()}
+        postEntityByPostId={new Map([[1, postEntity(1, 'Design')]])}
+      />,
+    );
+    expect(screen.getByText('Individual · Design')).toBeInTheDocument();
+    expect(screen.queryByText('Avulso')).toBeNull();
+    expect(screen.getAllByText('Design')).not.toHaveLength(0); // célula "Etapa atual"
+  });
+
+  it('preenche responsável e prazo do avulso a partir da etapa ativa do processo', () => {
+    const avulso = makePost({
+      id: 1,
+      workflow_id: null,
+      workflow_titulo: null,
+      responsavel_id: null,
+    });
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[avulso]}
+        cardsByWorkflowId={new Map()}
+        postEntityByPostId={
+          new Map([
+            [
+              1,
+              postEntity(1, 'Mídia', {
+                responsavelNome: 'Nathalie',
+                prazoEfetivo: new Date('2026-09-19T12:00:00Z'),
+                estourado: true,
+              }),
+            ],
+          ])
+        }
+      />,
+    );
+    expect(screen.getByText('Nathalie')).toBeInTheDocument();
+    expect(screen.getByText('3d atrasado')).toBeInTheDocument();
+  });
+
+  it('deixa prazo vazio quando a etapa do processo não tem prazo efetivo', () => {
+    const avulso = makePost({ id: 1, workflow_id: null, workflow_titulo: null });
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[avulso]}
+        cardsByWorkflowId={new Map()}
+        postEntityByPostId={new Map([[1, postEntity(1, 'Mídia', { responsavelNome: 'Nathalie' })]])}
+      />,
+    );
+    // deadline zerado não pode virar "0h restantes" na coluna de prazo
+    expect(screen.queryByText(/restantes|atrasado/)).toBeNull();
+  });
+
+  it('sem groupBy continua uma tabela corrida', () => {
+    render(<PostsListView {...baseProps} posts={[makePost({ titulo: 'Solo' })]} />);
+    expect(groupHeads()).toEqual([]);
+    expect(screen.getByText('Solo')).toBeInTheDocument();
+  });
+
+  it('agrupa por responsável: o da etapa, ou o responsavel_id do avulso sem etapa, que também aparece na célula', () => {
+    const posts = [
+      makePost({ titulo: 'Do fluxo' }),
+      makePost({
+        titulo: 'Avulso da Bia',
+        workflow_id: null,
+        workflow_titulo: null,
+        responsavel_id: 9,
+      }),
+      makePost({ titulo: 'Avulso sem ninguém', workflow_id: null, workflow_titulo: null }),
+    ];
+    render(
+      <PostsListView
+        {...baseProps}
+        cardsByWorkflowId={
+          new Map([[10, makeBoardCard({ etapa: { nome: 'Design', responsavel_id: 7 } })]])
+        }
+        posts={posts}
+        groupBy="responsavel"
+        membroNomeById={new Map([[9, 'Bia Costa']])}
+      />,
+    );
+    expect(groupHeads()).toEqual(['Ana Silva (1)', 'Bia Costa (1)', 'Sem responsável (1)']);
+    const row = screen.getByText('Avulso da Bia').closest('tr')!;
+    const cells = Array.from(row.querySelectorAll('td')).map((td) => td.textContent);
+    expect(cells[6]).toBe('Bia Costa'); // Responsável
+  });
+
+  it('agrupa por data de postagem com "Sem data" por último e recolhe um grupo', () => {
+    const hoje = new Date();
+    hoje.setHours(12, 0, 0, 0);
+    const posts = [
+      makePost({ titulo: 'Sem agenda' }),
+      makePost({ titulo: 'Sai hoje', scheduled_at: hoje.toISOString() }),
+    ];
+    render(<PostsListView {...baseProps} posts={posts} groupBy="postagem" />);
+    expect(groupHeads()).toEqual(['Hoje (1)', 'Sem data (1)']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hoje (1)' }));
+
+    expect(screen.getByRole('button', { name: 'Hoje (1)' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByText('Sai hoje')).toBeNull();
+    expect(screen.getByText('Sem agenda')).toBeInTheDocument();
+  });
+
+  describe('Fechar todos / Abrir todos', () => {
+    const hoje = new Date();
+    hoje.setHours(12, 0, 0, 0);
+    const posts = [
+      makePost({ titulo: 'Sem agenda' }),
+      makePost({ titulo: 'Sai hoje', scheduled_at: hoje.toISOString() }),
+    ];
+
+    it('Fechar todos recolhe os grupos e vira Abrir todos, que reabre', () => {
+      render(<PostsListView {...baseProps} posts={posts} groupBy="postagem" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+      expect(screen.queryByText('Sai hoje')).toBeNull();
+      expect(screen.queryByText('Sem agenda')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Hoje (1)' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir todos' }));
+
+      expect(screen.getByText('Sai hoje')).toBeInTheDocument();
+      expect(screen.getByText('Sem agenda')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Fechar todos' })).toBeInTheDocument();
+    });
+
+    it('recolher um a um até o último também vira Abrir todos', () => {
+      render(<PostsListView {...baseProps} posts={posts} groupBy="postagem" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Hoje (1)' }));
+      expect(screen.getByRole('button', { name: 'Fechar todos' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sem data (1)' }));
+      expect(screen.getByRole('button', { name: 'Abrir todos' })).toBeInTheDocument();
+    });
+
+    it('só aparece com dois grupos ou mais', () => {
+      const { rerender } = render(<PostsListView {...baseProps} posts={posts} groupBy="nenhum" />);
+      expect(screen.queryByRole('button', { name: /(Fechar|Abrir) todos/ })).toBeNull();
+
+      rerender(<PostsListView {...baseProps} posts={posts.slice(0, 1)} groupBy="postagem" />);
+      expect(screen.queryByRole('button', { name: /(Fechar|Abrir) todos/ })).toBeNull();
+    });
   });
 });

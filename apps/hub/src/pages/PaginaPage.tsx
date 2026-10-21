@@ -3,10 +3,13 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchPage } from '../api';
 import type { HubContentBlock } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
+import { RichTextContent } from '../components/RichTextTiptap';
+import { DocSkeleton } from '../components/Skeleton';
 
 const markdownComponents = {
   h1: (props: React.ComponentProps<'h1'>) => (
@@ -42,6 +45,7 @@ const markdownComponents = {
   img: (props: React.ComponentProps<'img'>) => (
     <img
       {...props}
+      alt={props.alt ?? ''}
       src={sanitizeExternalUrl(props.src)}
       className="rounded-xl max-w-full my-5 border hub-border"
     />
@@ -97,6 +101,14 @@ const markdownComponents = {
 
 function renderBlock(block: HubContentBlock, i: number) {
   switch (block.type) {
+    case 'richtext':
+      return (
+        <RichTextContent
+          key={i}
+          content={block.doc}
+          className="hub-richtext text-[15px] hub-tx2 leading-relaxed"
+        />
+      );
     case 'heading':
       if (block.level === 1)
         return (
@@ -166,6 +178,8 @@ export function PaginaPage() {
   const { token, workspace } = useHub();
   const { pageId } = useParams<{ pageId: string }>();
   const base = `/${workspace}/hub/${token}`;
+  const { t } = useTranslation('hubPages');
+  const { t: tc } = useTranslation();
 
   const { data, isLoading } = useQuery({
     queryKey: ['hub-page', token, pageId],
@@ -173,15 +187,15 @@ export function PaginaPage() {
     enabled: !!pageId,
   });
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
+  if (isLoading) return <DocSkeleton className="max-w-3xl mx-auto" />;
 
   const page = data?.page;
-  if (!page) return <div className="max-w-3xl mx-auto py-8 hub-tx2">Página não encontrada.</div>;
+  if (!page)
+    return (
+      <div className="max-w-3xl mx-auto py-8 hub-tx2">
+        {t('paginaPage.notFound', 'Página não encontrada.')}
+      </div>
+    );
 
   return (
     <article className="max-w-3xl mx-auto hub-fade-up">
@@ -189,7 +203,8 @@ export function PaginaPage() {
         to={`${base}/paginas`}
         className="hub-back-link inline-flex items-center gap-1.5 text-[13px] hub-tx3 mb-8 group transition-colors"
       >
-        <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar
+        <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />{' '}
+        {tc('actions.back')}
       </Link>
       <h1 className="font-display text-[2.25rem] sm:text-[2.75rem] leading-[1.05] font-medium tracking-tight hub-txt mb-8">
         {page.title}

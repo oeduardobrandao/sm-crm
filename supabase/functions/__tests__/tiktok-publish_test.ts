@@ -18,6 +18,7 @@ import { createPublishHandler, type TikTokPublishDeps } from "../tiktok-publish/
 import type { TikTokValidationResult } from "../_shared/tiktok-publish-utils.ts";
 import type { ScheduleValidationResult } from "../_shared/instagram-publish-utils.ts";
 import { buildTikTokMediaUrl, verifyTikTokMediaToken } from "../_shared/tiktok-media-url.ts";
+import { TikTokApiError } from "../_shared/tiktok.ts";
 
 Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-tiktok-publish-key");
 Deno.env.set("SUPABASE_URL", "https://supabase.example");
@@ -40,21 +41,35 @@ function gateOn(db: ReturnType<typeof createSupabaseQueryMock>) {
   db.queueRpc("effective_plan_feature", { data: true, error: null }); // feature_tiktok
 }
 
+/** The TikTok destination embed (targets_state:post_targets(id, platform, status, processing_at)). */
+function ttTarget(status = "pendente", extra: Record<string, unknown> = {}) {
+  return [{ id: 501, platform: "tiktok", status, processing_at: null, ...extra }];
+}
+
 function basePost(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
     status: "aprovado_cliente",
     platform: "tiktok",
     tipo: "feed",
-    tiktok_publish_status: null,
-    tiktok_publish_error: null,
-    tiktok_publish_retry_count: 0,
     tiktok_caption: "legenda tiktok",
     tiktok_title: null,
     tiktok_settings: { privacy_level: "SELF_ONLY" },
     ig_caption: null,
+    targets_state: ttTarget(),
     ...overrides,
   };
+}
+
+/** No P4 path writes workflow_posts' status or tiktok_* columns directly. */
+function assertNoLegacyTikTokWrites(db: ReturnType<typeof createSupabaseQueryMock>) {
+  for (const c of callsFor(db, "workflow_posts", "update")) {
+    const keys = Object.keys(c.payload as Record<string, unknown>);
+    assert(!keys.some((k) => k.startsWith("tiktok_")), `legacy tiktok_* write: ${keys.join(",")}`);
+    assert(!keys.includes("status"), "status must move only inside the RPCs");
+  }
+  assertEquals(rpcCalls(db, "record_post_status_change").length, 0, "status moves only inside the RPCs");
+  assertEquals(rpcCalls(db, "mark_platform_published").length, 0, "the legacy writer is not called");
 }
 
 function tiktokRequest(action: string, id: number, opts: { method?: string; body?: unknown; token?: string } = {}) {
@@ -82,6 +97,7 @@ const okTikTokValidation = (overrides: Partial<TikTokValidationResult> = {}): Ti
     duration_seconds: null,
     r2_key: "img/1.jpg",
     sort_order: 0,
+    media_lost_at: null,
   }],
   account: {
     id: "acct-1",
@@ -351,6 +367,119 @@ Deno.test("tiktok-publish schedule: IG-only post -> 400 telling caller to use in
   assertEquals(res.status, 400);
 });
 
+Deno.test("tiktok-publish: the post select embeds the TikTok destination, not the frozen columns", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "instagram" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+
+  const handler = createPublishHandler(makeDeps(db));
+  await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2030-01-01T12:00:00Z" } }));
+  const select = String(callsFor(db, "workflow_posts", "select")[0].selectArgs[0][0]);
+  assert(select.includes("targets_state:post_targets(id, platform, status, processing_at)"), select);
+  assert(!select.includes("tiktok_publish_"), select);
+});
+
+// processando always refuses; publicado refuses only when nothing else is left to publish
+// (TikTok-only, or Instagram already published). See the `both` + publicado tests below.
+for (const [platform, status, extra, message] of [
+  ["tiktok", "processando", {}, "Já está publicando no TikTok."],
+  ["both", "processando", {}, "Já está publicando no TikTok."],
+  ["tiktok", "publicado", {}, "Já publicado no TikTok."],
+  ["both", "publicado", { instagram_media_id: "ig-media-1" }, "Já publicado no TikTok."],
+] as const) {
+  Deno.test(`tiktok-publish schedule: ${platform} post, destination ${status}${"instagram_media_id" in extra ? ", Instagram published" : ""} -> 422, nothing written`, async () => {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("workflow_posts", "select", {
+      data: basePost({ platform, targets_state: ttTarget(status), ...extra }),
+      error: null,
+    });
+    db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+    gateOn(db);
+
+    const handler = createPublishHandler(makeDeps(db, {
+      validateForTikTokScheduling: (() => {
+        throw new Error("must not validate");
+      }) as never,
+    }));
+    const res = await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2030-01-01T12:00:00Z" } }));
+    assertEquals(res.status, 422);
+    assertEquals(await res.json(), { error: message });
+    assertEquals(callsFor(db, "workflow_posts", "update").length, 0);
+    assertEquals(rpcCalls(db, "record_post_status_change").length, 0);
+  });
+}
+
+Deno.test("tiktok-publish schedule: `both` post, TikTok publicado, Instagram pending -> schedules for Instagram only", async () => {
+  // The post went back to draft mid-publish after TikTok landed. Scheduling it again is how
+  // Instagram goes out: init never re-claims a publicado destination, and the recompute
+  // reaches postado when Instagram lands.
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({
+      platform: "both",
+      instagram_media_id: null,
+      targets_state: [...ttTarget("publicado"), { id: 502, platform: "instagram", status: "pendente", processing_at: null }],
+    }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queue("workflow_posts", "update", { data: null, error: null }); // scheduled_at write
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+
+  let tiktokCalled = 0;
+  let igCalled = 0;
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => {
+      tiktokCalled++;
+      return Promise.resolve(okTikTokValidation());
+    }) as never,
+    validateForScheduling: (() => {
+      igCalled++;
+      return Promise.resolve({ ok: true, errors: [] } as ScheduleValidationResult);
+    }) as never,
+  }));
+
+  const res = await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2030-01-01T12:00:00Z" } }));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { ok: true, status: "agendado" });
+  assertEquals(tiktokCalled, 0); // TikTok already published: nothing left to validate there
+  assertEquals(igCalled, 1);
+  const rpc = rpcCalls(db, "record_post_status_change");
+  assertEquals(rpc.length, 1);
+  assertEquals((rpc[0].payload as Record<string, unknown>).p_new_status, "agendado");
+});
+
+Deno.test("tiktok-publish schedule: `both` post, TikTok publicado, Instagram validation fails -> 422 with IG details only", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ platform: "both", targets_state: ttTarget("publicado"), scheduled_at: "2025-01-01T00:00:00Z" }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queue("workflow_posts", "update", { data: null, error: null }); // candidate write
+  db.queue("workflow_posts", "update", { data: null, error: null }); // restore write
+
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => {
+      throw new Error("must not validate TikTok");
+    }) as never,
+    validateForScheduling: (() =>
+      Promise.resolve({ ok: false, errors: ["Legenda do Instagram não definida."] } as ScheduleValidationResult)) as never,
+  }));
+
+  const res = await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2030-01-01T12:00:00Z" } }));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Validação falhou", details: ["Legenda do Instagram não definida."] });
+  assertEquals(rpcCalls(db, "record_post_status_change").length, 0);
+});
+
 Deno.test("tiktok-publish: feature_tiktok OFF -> 403 feature_disabled (feature_post_scheduling ON)", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
@@ -370,73 +499,110 @@ Deno.test("tiktok-publish: feature_tiktok OFF -> 403 feature_disabled (feature_p
 // retry
 // ============================================================
 
-Deno.test("tiktok-publish retry: succeeds with both feature flags OFF (retry is ungated)", async () => {
+Deno.test("tiktok-publish retry: succeeds with both feature flags OFF (retry is ungated) and re-queues the destination", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
   db.queue("workflow_posts", "select", {
-    data: basePost({ platform: "tiktok", status: "falha_publicacao", tiktok_publish_status: "failed" }),
+    data: basePost({ platform: "tiktok", status: "falha_publicacao", targets_state: ttTarget("falha") }),
     error: null,
   });
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
   db.queueRpc("effective_plan_feature", { data: false, error: null }); // feature_post_scheduling OFF
   db.queueRpc("effective_plan_feature", { data: false, error: null }); // feature_tiktok OFF
-  db.queue("workflow_posts", "update", { data: null, error: null });
-  db.queueRpc("record_post_status_change", { data: null, error: null });
+  db.queueRpc("requeue_target", { data: true, error: null });
 
   const handler = createPublishHandler(makeDeps(db));
   const res = await handler(tiktokRequest("retry", 1));
-  const body = await res.json();
 
   assertEquals(res.status, 200);
-  assertEquals(body, { ok: true, status: "agendado" });
-  // retry must never call the gate RPC — both queued "false" responses stay unconsumed. If the
-  // gate were mistakenly re-applied, the first "false" would be consumed and this would 403.
+  assertEquals(await res.json(), { ok: true, status: "agendado" });
   assertEquals(db.calls.filter((c: QueryCall) => c.table === "rpc:effective_plan_feature").length, 0);
+  assertEquals(rpcCalls(db, "requeue_target").map((c) => c.payload), [
+    { p_post_id: 1, p_platform: "tiktok", p_source: "workspace_user", p_actor: "actor-1" },
+  ]);
+  assertEquals(callsFor(db, "workflow_posts", "update").length, 0);
+  assertNoLegacyTikTokWrites(db);
 });
 
-Deno.test("tiktok-publish retry: resets ONLY TikTok fields, leaves IG columns untouched", async () => {
+Deno.test("tiktok-publish retry: `both` post already back at agendado (IG retried first) still re-queues TikTok (bug 2)", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
   db.queue("workflow_posts", "select", {
-    data: basePost({ platform: "both", status: "falha_publicacao", tiktok_publish_status: "failed" }),
+    data: basePost({ platform: "both", status: "agendado", targets_state: ttTarget("falha") }),
     error: null,
   });
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
-  gateOn(db);
-  db.queue("workflow_posts", "update", { data: null, error: null });
-  db.queueRpc("record_post_status_change", { data: null, error: null });
+  db.queueRpc("requeue_target", { data: true, error: null });
 
   const handler = createPublishHandler(makeDeps(db));
   const res = await handler(tiktokRequest("retry", 1));
-  const body = await res.json();
-
   assertEquals(res.status, 200);
-  assertEquals(body, { ok: true, status: "agendado" });
-
-  const updates = callsFor(db, "workflow_posts", "update");
-  assertEquals(updates.length, 1);
-  const payload = updates[0].payload as Record<string, unknown>;
-  assertEquals(payload, { tiktok_publish_status: null, tiktok_publish_error: null });
-  assert(!("instagram_container_id" in payload), "retry must never touch IG columns");
-  assert(!("publish_error" in payload), "retry must never touch IG columns");
-
-  const rpc = rpcCalls(db, "record_post_status_change");
-  assertEquals(rpc.length, 1);
-  const rpcPayload = rpc[0].payload as Record<string, unknown>;
-  assertEquals(rpcPayload.p_new_status, "agendado");
-  assertEquals(rpcPayload.p_fields, {});
+  assertEquals(rpcCalls(db, "requeue_target").length, 1);
 });
 
-Deno.test("tiktok-publish retry: post.status falha_publicacao but tiktok_publish_status not 'failed' -> 422", async () => {
+Deno.test("tiktok-publish retry: `both` post with both sides failed re-queues only TikTok and leaves the post to the recompute", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
-  // Simulates a `both` post whose IG side failed, not the TikTok side.
   db.queue("workflow_posts", "select", {
-    data: basePost({ platform: "both", status: "falha_publicacao", tiktok_publish_status: null }),
+    data: basePost({ platform: "both", status: "falha_publicacao", targets_state: ttTarget("falha") }),
     error: null,
   });
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
-  gateOn(db);
+  db.queueRpc("requeue_target", { data: true, error: null });
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("retry", 1));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { ok: true, status: "agendado" });
+  assertEquals(rpcCalls(db, "requeue_target").map((c) => c.payload), [
+    { p_post_id: 1, p_platform: "tiktok", p_source: "workspace_user", p_actor: "actor-1" },
+  ]);
+  // The post stays in falha_publicacao (Instagram still failed); only requeue_target's
+  // recompute may move it, never a direct write from the handler.
+  assertEquals(callsFor(db, "workflow_posts", "update").length, 0);
+  assertNoLegacyTikTokWrites(db);
+});
+
+Deno.test("tiktok-publish retry: destination not in falha (the IG side failed) -> 422, no RPC", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ platform: "both", status: "falha_publicacao", targets_state: ttTarget("pendente") }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("retry", 1));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Apenas posts com falha no TikTok podem ser reenviados." });
+  assertEquals(rpcCalls(db, "requeue_target").length, 0);
+});
+
+Deno.test("tiktok-publish retry: post outside publication -> 422, no RPC", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ status: "rascunho", targets_state: ttTarget("falha") }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("retry", 1));
+  assertEquals(res.status, 422);
+  assertEquals(rpcCalls(db, "requeue_target").length, 0);
+});
+
+Deno.test("tiktok-publish retry: requeue_target declining (race) -> 422", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ status: "falha_publicacao", targets_state: ttTarget("falha") }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("requeue_target", { data: false, error: null });
 
   const handler = createPublishHandler(makeDeps(db));
   const res = await handler(tiktokRequest("retry", 1));
@@ -447,79 +613,65 @@ Deno.test("tiktok-publish retry: post.status falha_publicacao but tiktok_publish
 // cancel
 // ============================================================
 
-Deno.test("tiktok-publish cancel: succeeds with both feature flags OFF (cancel is ungated)", async () => {
-  const db = createSupabaseQueryMock();
-  db.withAuth({ id: "actor-1" });
-  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", status: "agendado" }), error: null });
-  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
-  db.queueRpc("effective_plan_feature", { data: false, error: null }); // feature_post_scheduling OFF
-  db.queueRpc("effective_plan_feature", { data: false, error: null }); // feature_tiktok OFF
-  db.queue("workflow_posts", "update", { data: null, error: null });
-  db.queueRpc("record_post_status_change", { data: null, error: null });
-
-  const handler = createPublishHandler(makeDeps(db));
-  const res = await handler(tiktokRequest("cancel", 1));
-  const body = await res.json();
-
-  assertEquals(res.status, 200);
-  assertEquals(body, { ok: true, status: "aprovado_cliente" });
-  // cancel must never call the gate RPC — both queued "false" responses stay unconsumed. If the
-  // gate were mistakenly re-applied, the first "false" would be consumed and this would 403.
-  assertEquals(db.calls.filter((c: QueryCall) => c.table === "rpc:effective_plan_feature").length, 0);
-});
-
-Deno.test("tiktok-publish cancel: `both` clears BOTH platforms' handles", async () => {
+Deno.test("tiktok-publish cancel: succeeds with both feature flags OFF (cancel is ungated) via cancel_target_publish", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
   db.queue("workflow_posts", "select", { data: basePost({ platform: "both", status: "agendado" }), error: null });
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
-  gateOn(db);
-  db.queue("workflow_posts", "update", { data: null, error: null });
-  db.queueRpc("record_post_status_change", { data: null, error: null });
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  db.queueRpc("cancel_target_publish", { data: null, error: null });
 
   const handler = createPublishHandler(makeDeps(db));
   const res = await handler(tiktokRequest("cancel", 1));
-  const body = await res.json();
 
   assertEquals(res.status, 200);
-  assertEquals(body, { ok: true, status: "aprovado_cliente" });
-
-  const updates = callsFor(db, "workflow_posts", "update");
-  assertEquals(updates.length, 1);
-  assertEquals(updates[0].payload, {
-    tiktok_publish_id: null,
-    tiktok_publish_status: null,
-    tiktok_publish_error: null,
-    tiktok_publish_processing_at: null,
-  });
-
-  const rpc = rpcCalls(db, "record_post_status_change");
-  assertEquals(rpc.length, 1);
-  const rpcPayload = rpc[0].payload as Record<string, unknown>;
-  assertEquals(rpcPayload.p_new_status, "aprovado_cliente");
-  assertEquals(rpcPayload.p_fields, {
-    instagram_container_id: null,
-    publish_processing_at: null,
-    publish_error: null,
-    publish_error_code: null,
-  });
+  assertEquals(await res.json(), { ok: true, status: "aprovado_cliente" });
+  assertEquals(db.calls.filter((c: QueryCall) => c.table === "rpc:effective_plan_feature").length, 0);
+  assertEquals(rpcCalls(db, "cancel_target_publish").map((c) => c.payload), [
+    { p_post_id: 1, p_platform: "tiktok", p_source: "workspace_user", p_actor: "actor-1" },
+  ]);
+  assertEquals(callsFor(db, "workflow_posts", "update").length, 0, "the IG field clearing moved into the RPC");
+  assertNoLegacyTikTokWrites(db);
 });
 
-Deno.test("tiktok-publish cancel: tiktok-only post does NOT touch IG columns", async () => {
+Deno.test("tiktok-publish cancel: post not agendado -> 422, no RPC", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
-  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", status: "agendado" }), error: null });
+  db.queue("workflow_posts", "select", { data: basePost({ status: "aprovado_cliente" }), error: null });
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
-  gateOn(db);
-  db.queue("workflow_posts", "update", { data: null, error: null });
-  db.queueRpc("record_post_status_change", { data: null, error: null });
 
   const handler = createPublishHandler(makeDeps(db));
   const res = await handler(tiktokRequest("cancel", 1));
-  assertEquals(res.status, 200);
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Apenas posts agendados podem ser cancelados." });
+  assertEquals(rpcCalls(db, "cancel_target_publish").length, 0);
+});
 
-  const rpc = rpcCalls(db, "record_post_status_change");
-  assertEquals((rpc[0].payload as Record<string, unknown>).p_fields, {});
+Deno.test("tiktok-publish cancel: destination publishing -> 422 pt-BR from the P0422 identifier", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ status: "agendado" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("cancel_target_publish", { data: null, error: { code: "P0422", message: "target_publishing" } });
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("cancel", 1));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Já está publicando no TikTok." });
+});
+
+Deno.test("tiktok-publish cancel: an unexpected RPC error -> generic 500, no raw text", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ status: "agendado" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("cancel_target_publish", { data: null, error: { code: "XX000", message: "private db detail" } });
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("cancel", 1));
+  assertEquals(res.status, 500);
+  assert(!JSON.stringify(await res.json()).includes("private db detail"));
 });
 
 // ============================================================
@@ -567,86 +719,178 @@ Deno.test("tiktok-publish creator-info: returns TikTok's fields verbatim with no
   const body = await res.json();
 
   assertEquals(res.status, 200);
-  assertEquals(body, creatorInfoPayload);
+  assertEquals(body, { ...creatorInfoPayload, can_post: true, app_audited: false });
   assertEquals(res.headers.get("Cache-Control"), "no-store");
+});
+
+for (const code of ["spam_risk_too_many_posts", "spam_risk_user_banned_from_posting", "reached_active_user_cap"]) {
+  Deno.test(`tiktok-publish creator-info: ${code} -> 200 can_post false`, async () => {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+    db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+    gateOn(db);
+    db.queue("tiktok_accounts", "select", { data: { id: "acct-1", authorization_status: "active" }, error: null });
+
+    const handler = createPublishHandler(makeDeps(db, {
+      getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+      tiktokFetch: (() => Promise.reject(new TikTokApiError("blocked", code, false))) as never,
+    }));
+    const res = await handler(tiktokRequest("creator-info", 5, { method: "GET" }));
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { can_post: false, cannot_post_reason: code, app_audited: false });
+    assertEquals(res.headers.get("Cache-Control"), "no-store");
+  });
+}
+
+Deno.test("tiktok-publish creator-info: app_audited true when TIKTOK_APP_AUDITED=true", async () => {
+  Deno.env.set("TIKTOK_APP_AUDITED", "true");
+  try {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+    db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+    gateOn(db);
+    db.queue("tiktok_accounts", "select", { data: { id: "acct-1", authorization_status: "active" }, error: null });
+    const { fn } = stubTiktokFetch({ creatorInfo: { privacy_level_options: ["SELF_ONLY"] } });
+    const handler = createPublishHandler(makeDeps(db, {
+      getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+      tiktokFetch: fn,
+    }));
+    const body = await (await handler(tiktokRequest("creator-info", 5, { method: "GET" }))).json();
+    assertEquals(body.app_audited, true);
+    assertEquals(body.can_post, true);
+  } finally {
+    Deno.env.delete("TIKTOK_APP_AUDITED");
+  }
+});
+
+Deno.test("tiktok-publish creator-info: other TikTok errors stay 500 generic", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queue("tiktok_accounts", "select", { data: { id: "acct-1", authorization_status: "active" }, error: null });
+  const handler = createPublishHandler(makeDeps(db, {
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: (() => Promise.reject(new TikTokApiError("boom", "internal_error", false))) as never,
+  }));
+  const res = await handler(tiktokRequest("creator-info", 5, { method: "GET" }));
+  assertEquals(res.status, 500);
+  assertEquals(await res.json(), { error: "Erro ao consultar informações do criador no TikTok." });
 });
 
 // ============================================================
 // publish-now
 // ============================================================
 
-Deno.test("tiktok-publish publish-now: success calls mark_platform_published and returns postado", async () => {
+function initWrites(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return callsFor(db, "post_targets", "update")
+    .filter((c) => (c.payload as Record<string, unknown>).status === "processando");
+}
+
+function failedCalls(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return rpcCalls(db, "mark_target_failed").map((c) => c.payload as Record<string, unknown>);
+}
+
+Deno.test("tiktok-publish publish-now: success takes the destination lock, inits, and calls mark_target_published", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
   db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "feed" }), error: null });
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
   gateOn(db);
-  db.queueRpc("record_post_status_change", { data: null, error: null }); // -> agendado + lock
-  db.queue("workflow_posts", "update", { data: null, error: null }); // lock timestamp
-  db.queue("workflow_posts", "update", { data: null, error: null }); // init: publish_id/status
-  db.queue("tiktok_accounts", "select", { data: { username: "dramarina" }, error: null }); // username lookup
-  db.queueRpc("mark_platform_published", { data: null, error: null });
+  db.queueRpc("begin_target_publish", { data: true, error: null });
+  db.queue("tiktok_accounts", "select", { data: { username: "dramarina" }, error: null });
+  db.queueRpc("mark_target_published", { data: null, error: null });
 
   const { fn: tiktokFetchStub, calls: fetchCalls } = stubTiktokFetch({
     init: { publish_id: "pub-1" },
     statusSequence: [{ status: "PUBLISH_COMPLETE", publicaly_available_post_id: "7123456" }],
   });
 
-  // Real buildTikTokMediaUrl (not a stub) so the init payload's photo_images URL can be pinned
-  // to the tiktok-media proxy shape and round-tripped back to the linked file's r2_key below —
-  // same pattern as tiktok-publish-cron_test.ts's init-phase payload-shape test.
   const handler = createPublishHandler(makeDeps(db, {
     validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
     getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
     tiktokFetch: tiktokFetchStub,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
     buildTikTokMediaUrl,
     sleep: noopSleep,
   }));
 
   const res = await handler(tiktokRequest("publish-now", 1));
-  const body = await res.json();
-
   assertEquals(res.status, 200);
-  assertEquals(body, { ok: true, status: "postado" });
-  assertEquals(fetchCalls.length, 2); // one init + exactly one status-fetch (terminal on first poll)
+  assertEquals(await res.json(), { ok: true, status: "postado" });
+  assertEquals(fetchCalls.length, 2); // one init + exactly one status-fetch
 
   const initCall = fetchCalls.find((c) => c.path === "/post/publish/content/init/");
   assert(initCall, "feed (photo) post must POST to /post/publish/content/init/");
-  const initBody = initCall!.body as { source_info: { photo_images: string[] } };
-  const photoUrl = initBody.source_info.photo_images[0];
+  const photoUrl = (initCall!.body as { source_info: { photo_images: string[] } }).source_info.photo_images[0];
   assert(photoUrl.startsWith(MEDIA_URL_PREFIX), `photo_images entry must be a tiktok-media proxy URL, got ${photoUrl}`);
-  assertEquals(
-    await verifyTikTokMediaToken(photoUrl.slice(MEDIA_URL_PREFIX.length)),
-    "img/1.jpg",
-    "the proxy token must resolve back to the validated media's r2_key",
-  );
+  assertEquals(await verifyTikTokMediaToken(photoUrl.slice(MEDIA_URL_PREFIX.length)), "img/1.jpg");
 
-  const markCalls = rpcCalls(db, "mark_platform_published");
-  assertEquals(markCalls.length, 1);
-  const payload = markCalls[0].payload as Record<string, unknown>;
+  assertEquals(rpcCalls(db, "begin_target_publish").map((c) => c.payload), [
+    { p_post_id: 1, p_platform: "tiktok", p_source: "workspace_user", p_actor: "actor-1" },
+  ]);
+
+  const inits = initWrites(db);
+  assertEquals(inits.length, 1);
+  const initPayload = inits[0].payload as Record<string, unknown>;
+  assertEquals(initPayload.publish_ref, "pub-1");
+  assert(typeof initPayload.updated_at === "string");
+  assert(inits[0].modifiers.some((m) => m.method === "eq" && m.args[0] === "post_id" && m.args[1] === 1));
+  assert(inits[0].modifiers.some((m) => m.method === "eq" && m.args[0] === "platform" && m.args[1] === "tiktok"));
+
+  const marks = rpcCalls(db, "mark_target_published");
+  assertEquals(marks.length, 1);
+  const payload = marks[0].payload as Record<string, unknown>;
   assertEquals(payload.p_post_id, 1);
   assertEquals(payload.p_platform, "tiktok");
   assertEquals(payload.p_source, "workspace_user");
+  assertEquals(payload.p_actor, "actor-1");
   const fields = payload.p_fields as Record<string, unknown>;
-  assertEquals(fields.tiktok_post_id, "7123456");
-  assertEquals(fields.tiktok_post_url, "https://www.tiktok.com/@dramarina/video/7123456");
+  assertEquals(fields.external_id, "7123456");
+  assertEquals(fields.permalink, "https://www.tiktok.com/@dramarina/photo/7123456");
   assert(typeof fields.published_at === "string" && !isNaN(Date.parse(fields.published_at as string)));
+  assertNoLegacyTikTokWrites(db);
 });
 
-Deno.test("tiktok-publish publish-now: still-processing after 12 polls -> agendado response, lock cleared", async () => {
+Deno.test("tiktok-publish publish-now: a `both` post Instagram already moved to agendado still publishes (bug 1)", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "both", status: "agendado" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("begin_target_publish", { data: true, error: null });
+  db.queue("tiktok_accounts", "select", { data: { username: "dramarina" }, error: null });
+
+  const { fn } = stubTiktokFetch({ statusSequence: [{ status: "PUBLISH_COMPLETE" }] });
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: fn,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 200);
+  assertEquals(rpcCalls(db, "begin_target_publish").length, 1);
+  assertEquals(rpcCalls(db, "mark_target_published").length, 1);
+});
+
+Deno.test("tiktok-publish publish-now: still-processing after 12 polls -> agendado response, destination lock released", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
   db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "feed" }), error: null });
   db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
   gateOn(db);
-  db.queueRpc("record_post_status_change", { data: null, error: null });
-  db.queue("workflow_posts", "update", { data: null, error: null }); // lock timestamp
-  db.queue("workflow_posts", "update", { data: null, error: null }); // init: publish_id/status
-  db.queue("workflow_posts", "update", { data: null, error: null }); // clear lock (still-processing exit)
+  db.queueRpc("begin_target_publish", { data: true, error: null });
 
   const { fn: tiktokFetchStub, calls: fetchCalls } = stubTiktokFetch({
     init: { publish_id: "pub-1" },
-    statusSequence: [{ status: "PROCESSING_UPLOAD" }], // repeats for every poll (stub clamps index)
+    statusSequence: [{ status: "PROCESSING_UPLOAD" }],
   });
 
   const handler = createPublishHandler(makeDeps(db, {
@@ -659,24 +903,22 @@ Deno.test("tiktok-publish publish-now: still-processing after 12 polls -> agenda
 
   const res = await handler(tiktokRequest("publish-now", 1));
   const body = await res.json();
-
   assertEquals(res.status, 200);
   assertEquals(body.ok, true);
   assertEquals(body.status, "agendado");
   assert(typeof body.message === "string" && body.message.length > 0);
+  assertEquals(fetchCalls.filter((c) => c.path === "/post/publish/status/fetch/").length, 12);
+  assertEquals(rpcCalls(db, "mark_target_published").length, 0);
 
-  // init + 12 status-fetch polls
-  const statusFetchCalls = fetchCalls.filter((c) => c.path === "/post/publish/status/fetch/");
-  assertEquals(statusFetchCalls.length, 12);
-
-  assertEquals(rpcCalls(db, "mark_platform_published").length, 0);
-
-  const updates = callsFor(db, "workflow_posts", "update");
-  assertEquals(updates.length, 3);
-  assertEquals(updates[2].payload, { tiktok_publish_processing_at: null });
+  const updates = callsFor(db, "post_targets", "update");
+  assertEquals(updates.length, 2, "init write + lock release");
+  const release = updates[1].payload as Record<string, unknown>;
+  assertEquals(Object.keys(release), ["processing_at", "updated_at"]);
+  assertEquals(release.processing_at, null);
+  assertNoLegacyTikTokWrites(db);
 });
 
-Deno.test("tiktok-publish publish-now: TikTok validation failure -> 422, no status/lock mutation", async () => {
+Deno.test("tiktok-publish publish-now: TikTok validation failure -> 422 before taking the lock", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
   db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok" }), error: null });
@@ -692,5 +934,242 @@ Deno.test("tiktok-publish publish-now: TikTok validation failure -> 422, no stat
   const body = await res.json();
   assertEquals(res.status, 422);
   assertEquals(body.details, ["Post precisa de pelo menos uma mídia."]);
-  assertEquals(rpcCalls(db, "record_post_status_change").length, 0);
+  assertEquals(rpcCalls(db, "begin_target_publish").length, 0);
+  assertEquals(rpcCalls(db, "mark_target_failed").length, 0);
+});
+
+Deno.test("tiktok-publish publish-now: lock held -> 409, never reaches TikTok", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost(), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("begin_target_publish", { data: false, error: null });
+
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    tiktokFetch: (() => {
+      throw new Error("must not call TikTok");
+    }) as never,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 409);
+  assertEquals(await res.json(), { error: "Já está publicando no TikTok." });
+  assertEquals(rpcCalls(db, "mark_target_failed").length, 0);
+});
+
+for (const [identifier, message] of [
+  ["target_not_ready", "O envio anterior para o TikTok falhou. Use Reenviar para tentar de novo."],
+  ["target_published", "Já publicado no TikTok."],
+  ["post_not_publishable", "Post precisa estar aprovado pelo cliente para publicar."],
+] as const) {
+  Deno.test(`tiktok-publish publish-now: begin_target_publish refusal ${identifier} -> 422 pt-BR`, async () => {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("workflow_posts", "select", { data: basePost(), error: null });
+    db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+    gateOn(db);
+    db.queueRpc("begin_target_publish", { data: null, error: { code: "P0422", message: identifier } });
+
+    const handler = createPublishHandler(makeDeps(db, {
+      validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    }));
+    const res = await handler(tiktokRequest("publish-now", 1));
+    assertEquals(res.status, 422);
+    assertEquals(await res.json(), { error: message });
+  });
+}
+
+Deno.test("tiktok-publish publish-now: destination already processando (embed) -> 422 without the RPC", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ status: "agendado", targets_state: ttTarget("processando") }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Já está publicando no TikTok." });
+  assertEquals(rpcCalls(db, "begin_target_publish").length, 0);
+});
+
+Deno.test("tiktok-publish publish-now: post outside aprovado_cliente/agendado -> 422", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ status: "rascunho" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Post precisa estar aprovado pelo cliente para publicar." });
+  assertEquals(rpcCalls(db, "begin_target_publish").length, 0);
+});
+
+for (const outcome of ["replaced", "invalid", "read-error"] as const) {
+  Deno.test(`tiktok-publish publish-now: media changes before claiming (${outcome})`, async () => {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("workflow_posts", "select", { data: basePost(), error: null });
+    db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+    gateOn(db);
+
+    let publishingClaimed = false;
+    // The replacement transaction wins the workflow_posts row lock after preflight
+    // validation, immediately before begin_target_publish takes the destination lock.
+    db.queueRpc("begin_target_publish", () => {
+      publishingClaimed = true;
+      return { data: true, error: null };
+    });
+    db.queue("tiktok_accounts", "select", { data: { username: "creator" }, error: null });
+
+    const { fn: tiktokFetchStub, calls: fetchCalls } = stubTiktokFetch();
+    const handler = createPublishHandler(makeDeps(db, {
+      validateForTikTokScheduling: (() => {
+        if (!publishingClaimed) return Promise.resolve(okTikTokValidation());
+        if (outcome === "read-error") throw new Error("private database read details");
+        if (outcome === "invalid") {
+          return Promise.resolve(okTikTokValidation({
+            ok: false,
+            errors: ["Post precisa de pelo menos uma mídia."],
+            media: [],
+          }));
+        }
+        const replacement = okTikTokValidation();
+        replacement.media![0].r2_key = "img/replacement.jpg";
+        return Promise.resolve(replacement);
+      }) as never,
+      getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+      tiktokFetch: tiktokFetchStub,
+      buildTikTokMediaUrl,
+      sleep: noopSleep,
+    }));
+
+    const res = await handler(tiktokRequest("publish-now", 1));
+    const body = await res.json();
+    if (outcome === "replaced") {
+      assertEquals(res.status, 200);
+      const init = fetchCalls.find((call) => call.path === "/post/publish/content/init/");
+      assert(init);
+      const photoUrl = (init.body as { source_info: { photo_images: string[] } }).source_info.photo_images[0];
+      assertEquals(
+        await verifyTikTokMediaToken(photoUrl.slice(MEDIA_URL_PREFIX.length)),
+        "img/replacement.jpg",
+        "TikTok must receive the replacement file, even though the old R2 object still exists",
+      );
+    } else {
+      assertEquals(res.status, outcome === "invalid" ? 422 : 500);
+      assertEquals(fetchCalls.length, 0, "invalid or unreadable replacement must never reach TikTok");
+      if (outcome === "invalid") assertEquals(body.details, ["Post precisa de pelo menos uma mídia."]);
+      assert(!JSON.stringify(body).includes("private database read details"));
+      const failed = failedCalls(db);
+      assertEquals(failed.length, 1);
+      assertEquals(failed[0].p_retryable, true);
+      assertEquals(failed[0].p_source, "workspace_user");
+      assertEquals(failed[0].p_actor, "actor-1");
+      assert(!String(failed[0].p_error).includes("private database read details"));
+    }
+    assertNoLegacyTikTokWrites(db);
+  });
+}
+
+Deno.test("tiktok-publish publish-now: precheck failure -> 422 with pt-BR message, non-retryable, no init", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "reels" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("begin_target_publish", { data: true, error: null });
+
+  const { fn, calls } = stubTiktokFetch();
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation({
+      media: [{ id: 1, kind: "video", mime_type: "video/mp4", size_bytes: 1, width: 1080, height: 1920,
+        duration_seconds: 750, r2_key: "v.mp4", sort_order: 0, media_lost_at: null }],
+    }))) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: fn,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "ok", privacyLevelOptions: ["SELF_ONLY"], maxVideoPostDurationSec: 600 })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "Este vídeo tem 750s. O máximo permitido para esta conta é 600s." });
+  assertEquals(calls.filter((c) => c.path.endsWith("/init/")).length, 0);
+  assertEquals(failedCalls(db), [{
+    p_post_id: 1,
+    p_platform: "tiktok",
+    p_error: "Este vídeo tem 750s. O máximo permitido para esta conta é 600s.",
+    p_error_code: null,
+    p_retryable: false,
+    p_source: "workspace_user",
+    p_actor: "actor-1",
+  }]);
+  assertNoLegacyTikTokWrites(db);
+});
+
+Deno.test("tiktok-publish publish-now: mapped init error -> 422 pt-BR, non-retryable", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "feed" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("begin_target_publish", { data: true, error: null });
+
+  const initCalls: string[] = [];
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: ((path: string) => {
+      initCalls.push(path);
+      return Promise.reject(new TikTokApiError("unaudited", "unaudited_client_can_only_post_to_private_accounts", false));
+    }) as never,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  const mapped = "Em modo de teste, a conta do TikTok precisa estar privada. Altere no app do TikTok e tente novamente.";
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: mapped });
+  assertEquals(initCalls, ["/post/publish/content/init/"]);
+  const failed = failedCalls(db);
+  assertEquals(failed.length, 1);
+  assertEquals(failed[0].p_error, mapped);
+  assertEquals(failed[0].p_retryable, false);
+});
+
+Deno.test("tiktok-publish publish-now: unmapped init error stays retryable and returns the generic 500", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", tipo: "feed" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queueRpc("begin_target_publish", { data: true, error: null });
+
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
+    getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+    tiktokFetch: (() => Promise.reject(new Error("socket hang up"))) as never,
+    fetchCreatorCheck: (() => Promise.resolve({ kind: "skip" })) as never,
+    buildTikTokMediaUrl,
+    sleep: noopSleep,
+  }));
+
+  const res = await handler(tiktokRequest("publish-now", 1));
+  assertEquals(res.status, 500);
+  const failed = failedCalls(db);
+  assertEquals(failed.length, 1);
+  assertEquals(failed[0].p_error, "socket hang up");
+  assertEquals(failed[0].p_retryable, true);
+  assertNoLegacyTikTokWrites(db);
 });

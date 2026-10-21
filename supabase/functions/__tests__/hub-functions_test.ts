@@ -167,6 +167,232 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   assertEquals(body.posts[0].cover_media.playback, null);
 });
 
+Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permalink (P4)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Publicado no TikTok",
+        tipo: "reels",
+        status: "postado",
+        ordem: 0,
+        scheduled_at: "2026-04-16T10:00:00.000Z",
+        published_at: "2026-04-16T10:01:00.000Z",
+        platform: "both",
+        workflow_id: 7,
+        workflows: { titulo: "Calendário Abril" },
+        targets_state: [
+          { platform: "instagram", permalink: "https://instagram.com/p/x" },
+          { platform: "tiktok", permalink: "https://www.tiktok.com/@marca/video/123" },
+        ],
+      },
+      {
+        id: 100,
+        titulo: "Só Instagram",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 1,
+        scheduled_at: "2026-04-20T10:00:00.000Z",
+        platform: "instagram",
+        workflow_id: 7,
+        workflows: { titulo: "Calendário Abril" },
+        targets_state: [{ platform: "instagram", permalink: null }],
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  const byId = new Map((body.posts as Array<Record<string, unknown>>).map((p) => [p.id, p]));
+  assertEquals(byId.get(99)?.tiktok_post_url, "https://www.tiktok.com/@marca/video/123");
+  assertEquals(byId.get(100)?.tiktok_post_url, null);
+  assert(!("targets_state" in byId.get(99)!), "the embed must not leak into the response");
+
+  const postsSelect = db.calls.find((c) =>
+    c.table === "workflow_posts" && c.operation === "select" && String(c.selectArgs[0]?.[0]).includes("titulo")
+  )!;
+  const select = String(postsSelect.selectArgs[0][0]);
+  assert(select.includes("targets_state:post_targets(platform, permalink)"), select);
+  assert(!/(^|[ ,])tiktok_post_url/.test(select), "the frozen column is no longer selected");
+});
+
+Deno.test("hub-posts selects ig_collaborators but never the refused list", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Post",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        scheduled_at: "2026-04-20T10:00:00.000Z",
+        platform: "instagram",
+        workflow_id: 7,
+        ig_collaborators: ["dra.julia", "clinicaviva"],
+        workflows: { titulo: "Calendário Abril" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+
+  const postsSelect = db.calls.find((c) =>
+    c.table === "workflow_posts" && c.operation === "select" && String(c.selectArgs[0]?.[0]).includes("titulo")
+  )!;
+  const select = String(postsSelect.selectArgs[0][0]);
+  assert(/(^|[ ,])ig_collaborators(,|$)/.test(select), select);
+  assert(!select.includes("ig_collaborators_refused"), select);
+  const first = (body.posts as Array<Record<string, unknown>>)[0];
+  assertEquals(first.ig_collaborators, ["dra.julia", "clinicaviva"]);
+});
+
+Deno.test("hub-posts cover_media is the first slide by sort_order, not a stale is_cover flag", async () => {
+  // Instagram shows a carousel's first slide in the feed. A slide moved to the
+  // front keeps is_cover=false while the old first slide keeps the flag.
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Carrossel",
+        tipo: "carrossel",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo_plain: "",
+        scheduled_at: null,
+        workflow_id: 7,
+        workflows: { titulo: "Calendário Abril" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  const file = (id: number, key: string) => ({
+    id,
+    kind: "image",
+    mime_type: "image/jpeg",
+    r2_key: key,
+    thumbnail_r2_key: null,
+    width: 1080,
+    height: 1350,
+    duration_seconds: null,
+    blur_data_url: null,
+  });
+  db.queue("post_file_links", "select", {
+    data: [
+      { id: 2, post_id: 99, is_cover: false, sort_order: 0, files: file(20, "contas/1/first.jpg") },
+      { id: 1, post_id: 99, is_cover: true, sort_order: 1, files: file(10, "contas/1/old-cover.jpg") },
+    ],
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts[0].cover_media.url, "https://signed.mesaas.com/contas/1/first.jpg");
+});
+
+Deno.test("hub-posts never ships team-authored mensagem rows in postApprovals", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 99, titulo: "Post principal", tipo: "feed", status: "enviado_cliente", ordem: 0, conteudo_plain: "x", scheduled_at: "2026-04-20T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", {
+    data: [
+      // internal note from the CRM Mensagens page (replyToPostApproval): must be dropped
+      { id: 1, post_id: 99, action: "mensagem", comentario: "Ana, o CTA está fraco", is_workspace_user: true, created_at: "2026-04-10T10:00:00.000Z" },
+      { id: 2, post_id: 99, action: "correcao", comentario: "Trocar a foto", is_workspace_user: false, created_at: "2026-04-11T10:00:00.000Z" },
+      { id: 3, post_id: 99, action: "mensagem", comentario: "Ficou ótimo", is_workspace_user: false, created_at: "2026-04-12T10:00:00.000Z" },
+      // team-authored approval rows do not exist in practice (hub-approve hardcodes false) but are not messages: kept
+      { id: 4, post_id: 99, action: "aprovado", comentario: null, is_workspace_user: true, created_at: "2026-04-13T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.postApprovals.map((a: { id: number }) => a.id), [2, 3, 4]);
+  assert(
+    !body.postApprovals.some((a: { action: string; is_workspace_user: boolean }) => a.action === "mensagem" && a.is_workspace_user),
+    "team mensagem rows must not leave hub-posts",
+  );
+});
+
 Deno.test("hub-posts omits signed URLs and returns media_lost_at for a permanently lost file", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {
@@ -372,6 +598,651 @@ Deno.test("hub-posts returns playback: null when signPlayback is not configured 
   assertEquals(body.posts[0].cover_media.playback, null);
 });
 
+function queueHubPostsBase(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  posts: Record<string, unknown>[],
+) {
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: posts, error: null });
+}
+
+function hubPostsHandlerFor(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
+  });
+}
+
+const basePost = {
+  titulo: "P", tipo: "feed", ordem: 0, conteudo_plain: "x",
+  scheduled_at: "2026-09-30T10:00:00.000Z", platform: "instagram",
+  workflow_id: 7, workflows: { titulo: "Setembro" },
+};
+
+Deno.test("hub-posts flags a re-armed rascunho post as em_producao and drops a never-sent draft", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [
+    { ...basePost, id: 1, status: "rascunho" },
+    { ...basePost, id: 2, status: "rascunho" },
+    { ...basePost, id: 3, status: "enviado_cliente" },
+  ]);
+  db.queue("post_status_events", "select", {
+    data: [
+      { id: 1, post_id: 1, from_status: "aprovado_interno", to_status: "enviado_cliente", created_at: "2026-09-20T10:00:00.000Z" },
+      { id: 2, post_id: 1, from_status: "aprovado_cliente", to_status: "rascunho", created_at: "2026-09-21T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  const byId = Object.fromEntries(body.posts.map((p: { id: number; em_producao: unknown }) => [p.id, p.em_producao]));
+  assertEquals(byId, { 1: "proxima_aprovacao", 3: null });
+
+  const call = db.calls.find((c) => c.table === "post_status_events");
+  assert(call, "status events must be queried");
+  const inPostIds = call!.modifiers.find((m) => m.method === "in" && m.args[0] === "post_id");
+  assertEquals(inPostIds?.args[1], [1, 2], "only posts currently in an internal status are looked up");
+  assert(
+    call!.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1"),
+    "events are scoped to the token's workspace",
+  );
+});
+
+Deno.test("hub-posts skips the status-events query when no post is internal", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 3, status: "enviado_cliente" }]);
+
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(body.posts[0].em_producao, null);
+  assertEquals(db.calls.some((c) => c.table === "post_status_events"), false);
+});
+
+Deno.test("hub-posts hides internal posts when the status-events query fails", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 1, status: "rascunho" }]);
+  db.queue("post_status_events", "select", { data: null, error: { message: "boom" } });
+
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts, []);
+});
+
+Deno.test("hub-posts paginates the post_status_events lookup past a full page", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 1, status: "rascunho" }]);
+  db.queue("post_status_events", "select", {
+    data: [
+      { id: 1, post_id: 1, from_status: "aprovado_interno", to_status: "enviado_cliente", created_at: "2026-09-20T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+  db.queue("post_status_events", "select", {
+    data: [
+      { id: 2, post_id: 1, from_status: "aprovado_cliente", to_status: "rascunho", created_at: "2026-09-21T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts[0].em_producao, "proxima_aprovacao");
+
+  const statusEventCalls = db.calls.filter((c) => c.table === "post_status_events");
+  // fetchAllRows advances by rows received and stops only on an empty page:
+  // the two queued 1-row pages are followed by a third, unqueued call that
+  // the mock answers with [] (its select default), which is what ends the loop.
+  assertEquals(statusEventCalls.length, 3, "fetchAllRows must page until it sees an empty page");
+  assert(
+    statusEventCalls.every((c) => c.modifiers.some((m) => m.method === "range")),
+    "every post_status_events call must use .range()",
+  );
+});
+
+Deno.test("hub-posts never returns a never-sent draft or anything tied to it", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [
+    { ...basePost, id: 1, status: "enviado_cliente", workflow_id: 7 },
+    {
+      ...basePost,
+      id: 2,
+      status: "rascunho",
+      workflow_id: 8,
+      workflows: { titulo: "Só rascunho" },
+    },
+  ]);
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // No enviado_cliente event for post 2: it was never sent, so it is not em produção.
+  db.queue("post_status_events", "select", { data: [], error: null });
+  db.queue("post_approvals", "select", {
+    data: [
+      {
+        id: 10,
+        post_id: 1,
+        action: "aprovado",
+        comentario: null,
+        is_workspace_user: false,
+        created_at: "2026-09-01T10:00:00.000Z",
+      },
+      {
+        id: 11,
+        post_id: 2,
+        action: "correcao",
+        comentario: "x",
+        is_workspace_user: false,
+        created_at: "2026-09-01T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_property_values", "select", {
+    data: [
+      {
+        post_id: 1,
+        value: "a",
+        template_property_definitions: {
+          name: "P",
+          type: "text",
+          config: {},
+          portal_visible: true,
+          display_order: 0,
+        },
+      },
+      {
+        post_id: 2,
+        value: "b",
+        template_property_definitions: {
+          name: "P",
+          type: "text",
+          config: {},
+          portal_visible: true,
+          display_order: 0,
+        },
+      },
+    ],
+    error: null,
+  });
+  db.queue("workflow_select_options", "select", {
+    data: [
+      { workflow_id: 7, property_definition_id: 1, option_id: "o1", label: "A", color: "#000" },
+      { workflow_id: 8, property_definition_id: 1, option_id: "o2", label: "B", color: "#000" },
+    ],
+    error: null,
+  });
+  db.queue("post_file_links", "select", {
+    data: [
+      {
+        id: 100,
+        post_id: 1,
+        is_cover: false,
+        sort_order: 0,
+        files: {
+          id: 1,
+          kind: "image",
+          mime_type: "image/png",
+          r2_key: "contas/conta-1/a.png",
+          thumbnail_r2_key: null,
+          width: 1,
+          height: 1,
+          duration_seconds: null,
+          blur_data_url: null,
+          stream_uid: null,
+          stream_status: null,
+          media_lost_at: null,
+        },
+      },
+      {
+        id: 101,
+        post_id: 2,
+        is_cover: false,
+        sort_order: 0,
+        files: {
+          id: 2,
+          kind: "image",
+          mime_type: "image/png",
+          r2_key: "contas/conta-1/draft.png",
+          thumbnail_r2_key: null,
+          width: 1,
+          height: 1,
+          duration_seconds: null,
+          blur_data_url: null,
+          stream_uid: null,
+          stream_status: null,
+          media_lost_at: null,
+        },
+      },
+    ],
+    error: null,
+  });
+  // Workflow 8 (only the draft) has two open approval etapas: suspended, but must not leak.
+  db.queue("workflow_etapas", "select", {
+    data: [
+      { workflow_id: 8, tipo: "aprovacao_cliente", status: "ativo" },
+      { workflow_id: 8, tipo: "aprovacao_cliente", status: "pendente" },
+    ],
+    error: null,
+  });
+
+  const signed: string[] = [];
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => {
+      signed.push(key);
+      return `https://signed/${key}`;
+    },
+    rateLimit: async () => true,
+  });
+  const body = await readJson(
+    await handler(new Request("https://example.test/hub-posts?token=hub-123")),
+  );
+
+  assertEquals(
+    body.posts.map((p: { id: number }) => p.id),
+    [1],
+  );
+  assertEquals(
+    body.postApprovals.map((a: { id: number }) => a.id),
+    [10],
+  );
+  assertEquals(
+    body.propertyValues.map((v: { post_id: number }) => v.post_id),
+    [1],
+  );
+  assertEquals(
+    body.workflowSelectOptions.map((o: { workflow_id: number }) => o.workflow_id),
+    [7],
+  );
+  assertEquals(body.autoPublishSuspendedWorkflowIds, []);
+  assertEquals(signed, ["contas/conta-1/a.png"], "a dropped draft's media is never signed");
+});
+
+Deno.test(
+  "hub-posts drops a suspended avulso id when the avulso is a never-sent draft",
+  async () => {
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, [
+      { ...basePost, id: 1, status: "enviado_cliente", workflow_id: null, workflows: null },
+      { ...basePost, id: 2, status: "rascunho", workflow_id: null, workflows: null },
+    ]);
+    db.queue("instagram_accounts", "select", { data: null, error: null });
+    db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+    db.queue("post_status_events", "select", { data: [], error: null });
+    db.queue("post_processes", "select", {
+      data: [
+        { id: 10, post_id: 1 },
+        { id: 11, post_id: 2 },
+      ],
+      error: null,
+    });
+    db.queue("post_process_steps", "select", {
+      data: [
+        { process_id: 10, estado: "ativo" },
+        { process_id: 10, estado: "pendente" },
+        { process_id: 11, estado: "ativo" },
+        { process_id: 11, estado: "pendente" },
+      ],
+      error: null,
+    });
+
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123")),
+    );
+    assertEquals(body.autoPublishSuspendedPostIds, [1]);
+  },
+);
+
+Deno.test(
+  "hub-posts pages approvals, media, property values and suggestions with a total order",
+  async () => {
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, [{ ...basePost, id: 1, status: "enviado_cliente" }]);
+    db.queue(
+      "post_approvals",
+      "select",
+      {
+        data: [
+          {
+            id: 10,
+            post_id: 1,
+            action: "aprovado",
+            comentario: null,
+            is_workspace_user: false,
+            created_at: "2026-09-01T10:00:00.000Z",
+          },
+        ],
+        error: null,
+      },
+      {
+        data: [
+          {
+            id: 11,
+            post_id: 1,
+            action: "correcao",
+            comentario: "y",
+            is_workspace_user: false,
+            created_at: "2026-09-02T10:00:00.000Z",
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123")),
+    );
+
+    assertEquals(
+      body.postApprovals.map((a: { id: number }) => a.id),
+      [10, 11],
+    );
+    // Unqueued tables answer [] on the first page, which already ends fetchAllRows (one call);
+    // what matters for them is .range() and a total order ending in id.
+    for (const table of [
+      "post_approvals",
+      "post_file_links",
+      "post_property_values",
+      "post_edit_suggestions",
+    ]) {
+      const calls = db.calls.filter((c) => c.table === table);
+      assert(calls.length >= 1, `${table} must be queried`);
+      assert(
+        calls.every((c) => c.modifiers.some((m) => m.method === "range")),
+        `${table} must use .range()`,
+      );
+      const orders = calls[0].modifiers.filter((m) => m.method === "order").map((m) => m.args[0]);
+      assertEquals(orders[orders.length - 1], "id", `${table} order must end in id`);
+    }
+    assertEquals(
+      db.calls.filter((c) => c.table === "post_approvals").length,
+      3,
+      "two queued pages, then the empty page that ends the loop",
+    );
+  },
+);
+
+Deno.test("hub-posts keeps going with [] when a paged lookup errors", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 1, status: "enviado_cliente" }]);
+  db.queue("post_approvals", "select", { data: null, error: { message: "boom" } });
+
+  const response = await hubPostsHandlerFor(db)(
+    new Request("https://example.test/hub-posts?token=hub-123"),
+  );
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+  assertEquals(body.postApprovals, []);
+  assertEquals(body.posts.length, 1);
+});
+
+const CUTOFF = "2026-01-17T00:00:00.000Z";
+const orArgs = (db: ReturnType<typeof createSupabaseQueryMock>, nth = 0) =>
+  db.calls
+    .filter((c) => c.table === "workflow_posts")
+    [nth].modifiers.filter((m) => m.method === "or")
+    .map((m) => m.args[0]);
+
+Deno.test(
+  "hub-posts shell: bounded filter, older check after the posts query, cursor when older exist",
+  async () => {
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, [{ ...basePost, id: 1, status: "enviado_cliente" }]);
+    db.queue("workflow_posts", "select", { data: [{ id: 77 }], error: null }); // older check
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123")),
+    );
+
+    assertEquals(orArgs(db), [
+      `status.neq.postado,published_at.gte.${CUTOFF},scheduled_at.gte.${CUTOFF}`,
+    ]);
+    const older = db.calls.filter((c) => c.table === "workflow_posts")[1];
+    assert(
+      older.modifiers.some(
+        (m) => m.method === "eq" && m.args[0] === "status" && m.args[1] === "postado",
+      ),
+    );
+    assert(
+      older.modifiers.some(
+        (m) => m.method === "lt" && m.args[0] === "published_at" && m.args[1] === CUTOFF,
+      ),
+    );
+    assert(older.modifiers.some((m) => m.method === "limit" && m.args[0] === 1));
+    assert(!older.modifiers.some((m) => m.method === "maybeSingle" || m.method === "single"));
+    assertEquals(body.olderCursor, `${CUTOFF}|0`);
+    assertEquals(body.historyCutoff, CUTOFF);
+    assertEquals("nextCursor" in body, false);
+  },
+);
+
+Deno.test(
+  "hub-posts shell: no older posts means null cursor (an unqueued older check returns [])",
+  async () => {
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, [{ ...basePost, id: 1, status: "enviado_cliente" }]);
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123")),
+    );
+    assertEquals(body.olderCursor, null);
+    assertEquals(body.historyCutoff, null);
+  },
+);
+
+Deno.test(
+  "hub-posts history: postado older than the cursor, 30 per page, cursor verbatim",
+  async () => {
+    const ts = "2026-01-10T10:00:00.123456+00:00";
+    const rows = Array.from({ length: 31 }, (_, i) => ({
+      ...basePost,
+      id: 500 - i,
+      status: "postado",
+      published_at: `2026-01-0${(i % 9) + 1}T10:00:00.12345${i % 10}+00:00`,
+    }));
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, rows);
+    const before = encodeURIComponent(`${ts}|900`);
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(
+        new Request(`https://example.test/hub-posts?token=hub-123&before=${before}`),
+      ),
+    );
+
+    const call = db.calls.filter((c) => c.table === "workflow_posts")[0];
+    assertEquals(orArgs(db), [`published_at.lt.${ts},and(published_at.eq.${ts},id.lt.900)`]);
+    assert(
+      call.modifiers.some(
+        (m) => m.method === "eq" && m.args[0] === "status" && m.args[1] === "postado",
+      ),
+    );
+    assert(call.modifiers.some((m) => m.method === "limit" && m.args[0] === 31));
+    assertEquals(
+      call.modifiers.filter((m) => m.method === "order").map((m) => m.args[0]),
+      ["published_at", "id"],
+    );
+    assertEquals(body.posts.length, 30);
+    assertEquals(body.nextCursor, `${rows[29].published_at}|${rows[29].id}`);
+    assertEquals(
+      db.calls.filter((c) => c.table === "workflow_posts").length,
+      1,
+      "no older check in history mode",
+    );
+    assertEquals("olderCursor" in body, false);
+  },
+);
+
+Deno.test("hub-posts history: last page has nextCursor null", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [
+    { ...basePost, id: 3, status: "postado", published_at: "2026-01-01T10:00:00+00:00" },
+  ]);
+  const before = encodeURIComponent("2026-01-17T00:00:00.000Z|0");
+  const body = await readJson(
+    await hubPostsHandlerFor(db)(
+      new Request(`https://example.test/hub-posts?token=hub-123&before=${before}`),
+    ),
+  );
+  assertEquals(body.posts.length, 1);
+  assertEquals(body.nextCursor, null);
+});
+
+Deno.test("hub-posts range: postado by scheduled_at in [from, to)", async () => {
+  const db = createSupabaseQueryMock();
+  // Published 60 days after its scheduled date: still in its scheduled month.
+  queueHubPostsBase(db, [
+    {
+      ...basePost,
+      id: 4,
+      status: "postado",
+      scheduled_at: "2025-11-10T12:00:00.000Z",
+      published_at: "2026-01-09T12:00:00+00:00",
+    },
+  ]);
+  const url =
+    "https://example.test/hub-posts?token=hub-123&from=2025-11-01T03:00:00.000Z&to=2025-12-01T03:00:00.000Z";
+  const body = await readJson(await hubPostsHandlerFor(db)(new Request(url)));
+
+  const call = db.calls.filter((c) => c.table === "workflow_posts")[0];
+  assert(
+    call.modifiers.some(
+      (m) =>
+        m.method === "gte" &&
+        m.args[0] === "scheduled_at" &&
+        m.args[1] === "2025-11-01T03:00:00.000Z",
+    ),
+  );
+  assert(
+    call.modifiers.some(
+      (m) =>
+        m.method === "lt" &&
+        m.args[0] === "scheduled_at" &&
+        m.args[1] === "2025-12-01T03:00:00.000Z",
+    ),
+  );
+  assert(
+    call.modifiers.some(
+      (m) => m.method === "eq" && m.args[0] === "status" && m.args[1] === "postado",
+    ),
+  );
+  assertEquals(
+    body.posts.map((p: { id: number }) => p.id),
+    [4],
+  );
+  assertEquals("olderCursor" in body || "nextCursor" in body, false);
+});
+
+Deno.test("hub-posts post mode: returns a visible post, scoped to the token's client", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 5061, status: "postado" }]);
+  const body = await readJson(
+    await hubPostsHandlerFor(db)(
+      new Request("https://example.test/hub-posts?token=hub-123&post_id=5061"),
+    ),
+  );
+  const call = db.calls.filter((c) => c.table === "workflow_posts")[0];
+  assert(call.modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === 5061));
+  assert(
+    call.modifiers.some((m) => m.method === "eq" && m.args[0] === "cliente_id" && m.args[1] === 14),
+  );
+  assert(
+    call.modifiers.some(
+      (m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1",
+    ),
+  );
+  assertEquals(
+    body.posts.map((p: { id: number }) => p.id),
+    [5061],
+  );
+});
+
+Deno.test("hub-posts post mode: an em-produção post comes back", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 9, status: "rascunho" }]);
+  db.queue("post_status_events", "select", {
+    data: [
+      {
+        id: 1,
+        post_id: 9,
+        from_status: "aprovado_interno",
+        to_status: "enviado_cliente",
+        created_at: "2026-03-01T10:00:00.000Z",
+      },
+      {
+        id: 2,
+        post_id: 9,
+        from_status: "correcao_cliente",
+        to_status: "rascunho",
+        created_at: "2026-03-02T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+  const response = await hubPostsHandlerFor(db)(
+    new Request("https://example.test/hub-posts?token=hub-123&post_id=9"),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).posts[0].em_producao, "correcao");
+});
+
+Deno.test(
+  "hub-posts post mode: a never-sent draft, or a post outside the client, is 404",
+  async () => {
+    const draftDb = createSupabaseQueryMock();
+    queueHubPostsBase(draftDb, [{ ...basePost, id: 9, status: "rascunho" }]);
+    const draft = await hubPostsHandlerFor(draftDb)(
+      new Request("https://example.test/hub-posts?token=hub-123&post_id=9"),
+    );
+    assertEquals(draft.status, 404);
+    assertEquals(await readJson(draft), { error: "Post não encontrado." });
+
+    const otherDb = createSupabaseQueryMock();
+    queueHubPostsBase(otherDb, []); // the conta/cliente filter matched nothing
+    const other = await hubPostsHandlerFor(otherDb)(
+      new Request("https://example.test/hub-posts?token=hub-123&post_id=1234"),
+    );
+    assertEquals(other.status, 404);
+  },
+);
+
+Deno.test(
+  "hub-posts rejects malformed or combined modes with 400 before reading posts",
+  async () => {
+    for (const qs of [
+      "before=2026-01-01T00:00:00Z,status.neq.x|1",
+      "post_id=abc",
+      "post_id=1&before=2026-01-17T00:00:00.000Z|0",
+      "from=2026-01-01T00:00:00.000Z&to=2026-03-01T00:00:00.000Z",
+    ]) {
+      const db = createSupabaseQueryMock();
+      queueHubPostsBase(db, []);
+      const response = await hubPostsHandlerFor(db)(
+        new Request(`https://example.test/hub-posts?token=hub-123&${qs.replace("|", "%7C")}`),
+      );
+      assertEquals(response.status, 400, qs);
+      assertEquals(await readJson(response), { error: "Parâmetros inválidos." });
+      assertEquals(
+        db.calls.some((c) => c.table === "workflow_posts"),
+        false,
+        qs,
+      );
+    }
+  },
+);
+
 Deno.test("hub-posts rejects missing tokens", async () => {
   const handler = createHubPostsHandler({
     buildCorsHeaders,
@@ -540,13 +1411,16 @@ Deno.test("hub-approve calls notification RPC with comentario for corrections", 
 
   const response = await handler(new Request("https://example.test/hub-approve", {
     method: "POST",
-    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem" }),
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem", motivo: "midia" }),
   }));
 
   assertEquals(response.status, 200);
   const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
   assert(rpcCall, "notification RPC should be called for corrections");
   assertEquals(rpcCall.payload, { p_post_id: 99, p_action: "correcao", p_comentario: "Trocar imagem" });
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc, "record_client_approval should be called");
+  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, "midia");
 });
 
 Deno.test("hub-approve rejects invalid approval actions", async () => {
@@ -600,6 +1474,177 @@ function queueValidateForScheduling(
     error: null,
   });
 }
+
+function hubApproveDbForPost(status = "enviado_cliente") {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  return db;
+}
+
+function hubApproveHandlerFor(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    rateLimit: async () => true,
+  });
+}
+
+Deno.test("hub-approve accepts a correcao without motivo and sends p_motivo: null", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem" }),
+  }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc, "record_client_approval should be called");
+  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
+});
+
+Deno.test("hub-approve accepts a correcao with no comentario and sends p_comentario: null", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", motivo: "midia" }),
+  }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc, "record_client_approval should be called");
+  assertEquals((approvalRpc.payload as { p_comentario: unknown }).p_comentario, null);
+  const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
+  assert(notif);
+  assertEquals((notif.payload as { p_comentario: unknown }).p_comentario, null);
+});
+
+Deno.test("hub-approve rejects a correcao whose motivo is outside the four allowed values", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "x", motivo: "preco" }),
+  }));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-approve rejects a correcao comentario longer than 4000 characters", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "a".repeat(4001), motivo: "midia" }),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Comentário muito longo.");
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+});
+
+Deno.test("hub-approve rejects an aprovado comentario longer than 4000 characters", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: "a".repeat(4001) }),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Comentário muito longo.");
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+});
+
+Deno.test("hub-approve trims an aprovado comentario and nulls a blank one", async () => {
+  for (const [input, expected] of [["  ótimo  ", "ótimo"], ["   ", null]] as const) {
+    const db = hubApproveDbForPost();
+    db.queue("workflow_posts", "update", { data: null, error: null });
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: input }),
+    }));
+    assertEquals(response.status, 200);
+    const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+    assert(rpc);
+    assertEquals((rpc.payload as { p_comentario: unknown }).p_comentario, expected);
+  }
+});
+
+Deno.test("hub-approve sends p_motivo: null for an approval", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", motivo: "legenda" }),
+  }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc);
+  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
+});
+
+Deno.test("hub-approve rejects an empty or whitespace-only mensagem with 400", async () => {
+  for (const comentario of [undefined, "", "   \n"]) {
+    const db = hubApproveDbForPost("aprovado_cliente");
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario }),
+    }));
+    assertEquals(response.status, 400);
+    assertEquals((await readJson(response)).error, "Escreva um comentário.");
+    assert(!db.calls.some((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert"));
+  }
+});
+
+Deno.test("hub-approve rejects a mensagem longer than 4000 characters", async () => {
+  const db = hubApproveDbForPost("aprovado_cliente");
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario: "a".repeat(4001) }),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Comentário muito longo.");
+});
+
+Deno.test("hub-approve stores a trimmed mensagem in any client-visible status and notifies with the trimmed text", async () => {
+  const db = hubApproveDbForPost("postado");
+  db.queue("post_approvals", "insert", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario: "  Ficou ótimo!  " }),
+  }));
+  assertEquals(response.status, 200);
+  const insert = db.calls.find((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert");
+  assert(insert);
+  assertEquals(insert.payload, { post_id: 99, token: "hub-123", action: "mensagem", comentario: "Ficou ótimo!", is_workspace_user: false });
+  const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
+  assert(notif);
+  assertEquals(notif.payload, { p_post_id: 99, p_action: "mensagem", p_comentario: "Ficou ótimo!" });
+});
+
+Deno.test("hub-approve returns a generic message when the mensagem insert fails", async () => {
+  const db = hubApproveDbForPost("aprovado_cliente");
+  db.queue("post_approvals", "insert", { data: null, error: { message: "duplicate key value violates unique constraint" } });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario: "oi" }),
+  }));
+  assertEquals(response.status, 500);
+  assertEquals((await readJson(response)).error, "Erro ao registrar comentário.");
+});
+
+Deno.test("hub-approve rejects a mensagem on a post the client has not received yet and never inserts", async () => {
+  for (const status of ["rascunho", "revisao_interna", "aprovado_interno"]) {
+    const db = hubApproveDbForPost(status);
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario: "Posso ver esse post?" }),
+    }));
+    assertEquals(response.status, 400, `status ${status}`);
+    assertEquals((await readJson(response)).error, "Post ainda não foi enviado para o cliente.");
+    assert(!db.calls.some((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert"));
+    assert(!db.calls.some((c: { table: string }) => c.table === "rpc:create_post_approval_notification"));
+  }
+});
 
 Deno.test("hub-approve auto-schedules an approved express post despite the missing date", async () => {
   const db = createSupabaseQueryMock();
@@ -753,6 +1798,10 @@ Deno.test("hub-approve approves an avulso post (workflow_id null) via cliente_id
     error: null,
   });
   db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // No active process: this is the only branch that runs in production today
+  // (phase 2 writes no post_processes rows yet), so it must be exercised
+  // explicitly rather than falling through the mock's unqueued-select default.
+  db.queue("post_processes", "select", { data: null, error: null });
   // Same skipDateCheck express fixture as the attached-post case above; an avulso
   // post has no workflow_id but authorizes and auto-publishes identically.
   queueValidateForScheduling(db, {
@@ -936,8 +1985,8 @@ Deno.test("hub-posts suspends every workflow when the etapa lookup errors", asyn
   // below must actually carry workflow_id 7 / 8 for the suspend check to run.
   db.queue("workflow_posts", "select", {
     data: [
-      { id: 1, workflow_id: 7, workflows: null },
-      { id: 2, workflow_id: 8, workflows: null },
+      { id: 1, status: "enviado_cliente", workflow_id: 7, workflows: null },
+      { id: 2, status: "enviado_cliente", workflow_id: 8, workflows: null },
     ],
     error: null,
   });
@@ -970,8 +2019,8 @@ Deno.test("hub-posts flags workflows whose auto-publish is suspended by a later 
   });
   db.queue("workflow_posts", "select", {
     data: [
-      { id: 1, workflow_id: 7, workflows: null },
-      { id: 2, workflow_id: 8, workflows: null },
+      { id: 1, status: "enviado_cliente", workflow_id: 7, workflows: null },
+      { id: 2, status: "enviado_cliente", workflow_id: 8, workflows: null },
     ],
     error: null,
   });
@@ -1031,6 +2080,56 @@ Deno.test("hub-posts skips the etapa lookup when auto-publish is off", async () 
   assertEquals(body.autoPublishSuspendedWorkflowIds, []);
   const etapaCall = db.calls.find((c: { table: string }) => c.table === "workflow_etapas");
   assertEquals(etapaCall, undefined);
+});
+
+Deno.test("hub-posts lista avulsos com processo individual suspenso por outra aprovação adiante", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 1, status: "enviado_cliente", workflow_id: null, workflows: null },
+      { id: 2, status: "enviado_cliente", workflow_id: null, workflows: null },
+      { id: 3, status: "enviado_cliente", workflow_id: null, workflows: null },
+    ],
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: [{ id: 10, post_id: 1 }, { id: 11, post_id: 2 }], error: null });
+  db.queue("post_process_steps", "select", {
+    data: [
+      { process_id: 10, estado: "ativo" },
+      { process_id: 10, estado: "pendente" },
+      { process_id: 11, estado: "ativo" },
+      { process_id: 11, estado: "herdado" },
+    ],
+    error: null,
+  });
+  const handler = createHubPostsHandler({
+    buildCorsHeaders, createDb: () => db as never, now,
+    signGetUrl: async (key: string) => `https://cdn.test/${key}`, rateLimit: async () => true,
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+  assertEquals(body.autoPublishSuspendedWorkflowIds, []);
+  assertEquals(body.autoPublishSuspendedPostIds, [1]);
+});
+
+Deno.test("hub-posts suspende todos os avulsos com processo quando a consulta das etapas erra", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", { data: [{ id: 1, status: "enviado_cliente", workflow_id: null, workflows: null }], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: [{ id: 10, post_id: 1 }], error: null });
+  db.queue("post_process_steps", "select", { data: null, error: { message: "db offline" } });
+  const handler = createHubPostsHandler({
+    buildCorsHeaders, createDb: () => db as never, now,
+    signGetUrl: async (key: string) => `https://cdn.test/${key}`, rateLimit: async () => true,
+  });
+  const body = await readJson(await handler(new Request("https://example.test/hub-posts?token=hub-123")));
+  assertEquals(body.autoPublishSuspendedPostIds, [1]);
 });
 
 Deno.test("hub-brand returns client brand assets from the same workspace", async () => {
@@ -1101,6 +2200,33 @@ Deno.test("hub-pages lists client pages and strips joined workspace metadata", a
 
   assertEquals(response.status, 200);
   assertEquals(body.pages, [{ id: "page-1", title: "Boas-vindas", display_order: 0 }]);
+});
+
+Deno.test("hub-pages orders by display_order and breaks ties by created_at", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { id: 14 }, error: null });
+  db.queue("hub_pages", "select", {
+    data: [{ id: "page-1", title: "Boas-vindas", display_order: 0, clientes: { conta_id: "conta-1" } }],
+    error: null,
+  });
+
+  const handler = createHubPagesHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    rateLimit: async () => true,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-pages?token=hub-123"));
+  assertEquals(response.status, 200);
+
+  const listCall = db.calls.find((c) => c.table === "hub_pages" && c.operation === "select");
+  const orderArgs = listCall?.modifiers.filter((m) => m.method === "order").map((m) => m.args[0]);
+  assertEquals(orderArgs, ["display_order", "created_at"]);
 });
 
 Deno.test("hub-pages returns 404 when a requested page does not exist", async () => {
@@ -1194,6 +2320,7 @@ Deno.test("hub-ideias creates a new idea with filtered links", async () => {
     createDb: () => db as never,
     now,
     rateLimit: async () => true,
+    transcribe: null,
   });
 
   const response = await handler(new Request("https://example.test/hub-ideias", {
@@ -1227,6 +2354,7 @@ Deno.test("hub-ideias blocks editing locked ideas", async () => {
     createDb: () => db as never,
     now,
     rateLimit: async () => true,
+    transcribe: null,
   });
 
   const response = await handler(new Request("https://example.test/hub-ideias/34a7c1ef-9a2e-4707-a833-cb8f871a0df8?token=hub-123", {
@@ -1812,10 +2940,14 @@ Deno.test("hub-ideias rejects POSTs missing titulo with 400", async () => {
   assertEquals(response.status, 400);
 });
 
-Deno.test("hub-ideias rejects POSTs missing descricao with 400", async () => {
+Deno.test("hub-ideias accepts a missing descricao (audio-only ideia, uploaded in a follow-up call)", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {
     data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
+    error: null,
+  });
+  db.queue("ideias", "insert", {
+    data: { id: "34a7c1ef-9a2e-4707-a833-cb8f871a0df8", titulo: "só o título", descricao: null },
     error: null,
   });
 
@@ -1829,7 +2961,7 @@ Deno.test("hub-ideias rejects POSTs missing descricao with 400", async () => {
     method: "POST",
     body: JSON.stringify({ token: "hub-123", titulo: "só o título" }),
   }));
-  assertEquals(response.status, 400);
+  assertEquals(response.status, 201);
 });
 
 Deno.test("hub-ideias returns 500 when the insert reports an error", async () => {
@@ -2159,9 +3291,113 @@ Deno.test("hub-posts: skips R2 keys not found in files table", async () => {
   assertEquals(signedKeys.length, 0);
 });
 
+Deno.test("hub-posts: validates post and suggestion inline-image keys in a single files query", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 1,
+        titulo: "Post com sugestão",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo: { type: "doc", content: [{ type: "inlineImage", attrs: { r2Key: "contas/conta-1/files/post.png" } }] },
+        conteudo_plain: "",
+        scheduled_at: null,
+        workflow_id: 7,
+        workflows: { titulo: "Cal", created_at: "2026-04-01" },
+      },
+    ],
+    error: null,
+  });
+  // Pending suggestion first, rejected second: same table, queued in call order.
+  db.queue("post_edit_suggestions", "select", {
+    data: [
+      {
+        id: 5,
+        post_id: 1,
+        suggested_conteudo: {
+          type: "doc",
+          content: [{ type: "inlineImage", attrs: { r2Key: "contas/conta-1/files/suggestion.png" } }],
+        },
+        suggested_conteudo_plain: "",
+        suggested_ig_caption: null,
+        changed_fields: ["conteudo"],
+        updated_at: "2026-04-10T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_edit_suggestions", "select", { data: [], error: null });
+  db.queue("files", "select", {
+    data: [{ r2_key: "contas/conta-1/files/post.png" }, { r2_key: "contas/conta-1/files/suggestion.png" }],
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed/${key}`,
+    rateLimit: async () => true,
+  });
+
+  const res = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(res);
+  assertEquals(res.status, 200);
+  assertEquals(db.calls.filter((c: { table: string }) => c.table === "files").length, 1);
+  assertEquals(body.posts[0].conteudo.content[0].attrs.src, "https://signed/contas/conta-1/files/post.png");
+  assertEquals(
+    body.posts[0].pending_suggestion.suggested_conteudo.content[0].attrs.src,
+    "https://signed/contas/conta-1/files/suggestion.png",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // hub-edit-suggestion
 // ---------------------------------------------------------------------------
+
+Deno.test("hub-edit-suggestion write budget is the autosave one (120 por 5 min), não 30/h", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", conteudo: null, conta_id: "conta-1", cliente_id: 14 },
+    error: null,
+  });
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "insert", is_new: true, suggestion: { id: "s1", post_id: 99 } },
+    error: null,
+  });
+  const seen: Array<[string, number, number]> = [];
+  const handler = createHubEditSuggestionHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    rateLimit: async (_db, key, max, win) => {
+      seen.push([key, max, win]);
+      return true;
+    },
+  });
+
+  const response = await handler(new Request("https://example.test/hub-edit-suggestion", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, suggested_conteudo_plain: "Nova legenda" }),
+  }));
+  assertEquals(response.status, 200);
+  const write = seen.find(([k]) => k.startsWith("hub-write:hub-edit-suggestion:"));
+  assertEquals(write?.[1], 120);
+  assertEquals(write?.[2], 300);
+  // Write-only endpoint: must not debit the Hub-wide shared read pool.
+  assertEquals(seen.some(([k]) => k.startsWith("hub-read:")), false);
+});
 
 Deno.test("hub-edit-suggestion accepts a suggestion for a post attached to a workflow", async () => {
   const db = createSupabaseQueryMock();
@@ -2268,4 +3504,285 @@ Deno.test("hub-edit-suggestion accepts a suggestion for an avulso post (workflow
     p_suggested_conteudo_plain: "Legenda avulsa nova",
     p_suggested_ig_caption: null,
   });
+});
+
+function hubEditSuggestionDb() {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", conteudo: null, conta_id: "conta-1", cliente_id: 14 },
+    error: null,
+  });
+  return db;
+}
+
+function hubEditSuggestionHandlerFor(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return createHubEditSuggestionHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    rateLimit: async () => true,
+  });
+}
+
+function editSuggestionRequest() {
+  return new Request("https://example.test/hub-edit-suggestion", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, suggested_conteudo_plain: "Corpo", suggested_ig_caption: "Legenda nova" }),
+  });
+}
+
+Deno.test("hub-edit-suggestion notifies the team again when a pending suggestion is updated", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: false, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 200);
+  const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification");
+  assert(notif, "an update must notify too");
+  assertEquals(notif.payload, { p_post_id: 99 });
+});
+
+Deno.test("hub-edit-suggestion does not notify when the client reverted the suggestion (deleted)", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "deleted", is_new: false, suggestion: null },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).pending_suggestion, null);
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
+    false,
+  );
+});
+
+Deno.test("hub-edit-suggestion maps post_not_pending from the RPC to 409 and does not notify", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "post_not_pending" } });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 409);
+  assertEquals((await readJson(response)).error, "Post não está aguardando aprovação.");
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
+    false,
+  );
+});
+
+Deno.test("hub-edit-suggestion still returns a generic 500 for other RPC errors", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "boom" } });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 500);
+  assertEquals((await readJson(response)).error, "Erro ao salvar sugestão.");
+});
+
+for (const action of ["aprovado", "correcao"] as const) {
+  Deno.test(`hub-approve maps pending_suggestion to 409 for ${action}`, async () => {
+    const db = hubApproveDbForPost();
+    db.queueRpc("record_client_approval", { data: null, error: { message: "pending_suggestion" } });
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action }),
+    }));
+    assertEquals(response.status, 409);
+    assertEquals((await readJson(response)).error, "Há uma sugestão de edição pendente.");
+    assertEquals(
+      db.calls.some((c: { table: string }) => c.table === "rpc:create_post_approval_notification"),
+      false,
+    );
+  });
+}
+
+Deno.test("hub-approve não autoagenda avulso com processo individual que ainda tem outra aprovação adiante", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", {
+    data: [
+      { tipo: "padrao", estado: "concluido" },
+      { tipo: "aprovacao_cliente", estado: "ativo" },
+      { tipo: "padrao", estado: "pendente" },
+      { tipo: "aprovacao_cliente", estado: "pendente" },
+    ],
+    error: null,
+  });
+  queueValidateForScheduling(db, {
+    id: 99, scheduled_at: "2030-01-01T10:00:00.000Z", ig_caption: "legenda", workflow_id: null, cliente_id: 14, tipo: "feed",
+  });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.scheduled, false);
+  assertEquals(db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change"), undefined);
+});
+
+Deno.test("hub-approve autoagenda avulso com processo individual na última aprovação", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", {
+    data: [
+      { tipo: "aprovacao_cliente", estado: "herdado" },
+      { tipo: "padrao", estado: "concluido" },
+      { tipo: "aprovacao_cliente", estado: "ativo" },
+    ],
+    error: null,
+  });
+  queueValidateForScheduling(db, {
+    id: 99, scheduled_at: "2030-01-01T10:00:00.000Z", ig_caption: "legenda", workflow_id: null, cliente_id: 14, tipo: "feed",
+  });
+  db.queueRpc("record_post_status_change", { data: true, error: null });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.scheduled, true);
+});
+
+Deno.test("hub-approve falha fechado quando a consulta do processo individual erra", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: null, error: { message: "db offline" } });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+});
+
+Deno.test("hub-approve falha fechado quando a consulta das etapas do processo individual erra", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", { data: null, error: { message: "db offline" } });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+  assertEquals(db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change"), undefined);
+});
+
+// ── hub-approve reference_ids (client post references, 2026-10-08) ──
+
+function correcaoRequest(extra: Record<string, unknown>) {
+  return new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar", ...extra }),
+  });
+}
+
+Deno.test("hub-approve links deduped reference_ids to the new correction", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval", { data: 501, error: null });
+  const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5, 6, 5] }));
+  assertEquals(response.status, 200);
+  const update = db.calls.find((c: { table: string; operation: string }) =>
+    c.table === "post_references" && c.operation === "update");
+  assert(update, "post_references should be updated");
+  assertEquals(update.payload, { post_approval_id: 501 });
+  assertEquals(update.modifiers, [
+    { method: "in", args: ["id", [5, 6]] },
+    { method: "eq", args: ["post_id", 99] },
+    { method: "eq", args: ["conta_id", "conta-1"] },
+    { method: "is", args: ["post_approval_id", null] },
+  ]);
+});
+
+Deno.test("hub-approve rejects malformed reference_ids before any DB call", async () => {
+  const bad: unknown[] = [
+    "5", [0], [-1], [1.5], ["5"], [null], [Number.MAX_SAFE_INTEGER + 1], {},
+    Array.from({ length: 11 }, (_, i) => i + 1),
+  ];
+  for (const reference_ids of bad) {
+    const db = createSupabaseQueryMock();
+    const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids }));
+    assertEquals(response.status, 400, JSON.stringify(reference_ids));
+    assertEquals((await readJson(response)).error, "Referências inválidas.");
+    assertEquals(db.calls.length, 0);
+  }
+});
+
+Deno.test("hub-approve ignores reference_ids on aprovado and mensagem", async () => {
+  for (const action of ["aprovado", "mensagem"]) {
+    const db = hubApproveDbForPost();
+    db.queueRpc("record_client_approval", { data: 501, error: null });
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action, comentario: "ok", reference_ids: "junk" }),
+    }));
+    assertEquals(response.status, 200, action);
+    assertEquals(
+      db.calls.find((c: { table: string }) => c.table === "post_references"),
+      undefined,
+      action,
+    );
+  }
+});
+
+Deno.test("hub-approve keeps the correction when linking references fails", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval", { data: 501, error: null });
+  db.queue("post_references", "update", { data: null, error: { message: "boom" } });
+  const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5] }));
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).ok, true);
+  assert(db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification"));
+});
+
+Deno.test("hub-approve skips linking references when record_client_approval returns no id", async () => {
+  for (const data of [true, null, "abc", 0]) {
+    const db = hubApproveDbForPost();
+    db.queueRpc("record_client_approval", { data, error: null });
+    const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5] }));
+    assertEquals(response.status, 200, JSON.stringify(data));
+    assertEquals(
+      db.calls.find((c: { table: string }) => c.table === "post_references"),
+      undefined,
+      JSON.stringify(data),
+    );
+  }
+});
+
+Deno.test("hub-approve with an empty reference_ids list does not touch post_references", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval", { data: 501, error: null });
+  const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [] }));
+  assertEquals(response.status, 200);
+  assertEquals(db.calls.find((c: { table: string }) => c.table === "post_references"), undefined);
 });

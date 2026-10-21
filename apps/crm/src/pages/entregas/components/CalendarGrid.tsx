@@ -16,7 +16,7 @@ export { LOCKED_STATUSES, LOCKED_TOOLTIPS };
 interface CalendarGridProps {
   currentMonth: Date;
   scheduledPosts: ClientePost[];
-  currentWorkflowId: number;
+  currentWorkflowId: number | null;
   selectedPostId: number | null;
   onSelectPost: (post: ClientePost) => void;
   onMonthChange: (date: Date) => void;
@@ -29,7 +29,7 @@ function PostPill({
   onSelect,
 }: {
   post: ClientePost;
-  currentWorkflowId: number;
+  currentWorkflowId: number | null;
   isSelected: boolean;
   onSelect: (post: ClientePost) => void;
 }) {
@@ -67,7 +67,7 @@ function PostPill({
   // would otherwise render blank next to the Folder/workflow affordance.
   const isAvulso = post.workflow_id === null;
   const workflowLabel = post.workflow_titulo ?? 'Avulso';
-  const foreignSuffix = isAvulso ? ' (avulso)' : !isCurrentWorkflow ? ' (outro workflow)' : '';
+  const foreignSuffix = isCurrentWorkflow ? '' : isAvulso ? ' (avulso)' : ' (outro workflow)';
   // The dash carries tipo; the written tipo label sits right beside it, so colour is never
   // the only channel (feed/carrossel sit on the red/green axis). Ownership moved to the card
   // surface + the workflow name, which says *whose* it is instead of merely "not yours".
@@ -142,7 +142,7 @@ function DayPostsPopover({
   date: Date;
   posts: ClientePost[];
   overflow: number;
-  currentWorkflowId: number;
+  currentWorkflowId: number | null;
   onSelectPost: (post: ClientePost) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -202,7 +202,7 @@ function DroppableCell({
   date: Date;
   isCurrentMonth: boolean;
   posts: ClientePost[];
-  currentWorkflowId: number;
+  currentWorkflowId: number | null;
   selectedPostId: number | null;
   onSelectPost: (post: ClientePost) => void;
 }) {

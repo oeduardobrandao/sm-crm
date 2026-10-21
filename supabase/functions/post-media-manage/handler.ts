@@ -10,7 +10,7 @@ interface PostMediaManageDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   signUrl: (key: string) => Promise<string>;
-  signPutUrl: (key: string, mimeType: string) => Promise<string>;
+  signPutUrl: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   randomUUID?: () => string;
   signPlayback?: (uid: string) => Promise<{ hls: string; expires_at: string }>;
 }
@@ -90,14 +90,52 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
     const { data: { user }, error: authErr } = await svc.auth.getUser(token);
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id).single();
-    if (!profile?.conta_id) return json({ error: "Profile not found" }, 403);
+    const { data: profile } = await svc.from("profiles").select("conta_id, active_workspace_id").eq("id", user.id).single();
+    if (!profile) return json({ error: "Profile not found" }, 403);
 
     const requestUrl = new URL(req.url);
     const parts = requestUrl.pathname.split("/").filter(Boolean);
     const fnIdx = parts.indexOf("post-media-manage");
     const idStr = parts[fnIdx + 1];
     const sub = parts[fnIdx + 2];
+
+    if (req.method === "PATCH" && sub === "replace") {
+      const linkId = parseInt(idStr, 10);
+      if (!/^\d+$/.test(idStr) || isNaN(linkId) || !Number.isSafeInteger(linkId) || linkId <= 0) {
+        return json({ error: "invalid id" }, 400);
+      }
+      // Never fall back to the legacy selector when there is no active workspace.
+      if (!profile.active_workspace_id) return json({ error: "Workspace unavailable" }, 403);
+      const body = await req.json().catch(() => null);
+      if (!body || !Number.isSafeInteger(body.file_id) || body.file_id <= 0 ||
+        typeof body.expected_r2_key !== "string" || !body.expected_r2_key.trim() ||
+        body.expected_r2_key.length > 2048) {
+        return json({ error: "Invalid replacement" }, 400);
+      }
+      try {
+        // The RPC locks the post/link/files and rechecks membership and ownership inside
+        // the transaction. A preflight SELECT alone would race a publish or another edit.
+        const { error } = await svc.rpc("post_file_link_replace", {
+          p_link_id: linkId,
+          p_file_id: body.file_id,
+          p_expected_r2_key: body.expected_r2_key,
+          p_conta_id: profile.active_workspace_id,
+          p_user_id: user.id,
+        }).abortSignal(AbortSignal.timeout(15_000));
+        if (error) {
+          if (error.code === "P0403") return json({ error: "Workspace unavailable" }, 403);
+          if (error.code === "P0404") return json({ error: "Media not found" }, 404);
+          if (error.code === "P0400") return json({ error: "Invalid replacement" }, 400);
+          if (error.code === "P0409") return json({ error: "Media changed or post is no longer editable" }, 409);
+          return internalServerError(json, "post-media-manage:replace", error);
+        }
+        return json({ ok: true });
+      } catch (error) {
+        return internalServerError(json, "post-media-manage:replace", error);
+      }
+    }
+
+    if (!profile.conta_id) return json({ error: "Profile not found" }, 403);
 
     if (req.method === "GET") {
       const workflowIdsParam = requestUrl.searchParams.get("workflow_ids");
@@ -113,13 +151,21 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
         if (!posts || posts.length === 0) return json({ covers: [] });
 
         const postIds = posts.map((p: any) => p.id);
-        const { data: coverLinks } = await svc.from("post_file_links")
+        const { data: links } = await svc.from("post_file_links")
           .select("*, files(*)")
           .in("post_id", postIds)
-          .eq("is_cover", true);
+          .order("sort_order", { ascending: true })
+          .order("id", { ascending: true });
+
+        // One cover per post: its first slide by sort_order (what Instagram shows
+        // in the feed). The is_cover flag goes stale on reorder, so it is ignored.
+        const firstByPost = new Map<number, any>();
+        for (const l of (links ?? [])) {
+          if (!firstByPost.has(l.post_id)) firstByPost.set(l.post_id, l);
+        }
 
         const postById = new Map<number, any>(posts.map((p: any) => [p.id, p] as [number, any]));
-        const sorted = (coverLinks ?? []).slice().sort((a: any, b: any) => {
+        const sorted = Array.from(firstByPost.values()).sort((a: any, b: any) => {
           const pa = postById.get(a.post_id);
           const pb = postById.get(b.post_id);
           return (pa?.ordem ?? 0) - (pb?.ordem ?? 0) || a.post_id - b.post_id;
@@ -165,11 +211,11 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
           .order("sort_order", { ascending: true })
           .order("id", { ascending: true });
 
-        // One cover per post: the is_cover link if flagged, else the first by sort_order.
+        // One cover per post: its first slide by sort_order (what Instagram shows
+        // in the feed). The is_cover flag goes stale on reorder, so it is ignored.
         const coverByPost = new Map<number, any>();
         for (const l of (links ?? [])) {
-          const existing = coverByPost.get(l.post_id);
-          if (!existing || (l.is_cover && !existing.is_cover)) coverByPost.set(l.post_id, l);
+          if (!coverByPost.has(l.post_id)) coverByPost.set(l.post_id, l);
         }
 
         const covers = await Promise.all(Array.from(coverByPost.values()).map(async (l: any) => {
@@ -251,8 +297,13 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
       const body = await req.json().catch(() => ({}));
       const mime = String(body.mime_type ?? "");
       if (!THUMB_MIME.has(mime)) return json({ error: "Unsupported thumbnail mime type" }, 400);
+      // O tamanho vira Content-Length assinado: a URL só aceita exatamente esses bytes.
+      const size = body.size_bytes;
+      if (typeof size !== "number" || !Number.isSafeInteger(size) || size <= 0 || size > 10 * 1024 * 1024) {
+        return json({ error: "thumbnail size out of range" }, 400);
+      }
       const key = `contas/${profile.conta_id}/files/${(deps.randomUUID ?? crypto.randomUUID.bind(crypto))()}.thumb.${extFromMime(mime)}`;
-      const upload_url = await deps.signPutUrl(key, mime);
+      const upload_url = await deps.signPutUrl(key, mime, size);
       return json({ thumbnail_r2_key: key, thumbnail_upload_url: upload_url });
     }
 

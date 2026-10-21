@@ -1,6 +1,7 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
@@ -10,6 +11,14 @@ const store = vi.hoisted(() => ({
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
+  reorderFluxosBoard: vi.fn(),
+  // Fase 4: usePostProcessCommands (chamado incondicionalmente pelo
+  // KanbanView) importa estes três do store; nenhum teste deste arquivo
+  // exercita um post, mas o módulo precisa resolver os nomes.
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  updateWorkflowPost: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   // Pulled in transitively by WorkflowModals / useEntregasData
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),
@@ -19,8 +28,6 @@ const store = vi.hoisted(() => ({
   removeWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
   updateWorkflowEtapa: vi.fn(),
-  updateWorkflowTemplate: vi.fn(),
-  propagateTemplateToWorkflows: vi.fn(),
   getPropertyDefinitions: vi.fn(),
   deletePropertyDefinition: vi.fn(),
   getWorkflows: vi.fn(),
@@ -29,11 +36,7 @@ const store = vi.hoisted(() => ({
   getWorkflowTemplates: vi.fn(),
   getWorkflowEtapas: vi.fn(),
   getWorkflowPostsCounts: vi.fn(),
-  getWorkflowApprovedPostsCounts: vi.fn(),
-  getWorkflowClearedClientePostsCounts: vi.fn(),
-  getWorkflowRevisaoInternaCounts: vi.fn(),
-  getWorkflowAwaitingClientePostsCounts: vi.fn(),
-  getWorkflowPostResponsaveis: vi.fn(),
+  getWorkflowPostStats: vi.fn(),
   getWorkspaceSlug: vi.fn(),
 }));
 
@@ -101,6 +104,18 @@ vi.mock('@/components/ui/alert-dialog', () => ({
 
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
+// usePostProcessCommands usa useQueryClient (fase 4): todo render do
+// KanbanView agora precisa de um QueryClientProvider por cima, mesmo em
+// testes que só exercitam fluxos.
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const approvalEtapa = {
   id: 11,
@@ -194,11 +209,11 @@ describe('KanbanView approval advance with re-arm', () => {
     );
   });
 
-  it('"Avançar etapa sem alterar posts" uses plain completeEtapa', async () => {
+  it('"Avançar sem aprovação" uses plain completeEtapa', async () => {
     renderBoard(0); // not cleared → approval dialog
     fireEvent.click(screen.getByText('forward'));
     fireEvent.click(await screen.findByText('Avançar'));
-    fireEvent.click(await screen.findByText('Avançar etapa sem alterar posts'));
+    fireEvent.click(await screen.findByText('Avançar sem aprovação'));
     await waitFor(() => expect(store.completeEtapa).toHaveBeenCalledWith(1, 11));
     expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
   });
@@ -217,7 +232,7 @@ describe('KanbanView approval advance with re-arm', () => {
     renderBoard(0);
     fireEvent.click(screen.getByText('forward'));
     fireEvent.click(await screen.findByText('Avançar'));
-    expect(await screen.findByText(/voltarão para rascunho/i)).toBeInTheDocument();
+    expect(await screen.findByText(/voltam para rascunho/i)).toBeInTheDocument();
     expect(store.hasLaterApprovalEtapa).toHaveBeenCalledWith([approvalEtapa, nextEtapa], 11);
   });
 
@@ -227,7 +242,7 @@ describe('KanbanView approval advance with re-arm', () => {
     fireEvent.click(screen.getByText('forward'));
     fireEvent.click(await screen.findByText('Avançar'));
     expect(await screen.findByText('Aprovar internamente')).toBeInTheDocument();
-    expect(screen.queryByText(/voltarão para rascunho/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/voltam para rascunho/i)).not.toBeInTheDocument();
   });
 
   it('rearmFailed surfaces the manual-remediation toast and still refreshes', async () => {
@@ -251,9 +266,9 @@ describe('KanbanView approval advance with re-arm', () => {
 });
 
 // The guided tour selects steps by [data-tour] presence at runtime, so a lost anchor
-// degrades the tour silently. This pins the approval-column anchor AND the Set lookup
-// that decides which column gets it — the part most likely to break without noise
-// (e.g. if the columns were ever keyed by etapa id instead of nome).
+// degrades the tour silently. A coluna de aprovação é marcada por
+// column.tipo === 'aprovacao_cliente', e as colunas são identificadas pela ordem
+// da etapa; este teste garante que a âncora do tour vai para a coluna certa.
 describe('KanbanView wf-col-aprovacao tour anchor', () => {
   it('tags the aprovacao_cliente column header and no other column', () => {
     const { container } = renderBoard(0);

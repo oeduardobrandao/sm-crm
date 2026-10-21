@@ -12,6 +12,9 @@ const ALL_CODES: PublishErrorCode[] = [
   'NO_MEDIA',
   'MEDIA_UNSUPPORTED',
   'TRIAL_INELIGIBLE',
+  'CAPTION_TOO_LONG',
+  'COLLABORATOR_INVALID',
+  'ACCOUNT_RESTRICTED',
   'CONTAINER_EXPIRED',
   'RATE_LIMIT',
   'IG_TRANSIENT',
@@ -25,7 +28,7 @@ describe('publishErrorCopy', () => {
       const d = PUBLISH_ERROR_COPY[code];
       expect(d.titulo.length, code).toBeGreaterThan(0);
       expect(d.explicacao.length, code).toBeGreaterThan(0);
-      expect(['reconnect', 'retry', 'media', 'support']).toContain(d.acao);
+      expect(['reconnect', 'retry', 'media', 'support', 'collaborators']).toContain(d.acao);
     }
   });
 
@@ -56,5 +59,15 @@ describe('publishErrorCopy', () => {
     const d = PUBLISH_ERROR_COPY.TRIAL_INELIGIBLE;
     expect(d.acao).toBe('retry');
     expect(d.mostrarDetalhes).toBe(false);
+  });
+
+  it('COLLABORATOR_INVALID direciona para a edição dos colaboradores', () => {
+    expect(getPublishErrorDisplay('COLLABORATOR_INVALID')).toEqual({
+      titulo: 'O Instagram recusou um colaborador',
+      explicacao:
+        'Confira se o @ está certo e se o perfil é público. Edite os colaboradores e tente novamente.',
+      acao: 'collaborators',
+      mostrarDetalhes: false,
+    });
   });
 });

@@ -1,15 +1,31 @@
-import { useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
 import { fetchDashboard } from '../../api';
 import { PeriodSelector } from './PeriodSelector';
 import { TopPostsRow } from './TopPostsRow';
-import { FollowerChart } from './FollowerChart';
-import { ReachChart } from './ReachChart';
+import { SectionHeader } from '../SectionHeader';
 
-export function DashboardSection() {
+const loadCharts = () => import('./DashboardCharts');
+const DashboardCharts = lazy(loadCharts);
+
+const chartSkeleton = (
+  <>
+    <div className="h-[280px] rounded-2xl hub-bg-soft animate-pulse" />
+    <div className="h-[280px] rounded-2xl hub-bg-soft animate-pulse" />
+  </>
+);
+
+export function DashboardSection({ sectionNumber }: { sectionNumber?: number } = {}) {
+  const { t } = useTranslation('hubHome');
   const { token } = useHub();
   const [period, setPeriod] = useState(30);
+
+  // Download the chart chunk alongside the dashboard request rather than after it.
+  useEffect(() => {
+    loadCharts().catch(() => {});
+  }, []);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-dashboard', token, period],
@@ -34,10 +50,7 @@ export function DashboardSection() {
             />
           ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="h-[280px] rounded-2xl hub-bg-soft animate-pulse" />
-          <div className="h-[280px] rounded-2xl hub-bg-soft animate-pulse" />
-        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{chartSkeleton}</div>
       </div>
     );
   }
@@ -47,26 +60,45 @@ export function DashboardSection() {
   if (!data.account) {
     return (
       <div className="mb-12 hub-card p-8 text-center">
-        <p className="text-sm hub-tx3">Conecte o Instagram para ver métricas de desempenho.</p>
+        <p className="text-sm hub-tx3">
+          {t('dashboard.connectInstagram', 'Conecte o Instagram para ver métricas de desempenho.')}
+        </p>
       </div>
     );
   }
 
   return (
     <div className="mb-12">
-      <div className="flex justify-between items-center mb-5">
-        <h2 className="font-display text-xl font-semibold tracking-tight hub-txt">Desempenho</h2>
-        <PeriodSelector value={period} onChange={setPeriod} />
-      </div>
+      {sectionNumber !== undefined ? (
+        <SectionHeader
+          number={sectionNumber}
+          label={t('home.pauta.section.results', 'Resultados')}
+          title={t('dashboard.title', 'Desempenho')}
+          action={<PeriodSelector value={period} onChange={setPeriod} />}
+        />
+      ) : (
+        <div className="flex justify-between items-center mb-5">
+          <h2 className="font-display text-xl font-semibold tracking-tight hub-txt">
+            {t('dashboard.title', 'Desempenho')}
+          </h2>
+          <PeriodSelector value={period} onChange={setPeriod} />
+        </div>
+      )}
 
       <div className="mb-6">
-        <h3 className="text-[13px] font-semibold hub-tx2 mb-3">Melhores Posts</h3>
+        <h3 className="text-[13px] font-semibold hub-tx2 mb-3">
+          {t('dashboard.topPostsTitle', 'Melhores Posts')}
+        </h3>
         <TopPostsRow posts={data.topPosts} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FollowerChart followerHistory={data.followerHistory} />
-        <ReachChart reachHistory={data.reachHistory} />
+        <Suspense fallback={chartSkeleton}>
+          <DashboardCharts
+            followerHistory={data.followerHistory}
+            reachHistory={data.reachHistory}
+          />
+        </Suspense>
       </div>
     </div>
   );

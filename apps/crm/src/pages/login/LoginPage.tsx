@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
 import { signIn, signUp, resetPassword } from '../../lib/supabase';
+import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import { useAuth } from '@/context/AuthContext';
+import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 
 type TabKey = 'login' | 'register' | 'forgot';
@@ -65,6 +67,18 @@ export default function LoginPage() {
     navigate(intentQuery ? `/comecar?${intentQuery}` : from, { replace: true });
   }, [authLoading, user, intentQuery, from, navigate]);
 
+  // /login is not nested under AppLayout (see App.tsx's route tree), so
+  // AppLayout's own chat:hide-on-mount effect never runs here. A Crisp
+  // session bound on a PRIOR visit persists via Crisp's own cookie,
+  // independent of Supabase auth state, so without this a shared machine
+  // could show a previous user's identified conversation, unhidden, to
+  // whoever loads this page next. Unconditional and un-gated on `user`/
+  // `authLoading`: the exposure this closes exists precisely BEFORE auth
+  // resolves, so it cannot wait for either.
+  useEffect(() => {
+    window.$crisp?.push(['do', 'chat:hide']);
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -98,10 +112,17 @@ export default function LoginPage() {
       return;
     }
     setLoading(true);
+    const refCode = getStoredReferral();
     const { data, error } = await signUp(
       regEmail,
       regPassword,
-      { nome, empresa, telefone: regTelefone, marketing_opt_in: regMarketingOptIn },
+      {
+        nome,
+        empresa,
+        telefone: regTelefone,
+        marketing_opt_in: regMarketingOptIn,
+        ...(refCode ? { ref_code: refCode } : {}),
+      },
       intentQuery ? `/login?${intentQuery}` : '/login',
     );
     setLoading(false);
@@ -113,6 +134,8 @@ export default function LoginPage() {
     // personless forever, orphaning every signup from its later activity. signUp returns the
     // user's uuid even while email confirmation is pending, and the uuid is all identify needs.
     if (data?.user?.id) identifySignup(data.user.id);
+    // A atribuição já foi gravada com o usuário; não reaproveitar em outro cadastro deste navegador.
+    if (refCode) clearStoredReferral();
     captureEvent('signup_completed');
     // With email confirmation disabled signUp returns a live session, so the
     // user goes straight to the trial step. When it is enabled there is no
@@ -389,6 +412,9 @@ export default function LoginPage() {
           )}
 
           <p className="auth-footer">{t('footer')}</p>
+          <p className="auth-footer">
+            <CookiePreferencesLink />
+          </p>
         </div>
       </div>
 

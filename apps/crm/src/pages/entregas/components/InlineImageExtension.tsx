@@ -224,7 +224,11 @@ function getImageFiles(dataTransfer: DataTransfer): File[] {
 
 const inlineImagePluginKey = new PluginKey('inlineImageUpload');
 
-export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
+export function createInlineImageExtension(
+  uploadFn: InlineImageUploadFn,
+  onUploadStart?: () => void,
+  onUploadEnd?: () => void,
+) {
   return Node.create({
     name: 'inlineImage',
     group: 'block',
@@ -287,7 +291,7 @@ export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
 
               event.preventDefault();
               for (const file of files) {
-                handleImageUpload(view, file, nodeName, uploadFn);
+                handleImageUpload(view, file, nodeName, uploadFn, onUploadStart, onUploadEnd);
               }
               return true;
             },
@@ -301,7 +305,7 @@ export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
 
               event.preventDefault();
               for (const file of files) {
-                handleImageUpload(view, file, nodeName, uploadFn);
+                handleImageUpload(view, file, nodeName, uploadFn, onUploadStart, onUploadEnd);
               }
               return true;
             },
@@ -317,7 +321,10 @@ async function handleImageUpload(
   file: File,
   nodeType: string,
   uploadFn: InlineImageUploadFn,
+  onUploadStart?: () => void,
+  onUploadEnd?: () => void,
 ) {
+  onUploadStart?.();
   const { state, dispatch } = view;
   const { tr, schema } = state;
 
@@ -375,6 +382,8 @@ async function handleImageUpload(
 
     if (removed) view.dispatch(newTr);
     throw err;
+  } finally {
+    onUploadEnd?.();
   }
 }
 

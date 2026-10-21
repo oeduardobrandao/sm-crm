@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConversationThread } from '../ConversationThread';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import type { MensagemConversa, MensagemFeedItem } from '@/store';
 
 const { mockPreview, mockMedia } = vi.hoisted(() => ({
@@ -203,7 +204,7 @@ describe('ConversationThread', () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     });
     const card = await screen.findByTestId('post-hover-preview');
-    expect(card).toHaveTextContent('Feed');
+    expect(card).toHaveTextContent('Imagem');
     expect(card).toHaveTextContent('Fluxo de agosto');
     fireEvent.mouseLeave(chip.parentElement!);
     await waitFor(() => expect(screen.queryByTestId('post-hover-preview')).not.toBeInTheDocument());
@@ -250,5 +251,64 @@ describe('ConversationThread', () => {
       workflowId: null,
       content: 'Feito',
     });
+  });
+});
+
+describe('ConversationThread Vidro bubbles', () => {
+  const OWN: MensagemFeedItem = {
+    ...ITEMS[1],
+    item_id: 3,
+    content: 'Mensagem da equipe',
+    is_workspace_user: true,
+    author_name: 'Ana',
+  };
+  const feed = () => makeFeed({ data: { pages: [[ITEMS[1], OWN]] } });
+  const bubbleOf = (text: string) => screen.getByText(text).closest('div') as HTMLElement;
+
+  it('tags own and received bubbles and keeps the Tailwind classes', () => {
+    renderThread({ feed: feed() });
+    const own = bubbleOf('Mensagem da equipe');
+    const them = bubbleOf('Obrigado!');
+    expect(own).toHaveClass('vidro-bubble', 'vidro-bubble--me', 'rounded-2xl', 'px-3.5');
+    expect(own).not.toHaveClass('vidro-bubble--them');
+    expect(them).toHaveClass('vidro-bubble', 'vidro-bubble--them', 'rounded-2xl', 'px-3.5');
+    expect(them).not.toHaveClass('vidro-bubble--me');
+  });
+
+  it('marks the author line with the inert meta hook', () => {
+    renderThread({ feed: feed() });
+    expect(screen.getByText('Ana')).toHaveClass('vidro-bubble__meta', 'text-[11px]');
+  });
+
+  it('keeps the inline style without the Vidro shell', () => {
+    renderThread({ feed: feed() });
+    expect(bubbleOf('Mensagem da equipe').style.background).toBe('var(--surface-hover)');
+    expect(bubbleOf('Obrigado!').style.background).toBe('var(--card-bg)');
+    expect(bubbleOf('Obrigado!').style.boxShadow).toBe('inset 0 0 0 1px var(--border-color)');
+  });
+
+  it('drops the inline background and shadow under the Vidro shell', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <BrowserRouter>
+        <QueryClientProvider client={qc}>
+          <VidroToolbarHarness>
+            <ConversationThread
+              conversa={CONVERSA}
+              feed={feed()}
+              sendGeneral={makeMutation()}
+              replyToPost={makeMutation()}
+              clientesById={new Map()}
+            />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      </BrowserRouter>,
+    );
+    for (const text of ['Mensagem da equipe', 'Obrigado!']) {
+      const el = bubbleOf(text);
+      expect(el.style.background).toBe('');
+      expect(el.style.boxShadow).toBe('');
+      expect(el).toHaveClass('vidro-bubble');
+    }
   });
 });

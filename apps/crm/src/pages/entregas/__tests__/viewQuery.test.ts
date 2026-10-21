@@ -10,7 +10,14 @@ import { EMPTY_FILTERS } from '../components/EntregasFilters';
 describe('viewQuery', () => {
   it('serializes the default state to an empty query', () => {
     expect(
-      serializeEntregasQuery({ view: 'kanban', mode: 'entregas', filters: EMPTY_FILTERS }),
+      serializeEntregasQuery({
+        view: 'kanban',
+        mode: 'entregas',
+        entidade: 'fluxos',
+        filaMembro: null,
+        listGroupBy: 'prazo',
+        filters: EMPTY_FILTERS,
+      }),
     ).toBe('');
   });
 
@@ -18,6 +25,10 @@ describe('viewQuery', () => {
     const state = {
       view: 'list' as const,
       mode: 'publicacoes' as const,
+      entidade: 'fluxos' as const,
+      filaMembro: null,
+      listGroupBy: 'cliente' as const,
+      showPostados: true,
       filters: {
         ...EMPTY_FILTERS,
         filterSearch: 'post de julho',
@@ -55,6 +66,8 @@ describe('viewQuery', () => {
     const state = {
       view: 'kanban' as const,
       mode: 'publicacoes' as const,
+      entidade: 'fluxos' as const,
+      filaMembro: null,
       filters: {
         ...EMPTY_FILTERS,
         filterPostStatus: ['revisao_interna' as const, customStatusKey],
@@ -83,5 +96,155 @@ describe('viewQuery', () => {
     const parsed = parseEntregasQuery(new URLSearchParams('drawer=5'));
     expect(parsed.view).toBe('kanban');
     expect(parsed.filters).toEqual(EMPTY_FILTERS);
+  });
+
+  describe('entidade', () => {
+    it('ausente ou malformado vira fluxos; todos e posts são explícitos', () => {
+      expect(parseEntregasQuery(new URLSearchParams('')).entidade).toBe('fluxos');
+      expect(parseEntregasQuery(new URLSearchParams('entidade=xyz')).entidade).toBe('fluxos');
+      expect(parseEntregasQuery(new URLSearchParams('entidade=todos')).entidade).toBe('todos');
+      expect(parseEntregasQuery(new URLSearchParams('entidade=posts')).entidade).toBe('posts');
+    });
+
+    it('o serializador omite fluxos e emite os outros', () => {
+      const base = { view: 'kanban' as const, mode: 'entregas' as const, filters: EMPTY_FILTERS };
+      expect(serializeEntregasQuery({ ...base, entidade: 'fluxos' })).toBe('');
+      expect(serializeEntregasQuery({ ...base, entidade: 'todos' })).toBe('entidade=todos');
+      expect(serializeEntregasQuery({ ...base, entidade: 'posts' })).toBe('entidade=posts');
+    });
+  });
+
+  it('round-trips view=fila with an explicit membro', () => {
+    const state = {
+      view: 'fila' as const,
+      mode: 'entregas' as const,
+      entidade: 'fluxos' as const,
+      filaMembro: 12,
+      listGroupBy: 'prazo' as const,
+      showPostados: false,
+      filters: EMPTY_FILTERS,
+    };
+    const qs = serializeEntregasQuery(state);
+    expect(qs).toBe('view=fila&membro=12');
+    expect(parseEntregasQuery(new URLSearchParams(qs))).toEqual(state);
+  });
+
+  it('omits membro for the own fila (null) and ignores it outside view=fila', () => {
+    expect(
+      serializeEntregasQuery({
+        view: 'fila',
+        mode: 'entregas',
+        entidade: 'fluxos',
+        filaMembro: null,
+        filters: EMPTY_FILTERS,
+      }),
+    ).toBe('view=fila');
+    expect(
+      serializeEntregasQuery({
+        view: 'kanban',
+        mode: 'entregas',
+        entidade: 'fluxos',
+        filaMembro: 12,
+        filters: EMPTY_FILTERS,
+      }),
+    ).toBe('');
+    expect(parseEntregasQuery(new URLSearchParams('view=list&membro=12')).filaMembro).toBeNull();
+  });
+
+  it('drops a malformed membro', () => {
+    expect(parseEntregasQuery(new URLSearchParams('view=fila&membro=abc')).filaMembro).toBeNull();
+    expect(parseEntregasQuery(new URLSearchParams('view=fila&membro=')).filaMembro).toBeNull();
+    expect(parseEntregasQuery(new URLSearchParams('view=fila')).filaMembro).toBeNull();
+  });
+
+  describe('agrupar (Lista)', () => {
+    const base = {
+      mode: 'entregas' as const,
+      entidade: 'fluxos' as const,
+      filaMembro: null,
+      filters: EMPTY_FILTERS,
+    };
+
+    it('omits the default prazo and emits the others, only on view=list', () => {
+      expect(serializeEntregasQuery({ ...base, view: 'list', listGroupBy: 'prazo' })).toBe(
+        'view=list',
+      );
+      expect(serializeEntregasQuery({ ...base, view: 'list', listGroupBy: 'cliente' })).toBe(
+        'view=list&agrupar=cliente',
+      );
+      expect(serializeEntregasQuery({ ...base, view: 'kanban', listGroupBy: 'cliente' })).toBe('');
+    });
+
+    it('parses agrupar only for view=list and falls back to prazo', () => {
+      const parse = (qs: string) => parseEntregasQuery(new URLSearchParams(qs)).listGroupBy;
+      expect(parse('view=list&agrupar=etapa')).toBe('etapa');
+      expect(parse('view=list&agrupar=nenhum')).toBe('nenhum');
+      expect(parse('view=list&agrupar=xyz')).toBe('prazo');
+      expect(parse('view=list')).toBe('prazo');
+      expect(parse('view=kanban&agrupar=etapa')).toBe('prazo');
+    });
+
+    it('writes agrupar right after the view params, before the filters', () => {
+      expect(
+        serializeEntregasQuery({
+          ...base,
+          view: 'list',
+          mode: 'publicacoes',
+          listGroupBy: 'responsavel',
+          filters: { ...EMPTY_FILTERS, filterClientes: [3] },
+        }),
+      ).toBe('view=list&mode=publicacoes&agrupar=responsavel&clientes=3');
+    });
+  });
+
+  describe('postados (Lista de Publicações)', () => {
+    const base = {
+      entidade: 'fluxos' as const,
+      filaMembro: null,
+      listGroupBy: 'prazo' as const,
+      filters: EMPTY_FILTERS,
+    };
+
+    it('grava postados=1 só quando visíveis na Lista de Publicações', () => {
+      expect(
+        serializeEntregasQuery({ ...base, view: 'list', mode: 'publicacoes', showPostados: true }),
+      ).toBe('view=list&mode=publicacoes&postados=1');
+      expect(
+        serializeEntregasQuery({ ...base, view: 'list', mode: 'publicacoes', showPostados: false }),
+      ).toBe('view=list&mode=publicacoes');
+      expect(
+        serializeEntregasQuery({ ...base, view: 'list', mode: 'entregas', showPostados: true }),
+      ).toBe('view=list');
+      expect(
+        serializeEntregasQuery({
+          ...base,
+          view: 'kanban',
+          mode: 'publicacoes',
+          showPostados: true,
+        }),
+      ).toBe('mode=publicacoes');
+    });
+
+    it('lê postados só na Lista de Publicações; o resto é o padrão (ocultos)', () => {
+      const parse = (qs: string) => parseEntregasQuery(new URLSearchParams(qs)).showPostados;
+      expect(parse('view=list&mode=publicacoes&postados=1')).toBe(true);
+      expect(parse('view=list&mode=publicacoes')).toBe(false);
+      expect(parse('view=list&mode=publicacoes&postados=0')).toBe(false);
+      expect(parse('view=list&postados=1')).toBe(false);
+      expect(parse('view=kanban&mode=publicacoes&postados=1')).toBe(false);
+    });
+
+    it('grava postados depois de agrupar, antes dos filtros', () => {
+      expect(
+        serializeEntregasQuery({
+          ...base,
+          view: 'list',
+          mode: 'publicacoes',
+          listGroupBy: 'cliente',
+          showPostados: true,
+          filters: { ...EMPTY_FILTERS, filterClientes: [3] },
+        }),
+      ).toBe('view=list&mode=publicacoes&agrupar=cliente&postados=1&clientes=3');
+    });
   });
 });

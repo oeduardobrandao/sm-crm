@@ -1,4 +1,4 @@
-import { assertEquals } from "./assert.ts";
+import { assert, assertEquals } from "./assert.ts";
 import {
   buildConnectedNoticeEmail,
   buildConnectLinkEmail,
@@ -71,4 +71,17 @@ Deno.test("buildConnectedNoticeEmail: names the client and the @username", () =>
   assertEquals(html.includes("@clinicax"), true);
   assertEquals(html.includes(`${BASE}/clientes/42`), true);
   assertEquals(html.includes("—"), false);
+});
+
+Deno.test("connect link: eyebrow, steps, fallback link, new shell", () => {
+  const html = buildConnectLinkEmail({ agencyName: "Agência Lume", clienteName: "Clínica <S>", connectUrl: "https://app.test/c/abc", appBaseUrl: "https://app.test" });
+  assert(html.includes("A pedido de Agência Lume"));
+  assert(html.includes("Conecte o Instagram de Clínica &lt;S&gt;"));
+  assert(html.includes("Se o botão não funcionar") && html.includes("https://app.test/c/abc"));
+  assert(html.includes("logo-black-email.png") && !html.includes("#1a3d2b"));
+});
+
+Deno.test("connected notice: eyebrow and button", () => {
+  const html = buildConnectedNoticeEmail({ clienteName: "Clínica", igUsername: "clinica", clienteUrl: "https://app.test/clientes/1", appBaseUrl: "https://app.test" });
+  assert(html.includes("Instagram conectado") && html.includes("@clinica") && html.includes("Ver o cliente"));
 });

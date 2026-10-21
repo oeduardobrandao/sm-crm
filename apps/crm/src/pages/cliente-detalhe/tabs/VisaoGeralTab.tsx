@@ -2,20 +2,67 @@ import { useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Cake } from 'lucide-react';
 import { sanitizeUrl } from '@/utils/security';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { ExternalLinkCell } from '../phone/PhoneRows';
+import { ClienteLinksSection } from '../components/ClienteLinksSection';
 import { ClienteDatasSection } from '../components/ClienteDatasSection';
 import { ClienteEnderecosSection } from '../components/ClienteEnderecosSection';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 /**
  * "Visão geral" tab: cadastral info card ported verbatim from the pre-split
- * ClienteDetalhePage (see git history at d30adeea), plus the important-dates
- * and addresses sections. `clienteId`/`cliente` come from the layout via
+ * ClienteDetalhePage (see git history at d30adeea), plus the useful-links,
+ * important-dates and addresses sections. `clienteId`/`cliente` come from the layout via
  * `<Outlet context>` — this tab never fetches the cliente row itself.
  */
 export default function VisaoGeralTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
+  const isPhone = !useIsDesktop(768);
+
+  const birthday = (() => {
+    if (!cliente.data_aniversario) return null;
+    const [mm, dd] = cliente.data_aniversario.split('-');
+    return t('detail.dayOf', { day: parseInt(dd), month: tc(`months.${parseInt(mm) - 1}`) });
+  })();
+
+  if (isPhone) {
+    const EMPTY = 'Não informado';
+    // FClienteVisaoGeral: the info card as value rows, then Links / Datas / Endereços as
+    // grouped lists with a "+" header and swipe / long-press Editar and Remover.
+    return (
+      <>
+        <GroupedList header={t('detail.information')}>
+          <Cell label={t('detail.email')} value={cliente.email || EMPTY} />
+          <Cell label={t('detail.phone')} value={cliente.telefone || EMPTY} />
+          <Cell
+            label={t('detail.paymentDay')}
+            value={
+              cliente.data_pagamento ? t('detail.dayN', { day: cliente.data_pagamento }) : EMPTY
+            }
+          />
+          <Cell
+            label={t('detail.deliveryDay')}
+            value={cliente.dia_entrega ? t('detail.dayN', { day: cliente.dia_entrega }) : EMPTY}
+          />
+          <Cell label={t('detail.specialty')} value={cliente.especialidade || EMPTY} />
+          <Cell label={t('detail.birthday')} value={birthday ?? EMPTY} />
+          {cliente.notion_page_url && (
+            <ExternalLinkCell
+              label={t('detail.notionLabel')}
+              value={t('openNotion')}
+              href={cliente.notion_page_url}
+            />
+          )}
+        </GroupedList>
+        <ClienteLinksSection clienteId={clienteId} />
+        <ClienteDatasSection clienteId={clienteId} />
+        <ClienteEnderecosSection clienteId={clienteId} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -87,6 +134,7 @@ export default function VisaoGeralTab() {
         </div>
       </div>
 
+      <ClienteLinksSection clienteId={clienteId} />
       <ClienteDatasSection clienteId={clienteId} />
       <ClienteEnderecosSection clienteId={clienteId} />
     </>

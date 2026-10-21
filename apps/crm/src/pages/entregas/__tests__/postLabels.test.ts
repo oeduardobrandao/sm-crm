@@ -16,6 +16,15 @@ import { formatPostDateFull } from '@/utils/postDate';
 import type { ClientePost } from '@/store/posts';
 
 describe('tipo palette', () => {
+  it('labels tipos neutrally, from the platform registry', () => {
+    expect(TIPO_LABELS).toEqual({
+      feed: 'Imagem',
+      carrossel: 'Carrossel',
+      reels: 'Vídeo vertical',
+      stories: 'Stories',
+    });
+  });
+
   it('uses the CRM palette, not the Hub palette', () => {
     expect(TIPO_COLORS).toEqual({
       feed: '#eab308',
@@ -180,7 +189,7 @@ describe('buildTipoDayMarkers', () => {
     ];
     const marker = buildTipoDayMarkers(posts).get('2026-07-24');
     expect(marker?.colors).toEqual(['#eab308']);
-    expect(marker?.label).toBe('3 Feed');
+    expect(marker?.label).toBe('3 Imagem');
   });
 
   it('orders dots feed, carrossel, reels, stories regardless of input order', () => {
@@ -192,7 +201,7 @@ describe('buildTipoDayMarkers', () => {
     ];
     const marker = buildTipoDayMarkers(posts).get('2026-07-24');
     expect(marker?.colors).toEqual(['#eab308', '#3ecf8e', '#E1306C', '#42c8f5']);
-    expect(marker?.label).toBe('1 Feed · 1 Carrossel · 1 Reels · 1 Stories');
+    expect(marker?.label).toBe('1 Imagem · 1 Carrossel · 1 Vídeo vertical · 1 Stories');
   });
 
   describe('local vs UTC day keys', () => {
@@ -236,7 +245,7 @@ describe('buildTipoDayMarkers', () => {
     ];
     const marker = buildTipoDayMarkers(posts, { excludePostId: 1 }).get('2026-07-24');
     expect(marker?.colors).toEqual(['#E1306C']);
-    expect(marker?.label).toBe('1 Reels');
+    expect(marker?.label).toBe('1 Vídeo vertical');
   });
 
   it('drops a day entirely when the excluded post was its only one', () => {

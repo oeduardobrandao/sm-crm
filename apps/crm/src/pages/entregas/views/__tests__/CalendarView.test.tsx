@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { CalendarView } from '../CalendarView';
 
+// These suites cover the desktop layout; the phone branch has its own *Phone suite.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Stub useScheduledPosts so tests don't hit real network / QueryClient internals
 vi.mock('../../hooks/useScheduledPosts', () => ({
   useScheduledPosts: () => ({
@@ -181,5 +184,52 @@ describe('CalendarView', () => {
 
     fireEvent.click(getDayCell(container, 1)!);
     expect(screen.getByText('Nenhuma entrega neste dia.')).toBeInTheDocument();
+  });
+
+  it('mostra a nota "Somente fluxos" com a flag ligada e chama onGoToKanban', () => {
+    const onGoToKanban = vi.fn();
+    render(
+      <Wrapper>
+        <CalendarView
+          cards={[makeCard()]}
+          onCardClick={vi.fn()}
+          {...defaultProps}
+          postProcessesEnabled
+          onGoToKanban={onGoToKanban}
+        />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'quadro' }));
+    expect(onGoToKanban).toHaveBeenCalled();
+    expect(screen.getByText(/Somente fluxos/)).toBeInTheDocument();
+  });
+
+  it('sem a flag não há nota', () => {
+    render(
+      <Wrapper>
+        <CalendarView cards={[makeCard()]} onCardClick={vi.fn()} {...defaultProps} />
+      </Wrapper>,
+    );
+    expect(screen.queryByText(/Somente fluxos/)).toBeNull();
+  });
+
+  it('mostra a nota "Somente fluxos" também no vazio de zero cards', () => {
+    const onGoToKanban = vi.fn();
+    render(
+      <Wrapper>
+        <CalendarView
+          cards={[]}
+          onCardClick={vi.fn()}
+          {...defaultProps}
+          postProcessesEnabled
+          onGoToKanban={onGoToKanban}
+        />
+      </Wrapper>,
+    );
+
+    expect(screen.getByText('Nenhuma entrega encontrada. Ajuste os filtros.')).toBeInTheDocument();
+    expect(screen.getByText(/Somente fluxos/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'quadro' }));
+    expect(onGoToKanban).toHaveBeenCalled();
   });
 });

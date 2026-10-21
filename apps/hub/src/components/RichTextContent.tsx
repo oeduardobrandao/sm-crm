@@ -1,38 +1,34 @@
-import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import UnderlineExt from '@tiptap/extension-underline';
-import { TextStyle } from '@tiptap/extension-text-style';
-import Color from '@tiptap/extension-color';
-import Highlight from '@tiptap/extension-highlight';
-import Link from '@tiptap/extension-link';
-import { CalloutReadonly } from './CalloutReadonly';
-import { InlineImageReadonly } from './InlineImageReadonly';
-import { CommentHighlightReadonly } from './CommentHighlightReadonly';
-import { MentionReadonly } from './MentionReadonly';
+import { Component, lazy, Suspense, type ReactNode } from 'react';
+import { docPlainText } from '../lib/richDoc';
 
 /**
- * The TipTap extension set used to read post `conteudo` in the hub. This must stay a
- * superset of the marks/nodes the CRM editor (`PostEditor`) can persist — if the hub
- * schema is missing a mark/node type that appears in `conteudo`, TipTap discards the
- * ENTIRE document (logging a warning, not throwing), rendering an empty body.
+ * Lazy front for the TipTap renderer in `RichTextTiptap.tsx`. TipTap + ProseMirror are
+ * ~124 kB gzip, and on Postagens/Aprovações rich text only shows inside the post dialog,
+ * so the pages no longer carry it: the chunk loads on first use (or earlier, through
+ * `preloadRichText()`), and until then the body reads as plain text in the same place.
+ * Pages that render rich text up front (PaginaPage) import `RichTextTiptap` directly.
  */
-export function richTextExtensions(editable = false) {
-  return [
-    StarterKit,
-    UnderlineExt,
-    TextStyle,
-    Color,
-    Highlight.configure({ multicolor: true }),
-    Link.configure({ openOnClick: !editable, autolink: false }),
-    CalloutReadonly,
-    InlineImageReadonly,
-    CommentHighlightReadonly,
-    MentionReadonly,
-  ];
+const loadTiptap = () => import('./RichTextTiptap');
+const RichTextTiptap = lazy(() => loadTiptap().then((m) => ({ default: m.RichTextContent })));
+
+/** Starts downloading the TipTap chunk ahead of the first `RichTextContent` render. */
+export function preloadRichText() {
+  loadTiptap().catch(() => {
+    // A failed preload is retried by the lazy render, which surfaces the error there.
+  });
 }
 
-class EditorErrorBoundary extends Component<
+export interface RichTextContentProps {
+  content: Record<string, unknown>;
+  className?: string;
+  editable?: boolean;
+  onUpdate?: (json: Record<string, unknown>, plain: string) => void;
+  fallbackText?: string;
+}
+
+// A chunk that fails to load (flaky network; deploy skew already reloads through
+// installDeployRecovery) leaves the body as plain text instead of taking down the page.
+class ChunkErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
   { hasError: boolean }
 > {
@@ -45,104 +41,19 @@ class EditorErrorBoundary extends Component<
   }
 }
 
-interface RichTextContentProps {
-  content: Record<string, unknown>;
-  className?: string;
-  editable?: boolean;
-  onUpdate?: (json: Record<string, unknown>, plain: string) => void;
-  fallbackText?: string;
-}
-
-function RichTextEditor({
-  content,
-  className,
-  editable = false,
-  onUpdate,
-}: Omit<RichTextContentProps, 'fallbackText'>) {
-  const onUpdateRef = useRef(onUpdate);
-  onUpdateRef.current = onUpdate;
-  const [focused, setFocused] = useState(false);
-
-  const editor = useEditor({
-    extensions: richTextExtensions(editable),
-    content,
-    editable,
-    editorProps: editable
-      ? {
-          handlePaste: (_view, event) => {
-            const text = event.clipboardData?.getData('text/plain');
-            if (text) {
-              editor?.commands.insertContent(text);
-              return true;
-            }
-            return false;
-          },
-          handleDrop: () => true,
-        }
-      : undefined,
-    onUpdate: editable
-      ? ({ editor: ed }) => {
-          onUpdateRef.current?.(ed.getJSON() as Record<string, unknown>, ed.getText());
-        }
-      : undefined,
-    onFocus: () => setFocused(true),
-    onBlur: () => setFocused(false),
-  });
-
-  useEffect(() => {
-    if (editor && editor.isEditable !== editable) {
-      editor.setEditable(editable);
-    }
-  }, [editor, editable]);
-
-  return (
-    <div className={className}>
-      {editable && !focused && !editor?.isFocused && (
-        <p className="text-[11px] text-stone-400 mb-1 flex items-center gap-1">
-          <span className="opacity-70">✏️</span> Clique no texto para editar
-        </p>
-      )}
-      <div
-        className={
-          editable
-            ? 'border border-dashed border-stone-300 rounded-lg px-3 py-2 transition-colors focus-within:border-stone-400 focus-within:border-solid'
-            : ''
-        }
-      >
-        <EditorContent editor={editor} className="post-editor-content" />
-      </div>
+export function RichTextContent(props: RichTextContentProps) {
+  // Same text the TipTap renderer falls back to; the document's own text when there is none.
+  const plainText = props.fallbackText || docPlainText(props.content);
+  const plain = plainText ? (
+    <div className={props.className}>
+      <p className="whitespace-pre-wrap">{plainText}</p>
     </div>
-  );
-}
-
-function PlainFallback({ className, text }: { className?: string; text?: string }) {
-  if (!text) return null;
+  ) : null;
   return (
-    <div className={className}>
-      <p className="whitespace-pre-wrap">{text}</p>
-    </div>
-  );
-}
-
-export function RichTextContent({
-  content,
-  className,
-  editable,
-  onUpdate,
-  fallbackText,
-}: RichTextContentProps) {
-  if (typeof content !== 'object' || content === null || !('type' in content)) {
-    return <PlainFallback className={className} text={fallbackText} />;
-  }
-
-  return (
-    <EditorErrorBoundary fallback={<PlainFallback className={className} text={fallbackText} />}>
-      <RichTextEditor
-        content={content}
-        className={className}
-        editable={editable}
-        onUpdate={onUpdate}
-      />
-    </EditorErrorBoundary>
+    <ChunkErrorBoundary fallback={plain}>
+      <Suspense fallback={plain}>
+        <RichTextTiptap {...props} />
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 }

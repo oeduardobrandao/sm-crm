@@ -8,6 +8,7 @@ dist/
 .env
 .env.local
 .env.staging
+.env.migration
 .env.*.local
 
 # IDE
@@ -35,6 +36,9 @@ supabase/snippets/
 
 # Coverage reports (generated, never commit)
 coverage/
+
+# One-off migration backups (production client content -- never commit)
+scripts/backups/
 
 # Superpowers brainstorm artifacts
 .superpowers/

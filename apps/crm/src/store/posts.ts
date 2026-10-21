@@ -1,6 +1,9 @@
+import type { ContentFormat } from '@mesaas/platforms';
 import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
+import { fetchAllPagedByIds } from './paging';
+import { sortByPlatformOrder, type PostTargetSummary } from './postTargets';
 import type { Workflow, WorkflowEtapa } from './workflows';
 
 /**
@@ -18,7 +21,7 @@ import type { Workflow, WorkflowEtapa } from './workflows';
  * board would render avulsos as a segregated block at the bottom of each
  * column instead of interleaving the two kinds.
  */
-function compareScheduledAtAscNullsLast(
+export function compareScheduledAtAscNullsLast(
   a: { scheduled_at: string | null; id: number },
   b: { scheduled_at: string | null; id: number },
 ): number {
@@ -37,6 +40,11 @@ function compareScheduledAtAscNullsLast(
 function compareCreatedAtAsc(a: { created_at: string }, b: { created_at: string }): number {
   return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
 }
+
+/** Derivado de post_targets pelo banco (migration 20261010100002):
+ *  instagram+tiktok -> both; 'other' = nenhum destino Instagram/TikTok (ex.: só Geral).
+ *  'stories' nunca tem destino TikTok. */
+export type PostPlatform = 'instagram' | 'tiktok' | 'both' | 'other';
 
 // =============================================
 // WORKFLOW POSTS (Sub-tasks / Content pieces)
@@ -57,7 +65,7 @@ export interface WorkflowPost {
   titulo: string;
   conteudo: Record<string, unknown> | null;
   conteudo_plain: string;
-  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  tipo: ContentFormat;
   ordem: number;
   status:
     | 'rascunho'
@@ -83,16 +91,16 @@ export interface WorkflowPost {
   publish_retry_count?: number;
   instagram_container_id?: string | null;
   instagram_media_id?: string | null;
-  /** Which platform(s) this post targets. Defaults to 'instagram' at the DB level
-   * (migration 20260719000001_tiktok_publishing.sql). 'stories' tipo never allows
-   * 'tiktok'/'both' — TikTok has no Stories API. */
-  platform?: 'instagram' | 'tiktok' | 'both';
+  /** Plataforma(s) do post; derivada de post_targets pelo banco. Ver PostPlatform. */
+  platform?: PostPlatform;
   tiktok_publish_id?: string | null;
   tiktok_post_id?: string | null;
   tiktok_post_url?: string | null;
   tiktok_publish_status?: 'initiated' | 'processing' | 'published' | 'failed' | null;
   tiktok_publish_error?: string | null;
   tiktok_publish_retry_count?: number;
+  /** Lock of an in-flight TikTok publish (P4: post_targets.processing_at via the adapter). */
+  tiktok_publish_processing_at?: string | null;
   tiktok_caption?: string | null;
   tiktok_title?: string | null;
   tiktok_settings?: Record<string, unknown> | null;
@@ -111,6 +119,12 @@ export interface WorkflowPost {
    * app. Só válido em tipo 'reels' mirando Instagram; o trigger
    * workflow_posts_z5_clear_ig_trial limpa fora disso. */
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  /** Colaboradores do Instagram (usernames minúsculos, sem @, máx. 3). Só vale em
+   * feed/reels/carrossel mirando Instagram; ausente/NULL = []. */
+  ig_collaborators?: string[];
+  /** Subconjunto de ig_collaborators que o Instagram recusou na última falha.
+   * Só chega pelo select('*') do editor: nunca entra em lista explícita de colunas. */
+  ig_collaborators_refused?: string[];
 }
 
 export interface ClientePost {
@@ -128,10 +142,11 @@ export interface ClientePost {
   /** Target platform; absent on legacy rows (treat as 'instagram', the DB default). */
   platform?: WorkflowPost['platform'];
   ig_trial_strategy?: 'manual' | 'auto' | null;
+  ig_collaborators?: string[];
 }
 
 const CLIENTE_POST_COLUMNS =
-  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy';
+  'id, workflow_id, titulo, tipo, status, custom_status_id, scheduled_at, ordem, platform, ig_trial_strategy, ig_collaborators';
 
 function mapClientePostRow(row: any): ClientePost {
   return {
@@ -146,6 +161,7 @@ function mapClientePostRow(row: any): ClientePost {
     workflow_titulo: row.workflows?.titulo ?? null,
     platform: row.platform ?? undefined,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
+    ig_collaborators: row.ig_collaborators ?? [],
   };
 }
 
@@ -265,10 +281,79 @@ export interface ScheduledPost {
   tiktok_post_url: string | null;
   instagram_media_id: string | null;
   ig_trial_strategy: 'manual' | 'auto' | null;
+  /** Colaboradores do Instagram; linha antiga/cache sem o campo = []. */
+  ig_collaborators?: string[];
   /** Manual board rank for the Publicações kanban ("manual" column sort).
    * NULL = never manually positioned; sorts after every ranked post in that
    * column, in automatic order. */
   board_ordem: number | null;
+  /** Destinos do post (embed post_targets). Só getActivePosts preenche: o card do
+   *  quadro de Publicações mostra um chip por destino com feature_multiplatform. */
+  targets?: PostTargetSummary[];
+}
+
+/**
+ * P4: TikTok publish state lives on the post's TikTok destination (post_targets). Loaders embed
+ * it under this alias (no clash with getActivePosts' `post_targets(platform, status)` chips
+ * embed) and project it onto the legacy tiktok_* field names, so components, postLabels and
+ * polling keep their vocabulary. The workflow_posts.tiktok_* publish columns are frozen:
+ * `select('*')` still returns them, and the adapter overwrites every one.
+ */
+export const TIKTOK_TARGET_STATE_EMBED =
+  'targets_state:post_targets(platform,status,error,permalink,external_id,retry_count,processing_at)';
+
+interface TikTokTargetStateRow {
+  platform: string;
+  status: string;
+  error: string | null;
+  permalink: string | null;
+  external_id: string | null;
+  retry_count: number | null;
+  processing_at: string | null;
+}
+
+/** Destination status -> legacy tiktok_publish_status (spec §1). */
+const TIKTOK_LEGACY_STATUS: Record<string, WorkflowPost['tiktok_publish_status']> = {
+  pendente: null,
+  agendado: null,
+  processando: 'processing',
+  publicado: 'published',
+  falha: 'failed',
+};
+
+export interface TikTokLegacyState {
+  tiktok_publish_status: WorkflowPost['tiktok_publish_status'];
+  tiktok_publish_error: string | null;
+  tiktok_post_url: string | null;
+  tiktok_post_id: string | null;
+  tiktok_publish_retry_count: number;
+  tiktok_publish_processing_at: string | null;
+  /** Frozen column; nothing reads it after P4. Nulled so a stale value never surfaces. */
+  tiktok_publish_id: null;
+}
+
+/** Legacy tiktok_* fields from the `targets_state` embed; all null when there is no TikTok row. */
+export function tiktokLegacyState(targets: unknown): TikTokLegacyState {
+  const row = Array.isArray(targets)
+    ? (targets as TikTokTargetStateRow[]).find((t) => t?.platform === 'tiktok')
+    : undefined;
+  return {
+    tiktok_publish_status: row ? (TIKTOK_LEGACY_STATUS[row.status] ?? null) : null,
+    tiktok_publish_error: row?.error ?? null,
+    tiktok_post_url: row?.permalink ?? null,
+    tiktok_post_id: row?.external_id ?? null,
+    tiktok_publish_retry_count: row?.retry_count ?? 0,
+    tiktok_publish_processing_at: row?.processing_at ?? null,
+    tiktok_publish_id: null,
+  };
+}
+
+/** Strips the `targets_state` embed and overwrites the frozen tiktok_* columns with it. */
+export function applyTikTokTargetState<T extends object>(
+  row: T,
+): Omit<T, 'targets_state'> & TikTokLegacyState {
+  const { targets_state, ...rest } = row as T & { targets_state?: unknown };
+  return { ...(rest as Omit<T, 'targets_state'>), ...tiktokLegacyState(targets_state) };
 }
 
 /**
@@ -287,16 +372,17 @@ export interface ScheduledPost {
  * migrations before the frontend, so by the time this code ships the column
  * already exists; do not reorder that deploy sequence.
  */
-const POST_CONTEXT_COLUMNS =
-  'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy, board_ordem';
+export const POST_CONTEXT_COLUMNS = `id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, instagram_media_id, ig_trial_strategy, ig_collaborators, board_ordem, ${TIKTOK_TARGET_STATE_EMBED}`;
 
+// Exported for store/postProcesses.ts, which embeds a workflow_posts row (avulso arm shape).
 /**
  * Maps a workflow_posts row that may come from either arm of a wired/avulso
  * merge: `row.workflows` is present only for the wired arm (left- or
  * inner-joined), and the avulso arm selects `cliente_id` and a top-level
  * `clientes(nome)` embed directly off the post row instead.
  */
-function mapPostContextRow(row: any): ActivePost {
+export function mapPostContextRow(row: any): ActivePost {
+  const tiktok = tiktokLegacyState(row.targets_state);
   return {
     id: row.id,
     workflow_id: row.workflow_id ?? null,
@@ -316,12 +402,14 @@ function mapPostContextRow(row: any): ActivePost {
     ordem: row.ordem,
     responsavel_id: row.responsavel_id ?? null,
     platform: row.platform ?? 'instagram',
-    tiktok_publish_status: row.tiktok_publish_status ?? null,
-    tiktok_publish_error: row.tiktok_publish_error ?? null,
-    tiktok_post_url: row.tiktok_post_url ?? null,
+    tiktok_publish_status: tiktok.tiktok_publish_status,
+    tiktok_publish_error: tiktok.tiktok_publish_error,
+    tiktok_post_url: tiktok.tiktok_post_url,
     instagram_media_id: row.instagram_media_id ?? null,
     ig_trial_strategy: row.ig_trial_strategy ?? null,
+    ig_collaborators: row.ig_collaborators ?? [],
     board_ordem: row.board_ordem ?? null,
+    targets: Array.isArray(row.post_targets) ? sortByPlatformOrder(row.post_targets) : undefined,
   };
 }
 
@@ -389,13 +477,13 @@ export async function getActivePosts(): Promise<ActivePost[]> {
     supabase
       .from('workflow_posts')
       .select(
-        `${POST_CONTEXT_COLUMNS}, workflows!inner(titulo, cliente_id, status, clientes(nome))`,
+        `${POST_CONTEXT_COLUMNS}, post_targets(platform, status), workflows!inner(titulo, cliente_id, status, clientes(nome))`,
       )
       .eq('workflows.status', 'ativo')
       .order('scheduled_at', { ascending: true, nullsFirst: false }),
     supabase
       .from('workflow_posts')
-      .select(`${POST_CONTEXT_COLUMNS}, clientes(nome)`)
+      .select(`${POST_CONTEXT_COLUMNS}, post_targets(platform, status), clientes(nome)`)
       .is('workflow_id', null)
       .order('scheduled_at', { ascending: true, nullsFirst: false }),
   ]);
@@ -465,6 +553,22 @@ export interface PostStatusEvent {
   from_custom_nome: string | null;
   to_custom_nome: string | null;
   created_at: string;
+}
+
+export interface PostContentVersion {
+  id: number;
+  post_id: number;
+  conteudo: Record<string, unknown> | null;
+  conteudo_plain: string | null;
+  ig_caption: string | null;
+  tiktok_caption: string | null;
+  changed_fields: string[];
+  source: 'workspace_user' | 'client' | 'system';
+  actor_user_id: string | null;
+  actor_name: string | null;
+  suggestion_id: number | null;
+  created_at: string;
+  last_touched_at: string;
 }
 
 // =============================================
@@ -537,11 +641,11 @@ export async function getPropertyDefinitions(
 export async function getWorkflowPosts(workflowId: number): Promise<WorkflowPost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('*')
+    .select(`*, ${TIKTOK_TARGET_STATE_EMBED}`)
     .eq('workflow_id', workflowId)
     .order('ordem', { ascending: true });
   if (error) throw error;
-  return data || [];
+  return (data || []).map((row: WorkflowPost) => applyTikTokTargetState(row)) as WorkflowPost[];
 }
 
 /**
@@ -680,10 +784,10 @@ export async function getAwaitingClientePosts(): Promise<AwaitingClientePost[]> 
 export async function getAllWorkflowPosts(): Promise<WorkflowPost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('*')
+    .select(`*, ${TIKTOK_TARGET_STATE_EMBED}`)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return (data || []).map((row: WorkflowPost) => applyTikTokTargetState(row)) as WorkflowPost[];
 }
 
 export async function getWorkflowPostsWithProperties(
@@ -694,6 +798,7 @@ export async function getWorkflowPostsWithProperties(
     .select(
       `
       *,
+      ${TIKTOK_TARGET_STATE_EMBED},
       post_property_values (
         id,
         property_definition_id,
@@ -711,7 +816,7 @@ export async function getWorkflowPostsWithProperties(
   return (data || []).map((post: any) => {
     const { post_property_values: rawPvs, post_file_links: rawMedia, ...rest } = post;
     return {
-      ...rest,
+      ...applyTikTokTargetState(rest as WorkflowPost),
       has_media: Array.isArray(rawMedia) && rawMedia.length > 0,
       property_values: (rawPvs || []).map((pv: any) => ({
         id: pv.id,
@@ -727,29 +832,19 @@ export async function getWorkflowPostsWithProperties(
 export async function getWorkflowPostsCounts(workflowIds: number[]): Promise<Map<number, number>> {
   const counts = new Map<number, number>();
   if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds);
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
-    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
-  }
-  return counts;
-}
-
-export async function getWorkflowApprovedPostsCounts(
-  workflowIds: number[],
-): Promise<Map<number, number>> {
-  const counts = new Map<number, number>();
-  if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds)
-    .eq('status', 'aprovado_cliente');
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
+  // Chunked + paged: a single unpaged select is silently capped at 1000 rows,
+  // which undercounts once the workflows add up to more than 1000 posts.
+  const rows = await fetchAllPagedByIds(workflowIds, async (chunk, from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_posts')
+      .select('workflow_id')
+      .in('workflow_id', chunk)
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as { workflow_id: number }[];
+  });
+  for (const row of rows) {
     counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
   }
   return counts;
@@ -761,6 +856,8 @@ export async function getWorkflowApprovedPostsCounts(
  * (scheduled / posted / publish-failed, all of which happen only after client
  * approval). Used to decide when a client-approval etapa is fully cleared, so a
  * workflow whose posts are already scheduled/posted still counts as approved.
+ * get_workflow_post_stats (migration 20261002000010) repeats this list in its
+ * cleared_cliente column: change both together.
  */
 export const CLIENT_CLEARED_STATUSES = [
   'aprovado_cliente',
@@ -769,74 +866,71 @@ export const CLIENT_CLEARED_STATUSES = [
   'falha_publicacao',
 ] as const;
 
-export async function getWorkflowClearedClientePostsCounts(
-  workflowIds: number[],
-): Promise<Map<number, number>> {
-  const counts = new Map<number, number>();
-  if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds)
-    .in('status', CLIENT_CLEARED_STATUSES as unknown as string[]);
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
-    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
-  }
-  return counts;
+/** Per-workflow post counts for the Entregas board, from one RPC. Each map
+ *  only holds workflows with at least one matching post (or, for
+ *  `responsaveis`, at least one assigned post): a missing key means zero. */
+export interface WorkflowPostStats {
+  total: Map<number, number>;
+  aprovadoCliente: Map<number, number>;
+  /** status in CLIENT_CLEARED_STATUSES. */
+  clearedCliente: Map<number, number>;
+  enviadoCliente: Map<number, number>;
+  revisaoInterna: Map<number, number>;
+  /** Distinct post responsavel_ids, ascending. */
+  responsaveis: Map<number, number[]>;
 }
 
-export async function getWorkflowAwaitingClientePostsCounts(
-  workflowIds: number[],
-): Promise<Map<number, number>> {
-  const counts = new Map<number, number>();
-  if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds)
-    .eq('status', 'enviado_cliente');
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
-    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
-  }
-  return counts;
+interface WorkflowPostStatsRow {
+  workflow_id: number;
+  total: number;
+  aprovado_cliente: number;
+  cleared_cliente: number;
+  enviado_cliente: number;
+  revisao_interna: number;
+  responsavel_ids: number[] | null;
 }
 
-export async function getWorkflowRevisaoInternaCounts(
-  workflowIds: number[],
-): Promise<Map<number, number>> {
-  const counts = new Map<number, number>();
-  if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds)
-    .eq('status', 'revisao_interna');
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
-    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
-  }
-  return counts;
-}
+// The RPC returns at most one row per workflow, so 1000 ids per call keeps
+// every response under PostgREST's silent 1000-row cap.
+const POST_STATS_CHUNK = 1000;
 
-export async function getWorkflowPostResponsaveis(
-  workflowIds: number[],
-): Promise<Map<number, number[]>> {
-  const map = new Map<number, number[]>();
-  if (workflowIds.length === 0) return map;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id, responsavel_id')
-    .in('workflow_id', workflowIds)
-    .not('responsavel_id', 'is', null);
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number; responsavel_id: number }[]) {
-    const arr = map.get(row.workflow_id) ?? [];
-    if (!arr.includes(row.responsavel_id)) arr.push(row.responsavel_id);
-    map.set(row.workflow_id, arr);
+export async function getWorkflowPostStats(workflowIds: number[]): Promise<WorkflowPostStats> {
+  const stats: WorkflowPostStats = {
+    total: new Map(),
+    aprovadoCliente: new Map(),
+    clearedCliente: new Map(),
+    enviadoCliente: new Map(),
+    revisaoInterna: new Map(),
+    responsaveis: new Map(),
+  };
+  const ids = [...new Set(workflowIds)];
+  if (ids.length === 0) return stats;
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += POST_STATS_CHUNK) {
+    chunks.push(ids.slice(i, i + POST_STATS_CHUNK));
   }
-  return map;
+  const pages = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase.rpc('get_workflow_post_stats', {
+        p_workflow_ids: chunk,
+      });
+      if (error) throw error;
+      return (data ?? []) as WorkflowPostStatsRow[];
+    }),
+  );
+  const setCount = (map: Map<number, number>, id: number, n: number) => {
+    if (n > 0) map.set(id, n);
+  };
+  for (const row of pages.flat()) {
+    const id = row.workflow_id;
+    setCount(stats.total, id, row.total);
+    setCount(stats.aprovadoCliente, id, row.aprovado_cliente);
+    setCount(stats.clearedCliente, id, row.cleared_cliente);
+    setCount(stats.enviadoCliente, id, row.enviado_cliente);
+    setCount(stats.revisaoInterna, id, row.revisao_interna);
+    if (row.responsavel_ids?.length) stats.responsaveis.set(id, row.responsavel_ids);
+  }
+  return stats;
 }
 
 /**
@@ -904,6 +998,23 @@ export async function removeWorkflowPost(id: number): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Duplica um post (RPC duplicate_post, 20261002000020). A cópia fica logo
+ * depois do original, com a mesma mídia (mesmos arquivos), propriedades e
+ * data. `toRascunho` põe a cópia em rascunho; sem ele o status é mantido,
+ * exceto agendado/postado/falha_publicacao, que viram aprovado_cliente.
+ * Devolve o id do post novo; o erro da RPC sobe cru (plan_limit_exceeded:*,
+ * not_found, permission_denied).
+ */
+export async function clonePost(postId: number, toRascunho: boolean): Promise<number> {
+  const { data, error } = await supabase.rpc('duplicate_post', {
+    p_post_id: postId,
+    p_to_rascunho: toRascunho,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
 // =============================================
 // POSTS AVULSOS (fora de fluxo)
 // =============================================
@@ -946,10 +1057,17 @@ export async function createAvulsoPost(p: {
 /** Postgres deadlock SQLSTATE. detach_posts_from_flow/attach_posts_to_flow can
  * rarely deadlock against the (unrelated, pre-existing) workflow-client-move
  * trigger path -- a documented, self-recovering residual case (see the
- * migration's header comment) -- so both RPC wrappers retry exactly once. */
+ * migration's header comment) -- so both RPC wrappers retry exactly once.
+ *
+ * Retry semantics for callers: the SAME closure is re-invoked, so every value
+ * it captured (post ids, fingerprint, and for detach_posts_keeping_process the
+ * `p_request_id`) is resent unchanged. That is what makes the fase-2 batch
+ * idempotency work: generate the request id OUTSIDE the closure (spec §9.4)
+ * and the retry is recognized server-side as the same attempt. Never generate
+ * an id inside `invoke`. */
 const POSTGRES_DEADLOCK_ERRCODE = '40P01';
 
-async function callRpcWithDeadlockRetry<T>(
+export async function callRpcWithDeadlockRetry<T>(
   invoke: () => PromiseLike<{ data: T | null; error: { code?: string } | null }>,
 ): Promise<T> {
   let { data, error } = await invoke();
@@ -1082,14 +1200,17 @@ export interface StandalonePost extends WorkflowPost {
 export async function getStandalonePost(postId: number): Promise<StandalonePost | null> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('*, clientes(nome)')
+    .select(`*, clientes(nome), ${TIKTOK_TARGET_STATE_EMBED}`)
     .eq('id', postId)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const { clientes, ...rest } = data as WorkflowPost & { clientes: { nome: string } | null };
+  const { clientes, ...rest } = data as WorkflowPost & {
+    clientes: { nome: string } | null;
+    targets_state?: unknown;
+  };
   return {
-    ...rest,
+    ...(applyTikTokTargetState(rest) as WorkflowPost),
     cliente_nome: clientes?.nome ?? '',
   };
 }
@@ -1228,6 +1349,67 @@ export async function sendPostsToCliente(workflowId: number): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Statuses a selection send leaves alone: already in the portal, already
+ * approved by the client (re-sending would silently drop that approval) or
+ * owned by the publish pipeline.
+ */
+export const SELECTION_SEND_SKIPPED_STATUSES = [
+  'enviado_cliente',
+  'aprovado_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+] as const satisfies readonly WorkflowPost['status'][];
+
+export function isSendableFromSelection(status: WorkflowPost['status']): boolean {
+  return !(SELECTION_SEND_SKIPPED_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Sends the SELECTED posts of a fluxo to the client portal from any team-owned
+ * status (rascunho, revisão, aprovado interno, correção). Unlike
+ * `sendPostsToCliente` it does not require `aprovado_interno`. Clears
+ * `custom_status_id` like the status picker does: a custom status must behave
+ * as the canonical one it points at. Returns how many posts actually moved.
+ */
+export async function sendSelectedPostsToCliente(
+  workflowId: number,
+  postIds: number[],
+): Promise<number> {
+  if (postIds.length === 0) return 0;
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'enviado_cliente', custom_status_id: null })
+    .eq('workflow_id', workflowId)
+    .in('id', postIds)
+    .not('status', 'in', `(${SELECTION_SEND_SKIPPED_STATUSES.join(',')})`)
+    .select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+/**
+ * Sends ONE post to the client portal from whatever status the caller saw
+ * (`fromStatus`), so a draft can go straight to the client. The UPDATE is
+ * conditional on that status: a zero-row result means it already moved --
+ * treated as stale by the caller.
+ */
+export async function sendPostToCliente(
+  postId: number,
+  fromStatus: string,
+): Promise<WorkflowPost | null> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'enviado_cliente' })
+    .eq('id', postId)
+    .eq('status', fromStatus)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function approvePostsInternally(workflowId: number): Promise<void> {
   const { error } = await supabase
     .from('workflow_posts')
@@ -1272,6 +1454,24 @@ export async function getPostStatusEvents(postIds: number[]): Promise<PostStatus
     )
     .in('post_id', postIds)
     .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+/** Lazy, per-post fetch (only called when the version-history sheet opens) --
+ *  unlike getPostStatusEvents, deliberately NOT batch-prefetched for every post
+ *  in a workflow, since a row carries a full `conteudo` jsonb snapshot.
+ *  Ordered/anchored on last_touched_at (when a coalesced group was last
+ *  touched), not created_at -- see PostVersionHistorySheet. */
+export async function getPostContentVersions(postIds: number[]): Promise<PostContentVersion[]> {
+  if (postIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('post_content_versions')
+    .select(
+      'id, post_id, conteudo, conteudo_plain, ig_caption, tiktok_caption, changed_fields, source, actor_user_id, actor_name, suggestion_id, created_at, last_touched_at',
+    )
+    .in('post_id', postIds)
+    .order('last_touched_at', { ascending: true });
   if (error) throw error;
   return data || [];
 }
@@ -1324,8 +1524,16 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
   return data || [];
 }
 
-export async function acceptEditSuggestion(id: number): Promise<void> {
-  const { error } = await supabase.rpc('accept_edit_suggestion', { p_suggestion_id: id });
+/**
+ * `expectedUpdatedAt` is the `updated_at` of the version the team reviewed. The client can
+ * keep editing a pending suggestion, so the RPC refuses with `suggestion_changed` when the
+ * row moved on since then instead of applying a version nobody on the team has seen.
+ */
+export async function acceptEditSuggestion(id: number, expectedUpdatedAt?: string): Promise<void> {
+  const { error } = await supabase.rpc('accept_edit_suggestion', {
+    p_suggestion_id: id,
+    p_expected_updated_at: expectedUpdatedAt ?? null,
+  });
   if (error) throw error;
 }
 

@@ -1,0 +1,427 @@
+/* Mensagens below 768px (FMensagens, FMensagensThread, FMensagensPost). Phone-only
+   markup: every class here is phone-msg-*, read from the --phone-* tokens that
+   .app-container / .phone-kit carry. */
+
+/* ---- List ---- */
+.phone-msg-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-msg-search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-msg-search input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+.phone-msg-group {
+  margin: 0 0 20px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  list-style: none;
+}
+.phone-msg-note {
+  margin: 24px 16px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+.phone-msg-row {
+  list-style: none;
+}
+.phone-msg-row__main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 72px;
+  padding: 0 0 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-msg-row__main:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-msg-row__main:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+.phone-msg-row__main .avatar {
+  width: 44px !important;
+  height: 44px !important;
+}
+.phone-msg-row__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  align-self: stretch;
+  justify-content: center;
+  padding: 12px 16px 12px 0;
+}
+.phone-msg-row + .phone-msg-row .phone-msg-row__body {
+  border-top: 0.5px solid var(--phone-separator);
+}
+.phone-msg-row__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.phone-msg-row__name {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-msg-row__time {
+  flex-shrink: 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-msg-row__preview {
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-msg-row__badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---- Thread (pushed screen, full bleed, tab bar hidden) ---- */
+.phone-msg-thread {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-msg-thread__bar {
+  flex-shrink: 0;
+  padding: 0 var(--phone-gutter);
+}
+.phone-msg-thread__bar .phone-nav-bar__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.phone-msg-thread__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phone-msg-thread__filters {
+  flex-shrink: 0;
+  padding: 6px var(--phone-gutter) 8px;
+}
+.phone-msg-thread__scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 12px var(--phone-gutter) 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-msg-thread__older,
+.phone-msg-thread__retry {
+  align-self: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-msg-thread__retry {
+  color: var(--phone-label);
+  font-size: var(--phone-text-subhead);
+}
+.phone-msg-thread__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 24px 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+.phone-msg-thread__state p {
+  margin: 0;
+}
+
+.phone-msg-time {
+  color: var(--phone-label-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.phone-msg-event {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.phone-msg-event__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  /* Without it the line takes the chip's single-line title width and the thread
+     scrolls sideways; capped, the chip title ellipsizes. */
+  max-width: 100%;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.phone-msg-event__line > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.phone-msg-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 86%;
+  align-self: flex-start;
+}
+.phone-msg-bubble-row--mine {
+  flex-direction: row-reverse;
+  align-self: flex-end;
+}
+.phone-msg-bubble-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.phone-msg-bubble-row--mine .phone-msg-bubble-col {
+  align-items: flex-end;
+}
+.phone-msg-bubble {
+  max-width: 100%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: var(--phone-cell);
+  font-size: var(--phone-text-body);
+  line-height: 1.35;
+}
+.phone-msg-bubble-row--mine .phone-msg-bubble {
+  background: var(--phone-cell-pressed);
+}
+.phone-msg-bubble__author {
+  margin-bottom: 2px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-msg-bubble__action {
+  margin-bottom: 2px;
+  color: #b45309;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-msg-bubble__text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.phone-msg-bubble__chip {
+  margin-top: 8px;
+}
+
+/* Post chip (tap opens the post, long-press opens the menu). */
+.phone-msg-chip-hold {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.phone-msg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-msg-bubble-row--mine .phone-msg-chip,
+.phone-msg-event .phone-msg-chip {
+  background: var(--phone-cell);
+}
+.phone-msg-chip:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-msg-chip__title {
+  /* Without it the nowrap title keeps the chip at its full width past max-width. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-msg-chip__icon,
+.phone-msg-chip__arrow {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--phone-label-secondary);
+}
+.phone-msg-chip__arrow {
+  width: 13px;
+  height: 13px;
+}
+.phone-msg-chip-preview {
+  overflow: hidden;
+  border-radius: var(--phone-radius-menu);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+}
+
+/* Composer: the screen's last in-flow child, clear of the home indicator. */
+.phone-msg-composer {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px var(--phone-gutter) calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 0.5px solid var(--phone-separator);
+  background: var(--phone-bg);
+}
+.phone-msg-composer__reply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-msg-composer__reply > svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+}
+.phone-msg-composer__reply-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-msg-composer__reply-text strong {
+  color: var(--phone-label);
+}
+.phone-msg-composer__cancel {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 32px;
+  margin-right: -12px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  cursor: pointer;
+}
+.phone-msg-composer__cancel svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-msg-composer__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.phone-msg-composer__input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border: 0.5px solid var(--phone-separator);
+  border-radius: 999px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  outline: none;
+}
+.phone-msg-composer__input:focus-visible {
+  border-color: var(--phone-accent);
+}
+.phone-msg-composer__send {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  cursor: pointer;
+}
+.phone-msg-composer__send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.phone-msg-composer__send svg {
+  width: 18px;
+  height: 18px;
+}

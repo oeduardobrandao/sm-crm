@@ -10,13 +10,21 @@ function makeFakeSvc(rows: {
   plans: Array<{ id: string; name: string; price_brl: number | null; price_brl_annual: number | null }>;
   lastActivity?: Array<{ workspace_id: string; last_activity_at: string | null }>;
 }) {
+  // workspace_subscriptions is read via fetchAllRows: .in()/.eq() -> .order() -> .range(from, to).
+  // Data is only ever handed back through .range(), so a fixture larger than one page proves the
+  // handler pages through it instead of stopping at the first slice.
+  const subsRangeStep = {
+    range: (from: number, to: number) =>
+      Promise.resolve({ data: rows.subscriptions.slice(from, to + 1), error: null }),
+  };
+  const subsOrderStep = { order: () => subsRangeStep };
   const db = {
     from(table: string) {
       if (table === "workspace_subscriptions") {
         return {
           select: () => ({
-            in: () => Promise.resolve({ data: rows.subscriptions, error: null }),
-            eq: () => Promise.resolve({ data: rows.subscriptions, error: null }),
+            in: () => subsOrderStep,
+            eq: () => subsOrderStep,
           }),
         };
       }
@@ -109,4 +117,66 @@ Deno.test("handleGetTrials attaches owner_* fields from fetchOwnerContacts to ea
   assertEquals(body.trials[0].monthly_cents, 8250); // round(99000/12) = 8250
   assertEquals(body.trials[0].created_at, "2026-08-01T00:00:00Z");
   assertEquals(body.trials[0].last_activity_at, null);
+});
+
+Deno.test("handleGetMrr aggregates past the 1000-row PostgREST page", async () => {
+  const SUB_COUNT = 1500;
+  const subscriptions = Array.from({ length: SUB_COUNT }, (_, i) => ({
+    workspace_id: `ws-${i}`,
+    provider: "stripe",
+    status: "active",
+    plan_id: null,
+    billing_interval: "month",
+    stripe_subscription_id: null,
+    // amount_cents already mirrored -> resolveMirrorAmount short-circuits, no live Stripe fetch.
+    amount_cents: 1000,
+    currency: "brl",
+    amount_interval: "month",
+    discount_label: null,
+  }));
+  const workspaces = subscriptions.map((s, i) => ({
+    id: s.workspace_id,
+    name: `Workspace ${i}`,
+    created_at: "2026-01-01T00:00:00Z",
+  }));
+
+  const svc = makeFakeSvc({ subscriptions, workspaces, plans: [] });
+
+  const res = await handleGetMrr(svc, HEADERS, async () => new Map());
+  const body = await res.json();
+  assertEquals(body.paying_count, SUB_COUNT);
+  assertEquals(body.workspaces.length, SUB_COUNT);
+});
+
+Deno.test("handleGetMrr excludes internal workspaces from the total and the list", async () => {
+  const sub = (id: string) => ({
+    workspace_id: id, provider: "stripe", status: "active", plan_id: "pro", billing_interval: "month",
+    stripe_subscription_id: null, amount_cents: 9900, currency: "brl", amount_interval: "month", discount_label: null,
+  });
+  const svc = makeFakeSvc({
+    subscriptions: [sub("ws-1"), sub("ws-int")],
+    workspaces: [{ id: "ws-1", name: "Alpha" }, { id: "ws-int", name: "Interno" }],
+    plans: [{ id: "pro", name: "Pro", price_brl: 9900, price_brl_annual: null }],
+  });
+  const res = await handleGetMrr(svc, HEADERS, fakeFetchOwnerContacts, () => Promise.resolve(new Set(["ws-int"])));
+  const body = await res.json();
+  assertEquals(body.mrr_cents, 9900);
+  assertEquals(body.paying_count, 1);
+  assertEquals(body.workspaces.map((w: { workspace_id: string }) => w.workspace_id), ["ws-1"]);
+});
+
+Deno.test("handleGetTrials excludes internal workspaces", async () => {
+  const trial = (id: string) => ({
+    workspace_id: id, provider: "stripe", plan_id: "pro", billing_interval: "month", stripe_subscription_id: null,
+    current_period_end: "2026-10-01T00:00:00Z", amount_cents: 9900, currency: "brl", amount_interval: "month", discount_label: null,
+  });
+  const svc = makeFakeSvc({
+    subscriptions: [trial("ws-1"), trial("ws-int")],
+    workspaces: [{ id: "ws-1", name: "Alpha" }, { id: "ws-int", name: "Interno" }],
+    plans: [{ id: "pro", name: "Pro", price_brl: 9900, price_brl_annual: null }],
+  });
+  const res = await handleGetTrials(svc, HEADERS, fakeFetchOwnerContacts, () => Promise.resolve(new Set(["ws-int"])));
+  const body = await res.json();
+  assertEquals(body.trial_count, 1);
+  assertEquals(body.trials[0].workspace_id, "ws-1");
 });

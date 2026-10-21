@@ -30,8 +30,8 @@
 
 -- ============ (a) notification_inapp_prefs_type_check +team_message =======
 -- ATENCAO: lista copiada da definicao MAIS RECENTE no momento de escrever
--- (20260903000001_notification_center_phase1.sql, 22 valores + '__all__') e
--- apenas ACRESCENTA 'team_message'. Este arquivo passa a ser a definicao
+-- (20261011000001_post_references.sql, + '__all__') e apenas ACRESCENTA
+-- 'team_message'. Este arquivo passa a ser a definicao
 -- mais recente: a proxima migration copia DAQUI.
 alter table notification_inapp_prefs
   drop constraint notification_inapp_prefs_type_check;
@@ -43,6 +43,9 @@ alter table notification_inapp_prefs
     'invite_accepted','member_role_changed','member_removed','client_message',
     'mention','post_status_automation','instagram_connected_by_client',
     'post_publish_failed','storage_autoclean_report','instagram_automation_failed',
+    'event_invited','event_updated','event_cancelled','event_rsvp','event_reminder',
+    'event_client_rsvp','event_reschedule_requested','event_guest_rsvp',
+    'post_client_reference',
     'team_message',
     '__all__'
   ));

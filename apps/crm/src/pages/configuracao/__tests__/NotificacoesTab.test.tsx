@@ -2,9 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+
+// The tab branches on the viewport; this suite asserts the desktop markup.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 // Real catalog + category constants (Task 3) are pure static data: kept real
-// here so the "5 groups / 22 rows" assertions exercise the actual catalog,
+// here so the "6 groups / 31 rows" assertions exercise the actual catalog,
 // not a stand-in. Only the prefs store (network calls) is mocked.
 const getInapp = vi.fn();
 const setInapp = vi.fn().mockResolvedValue(undefined);
@@ -26,6 +30,14 @@ vi.mock('@/hooks/useNotifications', () => ({
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// The agenda_* rows are shown only with the plan flag feature_agenda.
+const { mockFeatures } = vi.hoisted(() => ({
+  mockFeatures: { current: { feature_agenda: true } as { feature_agenda: boolean } | null },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: mockFeatures.current }),
+}));
 
 // EmailsAutomaticosSection (Task 8): reads/writes profiles.marketing_opt_in
 // via useAuth() + a direct supabase update, same shape as PerfilTab.tsx.
@@ -55,14 +67,70 @@ vi.mock('@/store', () => ({
 }));
 
 const CLIENTES_FIXTURE = [
-  { id: 1, nome: 'Ana Clínica', email: 'ana@example.com', send_report_email: true },
-  { id: 2, nome: 'Beto Estética', email: 'beto@example.com', send_report_email: false },
-  { id: 3, nome: 'Clínica Sem Email', email: '', send_report_email: false },
+  {
+    id: 1,
+    nome: 'Ana Clínica',
+    email: 'ana@example.com',
+    status: 'ativo',
+    send_report_email: true,
+    send_event_email: true,
+    event_email_unsub_at: null,
+  },
+  {
+    id: 2,
+    nome: 'Beto Estética',
+    email: 'beto@example.com',
+    status: 'ativo',
+    send_report_email: false,
+    send_event_email: false,
+    event_email_unsub_at: null,
+  },
+  {
+    id: 3,
+    nome: 'Clínica Sem Email',
+    email: '',
+    status: 'ativo',
+    send_report_email: false,
+    send_event_email: false,
+    event_email_unsub_at: null,
+  },
+  // Task 8: status != 'ativo' shows a muted "(pausado)"/"(encerrado)" tag next
+  // to the name — the real gate lives server-side, this is just explanatory.
+  {
+    id: 4,
+    nome: 'Davi Pausado',
+    email: 'davi@example.com',
+    status: 'pausado',
+    send_report_email: true,
+    send_event_email: true,
+    event_email_unsub_at: null,
+  },
+  {
+    id: 5,
+    nome: 'Fernanda Encerrada',
+    email: 'fernanda@example.com',
+    status: 'encerrado',
+    send_report_email: false,
+    send_event_email: true,
+    event_email_unsub_at: null,
+  },
+  // Task 8: a client who clicked the unsubscribe link in a digest email —
+  // reactivating requires the AlertDialog confirm, not a plain toggle.
+  {
+    id: 6,
+    nome: 'Eva Desativada',
+    email: 'eva@example.com',
+    status: 'ativo',
+    send_report_email: false,
+    send_event_email: false,
+    event_email_unsub_at: '2026-08-01T00:00:00Z',
+  },
 ];
 const BRANDING_FIXTURE = {
   brand_color: '#eab308',
   report_splash_url: null,
   send_report_email: true,
+  send_client_event_emails: false,
 };
 
 // Radix Switch: mocked to a plain native checkbox (checked/onCheckedChange/
@@ -111,6 +179,7 @@ describe('NotificacoesTab', () => {
     // which wipes vi.fn() implementations down to a no-op returning undefined
     // after every test. Re-establishing the base implementation here keeps
     // every test's queryFn resolving a real value regardless of test order.
+    mockFeatures.current = { feature_agenda: true };
     getInapp.mockReset().mockResolvedValue({});
     setInapp.mockReset().mockResolvedValue(undefined);
     getEmail.mockReset().mockResolvedValue({});
@@ -122,6 +191,7 @@ describe('NotificacoesTab', () => {
       profile: { id: 'user-1', marketing_opt_in: true },
       refetchProfile,
       workspaceRole: 'owner',
+      can: makeCan(fakeMembership({ role: 'owner' })),
     });
     mockSupabaseEq.mockReset().mockResolvedValue({ error: null });
     mockSupabaseUpdate.mockReset().mockReturnValue({ eq: mockSupabaseEq });
@@ -132,13 +202,13 @@ describe('NotificacoesTab', () => {
     updateWorkspaceBrandingMock.mockReset().mockResolvedValue(undefined);
   });
 
-  it('renders the 5 CATEGORY_LABELS groups and all 23 catalog type rows', async () => {
+  it('renders the 6 CATEGORY_LABELS groups and all 32 catalog type rows', async () => {
     renderTab();
     for (const category of CATEGORY_ORDER) {
       expect(await screen.findByText(CATEGORY_LABELS[category])).toBeInTheDocument();
     }
-    expect(CATEGORY_ORDER.length).toBe(5);
-    expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(23);
+    expect(CATEGORY_ORDER.length).toBe(6);
+    expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(32);
     for (const entry of Object.values(NOTIFICATION_CATALOG)) {
       // getAllByText, not getByText: NOTIFICATION_CATALOG.instagram_connected_by_client
       // shares its label ("Instagram conectado") with a fixed row in
@@ -146,6 +216,23 @@ describe('NotificacoesTab', () => {
       // event, but that row is the always-on transactional email, which is
       // exactly why this catalog entry is emailEligible: false.
       expect(screen.getAllByText(entry.label).length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each([
+    ['off', { feature_agenda: false }],
+    ['not loaded yet', null],
+  ])('hides the Agenda group and its rows when the flag is %s', async (_name, features) => {
+    mockFeatures.current = features;
+    renderTab();
+    await screen.findByText(CATEGORY_LABELS.equipe);
+    expect(screen.queryByRole('heading', { level: 3, name: CATEGORY_LABELS.agenda })).toBeNull();
+    for (const entry of Object.values(NOTIFICATION_CATALOG)) {
+      if (entry.category === 'agenda') {
+        expect(screen.queryByText(entry.label)).not.toBeInTheDocument();
+      } else {
+        expect(screen.getAllByText(entry.label).length).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -296,18 +383,131 @@ describe('NotificacoesTab', () => {
   });
 
   describe('SeusClientesSection', () => {
-    it('does not render for workspaceRole agent', async () => {
+    /**
+     * Task 14: `isOwnerOrAdmin = workspaceRole === 'owner' || workspaceRole
+     * === 'admin'` collapsed onto `can('configuracoes', 'ver') === true`.
+     * `AGENT_ROLE_PRESET.configuracoes` is 'none', so this legacy-agent case
+     * reproduces the OLD gate byte-for-byte -- only a CUSTOM role (role_id
+     * set) can now diverge from its chassis role.
+     */
+    it('does not render for a legacy agent (configuracoes preset is none)', async () => {
       mockUseAuth.mockReturnValue({
         user: { id: 'user-1' },
         profile: { id: 'user-1', marketing_opt_in: true },
         refetchProfile,
         workspaceRole: 'agent',
+        can: makeCan(fakeMembership({ role: 'agent' })),
       });
       renderTab();
       // Wait for the tab to finish settling before asserting an absence.
       await screen.findByRole('heading', { name: 'E-mails automáticos' });
       expect(screen.queryByText('Seus clientes')).not.toBeInTheDocument();
       expect(getClientesMock).not.toHaveBeenCalled();
+    });
+
+    it('does not render for a custom role with no configuracoes grant at all', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'agent',
+        can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+      });
+      renderTab();
+      await screen.findByRole('heading', { name: 'E-mails automáticos' });
+      expect(screen.queryByText('Seus clientes')).not.toBeInTheDocument();
+      expect(getClientesMock).not.toHaveBeenCalled();
+    });
+
+    it('renders for a custom role with configuracoes:editar (the fix)', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'agent',
+        can: makeCan(
+          fakeMembership({
+            role: 'agent',
+            role_id: 'role-1',
+            permissions: { configuracoes: 'editar' },
+          }),
+        ),
+      });
+      renderTab();
+      expect(await screen.findByText('Todos os clientes')).toBeInTheDocument();
+    });
+
+    /**
+     * Task 14, revisão externa round 3 (P1): the section's own gate is
+     * `configuracoes:ver` (NotificacoesTab), but `saveMaster`/`saveCliente`
+     * write `workspaces`/`clientes` -- tables with tenant-only RLS, no
+     * module/role predicate. A custom role with `configuracoes:ver` but no
+     * `clientes:editar` grant passed the section's gate and could still
+     * mutate report-delivery prefs for any client. Both switches are now
+     * disabled (with a "Somente leitura" hint) unless
+     * `can('clientes','editar') === true`.
+     */
+    it('disables both switches (with "Somente leitura") for configuracoes:ver + clientes:none', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'agent',
+        can: makeCan(
+          fakeMembership({
+            role: 'agent',
+            role_id: 'role-1',
+            permissions: { configuracoes: 'ver' },
+          }),
+        ),
+      });
+      renderTab();
+
+      // Asserts the `disabled` attribute itself, not a click-then-no-call
+      // round trip: the mocked Switch is a plain controlled <input>, and
+      // jsdom's fireEvent.click can still reach its onChange handler even
+      // when disabled (verified empirically to be inconsistent across test
+      // files using this exact same mock -- real browsers/Radix's actual
+      // Switch suppress this for genuine clicks, but that is not a
+      // guarantee this mock reproduces). `disabled` is the contract this
+      // suite can verify without re-testing Radix/jsdom click semantics.
+      const masterSwitch = await screen.findByLabelText('Relatório mensal para todos os clientes');
+      expect(masterSwitch).toBeDisabled();
+      const clientSwitch = await screen.findByLabelText(
+        'Relatório mensal para Ana Clínica (ana@example.com)',
+      );
+      expect(clientSwitch).toBeDisabled();
+      // A coluna "Pendências do Hub" (Fase 2, #437) escreve nas mesmas
+      // tabelas tenant-only e carrega o mesmo gate.
+      expect(
+        await screen.findByLabelText('Pendências do Hub para todos os clientes'),
+      ).toBeDisabled();
+      expect(
+        await screen.findByLabelText('Pendências do Hub para Ana Clínica (ana@example.com)'),
+      ).toBeDisabled();
+      expect(screen.getByText('Somente leitura')).toBeInTheDocument();
+    });
+
+    it('keeps both switches enabled for a legacy admin (unchanged)', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'admin',
+        can: makeCan(fakeMembership({ role: 'admin' })),
+      });
+      renderTab();
+
+      const masterSwitch = await screen.findByLabelText('Relatório mensal para todos os clientes');
+      expect(masterSwitch).not.toBeDisabled();
+      const clientSwitch = await screen.findByLabelText(
+        'Relatório mensal para Ana Clínica (ana@example.com)',
+      );
+      expect(clientSwitch).not.toBeDisabled();
+      expect(
+        await screen.findByLabelText('Pendências do Hub para todos os clientes'),
+      ).not.toBeDisabled();
+      expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
     });
 
     it('renders the master row plus one row per client for workspaceRole owner', async () => {
@@ -350,6 +550,109 @@ describe('NotificacoesTab', () => {
       await waitFor(() =>
         expect(updateWorkspaceBrandingMock).toHaveBeenCalledWith({ send_report_email: false }),
       );
+    });
+
+    describe('Pendências do Hub (Fase 2)', () => {
+      it('shows the header label and subtext', async () => {
+        renderTab();
+        expect(await screen.findByText('Pendências do Hub')).toBeInTheDocument();
+        expect(
+          screen.getByText('posts a aprovar e mensagens não lidas · máx. 1 e-mail a cada 4h'),
+        ).toBeInTheDocument();
+      });
+
+      it('toggling the master row calls updateWorkspaceBranding({ send_client_event_emails: true })', async () => {
+        renderTab();
+        const masterSwitch = (await screen.findByLabelText(
+          'Pendências do Hub para todos os clientes',
+        )) as HTMLInputElement;
+        expect(masterSwitch.checked).toBe(false); // BRANDING_FIXTURE.send_client_event_emails: false
+        fireEvent.click(masterSwitch);
+        await waitFor(() =>
+          expect(updateWorkspaceBrandingMock).toHaveBeenCalledWith({
+            send_client_event_emails: true,
+          }),
+        );
+      });
+
+      it('toggling a client row calls updateCliente(id, { send_event_email: false })', async () => {
+        renderTab();
+        const switchEl = (await screen.findByLabelText(
+          'Pendências do Hub para Ana Clínica (ana@example.com)',
+        )) as HTMLInputElement;
+        expect(switchEl.checked).toBe(true);
+        fireEvent.click(switchEl);
+        await waitFor(() =>
+          expect(updateClienteMock).toHaveBeenCalledWith(1, { send_event_email: false }),
+        );
+      });
+
+      it('shows "·" for a client with no email, in both columns', async () => {
+        renderTab();
+        await screen.findByText('Clínica Sem Email');
+        expect(
+          screen.queryByLabelText(/Relatório mensal para Clínica Sem Email/),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByLabelText(/Pendências do Hub para Clínica Sem Email/),
+        ).not.toBeInTheDocument();
+        // Two "·" placeholders on that row: one per column.
+        const dots = screen.getAllByText('·').filter((el) => el.title === 'Sem e-mail cadastrado');
+        expect(dots).toHaveLength(2);
+      });
+
+      it('shows a muted "(pausado)"/"(encerrado)" tag next to the name for a non-active client', async () => {
+        renderTab();
+        await screen.findByText('Davi Pausado');
+        expect(screen.getByText('(pausado)')).toBeInTheDocument();
+        await screen.findByText('Fernanda Encerrada');
+        expect(screen.getByText('(encerrado)')).toBeInTheDocument();
+        // The active clients in the fixture never get a status tag.
+        expect(screen.queryByText('(ativo)')).not.toBeInTheDocument();
+      });
+
+      it('dims the switch and explains an unsubscribed client, gating reactivation behind an AlertDialog confirm', async () => {
+        renderTab();
+        const switchEl = (await screen.findByLabelText(
+          'Pendências do Hub para Eva Desativada (eva@example.com)',
+        )) as HTMLInputElement;
+        expect(switchEl.checked).toBe(false); // send_event_email: false
+        expect(screen.getByText('desativado pelo cliente')).toBeInTheDocument();
+
+        // Clicking opens a confirm dialog instead of toggling directly.
+        fireEvent.click(switchEl);
+        expect(updateClienteMock).not.toHaveBeenCalled();
+        expect(
+          await screen.findByText(
+            'O cliente pediu para não receber estes e-mails. Reativar mesmo assim?',
+          ),
+        ).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Reativar' }));
+        await waitFor(() =>
+          expect(updateClienteMock).toHaveBeenCalledWith(6, {
+            send_event_email: true,
+            event_email_unsub_at: null,
+          }),
+        );
+      });
+
+      it('cancelling the reactivation dialog makes no call', async () => {
+        renderTab();
+        const switchEl = await screen.findByLabelText(
+          'Pendências do Hub para Eva Desativada (eva@example.com)',
+        );
+        fireEvent.click(switchEl);
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+        await waitFor(() =>
+          expect(
+            screen.queryByText(
+              'O cliente pediu para não receber estes e-mails. Reativar mesmo assim?',
+            ),
+          ).not.toBeInTheDocument(),
+        );
+        expect(updateClienteMock).not.toHaveBeenCalled();
+      });
     });
 
     it('filters the client list by name, case-insensitively', async () => {

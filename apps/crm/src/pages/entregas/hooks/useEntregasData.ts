@@ -1,28 +1,28 @@
+import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getWorkflows,
   getClientes,
   getMembros,
   getWorkflowTemplates,
-  getWorkflowEtapas,
+  getAllActiveEtapas,
   getDeadlineInfo,
-  getWorkflowPostsCounts,
-  getWorkflowApprovedPostsCounts,
-  getWorkflowClearedClientePostsCounts,
-  getWorkflowRevisaoInternaCounts,
-  getWorkflowAwaitingClientePostsCounts,
-  getWorkflowPostResponsaveis,
+  getWorkflowPostStats,
   getWorkspaceSlug,
+  getVigentePostProcesses,
   type Workflow,
   type WorkflowEtapa,
   type Cliente,
   type Membro,
   type WorkflowTemplate,
   type PostMedia,
+  type PostProcessWithPost,
 } from '../../../store';
 import { supabase } from '../../../lib/supabase';
-import { getWorkflowCovers } from '../../../services/postMedia';
+import { getWorkflowCovers, getPostCovers } from '../../../services/postMedia';
 import { buildUsableTokenMap } from '../../../lib/hubTokenMap';
+import { toPostEntity, type PostEntity } from '../boardEntity';
+import { toLocalISODate } from '@/utils/postDate';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -38,12 +38,27 @@ export interface BoardCard {
   hubUrl?: string;
 }
 
-export interface BoardRow {
-  key: string;
-  label: string;
-  stepNames: string[];
-  columns: Map<string, BoardCard[]>;
-}
+/**
+ * Stable stand-ins for a query that has not resolved yet. A `= []` destructuring
+ * default (or a `?? new Map()`) mints a fresh object on every render, which
+ * silently defeats every downstream useMemo keyed on these values — the board's
+ * `filteredCards` and the Visão geral's chart datasets among them.
+ *
+ * They are shared and must stay EMPTY: nothing may write into them. Nothing does
+ * today (every consumer copies before sorting), and a write would be a bug
+ * against a query result regardless.
+ */
+const EMPTY_WORKFLOWS: Workflow[] = [];
+const EMPTY_CLIENTES: Cliente[] = [];
+const EMPTY_MEMBROS: Membro[] = [];
+const EMPTY_TEMPLATES: WorkflowTemplate[] = [];
+const EMPTY_ETAPAS_MAP: Map<number, WorkflowEtapa[]> = new Map();
+/** Shared by all five count maps — they are interchangeable while empty. */
+const EMPTY_COUNT_MAP: Map<number, number> = new Map();
+const EMPTY_RESPONSAVEIS_MAP: Map<number, number[]> = new Map();
+const EMPTY_PROCESSES: PostProcessWithPost[] = [];
+const EMPTY_POST_ENTITIES: PostEntity[] = [];
+const EMPTY_PROCESS_MAP: Map<number, PostProcessWithPost> = new Map();
 
 /**
  * Computes the absolute deadline date from an etapa's start time and duration.
@@ -73,6 +88,19 @@ export function computeDeadlineDate(
 }
 
 /**
+ * Parses a 'YYYY-MM-DD' data_limite into a local-midnight Date, same approach
+ * as etapaDeadlineDateOf (pages/entregas/etapaPrazo.ts) and getDeadlineInfo
+ * (store/workflows.ts): `new Date('YYYY-MM-DD')` parses as UTC midnight,
+ * which in a UTC-negative zone like Brazil shifts the date back a day.
+ * Not imported from etapaPrazo.ts to avoid a circular dependency (that module
+ * imports computeDeadlineDate from this one).
+ */
+function dataLimiteToLocalDate(dataLimite: string): Date | null {
+  const [y, m, d] = dataLimite.slice(0, 10).split('-').map(Number);
+  return y && m && d ? new Date(y, m - 1, d) : null;
+}
+
+/**
  * Computes the estimated workflow end date by chaining all remaining etapas
  * from the active one through the last, starting from the active etapa's iniciado_em.
  * When steps have data_limite, uses the last step's data_limite as the end date.
@@ -87,7 +115,8 @@ export function computeWorkflowDeadlineDate(
   // If any steps have data_limite set, use the last step's data_limite
   const lastWithLimit = [...sorted].reverse().find((e) => e.data_limite);
   if (lastWithLimit?.data_limite) {
-    return new Date(lastWithLimit.data_limite);
+    const local = dataLimiteToLocalDate(lastWithLimit.data_limite);
+    if (local) return local;
   }
 
   if (!activeEtapa.iniciado_em) return null;
@@ -150,6 +179,15 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
   return new Date(nextYear, nextMonth, dayNextMonth);
 }
 
+/** Forma mínima de uma etapa para o cálculo de data de entrega: WorkflowEtapa e
+ *  as etapas de um template (com `ordem` = índice) satisfazem. */
+export type DeliveryStep = {
+  ordem: number;
+  tipo?: 'padrao' | 'aprovacao_cliente' | null;
+  prazo_dias: number;
+  tipo_prazo: 'corridos' | 'uteis';
+};
+
 /**
  * Computes data_limite (ISO date string) for each step in a data_entrega workflow.
  * The aprovacao_cliente step gets deliveryDate.
@@ -158,14 +196,14 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
  * Returns Map<ordem, ISO date string>.
  */
 export function computeDeliveryDeadlines(
-  etapas: WorkflowEtapa[],
+  etapas: DeliveryStep[],
   deliveryDate: Date,
 ): Map<number, string> {
   const sorted = [...etapas].sort((a, b) => a.ordem - b.ordem);
   const anchorIdx = sorted.findIndex((e) => e.tipo === 'aprovacao_cliente');
   if (anchorIdx === -1) return new Map();
 
-  const toISO = (d: Date) => d.toISOString().split('T')[0];
+  const toISO = toLocalISODate;
   const result = new Map<number, string>();
 
   // Anchor step gets delivery date
@@ -188,83 +226,145 @@ export function computeDeliveryDeadlines(
   return result;
 }
 
-export function useEntregasData() {
+/**
+ * queryFn de ['all-active-etapas']: linhas -> Map por workflow_id. Exportado
+ * porque o cache do TanStack é por chave, não por observer: quem mais observar
+ * esta chave (useMinhaFilaData no Dashboard) PRECISA usar esta mesma função,
+ * senão o primeiro a montar decide a forma e o outro consumidor quebra.
+ */
+export async function fetchEtapasMap(): Promise<Map<number, WorkflowEtapa[]>> {
+  const rows = await getAllActiveEtapas();
+  const map = new Map<number, WorkflowEtapa[]>();
+  for (const row of rows) {
+    const list = map.get(row.workflow_id);
+    if (list) list.push(row);
+    else map.set(row.workflow_id, [row]);
+  }
+  return map;
+}
+
+export interface BoardCardExtras {
+  covers?: Map<number, PostMedia[]>;
+  clienteAvatars?: Map<number, string>;
+  hubTokens?: Map<number, string>;
+  workspaceSlug?: string | null;
+}
+
+/**
+ * Cards do quadro a partir dos fluxos ativos e do mapa de etapas. Puro: a
+ * página (via useMemo) e o teaser do Dashboard (sem capas/tokens) chamam a
+ * mesma função. `getDeadlineInfo` lê o relógio, então um card é tão fresco
+ * quanto a última chamada.
+ */
+export function buildBoardCards(
+  activeWorkflows: Workflow[],
+  etapasMap: Map<number, WorkflowEtapa[]>,
+  clientes: Cliente[],
+  membros: Membro[],
+  extras: BoardCardExtras = {},
+): BoardCard[] {
+  const { covers, clienteAvatars, hubTokens, workspaceSlug } = extras;
+  const out: BoardCard[] = [];
+  for (const w of activeWorkflows) {
+    const etapas = etapasMap.get(w.id!) || [];
+    let activeEtapa = etapas.find((e) => e.status === 'ativo');
+    if (!activeEtapa && etapas.length > 0) {
+      activeEtapa = etapas[w.etapa_atual] || etapas[0];
+    }
+    if (!activeEtapa) continue;
+    const cliente = clientes.find((c) => c.id === w.cliente_id);
+    const membro = activeEtapa.responsavel_id
+      ? membros.find((m) => m.id === activeEtapa!.responsavel_id)
+      : undefined;
+    const deadline = getDeadlineInfo(activeEtapa);
+    const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
+    const hubUrl =
+      hubToken && workspaceSlug
+        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+        : undefined;
+    out.push({
+      workflow: w,
+      etapa: activeEtapa,
+      cliente,
+      membro,
+      deadline,
+      totalEtapas: etapas.length,
+      etapaIdx: activeEtapa.ordem,
+      allEtapas: etapas,
+      postCovers: covers?.get(w.id!),
+      clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
+      hubUrl,
+    });
+  }
+  return out;
+}
+
+export interface UseEntregasDataOptions {
+  /** features?.feature_post_processes === true. Desde a fase 4 a flag NÃO gate
+   *  a leitura (spec §11 + §12.18: execuções existentes ficam visíveis e
+   *  operáveis com a flag desligada); ela só entra em `postProcessesVisible`,
+   *  o booleano de exibição que a página usa no lugar da flag crua. */
+  postProcessesEnabled?: boolean;
+}
+
+export function useEntregasData(options: UseEntregasDataOptions = {}) {
+  const postProcessesEnabled = options.postProcessesEnabled === true;
   const qc = useQueryClient();
 
-  const { data: workflows = [], isLoading: loadingWf } = useQuery({
+  const wfQuery = useQuery({
     queryKey: ['workflows'],
     queryFn: getWorkflows,
   });
-  const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
-  const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
-  const { data: templates = [] } = useQuery({
+  const workflows: Workflow[] = wfQuery.data ?? EMPTY_WORKFLOWS;
+  const loadingWf = wfQuery.isLoading;
+  const fetchingWf = wfQuery.isFetching;
+  const { data: clientes = EMPTY_CLIENTES } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: getClientes,
+  });
+  const { data: membros = EMPTY_MEMBROS } = useQuery({
+    queryKey: ['membros'],
+    queryFn: getMembros,
+  });
+  const { data: templates = EMPTY_TEMPLATES } = useQuery({
     queryKey: ['workflow-templates'],
     queryFn: getWorkflowTemplates,
   });
 
-  const activeWorkflows = workflows.filter((w) => w.status === 'ativo');
+  const activeWorkflows = useMemo(() => workflows.filter((w) => w.status === 'ativo'), [workflows]);
 
   const etapasQuery = useQuery({
-    queryKey: ['all-active-etapas', activeWorkflows.map((w) => w.id).join(',')],
-    queryFn: async () => {
-      const map = new Map<number, WorkflowEtapa[]>();
-      await Promise.all(
-        activeWorkflows.map(async (w) => {
-          const etapas = await getWorkflowEtapas(w.id!);
-          map.set(w.id!, etapas);
-        }),
-      );
-      return map;
-    },
-    enabled: !loadingWf,
+    queryKey: ['all-active-etapas'],
+    queryFn: fetchEtapasMap,
   });
 
-  const etapasMap: Map<number, WorkflowEtapa[]> = etapasQuery.data || new Map();
+  const etapasMap: Map<number, WorkflowEtapa[]> = etapasQuery.data ?? EMPTY_ETAPAS_MAP;
 
-  const activeWorkflowIds = activeWorkflows.map((w) => w.id!).filter(Boolean);
+  const activeWorkflowIds = useMemo(
+    () => activeWorkflows.map((w) => w.id!).filter(Boolean),
+    [activeWorkflows],
+  );
   const { data: covers } = useQuery({
     queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const { data: postsCountsData } = useQuery({
+  // One RPC for every per-workflow post count the board reads. The key keeps
+  // its old 'workflow-posts-counts' name so every existing invalidation of it
+  // (and the entregas revocation list in AuthContext) refreshes all of them.
+  const { data: postStats } = useQuery({
     queryKey: ['workflow-posts-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowPostsCounts(activeWorkflowIds),
+    queryFn: () => getWorkflowPostStats(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const postsCounts: Map<number, number> = postsCountsData ?? new Map();
-  const { data: approvedCountsData } = useQuery({
-    queryKey: ['workflow-approved-posts-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowApprovedPostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const approvedPostsCounts: Map<number, number> = approvedCountsData ?? new Map();
-  const { data: clearedClienteCountsData } = useQuery({
-    queryKey: ['workflow-cleared-cliente-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowClearedClientePostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const clearedClienteCounts: Map<number, number> = clearedClienteCountsData ?? new Map();
-  const { data: revisaoInternaCountsData } = useQuery({
-    queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const revisaoInternaCounts: Map<number, number> = revisaoInternaCountsData ?? new Map();
-  const { data: awaitingClienteCountsData } = useQuery({
-    queryKey: ['workflow-awaiting-cliente-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowAwaitingClientePostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const awaitingClienteCounts: Map<number, number> = awaitingClienteCountsData ?? new Map();
-  const { data: postResponsaveisData } = useQuery({
-    queryKey: ['workflow-post-responsaveis', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowPostResponsaveis(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const postResponsaveis: Map<number, number[]> = postResponsaveisData ?? new Map();
+  const postsCounts: Map<number, number> = postStats?.total ?? EMPTY_COUNT_MAP;
+  const approvedPostsCounts: Map<number, number> = postStats?.aprovadoCliente ?? EMPTY_COUNT_MAP;
+  const clearedClienteCounts: Map<number, number> = postStats?.clearedCliente ?? EMPTY_COUNT_MAP;
+  const revisaoInternaCounts: Map<number, number> = postStats?.revisaoInterna ?? EMPTY_COUNT_MAP;
+  const awaitingClienteCounts: Map<number, number> = postStats?.enviadoCliente ?? EMPTY_COUNT_MAP;
+  const postResponsaveis: Map<number, number[]> = postStats?.responsaveis ?? EMPTY_RESPONSAVEIS_MAP;
 
-  const clienteIds = clientes.map((c) => c.id!).filter(Boolean);
+  const clienteIds = useMemo(() => clientes.map((c) => c.id!).filter(Boolean), [clientes]);
   const { data: clienteAvatars } = useQuery({
     queryKey: ['instagram-avatars', clienteIds.join(',')],
     queryFn: async () => {
@@ -301,39 +401,82 @@ export function useEntregasData() {
     enabled: clienteIds.length > 0,
   });
 
-  // Build BoardCards from active workflows
-  const cards: BoardCard[] = [];
-  for (const w of activeWorkflows) {
-    const etapas = etapasMap.get(w.id!) || [];
-    let activeEtapa = etapas.find((e) => e.status === 'ativo');
-    if (!activeEtapa && etapas.length > 0) {
-      activeEtapa = etapas[w.etapa_atual] || etapas[0];
+  // Processos individuais (spec §8.3): UM lote por conta com ativos e
+  // concluídos, SEMPRE ligado (PO 2026-09-11, decisão 1): com a flag desligada
+  // e zero linhas o resultado é vazio e tudo abaixo devolve as constantes
+  // vazias; com linhas, o quadro continua exibindo e operando os processos.
+  const vigenteQuery = useQuery({
+    queryKey: ['post-processes', 'vigentes'],
+    queryFn: getVigentePostProcesses,
+  });
+  const vigenteProcesses: PostProcessWithPost[] = vigenteQuery.data ?? EMPTY_PROCESSES;
+  const activeProcesses = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? vigenteProcesses.filter((p) => p.estado === 'ativo')
+        : EMPTY_PROCESSES,
+    [vigenteProcesses],
+  );
+  const concludedPostProcesses = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? vigenteProcesses.filter((p) => p.estado === 'concluido')
+        : EMPTY_PROCESSES,
+    [vigenteProcesses],
+  );
+  const processByPostId = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? new Map(vigenteProcesses.map((p) => [p.post_id, p]))
+        : EMPTY_PROCESS_MAP,
+    [vigenteProcesses],
+  );
+  const processPostIds = useMemo(() => activeProcesses.map((p) => p.post_id), [activeProcesses]);
+  const { data: processCovers } = useQuery({
+    queryKey: ['post-process-covers', processPostIds.join(',')],
+    queryFn: () => getPostCovers(processPostIds),
+    enabled: processPostIds.length > 0,
+  });
+  const postEntities: PostEntity[] = useMemo(() => {
+    if (activeProcesses.length === 0) return EMPTY_POST_ENTITIES;
+    const out: PostEntity[] = [];
+    for (const p of activeProcesses) {
+      const e = toPostEntity(p, { clientes, membros, clienteAvatars, covers: processCovers });
+      if (e) out.push(e);
     }
-    if (!activeEtapa) continue;
-    const cliente = clientes.find((c) => c.id === w.cliente_id);
-    const membro = activeEtapa.responsavel_id
-      ? membros.find((m) => m.id === activeEtapa!.responsavel_id)
-      : undefined;
-    const deadline = getDeadlineInfo(activeEtapa);
-    const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
-    const hubUrl =
-      hubToken && workspaceSlug
-        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
-        : undefined;
-    cards.push({
-      workflow: w,
-      etapa: activeEtapa,
-      cliente,
-      membro,
-      deadline,
-      totalEtapas: etapas.length,
-      etapaIdx: activeEtapa.ordem,
-      allEtapas: etapas,
-      postCovers: covers?.get(w.id!),
-      clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
-      hubUrl,
-    });
-  }
+    return out;
+  }, [activeProcesses, clientes, membros, clienteAvatars, processCovers]);
+
+  // Build BoardCards from active workflows.
+  //
+  // Memoized because `cards` is the root of the whole page's derived state: the
+  // board's filtered slice, and from there every chart dataset in the Visão
+  // geral. Rebuilding the array on each render gave all of them a new identity
+  // and re-ran (and re-animated) the lot on any unrelated state change.
+  //
+  // Deps are everything the loop reads. `getDeadlineInfo` reads the clock, so a
+  // card's "3h restantes" is now only as fresh as the last data change instead
+  // of the last render. Nothing re-renders this page on a timer anyway, so that
+  // was never a real refresh — the numbers move when a query refetches.
+  const cards: BoardCard[] = useMemo(
+    () =>
+      buildBoardCards(activeWorkflows, etapasMap, clientes, membros, {
+        covers,
+        clienteAvatars,
+        hubTokens,
+        workspaceSlug,
+      }),
+    [
+      activeWorkflows,
+      etapasMap,
+      clientes,
+      membros,
+      covers,
+      clienteAvatars,
+      hubTokens,
+      workspaceSlug,
+    ],
+  );
 
   function refresh() {
     qc.invalidateQueries({ queryKey: ['workflows'] });
@@ -341,16 +484,39 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
     qc.invalidateQueries({ queryKey: ['active-posts'] });
     qc.invalidateQueries({ queryKey: ['workflow-events'] });
+    qc.invalidateQueries({ queryKey: ['post-processes'] });
+    qc.invalidateQueries({ queryKey: ['post-process-covers'] });
+    qc.invalidateQueries({ queryKey: ['post-process-events'] });
+    qc.invalidateQueries({ queryKey: ['post-process'] });
+    // Spec §4.4: refresh() da página passa a invalidar concluded-*. Inerte
+    // enquanto ConcludedView não estiver montada.
+    qc.invalidateQueries({ queryKey: ['concluded-workflows'] });
+    qc.invalidateQueries({ queryKey: ['concluded-summaries'] });
   }
 
-  const isLoading = loadingWf || etapasQuery.isLoading;
+  const isLoading = loadingWf || etapasQuery.isLoading || vigenteQuery.isLoading;
+  /** Sem dados e sem erro ainda em alguma dependência obrigatória da fila.
+   *  Diferente de isLoading (isPending && isFetching), cobre o cold start
+   *  pausado/offline. Só a vista fila lê isto; o spinner de página continua
+   *  em isLoading para não mudar as demais vistas. */
+  const isPending = wfQuery.isPending || etapasQuery.isPending || vigenteQuery.isPending;
+  /** Verdadeiro também durante refetch em background (cache stale). O resolvedor
+   *  de deep link só pode concluir que um fluxo não está no quadro quando isto
+   *  e isLoading forem falsos. */
+  const isFetching = fetchingWf || etapasQuery.isFetching || vigenteQuery.isFetching;
+
+  /** Erro em qualquer dependência obrigatória da fila (spec Minha fila § Estados).
+   *  Só a vista fila lê isto; as demais vistas mantêm o comportamento atual.
+   *  `isLoadingError` = erro sem dados: um refetch em background que falha com
+   *  cache presente não derruba a fila que já está na tela. */
+  const isError =
+    wfQuery.isLoadingError || etapasQuery.isLoadingError || vigenteQuery.isLoadingError;
+
+  // Exibição = flag OU existência de processo. A flag crua fica para as
+  // affordances de criação (Aplicar processo, Manter etapas, Sem processo).
+  const postProcessesVisible = postProcessesEnabled || vigenteProcesses.length > 0;
 
   return {
     workflows,
@@ -360,6 +526,11 @@ export function useEntregasData() {
     templates,
     etapasMap,
     cards,
+    postEntities,
+    processByPostId,
+    concludedPostProcesses,
+    activePostProcessCount: activeProcesses.length,
+    postProcessesVisible,
     postsCounts,
     approvedPostsCounts,
     clearedClienteCounts,
@@ -367,6 +538,9 @@ export function useEntregasData() {
     awaitingClienteCounts,
     postResponsaveis,
     isLoading,
+    isPending,
+    isFetching,
+    isError,
     refresh,
   };
 }

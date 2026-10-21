@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { countInstagramAutomations } from '@/store';
+import { CONTACTS_COUNT_KEY, countInstagramAutomations, countInstagramContacts } from '@/store';
 
 /**
  * Nav visibility for the `automacoes` item follows the workspace's automation
@@ -7,7 +7,8 @@ import { countInstagramAutomations } from '@/store';
  * automation tier must not hide the nav link to automations the workspace
  * already created, since list/toggle/delete stay ungated post-downgrade (only
  * creating a NEW automation is gated). Pure so the OR logic is unit-testable
- * without a QueryClient.
+ * without a QueryClient. OR whether it has retained automation contacts (they
+ * survive automation deletion).
  *
  * Passing `null` through unchanged matches getNavGroups' own contract: a null
  * `features` map means "still loading / unlimited workspace", where the nav
@@ -16,11 +17,13 @@ import { countInstagramAutomations } from '@/store';
 export function buildEffectiveNavFeatures(
   features: Record<string, boolean> | null,
   hasAutomations: boolean,
+  hasContacts = false,
 ): Record<string, boolean> | null {
   if (!features) return features;
   return {
     ...features,
-    feature_instagram_automation: features.feature_instagram_automation || hasAutomations,
+    feature_instagram_automation:
+      features.feature_instagram_automation || hasAutomations || hasContacts,
   };
 }
 
@@ -38,5 +41,12 @@ export function useEffectiveNavFeatures(
     queryFn: countInstagramAutomations,
     staleTime: 300_000,
   });
-  return buildEffectiveNavFeatures(features, (count ?? 0) > 0);
+  const contacts = useQuery({
+    queryKey: CONTACTS_COUNT_KEY,
+    queryFn: countInstagramContacts,
+    staleTime: 300_000,
+  });
+  // Errored count fails open (retained contacts must stay reachable).
+  const hasContacts = contacts.isError || (contacts.data ?? 0) > 0;
+  return buildEffectiveNavFeatures(features, (count ?? 0) > 0, hasContacts);
 }

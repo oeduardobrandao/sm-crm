@@ -4,6 +4,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
+// jsdom's matchMedia reports false (phone); this suite asserts the desktop markup.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 // importOriginal keeps BillingApiError and the Pagar.me checkout call real: PagarmeCheckoutDialog
 // (mounted by ComecarPage) imports them from this same module, and these tests never submit its
 // form, so nothing here needs a dedicated mock for them.

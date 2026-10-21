@@ -31,6 +31,18 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/WorkspaceDetailPage')).default }),
       },
       {
+        path: 'afiliados',
+        lazy: async () => ({ Component: (await import('./pages/AffiliatesPage')).default }),
+      },
+      {
+        path: 'afiliados/:id',
+        lazy: async () => ({ Component: (await import('./pages/AffiliateDetailPage')).default }),
+      },
+      {
+        path: 'metricas',
+        lazy: async () => ({ Component: (await import('./pages/MetricasPage')).default }),
+      },
+      {
         path: 'plans',
         lazy: async () => ({ Component: (await import('./pages/PlansPage')).default }),
       },
@@ -39,8 +51,16 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/AdminsPage')).default }),
       },
       {
+        path: 'integrations',
+        lazy: async () => ({ Component: (await import('./pages/IntegrationsPage')).default }),
+      },
+      {
         path: 'banners',
         lazy: async () => ({ Component: (await import('./pages/BannersPage')).default }),
+      },
+      {
+        path: 'popups',
+        lazy: async () => ({ Component: (await import('./pages/PopupsPage')).default }),
       },
       {
         path: 'kb-articles',
@@ -53,6 +73,18 @@ export const router = createBrowserRouter([
       {
         path: 'kb-articles/:id/edit',
         lazy: async () => ({ Component: (await import('./pages/KbArticleEditorPage')).default }),
+      },
+      {
+        path: 'kb-videos',
+        lazy: async () => ({ Component: (await import('./pages/KbVideosPage')).default }),
+      },
+      {
+        path: 'kb-videos/new',
+        lazy: async () => ({ Component: (await import('./pages/KbVideoEditorPage')).default }),
+      },
+      {
+        path: 'kb-videos/:id/edit',
+        lazy: async () => ({ Component: (await import('./pages/KbVideoEditorPage')).default }),
       },
     ],
   },

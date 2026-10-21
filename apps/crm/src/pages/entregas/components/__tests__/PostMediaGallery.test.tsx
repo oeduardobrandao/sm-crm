@@ -13,12 +13,12 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
     listPostMedia: vi.fn(async () => []),
     uploadPostMedia: vi.fn(),
     deletePostMedia: vi.fn(),
-    setPostMediaCover: vi.fn(),
     reorderPostMedia: vi.fn(),
+    updateVideoThumbnail: vi.fn(),
   };
 });
 
-vi.mock('../../../../utils/videoFrame', () => ({
+vi.mock('@mesaas/ui/video/frame', () => ({
   extractVideoFrame: vi.fn(),
   captureFrameFromElement: vi.fn(),
 }));
@@ -60,9 +60,14 @@ vi.mock('jszip', () => ({
   },
 }));
 
-import { listPostMedia, uploadPostMedia } from '../../../../services/postMedia';
+import {
+  deletePostMedia,
+  listPostMedia,
+  updateVideoThumbnail,
+  uploadPostMedia,
+} from '../../../../services/postMedia';
 import type { PostMedia } from '../../../../store';
-import { extractVideoFrame } from '../../../../utils/videoFrame';
+import { extractVideoFrame } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../../utils/imageJpeg';
 import { PostMediaGallery } from '../PostMediaGallery';
 
@@ -440,5 +445,174 @@ describe('PostMediaGallery permanently lost media', () => {
     renderGallery();
     expect(await screen.findByText('Mídia indisponível')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
+
+vi.mock('../MediaAdjustmentDialog', () => ({
+  MediaAdjustmentDialog: ({
+    media,
+    onUpdated,
+    onClose,
+  }: {
+    media: PostMedia;
+    onUpdated: () => void;
+    onClose: () => void;
+  }) => (
+    <div role="dialog">
+      Editando {media.original_filename}
+      <button
+        onClick={() => {
+          onUpdated();
+          onClose();
+        }}
+      >
+        Simular ajuste salvo
+      </button>
+    </div>
+  ),
+}));
+
+describe('PostMediaGallery adjustment entry points', () => {
+  const image = {
+    id: 44,
+    post_id: 42,
+    kind: 'image',
+    mime_type: 'image/jpeg',
+    original_filename: 'portrait.jpg',
+    url: 'https://example.test/portrait.jpg',
+    width: 1080,
+    height: 1920,
+    size_bytes: 1024,
+    duration_seconds: null,
+    is_cover: false,
+  } as PostMedia;
+  it('identifies the invalid file and opens its adjustment editor', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([image]);
+    renderGallery();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ajustar proporção de portrait.jpg' }),
+    );
+    expect(await screen.findByRole('dialog')).toHaveTextContent('portrait.jpg');
+  });
+  it('does not warn about a supported 3:4 feed image', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([{ ...image, height: 1440 }]);
+    renderGallery();
+    // 'Adicionar' renders with the empty gallery, before the media list resolves: wait
+    // on the tile's own control so the warning check below runs against loaded media.
+    expect(await screen.findByTitle('Ajustar proporção')).toBeInTheDocument();
+    expect(screen.queryByText(/precisa de ajuste/)).not.toBeInTheDocument();
+  });
+});
+
+it('does not apply the carousel item warning to sequential Stories', async () => {
+  vi.mocked(listPostMedia).mockResolvedValue(makeMedia(11));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <PostMediaGallery postId={1} forStories />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('Adicionar');
+  expect(screen.queryByText(/máximo de 10/i)).not.toBeInTheDocument();
+});
+
+it('revalidates the gallery and refreshes visible cover caches after adjustment', async () => {
+  const invalid = { ...makeMedia(1)[0], height: 1920 };
+  vi.mocked(listPostMedia)
+    .mockResolvedValueOnce([invalid])
+    .mockResolvedValue([{ ...invalid, height: 1440 }]);
+  const { invalidateSpy } = renderGallery();
+  fireEvent.click(await screen.findByRole('button', { name: 'Ajustar proporção de img0.jpg' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Simular ajuste salvo' }));
+  await waitFor(() =>
+    expect(screen.queryByText('1 arquivo precisa de ajuste')).not.toBeInTheDocument(),
+  );
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-grid'] });
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-covers'] });
+});
+
+describe('PostMediaGallery Reel cover uploaded as a second file', () => {
+  const video = {
+    id: 50,
+    post_id: 42,
+    kind: 'video',
+    mime_type: 'video/mp4',
+    original_filename: 'reel.mp4',
+    url: 'https://example.test/reel.mp4',
+    thumbnail_url: 'https://example.test/reel-thumb.jpg',
+    width: 1080,
+    height: 1920,
+    size_bytes: 1024,
+    duration_seconds: 30,
+    is_cover: false,
+  } as PostMedia;
+  const cover = {
+    id: 51,
+    post_id: 42,
+    kind: 'image',
+    mime_type: 'image/jpeg',
+    original_filename: 'capa.jpg',
+    url: 'https://example.test/capa.jpg',
+    width: 1080,
+    height: 1920,
+    size_bytes: 1024,
+    duration_seconds: null,
+    is_cover: false,
+  } as PostMedia;
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('explains the cover belongs in the thumbnail instead of flagging the 9:16 ratio', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    renderGallery();
+    expect(await screen.findByText('Esta imagem parece ser a capa do Reel')).toBeInTheDocument();
+    expect(screen.queryByText(/Proporção da imagem fora do permitido/)).not.toBeInTheDocument();
+    // The video is judged as the Reel it becomes, not as a carousel slide.
+    expect(screen.queryByText(/Proporção do vídeo fora do permitido/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/precisa de ajuste/)).not.toBeInTheDocument();
+  });
+
+  it('leaves a feed-ratio image beside a video alone (a real carousel)', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video, { ...cover, height: 1350 }]);
+    renderGallery();
+    await screen.findAllByTitle('Ajustar proporção');
+    expect(screen.queryByText('Esta imagem parece ser a capa do Reel')).not.toBeInTheDocument();
+  });
+
+  it('moves the image into the video thumbnail, then removes the slide', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['img'], { type: 'image/jpeg' }))),
+    );
+    const order: string[] = [];
+    vi.mocked(updateVideoThumbnail).mockImplementation(async () => {
+      order.push('thumbnail');
+      return video;
+    });
+    vi.mocked(deletePostMedia).mockImplementation(async () => {
+      order.push('delete');
+    });
+    renderGallery();
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar como capa do Reel' }));
+    await waitFor(() => expect(deletePostMedia).toHaveBeenCalledWith(51));
+    expect(updateVideoThumbnail).toHaveBeenCalledWith(50, expect.any(File));
+    expect(order).toEqual(['thumbnail', 'delete']);
+  });
+
+  it('keeps the image when the thumbnail update fails', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['img'], { type: 'image/jpeg' }))),
+    );
+    vi.mocked(updateVideoThumbnail).mockRejectedValue(new Error('upload failed'));
+    renderGallery();
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar como capa do Reel' }));
+    await waitFor(() => expect(updateVideoThumbnail).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Usar como capa do Reel' })).toBeEnabled(),
+    );
+    expect(deletePostMedia).not.toHaveBeenCalled();
   });
 });

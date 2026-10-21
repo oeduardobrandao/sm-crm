@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
-import { stripAiTextForTemplate } from '../templateOps';
+import { sanitizeLayoutForTemplate } from '../templateOps';
 
 const { createReportTemplateMock, setDefaultReportTemplateMock } = vi.hoisted(() => ({
   createReportTemplateMock: vi.fn(),
@@ -66,7 +66,7 @@ describe('SaveTemplateDialog', () => {
     await waitFor(() => {
       expect(createReportTemplateMock).toHaveBeenCalledWith(
         'Modelo mensal',
-        stripAiTextForTemplate(layout),
+        sanitizeLayoutForTemplate(layout),
       );
     });
     expect(getLayout).toHaveBeenCalled();

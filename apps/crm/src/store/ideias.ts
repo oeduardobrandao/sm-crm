@@ -1,5 +1,8 @@
-import { supabase } from './core';
-import { extractMentionsFromText } from '@/components/mentions/mentionTokens';
+import { supabase, getContaId } from './core';
+import {
+  extractMentionsFromDoc,
+  extractMentionsFromText,
+} from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
 
 export interface IdeiaReaction {
@@ -16,7 +19,8 @@ export interface Ideia {
   workspace_id: string;
   cliente_id: number;
   titulo: string;
-  descricao: string;
+  // Optional: an ideia can be conveyed entirely through audio_transcript instead.
+  descricao: string | null;
   links: string[];
   tipo: 'ideia' | 'solicitacao';
   tarefa_id: number | null;
@@ -30,17 +34,30 @@ export interface Ideia {
   comentario_autor: { nome: string } | null;
   ideia_reactions: IdeiaReaction[];
   image_count: number;
+  origem: 'cliente' | 'agencia';
+  autor_membro_id: number | null;
+  visivel_no_hub: boolean;
+  autor: { nome: string } | null;
+  audio_r2_key: string | null;
+  audio_duration_seconds: number | null;
+  audio_transcript: string | null;
+  audio_transcription_status: 'pending' | 'done' | 'failed' | null;
 }
 
 export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<Ideia[]> {
+  // ideias_autor_fk is a composite FK (autor_membro_id, workspace_id) -- PostgREST
+  // requires the constraint name as the embed hint for composite FKs, not the column name.
   let q = supabase
     .from('ideias')
     .select(
       `
       id, workspace_id, cliente_id, titulo, descricao, links, status, tipo, tarefa_id,
       comentario_agencia, comentario_autor_id, comentario_at, created_at, updated_at,
+      origem, visivel_no_hub, autor_membro_id,
+      audio_r2_key, audio_duration_seconds, audio_transcript, audio_transcription_status,
       clientes(nome),
       comentario_autor:membros!comentario_autor_id(nome),
+      autor:membros!ideias_autor_fk(nome),
       ideia_reactions(id, ideia_id, membro_id, emoji, created_at, membros(nome)),
       ideia_files(count)
     `,
@@ -107,6 +124,7 @@ export async function convertSolicitacaoEmTarefa(args: {
   ideiaId: string;
   titulo: string;
   descricao: string | null;
+  descricaoRich?: Record<string, unknown> | null;
   responsavelId: number | null;
   dataLimite: string | null;
 }): Promise<number> {
@@ -114,16 +132,89 @@ export async function convertSolicitacaoEmTarefa(args: {
     p_ideia_id: args.ideiaId,
     p_titulo: args.titulo,
     p_descricao: args.descricao,
+    p_descricao_rich: args.descricaoRich ?? null,
     p_responsavel_id: args.responsavelId,
     p_data_limite: args.dataLimite,
   });
   if (error) throw new Error(error.message);
   const tarefaId = data as number;
-  if (args.descricao) {
-    const membroIds = extractMentionsFromText(args.descricao)
-      .filter((ref) => ref.entityType === 'membro')
-      .map((ref) => ref.id);
+  if (args.descricao || args.descricaoRich) {
+    const refs = args.descricaoRich
+      ? extractMentionsFromDoc(args.descricaoRich)
+      : extractMentionsFromText(args.descricao ?? '');
+    const membroIds = refs.filter((ref) => ref.entityType === 'membro').map((ref) => ref.id);
     await syncMentions('tarefa', tarefaId, membroIds);
   }
   return tarefaId;
+}
+
+export interface CreateIdeiaInput {
+  cliente_id: number;
+  titulo: string;
+  // Optional: an ideia can be conveyed entirely through its audio recording instead.
+  descricao: string | null;
+  links: string[];
+  visivel_no_hub: boolean;
+  autor_membro_id: number | null;
+}
+
+/** Agency-created ideia. origem/tipo/status are fixed here, never caller-controlled. */
+export async function createIdeia(input: CreateIdeiaInput): Promise<string> {
+  const workspace_id = await getContaId();
+  const { data, error } = await supabase
+    .from('ideias')
+    .insert({
+      workspace_id,
+      cliente_id: input.cliente_id,
+      titulo: input.titulo,
+      descricao: input.descricao || null,
+      links: input.links,
+      visivel_no_hub: input.visivel_no_hub,
+      autor_membro_id: input.autor_membro_id,
+      origem: 'agencia',
+      tipo: 'ideia',
+      status: 'nova',
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(error.message);
+  return (data as { id: string }).id;
+}
+
+export async function updateIdeiaVisibilidade(ideiaId: string, visivel: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('ideias')
+    .update({ visivel_no_hub: visivel })
+    .eq('id', ideiaId);
+  if (error) throw new Error(error.message);
+}
+
+export interface UpdateIdeiaInput {
+  cliente_id: number;
+  titulo: string;
+  descricao: string | null;
+  links: string[];
+  visivel_no_hub: boolean;
+}
+
+/** Agency-created ideia only -- the CRM never edits a client-submitted one. */
+export async function updateIdeia(ideiaId: string, input: UpdateIdeiaInput): Promise<void> {
+  const { error } = await supabase
+    .from('ideias')
+    .update({
+      cliente_id: input.cliente_id,
+      titulo: input.titulo,
+      descricao: input.descricao || null,
+      links: input.links,
+      visivel_no_hub: input.visivel_no_hub,
+    })
+    .eq('id', ideiaId)
+    .eq('origem', 'agencia');
+  if (error) throw new Error(error.message);
+}
+
+/** Any origin -- RLS scopes this to the caller's own workspace. */
+export async function deleteIdeia(ideiaId: string): Promise<void> {
+  const { error } = await supabase.from('ideias').delete().eq('id', ideiaId);
+  if (error) throw new Error(error.message);
 }

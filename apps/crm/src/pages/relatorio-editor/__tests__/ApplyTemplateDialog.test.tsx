@@ -65,6 +65,15 @@ describe('ApplyTemplateDialog', () => {
     vi.restoreAllMocks();
   });
 
+  it('avisa que as imagens saem quando warnImagesRemoved', async () => {
+    renderDialog({ warnImagesRemoved: true });
+    expect(
+      await screen.findByText(
+        'As imagens deste relatório serão removidas. Elas continuam nos Arquivos do cliente.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('lista os templates de useQuery(["report-templates"]) com badge Padrão no is_default', async () => {
     renderDialog();
     expect(await screen.findByText('Modelo mensal')).toBeInTheDocument();

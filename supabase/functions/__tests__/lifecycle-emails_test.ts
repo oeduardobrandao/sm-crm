@@ -14,6 +14,7 @@ import {
   sendFounderSignupNotice,
   sendFounderSubscriptionNotice,
   sendThankYouEmail,
+  sendViaResend,
   subscriptionValueLine,
   sendWelcomeEmail,
   THANKYOU_SUBJECT,
@@ -50,7 +51,7 @@ Deno.test("both emails carry the logo and never an em-dash", () => {
       buildThankYouEmail({ firstName: "Ana", workspaceName: "X", appBaseUrl: BASE }),
     ]
   ) {
-    assert(html.includes(`src="${BASE}/logo-white-email.png"`), "logo img missing");
+    assert(html.includes(`src="https://www.mesaas.com.br/logo-black-email.png"`), "logo img missing");
     assert(html.includes('alt="Mesaas"'), "logo alt missing");
     assert(!html.includes("—"), "em-dash found in email copy");
   }
@@ -112,7 +113,7 @@ Deno.test("buildThankYouEmail thanks by name, escapes workspace, links plan sett
 });
 
 Deno.test("subjects are the spec'd strings", () => {
-  assert(WELCOME_SUBJECT === "Bem-vindo ao Mesaas 👋");
+  assert(WELCOME_SUBJECT === "Boas-vindas ao Mesaas 👋");
   assert(THANKYOU_SUBJECT === "Obrigado pela confiança 💚");
 });
 
@@ -500,4 +501,54 @@ Deno.test("welcome email stays intact with no WhatsApp number set", () => {
   } finally {
     if (prev !== undefined) Deno.env.set("WHATSAPP_SUPPORT_NUMBER", prev);
   }
+});
+
+// --- sendViaResend attachments (Agenda client e-mails) -----------------------
+
+async function capturedResendBody(send: () => Promise<void>): Promise<Record<string, unknown>> {
+  const original = globalThis.fetch;
+  const previousKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  let body = "";
+  globalThis.fetch = ((_i: unknown, init?: RequestInit) => {
+    body = String(init?.body ?? "");
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await send();
+  } finally {
+    globalThis.fetch = original;
+    if (previousKey === undefined) Deno.env.delete("RESEND_API_KEY");
+    else Deno.env.set("RESEND_API_KEY", previousKey);
+  }
+  return JSON.parse(body);
+}
+
+Deno.test("sendViaResend posts attachments as given when present", async () => {
+  const attachments = [{ filename: "evento.ics", content: "QkVHSU4=", content_type: "text/calendar; charset=utf-8" }];
+  const payload = await capturedResendBody(() =>
+    sendViaResend("a@b.test", "S", "<p>x</p>", "k1", "X <n@mesaas.com.br>", undefined, { "X-H": "1" }, attachments)
+  );
+  assertEquals(payload.attachments, attachments);
+  assertEquals(payload.headers, { "X-H": "1" });
+});
+
+Deno.test("sendViaResend omits the attachments key when absent or empty", async () => {
+  const semAnexo = await capturedResendBody(() => sendViaResend("a@b.test", "S", "<p>x</p>", "k1"));
+  assert(!("attachments" in semAnexo), "no attachments key expected");
+  const vazio = await capturedResendBody(() =>
+    sendViaResend("a@b.test", "S", "<p>x</p>", "k1", "X <n@mesaas.com.br>", undefined, undefined, [])
+  );
+  assert(!("attachments" in vazio), "empty list must not be sent");
+});
+
+Deno.test("welcome: new shell, steps then grid, signature, no emoji icons", () => {
+  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.test" });
+  assert(html.includes("Olá, Ana! Que bom ter você aqui."));
+  assert(!html.includes("Que bom ter você por aqui"), "duplicate welcome line must go");
+  assert(html.indexOf("Comece em 3 passos") < html.indexOf("Clientes &amp; CRM"), "steps come before the grid");
+  assert(html.includes(`href="https://app.test/importar"`));
+  assert(html.includes("Fundador do Mesaas"));
+  assert(!/[👥📋✅📈📚]/u.test(html));
+  assert(html.includes("Boas-vindas"), "eyebrow");
 });

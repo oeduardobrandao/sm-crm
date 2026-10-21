@@ -37,4 +37,18 @@ describe('getVisibleNavItems', () => {
     expect(items.find((i) => i.path === '/mensagens')?.badge).toBe('mensagens');
     expect(items.filter((i) => i.badge).length).toBe(2);
   });
+
+  it('includes Agenda only when feature_agenda is true, right after Postagens', () => {
+    expect(getVisibleNavItems(true).some((i) => i.path === '/agenda')).toBe(false);
+    expect(getVisibleNavItems(true, false).some((i) => i.path === '/agenda')).toBe(false);
+    const paths = getVisibleNavItems(false, true).map((i) => i.path);
+    expect(paths).toContain('/agenda');
+    expect(paths.indexOf('/agenda')).toBe(paths.indexOf('/postagens') + 1);
+  });
+
+  it('the Agenda item has no badge and uses the nav.agenda label', () => {
+    const agenda = getVisibleNavItems(true, true).find((i) => i.path === '/agenda');
+    expect(agenda?.labelKey).toBe('nav.agenda');
+    expect(agenda?.badge).toBeUndefined();
+  });
 });

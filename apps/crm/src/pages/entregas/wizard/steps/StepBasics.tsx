@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
 import {
   Select,
   SelectContent,
@@ -22,6 +23,7 @@ export function StepBasics({
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const showPlataformas = usePlatformChipsVisible(state.plataformas);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -48,13 +50,24 @@ export function StepBasics({
         <Input
           id="wizard-nome"
           value={state.nome}
-          placeholder="Ex: Posts Instagram — Março 2026"
+          placeholder="Ex: Conteúdo Março 2026"
           onChange={(e) => patch({ nome: e.target.value, nomeEdited: true })}
         />
         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
           Sugerido a partir do modelo e do próximo mês. Pode editar.
         </p>
       </div>
+
+      {showPlataformas && (
+        <div className="space-y-1">
+          <Label htmlFor="wizard-plataformas">Plataformas deste fluxo</Label>
+          <PlatformChips
+            id="wizard-plataformas"
+            value={state.plataformas}
+            onChange={(plataformas) => patch({ plataformas })}
+          />
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
         <button

@@ -2,9 +2,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
-const { useAuthMock, storeMock } = vi.hoisted(() => ({
+const { useAuthMock, useWorkspaceLimitsMock, storeMock } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
+  useWorkspaceLimitsMock: vi.fn(),
   storeMock: {
     getCurrentWorkspace: vi.fn(async () => ({
       id: 'ws-1',
@@ -25,7 +27,13 @@ vi.mock('../../../../context/AuthContext', () => ({
   useAuth: useAuthMock,
 }));
 
+vi.mock('../../../../hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: useWorkspaceLimitsMock,
+}));
+
 vi.mock('../../../../store', () => storeMock);
+// jsdom has no matchMedia match: keep this suite on the desktop layout (phone has its own suite).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('../../../../lib/supabase', () => ({
   supabase: {
@@ -46,6 +54,10 @@ vi.mock('../../reportSplash', () => ({
 
 vi.mock('../../ReportPreview', () => ({
   ReportPreview: () => <div data-testid="report-preview" />,
+}));
+
+vi.mock('../ReportTemplatesCard', () => ({
+  ReportTemplatesCard: () => <div data-testid="report-templates-card" />,
 }));
 
 import RelatoriosTab from '../RelatoriosTab';
@@ -70,8 +82,14 @@ describe('RelatoriosTab — report branding', () => {
       user: { id: 'user-1', email: 'ana@exemplo.com' },
       profile: { id: 'user-1', nome: 'Ana' },
       role: 'owner',
+      can: makeCan(fakeMembership({ role: 'owner' })),
       signOut: vi.fn(),
       refetchProfile: vi.fn(),
+    });
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
     });
     storeMock.getCurrentWorkspace.mockResolvedValue({
       id: 'ws-1',
@@ -96,6 +114,7 @@ describe('RelatoriosTab — report branding', () => {
     expect(document.querySelector('input[type="color"]')).toBeNull();
     const link = screen.getByRole('link', { name: /editar em configurações · hub/i });
     expect(link).toHaveAttribute('href', '/configuracao/hub');
+    expect(screen.getByTestId('report-templates-card')).toBeInTheDocument();
   });
 
   it('saves only the e-mail toggle via updateWorkspaceBranding, never brand_color', async () => {
@@ -134,5 +153,294 @@ describe('RelatoriosTab — report branding', () => {
       expect(screen.getByText('#111111')).toBeInTheDocument();
     });
     expect(screen.getByTestId('report-preview')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Task 14: `isOwnerOrAdmin = role === 'owner' || role === 'admin'` collapsed
+ * onto `can('configuracoes', 'ver') === true`. `AGENT_ROLE_PRESET.
+ * configuracoes` is 'none' and admin resolves to `true` for every
+ * non-financial module (lib/permissions.ts), so the two legacy-preset cases
+ * below reproduce the OLD isOwnerOrAdmin gate byte-for-byte -- only a CUSTOM
+ * role (role_id set) can now diverge from its chassis role.
+ *
+ * `levelAllows` (lib/permissions.ts) treats the 'ver' ACTION as satisfied by
+ * either the 'ver' OR 'editar' LEVEL -- only 'none' (or no grant at all)
+ * fails it. So a custom role needs no `configuracoes` grant whatsoever to be
+ * blocked here; either 'ver' or 'editar' unblocks it.
+ */
+describe('RelatoriosTab — queries gated on configuracoes:ver', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+    storeMock.getWorkspaceBranding.mockResolvedValue({
+      brand_color: '#111111',
+      report_splash_url: null,
+      send_report_email: false,
+    });
+  });
+
+  it('keeps a legacy agent blocked (configuracoes preset is none, matches the old isOwnerOrAdmin gate)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(fakeMembership({ role: 'agent' })),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storeMock.getCurrentWorkspace).not.toHaveBeenCalled();
+    expect(storeMock.getWorkspaceBranding).not.toHaveBeenCalled();
+  });
+
+  it('keeps a legacy admin unchanged (configuracoes preset resolves to true)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(fakeMembership({ role: 'admin' })),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await waitFor(() => {
+      expect(storeMock.getCurrentWorkspace).toHaveBeenCalled();
+      expect(storeMock.getWorkspaceBranding).toHaveBeenCalled();
+    });
+  });
+
+  it('blocks the queries for a custom role with no configuracoes grant at all', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storeMock.getCurrentWorkspace).not.toHaveBeenCalled();
+    expect(storeMock.getWorkspaceBranding).not.toHaveBeenCalled();
+  });
+
+  it('unblocks the queries for a custom role with configuracoes:ver alone (the fix -- action is "ver", so `ver` satisfies it)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+      ),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await waitFor(() => {
+      expect(storeMock.getCurrentWorkspace).toHaveBeenCalled();
+      expect(storeMock.getWorkspaceBranding).toHaveBeenCalled();
+    });
+  });
+
+  it('unblocks the queries for a custom role with configuracoes:editar too', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(
+        fakeMembership({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { configuracoes: 'editar' },
+        }),
+      ),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await waitFor(() => {
+      expect(storeMock.getCurrentWorkspace).toHaveBeenCalled();
+      expect(storeMock.getWorkspaceBranding).toHaveBeenCalled();
+    });
+  });
+});
+
+/**
+ * F4 (revisão externa, confirmado): a `configuracoes:ver`-only role reached
+ * this tab and got Salvar, the splash upload and the e-mail switch live.
+ * `updateWorkspaceBranding` writes to `workspaces`, whose RLS FILTERS the row
+ * out rather than raising, so the save returned 200/zero rows and toasted
+ * success without saving anything.
+ */
+describe('RelatoriosTab — mutation controls gated on configuracoes:editar', () => {
+  const auth = (overrides: Parameters<typeof fakeMembership>[0]) => ({
+    user: { id: 'user-1', email: 'ana@exemplo.com' },
+    profile: { id: 'user-1', nome: 'Ana' },
+    can: makeCan(fakeMembership(overrides)),
+    signOut: vi.fn(),
+    refetchProfile: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+    storeMock.getWorkspaceBranding.mockResolvedValue({
+      brand_color: '#111111',
+      report_splash_url: null,
+      send_report_email: false,
+    });
+  });
+
+  it('disables Salvar, the upload and the switch, and shows "Somente leitura" for ver-only', async () => {
+    useAuthMock.mockReturnValue(
+      auth({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+    );
+    renderTab();
+
+    expect(await screen.findByText('Somente leitura')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).toBeDisabled());
+    // The upload trigger's accessible name comes from its <label htmlFor>,
+    // not its own text -- "Arte da capa", not "Enviar arte".
+    expect(screen.getByRole('button', { name: 'Arte da capa' })).toBeDisabled();
+    expect(screen.getByRole('switch')).toBeDisabled();
+  });
+
+  it('keeps them enabled for configuracoes:editar', async () => {
+    useAuthMock.mockReturnValue(
+      auth({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'editar' } }),
+    );
+    renderTab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).not.toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Arte da capa' })).not.toBeDisabled();
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+
+  it('keeps them enabled for a legacy admin (regression)', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'admin' }));
+    renderTab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).not.toBeDisabled());
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * F3 (revisão final): o card de modelos não tinha o mesmo gate da rota do
+ * editor (/relatorios/modelos/:id exige feature_analytics_reports via
+ * ProtectedRoute e analytics:ver via routePermissions) -- um membro/plano
+ * sem os dois conseguia "Novo modelo"/"Duplicar" e caía numa tela travada.
+ */
+describe('RelatoriosTab — card de modelos espelha o gate da rota do editor', () => {
+  const auth = (overrides: Parameters<typeof fakeMembership>[0]) => ({
+    user: { id: 'user-1', email: 'ana@exemplo.com' },
+    profile: { id: 'user-1', nome: 'Ana' },
+    can: makeCan(fakeMembership(overrides)),
+    signOut: vi.fn(),
+    refetchProfile: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+    storeMock.getWorkspaceBranding.mockResolvedValue({
+      brand_color: '#111111',
+      report_splash_url: null,
+      send_report_email: false,
+    });
+  });
+
+  it('renderiza o card quando a feature está ligada e analytics:ver é true', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'owner' }));
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId('report-templates-card')).toBeInTheDocument();
+    });
+  });
+
+  it('não renderiza o card quando a feature do plano está desligada', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'owner' }));
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: false },
+      isLoading: false,
+      isUnlimited: false,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText('#111111')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('report-templates-card')).not.toBeInTheDocument();
+  });
+
+  it('não renderiza o card sem analytics:ver, mesmo com a feature ligada', async () => {
+    useAuthMock.mockReturnValue(
+      auth({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+    );
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText('#111111')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('report-templates-card')).not.toBeInTheDocument();
+  });
+
+  it('não renderiza o card enquanto os limites do plano ainda carregam', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'owner' }));
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: null,
+      isLoading: true,
+      isUnlimited: false,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText('#111111')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('report-templates-card')).not.toBeInTheDocument();
+  });
+
+  it('plano ilimitado (sem limites) renderiza o card mesmo sem features carregadas', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'owner' }));
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: null,
+      isLoading: false,
+      isUnlimited: true,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId('report-templates-card')).toBeInTheDocument();
+    });
   });
 });

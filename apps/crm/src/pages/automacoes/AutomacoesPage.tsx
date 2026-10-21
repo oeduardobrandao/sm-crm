@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -7,9 +7,7 @@ import { enUS, ptBR } from 'date-fns/locale';
 import {
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   Info,
-  Instagram,
   Link2,
   MessageCircle,
   MoreVertical,
@@ -17,11 +15,19 @@ import {
   Plus,
   Reply,
   Trash2,
+  Users,
 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Spinner } from '@/components/ui/spinner';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  CardListSkeleton,
+  ListSkeleton,
+  PageSkeleton,
+  TableSkeleton,
+} from '@/components/ui/skeletons';
 import {
   Table,
   TableBody,
@@ -54,12 +60,16 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
+import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { useAuth } from '../../context/AuthContext';
 import { useEntitlements } from '../../hooks/useEntitlements';
+import { useIsDesktop } from '../../hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
-import { sanitizeUrl } from '@/utils/security';
 import { deleteAutomationMedia } from '../../services/automationMedia';
 import {
   getInstagramAutomations,
@@ -67,17 +77,27 @@ import {
   deleteInstagramAutomation,
   getInstagramAutomationSends,
   getClientes,
+  sortClientesByNome,
   getInitials,
   hasAutomationReadyAccount,
+  getContactCounts,
+  countInstagramContacts,
+  CONTACT_COUNTS_KEY,
+  CONTACTS_COUNT_KEY,
+  CONTACTS_KEY,
   type InstagramCommentAutomation,
   type InstagramAutomationSend,
   type Cliente,
 } from '../../store';
 import AutomationFormDialog from './AutomationFormDialog';
+import { AutomationTargetCell } from './AutomationTargetCell';
 import AutomacoesChecklist from './AutomacoesChecklist';
+import { ContactsTab } from './contacts/ContactsTab';
+import { contactsHref, useAutomacoesTab } from './contacts/useContactsFilters';
 import TourOverlay from './tour/TourOverlay';
 import { useAutomationTour } from './tour/useAutomationTour';
 import { TOUR_STEPS } from './tour/tourSteps';
+import { AutomacoesPhone } from './phone/AutomacoesPhone';
 
 /** Module-level so other surfaces (e.g. useEffectiveNavFeatures' sibling
  * count query) can invalidate the same cache entry after a write. */
@@ -119,14 +139,27 @@ function isTombstoneCheckViolation(err: unknown): boolean {
 
 export default function AutomacoesPage() {
   const { t, i18n } = useTranslation('automations');
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
   const qc = useQueryClient();
+  const isDesktop = useIsDesktop(901);
+  // Phones (below 768) get the iOS layout; 768-900 keeps the card list as the tablet
+  // fallback and 901+ the table.
+  const isPhone = !useIsDesktop(768);
+  const navigate = useNavigate();
 
   const [clientFilter, setClientFilter] = useState<number | 'todos'>('todos');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** Phone only: the automation whose detail sheet is open (the expand row's stand-in). */
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InstagramCommentAutomation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstagramCommentAutomation | null>(null);
+  /** Overrides which tab `AutomationFormDialog` opens on -- only set by
+   * `openRetarget` below, to jump an orphaned-target automation straight into
+   * the "published" live media picker. Must be cleared whenever the dialog
+   * closes (both `closeForm` and `onSaved`), or the next NORMAL edit would
+   * inherit the "published" tab. */
+  const [retargetTab, setRetargetTab] = useState<'production' | 'published' | undefined>();
 
   const automationsQuery = useQuery({
     queryKey: AUTOMATIONS_KEY,
@@ -142,11 +175,30 @@ export default function AutomacoesPage() {
     return map;
   }, [clientes]);
 
+  // The sends log belongs to the expanded row (tablet/desktop) or the open detail sheet
+  // (phone): one query, keyed on whichever surface is showing it.
+  const sendsFor = isPhone ? detailId : expandedId;
   const sendsQuery = useQuery({
-    queryKey: ['instagram-automation-sends', expandedId],
-    queryFn: () => getInstagramAutomationSends(expandedId as string),
-    enabled: expandedId != null,
+    queryKey: ['instagram-automation-sends', sendsFor],
+    queryFn: () => getInstagramAutomationSends(sendsFor as string),
+    enabled: sendsFor != null,
   });
+
+  const [tab, setTab, tabExplicit] = useAutomacoesTab();
+  const countsQuery = useQuery({ queryKey: CONTACT_COUNTS_KEY, queryFn: getContactCounts });
+  const reachedByAutomation = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of countsQuery.data ?? []) m.set(c.automation_id, c.reached_count);
+    return m;
+  }, [countsQuery.data]);
+  const contactsCountQuery = useQuery({
+    queryKey: CONTACTS_COUNT_KEY,
+    queryFn: countInstagramContacts,
+    staleTime: 300_000,
+  });
+  // Fail open: the locked screen is an upsell only (RLS guards the data), so an
+  // errored count must never hide retained contacts behind it.
+  const hasContacts = contactsCountQuery.isError || (contactsCountQuery.data ?? 0) > 0;
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: AUTOMATIONS_KEY });
@@ -154,6 +206,9 @@ export default function AutomacoesPage() {
     // has its own 5min staleTime -- without this, deleting the last
     // automation leaves the nav item visible for up to 5 minutes.
     qc.invalidateQueries({ queryKey: ['instagram-automations-count'] });
+    qc.invalidateQueries({ queryKey: [CONTACTS_KEY] });
+    qc.invalidateQueries({ queryKey: CONTACT_COUNTS_KEY });
+    qc.invalidateQueries({ queryKey: CONTACTS_COUNT_KEY });
   };
   const onMutationError = (err: unknown, fallback: string) => {
     if (!handleEntitlementMutationError(err, profile?.conta_id ?? null)) toast.error(fallback);
@@ -196,7 +251,7 @@ export default function AutomacoesPage() {
 
   const clientesComAutomacao = useMemo(() => {
     const ids = new Set(automations.map((a) => a.client_id));
-    return clientes.filter((c) => c.id != null && ids.has(c.id));
+    return sortClientesByNome(clientes.filter((c) => c.id != null && ids.has(c.id)));
   }, [automations, clientes]);
 
   const filtered = useMemo(
@@ -214,6 +269,21 @@ export default function AutomacoesPage() {
   const openEdit = (a: InstagramCommentAutomation) => {
     setEditing(a);
     setFormOpen(true);
+  };
+  /** Reuses `openEdit` (same setters, same dialog) and additionally forces
+   * the "published" tab -- `AutomationFormDialog` only turns that into its
+   * re-mirror mode (live Graph API picker) when the automation being edited
+   * also carries `target_unlinked_at`, so this is safe to call generically. */
+  const openRetarget = (a: InstagramCommentAutomation) => {
+    setRetargetTab('published');
+    openEdit(a);
+  };
+  /** `formOpen`'s only setter besides `onSaved` below -- both closing paths
+   * must clear `retargetTab`, or a retarget flow (published) followed by
+   * closing without saving would leak into the next normal edit. */
+  const closeForm = (open: boolean) => {
+    setFormOpen(open);
+    if (!open) setRetargetTab(undefined);
   };
   // Abre o formulário de criação e avança o tour quando o overlay do passo 1
   // (surface "page") está ativo. Usada por todo botão/CTA de "criar" que pode
@@ -266,25 +336,54 @@ export default function AutomacoesPage() {
     prevFormOpenRef.current = formOpen;
   }, [formOpen, tour]);
 
-  if (flagOff && automationsQuery.isPending) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
-        <Spinner size="lg" />
-      </div>
+  /** The gate screens below on phones: same content under the page header. */
+  const phoneFrame = (content: ReactNode) => (
+    <div className="phone-auto">
+      <PhonePageHeader title={t('title')} />
+      {content}
+    </div>
+  );
+
+  const showGateSkeleton =
+    flagOff &&
+    (automationsQuery.isPending || (automations.length === 0 && contactsCountQuery.isPending));
+  const showGateError = flagOff && automationsQuery.isError;
+  const showGateLocked = flagOff && automations.length === 0 && !hasContacts;
+
+  const primaryAction = (
+    <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
+      <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
+        <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
+      </Button>
+    </FeatureGate>
+  );
+  // The gate screens (skeleton, error, upgrade) have no header: they register null.
+  const inToolbar = usePageToolbar(
+    showGateSkeleton || showGateError || showGateLocked
+      ? null
+      : { title: t('title'), primary: primaryAction },
+  );
+
+  if (showGateSkeleton) {
+    return isPhone ? (
+      phoneFrame(<CardListSkeleton rows={4} />)
+    ) : (
+      <PageSkeleton body="table" style={inToolbar ? undefined : { padding: '1.5rem' }} />
     );
   }
-  if (flagOff && automationsQuery.isError) {
-    return (
-      <div style={{ padding: '4rem', textAlign: 'center' }}>
+  if (showGateError) {
+    const errorState = (
+      <div style={{ padding: isPhone ? '2rem 0' : '4rem', textAlign: 'center' }}>
         <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{t('loadError')}</p>
         <Button variant="outline" onClick={() => automationsQuery.refetch()}>
           {t('retry')}
         </Button>
       </div>
     );
+    return isPhone ? phoneFrame(errorState) : errorState;
   }
-  if (flagOff && automations.length === 0) {
-    return (
+  if (showGateLocked) {
+    const locked = (
       <UpgradeLockedScreen featureLabel={t('featureLabel')} feature="feature_instagram_automation">
         <p className="text-sm max-w-md" style={{ color: 'var(--text-muted)' }}>
           {t('locked.pitch')}
@@ -307,25 +406,167 @@ export default function AutomacoesPage() {
         </div>
       </UpgradeLockedScreen>
     );
+    return isPhone ? phoneFrame(locked) : locked;
+  }
+
+  const contactsOnly = flagOff && automations.length === 0;
+  // Forced only until the user picks a tab, so Automações stays reachable.
+  const activeTab = contactsOnly && !tabExplicit ? 'contatos' : tab;
+
+  const sharedOverlays = (
+    <>
+      {/* Sem !formOpen aqui, o overlay de página ficaria preso por cima de
+        QUALQUER dialog aberto enquanto o tour segue no passo de página --
+        o botão real, o CTA do card, a checklist, editar uma linha
+        existente, ou qualquer botão futuro que abra o formulário. O tour
+        pode continuar no índice 0 até o dialog fechar (handleDialogClose
+        só encerra passos de surface "dialog"); ao fechar um dialog não
+        relacionado ao tour, o card "Comece por aqui" reaparece, o que é
+        aceitável. */}
+      {tour.activeStep?.surface === 'page' && !formOpen && (
+        <TourOverlay
+          step={tour.activeStep}
+          index={tour.activeIndex ?? 0}
+          total={TOUR_STEPS.length}
+          onNext={tour.next}
+          onBack={tour.back}
+          onSkip={tour.skip}
+          onFinish={tour.finish}
+          onCta={openCreateAndAdvanceTour}
+        />
+      )}
+
+      <AutomationFormDialog
+        open={formOpen}
+        onOpenChange={closeForm}
+        editing={editing}
+        initialTab={retargetTab}
+        tour={
+          tour.activeStep?.surface === 'dialog'
+            ? {
+                step: tour.activeStep,
+                index: tour.activeIndex ?? 0,
+                total: TOUR_STEPS.length,
+                onNext: tour.next,
+                onBack: tour.back,
+                onSkip: tour.skip,
+                onFinish: tour.finish,
+              }
+            : undefined
+        }
+        onSaved={() => {
+          setFormOpen(false);
+          setRetargetTab(undefined);
+          invalidate();
+        }}
+      />
+    </>
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        <AutomacoesPhone
+          activeCount={automations.filter((a) => a.ativo).length}
+          createAction={
+            flagOff ? null : (
+              <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
+                <PhoneIconButton
+                  label={t('newAutomation')}
+                  variant="ink"
+                  onClick={openCreateAndAdvanceTour}
+                  data-tour="nova-automacao"
+                >
+                  <Plus aria-hidden="true" />
+                </PhoneIconButton>
+              </FeatureGate>
+            )
+          }
+          lockedNotice={
+            flagOff ? (
+              <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
+                {null}
+              </FeatureGate>
+            ) : null
+          }
+          tab={activeTab}
+          onTabChange={setTab}
+          contacts={<ContactsTab />}
+          checklist={
+            !checklistDismissed && automationsQuery.isSuccess && readyQuery.isSuccess ? (
+              <AutomacoesChecklist
+                accountReady={readyQuery.data === true}
+                hasAutomation={automations.length > 0}
+                hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
+                canCreate={canCreate}
+                onCreate={openCreateAndAdvanceTour}
+                onDismiss={dismissChecklist}
+                onStartTour={canCreate ? tour.start : undefined}
+              />
+            ) : null
+          }
+          clientOptions={clientesComAutomacao}
+          clientFilter={clientFilter}
+          onClientFilterChange={setClientFilter}
+          isLoading={isLoading}
+          automations={filtered}
+          hasAny={automations.length > 0}
+          clientesById={clientesById}
+          canEdit={can('automacoes', 'editar') === true}
+          detailId={detailId}
+          onOpenDetail={setDetailId}
+          sends={sendsQuery.data}
+          sendsLoading={sendsQuery.isLoading}
+          sendsError={sendsQuery.isError}
+          reachedByAutomation={reachedByAutomation}
+          formatDateTime={(iso) => formatDate(iso, i18n.language)}
+          onToggle={(a, ativo) => toggleMutation.mutate({ id: a.id, ativo })}
+          onEdit={openEdit}
+          onDelete={setDeleteTarget}
+          onRetarget={openRetarget}
+          onViewContacts={(a) =>
+            navigate(contactsHref({ clientId: a.client_id, automationId: a.id }))
+          }
+        />
+
+        {sharedOverlays}
+
+        {/* The AlertDialog's phone face: same copy, same handler. */}
+        <PhoneConfirmSheet
+          open={deleteTarget != null}
+          title={t('deleteTitle', { name: deleteTarget?.name ?? '' })}
+          message={t('deleteDescription')}
+          cancelLabel={t('cancel')}
+          onCancel={() => setDeleteTarget(null)}
+          actions={[
+            {
+              label: t('delete'),
+              destructive: true,
+              onSelect: () => {
+                if (deleteTarget) deleteMutation.mutate(deleteTarget);
+                setDeleteTarget(null);
+              },
+            },
+          ]}
+        />
+      </>
+    );
   }
 
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>{t('title')}</h1>
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <h1>{t('title')}</h1>
+          </div>
+          <div className="header-actions">{primaryAction}</div>
         </div>
-        <div className="header-actions">
-          <FeatureGate flag="feature_instagram_automation" label={t('featureLabel')}>
-            <Button onClick={openCreateAndAdvanceTour} data-tour="nova-automacao">
-              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newAutomation')}
-            </Button>
-          </FeatureGate>
-        </div>
-      </div>
+      )}
 
       <p
         className="flex items-center gap-1.5"
@@ -335,180 +576,362 @@ export default function AutomacoesPage() {
         {t('tiebreakHint')}
       </p>
 
-      {!checklistDismissed && automationsQuery.isSuccess && readyQuery.isSuccess && (
-        <AutomacoesChecklist
-          accountReady={readyQuery.data === true}
-          hasAutomation={automations.length > 0}
-          hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
-          canCreate={canCreate}
-          onCreate={openCreateAndAdvanceTour}
-          onDismiss={dismissChecklist}
-          onStartTour={canCreate ? tour.start : undefined}
-        />
-      )}
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setTab(v as 'automacoes' | 'contatos')}
+        style={{ marginBottom: '1rem' }}
+      >
+        <TabsList>
+          <TabsTrigger value="automacoes">{t('contacts.tabAutomations')}</TabsTrigger>
+          <TabsTrigger value="contatos">{t('contacts.tabContacts')}</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      {clientesComAutomacao.length > 0 && (
-        <div style={{ marginBottom: '1rem', maxWidth: 260 }}>
-          <Select
-            value={String(clientFilter)}
-            onValueChange={(v) => setClientFilter(v === 'todos' ? 'todos' : Number(v))}
-          >
-            <SelectTrigger aria-label={t('filterByClient')}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">{t('allClients')}</SelectItem>
-              {clientesComAutomacao.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner size="lg" />
-        </div>
+      {activeTab === 'contatos' ? (
+        <ContactsTab />
       ) : (
-        <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead style={{ width: 32 }} />
-                <TableHead style={{ paddingLeft: '0.5rem' }}>{t('table.automation')}</TableHead>
-                <TableHead>{t('table.client')}</TableHead>
-                <TableHead>{t('table.target')}</TableHead>
-                <TableHead>{t('table.keywords')}</TableHead>
-                <TableHead>{t('table.dmsSent')}</TableHead>
-                <TableHead>{t('table.lastTriggered')}</TableHead>
-                <TableHead>{t('table.active')}</TableHead>
-                <TableHead style={{ width: 60 }} />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <>
+          {!checklistDismissed && automationsQuery.isSuccess && readyQuery.isSuccess && (
+            <AutomacoesChecklist
+              accountReady={readyQuery.data === true}
+              hasAutomation={automations.length > 0}
+              hasFirstDm={automations.some((a) => a.dms_sent_count > 0)}
+              canCreate={canCreate}
+              onCreate={openCreateAndAdvanceTour}
+              onDismiss={dismissChecklist}
+              onStartTour={canCreate ? tour.start : undefined}
+            />
+          )}
+
+          {clientesComAutomacao.length > 0 && (
+            <div style={{ marginBottom: '1rem', maxWidth: 260 }}>
+              <Select
+                value={String(clientFilter)}
+                onValueChange={(v) => setClientFilter(v === 'todos' ? 'todos' : Number(v))}
+              >
+                <SelectTrigger aria-label={t('filterByClient')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">{t('allClients')}</SelectItem>
+                  {clientesComAutomacao.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {isLoading ? (
+            isDesktop ? (
+              <TableSkeleton rows={5} columns={7} />
+            ) : (
+              <CardListSkeleton rows={4} />
+            )
+          ) : isDesktop ? (
+            <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead style={{ width: 32 }} />
+                    <TableHead style={{ paddingLeft: '0.5rem' }}>{t('table.automation')}</TableHead>
+                    <TableHead>{t('table.client')}</TableHead>
+                    <TableHead>{t('table.target')}</TableHead>
+                    <TableHead>{t('table.keywords')}</TableHead>
+                    <TableHead>{t('table.dmsSent')}</TableHead>
+                    <TableHead>{t('table.lastTriggered')}</TableHead>
+                    <TableHead>{t('table.active')}</TableHead>
+                    <TableHead style={{ width: 60 }} />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columnCount}
+                        style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
+                      >
+                        {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filtered.map((a) => {
+                    const cliente = clientesById.get(a.client_id);
+                    const expanded = expandedId === a.id;
+                    return (
+                      <Fragment key={a.id}>
+                        <TableRow
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setExpandedId(expanded ? null : a.id)}
+                          aria-expanded={expanded}
+                        >
+                          <TableCell>
+                            {expanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </TableCell>
+                          <TableCell style={{ fontWeight: 600, paddingLeft: '0.5rem' }}>
+                            {a.name}
+                          </TableCell>
+                          <TableCell>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <div
+                                className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
+                                style={{
+                                  width: 24,
+                                  height: 24,
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {cliente ? getInitials(cliente.nome) : '?'}
+                              </div>
+                              <span>{cliente?.nome ?? t('clientRemoved')}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <AutomationTargetCell
+                              automation={a}
+                              canEdit={can('automacoes', 'editar') === true}
+                              onRetarget={openRetarget}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {a.keywords.map((k) => (
+                                <Badge key={k} variant="outline" size="sm">
+                                  {k}
+                                </Badge>
+                              ))}
+                              {(a.dm_buttons ?? []).length > 0 && (
+                                <Badge variant="neutral" size="sm">
+                                  {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
+                                </Badge>
+                              )}
+                              {a.dm_media && (
+                                <Badge variant="neutral" size="sm">
+                                  {t('table.cardBadge')}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{a.dms_sent_count}</TableCell>
+                          <TableCell style={{ whiteSpace: 'nowrap' }}>
+                            {a.last_triggered_at
+                              ? formatDate(a.last_triggered_at, i18n.language)
+                              : t('neverTriggered')}
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Switch
+                              checked={a.ativo}
+                              aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
+                              onCheckedChange={(ativo) =>
+                                toggleMutation.mutate({ id: a.id, ativo })
+                              }
+                            />
+                          </TableCell>
+                          <TableCell
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ textAlign: 'right' }}
+                          >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  aria-label={t('rowActions', { name: a.name })}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openEdit(a)}>
+                                  <Pencil
+                                    className="h-3.5 w-3.5"
+                                    style={{ marginRight: '0.5rem' }}
+                                  />
+                                  {t('edit')}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setDeleteTarget(a)}
+                                  className="text-destructive"
+                                >
+                                  <Trash2
+                                    className="h-3.5 w-3.5"
+                                    style={{ marginRight: '0.5rem' }}
+                                  />
+                                  {t('delete')}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                        {expanded && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={columnCount}
+                              style={{ background: 'var(--surface-hover)' }}
+                            >
+                              {(reachedByAutomation.get(a.id) ?? 0) > 0 && (
+                                <Link
+                                  to={contactsHref({ clientId: a.client_id, automationId: a.id })}
+                                  className="inline-flex items-center gap-1.5 hover:underline"
+                                  style={{
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    marginTop: '0.5rem',
+                                  }}
+                                >
+                                  <Users className="h-3.5 w-3.5" />
+                                  {t('contacts.viewContacts', {
+                                    count: reachedByAutomation.get(a.id),
+                                  })}
+                                </Link>
+                              )}
+                              <SendsLog
+                                sends={sendsQuery.data}
+                                isLoading={sendsQuery.isLoading}
+                                isError={sendsQuery.isError}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={columnCount}
-                    style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
-                  >
-                    {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
-                  </TableCell>
-                </TableRow>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem 0' }}>
+                  {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
+                </p>
               )}
               {filtered.map((a) => {
                 const cliente = clientesById.get(a.client_id);
                 const expanded = expandedId === a.id;
                 return (
-                  <Fragment key={a.id}>
-                    <TableRow
-                      style={{ cursor: 'pointer' }}
+                  <div key={a.id} className="team-card card animate-up">
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '0.75rem',
+                        cursor: 'pointer',
+                      }}
                       onClick={() => setExpandedId(expanded ? null : a.id)}
                       aria-expanded={expanded}
                     >
-                      <TableCell>
+                      <div style={{ paddingTop: '0.15rem', flexShrink: 0 }}>
                         {expanded ? (
-                          <ChevronDown className="h-4 w-4" />
+                          <ChevronDown className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
                         ) : (
-                          <ChevronRight className="h-4 w-4" />
+                          <ChevronRight
+                            className="h-4 w-4"
+                            style={{ color: 'var(--text-muted)' }}
+                          />
                         )}
-                      </TableCell>
-                      <TableCell style={{ fontWeight: 600, paddingLeft: '0.5rem' }}>
-                        {a.name}
-                      </TableCell>
-                      <TableCell>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{a.name}</span>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            marginTop: 4,
+                            fontSize: '0.75rem',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
                           <div
                             className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
-                            style={{ width: 24, height: 24, fontSize: '0.65rem', flexShrink: 0 }}
+                            style={{ width: 18, height: 18, fontSize: '0.6rem', flexShrink: 0 }}
                           >
                             {cliente ? getInitials(cliente.nome) : '?'}
                           </div>
                           <span>{cliente?.nome ?? t('clientRemoved')}</span>
                         </div>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        {a.pending_post_deleted_at ? (
-                          <Badge variant="neutral" size="sm">
-                            {t('deletedPostBadge')}
-                          </Badge>
-                        ) : a.ig_media_id ? (
-                          a.media_permalink ? (
-                            <a
-                              href={sanitizeUrl(a.media_permalink)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1"
-                              style={{ color: 'var(--primary-color)' }}
-                            >
-                              <Instagram className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
-                              {a.media_caption ? truncate(a.media_caption, 40) : t('viewPost')}
-                              <ExternalLink className="h-3 w-3" style={{ flexShrink: 0 }} />
-                            </a>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <Instagram className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
-                              {a.media_caption ? truncate(a.media_caption, 40) : t('viewPost')}
-                            </span>
-                          )
-                        ) : a.workflow_post_id ? (
-                          <span className="flex flex-wrap items-center gap-1.5">
-                            {truncate(a.media_caption ?? '', 40)}
-                            <Badge variant="info" size="sm">
-                              {t('pendingBadge')}
-                            </Badge>
-                          </span>
-                        ) : (
-                          <Badge variant="neutral" size="sm">
-                            {t('allPosts')}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {a.keywords.map((k) => (
-                            <Badge key={k} variant="outline" size="sm">
-                              {k}
-                            </Badge>
-                          ))}
-                          {(a.dm_buttons ?? []).length > 0 && (
-                            <Badge variant="neutral" size="sm">
-                              {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
-                            </Badge>
-                          )}
-                          {a.dm_media && (
-                            <Badge variant="neutral" size="sm">
-                              {t('table.cardBadge')}
-                            </Badge>
-                          )}
+                        <div
+                          className="flex flex-wrap items-center gap-1"
+                          style={{ marginTop: 6 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <AutomationTargetCell
+                            automation={a}
+                            canEdit={can('automacoes', 'editar') === true}
+                            onRetarget={openRetarget}
+                          />
                         </div>
-                      </TableCell>
-                      <TableCell>{a.dms_sent_count}</TableCell>
-                      <TableCell style={{ whiteSpace: 'nowrap' }}>
-                        {a.last_triggered_at
-                          ? formatDate(a.last_triggered_at, i18n.language)
-                          : t('neverTriggered')}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {(a.keywords.length > 0 ||
+                          (a.dm_buttons ?? []).length > 0 ||
+                          a.dm_media) && (
+                          <div className="flex flex-wrap gap-1" style={{ marginTop: 6 }}>
+                            {a.keywords.map((k) => (
+                              <Badge key={k} variant="outline" size="sm">
+                                {k}
+                              </Badge>
+                            ))}
+                            {(a.dm_buttons ?? []).length > 0 && (
+                              <Badge variant="neutral" size="sm">
+                                {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
+                              </Badge>
+                            )}
+                            {a.dm_media && (
+                              <Badge variant="neutral" size="sm">
+                                {t('table.cardBadge')}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '0.4rem',
+                            marginTop: 6,
+                            fontSize: '0.75rem',
+                            color: 'var(--text-muted)',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <span>{t('table.dmsSent')}:</span>
+                          <span>{a.dms_sent_count}</span>
+                          <span>&bull;</span>
+                          <span>
+                            {a.last_triggered_at
+                              ? formatDate(a.last_triggered_at, i18n.language)
+                              : t('neverTriggered')}
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-end',
+                          gap: '0.5rem',
+                          flexShrink: 0,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Switch
                           checked={a.ativo}
                           aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
                           onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
                         />
-                      </TableCell>
-                      <TableCell
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ textAlign: 'right' }}
-                      >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-8 w-8 shrink-0 mb-0"
                               aria-label={t('rowActions', { name: a.name })}
                             >
                               <MoreVertical className="h-4 w-4" />
@@ -528,73 +951,48 @@ export default function AutomacoesPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                    </div>
                     {expanded && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={columnCount}
-                          style={{ background: 'var(--surface-hover)' }}
-                        >
-                          <SendsLog
-                            sends={sendsQuery.data}
-                            isLoading={sendsQuery.isLoading}
-                            isError={sendsQuery.isError}
-                          />
-                        </TableCell>
-                      </TableRow>
+                      <div
+                        style={{
+                          marginTop: '0.75rem',
+                          paddingTop: '0.75rem',
+                          borderTop: '1px solid var(--border-color)',
+                        }}
+                      >
+                        {(reachedByAutomation.get(a.id) ?? 0) > 0 && (
+                          <Link
+                            to={contactsHref({ clientId: a.client_id, automationId: a.id })}
+                            className="inline-flex items-center gap-1.5 hover:underline"
+                            style={{
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              marginTop: '0.5rem',
+                            }}
+                          >
+                            <Users className="h-3.5 w-3.5" />
+                            {t('contacts.viewContacts', {
+                              count: reachedByAutomation.get(a.id),
+                            })}
+                          </Link>
+                        )}
+                        <SendsLog
+                          sends={sendsQuery.data}
+                          isLoading={sendsQuery.isLoading}
+                          isError={sendsQuery.isError}
+                        />
+                      </div>
                     )}
-                  </Fragment>
+                  </div>
                 );
               })}
-            </TableBody>
-          </Table>
-        </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Sem !formOpen aqui, o overlay de página ficaria preso por cima de
-          QUALQUER dialog aberto enquanto o tour segue no passo de página --
-          o botão real, o CTA do card, a checklist, editar uma linha
-          existente, ou qualquer botão futuro que abra o formulário. O tour
-          pode continuar no índice 0 até o dialog fechar (handleDialogClose
-          só encerra passos de surface "dialog"); ao fechar um dialog não
-          relacionado ao tour, o card "Comece por aqui" reaparece, o que é
-          aceitável. */}
-      {tour.activeStep?.surface === 'page' && !formOpen && (
-        <TourOverlay
-          step={tour.activeStep}
-          index={tour.activeIndex ?? 0}
-          total={TOUR_STEPS.length}
-          onNext={tour.next}
-          onBack={tour.back}
-          onSkip={tour.skip}
-          onFinish={tour.finish}
-          onCta={openCreateAndAdvanceTour}
-        />
-      )}
-
-      <AutomationFormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        editing={editing}
-        tour={
-          tour.activeStep?.surface === 'dialog'
-            ? {
-                step: tour.activeStep,
-                index: tour.activeIndex ?? 0,
-                total: TOUR_STEPS.length,
-                onNext: tour.next,
-                onBack: tour.back,
-                onSkip: tour.skip,
-                onFinish: tour.finish,
-              }
-            : undefined
-        }
-        onSaved={() => {
-          setFormOpen(false);
-          invalidate();
-        }}
-      />
+      {sharedOverlays}
 
       <AlertDialog
         open={deleteTarget != null}
@@ -635,11 +1033,7 @@ function SendsLog({
 }) {
   const { t, i18n } = useTranslation('automations');
   if (isLoading) {
-    return (
-      <div className="flex justify-center p-4">
-        <Spinner size="sm" />
-      </div>
-    );
+    return <ListSkeleton rows={2} style={{ padding: '0.5rem 0' }} />;
   }
   if (isError) {
     return (

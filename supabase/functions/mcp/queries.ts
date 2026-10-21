@@ -3,6 +3,7 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { signGetUrl } from "../_shared/r2.ts";
 import { McpKeyContext, McpInputError } from "../_shared/mcp-token.ts";
 import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
+import { throwTaskWriteError } from "./task-errors.ts";
 import {
   allowlistClient,
   allowlistMember,
@@ -56,7 +57,7 @@ export interface Deps {
   genId?: () => string;
   randomUUID?: () => string;
   /** Presigned R2 PUT URL for direct client upload (create_media_upload). */
-  signPutUrl?: (key: string, mimeType: string) => Promise<string>;
+  signPutUrl?: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   /** R2 object HEAD for finalize integrity check (set_post_media). */
   headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   /** Plan storage quota in bytes (null = unlimited). */
@@ -759,7 +760,7 @@ export async function listIdeas(
 ): Promise<any[]> {
   let q = d.db
     .from("ideias")
-    .select("id, cliente_id, titulo, descricao, status, tipo, tarefa_id, links, created_at")
+    .select("id, cliente_id, titulo, descricao, status, tipo, tarefa_id, links, created_at, origem, visivel_no_hub, audio_transcript")
     .eq("workspace_id", d.ctx.conta_id);
   if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
   if (args.status) q = q.eq("status", args.status);
@@ -788,7 +789,7 @@ function flattenTaskRow(row: any) {
 }
 
 const TASK_SELECT =
-  "id, titulo, descricao, status, responsavel_id, cliente_id, data_limite, concluida_em, created_at, updated_at";
+  "id, titulo, descricao, status, responsavel_id, cliente_id, data_limite, concluida_em, serie_id, created_at, updated_at";
 
 async function assertMembroInWorkspace(d: Deps, membroId: number): Promise<void> {
   const { data } = await d.db
@@ -880,7 +881,12 @@ export async function updateTask(
   // null limpa, omitido preserva (Object.hasOwn distingue os dois).
   const payload: Record<string, unknown> = {};
   if (Object.hasOwn(args, "titulo")) payload.titulo = args.titulo;
-  if (Object.hasOwn(args, "descricao")) payload.descricao = args.descricao;
+  if (Object.hasOwn(args, "descricao")) {
+    payload.descricao = args.descricao;
+    // MCP descriptions are plain text. Clear any previous TipTap document so the
+    // CRM does not prefer stale rich content over this update.
+    payload.descricao_rich = null;
+  }
   if (Object.hasOwn(args, "status")) payload.status = args.status; // concluida_em: trigger do banco
   if (Object.hasOwn(args, "responsavel_id")) payload.responsavel_id = args.responsavel_id;
   if (Object.hasOwn(args, "data_limite")) payload.data_limite = args.data_limite;
@@ -892,7 +898,7 @@ export async function updateTask(
     .eq("id", args.task_id)
     .select(TASK_SELECT)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throwTaskWriteError(error);
   if (!data) throw new McpInputError("Tarefa não encontrada neste workspace.");
   return data;
 }

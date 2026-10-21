@@ -40,6 +40,32 @@ function renderSidebar() {
   return render(<UnscheduledPostsSidebar posts={[]} currentWorkflowId={10} />);
 }
 
+describe('UnscheduledPostsSidebar no contexto de post avulso (currentWorkflowId null)', () => {
+  it('lista os posts avulsos sem data e ignora os de fluxo', () => {
+    dndState.isOver = false;
+    dndState.active = null;
+
+    const { container, getByText, queryByText } = render(
+      <UnscheduledPostsSidebar
+        posts={[
+          makePost({ id: 1, workflow_id: null, workflow_titulo: null, titulo: 'Avulso sem data' }),
+          makePost({ id: 2, workflow_id: 99, titulo: 'Post de um fluxo' }),
+        ]}
+        currentWorkflowId={null}
+      />,
+    );
+
+    expect(getByText('Avulso sem data')).toBeTruthy();
+    expect(queryByText('Post de um fluxo')).toBeNull();
+    // workflow_titulo é null num avulso: 'Avulso' preenche o rótulo em vez de vazio.
+    expect(container.querySelector('.sidebar-workflow-label')?.textContent).toBe('Avulso');
+    // A legenda de posse troca de lado junto com o escopo.
+    expect(container.querySelector('.sidebar-legend-item--ownership')?.textContent).toContain(
+      'De um fluxo',
+    );
+  });
+});
+
 describe('UnscheduledPostsSidebar drop affordance', () => {
   it('suppresses the highlight while hovering with a foreign post being dragged', () => {
     dndState.isOver = true;

@@ -24,8 +24,10 @@ interface EquipeThreadProps {
   markSeen: EquipeData['markSeen'];
   /** Provided on mobile only — shows the back arrow and returns to /mensagens/equipe. */
   onBack?: () => void;
-  /** Opens the conversation-details sheet (Task 11). Optional and unused until then. */
+  /** Opens the conversation-details sheet. */
   onOpenDetalhes?: () => void;
+  /** Phones: ThreadPhoneShell's nav bar already shows the name and the actions. */
+  hideHeader?: boolean;
 }
 
 const HEADER_AVATAR = { width: 40, height: 40, fontSize: '0.8rem', flexShrink: 0 } as const;
@@ -96,6 +98,7 @@ export function EquipeThread({
   markSeen,
   onBack,
   onOpenDetalhes,
+  hideHeader = false,
 }: EquipeThreadProps) {
   const { user } = useAuth();
   const meuId = user?.id ?? null;
@@ -166,50 +169,52 @@ export function EquipeThread({
 
   return (
     <div className="flex-1 min-w-0 flex flex-col overflow-hidden mensagens-thread-root">
-      <div className="flex items-center gap-3 border-b border-[var(--border-color)] px-4 py-3">
-        {onBack && (
-          <button
-            onClick={onBack}
-            aria-label="Voltar para as conversas"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-main)]"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-          >
-            <ArrowLeft size={17} />
-          </button>
-        )}
-        {conversa.tipo === 'dm' && conversa.avatar_url ? (
-          <img
-            src={conversa.avatar_url}
-            alt=""
-            className="avatar"
-            style={{ ...HEADER_AVATAR, borderRadius: '50%', objectFit: 'cover' }}
-          />
-        ) : (
-          <span
-            className="avatar"
-            style={{
-              ...HEADER_AVATAR,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            aria-hidden="true"
-          >
-            {conversa.tipo === 'grupo' ? <Users size={18} /> : initialsOf(conversa.display_nome)}
-          </span>
-        )}
-        <span className="flex-1 truncate text-sm font-semibold">{conversa.display_nome}</span>
-        {onOpenDetalhes && (
-          <button
-            onClick={onOpenDetalhes}
-            aria-label="Ver detalhes da conversa"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-main)]"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-          >
-            <Users size={15} />
-          </button>
-        )}
-      </div>
+      {!hideHeader && (
+        <div className="flex items-center gap-3 border-b border-[var(--border-color)] px-4 py-3">
+          {onBack && (
+            <button
+              onClick={onBack}
+              aria-label="Voltar para as conversas"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-main)]"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+            >
+              <ArrowLeft size={17} />
+            </button>
+          )}
+          {conversa.tipo === 'dm' && conversa.avatar_url ? (
+            <img
+              src={conversa.avatar_url}
+              alt=""
+              className="avatar"
+              style={{ ...HEADER_AVATAR, borderRadius: '50%', objectFit: 'cover' }}
+            />
+          ) : (
+            <span
+              className="avatar"
+              style={{
+                ...HEADER_AVATAR,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-hidden="true"
+            >
+              {conversa.tipo === 'grupo' ? <Users size={18} /> : initialsOf(conversa.display_nome)}
+            </span>
+          )}
+          <span className="flex-1 truncate text-sm font-semibold">{conversa.display_nome}</span>
+          {onOpenDetalhes && (
+            <button
+              onClick={onOpenDetalhes}
+              aria-label="Ver detalhes da conversa"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-main)]"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+            >
+              <Users size={15} />
+            </button>
+          )}
+        </div>
+      )}
 
       <div
         ref={scrollRef}

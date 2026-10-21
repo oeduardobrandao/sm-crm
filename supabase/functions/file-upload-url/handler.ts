@@ -10,11 +10,13 @@ type DbClient = {
 interface FileUploadUrlDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
-  signPutUrl: (key: string, mimeType: string) => Promise<string>;
+  signPutUrl: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   randomUUID?: () => string;
 }
 
 const MAX_SIZE = 400 * 1024 * 1024;
+// Vídeos sobem por PUT presignado direto no R2 (limite de 5 GiB por PUT).
+const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 
 function extFromMime(mime: string): string {
   const map: Record<string, string> = {
@@ -61,9 +63,13 @@ export function createFileUploadUrlHandler(deps: FileUploadUrlDeps) {
 
     const { folder_id, filename, mime_type, size_bytes, thumbnail } = body;
     if (!filename || !mime_type || !size_bytes) return json({ error: "Missing fields" }, 400);
-    if (size_bytes <= 0 || size_bytes > MAX_SIZE) return json({ error: "size_bytes out of range" }, 400);
-
     const kind = classifyKind(mime_type);
+    const maxSize = kind === "video" ? MAX_VIDEO_SIZE : MAX_SIZE;
+
+    // Inteiros: viram Content-Length assinado nas URLs de upload.
+    if (!Number.isSafeInteger(size_bytes) || size_bytes <= 0 || size_bytes > maxSize) {
+      return json({ error: "size_bytes out of range" }, 400);
+    }
 
     const MIME_ALLOWLIST: Record<string, string[]> = {
       image: ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"],
@@ -76,8 +82,13 @@ export function createFileUploadUrlHandler(deps: FileUploadUrlDeps) {
 
     if (kind === "video" && !thumbnail) return json({ error: "video requires thumbnail" }, 400);
     if (thumbnail) {
-      if (!thumbnail.mime_type.startsWith("image/")) return json({ error: "thumbnail must be an image" }, 400);
-      if (thumbnail.size_bytes <= 0 || thumbnail.size_bytes > 10 * 1024 * 1024) {
+      if (typeof thumbnail.mime_type !== "string" || !thumbnail.mime_type.startsWith("image/")) {
+        return json({ error: "thumbnail must be an image" }, 400);
+      }
+      if (
+        !Number.isSafeInteger(thumbnail.size_bytes) || thumbnail.size_bytes <= 0 ||
+        thumbnail.size_bytes > 10 * 1024 * 1024
+      ) {
         return json({ error: "thumbnail size out of range" }, 400);
       }
     }
@@ -101,13 +112,13 @@ export function createFileUploadUrlHandler(deps: FileUploadUrlDeps) {
     const fileId = (deps.randomUUID ?? crypto.randomUUID.bind(crypto))();
     const ext = extFromMime(mime_type);
     const r2_key = `contas/${profile.conta_id}/files/${fileId}.${ext}`;
-    const upload_url = await deps.signPutUrl(r2_key, mime_type);
+    const upload_url = await deps.signPutUrl(r2_key, mime_type, size_bytes);
 
     let thumbnail_r2_key: string | undefined;
     let thumbnail_upload_url: string | undefined;
     if (thumbnail) {
       thumbnail_r2_key = `contas/${profile.conta_id}/files/${fileId}.thumb.${extFromMime(thumbnail.mime_type)}`;
-      thumbnail_upload_url = await deps.signPutUrl(thumbnail_r2_key, thumbnail.mime_type);
+      thumbnail_upload_url = await deps.signPutUrl(thumbnail_r2_key, thumbnail.mime_type, thumbnail.size_bytes);
     }
 
     return json({

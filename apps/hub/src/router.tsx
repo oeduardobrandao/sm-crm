@@ -13,18 +13,16 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/HomePage')).HomePage }),
       },
       {
-        path: 'aprovacoes',
+        path: 'aprovacoes/:postId?',
         lazy: async () => ({ Component: (await import('./pages/AprovacoesPage')).AprovacoesPage }),
       },
       {
-        path: 'postagens',
+        path: 'postagens/:postId?',
         lazy: async () => ({ Component: (await import('./pages/PostagensPage')).PostagensPage }),
       },
       {
-        path: 'postagens/:postId',
-        lazy: async () => ({
-          Component: (await import('./pages/PostagemFocoPage')).PostagemFocoPage,
-        }),
+        path: 'agenda',
+        lazy: async () => ({ Component: (await import('./pages/AgendaPage')).AgendaPage }),
       },
       {
         path: 'marca',
@@ -73,6 +71,11 @@ export const router = createBrowserRouter([
     lazy: async () => ({
       Component: (await import('./pages/RelatorioPrintPage')).RelatorioPrintPage,
     }),
+  },
+  {
+    // Public guest invite (agenda-convite): its own token, no portal shell.
+    path: '/convite/:token',
+    lazy: async () => ({ Component: (await import('./pages/ConvitePage')).ConvitePage }),
   },
   {
     path: '*',

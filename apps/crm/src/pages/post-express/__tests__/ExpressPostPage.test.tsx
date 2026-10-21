@@ -60,6 +60,10 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+// Esta suíte cobre o layout de desktop; o do celular (abaixo de 768px) tem a sua
+// própria em *.phone.test.tsx. jsdom responde false a todo matchMedia.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 import ExpressPostPage from '../ExpressPostPage';
 import {
   getClientes,
@@ -73,6 +77,7 @@ import {
 import { publishInstagramPostNow } from '../../../services/instagram';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { toast } from 'sonner';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function renderWithProviders(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -454,5 +459,129 @@ describe('ExpressPostPage', () => {
       await waitFor(() => expect(screen.getByText(/não tem um link ativo do portal/)).toBeTruthy());
       expect(screen.getByTestId('express-submit').hasAttribute('disabled')).toBe(true);
     });
+  });
+});
+
+describe('ExpressPostPage in the Vidro toolbar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getClientes).mockResolvedValue(mockClientes);
+    vi.mocked(useWorkspaceLimits).mockReturnValue(workspaceLimitsValue(true));
+    vi.mocked(getHubToken).mockResolvedValue(null as any);
+  });
+
+  it('puts the title and subtitle in the toolbar and drops the inline header', async () => {
+    renderWithProviders(
+      <VidroToolbarHarness>
+        <ExpressPostPage />
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Post Express');
+    const subtitle = screen.getByText('Publique rapidamente no Instagram');
+    expect(subtitle.closest('.vidro-toolbar')).not.toBeNull();
+    expect(screen.getAllByText('Publique rapidamente no Instagram')).toHaveLength(1);
+    expect(screen.getByTestId('express-submit')).toBeTruthy();
+  });
+
+  it('keeps the inline header when the Vidro shell is off', async () => {
+    renderWithProviders(
+      <VidroToolbarHarness vidroShell={false}>
+        <ExpressPostPage />
+      </VidroToolbarHarness>,
+    );
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Post Express');
+    expect(h1s[0].closest('.vidro-toolbar')).toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getByText('Publique rapidamente no Instagram')).toBeTruthy();
+    // Classic keeps the numbered stepper and its in-body submit.
+    expect(screen.getByText(/Etapa 1/)).toBeTruthy();
+    expect(document.querySelector('.express-vidro')).toBeNull();
+    expect(screen.getAllByTestId('express-submit')).toHaveLength(1);
+  });
+
+  it('lays the form out as titled sections with the submit as the toolbar primary', async () => {
+    renderWithProviders(
+      <VidroToolbarHarness>
+        <ExpressPostPage />
+      </VidroToolbarHarness>,
+    );
+
+    await screen.findByText('Client A');
+    expect(screen.queryByText(/Etapa 1/)).toBeNull();
+    for (const name of ['Formato', 'Cliente', 'Mídia', 'Legenda do Instagram', 'Envio']) {
+      expect(screen.getByRole('heading', { level: 2, name })).toBeTruthy();
+    }
+    const submit = screen.getAllByTestId('express-submit');
+    expect(submit).toHaveLength(1);
+    expect(submit[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(submit[0]).toBeDisabled();
+    expect(
+      screen.getByText('Selecione um cliente para adicionar mídia.', { selector: 'aside p' }),
+    ).toBeTruthy();
+  });
+
+  it('enables the toolbar submit once client, media and caption are in, then confirms', async () => {
+    vi.mocked(createAvulsoPost).mockResolvedValue({
+      id: 30,
+      workflow_id: null,
+      cliente_id: 1,
+      titulo: 'Post Express',
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: 0,
+      status: 'rascunho',
+      is_express: true,
+    });
+    renderWithProviders(
+      <VidroToolbarHarness>
+        <ExpressPostPage />
+      </VidroToolbarHarness>,
+    );
+
+    await screen.findByText('Client A');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Cliente' }), { target: { value: '1' } });
+    fireEvent.click(await screen.findByText('Simulate Upload'));
+    expect(screen.getByText('Escreva a legenda.')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Legenda do Instagram' }), {
+      target: { value: 'Olá' },
+    });
+
+    expect(screen.getByText('3 / 2200')).toBeTruthy();
+    expect(screen.getByText('Pronto para publicar')).toBeTruthy();
+    const submit = screen.getByTestId('express-submit');
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    expect(await screen.findByText('Publicar agora?')).toBeTruthy();
+  });
+
+  it('switches format and send mode with pressed capsule toggles', async () => {
+    renderWithProviders(
+      <VidroToolbarHarness>
+        <ExpressPostPage />
+      </VidroToolbarHarness>,
+    );
+
+    await screen.findByText('Client A');
+    const stories = screen.getByRole('button', { name: 'Stories' });
+    expect(stories).toHaveAttribute('data-slot', 'toggle-group-item');
+    expect(stories).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(stories);
+    expect(stories).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Stories não usam legenda.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aprovação do cliente' }));
+    expect(screen.getByRole('button', { name: 'Aprovação do cliente' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('express-submit')).toHaveTextContent('Enviar para aprovação');
   });
 });

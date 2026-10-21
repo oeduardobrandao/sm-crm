@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Spinner } from '@/components/ui/spinner';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import {
   deleteReportTemplate,
   listReportTemplates,
@@ -17,9 +17,15 @@ export interface ApplyTemplateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onApply: (template: ReportTemplateRow) => void;
+  warnImagesRemoved?: boolean;
 }
 
-export function ApplyTemplateDialog({ open, onOpenChange, onApply }: ApplyTemplateDialogProps) {
+export function ApplyTemplateDialog({
+  open,
+  onOpenChange,
+  onApply,
+  warnImagesRemoved,
+}: ApplyTemplateDialogProps) {
   const qc = useQueryClient();
   // enabled: open evita chamar listReportTemplates enquanto o dialog nunca foi
   // aberto (este componente fica sempre montado na topbar do editor).
@@ -67,10 +73,13 @@ export function ApplyTemplateDialog({ open, onOpenChange, onApply }: ApplyTempla
         <DialogHeader>
           <DialogTitle>Aplicar template</DialogTitle>
         </DialogHeader>
+        {warnImagesRemoved && (
+          <p className="text-sm text-muted-foreground">
+            As imagens deste relatório serão removidas. Elas continuam nos Arquivos do cliente.
+          </p>
+        )}
         {isLoading ? (
-          <div className="flex justify-center py-6">
-            <Spinner />
-          </div>
+          <ListSkeleton rows={3} />
         ) : templates.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4">
             Nenhum template salvo ainda. Use Salvar como template no editor.

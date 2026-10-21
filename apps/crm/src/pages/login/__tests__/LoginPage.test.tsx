@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({
   toast: {
@@ -437,5 +437,29 @@ describe('LoginPage', () => {
 
     expect(screen.getByTestId('probe')).toHaveTextContent('/login');
     expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+  });
+});
+
+describe('Crisp widget visibility', () => {
+  let crispPush: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    window.$crisp = [];
+    crispPush = vi.spyOn(window.$crisp, 'push');
+  });
+
+  afterEach(() => {
+    crispPush.mockRestore();
+  });
+
+  it('hides the Crisp widget on mount, the same way AppLayout does for authenticated routes', () => {
+    // /login is a standalone route, never nested under AppLayout, so
+    // AppLayout's own chat:hide-on-mount never runs here. Without this,
+    // a Crisp session left bound from a PRIOR visit on this browser (its
+    // own cookie persists it independent of Supabase auth state -- see
+    // the design spec's Verification section) would show fully
+    // interactive and unhidden to whoever loads /login next.
+    renderLoginPage();
+    expect(crispPush).toHaveBeenCalledWith(['do', 'chat:hide']);
   });
 });

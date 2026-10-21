@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const {
   mockGetAutomations,
@@ -16,6 +18,8 @@ const {
   mockUseAuth,
   mockHasReadyAccount,
   entitlementsMock,
+  mockGetContactCounts,
+  mockCountContacts,
 } = vi.hoisted(() => ({
   mockGetAutomations: vi.fn(),
   mockGetClientes: vi.fn(),
@@ -27,9 +31,18 @@ const {
   mockUseAuth: vi.fn(),
   mockHasReadyAccount: vi.fn(),
   entitlementsMock: vi.fn(),
+  mockGetContactCounts: vi.fn(),
+  mockCountContacts: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// Tablet/desktop markup: true for the 768 phone gate, false for the 901 table gate, so
+// this suite keeps asserting the 768-900 card list it was written against. The phone
+// branch (below 768) has its own suite, AutomacoesPage.phone.test.tsx.
+vi.mock('../../../hooks/useIsDesktop', () => ({
+  useIsDesktop: (minWidth = 768) => minWidth < 900,
+}));
 
 // Mesmo padrão do ConectarPage.test: t devolve a CHAVE (com vars serializadas),
 // então os asserts abaixo verificam chaves do namespace, não strings pt/en.
@@ -51,8 +64,14 @@ vi.mock('../../../store', async () => {
     updateInstagramAutomation: mockUpdate,
     deleteInstagramAutomation: mockDelete,
     hasAutomationReadyAccount: mockHasReadyAccount,
+    getContactCounts: mockGetContactCounts,
+    countInstagramContacts: mockCountContacts,
   };
 });
+
+vi.mock('../contacts/ContactsTab', () => ({
+  ContactsTab: () => <div data-testid="contacts-tab" />,
+}));
 
 vi.mock('../../../context/AuthContext', () => ({ useAuth: mockUseAuth }));
 
@@ -92,20 +111,27 @@ vi.mock('@/components/paywall/FeatureGate', () => ({
 
 // The dialog has its own client-select / posts-grid / keyword-chip surface --
 // out of scope for the list test, which only needs to know it opened. Also
-// exposes `tour` (as a data attribute) and the `onSaved` path so the tour
-// wiring tests below can drive them without the real dialog internals.
+// exposes `tour` and `initialTab` (as data attributes) and the `onSaved` path
+// so the tour/retarget wiring tests below can drive them without the real
+// dialog internals.
 vi.mock('../AutomationFormDialog', () => ({
   default: ({
     open,
     onSaved,
     tour,
+    initialTab,
   }: {
     open: boolean;
     onSaved: () => void;
     tour?: { step: { id: string } };
+    initialTab?: 'production' | 'published';
   }) =>
     open ? (
-      <div data-testid="automation-dialog" data-tour-step={tour?.step.id ?? ''}>
+      <div
+        data-testid="automation-dialog"
+        data-tour-step={tour?.step.id ?? ''}
+        data-initial-tab={initialTab ?? ''}
+      >
         <button onClick={onSaved}>salvar-mock</button>
       </div>
     ) : null,
@@ -151,6 +177,7 @@ const AUTOMATION_PENDING = {
   media_caption: 'Chamada para o evento de sexta',
   workflow_post_id: 501,
   pending_post_deleted_at: null,
+  target_unlinked_at: null,
   keywords: ['evento'],
   dm_message: 'Segue o link!',
   public_reply: null,
@@ -159,6 +186,18 @@ const AUTOMATION_PENDING = {
   last_triggered_at: null,
   created_at: '2026-08-15T09:00:00.000Z',
   updated_at: '2026-08-15T09:00:00.000Z',
+};
+
+// Same shape as AUTOMATION_PENDING (still no ig_media_id), but the target
+// post published outside the app -- marked "postado" by hand without ever
+// going through the publish flow -- so it will NEVER get a media id. Task 5's
+// cron stamps target_unlinked_at when it detects this.
+const AUTOMATION_UNLINKED = {
+  ...AUTOMATION_PENDING,
+  id: 'auto-unlinked',
+  name: 'Story de sábado',
+  workflow_post_id: 4038,
+  target_unlinked_at: '2026-08-31T23:55:44.000Z',
 };
 
 const AUTOMATION_TOMBSTONE = {
@@ -171,6 +210,7 @@ const AUTOMATION_TOMBSTONE = {
   media_caption: 'Promoção de julho',
   workflow_post_id: null,
   pending_post_deleted_at: '2026-08-16T10:00:00.000Z',
+  target_unlinked_at: null,
   keywords: ['julho'],
   dm_message: 'Segue o link!',
   public_reply: null,
@@ -225,11 +265,11 @@ const SENDS = [
   },
 ];
 
-function renderPage() {
+function renderPage(url = '/automacoes') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/automacoes']}>
+      <MemoryRouter initialEntries={[url]}>
         <AutomacoesPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -237,9 +277,15 @@ function renderPage() {
 }
 
 function setAuth(overrides: Record<string, unknown> = {}) {
+  const role = (overrides.role as 'owner' | 'admin' | 'agent' | undefined) ?? 'owner';
   mockUseAuth.mockReturnValue({
-    role: 'owner',
-    profile: { id: 'user-1', conta_id: 'w-1', role: 'owner' },
+    role,
+    profile: { id: 'user-1', conta_id: 'w-1', role },
+    // Default: same role drives `can`, via the real derivePermission truth
+    // table (never a hand-rolled reimplementation) -- a test overriding
+    // `role` alone (e.g. 'agent') still gets a `can` consistent with it.
+    // Tests exercising a custom role pass their own `can` override instead.
+    can: makeCan(fakeMembership({ role })),
     ...overrides,
   });
 }
@@ -257,6 +303,8 @@ describe('AutomacoesPage', () => {
     mockDeleteMedia.mockResolvedValue(undefined);
     entitlementsMock.mockReturnValue({ isLoading: false, hasFeature: () => true });
     mockHasReadyAccount.mockResolvedValue(false);
+    mockGetContactCounts.mockResolvedValue([]);
+    mockCountContacts.mockResolvedValue(0);
     setAuth();
   });
 
@@ -299,7 +347,7 @@ describe('AutomacoesPage', () => {
   it('expands a row to load and show its sends log', async () => {
     renderPage();
 
-    const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+    const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
     fireEvent.click(row);
 
     expect(await screen.findByText('@fulano')).toBeInTheDocument();
@@ -314,10 +362,98 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Lançamento de sexta')).closest('tr')!;
+    const row = (await screen.findByText('Lançamento de sexta')).closest('[aria-expanded]')!;
     expect(within(row).getByText('Chamada para o evento de sexta')).toBeInTheDocument();
     expect(within(row).getByText('pendingBadge')).toBeInTheDocument();
     expect(within(row).queryByText('allPosts')).not.toBeInTheDocument();
+  });
+
+  it('shows unlinkedTargetBadge (never pendingBadge) when the target post published without a media id', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
+    expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('pendingBadge')).not.toBeInTheDocument();
+  });
+
+  it('keeps pendingBadge while the target post has not published yet', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_PENDING]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Lançamento de sexta')).closest('[aria-expanded]')!;
+    expect(within(row).getByText('pendingBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetBadge')).not.toBeInTheDocument();
+  });
+
+  it('hides the retarget action without automacoes:editar, but still shows the badge', async () => {
+    setAuth({
+      can: makeCan(fakeMembership({ role_id: 'r1', permissions: { automacoes: 'ver' } })),
+    });
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
+    expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
+  });
+
+  it('hides the retarget action while membership is still hydrating (can === "unknown"), but still shows the badge', async () => {
+    // `can()` returns 'unknown' (truthy) before the membership fetch settles
+    // -- `makeCan(null)` reproduces that exact state, same as a fresh
+    // AuthContext (see AppLayout.test.tsx and useIsWorkspaceOwner.test.tsx).
+    // This is the actual reason the row uses `=== true` and not a truthy
+    // check: a truthy check would let the action flash on screen for a user
+    // who turns out to lack the permission once hydration resolves.
+    setAuth({ can: makeCan(null) });
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
+    expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
+  });
+
+  it('shows the retarget action with automacoes:editar and opens the dialog on the "published" tab for that automation', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
+    fireEvent.click(within(row).getByText('unlinkedTargetAction'));
+
+    const dialog = await screen.findByTestId('automation-dialog');
+    expect(dialog).toHaveAttribute('data-initial-tab', 'published');
+
+    // Saving closes the dialog; a subsequent NORMAL edit must not inherit the
+    // "published" tab from the retarget flow (state has to reset on close).
+    fireEvent.click(screen.getByText('salvar-mock'));
+    await waitFor(() => expect(screen.queryByTestId('automation-dialog')).not.toBeInTheDocument());
+
+    // jsdom não modela PointerEvent, então o Radix DropdownMenu não abre com
+    // fireEvent.click no trigger -- mesmo caminho onKeyDown/Enter usado pelos
+    // outros testes de rowActions desta suíte.
+    fireEvent.keyDown(screen.getByRole('button', { name: /rowActions/ }), { key: 'Enter' });
+    fireEvent.click(await screen.findByText('edit'));
+
+    const secondDialog = await screen.findByTestId('automation-dialog');
+    expect(secondDialog).toHaveAttribute('data-initial-tab', '');
+  });
+
+  it('tombstone (deleted target) wins over the unlinked-target mark', async () => {
+    mockGetAutomations.mockResolvedValue([
+      { ...AUTOMATION_UNLINKED, pending_post_deleted_at: '2026-09-01T00:00:00.000Z' },
+    ]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
+    expect(within(row).getByText('deletedPostBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetBadge')).not.toBeInTheDocument();
   });
 
   it('shows the deletedPostBadge and an off switch for a tombstoned automation', async () => {
@@ -325,7 +461,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Promo antiga')).closest('tr')!;
+    const row = (await screen.findByText('Promo antiga')).closest('[aria-expanded]')!;
     expect(within(row).getByText('deletedPostBadge')).toBeInTheDocument();
     expect(within(row).getByRole('switch')).not.toBeChecked();
   });
@@ -335,7 +471,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Reels recém-ligado')).closest('tr')!;
+    const row = (await screen.findByText('Reels recém-ligado')).closest('[aria-expanded]')!;
     expect(within(row).getByText('Bastidores do lançamento')).toBeInTheDocument();
     expect(within(row).queryByText('allPosts')).not.toBeInTheDocument();
     expect(within(row).queryByRole('link')).not.toBeInTheDocument();
@@ -351,7 +487,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Promo antiga')).closest('tr')!;
+    const row = (await screen.findByText('Promo antiga')).closest('[aria-expanded]')!;
     fireEvent.click(within(row).getByRole('switch'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('reactivateNeedsTarget'));
@@ -368,14 +504,14 @@ describe('AutomacoesPage', () => {
       mockGetAutomations.mockResolvedValue([{ ...AUTOMATIONS[0], dm_media: MEDIA }]);
       renderPage();
 
-      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
       expect(within(row).getByText('table.cardBadge')).toBeInTheDocument();
     });
 
     it('não mostra o chip de cartão para uma automação sem dm_media', async () => {
       renderPage();
 
-      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
       expect(within(row).queryByText('table.cardBadge')).not.toBeInTheDocument();
     });
 
@@ -386,7 +522,7 @@ describe('AutomacoesPage', () => {
       ]);
       renderPage();
 
-      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
       fireEvent.click(row);
 
       expect(await screen.findByText('sendStatus.card_fallback_buttons')).toBeInTheDocument();
@@ -467,14 +603,72 @@ describe('AutomacoesPage', () => {
       expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
     });
 
-    it('query ainda pendente → spinner, NUNCA paywall', async () => {
+    it('query ainda pendente → skeleton, NUNCA paywall', async () => {
       mockGetAutomations.mockReturnValue(new Promise(() => {}));
-      const { container } = renderPage();
+      renderPage();
 
       await waitFor(() => {
-        expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+        expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+
+    it('0 automações mas com contatos → página abre em Contatos, sem paywall', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockCountContacts.mockResolvedValue(5);
+      renderPage();
+      expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+
+    it('contagem de contatos pendente → skeleton, NUNCA paywall', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockCountContacts.mockReturnValue(new Promise(() => {}));
+      renderPage();
+      await waitFor(() => expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument());
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+
+    it('contagem de contatos em erro → fail open (página, sem paywall)', async () => {
+      mockGetAutomations.mockResolvedValue([]);
+      mockCountContacts.mockRejectedValue(new Error('boom'));
+      renderPage();
+      expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
+      expect(screen.queryByTestId('upgrade-locked-screen')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('contatos', () => {
+    it('switches to the Contatos tab from the tab bar', async () => {
+      renderPage();
+      // Radix Tabs activate on mouseDown/keyDown/focus, not click.
+      fireEvent.mouseDown(await screen.findByRole('tab', { name: 'contacts.tabContacts' }));
+      expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
+    });
+
+    it('opens on Contatos from ?aba=contatos', async () => {
+      renderPage('/automacoes?aba=contatos');
+      expect(await screen.findByTestId('contacts-tab')).toBeInTheDocument();
+    });
+
+    it('shows "Ver contatos (N)" in the expanded card with a deep link, hidden when N = 0', async () => {
+      mockGetContactCounts.mockResolvedValue([
+        {
+          automation_id: 'auto-1',
+          automation_name: 'Promo de agosto',
+          client_id: 14,
+          automation_deleted: false,
+          reached_count: 3,
+          total_count: 4,
+        },
+      ]);
+      renderPage();
+      // The expandable row is a TableRow/div with aria-expanded, not a button.
+      // jsdom's matchMedia stub is false, so the page renders the MOBILE branch.
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
+      fireEvent.click(row);
+      const link = await screen.findByRole('link', { name: 'contacts.viewContacts:{"count":3}' });
+      expect(link).toHaveAttribute('href', '/automacoes?aba=contatos&cliente=14&automacao=auto-1');
     });
   });
 
@@ -631,5 +825,73 @@ describe('AutomacoesPage', () => {
       expect(dialog).toHaveAttribute('data-tour-step', TOUR_STEPS[1].id);
       expect(screen.queryByText('tour.step1Title')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('AutomacoesPage in the Vidro toolbar', () => {
+  function renderInHarness(vidroShell: boolean) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/automacoes']}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <AutomacoesPage />
+          </VidroToolbarHarness>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    hasFeatureMock.mockReturnValue(true);
+    mockGetAutomations.mockResolvedValue(AUTOMATIONS);
+    mockGetClientes.mockResolvedValue(CLIENTES);
+    mockGetSends.mockResolvedValue(SENDS);
+    entitlementsMock.mockReturnValue({ isLoading: false, hasFeature: () => true });
+    mockHasReadyAccount.mockResolvedValue(false);
+    mockGetContactCounts.mockResolvedValue([]);
+    mockCountContacts.mockResolvedValue(0);
+    setAuth();
+  });
+
+  it('puts the title and the tour-tagged primary action in the toolbar, once', async () => {
+    renderInHarness(true);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('title');
+    expect(screen.getAllByRole('button', { name: /newAutomation/ })).toHaveLength(1);
+    expect(document.querySelectorAll('[data-tour="nova-automacao"]')).toHaveLength(1);
+    expect(document.querySelector('.vidro-toolbar [data-tour="nova-automacao"]')).not.toBeNull();
+    // The hint and the tabs stay in the content.
+    expect(screen.getByText('tiebreakHint').closest('.vidro-toolbar')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'contacts.tabAutomations' })).toBeInTheDocument();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    const h1s = await screen.findAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.header')).not.toBeNull();
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /newAutomation/ })).toHaveLength(1);
+    expect(document.querySelectorAll('[data-tour="nova-automacao"]')).toHaveLength(1);
+  });
+
+  it('registers nothing on the upgrade screen (flag off, no automations)', async () => {
+    entitlementsMock.mockReturnValue({
+      isLoading: false,
+      hasFeature: (f: string) => f !== 'feature_instagram_automation',
+    });
+    mockGetAutomations.mockResolvedValue([]);
+    renderInHarness(true);
+
+    expect(await screen.findByTestId('upgrade-locked-screen')).toBeInTheDocument();
+    expect(document.querySelector('.vidro-toolbar h1')).toBeNull();
+    expect(document.querySelector('[data-tour="nova-automacao"]')).toBeNull();
   });
 });

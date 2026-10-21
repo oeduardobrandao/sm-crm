@@ -16,7 +16,7 @@ export function PeriodSelector({ value, onChange }: PeriodSelectorProps) {
           onClick={() => p !== value && onChange(p)}
           // rounded-md (not the --hub-r-ctl token): the radius preset deliberately
           // skips this site to keep the neutral default byte-identical.
-          className={`px-3 py-1.5 text-[11px] font-semibold rounded-md transition-colors ${
+          className={`px-3 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
             p === value ? 'hub-btn-primary' : 'hub-tab-btn hub-tx3'
           }`}
         >

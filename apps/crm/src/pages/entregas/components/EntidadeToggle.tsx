@@ -1,0 +1,78 @@
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import type { EntidadeFilter } from '../viewQuery';
+
+interface EntidadeToggleProps {
+  value: EntidadeFilter;
+  onChange: (value: EntidadeFilter) => void;
+}
+
+const OPTIONS: { id: EntidadeFilter; label: string }[] = [
+  { id: 'todos', label: 'Todos' },
+  { id: 'fluxos', label: 'Fluxos' },
+  { id: 'posts', label: 'Posts individuais' },
+];
+
+/** Filtro de entidade do quadro de Fluxos (spec §4.1), no mesmo desenho de
+ *  ModeToggle. */
+export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
+  const vidroShell = useVidroShell();
+  // Under the Vidro shell the toggle takes the skin's segmented-capsule styles
+  // (data-slot hooks) and drops its inline styles, which would win over them.
+  if (vidroShell) {
+    return (
+      <div role="radiogroup" aria-label="Entidades do quadro" data-slot="toggle-group">
+        {OPTIONS.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={value === o.id}
+            data-slot="toggle-group-item"
+            data-state={value === o.id ? 'on' : 'off'}
+            onClick={() => onChange(o.id)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Entidades do quadro"
+      style={{
+        display: 'flex',
+        gap: '0.25rem',
+        background: 'var(--card-bg)',
+        border: '1px solid var(--border-color)',
+        padding: '0.25rem',
+        borderRadius: 8,
+        width: 'fit-content',
+      }}
+    >
+      {OPTIONS.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          role="radio"
+          aria-checked={value === o.id}
+          onClick={() => onChange(o.id)}
+          style={{
+            padding: '0.3rem 0.65rem',
+            borderRadius: 6,
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '0.8rem',
+            background: value === o.id ? 'var(--cta-bg)' : 'transparent',
+            color: value === o.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
+            fontWeight: value === o.id ? 600 : 400,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}

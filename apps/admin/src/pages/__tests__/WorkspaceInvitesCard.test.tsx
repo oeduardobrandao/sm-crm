@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import WorkspaceInvitesCard from '../WorkspaceInvitesCard';
+import WorkspaceInvitesCard, { INVITES_PREVIEW_COUNT } from '../WorkspaceInvitesCard';
 import type { InviteInfo } from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({
@@ -18,6 +18,15 @@ import {
   adminCreateInvite,
 } from '../../lib/api';
 import { toast } from 'sonner';
+
+// jsdom has no scrollIntoView; Radix's Select calls it when committing a selection.
+Element.prototype.scrollIntoView = vi.fn();
+
+/** Opens the Radix role select and picks an option by its visible label. */
+async function pickRole(label: string) {
+  fireEvent.click(screen.getByRole('combobox', { name: /papel/i }));
+  fireEvent.click(await screen.findByRole('option', { name: label }));
+}
 
 const inv = (o: Partial<InviteInfo>): InviteInfo => ({
   id: 'i1',
@@ -52,9 +61,9 @@ describe('WorkspaceInvitesCard', () => {
       total: 1,
     });
     renderCard();
-    expect(await screen.findByText(/added silently/i)).toBeTruthy();
+    expect(await screen.findByText(/adicionado silenciosamente/i)).toBeTruthy();
     // accepted rows expose no Cancel/Resend
-    expect(screen.queryByRole('button', { name: /resend/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /reenviar/i })).toBeNull();
   });
 
   it('shows a desktop header (incl. Sent) and Resend + Cancel for a pending invite', async () => {
@@ -63,8 +72,8 @@ describe('WorkspaceInvitesCard', () => {
       total: 1,
     });
     renderCard();
-    expect(await screen.findByText('Sent')).toBeTruthy(); // header column (finding 8)
-    expect(screen.getByRole('button', { name: /resend/i })).toBeTruthy();
+    expect(await screen.findByText('Enviado')).toBeTruthy(); // header column (finding 8)
+    expect(screen.getByRole('button', { name: /reenviar/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /cancel/i })).toBeTruthy();
   });
 
@@ -87,13 +96,36 @@ describe('WorkspaceInvitesCard', () => {
       total: 1,
     });
     renderCard();
-    expect(await screen.findByText('onboarded')).toBeTruthy();
+    expect(await screen.findByText('onboarding concluído')).toBeTruthy();
   });
 
   it('notes truncation when total exceeds the shown rows', async () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [inv({})], total: 73 });
     renderCard();
-    expect(await screen.findByText(/showing 1 of 73/i)).toBeTruthy();
+    expect(await screen.findByText(/mostrando 1 de 73/i)).toBeTruthy();
+  });
+
+  it('folds the list after the preview rows and unfolds on "Ver mais"', async () => {
+    const invites = Array.from({ length: INVITES_PREVIEW_COUNT + 3 }, (_, i) =>
+      inv({ id: `i${i}`, email: `p${i}@x.com` }),
+    );
+    (getWorkspaceInvites as any).mockResolvedValue({ invites, total: invites.length });
+    renderCard();
+    expect(await screen.findByText('p0@x.com')).toBeTruthy();
+    expect(screen.queryByText(`p${INVITES_PREVIEW_COUNT}@x.com`)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais (3)' }));
+    expect(screen.getByText(`p${INVITES_PREVIEW_COUNT + 2}@x.com`)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver menos' }));
+    expect(screen.queryByText(`p${INVITES_PREVIEW_COUNT}@x.com`)).toBeNull();
+  });
+
+  it('shows no fold control when every invite fits the preview', async () => {
+    (getWorkspaceInvites as any).mockResolvedValue({ invites: [inv({})], total: 1 });
+    renderCard();
+    expect(await screen.findByText('a@x.com')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /ver mais/i })).toBeNull();
   });
 
   it('resend calls the API and refetches on success', async () => {
@@ -107,7 +139,7 @@ describe('WorkspaceInvitesCard', () => {
       message: 'Invitation email sent.',
     });
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /resend/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /reenviar/i }));
     await waitFor(() => expect(adminResendInvite).toHaveBeenCalledWith('c1', 'i1', false));
     // refetch: getWorkspaceInvites called again after the mutation
     await waitFor(() => expect((getWorkspaceInvites as any).mock.calls.length).toBeGreaterThan(1));
@@ -122,7 +154,7 @@ describe('WorkspaceInvitesCard', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderCard();
     fireEvent.click(await screen.findByRole('button', { name: /cancel/i }));
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/ALL workspaces/));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/TODOS os workspaces/));
     expect(adminCancelInvite).not.toHaveBeenCalled(); // declined
     confirmSpy.mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
@@ -133,7 +165,8 @@ describe('WorkspaceInvitesCard', () => {
   it('shows a retry control when the fetch fails', async () => {
     (getWorkspaceInvites as any).mockRejectedValue(new Error('boom'));
     renderCard();
-    expect(await screen.findByText(/failed to load invites/i)).toBeTruthy();
+    expect(await screen.findByText(/falha ao carregar convites/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeTruthy();
   });
 
   it('disables Resend and Cancel while a resend is in flight', async () => {
@@ -148,7 +181,7 @@ describe('WorkspaceInvitesCard', () => {
       }),
     );
     renderCard();
-    const resendButton = await screen.findByRole('button', { name: /resend/i });
+    const resendButton = await screen.findByRole('button', { name: /reenviar/i });
     const cancelButton = screen.getByRole('button', { name: /cancel/i });
     expect(resendButton).not.toBeDisabled();
     expect(cancelButton).not.toBeDisabled();
@@ -164,22 +197,22 @@ describe('WorkspaceInvitesCard', () => {
   it('reveals the create form only after clicking + Invite', async () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
-    expect(await screen.findByText(/no invites/i)).toBeTruthy();
-    expect(screen.queryByLabelText(/email/i)).toBeNull();
+    expect(await screen.findByText(/nenhum convite/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/e-mail/i)).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /\+ invite/i }));
-    expect(screen.getByLabelText(/email/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /\+ convidar/i }));
+    expect(screen.getByLabelText(/e-mail/i)).toBeTruthy();
   });
 
   it('offers Admin and Agent roles and NO Owner option in the DOM', async () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-
-    const roleSelect = screen.getByLabelText(/role/i) as HTMLSelectElement;
-    const values = Array.from(roleSelect.options).map((o) => o.value);
-    expect(values).toEqual(['agent', 'admin']);
-    expect(roleSelect.value).toBe('agent'); // defaults to the lower-privilege role
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    const trigger = screen.getByRole('combobox', { name: /papel/i });
+    expect(trigger).toHaveTextContent('Agente'); // defaults to the lower-privilege role
+    fireEvent.click(trigger);
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['Agente', 'Admin']);
     expect(screen.queryByRole('option', { name: /owner/i })).toBeNull();
   });
 
@@ -191,10 +224,12 @@ describe('WorkspaceInvitesCard', () => {
       message: 'Invitation email sent.',
     });
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'iara41.ai@gmail.com' } });
-    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'admin' } });
-    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    fireEvent.change(screen.getByLabelText(/e-mail/i), {
+      target: { value: 'iara41.ai@gmail.com' },
+    });
+    await pickRole('Admin');
+    fireEvent.click(screen.getByRole('button', { name: /^enviar$/i }));
 
     await waitFor(() =>
       expect(adminCreateInvite).toHaveBeenCalledWith('c1', 'iara41.ai@gmail.com', 'admin', false),
@@ -210,25 +245,25 @@ describe('WorkspaceInvitesCard', () => {
       message: 'Invitation email sent.',
     });
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@x.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    fireEvent.change(screen.getByLabelText(/e-mail/i), { target: { value: 'a@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^enviar$/i }));
 
-    await waitFor(() => expect(screen.queryByLabelText(/email/i)).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: /\+ invite/i }));
-    expect((screen.getByLabelText(/email/i) as HTMLInputElement).value).toBe('');
+    await waitFor(() => expect(screen.queryByLabelText(/e-mail/i)).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: /\+ convidar/i }));
+    expect((screen.getByLabelText(/e-mail/i) as HTMLInputElement).value).toBe('');
   });
 
   it('maps a seat-limit error to readable prose', async () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     (adminCreateInvite as any).mockRejectedValue(new Error('plan_limit_exceeded'));
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@x.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    fireEvent.change(screen.getByLabelText(/e-mail/i), { target: { value: 'a@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^enviar$/i }));
 
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/team-member limit/i)),
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/limite de membros/i)),
     );
   });
 
@@ -241,23 +276,23 @@ describe('WorkspaceInvitesCard', () => {
       }),
     );
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@x.com' } });
-    const send = screen.getByRole('button', { name: /^send$/i });
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    fireEvent.change(screen.getByLabelText(/e-mail/i), { target: { value: 'a@x.com' } });
+    const send = screen.getByRole('button', { name: /^enviar$/i });
     expect(send).not.toBeDisabled();
 
     fireEvent.click(send);
     await waitFor(() => expect(send).toBeDisabled());
     resolveCreate!({ success: true, message: 'Invitation email sent.' });
-    await waitFor(() => expect(screen.queryByLabelText(/email/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText(/e-mail/i)).toBeNull());
   });
 
   it('Dismiss closes the form without calling the API', async () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
-    expect(screen.queryByLabelText(/email/i)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /descartar/i }));
+    expect(screen.queryByLabelText(/e-mail/i)).toBeNull();
     expect(adminCreateInvite).not.toHaveBeenCalled();
   });
 
@@ -277,12 +312,12 @@ describe('WorkspaceInvitesCard', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@x.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    fireEvent.change(screen.getByLabelText(/e-mail/i), { target: { value: 'a@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^enviar$/i }));
 
     await waitFor(() =>
-      expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/2 other workspace/)),
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/2 outro\(s\) workspace/)),
     );
     // second attempt carries consent
     await waitFor(() =>
@@ -304,9 +339,9 @@ describe('WorkspaceInvitesCard', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@x.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    fireEvent.change(screen.getByLabelText(/e-mail/i), { target: { value: 'a@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^enviar$/i }));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect((adminCreateInvite as any).mock.calls.length).toBe(1); // no retry
@@ -330,7 +365,7 @@ describe('WorkspaceInvitesCard', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /resend/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /reenviar/i }));
     await waitFor(() => expect(adminResendInvite).toHaveBeenCalledWith('c1', 'i1', false));
     await waitFor(() => expect(adminResendInvite).toHaveBeenLastCalledWith('c1', 'i1', true));
     confirmSpy.mockRestore();
@@ -341,13 +376,13 @@ describe('WorkspaceInvitesCard', () => {
     // to invite the next person as an admin.
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'admin' } });
-    expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('admin');
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    await pickRole('Admin');
+    expect(screen.getByRole('combobox', { name: /papel/i })).toHaveTextContent('Admin');
 
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
-    fireEvent.click(screen.getByRole('button', { name: /\+ invite/i }));
-    expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('agent');
+    fireEvent.click(screen.getByRole('button', { name: /descartar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /\+ convidar/i }));
+    expect(screen.getByRole('combobox', { name: /papel/i })).toHaveTextContent('Agente');
   });
 
   it('collapsing via the header + Invite toggle resets the role back to the lower-privilege default', async () => {
@@ -355,12 +390,12 @@ describe('WorkspaceInvitesCard', () => {
     // then reopening must NOT leave the form primed to invite the next person as an admin.
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: /\+ invite/i }));
-    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'admin' } });
-    expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('admin');
+    fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
+    await pickRole('Admin');
+    expect(screen.getByRole('combobox', { name: /papel/i })).toHaveTextContent('Admin');
 
-    fireEvent.click(screen.getByRole('button', { name: /\+ invite/i })); // collapse
-    fireEvent.click(screen.getByRole('button', { name: /\+ invite/i })); // reopen
-    expect((screen.getByLabelText(/role/i) as HTMLSelectElement).value).toBe('agent');
+    fireEvent.click(screen.getByRole('button', { name: /\+ convidar/i })); // collapse
+    fireEvent.click(screen.getByRole('button', { name: /\+ convidar/i })); // reopen
+    expect(screen.getByRole('combobox', { name: /papel/i })).toHaveTextContent('Agente');
   });
 });

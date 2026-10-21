@@ -23,7 +23,7 @@ export async function createMediaUpload(
     const ext = EXT[f.mime_type] ?? "bin";
     const uuid = d.randomUUID ? d.randomUUID() : crypto.randomUUID();
     const r2_key = `contas/${d.ctx.conta_id}/files/${uuid}.${ext}`;
-    const upload_url = await d.signPutUrl!(r2_key, f.mime_type);
+    const upload_url = await d.signPutUrl!(r2_key, f.mime_type, f.size_bytes);
     uploads.push({ r2_key, upload_url, mime_type: f.mime_type, size_bytes: f.size_bytes });
   }
   return { uploads };

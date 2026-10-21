@@ -44,7 +44,26 @@ export interface FeatureFlags {
   feature_tiktok: boolean;
   feature_mensagens: boolean;
   feature_instagram_automation: boolean;
-  feature_team_chat: boolean;
+  feature_briefing_audio: boolean;
+  /** Processos individuais de produção (spec 2026-09-10). The workspace-limits
+   *  edge function already returns it (FEATURE_COLUMNS in _shared/entitlements.ts). */
+  feature_post_processes: boolean;
+  /** Agenda de eventos da equipe (spec 2026-10-05). Sem ela o /calendario é a página de antes da Agenda. */
+  feature_agenda: boolean;
+  /** Plataformas por fluxo/cliente (spec 2026-09-29-platform-agnostic-posts). Off =
+   *  seletores de plataforma escondidos e todo quadro {instagram}. */
+  feature_multiplatform: boolean;
+  /** Identidade visual "Pauta" do Hub (spec 2026-10-08-hub-identidade-pauta). Optional:
+   *  read it as `features?.feature_hub_pauta === true`, never through hasFeature
+   *  (which treats a missing key as on). */
+  feature_hub_pauta?: boolean;
+  /** Rollout flag for the desktop Vidro shell. Optional on purpose: read only as
+   *  `features?.feature_crm_vidro === true`. */
+  feature_crm_vidro?: boolean;
+  /** Chat de equipe (spec 2026-09-02-team-group-chats). Optional: read it as
+   *  `features?.feature_team_chat === true` (fail-closed while workspace-limits
+   *  has not been redeployed with the column). */
+  feature_team_chat?: boolean;
 }
 
 interface WorkspaceLimitsResponse {
@@ -78,7 +97,7 @@ export function useWorkspaceLimits() {
   // null workspace — outside an AuthProvider (e.g. in isolated component tests).
   const auth = useContext(AuthContext);
   const workspaceId = auth?.profile?.conta_id ?? null;
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isSuccess } = useQuery({
     queryKey: ['workspace-limits', workspaceId],
     queryFn: fetchWorkspaceLimits,
     staleTime: 5 * 60 * 1000,
@@ -90,6 +109,7 @@ export function useWorkspaceLimits() {
     features: data?.features ?? null,
     planName: data?.plan_name ?? null,
     isLoading,
+    isSuccess,
     isUnlimited: !isLoading && data?.limits === null,
   };
 }

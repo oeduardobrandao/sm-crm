@@ -6,7 +6,7 @@
 // liberação de quota. Nada aqui grava dm_media na automação: quem grava é o
 // CRM via PostgREST, e o CHECK de tenant do banco é o enforcement final.
 import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
-import { isWorkspaceEditor } from "../_shared/workspace-role.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 const MAX_MEDIA_BYTES = 8 * 1024 * 1024; // limite de imagem da Meta
 const ALLOWED_MIME: Record<string, string> = {
@@ -19,7 +19,7 @@ export interface AutomationMediaDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   // deno-lint-ignore no-explicit-any
   createDb: () => any;
-  signPutUrl: (key: string, mimeType: string) => Promise<string>;
+  signPutUrl: (key: string, mimeType: string, sizeBytes: number) => Promise<string>;
   signGetUrl: (key: string) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   trashObject: (key: string) => Promise<void>;
@@ -66,12 +66,24 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     const route = parts[parts.indexOf("automation-media") + 1];
 
     // Mesmo split de mutação vs leitura que a RLS de instagram_comment_automations
-    // (ica_insert/update/delete vs ica_select): agent lê (sign-view), só
-    // owner/admin muta. workspace_members.role, nunca profiles.role -- ver
-    // isWorkspaceEditor.
+    // (ica_insert/update/delete vs ica_select): as rotas mutantes exigem
+    // has_permission_for('automacoes','editar') -- a MESMA permissão que
+    // autoriza escrever a automação em si (ver migração 20260904000002, RLS
+    // ica_insert/update/delete). O cartão de mídia é parte de criar essas
+    // automações, então o mesmo gate se aplica; isso inclui o preset legado
+    // de agent, que ganhou automacoes:'editar' nessa migração (era só 'ver')
+    // -- decisão deliberada da Task 11, não uma regressão de isolamento de
+    // tenant. sign-view exige apenas 'ver' (paridade com ica_select): sem
+    // isso, qualquer membro do workspace -- inclusive um papel custom SEM
+    // 'automacoes' nenhum -- podia mintar URLs assinadas do R2 por key.
     const mutatingRoutes = new Set(["presign", "finalize", "delete"]);
-    if (mutatingRoutes.has(route) && !isWorkspaceEditor(member.role as string | null | undefined)) {
-      return json({ error: "Forbidden" }, 403);
+    if (mutatingRoutes.has(route)) {
+      const canMutate = await hasPermissionFor(svc, user.id, contaId, "automacoes", "editar");
+      if (!canMutate) return json({ error: "Forbidden" }, 403);
+    }
+    if (route === "sign-view") {
+      const canView = await hasPermissionFor(svc, user.id, contaId, "automacoes", "ver");
+      if (!canView) return json({ error: "Forbidden" }, 403);
     }
     // Mesmo gate INSERT-only da automação (feature_instagram_automation):
     // downgrade bloqueia alocar mídia NOVA, mas não impede ver ou apagar a que
@@ -100,7 +112,8 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       const mime = String(body.mime_type ?? "");
       const size = Number(body.size_bytes ?? 0);
       if (!(mime in ALLOWED_MIME)) return json({ error: "unsupported file type" }, 415);
-      if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
+      // Inteiro: vira Content-Length assinado na URL de upload.
+      if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
       }
       // Upload SEMPRE no prefixo tmp. A key FINAL (a única que dm_media
@@ -108,7 +121,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       // então sobrescrever a tmp depois (a URL vive 15 min) não alcança o
       // objeto contabilizado/servido. Tmp abandonada é órfã aceita.
       const key = `automation-media-tmp/${contaId}/${randomUUID()}.${ALLOWED_MIME[mime]}`;
-      const upload_url = await deps.signPutUrl(key, mime);
+      const upload_url = await deps.signPutUrl(key, mime, size);
       return json({ upload_url, key });
     }
 
@@ -119,7 +132,8 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
       const tmpPrefix = `automation-media-tmp/${contaId}/`;
       if (!tmpKey.startsWith(tmpPrefix)) return json({ error: "invalid key" }, 400);
       if (!(mime in ALLOWED_MIME)) return json({ error: "unsupported file type" }, 415);
-      if (!Number.isFinite(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
+      // Inteiro: vira Content-Length assinado na URL de upload.
+      if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_MEDIA_BYTES) {
         return json({ error: "invalid size" }, 400);
       }
       const key = `${tenantPrefix}${tmpKey.slice(tmpPrefix.length)}`;

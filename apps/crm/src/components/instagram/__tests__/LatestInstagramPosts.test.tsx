@@ -200,6 +200,8 @@ describe('LatestInstagramPosts', () => {
 
     renderWithQueryClient(<LatestInstagramPosts clienteId={42} />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('Carregando publicações');
+    const status = screen.getByRole('status');
+    expect(status).toHaveAttribute('data-testid', 'crm-skeleton');
+    expect(status).toHaveAttribute('aria-busy', 'true');
   });
 });

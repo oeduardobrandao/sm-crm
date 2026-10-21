@@ -1,8 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { HubPost } from '../types';
+import { useTranslation } from 'react-i18next';
+import { CONTENT_FORMAT_LABELS, type ContentFormat } from '@mesaas/platforms';
+import { clientStatusOf } from '../lib/postView';
+import type { HubAgendaItem, HubPost } from '../types';
+import { StatusPill } from './StatusPill';
+import { useHubLook } from '../hooks/useHubLook';
+import { localeDe, selo } from '../pages/agenda/AgendaCardView';
+import { compararInicio, diaLocal, formatarHora, somarDias } from '../pages/agenda/formatar';
 
+// Portuguese source text kept as the `months`/`weekdaysShort` common-namespace
+// keys' default values -- these are reused from `packages/i18n/locales/*/common.json`,
+// not redefined in hubHome.json.
 const MONTHS_PT = [
   'Janeiro',
   'Fevereiro',
@@ -17,7 +27,7 @@ const MONTHS_PT = [
   'Novembro',
   'Dezembro',
 ];
-const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const WEEKDAYS_SHORT_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 const TIPO_COLOR: Record<string, string> = {
   feed: '#3b82f6',
@@ -26,14 +36,7 @@ const TIPO_COLOR: Record<string, string> = {
   carrossel: '#10b981',
 };
 
-const TIPO_LABEL: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
-
-const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL_PT: Record<string, string> = {
   rascunho: 'Rascunho',
   revisao_interna: 'Revisão interna',
   aprovado_interno: 'Aprovado interno',
@@ -42,10 +45,40 @@ const STATUS_LABEL: Record<string, string> = {
   correcao_cliente: 'Correção',
   agendado: 'Agendado',
   publicado: 'Publicado',
+  em_producao: 'Em produção',
 };
 
 interface Props {
   posts: HubPost[];
+  /** Called with the shown month on mount and on every navigation. */
+  onMonthChange?: (year: number, month: number) => void;
+  /** The shown month's older posts are still loading. */
+  loading?: boolean;
+  /** Rendered under the header (e.g. a failed-month notice with a retry). */
+  notice?: ReactNode;
+  /** Shared Agenda events of the shown month. Undefined: the portal has no Agenda. */
+  eventos?: HubAgendaItem[];
+  /** The month's events failed to load (the posts still show). */
+  eventosErro?: boolean;
+  onRetryEventos?: () => void;
+  onEventoClick?: (item: HubAgendaItem) => void;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The local days (YYYY-MM-DD, in the event's own tz) an event shows on: every day of an
+ * all-day event up to its exclusive end, or the start day of a timed one.
+ */
+function diasDoEvento(item: HubAgendaItem): string[] {
+  if (!item.dia_inteiro) return [diaLocal(item)];
+  const dias = [item.data_inicio_local];
+  // Bounded: a period query spans at most 45 days, so no event needs more cells than that.
+  for (let d = somarDias(item.data_inicio_local, 1); d < item.data_fim_local; d = somarDias(d, 1)) {
+    if (dias.length >= 62) break;
+    dias.push(d);
+  }
+  return dias;
 }
 
 function formatTimeUTC(iso: string): string {
@@ -53,21 +86,51 @@ function formatTimeUTC(iso: string): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
-export function PostCalendar({ posts }: Props) {
+export function PostCalendar({
+  posts,
+  onMonthChange,
+  loading,
+  notice,
+  eventos,
+  eventosErro = false,
+  onRetryEventos,
+  onEventoClick,
+}: Props) {
+  const { t, i18n } = useTranslation('hubHome');
+  const { t: tAgenda } = useTranslation('hubAgenda');
+  const locale = localeDe(i18n.language);
   const navigate = useNavigate();
+
+  function monthLabel(i: number) {
+    return t(`months.${i}`, MONTHS_PT[i]);
+  }
+  function weekdayShortLabel(i: number) {
+    return t(`weekdaysShort.${i}`, WEEKDAYS_SHORT_PT[i]);
+  }
+  function tipoLabel(tipo: string) {
+    return t(`calendar.tipoLabel.${tipo}`, CONTENT_FORMAT_LABELS[tipo as ContentFormat] ?? tipo);
+  }
+  function statusLabel(status: string) {
+    return t(`calendar.statusLabel.${status}`, STATUS_LABEL_PT[status] ?? status);
+  }
+
   const today = new Date();
-  // Posts are grouped by their scheduled_at date in UTC (see postsForDay
-  // below), so "today" must use the same UTC calendar day — otherwise, for
-  // viewers whose local timezone differs from UTC, the highlighted "today"
-  // cell and the initially selected day drift by one day from where posts
-  // actually land on the grid.
-  const [year, setYear] = useState(today.getUTCFullYear());
-  const [month, setMonth] = useState(today.getUTCMonth());
-  const [selectedDay, setSelectedDay] = useState<number | null>(today.getUTCDate());
+  // Posts are grouped by their scheduled_at LOCAL calendar day (see postsForDay below), and
+  // the range fetch (`localMonthRange` in postView.ts) depends on that same local-day
+  // bucketing to pick the month it asks the server for. "Today" is the local day too: near
+  // midnight in UTC-3 the UTC date is already tomorrow.
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth());
+  const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
+  const pauta = useHubLook() === 'pauta';
+
+  useEffect(() => {
+    onMonthChange?.(year, month);
+  }, [year, month, onMonthChange]);
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const isSameCalMonth = month === today.getUTCMonth() && year === today.getUTCFullYear();
+  const isSameCalMonth = month === today.getMonth() && year === today.getFullYear();
 
   // Leading/trailing days from the neighbouring months, rendered muted and
   // non-interactive so the grid always reads as full rectangular weeks
@@ -103,7 +166,25 @@ export function PostCalendar({ posts }: Props) {
     });
   }
 
+  const eventosPorDia = useMemo(() => {
+    const porDia = new Map<string, HubAgendaItem[]>();
+    for (const item of [...(eventos ?? [])].sort(compararInicio)) {
+      for (const dia of diasDoEvento(item)) {
+        const lista = porDia.get(dia);
+        if (lista) lista.push(item);
+        else porDia.set(dia, [item]);
+      }
+    }
+    return porDia;
+  }, [eventos]);
+
+  function eventosForDay(day: number): HubAgendaItem[] {
+    return eventosPorDia.get(`${year}-${pad2(month + 1)}-${pad2(day)}`) ?? [];
+  }
+
   const selectedPosts = selectedDay ? postsForDay(selectedDay) : [];
+  const selectedEventos = selectedDay ? eventosForDay(selectedDay) : [];
+  const agora = Date.now();
 
   return (
     <div>
@@ -118,20 +199,20 @@ export function PostCalendar({ posts }: Props) {
           <div className="flex items-center justify-between mb-5 md:hidden">
             <button
               onClick={prevMonth}
-              aria-label="Mês anterior"
+              aria-label={t('calendar.prevMonth', 'Mês anterior')}
               className="w-10 h-10 flex items-center justify-center rounded-2xl border hub-border hub-txt active:scale-95 transition-transform"
             >
               <ChevronLeft size={18} />
             </button>
             <div className="text-center">
               <h2 className="font-display text-[19px] font-semibold tracking-tight hub-txt leading-none capitalize">
-                {MONTHS_PT[month]}
+                {monthLabel(month)}
               </h2>
               <p className="text-[12.5px] hub-tx3 mt-0.5">{year}</p>
             </div>
             <button
               onClick={nextMonth}
-              aria-label="Próximo mês"
+              aria-label={t('calendar.nextMonth', 'Próximo mês')}
               className="w-10 h-10 flex items-center justify-center rounded-2xl border hub-border hub-txt active:scale-95 transition-transform"
             >
               <ChevronRight size={18} />
@@ -142,44 +223,49 @@ export function PostCalendar({ posts }: Props) {
           <div className="hidden md:flex items-center justify-between mb-5">
             <div>
               <h2 className="font-display text-[20px] font-semibold tracking-tight hub-txt leading-none">
-                Postagens
+                {t('calendar.title', 'Postagens')}
               </h2>
               <p className="text-[12.5px] hub-tx2 mt-1">
-                <span className="capitalize">{MONTHS_PT[month]}</span> {year}
+                <span className="capitalize">{monthLabel(month)}</span> {year}
               </p>
             </div>
             <div className="flex items-center gap-1 p-1 rounded-full hub-bg-soft">
               <button
                 onClick={prevMonth}
-                aria-label="Mês anterior"
+                aria-label={t('calendar.prevMonth', 'Mês anterior')}
                 className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-[var(--hub-card)] hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
               >
                 <ChevronLeft size={15} />
               </button>
               <button
                 onClick={nextMonth}
-                aria-label="Próximo mês"
+                aria-label={t('calendar.nextMonth', 'Próximo mês')}
                 className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-[var(--hub-card)] hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
               >
                 <ChevronRight size={15} />
               </button>
             </div>
           </div>
+          {notice}
 
           {/* Weekday labels — mixed case + light tracking on mobile, matching the reference */}
           <div className="grid grid-cols-7 mb-1 md:mb-2">
-            {DAYS_PT.map((d) => (
+            {WEEKDAYS_SHORT_PT.map((d, i) => (
               <div
                 key={d}
-                className="text-center text-[12px] md:text-[10px] font-medium md:font-semibold tracking-normal md:uppercase md:tracking-[0.12em] hub-tx3 py-1"
+                className="text-center text-[12px] md:text-[12px] font-medium md:font-semibold tracking-normal md:uppercase md:tracking-[0.12em] hub-tx3 py-1"
               >
-                {d}
+                {weekdayShortLabel(i)}
               </div>
             ))}
           </div>
 
           {/* Day grid */}
-          <div className="grid grid-cols-7 gap-x-0 gap-y-0.5 md:gap-1.5">
+          <div
+            data-testid="post-calendar-grid"
+            aria-busy={loading ? 'true' : undefined}
+            className={`grid grid-cols-7 gap-x-0 gap-y-0.5 md:gap-1.5${loading ? ' opacity-60 transition-opacity' : ''}`}
+          >
             {leadingDays.map((d) => (
               <div
                 key={`lead-${d}`}
@@ -194,7 +280,8 @@ export function PostCalendar({ posts }: Props) {
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const dayPosts = postsForDay(day);
-              const isToday = day === today.getUTCDate() && isSameCalMonth;
+              const dayEventos = eventosForDay(day);
+              const isToday = day === today.getDate() && isSameCalMonth;
               const isSelected = selectedDay === day;
 
               const byTipo: Record<string, number> = {};
@@ -225,14 +312,23 @@ export function PostCalendar({ posts }: Props) {
                       isSelected || isToday ? '' : 'text-[var(--hub-txt)] md:text-[var(--hub-tx2)]'
                     }`}
                     style={
-                      isSelected
-                        ? { background: 'var(--hub-acc)', color: 'var(--hub-acc-fg)' }
-                        : isToday
-                          ? {
-                              boxShadow: 'inset 0 0 0 1.5px var(--hub-acc)',
-                              color: 'var(--hub-acc)',
-                            }
-                          : undefined
+                      pauta
+                        ? isSelected
+                          ? { background: 'var(--hub-primary)', color: 'var(--hub-primary-fg)' }
+                          : isToday
+                            ? {
+                                boxShadow: 'inset 0 0 0 1.5px var(--hub-primary)',
+                                color: 'var(--hub-txt)',
+                              }
+                            : undefined
+                        : isSelected
+                          ? { background: 'var(--hub-acc)', color: 'var(--hub-acc-fg)' }
+                          : isToday
+                            ? {
+                                boxShadow: 'inset 0 0 0 1.5px var(--hub-acc)',
+                                color: 'var(--hub-acc)',
+                              }
+                            : undefined
                     }
                   >
                     {day}
@@ -241,31 +337,64 @@ export function PostCalendar({ posts }: Props) {
                   {/* Mobile: one dot per post (capped), colored by type — the cells are
                       far too narrow for the desktop text pills, which truncated to a
                       bare digit. */}
-                  <div className="flex items-center justify-center gap-[3px] h-[5px] md:hidden">
-                    {dayPosts.slice(0, 3).map((p) => (
-                      <span
-                        key={p.id}
-                        className="w-[5px] h-[5px] rounded-full"
-                        style={{ background: TIPO_COLOR[p.tipo] ?? '#78716c' }}
-                      />
-                    ))}
+                  <div
+                    data-testid="post-calendar-dots"
+                    className="flex items-center justify-center gap-[3px] h-[5px] md:hidden"
+                  >
+                    {/* The day's events share one dot, always first; three dots at most. */}
+                    {[
+                      ...(dayEventos.length > 0
+                        ? [{ key: 'eventos', kind: 'evento', color: 'var(--hub-acc)' }]
+                        : []),
+                      ...dayPosts.map((p) => ({
+                        key: `post-${p.id}`,
+                        kind: 'post',
+                        color: TIPO_COLOR[p.tipo] ?? '#78716c',
+                      })),
+                    ]
+                      .slice(0, 3)
+                      .map((dot) => (
+                        <span
+                          key={dot.key}
+                          data-kind={dot.kind}
+                          className="w-[5px] h-[5px] rounded-full"
+                          style={{ background: dot.color }}
+                        />
+                      ))}
                   </div>
 
                   {/* Desktop: full type + count pill, room to spare */}
-                  <div className="hidden md:flex md:flex-col gap-1 w-full">
+                  <div
+                    data-testid="post-calendar-pills"
+                    className="hidden md:flex md:flex-col gap-1 w-full"
+                  >
+                    {dayEventos.length > 0 && (
+                      <div
+                        className="text-[12px] px-1.5 py-[2px] rounded-md font-semibold leading-none truncate border"
+                        style={{
+                          background: 'color-mix(in srgb, var(--hub-acc) 10%, transparent)',
+                          borderColor: 'color-mix(in srgb, var(--hub-acc) 45%, transparent)',
+                          color: 'var(--hub-acc)',
+                        }}
+                      >
+                        {t('calendar.eventosCount', '{{count}} eventos', {
+                          count: dayEventos.length,
+                        })}
+                      </div>
+                    )}
                     {Object.entries(byTipo).map(([tipo, count]) => (
                       // rounded-md (not the --hub-r-ctl token): the radius preset
                       // deliberately skips this site to keep the neutral default
                       // byte-identical to pre-customization.
                       <div
                         key={tipo}
-                        className="text-[10px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
+                        className="text-[12px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
                         style={{
                           background: `${TIPO_COLOR[tipo] ?? '#78716c'}1c`,
                           color: TIPO_COLOR[tipo] ?? '#78716c',
                         }}
                       >
-                        {count} {TIPO_LABEL[tipo] ?? tipo}
+                        {count} {tipoLabel(tipo)}
                       </div>
                     ))}
                   </div>
@@ -296,25 +425,94 @@ export function PostCalendar({ posts }: Props) {
         <div className="md:border-l hub-border p-0 pt-1 md:p-6 md:bg-[var(--hub-soft)]">
           <div className="mb-4 hidden md:block">
             <h3 className="font-display text-[15px] font-semibold tracking-tight hub-txt">
-              Postagens
+              {t('calendar.title', 'Postagens')}
             </h3>
             <p className="text-[12px] hub-tx2 mt-0.5">
               {selectedDay
-                ? `${selectedDay} de ${MONTHS_PT[month]}, ${year}`
-                : `${MONTHS_PT[month]} ${year}`}
+                ? t('calendar.selectedDateLabel', '{{day}} de {{month}}, {{year}}', {
+                    day: selectedDay,
+                    month: monthLabel(month),
+                    year,
+                  })
+                : t('calendar.monthYearLabel', '{{month}} {{year}}', {
+                    month: monthLabel(month),
+                    year,
+                  })}
             </p>
           </div>
 
+          {eventosErro && (
+            <p
+              role="status"
+              className="mb-3 flex flex-wrap items-center gap-x-2 text-[12.5px] hub-tx2"
+            >
+              {t('calendar.eventosErro', 'Não foi possível carregar os eventos.')}
+              <button
+                type="button"
+                onClick={onRetryEventos}
+                className="font-semibold underline hub-txt"
+              >
+                {t('calendar.eventosRetry', 'Tentar novamente')}
+              </button>
+            </p>
+          )}
+
+          {selectedEventos.length > 0 && (
+            <section className="mb-4">
+              <h4 className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.12em] hub-tx3">
+                {t('calendar.eventos', 'Eventos')}
+              </h4>
+              <div className="flex flex-col gap-2">
+                {selectedEventos.map((ev) => {
+                  const s = selo(ev, Date.parse(ev.fim) <= agora, tAgenda);
+                  return (
+                    <button
+                      key={ev.ocorrencia_id}
+                      type="button"
+                      onClick={() => onEventoClick?.(ev)}
+                      className="text-left rounded-2xl md:rounded-xl border hub-border bg-[var(--hub-card)] p-3.5 flex flex-col gap-1.5 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
+                      style={{ borderLeft: '3px solid var(--hub-acc)' }}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="text-[12px] font-semibold hub-tx2">
+                          {ev.dia_inteiro
+                            ? t('calendar.diaInteiro', 'Dia inteiro')
+                            : formatarHora(ev.inicio, ev.tz, locale)}
+                        </span>
+                        <StatusPill tone={s.tone} semantic={s.semantic}>
+                          {s.texto}
+                        </StatusPill>
+                      </span>
+                      <span className="text-[13.5px] font-semibold leading-snug hub-txt break-words">
+                        {ev.titulo}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {selectedEventos.length > 0 && (
+            <h4 className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.12em] hub-tx3">
+              {t('calendar.posts', 'Posts')}
+            </h4>
+          )}
+
           {selectedPosts.length === 0 ? (
-            <div className="py-10 text-center hub-tx3 text-[13px]">
-              {selectedDay ? 'Nenhuma postagem neste dia.' : 'Selecione um dia.'}
+            <div
+              className={`${selectedEventos.length > 0 ? 'py-3' : 'py-10'} text-center hub-tx3 text-[13px]`}
+            >
+              {selectedDay
+                ? t('calendar.noPostsThisDay', 'Nenhuma postagem neste dia.')
+                : t('calendar.selectADay', 'Selecione um dia.')}
             </div>
           ) : (
             <div className="flex flex-col gap-2.5 md:gap-3">
               {selectedPosts.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => navigate(`postagens?post=${p.id}`)}
+                  onClick={() => navigate(`postagens/${p.id}`)}
                   className="text-left rounded-2xl md:rounded-xl md:border hub-border bg-[var(--hub-soft)] md:bg-[var(--hub-card)] p-3.5 space-y-1 md:space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
                 >
                   {/* Mobile: colored dot + time, no status/type text */}
@@ -331,16 +529,16 @@ export function PostCalendar({ posts }: Props) {
                   {/* Desktop: type + status pills */}
                   <div className="hidden md:flex items-center gap-1.5 flex-wrap">
                     <span
-                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                      className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
                       style={{
                         background: `${TIPO_COLOR[p.tipo] ?? '#78716c'}1c`,
                         color: TIPO_COLOR[p.tipo] ?? '#78716c',
                       }}
                     >
-                      {TIPO_LABEL[p.tipo] ?? p.tipo}
+                      {tipoLabel(p.tipo)}
                     </span>
-                    <span className="text-[10px] hub-tx2 px-2 py-0.5 rounded-full hub-bg-soft">
-                      {STATUS_LABEL[p.status] ?? p.status}
+                    <span className="text-[12px] hub-tx2 px-2 py-0.5 rounded-full hub-bg-soft">
+                      {statusLabel(clientStatusOf(p))}
                     </span>
                   </div>
 
@@ -351,12 +549,15 @@ export function PostCalendar({ posts }: Props) {
                   )}
 
                   {p.scheduled_at && (
-                    <p className="hidden md:block text-[11px] hub-tx2">
-                      {new Date(p.scheduled_at).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: 'long',
-                        year: 'numeric',
-                      })}
+                    <p className="hidden md:block text-[12px] hub-tx2">
+                      {new Date(p.scheduled_at).toLocaleDateString(
+                        i18n.language === 'en' ? 'en-US' : 'pt-BR',
+                        {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                        },
+                      )}
                     </p>
                   )}
                 </button>

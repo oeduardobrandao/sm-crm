@@ -128,3 +128,81 @@ Deno.test("validateForScheduling: sem trial não adiciona o erro", async () => {
   const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
   assert(!res.errors.includes(TRIAL_MEDIA_SHAPE_ERROR), "shape error only when flagged");
 });
+
+Deno.test("validateForScheduling: platform other → refused before media/account lookups", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workflow_posts", "select", {
+    data: {
+      id: 1,
+      scheduled_at: null,
+      ig_caption: "cap",
+      workflow_id: 9,
+      cliente_id: 5,
+      tipo: "feed",
+      platform: "other",
+    },
+    error: null,
+  });
+  const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
+  assert(!res.ok, "other must not validate");
+  assert(
+    res.errors.length === 1 &&
+      res.errors[0] === "Este post não tem destino com publicação automática.",
+    `unexpected errors: ${JSON.stringify(res.errors)}`,
+  );
+});
+
+// ─── Collaborators (spec 2026-10-19) ──────────────────────────────
+
+function seedCollab(db: ReturnType<typeof createSupabaseQueryMock>, opts: {
+  tipo: string; links: unknown[]; strategy: string | null; collaborators: unknown;
+}) {
+  db.queue("workflow_posts", "select", {
+    data: {
+      id: 1, scheduled_at: null, ig_caption: "cap", workflow_id: 9, cliente_id: 5,
+      tipo: opts.tipo, ig_trial_strategy: opts.strategy, ig_collaborators: opts.collaborators,
+    },
+    error: null,
+  });
+  db.queue("post_file_links", "select", { data: opts.links, error: null });
+  db.queue("instagram_accounts", "select", {
+    data: {
+      encrypted_access_token: null, instagram_user_id: "ig",
+      token_expires_at: null, authorization_status: "active",
+    },
+    error: null,
+  });
+}
+
+Deno.test("validateForScheduling: reel de teste + colaboradores → erro", async () => {
+  const db = createSupabaseQueryMock();
+  seedCollab(db, { tipo: "reels", links: [videoLink(0)], strategy: "auto", collaborators: ["ana"] });
+  const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
+  assert(!res.ok);
+  assert(res.errors.includes("Reels de teste não aceitam colaboradores."), JSON.stringify(res.errors));
+});
+
+Deno.test("validateForScheduling: stories + colaboradores → erro", async () => {
+  const db = createSupabaseQueryMock();
+  seedCollab(db, { tipo: "stories", links: [link(0)], strategy: null, collaborators: ["ana"] });
+  const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
+  assert(!res.ok);
+  assert(res.errors.includes("Stories não aceitam colaboradores."), JSON.stringify(res.errors));
+});
+
+Deno.test("validateForScheduling: feed com colaboradores → ok; null/ausente → ok", async () => {
+  for (const collaborators of [["ana", "dra.julia"], null, undefined]) {
+    const db = createSupabaseQueryMock();
+    seedCollab(db, { tipo: "feed", links: [link(0)], strategy: null, collaborators });
+    const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
+    assert(res.ok, `expected ok for ${JSON.stringify(collaborators)}, got: ${res.errors.join(" | ")}`);
+  }
+});
+
+Deno.test("validateForScheduling: seleciona ig_collaborators", async () => {
+  const db = createSupabaseQueryMock();
+  seedCollab(db, { tipo: "feed", links: [link(0)], strategy: null, collaborators: [] });
+  await validateForScheduling(db as never, 1, { skipDateCheck: true });
+  const postSelect = db.calls.find((c) => c.table === "workflow_posts" && c.operation === "select");
+  assert(String(postSelect?.selectArgs[0]?.[0]).includes("ig_collaborators"));
+});

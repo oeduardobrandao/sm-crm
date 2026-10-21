@@ -15,6 +15,13 @@ import {
   type Baseline,
   type PostMetricRow,
 } from '../lib/ig-rates';
+import {
+  ACTION_SORT_KEYS,
+  compareNullableNumber,
+  followsPerMilReach,
+  toNullableCount,
+  type ActionSortKey,
+} from '../lib/post-action-metrics';
 
 const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
 
@@ -132,6 +139,12 @@ export interface PostAnalytics {
   saved: number;
   shares: number;
   views: number;
+  /** Action metrics: null = no data (never fetched, or Instagram didn't return it). */
+  profile_visits: number | null;
+  follows: number | null;
+  bio_link_clicks: number | null;
+  /** follows per 1.000 accounts reached; null when follows is null or reach is 0. */
+  follows_per_mil_reach: number | null;
   rates: Rates;
   unavailable_metrics: string[];
   ig_score: number | null;
@@ -155,6 +168,8 @@ export interface BestPostingTimes {
   totalPosts: number;
   labels_days: string[];
   labels_hours: string[];
+  /** Present once the grid is bucketed on the São Paulo wall clock. */
+  timezone?: string;
 }
 
 export interface PortfolioAccount {
@@ -350,18 +365,18 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
     .gte('date', new Date(Date.now() - days * 86400000).toISOString().split('T')[0])
     .order('date', { ascending: true });
 
-  // Get latest post date per account (from all posts, not just recent)
+  // Latest post date per account (from all posts, not just recent). Read from the
+  // aggregate view: one row per account. Fetching every instagram_posts row here
+  // got silently capped at PostgREST's 1000 rows in large workspaces, which
+  // dropped the last post of accounts that had been idle the longest.
   const { data: latestPosts } = await supabase
-    .from('instagram_posts')
-    .select('instagram_account_id, posted_at')
-    .in('instagram_account_id', accountIds)
-    .order('posted_at', { ascending: false });
+    .from('instagram_account_last_post')
+    .select('instagram_account_id, last_post_at')
+    .in('instagram_account_id', accountIds);
 
   const latestPostMap: Record<number, string> = {};
   for (const p of latestPosts || []) {
-    if (!latestPostMap[p.instagram_account_id]) {
-      latestPostMap[p.instagram_account_id] = p.posted_at;
-    }
+    if (p.last_post_at) latestPostMap[p.instagram_account_id] = p.last_post_at;
   }
 
   // Aggregate post stats per account
@@ -773,11 +788,16 @@ export async function getPostsAnalytics(
       },
       unavailable,
     );
+    const follows = toNullableCount(p.follows);
     return {
       ...p,
       engagement_rate: Math.round(engRate * 100) / 100,
       saves_rate: Math.round(savesRate * 100) / 100,
       views: p.impressions ?? 0,
+      profile_visits: toNullableCount(p.profile_visits),
+      follows,
+      bio_link_clicks: toNullableCount(p.bio_link_clicks),
+      follows_per_mil_reach: followsPerMilReach(follows, p.reach),
       rates,
       unavailable_metrics: unavailable,
       ig_score: dists ? scorePost({ media_type: p.media_type, rates }, dists) : null,
@@ -798,15 +818,21 @@ export async function getPostsAnalytics(
     'shares',
   ];
   const derivedCols = new Set(['share_rate', 'like_rate', 'save_rate', 'comment_rate', 'ig_score']);
-  const col = validCols.includes(sort) || derivedCols.has(sort) ? sort : 'posted_at';
+  const actionCols = new Set<string>(ACTION_SORT_KEYS);
+  const col =
+    validCols.includes(sort) || derivedCols.has(sort) || actionCols.has(sort) ? sort : 'posted_at';
+  const nullableDir = dir === 'asc' ? 'asc' : 'desc';
   enriched.sort((a, b) => {
     if (derivedCols.has(col)) {
-      const va = postRateSortValue(a, col);
-      const vb = postRateSortValue(b, col);
-      if (va === null && vb === null) return 0;
-      if (va === null) return 1; // nulls always last, regardless of dir
-      if (vb === null) return -1;
-      return dir === 'asc' ? va - vb : vb - va;
+      return compareNullableNumber(
+        postRateSortValue(a, col),
+        postRateSortValue(b, col),
+        nullableDir,
+      );
+    }
+    if (actionCols.has(col)) {
+      const key = col as ActionSortKey;
+      return compareNullableNumber(a[key], b[key], nullableDir);
     }
     const va = (a as any)[col] ?? 0;
     const vb = (b as any)[col] ?? 0;
@@ -1011,29 +1037,6 @@ export async function removeTagFromPost(postId: number, tagId: number): Promise<
 }
 
 // ---- Reports ----
-
-export async function generateReport(
-  clientId: number,
-  month?: string,
-  includeAI = true,
-): Promise<{ reportId: number; status: string }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`${EDGE_URL}/generate-report/${clientId}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ month, force: true, includeAI }),
-  });
-
-  const data = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    throw new Error(data?.message || `Erro ao gerar relatório (${res.status})`);
-  }
-  if (!data) {
-    throw new Error('Resposta inválida do servidor');
-  }
-  return data;
-}
 
 export async function sendReportEmail(
   reportId: number,

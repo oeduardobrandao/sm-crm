@@ -38,6 +38,7 @@ export function InlineRenameInput({ currentName, onCommit, onCancel }: InlineRen
   return (
     <input
       ref={inputRef}
+      data-variant="bare"
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={commit}

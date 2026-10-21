@@ -20,6 +20,7 @@ const snap: ReportDocSnapshot = {
     posts_count: { value: 7, unit: "count", prev: null },
     profile_views: { value: null, unit: "count", prev: null },
     website_clicks: { value: null, unit: "count", prev: null },
+    follows: { value: null, unit: "count", prev: null },
   },
   follower_trend: [{ date: "2026-07-01", count: 990 }],
   content_breakdown: { reels: { count: 3, avg_reach: 100, avg_engagement: 10, avg_views: 150 } },

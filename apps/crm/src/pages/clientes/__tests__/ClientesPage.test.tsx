@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock, mockUseAuth } =
   vi.hoisted(() => ({
@@ -10,7 +12,10 @@ const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock, moc
     openCSVSelectorMock: vi.fn(),
     toastSuccessMock: vi.fn(),
     toastErrorMock: vi.fn(),
-    mockUseAuth: vi.fn(() => ({ canSeeFinancials: true as boolean | 'unknown' })),
+    mockUseAuth: vi.fn(() => ({
+      canSeeFinancials: true as boolean | 'unknown',
+      can: () => true as const,
+    })),
   }));
 
 vi.mock('react-router-dom', async () => {
@@ -33,6 +38,10 @@ vi.mock('../../../lib/csv', () => ({
 }));
 
 vi.mock('../../../lib/supabase');
+
+// These suites cover the desktop markup (table, header buttons); the phone branch below
+// 768px has its own suite. jsdom's matchMedia would otherwise render the phone branch.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('../../../context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../context/AuthContext')>();
@@ -445,7 +454,7 @@ function renderPage() {
 }
 
 function getClientCard(name: string) {
-  const card = screen.getByRole('button', { name }).closest('.team-card');
+  const card = screen.getByRole('button', { name }).closest('tr');
   expect(card).not.toBeNull();
   return card as HTMLElement;
 }
@@ -472,7 +481,7 @@ beforeEach(() => {
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   mockUseAuth.mockReset();
-  mockUseAuth.mockReturnValue({ canSeeFinancials: true });
+  mockUseAuth.mockReturnValue({ canSeeFinancials: true, can: () => true });
   mockedSupabase.__resetSupabaseMock();
 
   mockedGetClientes.mockReset();
@@ -497,13 +506,13 @@ describe('ClientesPage', () => {
 
     renderPage();
 
-    expect(screen.getByTestId('spinner')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
 
     resolveClientes?.([makeCliente({ nome: 'Ana Costa', sigla: 'AC' })]);
 
     expect(await screen.findByRole('button', { name: 'Ana Costa' })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('crm-skeleton')).not.toBeInTheDocument();
     });
   });
 
@@ -583,6 +592,7 @@ describe('ClientesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Novo Cliente' }));
 
     const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByLabelText('URL do Notion')).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Nome *'), {
       target: { value: 'Clínica Solaris' },
     });
@@ -595,9 +605,6 @@ describe('ClientesPage', () => {
     fireEvent.change(within(dialog).getByLabelText('Plano'), { target: { value: 'Growth' } });
     fireEvent.change(within(dialog).getByLabelText('Valor Mensal (R$)'), {
       target: { value: '2500' },
-    });
-    fireEvent.change(within(dialog).getByLabelText('URL do Notion'), {
-      target: { value: 'https://notion.so/solaris' },
     });
     fireEvent.change(within(dialog).getByLabelText('Dia de Pagamento (1-31)'), {
       target: { value: '18' },
@@ -612,7 +619,6 @@ describe('ClientesPage', () => {
         telefone: '(85) 98888-0000',
         plano: 'Growth',
         valor_mensal: 2500,
-        notion_page_url: 'https://notion.so/solaris',
         data_pagamento: 18,
         sigla: 'CS',
         cor: '#e74c3c',
@@ -628,7 +634,7 @@ describe('ClientesPage', () => {
   });
 
   it('hides the monthly value field and omits valor_mensal from the payload when canSeeFinancials is false', async () => {
-    mockUseAuth.mockReturnValue({ canSeeFinancials: false });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: () => true });
 
     renderPage();
 
@@ -689,6 +695,7 @@ describe('ClientesPage', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByDisplayValue('Beta Care')).toBeInTheDocument();
     expect(within(dialog).getByDisplayValue('beta@care.com')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('URL do Notion')).not.toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByLabelText('Nome *'), {
       target: { value: 'Beta Care Plus' },
@@ -709,7 +716,6 @@ describe('ClientesPage', () => {
         telefone: '(85) 97777-0000',
         plano: 'Base',
         valor_mensal: 2100,
-        notion_page_url: 'https://notion.so/beta',
         data_pagamento: 22,
         status: 'pausado',
       });
@@ -806,7 +812,7 @@ describe('ClientesPage', () => {
   });
 
   it('rejects the whole CSV import when a restricted user supplies the protected column', async () => {
-    mockUseAuth.mockReturnValue({ canSeeFinancials: false });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: () => true });
 
     renderPage();
 
@@ -871,5 +877,118 @@ describe('ClientesPage', () => {
         args: ['profile_picture_url', 'is', null],
       });
     });
+  });
+});
+
+/**
+ * ClientesPage had NO role check at all before Task 14 — any authenticated
+ * member could add/edit/delete/import clients. `AGENT_ROLE_PRESET.clientes`
+ * is 'editar' (lib/permissions.ts), so gating on `can('clientes', 'editar')
+ * === true` preserves that for every legacy chassis role (owner/admin/agent)
+ * byte-for-byte; only a CUSTOM role (`role_id` set) can now differ from full
+ * access, per its own `clientes` grant.
+ */
+describe('ClientesPage — mutation buttons gated on clientes:editar', () => {
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('keeps a legacy agent unrestricted: the clientes:editar preset grants Novo Cliente/Editar', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(fakeMembership({ role: 'agent' })),
+    });
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    const card = getClientCard('Gamma Care');
+    expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+
+  it('hides Novo Cliente/Importar CSV/Editar/Remover for a custom role with clientes:ver only', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
+      ),
+    });
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.queryByRole('button', { name: 'Novo Cliente' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar CSV' })).not.toBeInTheDocument();
+    const card = getClientCard('Gamma Care');
+    expect(within(card).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+  });
+
+  it('shows Novo Cliente/Importar CSV/Editar/Remover for a custom role with clientes:editar', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'editar' } }),
+      ),
+    });
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    const card = getClientCard('Gamma Care');
+    expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+});
+
+describe('ClientesPage — Vidro toolbar', () => {
+  function renderInHarness(vidroShell: boolean) {
+    const queryClient = createTestQueryClient();
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <ClientesPage />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('moves the title and every header action into the toolbar, each exactly once', async () => {
+    renderInHarness(true);
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Clientes');
+    expect(screen.getAllByRole('button', { name: 'Novo Cliente' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Importar CSV' })).toHaveLength(1);
+    const toolbar = document.querySelector('.vidro-toolbar') as HTMLElement;
+    expect(within(toolbar).getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(within(toolbar).getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    expect(toolbar.querySelectorAll('[data-tooltip]')).toHaveLength(2);
+    expect(document.querySelector('.page-content .header')).toBeNull();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.header')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Novo Cliente' })).toHaveLength(1);
   });
 });

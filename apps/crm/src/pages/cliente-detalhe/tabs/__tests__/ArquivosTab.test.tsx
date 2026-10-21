@@ -1,10 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Desktop layout by default; the phone describe below flips it (jsdom's matchMedia is
+// false, so without a mock every suite would render the phone branch).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
 import type { FileRecord, Folder, FolderContents } from '@/pages/arquivos/types';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // ArquivosTab is `ClienteArquivosSection` ported verbatim out of the
 // pre-split ClienteDetalhePage (see git history at d30adeea): a capped
@@ -31,15 +37,52 @@ vi.mock('@/services/fileService', async (importOriginal) => ({
 
 // FileGrid has its own render suite; stub it here (same convention as
 // RedesSociaisTab.test.tsx mocking InstagramSection) so this suite can focus
-// on the query/composition logic that actually belongs to ArquivosTab.
+// on the query/composition logic that actually belongs to ArquivosTab. Also
+// surfaces the `canEdit` prop this task threads through, so this suite can
+// assert on it without re-testing FileGrid/FileContextMenu's own rendering.
 vi.mock('@/pages/arquivos/components/FileGrid', () => ({
-  FileGrid: ({ files, subfolders }: { files: FileRecord[]; subfolders: Folder[] }) => (
-    <div data-testid="file-grid">
+  formatBytes: (n: number) => `${n} B`,
+  FileGrid: ({
+    files,
+    subfolders,
+    canEdit,
+  }: {
+    files: FileRecord[];
+    subfolders: Folder[];
+    canEdit: boolean;
+  }) => (
+    <div data-testid="file-grid" data-can-edit={String(canEdit)}>
       files:{files.map((f) => f.name).join(',')}|subfolders:
       {subfolders.map((f) => f.name).join(',')}
     </div>
   ),
 }));
+
+const { openExternalUrlMock } = vi.hoisted(() => ({ openExternalUrlMock: vi.fn() }));
+vi.mock('@/utils/security', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/security')>()),
+  openExternalUrl: (...args: unknown[]) => openExternalUrlMock(...args),
+}));
+
+vi.mock('@/pages/entregas/components/PostMediaLightbox', () => ({
+  PostMediaLightbox: ({
+    media,
+    initialIndex,
+    open,
+  }: {
+    media: { original_filename: string }[];
+    initialIndex: number;
+    open: boolean;
+  }) =>
+    open ? (
+      <div role="dialog" aria-label="lightbox">
+        {media[initialIndex]?.original_filename}
+      </div>
+    ) : null,
+}));
+
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
 
 import { __queueSupabaseResult, __resetSupabaseMock } from '@/lib/supabase';
 import ArquivosTab from '../ArquivosTab';
@@ -121,6 +164,10 @@ afterEach(() => {
   __resetSupabaseMock();
 });
 
+beforeEach(() => {
+  useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'owner' })) });
+});
+
 describe('ArquivosTab', () => {
   it('no folder yet: shows the empty state, no "Ver todos" link, and fires no folder-contents query', async () => {
     __queueSupabaseResult('folders', 'select', { data: null, error: null });
@@ -163,13 +210,13 @@ describe('ArquivosTab', () => {
     await waitFor(() => expect(getFolderContentsMock).toHaveBeenCalledWith(7));
   });
 
-  it('shows a loading spinner while folder-contents is in flight', async () => {
+  it('shows a loading skeleton while folder-contents is in flight', async () => {
     __queueSupabaseResult('folders', 'select', { data: { id: 7 }, error: null });
     getFolderContentsMock.mockReturnValue(new Promise(() => {})); // never resolves
-    const { container } = renderTab();
+    renderTab();
 
     await screen.findByText('Ver todos');
-    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByTestId('crm-skeleton')).toBeInTheDocument();
     expect(screen.queryByTestId('file-grid')).not.toBeInTheDocument();
   });
 
@@ -257,5 +304,110 @@ describe('ArquivosTab', () => {
       .getAll()
       .map((q) => q.queryKey[0]);
     expect(new Set(keys)).toEqual(new Set(['client-folder', 'folder-contents']));
+  });
+
+  /**
+   * Task 14 fix round 2 (external review): this 12-item preview mounts the
+   * real FileGrid/FileContextMenu, whose Renomear/Excluir call
+   * services/fileService directly -- so it is a real mutation surface, not
+   * just a read-only shortcut to /arquivos, and needs the same
+   * `arquivos:editar` gate as the standalone ArquivosPage.tsx.
+   */
+  describe('canEdit threaded to FileGrid', () => {
+    beforeEach(() => {
+      __queueSupabaseResult('folders', 'select', { data: { id: 7 }, error: null });
+      getFolderContentsMock.mockResolvedValue({
+        folder: null,
+        subfolders: [],
+        files: [makeFile(1)],
+        breadcrumbs: [],
+      } satisfies FolderContents);
+    });
+
+    it('passes canEdit=true for a legacy agent (arquivos preset is editar)', async () => {
+      useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'agent' })) });
+      renderTab();
+
+      expect(await screen.findByTestId('file-grid')).toHaveAttribute('data-can-edit', 'true');
+    });
+
+    it('passes canEdit=false for a custom role with no arquivos grant at all', async () => {
+      useAuthMock.mockReturnValue({
+        can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+      });
+      renderTab();
+
+      expect(await screen.findByTestId('file-grid')).toHaveAttribute('data-can-edit', 'false');
+    });
+
+    it('passes canEdit=true for a custom role with arquivos:editar', async () => {
+      useAuthMock.mockReturnValue({
+        can: makeCan(
+          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { arquivos: 'editar' } }),
+        ),
+      });
+      renderTab();
+
+      expect(await screen.findByTestId('file-grid')).toHaveAttribute('data-can-edit', 'true');
+    });
+  });
+});
+
+describe('ArquivosTab no celular', () => {
+  beforeEach(() => {
+    desktop.value = false;
+  });
+  afterEach(() => {
+    desktop.value = true;
+  });
+
+  function queueContents() {
+    __queueSupabaseResult('folders', 'select', { data: { id: 7 }, error: null });
+    getFolderContentsMock.mockResolvedValue({
+      folder: null,
+      subfolders: [makeFolder(9, 'Criativos')],
+      files: [
+        makeFile(1),
+        {
+          ...makeFile(2),
+          name: 'contrato.pdf',
+          kind: 'document',
+          url: 'https://cdn.x/contrato.pdf',
+        },
+      ],
+      breadcrumbs: [],
+    } satisfies FolderContents);
+  }
+
+  it('lists folders and files as rows instead of the grid', async () => {
+    queueContents();
+    renderTab();
+
+    expect(await screen.findByRole('button', { name: /arquivo-1\.png/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /contrato\.pdf/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Criativos/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('file-grid')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Ver todos/ })).toHaveAttribute('href', '/arquivos');
+  });
+
+  it('tapping an image opens the lightbox; tapping a document opens it in a new tab', async () => {
+    queueContents();
+    renderTab();
+
+    fireEvent.click(await screen.findByRole('button', { name: /arquivo-1\.png/ }));
+    expect(await screen.findByRole('dialog', { name: 'lightbox' })).toHaveTextContent(
+      'arquivo-1.png',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /contrato\.pdf/ }));
+    expect(openExternalUrlMock).toHaveBeenCalledWith('https://cdn.x/contrato.pdf');
+  });
+
+  it('tapping a folder goes to Arquivos', async () => {
+    queueContents();
+    renderTab();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Criativos/ }));
+    expect(navigateMock).toHaveBeenCalledWith('/arquivos');
   });
 });

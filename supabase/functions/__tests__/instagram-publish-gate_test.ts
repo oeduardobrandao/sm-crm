@@ -152,3 +152,79 @@ Deno.test("instagram-publish: schedule with no media fails validateForScheduling
     true,
   );
 });
+
+// ─── retry: clearCollaborators (spec 2026-10-19, collaborators) ───
+
+function retryRequestWithBody(body: unknown, postId = 1) {
+  return new Request(`http://x/instagram-publish/retry/${postId}`, {
+    method: "POST",
+    headers: { authorization: "Bearer t", "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function callIndex(db: ReturnType<typeof createSupabaseQueryMock>, pred: (c: { table: string; operation: string; payload?: unknown }) => boolean) {
+  return db.calls.findIndex(pred);
+}
+
+Deno.test("instagram-publish: retry {clearCollaborators:true} clears both columns BEFORE the status flip", async () => {
+  const db = createSupabaseQueryMock();
+  setupPostAndProfile(db, "falha_publicacao");
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(retryRequestWithBody({ clearCollaborators: true }));
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { ok: true, status: "agendado" });
+
+  const clearIdx = callIndex(db, (c) =>
+    c.table === "workflow_posts" && c.operation === "update" &&
+    !!c.payload && typeof c.payload === "object" && "ig_collaborators" in (c.payload as object)
+  );
+  const rpcIdx = callIndex(db, (c) => c.table === "rpc:record_post_status_change");
+  assertEquals(clearIdx >= 0, true, "the clearing update must happen");
+  assertEquals(db.calls[clearIdx].payload, { ig_collaborators: [], ig_collaborators_refused: [] });
+  assertEquals(rpcIdx > clearIdx, true, "clear must precede record_post_status_change");
+});
+
+Deno.test("instagram-publish: retry without body keeps the list and only resets ig_collaborators_refused", async () => {
+  const db = createSupabaseQueryMock();
+  setupPostAndProfile(db, "falha_publicacao");
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(publishRequest("retry", 1));
+  assertEquals(res.status, 200);
+
+  const updates = db.calls.filter((c) => c.table === "workflow_posts" && c.operation === "update");
+  for (const u of updates) {
+    assertEquals("ig_collaborators" in (u.payload as object), false, "list must not be touched");
+  }
+  assertEquals(
+    updates.some((u) => JSON.stringify(u.payload) === JSON.stringify({ carousel_children: null, ig_collaborators_refused: [] })),
+    true,
+    "refused set is reset alongside carousel_children",
+  );
+});
+
+Deno.test("instagram-publish: retry ignores a non-boolean clearCollaborators", async () => {
+  const db = createSupabaseQueryMock();
+  setupPostAndProfile(db, "falha_publicacao");
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(retryRequestWithBody({ clearCollaborators: "true" }));
+  assertEquals(res.status, 200);
+  const cleared = db.calls.some((c) =>
+    c.table === "workflow_posts" && c.operation === "update" && "ig_collaborators" in (c.payload as object)
+  );
+  assertEquals(cleared, false);
+});
+
+Deno.test("instagram-publish: retry clearCollaborators update error → generic 500, status untouched", async () => {
+  const db = createSupabaseQueryMock();
+  setupPostAndProfile(db, "falha_publicacao");
+  db.queue("workflow_posts", "update", { data: null, error: { message: "check violation detail" } });
+  const handler = makeHandler(db);
+  const res = await handler(retryRequestWithBody({ clearCollaborators: true }));
+  assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
+  assertEquals(db.calls.some((c) => c.table === "rpc:record_post_status_change"), false);
+});

@@ -1,0 +1,21 @@
+{
+  "title": "Brand",
+  "description": "Colors, logos and typography for your business.",
+  "empty": "No brand material has been added yet.",
+  "logoAlt": "Logo",
+  "download": "Download",
+  "sections": {
+    "logo": "Logo",
+    "colors": "Colors",
+    "typography": "Typography",
+    "files": "Files"
+  },
+  "colors": {
+    "primary": "Primary color",
+    "secondary": "Secondary color"
+  },
+  "fonts": {
+    "primary": "Primary font",
+    "secondary": "Secondary font"
+  }
+}

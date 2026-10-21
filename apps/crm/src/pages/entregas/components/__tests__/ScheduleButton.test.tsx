@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowPost } from '../../../../store';
 import type { PostMedia } from '../../../../store/posts';
@@ -172,6 +172,35 @@ describe('ScheduleButton', () => {
       expect(scheduleInstagramPost).toHaveBeenCalledWith(1);
       expect(toast.success).toHaveBeenCalledWith('Post agendado para publicação no Instagram');
       expect(defaultProps.onStatusChange).toHaveBeenCalled();
+    });
+
+    it('waits for beforeServerAction (pending field write) before scheduling', async () => {
+      vi.mocked(scheduleInstagramPost).mockResolvedValueOnce({ ok: true, status: 'agendado' });
+      let release!: () => void;
+      const beforeServerAction = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      render(
+        <ScheduleButton
+          post={makePost()}
+          {...defaultProps}
+          beforeServerAction={beforeServerAction}
+        />,
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Agendar publicação'));
+      });
+      expect(beforeServerAction).toHaveBeenCalled();
+      expect(scheduleInstagramPost).not.toHaveBeenCalled();
+
+      await act(async () => {
+        release();
+      });
+      await waitFor(() => expect(scheduleInstagramPost).toHaveBeenCalledWith(1));
     });
 
     it('shows error toast when schedule fails', async () => {
@@ -600,11 +629,13 @@ describe('ScheduleButton', () => {
       await waitFor(() => {
         expect(publishTikTokPostNow).toHaveBeenCalledWith(1);
         expect(publishInstagramPostNow).not.toHaveBeenCalled();
-        expect(toast.success).toHaveBeenCalledWith('Post publicado no TikTok!');
+        expect(toast.success).toHaveBeenCalledWith(
+          'Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.',
+        );
       });
     });
 
-    it('platform tiktok shows info toast when TikTok is still processing', async () => {
+    it('platform tiktok shows the processing notice when TikTok is still processing', async () => {
       vi.mocked(publishTikTokPostNow).mockResolvedValueOnce({
         ok: true,
         status: 'agendado',
@@ -623,7 +654,9 @@ describe('ScheduleButton', () => {
         await vi.advanceTimersByTimeAsync(1000);
       });
       await waitFor(() => {
-        expect(toast.info).toHaveBeenCalledWith('TikTok ainda processando.');
+        expect(toast.success).toHaveBeenCalledWith(
+          'Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.',
+        );
       });
     });
 
@@ -652,7 +685,7 @@ describe('ScheduleButton', () => {
       await waitFor(() => {
         expect(callOrder).toEqual(['ig', 'tt']);
         expect(toast.success).toHaveBeenCalledWith(
-          'Post enviado para publicação no Instagram e no TikTok!',
+          'Enviado ao Instagram e ao TikTok. No TikTok, pode levar alguns minutos para aparecer no perfil.',
         );
       });
     });
@@ -716,6 +749,52 @@ describe('ScheduleButton', () => {
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith('Instagram: IG falhou; TikTok: TT falhou');
       });
+    });
+
+    it('platform both: Instagram fails but TikTok succeeds also confirms the TikTok send', async () => {
+      vi.mocked(publishInstagramPostNow).mockRejectedValueOnce(new Error('Container falhou'));
+      vi.mocked(publishTikTokPostNow).mockResolvedValueOnce({ ok: true, status: 'postado' });
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'both' })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      fireEvent.click(screen.getByText('Publicar agora'));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Instagram: Container falhou');
+        expect(toast.success).toHaveBeenCalledWith(
+          'Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.',
+        );
+      });
+    });
+
+    it('disables the dialog Publicar when the TikTok gate closes while the dialog is open', async () => {
+      const { rerender } = render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      fireEvent.click(screen.getByText('Publicar agora'));
+      expect(screen.getByRole('button', { name: 'Publicar' })).toBeEnabled();
+      rerender(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete={false}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+      expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+      expect(publishTikTokPostNow).not.toHaveBeenCalled();
     });
 
     it('flags onTikTokUnaudited from a both publish-now attempt when TikTok 422s as unaudited', async () => {
@@ -1341,5 +1420,249 @@ describe('ScheduleButton', () => {
       expect(screen.getByText('Falha na publicação')).toBeTruthy();
       expect(screen.getByText('Token expirado')).toBeTruthy();
     });
+  });
+
+  describe('audit readiness (spec A0/A3/A8/B3)', () => {
+    it('TikTok post: declaration renders above the actions once the gate is open', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok', tiktok_settings: { brand_content_toggle: false } })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent(
+        'Ao publicar, você concorda com a Confirmação de Uso de Música do TikTok.',
+      );
+    });
+
+    it('TikTok post without settings: branded variant of the declaration', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      expect(screen.getByTestId('tiktok-posting-declaration')).toHaveTextContent(
+        'Política de Conteúdo de Marca',
+      );
+    });
+
+    it('TikTok post with incomplete settings: no declaration (nothing can send)', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete={false}
+        />,
+      );
+      expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+    });
+
+    it('Instagram-only post: no TikTok declaration', () => {
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+      expect(screen.queryByTestId('tiktok-posting-declaration')).toBeNull();
+    });
+
+    it('publish-now dialog repeats the declaration above Publicar for TikTok', async () => {
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      fireEvent.click(screen.getByText('Publicar agora'));
+      const dialog = await screen.findByRole('alertdialog');
+      expect(within(dialog).getByTestId('tiktok-posting-declaration')).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
+    });
+
+    it('shows the panel reason in the Falta line, lowercased and without its final period', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete={false}
+          tiktokIncompleteReason="Indique se o conteúdo promove você, um terceiro ou ambos."
+        />,
+      );
+      expect(screen.getByText(/Falta:/)).toHaveTextContent(
+        'Falta: indique se o conteúdo promove você, um terceiro ou ambos',
+      );
+      const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
+      expect(scheduleBtn.getAttribute('title')).toBe(
+        'Indique se o conteúdo promove você, um terceiro ou ambos.',
+      );
+    });
+
+    it('missing caption names the platform whose caption is empty', () => {
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok', ig_caption: null })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      expect(screen.getByText(/Falta:/)).toHaveTextContent('legenda do TikTok');
+      cleanup();
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'both', ig_caption: null })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      expect(screen.getByText(/Falta:/)).toHaveTextContent('Falta: legenda');
+      expect(screen.getByText(/Falta:/)).not.toHaveTextContent('legenda do');
+    });
+
+    it('TikTok post: row button, dialog confirm and progress bar use the ink style, never pink', async () => {
+      let resolvePublish: (v: unknown) => void = () => {};
+      vi.mocked(publishTikTokPostNow).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolvePublish = resolve;
+        }) as never,
+      );
+      render(
+        <ScheduleButton
+          post={makePost({ platform: 'tiktok' })}
+          {...defaultProps}
+          tiktokSettingsComplete
+        />,
+      );
+      const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+      expect(publishBtn.style.background).toBe('var(--text-main)');
+      expect(publishBtn.style.color).toBe('var(--bg-color)');
+
+      fireEvent.click(publishBtn);
+      const confirm = await screen.findByRole('button', { name: 'Publicar' });
+      expect(confirm.style.background).toBe('var(--text-main)');
+
+      await act(async () => {
+        fireEvent.click(confirm);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+      const pct = screen.getByText(/\d+%/);
+      const bar = pct.closest('.px-1')!.querySelector('.h-full') as HTMLElement;
+      expect(bar.style.background).toBe('var(--text-main)');
+
+      await act(async () => {
+        resolvePublish({ ok: true, status: 'postado' });
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+    });
+
+    it('Instagram post keeps the pink publish button (unchanged)', () => {
+      render(<ScheduleButton post={makePost()} {...defaultProps} />);
+      const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+      expect(publishBtn.style.background).toBe('rgb(225, 48, 108)');
+    });
+
+    it('agendado "Publicando…" pill uses the ink style for a TikTok post', () => {
+      render(
+        <ScheduleButton
+          post={makePost({
+            status: 'agendado',
+            platform: 'tiktok',
+            scheduled_at: '2099-01-01T00:00:00Z',
+            tiktok_publish_status: 'initiated',
+          })}
+          {...defaultProps}
+        />,
+      );
+      const pill = screen.getByText('Publicando…').closest('div')!;
+      expect(pill.style.background).toBe('var(--surface-hover)');
+      expect(pill.style.color).toBe('var(--text-main)');
+    });
+
+    it('TikTok publish-now success toasts the processing notice for both postado and processing', async () => {
+      for (const result of [
+        { ok: true, status: 'postado' },
+        { ok: true, status: 'agendado', message: 'x' },
+      ]) {
+        vi.mocked(publishTikTokPostNow).mockResolvedValueOnce(result as never);
+        render(
+          <ScheduleButton
+            post={makePost({ platform: 'tiktok' })}
+            {...defaultProps}
+            tiktokSettingsComplete
+          />,
+        );
+        fireEvent.click(screen.getByText('Publicar agora'));
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+          await vi.advanceTimersByTimeAsync(1000);
+        });
+        await waitFor(() =>
+          expect(toast.success).toHaveBeenLastCalledWith(
+            'Enviado ao TikTok. Pode levar alguns minutos para aparecer no perfil.',
+          ),
+        );
+        expect(toast.info).not.toHaveBeenCalled();
+        cleanup();
+      }
+    });
+
+    it('status row shows the processing notice while TikTok processes', () => {
+      render(
+        <ScheduleButton
+          post={makePost({
+            status: 'agendado',
+            platform: 'tiktok',
+            tiktok_publish_status: 'processing',
+          })}
+          {...defaultProps}
+        />,
+      );
+      expect(
+        screen.getByText('Processando no TikTok. Pode levar alguns minutos.'),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe('explainMissingInstagramAccount (P2)', () => {
+  it('flag off: an approved Instagram post without account renders nothing (unchanged)', () => {
+    const { container } = render(
+      <ScheduleButton
+        post={makePost({ status: 'aprovado_cliente' })}
+        hasInstagramAccount={false}
+        onStatusChange={vi.fn()}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('flag on: explains why there is no Agendar', () => {
+    render(
+      <ScheduleButton
+        post={makePost({ status: 'aprovado_cliente' })}
+        hasInstagramAccount={false}
+        explainMissingInstagramAccount
+        onStatusChange={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Conecte a conta do Instagram do cliente para agendar ou publicar este post.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  it('flag on: nothing for a post that is not approved yet', () => {
+    const { container } = render(
+      <ScheduleButton
+        post={makePost({ status: 'rascunho' })}
+        hasInstagramAccount={false}
+        explainMissingInstagramAccount
+        onStatusChange={vi.fn()}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 });

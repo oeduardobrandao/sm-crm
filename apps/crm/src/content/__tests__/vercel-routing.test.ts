@@ -63,6 +63,21 @@ describe('vercel.json routing contract', () => {
     expect(noindexSources).toContain('/relatorios/print/:docId');
   });
 
+  test('convite de agenda reescreve para o hub ANTES do app-shell', () => {
+    const conviteIdx = rewrites.findIndex((r) => r.source === '/convite/:token');
+    const appShellIdx = rewrites.findIndex((r) => r.destination === '/app.html');
+    expect(conviteIdx).toBeGreaterThanOrEqual(0);
+    expect(rewrites[conviteIdx].destination).toBe('/hub/index.html');
+    expect(conviteIdx).toBeLessThan(appShellIdx);
+  });
+
+  test('convite de agenda carrega noindex', () => {
+    const noindexSources = headers
+      .filter((h) => h.headers.some((x) => x.key === 'X-Robots-Tag' && /noindex/.test(x.value)))
+      .map((h) => h.source);
+    expect(noindexSources).toContain('/convite/:token');
+  });
+
   test('blog index and post rewrites exist', () => {
     expect(rewrites).toContainEqual({ source: '/blog', destination: '/blog.html' });
     expect(rewrites).toContainEqual({ source: '/blog/:slug', destination: '/blog/:slug.html' });
@@ -74,5 +89,59 @@ describe('vercel.json routing contract', () => {
       .map((h) => h.source);
     for (const source of noindexSources) expect(source).not.toContain('blog');
     expect(APP_ROUTE_PREFIXES as readonly string[]).not.toContain('blog');
+  });
+});
+
+describe('vercel.json Permissions-Policy', () => {
+  // O briefing por áudio do Hub usa getUserMedia. Com `microphone=()` o
+  // navegador rejeita com NotAllowedError SEM abrir o prompt de permissão
+  // (incidente 2026-09-04). O catch-all continua bloqueando o microfone no
+  // CRM/Admin/site; só as duas regras do Hub liberam `self`, e elas precisam
+  // vir DEPOIS do catch-all porque, com a mesma chave, a última regra que
+  // casa é a que vale.
+  const HUB_SOURCES = ['/:workspace/hub/:token', '/:workspace/hub/:token/(.*)'];
+  // As ideias da agência (Task 11/12) trouxeram gravação de áudio pro CRM por
+  // dois caminhos -- a página /ideias e a aba Ideias de /clientes/:id/hub
+  // (rota aninhada sob "hub", não direto em /clientes/:id) -- que caíram no
+  // mesmo bloqueio do Hub em 2026-09-04 (incidente novo, mesma causa): o
+  // catch-all bloqueia o microfone e nenhuma regra do CRM o liberava, então
+  // getUserMedia rejeitava sem nem abrir o prompt.
+  const CRM_AUDIO_SOURCES = ['/ideias(/.*)?', '/clientes/:id/hub/ideias'];
+  const policyOf = (source: string) =>
+    headers.find((h) => h.source === source)?.headers.find((x) => x.key === 'Permissions-Policy')
+      ?.value;
+
+  test('o catch-all segue bloqueando o microfone fora do Hub e do CRM de ideias', () => {
+    expect(policyOf('/(.*)')).toMatch(/microphone=\(\)/);
+  });
+
+  test('as duas regras do Hub liberam o microfone para self, depois do catch-all', () => {
+    const catchAllIdx = headers.findIndex((h) => h.source === '/(.*)');
+    expect(catchAllIdx).toBeGreaterThanOrEqual(0);
+    for (const src of HUB_SOURCES) {
+      expect(policyOf(src), `${src} não libera o microfone`).toMatch(/microphone=\(self\)/);
+      expect(policyOf(src), `${src} libera câmera ou geolocalização`).toMatch(
+        /camera=\(\).*geolocation=\(\)/,
+      );
+      expect(
+        headers.findIndex((h) => h.source === src),
+        `${src} precisa vir depois do catch-all`,
+      ).toBeGreaterThan(catchAllIdx);
+    }
+  });
+
+  test('as rotas de ideias do CRM liberam o microfone para self, depois do catch-all', () => {
+    const catchAllIdx = headers.findIndex((h) => h.source === '/(.*)');
+    expect(catchAllIdx).toBeGreaterThanOrEqual(0);
+    for (const src of CRM_AUDIO_SOURCES) {
+      expect(policyOf(src), `${src} não libera o microfone`).toMatch(/microphone=\(self\)/);
+      expect(policyOf(src), `${src} libera câmera ou geolocalização`).toMatch(
+        /camera=\(\).*geolocation=\(\)/,
+      );
+      expect(
+        headers.findIndex((h) => h.source === src),
+        `${src} precisa vir depois do catch-all`,
+      ).toBeGreaterThan(catchAllIdx);
+    }
   });
 });

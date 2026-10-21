@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Calendar, type CalendarProps } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 
 const MIN_SCHEDULE_MINUTES = 15;
 
@@ -56,6 +57,8 @@ export function DateTimePicker({
   dayMarkerLegend,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
+  // Under Vidro the inline trigger look gives way to the glass pill in buttons.css.
+  const vidroShell = useVidroShell();
 
   const now = React.useMemo(() => new Date(), [open]);
   const minDateTime = futureOnly ? addMinutes(now, MIN_SCHEDULE_MINUTES) : undefined;
@@ -158,12 +161,16 @@ export function DateTimePicker({
             !value && 'text-muted-foreground',
             className,
           )}
-          style={{
-            padding: '0.4rem 0.6rem',
-            borderRadius: 6,
-            fontSize: '0.82rem',
-            background: 'var(--card-bg)',
-          }}
+          style={
+            vidroShell
+              ? undefined
+              : {
+                  padding: '0.4rem 0.6rem',
+                  borderRadius: 6,
+                  fontSize: '0.82rem',
+                  background: 'var(--card-bg)',
+                }
+          }
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
           {value ? (

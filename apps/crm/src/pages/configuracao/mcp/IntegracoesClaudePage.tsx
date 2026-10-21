@@ -26,28 +26,29 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
 import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/mcp-oauth';
 import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import {
+  CLIENT_INTRO,
+  CLIENT_TABS,
+  ChatgptSteps,
+  ClaudeKeyNote,
+  ClaudeSteps,
+  CodexHeadersNote,
+  CodexSteps,
+  KEY_USAGE_NOTE,
+  MCP_URL,
+  TryItNote,
+  buildConnectSnippets,
+  codexConfigToml,
+  type McpClient,
+} from './mcpGuide';
+import { IntegracoesClaudePhone } from './IntegracoesClaudePhone';
 
-const MCP_URL = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/mcp';
-const MESAAS_LOGO_URL = 'https://www.mesaas.com.br/mesaas-icon-256.png';
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
-
-const codexConfigToml = (token: string) =>
-  `[mcp_servers.mesaas]
-url = "${MCP_URL}"
-
-[mcp_servers.mesaas.http_headers]
-Authorization = "Bearer ${token}"`;
-
-type McpClient = 'claude' | 'chatgpt' | 'codex';
-
-const CLIENT_TABS: { id: McpClient; label: string }[] = [
-  { id: 'claude', label: 'Claude' },
-  { id: 'chatgpt', label: 'ChatGPT' },
-  { id: 'codex', label: 'Codex' },
-];
 
 /** Copy-paste connection snippets for a given token (real at creation, or a placeholder/pasted). */
 function ConnectSnippets({
@@ -61,20 +62,7 @@ function ConnectSnippets({
   copiedKey: string | null;
   idPrefix: string;
 }) {
-  const desktopConfig = JSON.stringify(
-    {
-      mcpServers: {
-        mesaas: {
-          command: 'npx',
-          args: ['-y', 'mcp-remote', MCP_URL, '--header', 'Authorization:${AUTH_HEADER}'],
-          env: { AUTH_HEADER: `Bearer ${token}` },
-        },
-      },
-    },
-    null,
-    2,
-  );
-  const claudeCodeCmd = `claude mcp add --transport http mesaas ${MCP_URL} --header "Authorization: Bearer ${token}"`;
+  const { desktopConfig, claudeCodeCmd, codexToml } = buildConnectSnippets(token);
   return (
     <>
       <div className="space-y-1 min-w-0">
@@ -121,7 +109,7 @@ function ConnectSnippets({
           Adicione este bloco ao arquivo <code>~/.codex/config.toml</code>.
         </p>
         <CopyBlock
-          value={codexConfigToml(token)}
+          value={codexToml}
           copyKey={`${idPrefix}-codex`}
           copy={copy}
           copiedKey={copiedKey}
@@ -198,9 +186,20 @@ function CopyField({
 }
 
 export default function IntegracoesClaudePage() {
-  const { role } = useAuth();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  const { can } = useAuth();
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that here. Was
+  // `role === 'owner' || role === 'admin'`, which a custom role with the
+  // chassis 'agent' role never passed even when it held the tab-level
+  // grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
+  // F4 (revisão externa): criar/revogar chave e desconectar um grant são
+  // escritas -- um papel `ver`-only via todos esses controles. Aqui as
+  // escritas passam por edge functions que negam de verdade, mas o controle
+  // ativo ainda promete uma ação que sempre falha.
+  const canEditConfig = can('configuracoes', 'editar') === true;
   const queryClient = useQueryClient();
+  const isPhone = !useIsDesktop(768);
 
   const [client, setClient] = useState<McpClient>('claude');
   const [createOpen, setCreateOpen] = useState(false);
@@ -217,13 +216,13 @@ export default function IntegracoesClaudePage() {
   const { data: keys = [], isLoading } = useQuery({
     queryKey: ['mcp-keys'],
     queryFn: listMcpKeys,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const { data: grants = [] } = useQuery({
     queryKey: ['mcp-oauth-grants'],
     queryFn: listOAuthGrants,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
   const activeGrants = grants.filter((g) => !g.revoked_at);
 
@@ -282,7 +281,66 @@ export default function IntegracoesClaudePage() {
     setTimeout(() => setCopiedKey(null), 1500);
   };
 
-  if (!isOwnerOrAdmin) {
+  const confirmRevoke = () => {
+    if (revokeTarget) revokeMutation.mutate(revokeTarget.id);
+    setRevokeTarget(null);
+  };
+
+  const confirmRevokeGrant = () => {
+    if (revokeGrantTarget) revokeGrantMutation.mutate(revokeGrantTarget.id);
+    setRevokeGrantTarget(null);
+  };
+
+  if (isPhone) {
+    // Phone: the same state and mutations, drawn as grouped lists and sheets. The
+    // desktop Dialogs/AlertDialogs below never mount here.
+    return (
+      <IntegracoesClaudePhone
+        blocked={!canViewConfig}
+        canEdit={canEditConfig}
+        client={client}
+        onClientChange={setClient}
+        copy={copy}
+        copiedKey={copiedKey}
+        grants={activeGrants}
+        keys={keys}
+        keysLoading={isLoading}
+        createOpen={createOpen}
+        onOpenCreate={() => setCreateOpen(true)}
+        name={name}
+        onNameChange={setName}
+        scopes={scopes}
+        onScopesChange={setScopes}
+        expiry={expiry}
+        onExpiryChange={setExpiry}
+        creating={createMutation.isPending}
+        onCreate={() => createMutation.mutate()}
+        revealToken={revealToken}
+        onCloseKeySheet={() => {
+          if (revealToken) setRevealToken(null);
+          else setCreateOpen(false);
+        }}
+        connectKey={connectKey}
+        connectToken={connectToken}
+        onConnectTokenChange={setConnectToken}
+        onOpenConnect={(k) => {
+          setConnectToken('');
+          setConnectKey(k);
+        }}
+        onCloseConnect={() => setConnectKey(null)}
+        revokeTarget={revokeTarget}
+        onRevoke={setRevokeTarget}
+        onConfirmRevoke={confirmRevoke}
+        onCancelRevoke={() => setRevokeTarget(null)}
+        revokeGrantTarget={revokeGrantTarget}
+        onRevokeGrant={setRevokeGrantTarget}
+        onConfirmRevokeGrant={confirmRevokeGrant}
+        onCancelRevokeGrant={() => setRevokeGrantTarget(null)}
+      />
+    );
+  }
+
+  if (!canViewConfig) {
     return (
       <div className="card animate-up">
         <p className="text-sm text-muted-foreground">
@@ -294,9 +352,15 @@ export default function IntegracoesClaudePage() {
 
   return (
     <>
-      <p className="text-sm text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
+      <p className="text-sm text-muted-foreground" style={{ marginBottom: '0.5rem' }}>
         Conecte Claude, ChatGPT ou Codex para ler clientes, posts e pautas deste workspace.
       </p>
+      {!canEditConfig && (
+        <p className="text-xs text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
+          Somente leitura
+        </p>
+      )}
+      {canEditConfig && <div style={{ marginBottom: '1rem' }} />}
 
       <FeatureGate flag="feature_mcp" label="Integração com agentes (MCP)">
         <div className="card animate-up" style={{ marginBottom: '1rem' }}>
@@ -327,32 +391,14 @@ export default function IntegracoesClaudePage() {
           {client === 'claude' && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                Sem chave: a conexão usa OAuth e pode ser revogada aqui a qualquer momento.
+                {CLIENT_INTRO.claude}
               </p>
               <ol className="mcp-steps">
-                <li>
-                  <span>
-                    No claude.ai ou no Claude Desktop, abra{' '}
-                    <strong>Configurações → Conectores → Adicionar conector personalizado</strong>.
-                  </span>
-                </li>
-                <li>
-                  <span>
-                    Cole a URL abaixo, deixe os campos de OAuth em branco e clique em{' '}
-                    <strong>Adicionar</strong>.
-                  </span>
-                </li>
-                <li>
-                  <span>
-                    Faça login no Mesaas, escolha o workspace e as permissões e clique em{' '}
-                    <strong>Autorizar</strong>.
-                  </span>
-                </li>
+                <ClaudeSteps />
               </ol>
               <CopyField value={MCP_URL} copyKey="mcp-url" copy={copy} copiedKey={copiedKey} />
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                Claude Code, API ou agentes headless usam uma chave: crie uma em{' '}
-                <strong>Chaves de API</strong> abaixo e copie o comando pronto.
+                <ClaudeKeyNote />
               </p>
             </div>
           )}
@@ -360,53 +406,10 @@ export default function IntegracoesClaudePage() {
           {client === 'chatgpt' && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                Sem chave: a conexão usa OAuth. Requer o modo de desenvolvedor do ChatGPT (não exige
-                plano pago).
+                {CLIENT_INTRO.chatgpt}
               </p>
               <ol className="mcp-steps">
-                <li>
-                  <span>
-                    No ChatGPT, abra <strong>Configurações → Security and login</strong> e ative o{' '}
-                    <strong>Developer mode</strong> (opção marcada como "elevated risk"; também
-                    acessível em <strong>Configurações → Plugins</strong>).
-                  </span>
-                </li>
-                <li>
-                  <span>
-                    Abra <strong>chatgpt.com/plugins</strong>, clique no botão <strong>+</strong> e,
-                    no diálogo <strong>New Plugin</strong>, dê o nome "Mesaas", cole a URL abaixo em{' '}
-                    <strong>MCP Server URL</strong> e escolha <strong>OAuth</strong> como
-                    autenticação.
-                  </span>
-                </li>
-                <li>
-                  <span>
-                    Opcional: para o conector aparecer com a nossa marca,{' '}
-                    <a
-                      href={MESAAS_LOGO_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline text-primary"
-                    >
-                      baixe a logo do Mesaas (PNG)
-                    </a>{' '}
-                    e envie no campo <strong>Icon</strong>. O ícone só pode ser definido nesse
-                    passo: depois de criado o conector, não dá para trocar.
-                  </span>
-                </li>
-                <li>
-                  <span>
-                    Marque a confirmação de risco, clique em <strong>Create</strong> e depois em{' '}
-                    <strong>Sign in with Mesaas</strong>: faça login, escolha o workspace e as
-                    permissões e clique em <strong>Autorizar</strong>.
-                  </span>
-                </li>
-                <li>
-                  <span>
-                    Na conversa, clique no botão <strong>+</strong> do campo de mensagem e ative o{' '}
-                    <strong>Mesaas</strong>.
-                  </span>
-                </li>
+                <ChatgptSteps />
               </ol>
               <CopyField value={MCP_URL} copyKey="mcp-url" copy={copy} copiedKey={copiedKey} />
             </div>
@@ -415,28 +418,10 @@ export default function IntegracoesClaudePage() {
           {client === 'codex' && (
             <div className="space-y-3 min-w-0">
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                O Codex CLI conecta com uma chave de API deste workspace, direto via HTTP (sem
-                dependências extras).
+                {CLIENT_INTRO.codex}
               </p>
               <ol className="mcp-steps">
-                <li>
-                  <span>
-                    Crie uma chave em <strong>Chaves de API</strong> abaixo e copie o valor (ele
-                    aparece uma única vez).
-                  </span>
-                </li>
-                <li>
-                  <span>
-                    Adicione o bloco abaixo ao arquivo <code>~/.codex/config.toml</code>, trocando{' '}
-                    <code>SUA_CHAVE</code> pela chave copiada.
-                  </span>
-                </li>
-                <li>
-                  <span>
-                    Abra o Codex e confirme com <code>/mcp</code> que o servidor{' '}
-                    <strong>mesaas</strong> aparece na lista.
-                  </span>
-                </li>
+                <CodexSteps />
               </ol>
               <CopyBlock
                 value={codexConfigToml('SUA_CHAVE')}
@@ -445,8 +430,7 @@ export default function IntegracoesClaudePage() {
                 copiedKey={copiedKey}
               />
               <p className="text-xs text-muted-foreground" style={{ margin: 0 }}>
-                Use <code>http_headers</code> como no bloco: o campo <code>bearer_token</code> não é
-                aceito para servidores HTTP.
+                <CodexHeadersNote />
               </p>
             </div>
           )}
@@ -455,8 +439,7 @@ export default function IntegracoesClaudePage() {
             className="text-xs text-muted-foreground"
             style={{ marginTop: '1rem', marginBottom: 0 }}
           >
-            Depois, peça ao assistente: <em>"liste meus clientes ativos"</em> ou{' '}
-            <em>"mostre o post X com métricas"</em>.
+            <TryItNote />
           </p>
         </div>
 
@@ -499,6 +482,7 @@ export default function IntegracoesClaudePage() {
                     variant="outline"
                     size="sm"
                     style={{ flexShrink: 0 }}
+                    disabled={!canEditConfig}
                     onClick={() => setRevokeGrantTarget(g)}
                   >
                     Desconectar
@@ -521,11 +505,13 @@ export default function IntegracoesClaudePage() {
             <h3 className="config-title" style={{ margin: 0 }}>
               Chaves de API
             </h3>
-            <Button onClick={() => setCreateOpen(true)}>Criar chave</Button>
+            <Button disabled={!canEditConfig} onClick={() => setCreateOpen(true)}>
+              Criar chave
+            </Button>
           </div>
 
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
+            <ListSkeleton rows={2} />
           ) : keys.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhuma chave ainda. Crie uma para conectar um agente.
@@ -576,7 +562,12 @@ export default function IntegracoesClaudePage() {
                       >
                         Conectar
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => setRevokeTarget(k)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!canEditConfig}
+                        onClick={() => setRevokeTarget(k)}
+                      >
                         Revogar
                       </Button>
                     </div>
@@ -704,10 +695,7 @@ export default function IntegracoesClaudePage() {
               idPrefix="reveal"
             />
 
-            <p className="text-xs text-muted-foreground">
-              Esta chave é para Claude Code, Codex, API ou agentes headless. No claude.ai, Claude
-              Desktop ou ChatGPT, conecte pelo conector (sem chave): veja "Como conectar".
-            </p>
+            <p className="text-xs text-muted-foreground">{KEY_USAGE_NOTE}</p>
           </div>
           <DialogFooter>
             <Button onClick={() => setRevealToken(null)}>Concluído</Button>
@@ -741,10 +729,7 @@ export default function IntegracoesClaudePage() {
               copiedKey={copiedKey}
               idPrefix="connect"
             />
-            <p className="text-xs text-muted-foreground">
-              Esta chave é para Claude Code, Codex, API ou agentes headless. No claude.ai, Claude
-              Desktop ou ChatGPT, conecte pelo conector (sem chave): veja "Como conectar".
-            </p>
+            <p className="text-xs text-muted-foreground">{KEY_USAGE_NOTE}</p>
           </div>
           <DialogFooter>
             <Button onClick={() => setConnectKey(null)}>Fechar</Button>
@@ -765,10 +750,7 @@ export default function IntegracoesClaudePage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (revokeTarget) revokeMutation.mutate(revokeTarget.id);
-                setRevokeTarget(null);
-              }}
+              onClick={confirmRevoke}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Revogar
@@ -800,10 +782,7 @@ export default function IntegracoesClaudePage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (revokeGrantTarget) revokeGrantMutation.mutate(revokeGrantTarget.id);
-                setRevokeGrantTarget(null);
-              }}
+              onClick={confirmRevokeGrant}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Desconectar

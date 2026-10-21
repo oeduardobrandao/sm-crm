@@ -328,3 +328,85 @@ describe('FilePickerModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe('modo single', () => {
+  function renderPicker(props: Partial<React.ComponentProps<typeof FilePickerModal>> = {}) {
+    return render(<FilePickerModal open={true} onClose={vi.fn()} {...props} />, {
+      wrapper: createWrapper(),
+    });
+  }
+
+  beforeEach(() => {
+    mockedGetFolderContents.mockReset();
+  });
+
+  it('abre em initialFolderId, filtra mime e lost, seleciona um só e devolve o registro', async () => {
+    mockedGetFolderContents.mockResolvedValue(
+      makeFolderContents({
+        files: [
+          makeFile({ id: 1, name: 'a.jpg', mime_type: 'image/jpeg', url: 'https://u/a' }),
+          makeFile({ id: 2, name: 'b.png', mime_type: 'image/png', url: 'https://u/b' }),
+          makeFile({ id: 3, name: 'c.gif', mime_type: 'image/gif' }),
+          makeFile({
+            id: 4,
+            name: 'd.jpg',
+            mime_type: 'image/jpeg',
+            media_lost_at: '2026-08-01T00:00:00Z',
+          }),
+        ],
+      }),
+    );
+    const onSelectRecords = vi.fn();
+    renderPicker({
+      selectionMode: 'single',
+      initialFolderId: 77,
+      filterKind: ['image'],
+      allowedMimes: ['image/jpeg', 'image/png', 'image/webp'],
+      onSelectRecords,
+    });
+    await waitFor(() => expect(mockedGetFolderContents).toHaveBeenCalledWith(77));
+    expect(screen.getByText('Escolher imagem')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('a.jpg')).toBeInTheDocument());
+    expect(screen.queryByText('c.gif')).not.toBeInTheDocument();
+    expect(screen.queryByText('d.jpg')).not.toBeInTheDocument();
+    expect(screen.getByText('Nenhuma imagem selecionada')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('a.jpg'));
+    fireEvent.click(screen.getByText('b.png'));
+    expect(screen.getByText('1 imagem selecionada')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Usar imagem' }));
+    expect(onSelectRecords).toHaveBeenCalledWith([expect.objectContaining({ id: 2 })]);
+  });
+
+  it('mantém a seleção ao navegar para outra pasta e devolve o registro da pasta de origem', async () => {
+    mockedGetFolderContents.mockImplementation(async (folderId) =>
+      folderId === 5
+        ? makeFolderContents({ files: [makeFile({ id: 50, name: 'outra.jpg' })] })
+        : makeFolderContents({
+            subfolders: [makeFolder({ id: 5, name: 'Outra' })],
+            files: [makeFile({ id: 1, name: 'a.jpg', url: 'https://u/a' })],
+          }),
+    );
+    const onSelectRecords = vi.fn();
+    renderPicker({ selectionMode: 'single', filterKind: ['image'], onSelectRecords });
+    await waitFor(() => expect(screen.getByText('a.jpg')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('a.jpg'));
+    fireEvent.click(screen.getByText('Outra'));
+    await waitFor(() => expect(screen.getByText('outra.jpg')).toBeInTheDocument());
+    expect(screen.getByText('1 imagem selecionada')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Usar imagem' }));
+    expect(onSelectRecords).toHaveBeenCalledWith([expect.objectContaining({ id: 1 })]);
+  });
+
+  it('segundo clique desmarca e desabilita o botão', async () => {
+    mockedGetFolderContents.mockResolvedValue(
+      makeFolderContents({ files: [makeFile({ id: 1, name: 'a.jpg' })] }),
+    );
+    renderPicker({ selectionMode: 'single', filterKind: ['image'] });
+    await waitFor(() => expect(screen.getByText('a.jpg')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('a.jpg'));
+    expect(screen.getByRole('button', { name: 'Usar imagem' })).toBeEnabled();
+    fireEvent.click(screen.getByText('a.jpg'));
+    expect(screen.getByText('Nenhuma imagem selecionada')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Usar imagem' })).toBeDisabled();
+  });
+});

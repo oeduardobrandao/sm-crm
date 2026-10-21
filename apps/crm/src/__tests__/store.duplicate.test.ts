@@ -42,6 +42,32 @@ describe('store duplicateWorkflow', () => {
     });
   });
 
+  it('carries the board plataformas over to the renewed workflow', async () => {
+    mockedSupabase.__queueSupabaseResult('workflows', 'select', {
+      data: {
+        id: 10,
+        cliente_id: 1,
+        titulo: 'Social Mensal',
+        template_id: 5,
+        status: 'concluido',
+        etapa_atual: 0,
+        recorrente: true,
+        plataformas: ['tiktok', 'geral'],
+      },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select', { data: [], error: null });
+    mockedSupabase.__queueSupabaseResult('workflows', 'insert', {
+      data: { id: 20, cliente_id: 1, titulo: 'Social Mensal', status: 'ativo', etapa_atual: 0 },
+      error: null,
+    });
+
+    await store.duplicateWorkflow(10);
+
+    const [insert] = getCalls('workflows', 'insert');
+    expect(insert.payload).toMatchObject({ plataformas: ['tiktok', 'geral'] });
+  });
+
   it('creates a fresh workflow copy with all steps reset', async () => {
     mockedSupabase.__queueSupabaseResult('workflows', 'select', {
       data: {

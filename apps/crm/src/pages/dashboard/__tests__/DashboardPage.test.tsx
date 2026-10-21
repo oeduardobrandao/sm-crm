@@ -19,6 +19,20 @@ const {
   toastErrorMock: vi.fn(),
 }));
 
+// The desktop layout unless a test flips it (jsdom's matchMedia reports false = phone).
+const layout = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => layout.desktop }));
+
+// The phone screen owns its sections' queries; tested in DashboardPhone.test.tsx.
+vi.mock('../phone/DashboardPhone', () => ({
+  DashboardPhone: (p: { isAgent: boolean; cards: React.ReactNode; footer: React.ReactNode }) => (
+    <div data-testid="dashboard-phone" data-agent={String(p.isAgent)}>
+      <div data-testid="phone-cards">{p.cards}</div>
+      <div data-testid="phone-footer">{p.footer}</div>
+    </div>
+  ),
+}));
+
 vi.mock('sonner', () => ({
   toast: { success: toastSuccessMock, error: toastErrorMock },
 }));
@@ -55,7 +69,23 @@ vi.mock('../components/TodayCard', () => ({
   TodayCard: () => <div data-testid="today-card">Hoje</div>,
 }));
 
+// MinhaFilaCard owns its queries (useMinhaFilaData) and is tested separately
+vi.mock('../components/MinhaFilaCard', () => ({
+  MinhaFilaCard: () => <div data-testid="minha-fila-card">Minha fila</div>,
+}));
+
+// The Vidro Início sections own their queries and are tested in InicioPrazos/InicioHealthTable.
+vi.mock('../components/InicioPrazos', () => ({
+  InicioPrazos: (p: { onlyMine: boolean }) => (
+    <div data-testid="inicio-prazos" data-only-mine={String(p.onlyMine)} />
+  ),
+}));
+vi.mock('../components/InicioHealthTable', () => ({
+  InicioHealthTable: () => <div data-testid="inicio-health-table" />,
+}));
+
 import DashboardPage from '../DashboardPage';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const mockedUseAuth = vi.mocked(useAuthMock);
 const mockedUseQueries = vi.mocked(useQueriesMock);
@@ -100,6 +130,7 @@ describe('DashboardPage', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(frozenNow);
+    layout.desktop = true;
 
     mockedUseAuth.mockReset();
     mockedUseQueries.mockReset();
@@ -343,6 +374,138 @@ describe('DashboardPage', () => {
 
       expect(toastSuccessMock).not.toHaveBeenCalled();
       expect(screen.getByTestId('location-search')).toHaveTextContent('?foo=bar');
+    });
+  });
+
+  it('renders MinhaFilaCard right after TodayCard for admins and agents alike', () => {
+    renderDashboardPage();
+    const today = screen.getByTestId('today-card');
+    const fila = screen.getByTestId('minha-fila-card');
+    expect(today.compareDocumentPosition(fila) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const health = screen.getByTestId('client-health-monitor');
+    expect(fila.compareDocumentPosition(health) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    mockedUseAuth.mockReturnValue({
+      role: 'agent',
+      workspaceRole: 'agent',
+      canSeeFinancials: false,
+    } as never);
+    renderDashboardPage();
+    expect(screen.getAllByTestId('minha-fila-card')).toHaveLength(2);
+    expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
+  });
+
+  describe('Vidro toolbar', () => {
+    function renderInVidro(vidroShell = true) {
+      return render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <DashboardPage />
+          </VidroToolbarHarness>
+        </MemoryRouter>,
+      );
+    }
+
+    it('puts Início and the capitalised day in the toolbar, as the only level-1 heading', () => {
+      renderInVidro();
+
+      const h1s = screen.getAllByRole('heading', { level: 1 });
+      expect(h1s).toHaveLength(1);
+      expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+      expect(h1s[0]).toHaveTextContent('Início');
+      expect(document.querySelector('.vidro-toolbar-subtitle')).toHaveTextContent(
+        'Sábado, 18 de abril',
+      );
+    });
+
+    it('swaps the Hoje card and health grid for Prazos and the health table', () => {
+      renderInVidro();
+
+      expect(document.querySelector('.inicio-vidro')).not.toBeNull();
+      expect(screen.getByTestId('inicio-prazos')).toBeInTheDocument();
+      expect(screen.getByTestId('inicio-health-table')).toBeInTheDocument();
+      expect(screen.getByTestId('minha-fila-card').closest('.inicio-vidro__side')).not.toBeNull();
+      expect(screen.queryByTestId('today-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('client-health-monitor')).not.toBeInTheDocument();
+    });
+
+    it('puts the Agência / Só meus toggle in the toolbar and hands the choice to Prazos', () => {
+      renderInVidro();
+
+      const mine = screen.getByRole('button', { name: 'Só meus' });
+      expect(mine.closest('.vidro-toolbar')).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'Agência' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.getByTestId('inicio-prazos')).toHaveAttribute('data-only-mine', 'false');
+
+      act(() => mine.click());
+      expect(mine).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('inicio-prazos')).toHaveAttribute('data-only-mine', 'true');
+    });
+
+    it('gives agents no scope toggle and their pending section instead of the health table', () => {
+      mockedUseAuth.mockReturnValue({
+        role: 'agent',
+        workspaceRole: 'agent',
+        canSeeFinancials: false,
+      } as never);
+      renderInVidro();
+
+      expect(screen.queryByRole('button', { name: 'Só meus' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
+      expect(screen.queryByTestId('inicio-health-table')).not.toBeInTheDocument();
+    });
+
+    it('renders no toolbar and no page heading when the Vidro shell is off', () => {
+      renderInVidro(false);
+
+      expect(document.querySelector('.vidro-toolbar')).toBeNull();
+      expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0);
+      expect(screen.getByTestId('today-card')).toBeInTheDocument();
+      expect(screen.getByTestId('client-health-monitor')).toBeInTheDocument();
+      expect(document.querySelector('.inicio-vidro')).toBeNull();
+      expect(screen.queryByTestId('inicio-prazos')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('phone (below 768px)', () => {
+    beforeEach(() => {
+      layout.desktop = false;
+    });
+
+    it('renders the phone screen instead of the desktop cards, with the finance tiles in its footer', () => {
+      mockedUseQueries.mockReturnValue(
+        makeDefaultUseQueries({
+          0: makeQueryResult({
+            transacoes: [
+              { id: 'tx-1', tipo: 'entrada', status: 'agendado', valor: 1200, descricao: 'A' },
+            ],
+            receitaMensal: 0,
+            despesaTotal: 0,
+            saldo: 0,
+            clientesAtivos: [],
+            clientes: [],
+          }),
+        }) as never,
+      );
+      renderDashboardPage();
+      expect(screen.getByTestId('dashboard-phone')).toHaveAttribute('data-agent', 'false');
+      expect(screen.queryByTestId('today-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('client-health-monitor')).not.toBeInTheDocument();
+      expect(screen.getByTestId('phone-footer')).toHaveTextContent('A receber');
+    });
+
+    it('tells the phone screen when the active workspace role is agent, with no finance tiles', () => {
+      mockedUseAuth.mockReturnValue({
+        role: 'owner',
+        workspaceRole: 'agent',
+        canSeeFinancials: false,
+      } as never);
+      renderDashboardPage();
+      expect(screen.getByTestId('dashboard-phone')).toHaveAttribute('data-agent', 'true');
+      expect(screen.getByTestId('phone-footer')).not.toHaveTextContent('A receber');
     });
   });
 });

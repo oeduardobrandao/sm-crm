@@ -17,7 +17,7 @@ const CRM_ALLOWED_STATUSES = [
 type DbClient = {
   auth: { getUser: (token: string) => Promise<{ data: { user: { id: string } | null }; error: unknown }> };
   from: (table: string) => any;
-  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
 };
 
 interface CrmReorderHandlerDeps {

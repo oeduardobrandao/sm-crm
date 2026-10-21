@@ -1,3 +1,4 @@
+import type { ContentFormat } from '@mesaas/platforms';
 import { supabase, getContaId, getUserId } from './core';
 
 export interface MensagemFeedItem {
@@ -97,7 +98,7 @@ export async function getMensagensConversas(): Promise<MensagemConversa[]> {
 export interface PostChipPreview {
   id: number;
   titulo: string;
-  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  tipo: ContentFormat;
   status: string;
   scheduled_at: string | null;
   /** NULL = post avulso (fora de fluxo). */

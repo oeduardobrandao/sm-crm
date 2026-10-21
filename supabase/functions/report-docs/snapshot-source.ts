@@ -3,6 +3,7 @@
 // ownership do cliente; este arquivo resolve por conta própria o entitlement
 // feature_brand_customization (fail-closed) para a config whitelabel do Hub.
 import { mapAudience, mapBestTimes } from "../instagram-report-generator-v2/mappers.ts";
+import { resolveBestTimes } from "../_shared/best-times.ts";
 import { decryptText } from "../_shared/crypto.ts";
 import {
   cachePostThumbnail, isEphemeralInstagramUrl, type ThumbnailStorage,
@@ -245,6 +246,13 @@ export async function loadClientSnapshot(
   warnQueryError("follower history", followerHistoryRes.error);
   warnQueryError("demographics cache", demographicsRes.error);
   warnQueryError("best times cache", bestTimesRes.error);
+  // A missing or pre-São Paulo row is recomputed here: this path never calls /best-times.
+  const bestTimesData = await resolveBestTimes(
+    db,
+    igAccountId,
+    bestTimesRes.data?.data,
+    "[report-docs]",
+  );
   warnQueryError("tag performance", tagPerformanceRes.error);
   warnQueryError("report-month monthly metrics", monthlyRowRes.error);
   warnQueryError("prev-month monthly metrics", prevMonthlyRowRes.error);
@@ -378,7 +386,7 @@ export async function loadClientSnapshot(
     posts,
     stableThumbnails,
     audience: mapAudience(demographicsRes.data?.data ?? null),
-    bestTimes: mapBestTimes(bestTimesRes.data?.data ?? []),
+    bestTimes: mapBestTimes(bestTimesData ?? []),
     tagsPerformance: (tagPerformanceRes.data as TagPerformance[] | null) ?? [],
   });
 

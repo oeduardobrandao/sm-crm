@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { eventMeta, eventDescription, FILTERABLE_TYPES } from '../workspace-events';
+import {
+  eventMeta,
+  eventDescription,
+  filterActions,
+  FILTERABLE_TYPES,
+  POPUP_ACTIONS,
+} from '../workspace-events';
 import type { WorkspaceEvent } from '../../lib/api';
 
 function makeEvent(overrides: Partial<WorkspaceEvent> = {}): WorkspaceEvent {
@@ -35,6 +41,16 @@ describe('eventMeta', () => {
 
   it('returns known label for post-agendado', () => {
     expect(eventMeta('post-agendado').label).toBe('Post agendado');
+  });
+
+  it('labels every popup interaction with a dedicated icon', () => {
+    expect(eventMeta('popup-seen').label).toBe('Popup visualizado');
+    expect(eventMeta('popup-closed').label).toBe('Popup fechado');
+    expect(eventMeta('popup-cta').label).toBe('Popup: clique no botão');
+    expect(eventMeta('popup-ack').label).toBe('Popup confirmado');
+    for (const a of POPUP_ACTIONS) {
+      expect(eventMeta(a).icon).not.toBe('Activity');
+    }
   });
 
   it('falls back to cleaned action string for unknown actions', () => {
@@ -78,6 +94,25 @@ describe('eventDescription', () => {
     expect(desc).toBe('por Ana');
   });
 
+  it('returns the popup title for popup interactions', () => {
+    for (const action of POPUP_ACTIONS) {
+      const desc = eventDescription(
+        makeEvent({
+          action,
+          resource_type: 'popup',
+          metadata: { popup_id: 'p1', title: 'Novidades de outubro' },
+        }),
+      );
+      expect(desc).toBe('Novidades de outubro');
+    }
+  });
+
+  it('returns empty string for a popup interaction without a title', () => {
+    expect(eventDescription(makeEvent({ action: 'popup-cta', metadata: { popup_id: 'p1' } }))).toBe(
+      '',
+    );
+  });
+
   it('returns empty string when metadata is null', () => {
     expect(eventDescription(makeEvent({ metadata: null }))).toBe('');
   });
@@ -99,5 +134,19 @@ describe('FILTERABLE_TYPES', () => {
   it('has unique values', () => {
     const values = FILTERABLE_TYPES.map((t) => t.value);
     expect(new Set(values).size).toBe(values.length);
+  });
+});
+
+describe('filterActions', () => {
+  it('expands the popups group into every popup action', () => {
+    expect(filterActions('popups')).toEqual(POPUP_ACTIONS);
+  });
+
+  it('passes a single action through', () => {
+    expect(filterActions('client-create')).toEqual(['client-create']);
+  });
+
+  it('is offered in the filter', () => {
+    expect(FILTERABLE_TYPES.map((t) => t.value)).toContain('popups');
   });
 });
