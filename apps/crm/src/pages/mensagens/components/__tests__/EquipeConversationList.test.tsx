@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import type { ComponentProps } from 'react';
 import { EquipeConversationList } from '../EquipeConversationList';
-import type { EquipeConversa } from '@/store';
+import type { EquipeChatMember, EquipeConversa } from '@/store';
 
 const CONVERSAS: EquipeConversa[] = [
   {
@@ -19,6 +19,7 @@ const CONVERSAS: EquipeConversa[] = [
     last_created_at: '2026-07-30T12:00:00.000Z',
     last_message_id: 10,
     unread_count: 2,
+    dm_user_id: null,
   },
   {
     conversa_id: 2,
@@ -34,25 +35,33 @@ const CONVERSAS: EquipeConversa[] = [
     last_created_at: '2026-07-31T09:00:00.000Z',
     last_message_id: 11,
     unread_count: 0,
+    dm_user_id: 'u-ana',
   },
+];
+
+const COLEGAS: EquipeChatMember[] = [
+  { user_id: 'u-carla', nome: 'Carla Dias', avatar_url: null, role: 'agent' },
 ];
 
 function renderList(overrides: Partial<ComponentProps<typeof EquipeConversationList>> = {}) {
   const onSelect = vi.fn();
+  const onSelectColega = vi.fn();
   const onNovaConversa = vi.fn();
   const { unmount } = render(
     <EquipeConversationList
       conversas={CONVERSAS}
+      colegas={[]}
       isLoading={false}
       isError={false}
       selectedConversaId={null}
       currentUserId="u-eu"
       onSelect={onSelect}
+      onSelectColega={onSelectColega}
       onNovaConversa={onNovaConversa}
       {...overrides}
     />,
   );
-  return { onSelect, onNovaConversa, unmount };
+  return { onSelect, onSelectColega, onNovaConversa, unmount };
 }
 
 describe('EquipeConversationList', () => {
@@ -72,11 +81,13 @@ describe('EquipeConversationList', () => {
     const { container } = render(
       <EquipeConversationList
         conversas={CONVERSAS}
+        colegas={[]}
         isLoading={false}
         isError={false}
         selectedConversaId={null}
         currentUserId={null}
         onSelect={vi.fn()}
+        onSelectColega={vi.fn()}
         onNovaConversa={vi.fn()}
       />,
     );
@@ -155,6 +166,31 @@ describe('EquipeConversationList', () => {
     unmount();
     renderList({ isError: true });
     expect(screen.getByText('Não foi possível carregar as conversas.')).toBeInTheDocument();
+  });
+
+  it('lists colleagues with no DM after the active conversations and opens their DM', () => {
+    const { onSelectColega } = renderList({ colegas: COLEGAS });
+    const row = screen.getByTestId('equipe-colega-u-carla');
+    expect(row).toHaveTextContent('Carla Dias');
+    expect(row).toHaveTextContent('Sem mensagens ainda. Comece a conversa!');
+    expect(
+      screen.getByTestId('equipe-conversa-1').compareDocumentPosition(row) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(row);
+    expect(onSelectColega).toHaveBeenCalledWith('u-carla');
+  });
+
+  it('finds colleagues by name in the search', () => {
+    renderList({ colegas: COLEGAS });
+    fireEvent.change(screen.getByLabelText('Buscar conversa'), { target: { value: 'carla' } });
+    expect(screen.getByTestId('equipe-colega-u-carla')).toBeInTheDocument();
+    expect(screen.queryByTestId('equipe-conversa-1')).not.toBeInTheDocument();
+  });
+
+  it('disables the colleague rows while a DM is being opened', () => {
+    renderList({ colegas: COLEGAS, abrindoColegaId: 'u-carla' });
+    expect(screen.getByTestId('equipe-colega-u-carla')).toBeDisabled();
   });
 
   it('shows the empty state when there are no conversations', () => {

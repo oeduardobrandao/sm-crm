@@ -56,6 +56,7 @@ function conversa(overrides: Partial<EquipeConversa> = {}): EquipeConversa {
     last_created_at: '2026-07-30T12:00:00.000Z',
     last_message_id: 2,
     unread_count: 0,
+    dm_user_id: null,
     ...overrides,
   };
 }
@@ -88,10 +89,12 @@ describe('EquipeListPhone', () => {
   function renderList(overrides: Partial<ComponentProps<typeof EquipeListPhone>> = {}) {
     const props: ComponentProps<typeof EquipeListPhone> = {
       conversas: CONVERSAS,
+      colegas: [],
       isLoading: false,
       isError: false,
       currentUserId: 'user-1',
       onSelect: vi.fn(),
+      onSelectColega: vi.fn(),
       onNovaConversa: vi.fn(),
       ...overrides,
     };
@@ -131,6 +134,29 @@ describe('EquipeListPhone', () => {
   it('shows the empty note when there are no conversations', () => {
     renderList({ conversas: [] });
     expect(screen.getByText(/Nenhuma conversa ainda/)).toBeInTheDocument();
+  });
+
+  it('lists colleagues with no DM below the conversations and opens their DM on tap', () => {
+    const props = renderList({
+      colegas: [{ user_id: 'user-9', nome: 'Carla', avatar_url: null, role: 'agent' }],
+    });
+    const row = screen.getByTestId('equipe-colega-user-9');
+    expect(row).toHaveTextContent('Carla');
+    expect(row).toHaveTextContent('Sem mensagens ainda. Comece a conversa!');
+    expect(
+      screen.getByTestId('equipe-conversa-42').compareDocumentPosition(row) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(row);
+    expect(props.onSelectColega).toHaveBeenCalledWith('user-9');
+  });
+
+  it('disables the colleague rows while a DM is being opened', () => {
+    renderList({
+      colegas: [{ user_id: 'user-9', nome: 'Carla', avatar_url: null, role: 'agent' }],
+      abrindoColegaId: 'user-9',
+    });
+    expect(screen.getByTestId('equipe-colega-user-9')).toBeDisabled();
   });
 });
 

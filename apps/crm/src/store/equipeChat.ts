@@ -1,4 +1,4 @@
-import { supabase } from './core';
+import { supabase, getUserId } from './core';
 
 export interface EquipeConversa {
   conversa_id: number;
@@ -18,6 +18,8 @@ export interface EquipeConversa {
   last_created_at: string | null;
   last_message_id: number | null;
   unread_count: number;
+  /** DM: user_id do colega; grupo (ou DM cujo colega apagou a conta): NULL. */
+  dm_user_id: string | null;
 }
 
 export interface EquipeMensagemAnexo {
@@ -52,10 +54,30 @@ export interface EquipeMensagensCursor {
 
 const PAGE_SIZE = 50;
 
+/** Conversas do usuario, cada DM com o colega (`dm_user_id`). O colega vem de um
+ * select em equipe_conversa_participantes (RLS: so conversas em que o usuario
+ * participa) feito junto com a RPC e devolvido no MESMO resultado: a aba Equipe
+ * lista os colegas sem DM, e dois fetches separados mostrariam por um instante o
+ * colega e a DM recem-criada com ele lado a lado. */
 export async function getEquipeConversas(): Promise<EquipeConversa[]> {
-  const { data, error } = await supabase.rpc('get_equipe_conversas', {});
-  if (error) throw error;
-  return (data ?? []) as EquipeConversa[];
+  const uid = await getUserId();
+  const [conversas, outros] = await Promise.all([
+    supabase.rpc('get_equipe_conversas', {}),
+    supabase
+      .from('equipe_conversa_participantes')
+      .select('conversa_id, user_id')
+      .neq('user_id', uid),
+  ]);
+  if (conversas.error) throw conversas.error;
+  if (outros.error) throw outros.error;
+  const colegaDe = new Map<number, string>();
+  for (const row of (outros.data ?? []) as { conversa_id: number; user_id: string }[]) {
+    colegaDe.set(row.conversa_id, row.user_id);
+  }
+  return ((conversas.data ?? []) as Omit<EquipeConversa, 'dm_user_id'>[]).map((c) => ({
+    ...c,
+    dm_user_id: c.tipo === 'dm' ? (colegaDe.get(c.conversa_id) ?? null) : null,
+  }));
 }
 
 export async function getEquipeMensagens(params: {
