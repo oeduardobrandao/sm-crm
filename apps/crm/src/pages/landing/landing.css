@@ -1,9 +1,8 @@
 /* Plus Jakarta Sans (incl. the 900 the hero title uses) is loaded once from the
    document head — do not re-import it here, the duplicate @import chained an extra
    render-blocking request (PageSpeed: network dependency tree). Fraunces/Instrument
-   Sans are only used below the fold (testimonial + Hub mockup), so lazy-loading them
-   with this chunk is fine. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap');
+   Sans load non-blocking from landing-styles.ts: never @import fonts here, the
+   prerendered `/` links this file from <head>. */
 
 /* ---- animations ---- */
 @keyframes fadeInUp {

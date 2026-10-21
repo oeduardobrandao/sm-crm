@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ComponentType } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { handleEntitlementMutationError } from './lib/entitlement-toast';
@@ -11,9 +11,35 @@ import CookieConsent from './components/consent/CookieConsent';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import AppLayout from './components/layout/AppLayout';
-import ProtectedRoute from './components/layout/ProtectedRoute';
-import { marketingPageBySlug } from '@/content/paginas';
+import { loadLazyNamespaces } from '@mesaas/i18n';
+
+// The authenticated shell stays out of the entry chunk the public landing page downloads.
+// ProtectedRoute imports AppLayout (isLayoutGuardedPath), so both must be lazy for the shell
+// (Sidebar, MobileNav, nav data, guide content, stores) to leave the entry. ProtectedRoute
+// wraps every authenticated route, so its chunk also waits for the lazy i18n namespaces:
+// nothing behind it then suspends on a missing bundle, and once they're in i18next's `ns`
+// list a language switch fetches the other language's bundles before it applies.
+const ProtectedRoute = lazy(() =>
+  Promise.all([import('./components/layout/ProtectedRoute'), loadLazyNamespaces()]).then(
+    ([mod]) => mod,
+  ),
+);
+const AppLayout = lazy(() => import('./components/layout/AppLayout'));
+
+// A stored Supabase session means this visit is headed for the app: fetch the shell chunk now,
+// in parallel with auth hydration, instead of after it. Only the module is warmed (the lazy()
+// above reuses it); the namespaces wait for the route, since initI18n has not run yet when this
+// module evaluates.
+try {
+  for (let i = 0; i < localStorage.length; i++) {
+    if (/^sb-[a-z0-9]+-auth-token$/.test(localStorage.key(i) ?? '')) {
+      void import('./components/layout/ProtectedRoute').catch(() => {});
+      break;
+    }
+  }
+} catch {
+  // Storage blocked: the shell loads when its route renders.
+}
 
 // Public pages
 const LoginPage = lazy(() => import('./pages/login/LoginPage'));
@@ -25,12 +51,36 @@ const ConsentPage = lazy(() => import('./pages/oauth/ConsentPage'));
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
-const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
+const LandingPageLazy = lazy(() => import('./pages/landing/LandingPage'));
+// Set by preloadLanding() before the first render on `/`, so the hero paints in the same frame
+// as the rest of the shell. A plain lazy() always suspends once: the cookie banner (entry chunk)
+// painted first and the hero one async step later, which made the banner the mobile LCP element.
+let LandingPageReady: ComponentType | null = null;
+export function preloadLanding(): Promise<void> {
+  return import('./pages/landing/LandingPage').then((mod) => {
+    LandingPageReady = mod.default;
+  });
+}
+function LandingPage() {
+  return LandingPageReady ? <LandingPageReady /> : <LandingPageLazy />;
+}
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
 const BlogIndexPage = lazy(() => import('./pages/blog/BlogIndexPage'));
 const BlogPostPage = lazy(() => import('./pages/blog/BlogPostPage'));
 const PrecosPage = lazy(() => import('./pages/precos/PrecosPage'));
-const MarketingPage = lazy(() => import('./pages/marketing/MarketingPage'));
+// The marketing subpages' copy loads with their route, not with the entry.
+const MarketingRoute = lazy(async () => {
+  const [{ marketingPageBySlug }, { default: MarketingPage }] = await Promise.all([
+    import('@/content/paginas'),
+    import('./pages/marketing/MarketingPage'),
+  ]);
+  function MarketingRoute({ slug }: { slug: string }) {
+    const page = marketingPageBySlug(slug);
+    if (!page) return <Navigate to="/" replace />;
+    return <MarketingPage page={page} />;
+  }
+  return { default: MarketingRoute };
+});
 const AfiliadosPage = lazy(() => import('./pages/afiliados/AfiliadosPage'));
 const AfiliadoPainelPage = lazy(() => import('./pages/afiliados/AfiliadoPainelPage'));
 const AfiliadoEntrarPage = lazy(() => import('./pages/afiliados/AfiliadoEntrarPage'));
@@ -111,12 +161,6 @@ const PageFallback = (
     <Spinner size="lg" />
   </div>
 );
-
-function MarketingRoute({ slug }: { slug: string }) {
-  const page = marketingPageBySlug(slug);
-  if (!page) return <Navigate to="/" replace />;
-  return <MarketingPage page={page} />;
-}
 
 export default function App() {
   return (

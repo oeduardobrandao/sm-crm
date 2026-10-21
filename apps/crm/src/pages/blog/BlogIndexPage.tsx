@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { ArrowRight } from 'lucide-react';
 import './blog.css';
-import '../landing/landing.css';
+import '../landing/landing-styles';
 import { LandingFooter, LandingHeader, useLandingChrome } from '../landing/LandingChrome';
 import { BLOG_POSTS } from '@/content/blog.client';
 import { BLOG_INDEX_PATH, CATEGORY_LABEL, formatPostDate, postPath } from '@/content/blog';

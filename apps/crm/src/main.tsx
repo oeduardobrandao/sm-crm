@@ -5,24 +5,13 @@ import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycl
 import { initSentry } from '@/lib/sentry';
 import { installConsentEffects } from './lib/consentEffects';
 import { captureReferral } from './lib/referral';
-import { initI18n } from '@mesaas/i18n';
+import { initI18n, type NamespaceLoader } from '@mesaas/i18n';
+// Only `common` is bundled: it is all the public pages (landing, pricing, consent banner) need.
+// The rest is fetched per language+namespace on demand; ProtectedRoute's lazy chunk preloads
+// them all (App.tsx) before any authenticated route renders.
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
-import ptDashboard from '../../../packages/i18n/locales/pt/dashboard.json';
-import enDashboard from '../../../packages/i18n/locales/en/dashboard.json';
-import ptClients from '../../../packages/i18n/locales/pt/clients.json';
-import enClients from '../../../packages/i18n/locales/en/clients.json';
-import ptLeads from '../../../packages/i18n/locales/pt/leads.json';
-import enLeads from '../../../packages/i18n/locales/en/leads.json';
-import ptPosts from '../../../packages/i18n/locales/pt/posts.json';
-import enPosts from '../../../packages/i18n/locales/en/posts.json';
-import ptAuth from '../../../packages/i18n/locales/pt/auth.json';
-import enAuth from '../../../packages/i18n/locales/en/auth.json';
-import ptBrand from '../../../packages/i18n/locales/pt/brand.json';
-import enBrand from '../../../packages/i18n/locales/en/brand.json';
-import ptAutomations from '../../../packages/i18n/locales/pt/automations.json';
-import enAutomations from '../../../packages/i18n/locales/en/automations.json';
-import App, { queryClient } from './App';
+import App, { preloadLanding, queryClient } from './App';
 import '../style.css';
 import './styles/vidro.css';
 import './styles/vidro-body/tokens.css';
@@ -49,28 +38,41 @@ installConsentEffects();
 // Programa de afiliados: grava o ?ref= de qualquer página do site para o cadastro (lib/referral.ts).
 captureReferral(window.location.search);
 
-initI18n({
+type LocaleModule = Promise<{ default: Record<string, unknown> }>;
+
+// Explicit per-file imports (not a template-string import) so Vite emits one small chunk per
+// bundle, and only for the CRM's namespaces, never the Hub's.
+const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
   pt: {
-    common: ptCommon,
-    dashboard: ptDashboard,
-    clients: ptClients,
-    leads: ptLeads,
-    posts: ptPosts,
-    auth: ptAuth,
-    brand: ptBrand,
-    automations: ptAutomations,
+    dashboard: () => import('../../../packages/i18n/locales/pt/dashboard.json'),
+    clients: () => import('../../../packages/i18n/locales/pt/clients.json'),
+    leads: () => import('../../../packages/i18n/locales/pt/leads.json'),
+    posts: () => import('../../../packages/i18n/locales/pt/posts.json'),
+    auth: () => import('../../../packages/i18n/locales/pt/auth.json'),
+    brand: () => import('../../../packages/i18n/locales/pt/brand.json'),
+    automations: () => import('../../../packages/i18n/locales/pt/automations.json'),
   },
   en: {
-    common: enCommon,
-    dashboard: enDashboard,
-    clients: enClients,
-    leads: enLeads,
-    posts: enPosts,
-    auth: enAuth,
-    brand: enBrand,
-    automations: enAutomations,
+    dashboard: () => import('../../../packages/i18n/locales/en/dashboard.json'),
+    clients: () => import('../../../packages/i18n/locales/en/clients.json'),
+    leads: () => import('../../../packages/i18n/locales/en/leads.json'),
+    posts: () => import('../../../packages/i18n/locales/en/posts.json'),
+    auth: () => import('../../../packages/i18n/locales/en/auth.json'),
+    brand: () => import('../../../packages/i18n/locales/en/brand.json'),
+    automations: () => import('../../../packages/i18n/locales/en/automations.json'),
   },
-});
+};
+
+const loadLocale: NamespaceLoader = async (lng, ns) => {
+  const load = LAZY_LOCALES[lng]?.[ns];
+  if (!load) throw new Error(`No locale bundle for ${lng}/${ns}`);
+  return (await load()).default;
+};
+
+initI18n(
+  { pt: { common: ptCommon }, en: { common: enCommon } },
+  { lazy: { namespaces: Object.keys(LAZY_LOCALES.pt), load: loadLocale } },
+);
 
 // Minimal DATA router (single splat route; App keeps its own descendant <Routes>). It was
 // introduced because `useBlocker` needs data-router context, for the Estúdio autosave's
@@ -83,4 +85,17 @@ const router = createBrowserRouter([{ path: '*', element: <App /> }]);
 // the tab has been hidden or idle for a while, never starting over unsaved work or an in-flight mutation.
 installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 
-ReactDOM.createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);
+// On the landing page, render once its chunk is in (the prerendered HTML modulepreloads it, so
+// this is a short wait): the hero then paints together with the cookie banner. A failed or slow
+// import renders anyway after 2s and falls back to the route's lazy() loading, so a stalled chunk
+// never leaves the page blank until index.html's 8s #lp-ssr fallback.
+const firstRender =
+  window.location.pathname === '/'
+    ? Promise.race([
+        preloadLanding().catch(() => {}),
+        new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+      ])
+    : Promise.resolve();
+void firstRender.then(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);
+});

@@ -14,6 +14,7 @@ vi.mock('@/services/billing', () => ({
 
 import { listPublicPricingPlans } from '@/services/billing';
 import LandingPage from '../LandingPage';
+import { HERO_MACBOOK_SIZES, HERO_MACBOOK_SRCSET } from '../landing-visuals';
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: authState.user, loading: false, profile: null, role: 'owner' }),
@@ -190,6 +191,21 @@ describe('LandingPage', () => {
     renderLandingPage();
 
     expect(screen.queryByRole('button', { name: 'Alternar tema' })).not.toBeInTheDocument();
+  });
+
+  it('serves responsive srcsets for the screenshots, hero matching the preload contract', () => {
+    renderLandingPage();
+
+    const macbook = document.querySelector('img.lp2-hd-macbook');
+    expect(macbook).toHaveAttribute('srcset', HERO_MACBOOK_SRCSET);
+    expect(macbook).toHaveAttribute('sizes', HERO_MACBOOK_SIZES);
+    expect(macbook).toHaveAttribute('fetchpriority', 'high');
+    const shots = document.querySelectorAll('img.lp2-shot, img.lp2-hd-iphone');
+    expect(shots.length).toBe(5);
+    shots.forEach((img) => {
+      expect(img.getAttribute('srcset')).toMatch(/-dark-\d+w\.webp \d+w/);
+      expect(img).toHaveAttribute('sizes');
+    });
   });
 
   it('shows the promo banner and hides it (persisted) after dismissing', () => {

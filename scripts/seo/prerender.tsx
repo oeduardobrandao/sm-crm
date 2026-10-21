@@ -32,6 +32,11 @@ import { changelogSchema } from '../../apps/crm/src/content/changelog.schema';
 import { renderChangelogHtml } from '../../apps/crm/src/content/changelog.seo';
 import { loadPostsFromDisk } from './blog-fs';
 import { mustReplace } from './mustReplace';
+import { imagePreloadTag, routePreloadTags, type BuildManifest } from './routePreload';
+import {
+  HERO_MACBOOK_SIZES,
+  HERO_MACBOOK_SRCSET,
+} from '../../apps/crm/src/pages/landing/landing-visuals';
 import { renderBlogIndexHtml, renderBlogPostHtml } from '../../apps/crm/src/content/blog.seo';
 import { blogPostRouteMeta, postPath } from '../../apps/crm/src/content/blog';
 import {
@@ -61,6 +66,10 @@ function bodyFor(path: string): string | undefined {
 }
 
 const shell = readFileSync('dist/index.html', 'utf8');
+// Written by `vite build` (build.manifest in apps/crm/vite.config.ts). Only the
+// prerendered marketing routes get preload hints; app.html and 404.html stay
+// on the pristine shell.
+const manifest = JSON.parse(readFileSync('dist/build-manifest.json', 'utf8')) as BuildManifest;
 
 function stripBaseMeta(html: string): string {
   let out = mustReplace(html, /<title>[\s\S]*?<\/title>\n?/, '', 'stripBaseMeta:title');
@@ -104,10 +113,17 @@ for (const route of PUBLIC_ROUTES) {
   }
   let html = stripBaseMeta(shell);
   const jsonLd = route.path === '/blog' ? [blogIndexJsonLd(posts)] : jsonLdForPath(route.path);
+  // The landing is always dark, so its LCP image is the dark MacBook render.
+  const preload = [
+    route.path === '/' ? imagePreloadTag(HERO_MACBOOK_SRCSET, HERO_MACBOOK_SIZES) : '',
+    routePreloadTags(manifest, route.path),
+  ]
+    .filter(Boolean)
+    .join('\n    ');
   html = mustReplace(
     html,
     '</head>',
-    `    ${buildHeadTags(route, jsonLd)}\n  </head>`,
+    `    ${buildHeadTags(route, jsonLd)}\n${preload ? `    ${preload}\n` : ''}  </head>`,
     `${route.path}:head`,
   );
   html = mustReplace(
