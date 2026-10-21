@@ -42,8 +42,13 @@
 **Interfaces:**
 - Produces: `public.set_member_photo(p_membro_id bigint, p_user_id uuid, p_path text) RETURNS text` (the stored URL, or NULL when removing). Errors: `'Insufficient permissions'`, `'invalid_target'` (both or neither target), `'invalid_photo_path'`, `'photo_not_found'`, `'project_url_missing'`.
 
-- [ ] **Step 1: Write the failing entitlement suite** `67_fotos_perfil_equipe.sql`, modeled on `66_cliente_foto_owner_admin.sql` (`\i _helpers.sql`, `begin; select et_grant_hosted_parity();`, `et_make_workspace('max')`, impersonate with `set_config('request.jwt.claims', ...)` + `set local role authenticated`, `rollback` at the end). Seed `project_url` in Vault when missing (`select vault.create_secret('http://example.test', 'project_url')`), and insert `storage.objects` rows with `bucket_id, name, owner, owner_id` set to the impersonated user. Cases (each `RAISE EXCEPTION` on failure):
-  - `self ok`: user U (member of A and B, linked membro in each) calls with `p_user_id = U`, path `profiles/U/x.jpg` → returns `'http://example.test/storage/v1/object/public/avatars/profiles/U/x.jpg'`; `profiles.avatar_url` and both membros rows equal it.
+- [ ] **Step 1: Write the failing entitlement suite** `67_fotos_perfil_equipe.sql`, modeled on `66_cliente_foto_owner_admin.sql` (`\i _helpers.sql`, `begin;`, `et_make_workspace('max')`, impersonate with `set_config('request.jwt.claims', ...)` + `set local role authenticated`, `rollback` at the end).
+  - Grants: `select et_grant_hosted_parity('{membros}');` then `grant select, insert, delete on public.membros to authenticated;` and re-run the migration's column-level `GRANT UPDATE (nome, cargo, tipo, custo_mensal, data_pagamento)` (plain `et_grant_hosted_parity()` grants table-level UPDATE and would hide the revoke; `_helpers.sql:32-42`).
+  - Vault: CI's DB already has `project_url` (seeded with the prod host by `20260324_schedule_instagram_sync_cron.sql:18-22`), so do NOT assume a value: read it once (`select rtrim(decrypted_secret,'/') into v_base from vault.decrypted_secrets where name='project_url'`, creating it only if absent) and build every expected URL from `v_base`.
+  - Storage seed rows: `insert into storage.objects (bucket_id, name, owner) values ('avatars', <path>, <uploader uuid>)`. Do not reference `owner_id` (may not exist in the CI schema).
+  - service_role impersonation needs `request.jwt.claims` with `"role":"service_role"` (as in `66_...sql:158-160`), not just `set local role`.
+  Cases (each `RAISE EXCEPTION` on failure):
+  - `self ok`: user U (member of A and B, linked membro in each) calls with `p_user_id = U`, path `profiles/U/x.jpg` → returns `v_base || '/storage/v1/object/public/avatars/profiles/U/x.jpg'`; `profiles.avatar_url` and both membros rows equal it.
   - `self sync skips left conta`: delete U from B's `workspace_members`, set again → B's membro keeps the previous URL.
   - `self other user denied`: U calls with `p_user_id = V` → `Insufficient permissions`.
   - `editor ok, no login`: owner of A sets membro M (no `crm_user_id`) with `membros/M/y.jpg` → only M changes.
@@ -56,9 +61,9 @@
   - `missing object denied` → `photo_not_found`; `object of another owner denied` → `photo_not_found`.
   - `remove`: `p_path = NULL` → NULL everywhere the set wrote.
   - `insert forces null`: as authenticated, `insert into membros (..., avatar_url) values (..., 'https://evil.example/a.jpg')` → row has NULL; as `service_role` with `''` → NULL; as `service_role` with a URL → kept.
-  - `direct update denied`: as authenticated, `update membros set avatar_url = 'x'` → permission denied.
-  - `link copies profile photo`, `link raises membro photo when profile empty`, `relink does not raise old photo` (membro carrying X's copy relinked to Y with no photo → membro NULL, Y's profile NULL), `unlink keeps copy`.
-  - `storage policy`: authenticated U can insert `profiles/U/z.jpg` but not `profiles/V/z.jpg`; agent cannot insert `membros/M/z.jpg`; owner of B cannot insert A's `membros/M/z.jpg`.
+  - `direct update denied`: `has_column_privilege('authenticated','public.membros','avatar_url','UPDATE')` is false, and as authenticated `update membros set avatar_url = 'x'` raises 42501.
+  - `link copies profile photo`, `link raises membro photo when profile empty` (and copies it to U's membros in U's other current contas), `relink does not raise old photo` (membro carrying X's copy relinked to Y with no photo → membro NULL, Y's profile NULL), `unlink keeps copy`, `same-value relink is a no-op` (`set_membro_crm_user(M, <current>)` leaves `avatar_url` untouched).
+  - `storage policy`: authenticated U can insert `profiles/U/z.jpg` into `avatars` but not `profiles/V/z.jpg`, and not `profiles/U/z.jpg` into another bucket (e.g. `post-media`/any existing non-avatars bucket); **owner of A can insert `membros/M/z.jpg`** (positive case, proves the policy is live); agent cannot; owner of B cannot insert A's `membros/M/z.jpg`.
 
 - [ ] **Step 2: Run it and see it fail**
 
@@ -67,11 +72,13 @@ Expected: FAIL, `function set_member_photo does not exist`.
 
 - [ ] **Step 3: Write the migration** with, in order:
   1. `UPDATE membros SET avatar_url = NULL WHERE avatar_url = '';` and the same for `profiles`; `ALTER TABLE membros ALTER COLUMN avatar_url DROP DEFAULT` if a `''` default exists (check with `\d membros`).
-  2. Remove `avatar_url` from the `GRANT UPDATE (...) ON membros TO authenticated` list: `REVOKE UPDATE ON public.membros FROM authenticated;` then re-grant the exact current column list from `20260430000001` minus `avatar_url` (read the current grant from the latest migration that touches it before writing).
-  3. `trg_membros_avatar_insert` BEFORE INSERT: `IF auth.role() = 'service_role' THEN NEW.avatar_url := NULLIF(NEW.avatar_url, ''); ELSE NEW.avatar_url := NULL; END IF;`
-  4. `trg_membros_link_photo` BEFORE UPDATE OF `crm_user_id`, SECURITY DEFINER function, the three rules of the spec (link / relink / unlink). The "raise to profile" write is `UPDATE profiles SET avatar_url = NEW.avatar_url WHERE id = NEW.crm_user_id AND avatar_url IS NULL`, only when `OLD.crm_user_id IS NULL`.
-  5. `set_member_photo` (SECURITY DEFINER, `SET search_path = public, pg_temp`). Path regex: self `^profiles/<uid>/[^/]+$`, editor `^membros/<id>/[^/]+$`. Object check: `EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'avatars' AND o.name = p_path AND (o.owner_id = auth.uid()::text OR o.owner = auth.uid()))`. URL: `rtrim((SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'project_url'), '/') || '/storage/v1/object/public/avatars/' || p_path`. "Current contas" = `conta_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = <login>)`. Then `REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon; GRANT EXECUTE ... TO authenticated;`.
-  6. Storage policies `pessoa_photo_self_insert` (`(storage.foldername(name))[1] = 'profiles' AND (storage.foldername(name))[2] = auth.uid()::text`) and `pessoa_photo_membro_insert` (`[1] = 'membros'` and the membro's conta passes `has_permission_for(auth.uid(), m.conta_id, 'equipe', 'editar')`). INSERT only, no UPDATE policy.
+  2. Remove `avatar_url` from the membros UPDATE grant: `REVOKE UPDATE ON public.membros FROM authenticated; GRANT UPDATE (nome, cargo, tipo, custo_mensal, data_pagamento) ON public.membros TO authenticated;` (current list is `(nome, cargo, tipo, custo_mensal, avatar_url, data_pagamento)`, `20260430000001:87`; no default exists on the column, nothing to drop).
+  3. `trg_membros_avatar_insert` BEFORE INSERT, function **SECURITY INVOKER** (so `current_user` is the real caller): `IF auth.role() = 'service_role' OR current_user IN ('postgres','supabase_admin') THEN NEW.avatar_url := NULLIF(NEW.avatar_url, ''); ELSE NEW.avatar_url := NULL; END IF;` (same trusted-caller whitelist as `20260728000002:235-236`).
+  4. `trg_membros_link_photo` BEFORE UPDATE OF `crm_user_id`, SECURITY DEFINER function. First line: `IF OLD.crm_user_id IS NOT DISTINCT FROM NEW.crm_user_id THEN RETURN NEW; END IF;` (`set_membro_crm_user` re-sets the same value). Then the three rules of the spec (link / relink / unlink). On a first link (`OLD.crm_user_id IS NULL`) with an empty profile and a membro photo, raise it: `UPDATE profiles SET avatar_url = NEW.avatar_url WHERE id = NEW.crm_user_id AND avatar_url IS NULL` and copy it to the person's other membros in current contas (one person, one photo).
+  5. `set_member_photo` (SECURITY DEFINER, `SET search_path = public, pg_temp`). Permission for the membro target: `public.has_permission_for(auth.uid(), v_membro_conta, 'equipe', 'editar')` (callable here because DEFINER runs as owner). Path regex: self `^profiles/<uid>/[^/]+$`, editor `^membros/<id>/[^/]+$`. Object check: `EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'avatars' AND o.name = p_path AND o.owner = auth.uid())`. URL: `rtrim((SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'project_url'), '/') || '/storage/v1/object/public/avatars/' || p_path`; raise `project_url_missing` when NULL. "Current contas" = `conta_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = <login>)`. Then `REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon; GRANT EXECUTE ... TO authenticated;`.
+  6. Storage policies, INSERT only, no UPDATE policy, both starting with `bucket_id = 'avatars'`:
+     - `pessoa_photo_self_insert`: `bucket_id = 'avatars' AND (storage.foldername(name))[1] = 'profiles' AND (storage.foldername(name))[2] = auth.uid()::text`.
+     - `pessoa_photo_membro_insert`: `bucket_id = 'avatars' AND (storage.foldername(name))[1] = 'membros' AND (storage.foldername(name))[2]::bigint IN (SELECT m.id FROM public.membros m WHERE m.conta_id = public.get_my_conta_id()) AND public.has_permission('equipe','editar')`. Do **not** call `has_permission_for` here: it is executable only by `service_role` (`20260903000002:153-156`), and RLS runs as the caller; the `has_permission` wrapper is granted to authenticated (`:158`).
 
 - [ ] **Step 4: Run the suite and see it pass**
 
@@ -85,7 +92,8 @@ Expected: PASS for `67_fotos_perfil_equipe.sql` and no regression in `56_profile
 **Files:**
 - Create: `apps/crm/src/lib/pessoaFoto.ts`, `apps/crm/src/lib/__tests__/pessoaFoto.test.ts`
 - Create: `apps/crm/src/hooks/useFotoPessoa.ts`, `apps/crm/src/hooks/__tests__/useFotoPessoa.test.tsx`
-- Modify: `apps/crm/src/store/team.ts` (type + new function), `apps/crm/src/context/AuthContext.tsx:40-47` (`avatar_url?: string | null` on `Profile`)
+- Modify: `apps/crm/src/store/team.ts` (type + new function; `addMembro`'s param type drops the required `avatar_url`, `team.ts:28-29`), `apps/crm/src/context/AuthContext.tsx:40-47` (`avatar_url?: string | null` on `Profile`)
+- Modify (type ripple only, `string` → `string | null`): `resolveAuthor`'s return in `pages/entregas/components/PostCommentPopover.tsx:42-46`, `PhoneComments.tsx:33`, `PostCommentSummary.tsx:10`. Task 6 later rewrites `resolveAuthor`'s body.
 
 **Interfaces:**
 - Consumes: `set_member_photo` from Task 1.
@@ -100,7 +108,7 @@ Expected: PASS for `67_fotos_perfil_equipe.sql` and no regression in `56_profile
 - [ ] **Step 1: Failing tests.** `pessoaFoto.test.ts`: stub `createImageBitmap` (4032×3024) and a canvas whose `drawImage` spy records args; `crops the centered square` asserts `drawImage(bitmap, 504, 0, 3024, 3024, 0, 0, 512, 512)` and `toBlob` called with `'image/jpeg', 0.85`; `never upscales` (300×200 → canvas 200). `useFotoPessoa.test.tsx` (mock `@/lib/supabase` storage + `setMemberPhoto`): `rejects over 10MB` (toast `'A foto deve ter até 10 MB.'`, no upload); `accepts 9MB`; `uploads self to profiles/<uid>/<uuid>.jpg` with `contentType: 'image/jpeg'` and calls `setMemberPhoto({kind:'self',...}, path)`; `uploads membro to membros/<id>/`; `invalidates` `['membros']`, `['workspace-users']`, `['equipe-conversas']`, `['equipe-mensagens']`, `['equipe-chat-members']` and calls `refetchProfile()`; `holds unsaved work during upload`; `remove calls setMemberPhoto(alvo, null)`; error toast `'Erro ao enviar a foto.'`.
 - [ ] **Step 2: Run** `npx vitest run apps/crm/src/lib/__tests__/pessoaFoto.test.ts apps/crm/src/hooks/__tests__/useFotoPessoa.test.tsx` → FAIL (modules missing).
 - [ ] **Step 3: Implement** the four exports above. `setMemberPhoto` calls `supabase.rpc('set_member_photo', { p_membro_id, p_user_id, p_path })` with the unused target as `null`. Success toasts: `'Foto atualizada.'` / `'Foto removida.'`.
-- [ ] **Step 4: Run** the same command → PASS; `npx tsc -p apps/crm/tsconfig.json --noEmit` shows only errors from `avatar_url: ''` writers (fixed in Task 5) or none.
+- [ ] **Step 4: Run** the same command → PASS; `npx tsc -p apps/crm/tsconfig.json --noEmit` is clean (fix any remaining `string | null` ripple in the files above; `''` writers still typecheck against `string | null`).
 - [ ] **Step 5: Commit** `feat(equipe): upload e corte da foto de perfil`
 
 ### Task 3: `PessoaAvatar` and `FotoPessoaEditor` components
@@ -125,16 +133,17 @@ Expected: PASS for `67_fotos_perfil_equipe.sql` and no regression in `56_profile
 ### Task 4: Upload points: Perfil and Equipe/membro detail (desktop + phone), Equipe-area `''` writers
 
 **Files:**
-- Modify: `apps/crm/src/pages/configuracao/**/PerfilTab.tsx:145-149`, `.../PerfilPhone.tsx:125-129`, `.../ConfiguracaoIndex.tsx:66`, `.../MembrosTab.tsx:381-384`, `.../MembrosPhone.tsx:63-70` (display only)
-- Modify: `apps/crm/src/pages/equipe/EquipePage.tsx:186,447-460`, `.../EquipePhone.tsx:233-236`, `.../MembroDetalhePage.tsx:130,169-172`, `.../MembroDetalhePhone.tsx:94-100`, `.../MembroFormDialog.tsx:208`
+- Modify: `apps/crm/src/pages/configuracao/tabs/PerfilTab.tsx:145-149`, `.../tabs/phone/PerfilPhone.tsx:125-129`, `ConfiguracaoIndex.tsx:66`, `.../tabs/MembrosTab.tsx:381-384`, `.../tabs/phone/MembrosPhone.tsx:63-70` (display only; confirm exact dirs with `git ls-files | grep`)
+- Modify: `apps/crm/src/pages/equipe/EquipePage.tsx:186,447-460`, `EquipePhone.tsx:233-236`, `MembroFormDialog.tsx:208`
+- Modify: `apps/crm/src/pages/membro-detalhe/MembroDetalhePage.tsx:130,169-172`, `apps/crm/src/pages/membro-detalhe/MembroDetalhePhone.tsx:94-100`
 - Test: existing `__tests__` beside each file (`EquipePage.test.tsx`, `MembroDetalhePage.test.tsx`, `PerfilTab.test.tsx` — create the ones missing)
 
 **Interfaces:**
 - Consumes: `PessoaAvatar`, `FotoPessoaEditor` (Task 3), `FotoAlvo` (Task 2), `useAuth().profile.avatar_url`, `useAuth().can`.
 
-- [ ] **Step 1: Failing tests.** `PerfilTab`: `shows the photo editor for self` (camera button `'Alterar foto de <nome>'`, alvo `{kind:'self', userId: profile.id}`). `MembroDetalhePage`: `shows the editor with equipe:editar` (alvo `{kind:'membro', membroId}`); `hides the editor without equipe:editar` (no camera button, avatar still shown). `EquipePage`: `renders member photos` (an `img` for a membro with `avatar_url`); update the existing `''` assertions at `EquipePage.test.tsx:157,212,280,435,503` so created/imported rows send no `avatar_url` key.
-- [ ] **Step 2: Run** `npx vitest run apps/crm/src/pages/equipe apps/crm/src/pages/configuracao` → FAIL.
-- [ ] **Step 3: Implement.** Perfil (desktop/phone) gets `FotoPessoaEditor` above the name fields with `descricao` `'Aparece para a sua equipe em todo o CRM: Entregas, Tarefas, Agenda e Mensagens. Os clientes não veem.'`. Member detail (desktop/phone) gets it when `can('equipe','editar')`, else `PessoaAvatar`. Phone member detail exposes it from the existing "…" menu, mirroring `ClienteSectionsIndex`'s use of `useClienteFoto`. Other listed lines swap their initials markup for `PessoaAvatar` with the same size. Drop `avatar_url: ''` from `MembroFormDialog` and the import in `EquipePage`.
+- [ ] **Step 1: Failing tests.** `PerfilTab`: `shows the photo editor for self` (camera button `'Alterar foto de <nome>'`, alvo `{kind:'self', userId: profile.id}`). `MembroDetalhePage`: `shows the editor with equipe:editar` (alvo `{kind:'membro', membroId}`); `hides the editor without equipe:editar` (no camera button, avatar still shown) for both `false` and `'unknown'` (use `src/test/makeCan.ts`; `can()` returns `boolean | 'unknown'`, so gate with `=== true` as `EquipePage.tsx:89` does). `EquipePage`: `renders member photos` (an `img` for a membro with `avatar_url`); update the existing `''` assertions at `EquipePage.test.tsx:157,212,280,435,503` so created/imported rows send no `avatar_url` key.
+- [ ] **Step 2: Run** `npx vitest run apps/crm/src/pages/equipe apps/crm/src/pages/membro-detalhe apps/crm/src/pages/configuracao` → FAIL.
+- [ ] **Step 3: Implement.** Perfil (desktop/phone) gets `FotoPessoaEditor` above the name fields with `descricao` `'Aparece para a sua equipe em todo o CRM: Entregas, Tarefas, Agenda e Mensagens. Os clientes não veem.'`. Member detail (desktop/phone) gets it when `can('equipe','editar') === true`, else `PessoaAvatar`. Phone member detail exposes it from the existing "…" menu, mirroring `ClienteSectionsIndex`'s use of `useClienteFoto`. Other listed lines swap their initials markup for `PessoaAvatar` with the same size. Drop `avatar_url: ''` from `MembroFormDialog` and the import in `EquipePage`.
 - [ ] **Step 4: Run** → PASS.
 - [ ] **Step 5: Commit** `feat(equipe): editar foto no perfil e na equipe`
 
@@ -144,7 +153,7 @@ Expected: PASS for `67_fotos_perfil_equipe.sql` and no regression in `56_profile
 - Modify: `apps/crm/src/components/layout/Sidebar.tsx:404-408`, `.../MobileNav.tsx:331-336`
 - Modify: Entregas `WorkflowCard.tsx:367-370,441-444`, `PostProcessCard.tsx:398-407`, `PostsKanbanView.tsx:353-355`, `EntregasFilters.tsx:138-142`, `ResponsaveisPanel.tsx:93-97`, `phone/cardMenus.tsx:232-235`
 - Modify: Tarefas `TarefaCard.tsx:131-135,183-186`, `TarefaDetailSheet.tsx:319-322,372-375`, `ListView.tsx:121-125`, `phone/parts.tsx:90-112`
-- Modify: Dashboard `todayAgenda.ts:55,210` (carry `avatar_url`), `TodayCard.tsx:96`, `InicioPrazos.tsx:306-308`
+- Modify: Dashboard `todayAgenda.ts:55,210` (carry `avatar_url`), `TodayCard.tsx:96`, `InicioPrazos.tsx:306-308` (its `people()` at `:161-166` returns names only: carry id + `avatar_url` too)
 - Test: existing tests beside them; `ResponsaveisPanel.test.tsx:8` fixture `avatar_url: ''` → `null`; `store.crud-writes.test.ts:247,259` `''` expectations removed.
 
 **Interfaces:**
@@ -159,15 +168,15 @@ Expected: PASS for `67_fotos_perfil_equipe.sql` and no regression in `56_profile
 ### Task 6: Surfaces that already render images: migrate to `PessoaAvatar`
 
 **Files:**
-- Modify: Agenda `AgendaSidebar.tsx`, `AgendaFiltrosSheet.tsx`, `PessoasCombobox.tsx`, `EventoPopover.tsx`; `MentionList.tsx:41-61`; `PostCommentPopover.tsx:38-66`; `EquipeTable.tsx:37-64` + the phone analytics `Avatar` (FluxosPhone); chat `EquipeConversaAvatar`, `EquipeThread.tsx`, `phone/EquipeThreadPhone.tsx`, `NovaConversaDialog.tsx`, `EquipeDetalhesSheet.tsx`; `mensagens/components/Avatars.tsx` (`AutorAvatar`, team side only)
+- Modify: Agenda `AgendaSidebar.tsx`, `AgendaFiltrosSheet.tsx`, `PessoasCombobox.tsx`, `EventoPopover.tsx`; `MentionList.tsx:41-61`; `PostCommentPopover.tsx:38-66`; `EquipeTable.tsx:37-64`; `pages/analytics/phone/FluxosPhone.tsx:369` (team rows only; leave the shared `Avatar` and its https guard in `analytics/phone/shared.tsx:126` alone, it also serves Instagram avatars); chat `EquipeConversaAvatar`, `EquipeConversationList.tsx:125` (DM `<img>`), `EquipeThread.tsx`, `phone/EquipeThreadPhone.tsx`, `NovaConversaDialog.tsx`, `EquipeDetalhesSheet.tsx`; `mensagens/components/Avatars.tsx` (`AutorAvatar`, team side only)
 - Test: existing tests beside them.
 
 **Interfaces:**
-- Consumes: `PessoaAvatar` (Task 3).
+- Consumes: `PessoaAvatar` (Task 3); the `string | null` types Task 2 put on `resolveAuthor`.
 
 - [ ] **Step 1: Failing tests.** `PostCommentPopover resolves the membro by crm_user_id` (author with no profile photo, membro with `crm_user_id = author` and a photo → that photo; a membro whose `user_id` matches but `crm_user_id` does not → not used). `EquipeThread falls back to initials when the photo fails` (`fireEvent.error`). Existing image assertions in these suites keep passing.
-- [ ] **Step 2: Run** `npx vitest run apps/crm/src/pages/calendario apps/crm/src/pages/mensagens apps/crm/src/components` → the two new tests FAIL.
-- [ ] **Step 3: Implement**: swap each site's own `<img>`/initials pair for `PessoaAvatar` (same size, same seed); fix `resolveAuthor` to match `crm_user_id`. The `https`-only guard in the analytics `Avatar` goes away (URLs now come only from the RPC).
+- [ ] **Step 2: Run** `npx vitest run apps/crm/src/pages/calendario apps/crm/src/pages/mensagens apps/crm/src/components apps/crm/src/pages/entregas/components/__tests__/PostCommentPopover.test.tsx apps/crm/src/pages/analytics apps/crm/src/pages/analytics-fluxos` → the two new tests FAIL.
+- [ ] **Step 3: Implement**: swap each site's own `<img>`/initials pair for `PessoaAvatar` (same size, same seed); fix `resolveAuthor` to match `crm_user_id`.
 - [ ] **Step 4: Run** → PASS.
 - [ ] **Step 5: Commit** `refactor(crm): avatares da equipe passam por PessoaAvatar`
 
@@ -188,4 +197,5 @@ Expected: PASS for `67_fotos_perfil_equipe.sql` and no regression in `56_profile
 
 - [ ] **Step 1:** `npm run lint`, `npm run format:check`, the four `tsc` (`apps/crm`, `apps/hub`, `apps/admin` with `--noEmit`, `tsconfig.scripts.json`), `npm run test`, `npm run check:functions`, `npm run test:functions`, then `git checkout deno.lock && npm ci`. All green.
 - [ ] **Step 2:** Browser check (local CRM with stubbed data per memory `reference_local_browser_verify_stub_edge_functions`): Perfil upload flow, Equipe detail as owner and as agent, Entregas card, chat bubble, dark mode; phone width 390.
-- [ ] **Step 3:** Push, open PR. Before merge: `db push` the migration to staging then prod (disposable checkout with #669's `20261015000001/2` files + `--include-all`, per memory), deploy `hub-mensagens` and `mcp` with `--no-verify-jwt --use-api --project-ref <ref>`, smoke 401 + `functions download` diff. Prod steps need the user's go-ahead.
+- [ ] **Step 3:** Before any `db push`, read the Vault `project_url` on staging and prod (`select left(decrypted_secret, 40) from vault.decrypted_secrets where name='project_url'`, via `supabase db query --linked`). It must be that environment's own `https://<ref>.supabase.co`; if staging holds the prod host, stop and tell the user (photos would point at prod storage).
+- [ ] **Step 4:** Push, open PR. Before merge: `db push` the migration to staging then prod (disposable checkout with #669's `20261015000001/2` files + `--include-all`, per memory), deploy `hub-mensagens` and `mcp` with `--no-verify-jwt --use-api --project-ref <ref>`, smoke 401 + `functions download` diff. Prod steps need the user's go-ahead.

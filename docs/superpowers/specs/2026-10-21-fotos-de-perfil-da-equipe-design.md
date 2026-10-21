@@ -144,7 +144,9 @@ login existente é adicionado à conta). Em vez de mexer nos três, um trigger e
 (BEFORE UPDATE OF `crm_user_id`) cobre todos:
 
 - Ligou (`OLD.crm_user_id IS NULL`, `NEW` preenchido): se o perfil tem foto, ela vai para
-  o membro; se o perfil não tem e o membro tem, a foto do membro sobe para o perfil.
+  o membro; se o perfil não tem e o membro tem, a foto do membro sobe para o perfil e
+  para os outros registros dessa pessoa nas contas atuais (minha decisão: uma pessoa, uma
+  foto).
 - **Religou para outra pessoa** (`OLD` e `NEW` preenchidos e diferentes): o membro recebe
   a foto do novo perfil, ou `NULL` se ele não tiver. A foto do membro **nunca** sobe nesse
   caso, senão o rosto da pessoa anterior iria para o perfil da nova.
