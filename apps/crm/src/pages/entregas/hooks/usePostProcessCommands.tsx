@@ -17,13 +17,12 @@ import {
   sendPostToCliente,
   transitionPostProcess,
   type ApprovalChoice,
+  type PostStatusCounts,
   type ProcessCommand,
+  type WorkflowPost,
 } from '../../../store';
-import {
-  decideApprovalAdvance,
-  hasLaterPendingApprovalStep,
-  isClientCleared,
-} from '../approvalAdvance';
+import { hasLaterPendingApprovalStep } from '../approvalAdvance';
+import { postExitOptions, type ApprovalExitOption } from '../approvalExit';
 import {
   getPostProcessErrorToast,
   isStaleStateError,
@@ -37,11 +36,8 @@ import {
   sendToPortalDisabledReasonFor,
   type ProcessTarget,
 } from '../postProcessCommands';
-import {
-  ClientApprovalChoiceDialog,
-  ForwardConfirmDialog,
-  RevertConfirmDialog,
-} from '../components/WorkflowModals';
+import { ForwardConfirmDialog, RevertConfirmDialog } from '../components/WorkflowModals';
+import { ApprovalExitDialog } from '../components/ApprovalExitDialog';
 
 export interface UsePostProcessCommandsOptions {
   onRefresh: () => void;
@@ -75,15 +71,20 @@ type Pending =
   | { kind: 'reopen'; t: ProcessTarget }
   | { kind: 'remove'; t: ProcessTarget };
 
-/** Estado separado de `pending` de propósito: Radix fecha o AlertDialog de
- *  origem (forward/conclude) e dispara `onOpenChange(false)` de forma
- *  assíncrona depois do nosso próprio onClick já ter rodado. Se a escolha de
- *  aprovação vivesse dentro do mesmo `pending`, esse fechamento tardio
- *  chamaria `close()` (`setPending(null)`) por cima do `{ kind: 'choice' }`
- *  recém-setado e o ClientApprovalChoiceDialog nunca apareceria -- o mesmo
- *  desenho do KanbanView (`forwardTarget` vs `approvalChoice` como estados
- *  distintos) evita esse race. */
-type Choice = { t: ProcessTarget; command: 'avancar' | 'concluir'; willRearm: boolean };
+/** Estado separado de `pending` de propósito: o diálogo de saída de aprovação
+ *  (ApprovalExitDialog) tem o próprio ciclo de abrir -> confirmar/cancelar e o
+ *  próprio ref de "resolvido" (`choiceResolvedRef`). Manter os dois estados
+ *  distintos (como o KanbanView faz com `forwardTarget` vs `approvalChoice`)
+ *  evita que um `onOpenChange(false)` tardio de um diálogo feche o outro. */
+type Choice = { t: ProcessTarget; command: 'avancar' | 'concluir' };
+
+/** Escolha do diálogo de saída -> `p_approval_choice` da RPC. `enviar_portal`
+ *  não transiciona (vai por `sendToPortal`). */
+const EXIT_CHOICE: Record<Exclude<ApprovalExitOption, 'enviar_portal'>, ApprovalChoice> = {
+  manter: 'sem_alterar',
+  aprovar: 'aprovar_interno',
+  voltar_rascunho: 'voltar_rascunho',
+};
 
 const SUCCESS: Record<ProcessCommand, string> = {
   avancar: 'Etapa avançada.',
@@ -95,8 +96,8 @@ const SUCCESS: Record<ProcessCommand, string> = {
 /**
  * Comandos de um processo individual (spec §5.4, §5.5, §6.2) compartilhados
  * pelo cabeçalho do drawer, pelo card do Kanban e por Concluídas. Cada comando
- * abre o diálogo que os fluxos já usam (Forward/Revert/ClientApprovalChoice)
- * ou um AlertDialog de confirmação, e a transição roda numa RPC só, com
+ * abre o diálogo que os fluxos já usam (Forward/Revert), o diálogo de saída de
+ * etapa de aprovação (ApprovalExitDialog) ou um AlertDialog de confirmação, e a transição roda numa RPC só, com
  * `revisao` esperada e rollback em falha (spec §9.6).
  */
 export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): PostProcessCommands {
@@ -148,7 +149,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
       if (optimisticOrdem != null) opts.onOptimisticStep?.(t.process.id, optimisticOrdem);
       setBusy(true);
       try {
-        const result = await transitionPostProcess({
+        await transitionPostProcess({
           processId: t.process.id,
           expectedRevisao: t.process.revisao,
           command,
@@ -157,9 +158,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
           nextDeadline: command === 'avancar' ? nextDeadlineFor(next, new Date()) : null,
         });
         toast.success(SUCCESS[command]);
-        if (result.post_status_changed && result.post_status === 'rascunho') {
-          toast.info('O post voltou para rascunho para o próximo ciclo de aprovação.');
-        }
+        if (choice === 'voltar_rascunho') toast.info('O post voltou para rascunho.');
         invalidate(t);
       } catch (err) {
         opts.onOptimisticStep?.(t.process.id, null);
@@ -185,25 +184,14 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
     [invalidate, opts],
   );
 
-  const decideThenRun = useCallback(
-    (t: ProcessTarget, command: 'avancar' | 'concluir') => {
-      const active = activeStepOf(t.process);
-      const decision = decideApprovalAdvance({
-        tipo: active?.tipo,
-        total: 1,
-        cleared: isClientCleared(t.post.status) ? 1 : 0,
-        temAprovacaoAdiante:
-          command === 'avancar' && active
-            ? hasLaterPendingApprovalStep(t.process.steps, active.ordem)
-            : false,
-      });
-      if (decision.kind === 'choose') {
-        choiceResolvedRef.current = false;
-        setChoice({ t, command, willRearm: decision.willRearm });
-      } else void run(t, command, null);
-    },
-    [run],
-  );
+  /** Passo ativo de aprovação do cliente: o diálogo de saída abre direto, sem
+   *  o ForwardConfirm/AlertDialog de concluir (a escolha já é a confirmação). */
+  const isApprovalStep = (t: ProcessTarget) =>
+    activeStepOf(t.process)?.tipo === 'aprovacao_cliente';
+  const openChoice = (t: ProcessTarget, command: 'avancar' | 'concluir') => {
+    choiceResolvedRef.current = false;
+    setChoice({ t, command });
+  };
 
   const sendToPortal = useCallback(
     async (t: ProcessTarget) => {
@@ -278,6 +266,24 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
     closeChoice();
   };
   const p = pending;
+  const exit = choice
+    ? (() => {
+        const active = activeStepOf(choice.t.process);
+        return postExitOptions({
+          status: choice.t.post.status as WorkflowPost['status'],
+          command: choice.command,
+          temAprovacaoAdiante:
+            choice.command === 'avancar' && active
+              ? hasLaterPendingApprovalStep(choice.t.process.steps, active.ordem)
+              : false,
+          sendDisabledReason: sendToPortalDisabledReasonFor(choice.t.post.status),
+        });
+      })()
+    : {
+        options: ['manter'] as ApprovalExitOption[],
+        recommended: 'manter' as const,
+        locked: false,
+      };
   const nextName = p && p.kind === 'forward' ? (nextPendingStepOf(p.t.process)?.nome ?? '') : '';
 
   const dialogs = (
@@ -291,7 +297,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
             const t = p.t;
             forwardResolvedRef.current = true;
             close();
-            decideThenRun(t, 'avancar');
+            void run(t, 'avancar', null);
           }
         }}
         onCancel={dismissForward}
@@ -309,28 +315,24 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         }}
         onCancel={dismissRevert}
       />
-      <ClientApprovalChoiceDialog
+      <ApprovalExitDialog
         open={!!choice}
-        entityTitle={choice?.t.post.titulo || 'Post sem título'}
         entityKind="post"
-        willRearm={choice?.willRearm ?? false}
-        withoutChangesLabel={
-          choice?.command === 'concluir' ? 'Concluir sem aprovação' : 'Avançar sem aprovação'
+        entityTitle={choice?.t.post.titulo || 'Post sem título'}
+        nextEtapaName={
+          choice?.command === 'avancar' ? (nextPendingStepOf(choice.t.process)?.nome ?? '') : null
         }
-        sendToPortalDisabledReason={
-          choice ? sendToPortalDisabledReasonFor(choice.t.post.status) : undefined
-        }
-        onApproveInternally={() => {
-          if (choice) {
-            const { t, command } = choice;
-            choiceResolvedRef.current = true;
-            closeChoice();
-            void run(t, command, 'aprovar_interno');
-          }
-        }}
-        onSendToPortal={() => {
-          if (choice) {
-            const t = choice.t;
+        counts={choice ? ({ [choice.t.post.status]: 1 } as PostStatusCounts) : null}
+        options={exit.options}
+        recommended={exit.recommended}
+        locked={exit.locked}
+        // O texto do post não usa os números (é sempre um post só).
+        numbers={{ pendentes: 0, alteraveisRascunho: 0, aprovadoInterno: 0 }}
+        busy={busy}
+        onConfirm={(opt) => {
+          if (!choice) return;
+          const { t, command } = choice;
+          if (opt === 'enviar_portal') {
             // "Enviar ao portal" não é cancelamento nem avanço de etapa (é
             // um UPDATE direto do status do post, nunca toca em
             // pendingInsertRef) -- mas TAMBÉM resolve o diálogo de escolha, e
@@ -344,15 +346,12 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
             // portal" deixava pendingInsertRef preso.
             dismissChoice();
             void sendToPortal(t);
+            return;
           }
-        }}
-        onAdvanceWithoutChanges={() => {
-          if (choice) {
-            const { t, command } = choice;
-            choiceResolvedRef.current = true;
-            closeChoice();
-            void run(t, command, 'sem_alterar');
-          }
+          choiceResolvedRef.current = true;
+          closeChoice();
+          // Post travado (agendado/postado) confirma com `manter`: sem_alterar.
+          void run(t, command, EXIT_CHOICE[opt]);
         }}
         onCancel={dismissChoice}
       />
@@ -389,7 +388,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
                 const t = p.t;
                 const kind = p.kind;
                 close();
-                if (kind === 'conclude') decideThenRun(t, 'concluir');
+                if (kind === 'conclude') void run(t, 'concluir', null);
                 else if (kind === 'reopen') void run(t, 'reabrir', null);
                 else if (kind === 'remove') void remove(t);
               }}
@@ -405,6 +404,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
   return useMemo(
     () => ({
       avancar: (t: ProcessTarget) => {
+        if (isApprovalStep(t)) return openChoice(t, 'avancar');
         forwardResolvedRef.current = false;
         setPending({ kind: 'forward', t });
       },
@@ -412,7 +412,10 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         revertResolvedRef.current = false;
         setPending({ kind: 'revert', t });
       },
-      concluir: (t: ProcessTarget) => setPending({ kind: 'conclude', t }),
+      concluir: (t: ProcessTarget) => {
+        if (isApprovalStep(t)) return openChoice(t, 'concluir');
+        setPending({ kind: 'conclude', t });
+      },
       reabrir: (t: ProcessTarget) => setPending({ kind: 'reopen', t }),
       remover: (t: ProcessTarget) => setPending({ kind: 'remove', t }),
       busy,

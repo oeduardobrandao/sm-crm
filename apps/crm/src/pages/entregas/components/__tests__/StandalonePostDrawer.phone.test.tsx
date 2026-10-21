@@ -92,6 +92,7 @@ vi.mock('@/store', () => ({
   getVigentePostProcess: vi.fn(async () => null),
   getPostProcessEvents: vi.fn(async () => []),
   transitionPostProcess: vi.fn(),
+  resolvePostProcessRascunhoBanner: vi.fn(async () => true),
   removePostProcess: vi.fn(),
   CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   // Consumed by ApplyProcessDialog, which this drawer mounts in its header for the
@@ -187,6 +188,7 @@ vi.mock('@/pages/entregas/components/PostEditorBody', () => ({
   PostEditorBody: ({ layout, phone }: PostEditorBodyProps) => (
     <div data-testid="editor-body" data-layout={layout ?? 'desktop'}>
       <p>{phone?.subtitle}</p>
+      {phone?.banner}
       <button type="button" onClick={phone?.onBack}>
         Voltar
       </button>
@@ -204,7 +206,12 @@ vi.mock('@/pages/entregas/components/PostEditorBody', () => ({
 }));
 
 import { StandalonePostDrawer } from '../StandalonePostDrawer';
-import { getStandalonePost, getVigentePostProcess, removeWorkflowPost } from '@/store';
+import {
+  getStandalonePost,
+  getVigentePostProcess,
+  removeWorkflowPost,
+  resolvePostProcessRascunhoBanner,
+} from '@/store';
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);
 const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
@@ -251,7 +258,7 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
   return { ...utils, onClose, onRefresh, onAttached };
 }
 
-const processStep = (ordem: number, estado: string) => ({
+const processStep = (ordem: number, estado: string, extra: Record<string, unknown> = {}) => ({
   id: ordem + 1,
   ordem,
   nome: `Etapa ${ordem}`,
@@ -262,6 +269,7 @@ const processStep = (ordem: number, estado: string) => ({
   tipo_prazo: null,
   prazo_efetivo: null,
   iniciado_em: null,
+  ...extra,
 });
 const activeProcess = {
   id: 9,
@@ -340,5 +348,26 @@ describe('StandalonePostDrawer on phones', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
     expect(await screen.findByTestId('editor-body')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('mostra o banner de rascunho no editor do phone e o X dispensa', async () => {
+    const ciclo = '2026-10-20T10:00:00.123456+00:00';
+    mockGetStandalonePost.mockResolvedValue(basePost({ status: 'aprovado_cliente' }) as never);
+    mockGetVigentePostProcess.mockResolvedValue({
+      ...activeProcess,
+      aviso_rascunho_dispensado_em: null,
+      steps: [
+        processStep(0, 'concluido', { tipo: 'aprovacao_cliente', concluido_em: ciclo }),
+        processStep(1, 'ativo'),
+        processStep(2, 'pendente', { tipo: 'aprovacao_cliente' }),
+      ],
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    const body = await screen.findByTestId('editor-body');
+    await waitFor(() => expect(body).toHaveTextContent('Este post continua aprovado.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Dispensar aviso' }));
+    expect(vi.mocked(resolvePostProcessRascunhoBanner)).toHaveBeenCalledWith(9, ciclo, false);
+    expect(screen.queryByText('Este post continua aprovado.')).toBeNull();
   });
 });

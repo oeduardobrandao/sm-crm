@@ -57,6 +57,7 @@ import {
   syncMentions,
   getWorkspaceSlug,
   getVigentePostProcess,
+  resolvePostProcessRascunhoBanner,
   type Membro,
   type PostEditSuggestion,
   type WorkflowPost,
@@ -80,6 +81,9 @@ import { AttachToFluxoDialog } from './AttachToFluxoDialog';
 import { ApplyProcessDialog } from './ApplyProcessDialog';
 import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
+import { postRascunhoBanner } from '../approvalExit';
+import { RascunhoBanner } from './RascunhoBanner';
+import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
 import {
   canConcluir,
   forwardLabelFor,
@@ -313,6 +317,66 @@ export function StandalonePostDrawer({
           },
         }
       : null;
+
+  // ── Aviso de rascunho (post aprovado numa etapa padrão antes de outra aprovação) ──
+
+  const rascunhoBanner =
+    post && postProcess
+      ? postRascunhoBanner({
+          steps: postProcess.steps,
+          estado: postProcess.estado,
+          postStatus: post.status,
+          dispensadoEm: postProcess.aviso_rascunho_dispensado_em,
+        })
+      : ({ show: false } as const);
+  // Escondido na hora (otimista) para o aviso não piscar até o refetch; volta
+  // se a RPC falhar.
+  const [hiddenBannerCiclo, setHiddenBannerCiclo] = useState<string | null>(null);
+  const [bannerBusy, setBannerBusy] = useState(false);
+  // Ref além do estado: dois cliques no mesmo tick ainda veem `bannerBusy` velho.
+  const bannerBusyRef = useRef(false);
+  const showRascunhoBanner = rascunhoBanner.show && rascunhoBanner.ciclo !== hiddenBannerCiclo;
+
+  const resolveRascunhoBanner = async (reset: boolean) => {
+    if (!rascunhoBanner.show || !postProcess || bannerBusyRef.current) return;
+    // O ciclo vai para a RPC exatamente como veio (a comparação é em microssegundos).
+    const ciclo = rascunhoBanner.ciclo;
+    bannerBusyRef.current = true;
+    setBannerBusy(true);
+    setHiddenBannerCiclo(ciclo);
+    try {
+      await resolvePostProcessRascunhoBanner(postProcess.id, ciclo, reset);
+      if (reset) toast.success('O post voltou para rascunho.');
+      qc.invalidateQueries({ queryKey: ['post-process', postId] });
+      qc.invalidateQueries({ queryKey: ['standalone-post', postId] });
+      onRefresh();
+    } catch (err) {
+      setHiddenBannerCiclo(null);
+      toast.error(
+        getPostProcessErrorToast(
+          err,
+          reset ? 'Erro ao voltar o post para rascunho' : 'Erro ao dispensar o aviso',
+        ),
+      );
+      if (isStaleStateError(err)) {
+        refresh();
+        onRefresh();
+      }
+    } finally {
+      bannerBusyRef.current = false;
+      setBannerBusy(false);
+    }
+  };
+
+  const rascunhoBannerEl = showRascunhoBanner ? (
+    <RascunhoBanner
+      count={1}
+      entityKind="post"
+      busy={bannerBusy}
+      onReset={() => void resolveRascunhoBanner(true)}
+      onDismiss={() => void resolveRascunhoBanner(false)}
+    />
+  ) : null;
 
   // ── Field change / status confirm ────────────────────────────────────────────
 
@@ -845,6 +909,7 @@ export function StandalonePostDrawer({
                 saving: isSaving,
                 menuActions: phoneMenuActions,
                 processEvents,
+                banner: rascunhoBannerEl,
               }}
               post={post}
               templateId={undefined}
@@ -1085,53 +1150,56 @@ export function StandalonePostDrawer({
               }}
             />
           ) : (
-            <PostEditorBody
-              post={post}
-              templateId={undefined}
-              workflowId={null}
-              postProcess={postProcess}
-              clienteId={post.cliente_id}
-              clientePosts={clientePosts}
-              isExpanded
-              approvals={approvals}
-              statusEvents={statusEvents}
-              editSuggestion={editSuggestion}
-              membros={membros}
-              replyText={replyText}
-              sendingReply={sendingReply}
-              commentThreads={commentThreads}
-              currentUserId={user?.id}
-              currentUserRole={role}
-              canManageAutomations={canManageAutomations}
-              workspaceUsers={workspaceUsers}
-              hasInstagramAccount={hasInstagramAccount}
-              igAccountStatus={igAccountStatus}
-              hasActiveTikTokAccount={hasActiveTikTokAccount}
-              ttAccountStatus={ttAccountStatus}
-              onFieldChange={handleFieldChange}
-              onContentUpdate={scheduleContentSave}
-              onReplyChange={setReplyText}
-              onReplySend={handleReplySend}
-              onRefresh={refresh}
-              onCreateComment={handleCreateComment}
-              onSaveCaption={handleSaveCaption}
-              onReplyToComment={handleReplyToComment}
-              onResolveThread={handleResolveThread}
-              onReopenThread={handleReopenThread}
-              onEditComment={handleEditComment}
-              onDeleteComment={handleDeleteComment}
-              editorVersion={editorVersion}
-              onAcceptSuggestion={handleAcceptSuggestion}
-              onRejectSuggestion={handleRejectSuggestion}
-              onProcessAvancar={
-                target
-                  ? () =>
-                      canConcluir(target.process)
-                        ? commands.concluir(target)
-                        : commands.avancar(target)
-                  : undefined
-              }
-            />
+            <>
+              {rascunhoBannerEl}
+              <PostEditorBody
+                post={post}
+                templateId={undefined}
+                workflowId={null}
+                postProcess={postProcess}
+                clienteId={post.cliente_id}
+                clientePosts={clientePosts}
+                isExpanded
+                approvals={approvals}
+                statusEvents={statusEvents}
+                editSuggestion={editSuggestion}
+                membros={membros}
+                replyText={replyText}
+                sendingReply={sendingReply}
+                commentThreads={commentThreads}
+                currentUserId={user?.id}
+                currentUserRole={role}
+                canManageAutomations={canManageAutomations}
+                workspaceUsers={workspaceUsers}
+                hasInstagramAccount={hasInstagramAccount}
+                igAccountStatus={igAccountStatus}
+                hasActiveTikTokAccount={hasActiveTikTokAccount}
+                ttAccountStatus={ttAccountStatus}
+                onFieldChange={handleFieldChange}
+                onContentUpdate={scheduleContentSave}
+                onReplyChange={setReplyText}
+                onReplySend={handleReplySend}
+                onRefresh={refresh}
+                onCreateComment={handleCreateComment}
+                onSaveCaption={handleSaveCaption}
+                onReplyToComment={handleReplyToComment}
+                onResolveThread={handleResolveThread}
+                onReopenThread={handleReopenThread}
+                onEditComment={handleEditComment}
+                onDeleteComment={handleDeleteComment}
+                editorVersion={editorVersion}
+                onAcceptSuggestion={handleAcceptSuggestion}
+                onRejectSuggestion={handleRejectSuggestion}
+                onProcessAvancar={
+                  target
+                    ? () =>
+                        canConcluir(target.process)
+                          ? commands.concluir(target)
+                          : commands.avancar(target)
+                    : undefined
+                }
+              />
+            </>
           )}
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
         </div>
