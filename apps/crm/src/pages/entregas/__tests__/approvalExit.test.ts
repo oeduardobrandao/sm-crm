@@ -164,4 +164,33 @@ describe('postRascunhoBanner', () => {
     expect(pb({ estado: 'concluido' })).toEqual({ show: false });
     expect(pb({ postStatus: 'rascunho' })).toEqual({ show: false });
   });
+
+  it('aprovação adiante só conta se estiver pendente (herdado/ignorado não contam)', () => {
+    for (const estado of ['herdado', 'ignorado', 'concluido', 'interrompido']) {
+      const only = [
+        step(0, 'aprovacao_cliente', 'concluido', T1),
+        step(1, 'padrao', 'ativo'),
+        step(2, 'aprovacao_cliente', estado),
+      ];
+      expect(pb({ steps: only }), estado).toEqual({ show: false });
+    }
+  });
+  it('devolve o concluido_em cru, sem reserializar (microssegundos)', () => {
+    const micro = '2026-10-21T12:00:00.123456+00:00';
+    const ss = [
+      step(0, 'aprovacao_cliente', 'concluido', micro),
+      step(1, 'padrao', 'ativo'),
+      step(2, 'aprovacao_cliente', 'pendente'),
+    ];
+    expect(pb({ steps: ss })).toEqual({ show: true, ciclo: micro });
+    expect(
+      fb({
+        etapas: [
+          etapa(0, 'aprovacao_cliente', 'concluido', micro),
+          etapa(1, 'padrao', 'ativo'),
+          etapa(2, 'aprovacao_cliente', 'pendente'),
+        ],
+      }),
+    ).toEqual({ show: true, ciclo: micro });
+  });
 });

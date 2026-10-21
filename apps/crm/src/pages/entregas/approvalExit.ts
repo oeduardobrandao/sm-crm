@@ -93,7 +93,11 @@ function bannerFromSteps(
     (s) => s.tipo === 'aprovacao_cliente' && s.state === 'concluido' && s.ordem < ativo.ordem,
   );
   if (concluidasAntes.length === 0) return { show: false };
-  const temAdiante = steps.some((s) => s.tipo === 'aprovacao_cliente' && s.ordem > ativo.ordem);
+  // Só etapa de aprovação ainda pendente conta (herdado/ignorado/concluido/
+  // interrompido não vão pedir rascunho).
+  const temAdiante = steps.some(
+    (s) => s.tipo === 'aprovacao_cliente' && s.state === 'pendente' && s.ordem > ativo.ordem,
+  );
   if (!temAdiante) return { show: false };
 
   let ciclo: string | null = null;
