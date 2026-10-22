@@ -20,8 +20,14 @@ interface LazyNamespaces {
   load: NamespaceLoader;
 }
 
-function getSavedLanguage(): Language {
-  const saved = localStorage.getItem(STORAGE_KEY);
+/** The visitor's stored UI language; `'pt'` when there is no storage (server render) or it throws. */
+export function getSavedLanguage(): Language {
+  let saved: string | null = null;
+  try {
+    saved = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return 'pt';
+  }
   if (saved && SUPPORTED_LANGUAGES.includes(saved as Language)) return saved as Language;
   return 'pt';
 }
