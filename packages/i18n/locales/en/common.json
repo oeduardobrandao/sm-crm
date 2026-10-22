@@ -41,6 +41,17 @@
     "openMenu": "Open menu",
     "menu": "Menu"
   },
+  "vidroIntro": {
+    "eyebrow": "What's new",
+    "title": "Mesaas has a new look",
+    "body": "A lighter sidebar, each page's actions gathered at the top and cleaner screens, so you find what matters faster.\n\nPrefer the previous look? Switch back now or anytime from **Classic look** in your profile menu, at the bottom of the sidebar.",
+    "continue": "Keep the new look",
+    "classic": "Back to classic",
+    "classicToast": {
+      "title": "Classic look on",
+      "description": "To use the new look, choose New look in your profile menu."
+    }
+  },
   "sidebar": {
     "accountOptions": "Account Options",
     "workspace": "Workspace",

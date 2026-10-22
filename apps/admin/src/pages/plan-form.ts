@@ -14,8 +14,9 @@ export const DEFAULT_RESOURCES: Record<string, number> = {
   max_workspaces_per_user: 1,
 };
 
+// feature_crm_vidro is launched (20261024000001): new plans start with it on, like the column default.
 export const DEFAULT_FEATURES: Record<string, boolean> = Object.fromEntries(
-  FEATURE_FLAG_KEYS.map((k) => [k, false]),
+  FEATURE_FLAG_KEYS.map((k) => [k, k === 'feature_crm_vidro']),
 );
 
 export const DEFAULT_RATES: Record<string, number> = {
