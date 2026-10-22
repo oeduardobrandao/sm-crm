@@ -1,33 +1,44 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ArrowDownUp, Plus, Search } from 'lucide-react';
-import type { EquipeConversa } from '@/store';
+import type { EquipeChatMember, EquipeConversa } from '@/store';
 import { EquipeConversaAvatar } from './EquipeShared';
 import { formatTime } from '../mensagensLogic';
 import {
+  EQUIPE_SEM_MENSAGENS,
   equipeConversaPreview,
-  sortEquipeConversas,
+  equipeListaItemNome,
+  sortEquipeLista,
   type EquipeConversasSort,
 } from '../equipeChatLogic';
 
 interface EquipeConversationListProps {
   conversas: EquipeConversa[];
+  /** Colleagues with no DM yet: listed with the empty conversations. */
+  colegas: EquipeChatMember[];
   isLoading: boolean;
   isError: boolean;
   selectedConversaId: number | null;
   /** Last message by this user shows as "Você: ...". */
   currentUserId: string | null;
   onSelect: (conversaId: number) => void;
+  /** Opens the DM with a colleague from `colegas`. */
+  onSelectColega: (userId: string) => void;
+  /** Colleague whose DM is being opened: their rows are disabled meanwhile. */
+  abrindoColegaId?: string | null;
   onNovaConversa: () => void;
   className?: string;
 }
 
 export function EquipeConversationList({
   conversas,
+  colegas,
   isLoading,
   isError,
   selectedConversaId,
   currentUserId,
   onSelect,
+  onSelectColega,
+  abrindoColegaId = null,
   onNovaConversa,
   className = '',
 }: EquipeConversationListProps) {
@@ -35,11 +46,11 @@ export function EquipeConversationList({
   const [busca, setBusca] = useState('');
 
   const visiveis = useMemo(() => {
-    const ordenadas = sortEquipeConversas(conversas, sort);
+    const ordenadas = sortEquipeLista(conversas, colegas, sort);
     const q = busca.trim().toLowerCase();
     if (!q) return ordenadas;
-    return ordenadas.filter((c) => c.display_nome.toLowerCase().includes(q));
-  }, [conversas, sort, busca]);
+    return ordenadas.filter((item) => equipeListaItemNome(item).toLowerCase().includes(q));
+  }, [conversas, colegas, sort, busca]);
 
   return (
     <div className={`flex min-w-0 flex-col ${className}`}>
@@ -102,50 +113,106 @@ export function EquipeConversationList({
               : 'Nenhuma conversa ainda. Crie uma para falar com a equipe.'}
           </p>
         )}
-        {visiveis.map((c) => {
-          const isActive = c.conversa_id === selectedConversaId;
+        {visiveis.map((item) => {
+          if (item.kind === 'colega') {
+            const m = item.colega;
+            return (
+              <EquipeListRow
+                key={`colega-${m.user_id}`}
+                testId={`equipe-colega-${m.user_id}`}
+                avatar={
+                  <EquipeConversaAvatar
+                    conversa={{ tipo: 'dm', avatar_url: m.avatar_url, display_nome: m.nome }}
+                    size={40}
+                  />
+                }
+                nome={m.nome}
+                preview={EQUIPE_SEM_MENSAGENS}
+                disabled={abrindoColegaId != null}
+                pending={abrindoColegaId === m.user_id}
+                onClick={() => onSelectColega(m.user_id)}
+              />
+            );
+          }
+          const c = item.conversa;
           return (
-            <button
+            <EquipeListRow
               key={c.conversa_id}
+              testId={`equipe-conversa-${c.conversa_id}`}
+              active={c.conversa_id === selectedConversaId}
+              avatar={<EquipeConversaAvatar conversa={c} size={40} />}
+              nome={c.display_nome}
+              time={c.last_created_at != null ? formatTime(c.last_created_at) : null}
+              preview={equipeConversaPreview(c, currentUserId)}
+              unread={c.unread_count}
               onClick={() => onSelect(c.conversa_id)}
-              data-testid={`equipe-conversa-${c.conversa_id}`}
-              className="flex w-full items-center gap-3 border-b border-[var(--border-color)] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[var(--surface-hover)]"
-              style={{
-                border: 'none',
-                cursor: 'pointer',
-                ...(isActive
-                  ? {
-                      background: 'rgba(255,191,48,0.12)',
-                      boxShadow: 'inset 3px 0 0 var(--primary-color)',
-                    }
-                  : { background: 'transparent' }),
-              }}
-            >
-              <EquipeConversaAvatar conversa={c} size={40} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm font-semibold">{c.display_nome}</span>
-                  {c.last_created_at != null && (
-                    <span className="shrink-0 text-xs text-[var(--text-light)]">
-                      {formatTime(c.last_created_at)}
-                    </span>
-                  )}
-                </span>
-                <span className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm text-[var(--text-muted)]">
-                    {equipeConversaPreview(c, currentUserId)}
-                  </span>
-                  {c.unread_count > 0 && (
-                    <span className="nav-badge nav-badge--count shrink-0">
-                      {c.unread_count > 99 ? '99+' : c.unread_count}
-                    </span>
-                  )}
-                </span>
-              </span>
-            </button>
+            />
           );
         })}
       </div>
     </div>
+  );
+}
+
+function EquipeListRow({
+  testId,
+  active = false,
+  avatar,
+  nome,
+  time = null,
+  preview,
+  unread = 0,
+  disabled = false,
+  pending = false,
+  onClick,
+}: {
+  testId: string;
+  active?: boolean;
+  avatar: ReactNode;
+  nome: string;
+  time?: string | null;
+  preview: string;
+  unread?: number;
+  disabled?: boolean;
+  pending?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-busy={pending || undefined}
+      data-testid={testId}
+      className="flex w-full items-center gap-3 border-b border-[var(--border-color)] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[var(--surface-hover)]"
+      style={{
+        border: 'none',
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: pending ? 0.6 : undefined,
+        ...(active
+          ? {
+              background: 'rgba(255,191,48,0.12)',
+              boxShadow: 'inset 3px 0 0 var(--primary-color)',
+            }
+          : { background: 'transparent' }),
+      }}
+    >
+      {avatar}
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-sm font-semibold">{nome}</span>
+          {time != null && (
+            <span className="shrink-0 text-xs text-[var(--text-light)]">{time}</span>
+          )}
+        </span>
+        <span className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-sm text-[var(--text-muted)]">{preview}</span>
+          {unread > 0 && (
+            <span className="nav-badge nav-badge--count shrink-0">
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </span>
+      </span>
+    </button>
   );
 }
