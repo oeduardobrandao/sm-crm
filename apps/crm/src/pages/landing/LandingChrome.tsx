@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { ArrowRight, Instagram, Linkedin, LogIn, Moon, Sun, Youtube } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
+import { useIsHydrated } from '@/lib/useIsHydrated';
 
 export function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -14,6 +15,28 @@ export function useLandingChrome(): void {
     document.body.classList.add('landing-page');
     return () => document.body.classList.remove('landing-page');
   }, []);
+}
+
+/**
+ * The signed-in user, or `null` while auth is loading, on the server and during hydration. The
+ * prerendered `/` always carries the anonymous CTAs; a signed-in visitor sees them switch to
+ * "Acessar painel" right after hydration, with no hydration mismatch.
+ */
+export function useLandingUser() {
+  const { user, loading } = useAuth();
+  const hydrated = useIsHydrated();
+  return hydrated && !loading ? user : null;
+}
+
+function readIsDark(): boolean {
+  return document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
+/** Follows `data-theme` on <html>, whoever sets it. Server snapshot: light. */
+function subscribeTheme(listener: () => void): () => void {
+  const observer = new MutationObserver(listener);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  return () => observer.disconnect();
 }
 
 const NAV_ITEMS = [
@@ -41,16 +64,12 @@ export function LandingHeader({
   variant: 'landing' | 'subpage';
   skipLink?: boolean;
 }) {
-  const { user, loading } = useAuth();
-  const [isDark, setIsDark] = useState(
-    document.documentElement.getAttribute('data-theme') === 'dark',
-  );
+  const user = useLandingUser();
+  const isDark = useSyncExternalStore(subscribeTheme, readIsDark, () => false);
 
   const toggleTheme = () => {
-    const next = !isDark;
-    if (next) document.documentElement.setAttribute('data-theme', 'dark');
+    if (!readIsDark()) document.documentElement.setAttribute('data-theme', 'dark');
     else document.documentElement.removeAttribute('data-theme');
-    setIsDark(next);
   };
 
   return (
@@ -98,22 +117,21 @@ export function LandingHeader({
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
               </button>
             )}
-            {!loading &&
-              (user ? (
-                <a href="/dashboard" className="lp-btn lp-btn-primary">
-                  Acessar painel <ArrowRight size={14} />
+            {user ? (
+              <a href="/dashboard" className="lp-btn lp-btn-primary">
+                Acessar painel <ArrowRight size={14} />
+              </a>
+            ) : (
+              <>
+                <a href="/login" className="link">
+                  <LogIn size={15} />
+                  Entrar
                 </a>
-              ) : (
-                <>
-                  <a href="/login" className="link">
-                    <LogIn size={15} />
-                    Entrar
-                  </a>
-                  <a href="/login?tab=register" className="lp-btn lp-btn-primary">
-                    Criar conta grátis
-                  </a>
-                </>
-              ))}
+                <a href="/login?tab=register" className="lp-btn lp-btn-primary">
+                  Criar conta grátis
+                </a>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -201,8 +219,7 @@ export function LandingFooter() {
       </div>
       <div className="footer-bottom">
         <span>
-          © {new Date().getFullYear()} Mesaas. Todos os direitos reservados. · CNPJ
-          63.758.902/0001-01 — EBS IT SOLUTIONS
+          {`© ${__BUILD_YEAR__} Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS`}
         </span>
         <div className="footer-socials">
           <a href="https://www.instagram.com/mesaas.com.br/" aria-label="Instagram do Mesaas">

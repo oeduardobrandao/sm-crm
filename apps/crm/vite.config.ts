@@ -8,6 +8,9 @@ export default defineConfig(() => {
     envDir: path.resolve(__dirname, '../..'),
     publicDir: path.resolve(__dirname, '../../public'),
     plugins: [react()],
+    // Footer copyright year, fixed at build time so the prerendered HTML and the hydrating
+    // client render agree (a render-time `new Date()` could differ across New Year).
+    define: { __BUILD_YEAR__: JSON.stringify(String(new Date().getFullYear())) },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

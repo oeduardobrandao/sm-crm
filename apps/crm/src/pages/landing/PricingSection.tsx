@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/context/AuthContext';
+import { useLandingUser } from './LandingChrome';
 import { listPublicPricingPlans, type PublicPricingPlan } from '@/services/billing';
 import { buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
@@ -64,7 +64,7 @@ function annualSavingsPct(plans: PublicPricingPlan[]): number {
 }
 
 export function PricingSection() {
-  const { user } = useAuth();
+  const user = useLandingUser();
   const [period, setPeriod] = useState<'month' | 'year'>('month');
   const pricingRef = useRef<HTMLElement>(null);
   const [shouldLoadPlans, setShouldLoadPlans] = useState(false);
