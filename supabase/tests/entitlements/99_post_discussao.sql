@@ -333,3 +333,429 @@ begin
   raise notice 'PASS 99.3 comment author guards';
 end $$;
 rollback;
+
+-- =====================================================================
+-- Shared seed for 99.4 to 99.7 (session-temporary; each section rolls back its data)
+--   ws A: a (owner), b2 (agent), resp (agent, responsável of p1 via membros m_resp)
+--   ws B: bu (owner), post pb
+--   A: workflow wf with posts p1 (responsável m_resp), p2, p3; membro m_b2 (crm b2)
+-- =====================================================================
+create or replace function pg_temp.pd_seed() returns jsonb language plpgsql as $$
+declare
+  v_ws_a uuid; v_ws_b uuid;
+  v_a uuid := gen_random_uuid(); v_b2 uuid := gen_random_uuid();
+  v_resp uuid := gen_random_uuid(); v_bu uuid := gen_random_uuid();
+  v_cli_a bigint; v_cli_b bigint; v_wf bigint; v_m_b2 bigint; v_m_resp bigint;
+  v_p1 bigint; v_p2 bigint; v_p3 bigint; v_pb bigint;
+begin
+  v_ws_a := et_make_workspace('max');  -- 99.7 adds a 4th member
+  v_ws_b := et_make_workspace('pro');
+  insert into auth.users (id) values (v_a), (v_b2), (v_resp), (v_bu);
+  insert into workspace_members (user_id, workspace_id, role) values
+    (v_a, v_ws_a, 'owner'), (v_b2, v_ws_a, 'agent'), (v_resp, v_ws_a, 'agent'), (v_bu, v_ws_b, 'owner');
+  update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a where id in (v_a, v_b2, v_resp);
+  update profiles set conta_id = v_ws_b, active_workspace_id = v_ws_b where id = v_bu;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_a, v_ws_a, 'A', 'A', '#000') returning id into v_cli_a;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_bu, v_ws_b, 'B', 'B', '#000') returning id into v_cli_b;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_a, v_ws_a, v_cli_a, 'Fluxo', 'ativo') returning id into v_wf;
+  insert into membros (user_id, conta_id, nome, crm_user_id) values (v_a, v_ws_a, 'Bia', v_b2) returning id into v_m_b2;
+  insert into membros (user_id, conta_id, nome, crm_user_id) values (v_a, v_ws_a, 'Rui', v_resp) returning id into v_m_resp;
+  insert into workflow_posts (conta_id, cliente_id, workflow_id, responsavel_id, status)
+    values (v_ws_a, v_cli_a, v_wf, v_m_resp, 'rascunho') returning id into v_p1;
+  insert into workflow_posts (conta_id, cliente_id, workflow_id, status)
+    values (v_ws_a, v_cli_a, v_wf, 'rascunho') returning id into v_p2;
+  insert into workflow_posts (conta_id, cliente_id, workflow_id, status)
+    values (v_ws_a, v_cli_a, v_wf, 'rascunho') returning id into v_p3;
+  insert into workflow_posts (conta_id, cliente_id, status)
+    values (v_ws_b, v_cli_b, 'rascunho') returning id into v_pb;
+  return jsonb_build_object(
+    'ws_a', v_ws_a, 'ws_b', v_ws_b, 'a', v_a, 'b2', v_b2, 'resp', v_resp, 'bu', v_bu,
+    'wf', v_wf, 'm_b2', v_m_b2, 'm_resp', v_m_resp,
+    'p1', v_p1, 'p2', v_p2, 'p3', v_p3, 'pb', v_pb);
+end $$;
+
+create or replace function pg_temp.pd_as(p_user uuid) returns void language plpgsql as $$
+begin
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user)::text, true);
+end $$;
+
+-- =====================================================================
+-- 99.4 post_discussao_enviar
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['post_discussao_participantes']);
+do $$
+declare
+  s jsonb := pg_temp.pd_seed();
+  v_ws_a uuid := s->>'ws_a'; v_ws_b uuid := s->>'ws_b';
+  v_a uuid := s->>'a'; v_bu uuid := s->>'bu';
+  v_p1 bigint := s->>'p1'; v_p2 bigint := s->>'p2'; v_pb bigint := s->>'pb';
+  v_m_b2 bigint := s->>'m_b2';
+  v_t_cont bigint; v_t_res bigint; v_t_other bigint; v_t_mis bigint;
+  v_row post_comments; v_row2 post_comments; v_n int; v_geral bigint; v_q text; v_by uuid;
+  v_state text; v_bad text;
+begin
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p1, v_ws_a, 'abc', v_a) returning id into v_t_cont;
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by, status)
+    values (v_p1, v_ws_a, 'def', v_a, 'resolved') returning id into v_t_res;
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p2, v_ws_a, 'ghi', v_a) returning id into v_t_other;
+  -- malformed: thread on A's post carrying conta B
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p1, v_ws_b, 'jkl', v_a) returning id into v_t_mis;
+
+  perform pg_temp.pd_as(v_a);
+
+  -- (a) first send creates the general thread; content is trimmed
+  select * into v_row from post_discussao_enviar(v_p1, '  oi  ');
+  assert v_row.author_id = v_a, 'enviar must write author_id = caller';
+  assert v_row.content = 'oi', format('enviar must store trimmed content, got %L', v_row.content);
+  v_geral := v_row.thread_id;
+
+  -- (b) second send reuses it
+  select * into v_row2 from post_discussao_enviar(v_p1, 'de novo');
+  assert v_row2.thread_id = v_geral, 'second send must reuse the general thread';
+
+  -- (c) reply in an active anchored thread of the same post
+  select * into v_row from post_discussao_enviar(v_p1, 'resposta', v_t_cont);
+  assert v_row.thread_id = v_t_cont, 'p_thread_id must insert in that thread';
+
+  -- (d) invalid thread / post / content raise
+  foreach v_bad in array array['other_post', 'resolved', 'mismatch', 'post_b', 'empty', 'blank', 'long'] loop
+    v_state := null;
+    begin
+      case v_bad
+        when 'other_post' then perform post_discussao_enviar(v_p1, 'x', v_t_other);
+        when 'resolved'   then perform post_discussao_enviar(v_p1, 'x', v_t_res);
+        when 'mismatch'   then perform post_discussao_enviar(v_p1, 'x', v_t_mis);
+        when 'post_b'     then perform post_discussao_enviar(v_pb, 'x');
+        when 'empty'      then perform post_discussao_enviar(v_p1, '');
+        when 'blank'      then perform post_discussao_enviar(v_p1, '   ');
+        when 'long'       then perform post_discussao_enviar(v_p1, repeat('x', 4001));
+      end case;
+    exception when others then v_state := sqlerrm;
+    end;
+    -- assert the RPC's own error: sync_mentions would also reject a mismatched thread
+    -- ('host not found'), which must not be what makes this pass
+    assert v_state = case v_bad
+        when 'other_post' then 'thread_not_found'
+        when 'resolved'   then 'thread_resolved'
+        when 'mismatch'   then 'thread_not_found'
+        when 'post_b'     then 'post_not_found'
+        when 'long'       then 'content_too_long'
+        else 'content_empty' end,
+      format('enviar case %s raised %L', v_bad, v_state);
+  end loop;
+
+  -- 4000 characters is the inclusive limit
+  perform post_discussao_enviar(v_p1, repeat('y', 4000));
+
+  -- (e) a mention token creates the mencoes row in the same call; bad tokens are ignored
+  select * into v_row from post_discussao_enviar(v_p1,
+    'oi @[Bia](membro:' || v_m_b2 || ') @[X](membro:999999999) @[Y](membro:99999999999999999999999)');
+
+  -- (f) the transaction-scoped flag is cleared right after the INSERT
+  assert coalesce(current_setting('app.discussao_via_rpc', true), '') = '',
+    'app.discussao_via_rpc must be cleared after enviar';
+
+  -- a member of B cannot send to A's post
+  perform pg_temp.pd_as(v_bu);
+  v_state := null;
+  begin
+    perform post_discussao_enviar(v_p1, 'intruso');
+  exception when others then v_state := sqlstate;
+  end;
+  assert v_state = 'P0002', format('member of B sending to A must raise P0002, got %s', v_state);
+
+  reset role;
+
+  select count(*) into v_n from post_comment_threads where post_id = v_p1 and field = 'geral';
+  assert v_n = 1, format('exactly one general thread expected, got %s', v_n);
+  select quoted_text, created_by into v_q, v_by from post_comment_threads where id = v_geral;
+  assert v_q = '' and v_by = v_a, 'general thread must have empty quote and created_by = caller';
+  select count(*) into v_n from mencoes
+   where host_type = 'post_comment' and host_id = v_row.id and mentioned_membro_id = v_m_b2;
+  assert v_n = 1, 'mention token must create one mencoes row in the same call';
+  select count(*) into v_n from mencoes where host_type = 'post_comment' and host_id = v_row.id;
+  assert v_n = 1, format('invalid mention tokens must be ignored, got %s rows', v_n);
+  select count(*) into v_n from post_comments where content = 'intruso' or content = 'x';
+  assert v_n = 0, 'rejected sends must write nothing';
+
+  raise notice 'PASS 99.4 post_discussao_enviar';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 99.5 post_discussao_marcar_lido
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['post_discussao_participantes']);
+do $$
+declare
+  s jsonb := pg_temp.pd_seed();
+  v_ws_a uuid := s->>'ws_a'; v_a uuid := s->>'a'; v_b2 uuid := s->>'b2';
+  v_p1 bigint := s->>'p1'; v_p2 bigint := s->>'p2'; v_pb bigint := s->>'pb';
+  v_t1 bigint; v_t2 bigint; v_c1 bigint; v_c2 bigint; v_c_other bigint;
+  v_last bigint; v_seg boolean; v_conta uuid; v_state text;
+begin
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p1, v_ws_a, 'abc', v_a) returning id into v_t1;
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p2, v_ws_a, 'abc', v_a) returning id into v_t2;
+  insert into post_comments (thread_id, author_id, content) values (v_t1, v_a, '1') returning id into v_c1;
+  insert into post_comments (thread_id, author_id, content) values (v_t1, v_a, '2') returning id into v_c2;
+  insert into post_comments (thread_id, author_id, content) values (v_t2, v_a, '3') returning id into v_c_other;
+
+  perform pg_temp.pd_as(v_b2);
+  perform post_discussao_marcar_lido(v_p1, v_c2);
+  perform post_discussao_marcar_lido(v_p1, v_c1);  -- never moves back
+
+  v_state := null;
+  begin perform post_discussao_marcar_lido(v_p1, v_c_other);
+  exception when others then v_state := sqlerrm; end;
+  assert v_state = 'comment_not_found', format('comment of another post must raise comment_not_found, got %s', v_state);
+
+  v_state := null;
+  begin perform post_discussao_marcar_lido(v_pb, v_c1);
+  exception when others then v_state := sqlstate; end;
+  assert v_state = 'P0002', format('post of B must raise P0002, got %s', v_state);
+
+  reset role;
+  select last_seen_comment_id, seguindo, conta_id into v_last, v_seg, v_conta
+    from post_discussao_participantes where post_id = v_p1 and user_id = v_b2;
+  assert v_last = v_c2, format('marker must stay at the highest id %s, got %s', v_c2, v_last);
+  assert v_seg, 'marcar_lido must create the row with seguindo = true';
+  assert v_conta = v_ws_a, 'participant row must copy the post conta_id';
+
+  raise notice 'PASS 99.5 post_discussao_marcar_lido';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 99.6 post_discussao_seguir and get_post_discussao_participacao
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['post_discussao_participantes']);
+do $$
+declare
+  s jsonb := pg_temp.pd_seed();
+  v_ws_a uuid := s->>'ws_a'; v_a uuid := s->>'a'; v_b2 uuid := s->>'b2'; v_resp uuid := s->>'resp';
+  v_p1 bigint := s->>'p1'; v_pb bigint := s->>'pb';
+  v_t bigint; v_c1 bigint;
+  v_seg boolean; v_last bigint; v_imp boolean; v_state text; v_n int;
+begin
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p1, v_ws_a, 'abc', v_a) returning id into v_t;
+  insert into post_comments (thread_id, author_id, content) values (v_t, v_a, '1') returning id into v_c1;
+
+  -- responsável without a row: implicit participant
+  perform pg_temp.pd_as(v_resp);
+  select * into v_seg, v_last, v_imp from get_post_discussao_participacao(v_p1);
+  assert v_seg and v_last = 0 and v_imp, format('responsável without row must be (true,0,true), got (%s,%s,%s)', v_seg, v_last, v_imp);
+
+  -- non-participant
+  perform pg_temp.pd_as(v_b2);
+  select * into v_seg, v_last, v_imp from get_post_discussao_participacao(v_p1);
+  assert not v_seg and v_last = 0 and not v_imp, format('non-participant must be (false,0,false), got (%s,%s,%s)', v_seg, v_last, v_imp);
+
+  -- seguir toggles the row
+  perform post_discussao_seguir(v_p1, true);
+  select * into v_seg, v_last, v_imp from get_post_discussao_participacao(v_p1);
+  assert v_seg and v_last = 0 and not v_imp, 'after seguir(true) must be (true,0,false)';
+  perform post_discussao_marcar_lido(v_p1, v_c1);
+  perform post_discussao_seguir(v_p1, false);
+  select * into v_seg, v_last, v_imp from get_post_discussao_participacao(v_p1);
+  assert not v_seg and v_last = v_c1 and not v_imp, format('unfollowed must be (false,%s,false), got (%s,%s,%s)', v_c1, v_seg, v_last, v_imp);
+  perform post_discussao_seguir(v_p1, true);
+  select * into v_seg, v_last, v_imp from get_post_discussao_participacao(v_p1);
+  assert v_seg and v_last = v_c1, 'seguir(true) again must keep the marker';
+
+  -- responsável with a row: the row wins, implicito = false
+  perform pg_temp.pd_as(v_resp);
+  perform post_discussao_seguir(v_p1, false);
+  select * into v_seg, v_last, v_imp from get_post_discussao_participacao(v_p1);
+  assert not v_seg and v_last = 0 and not v_imp, format('responsável with row must be (false,0,false), got (%s,%s,%s)', v_seg, v_last, v_imp);
+
+  -- RLS: a user reads only their own rows, and cannot write the table
+  perform pg_temp.pd_as(v_b2);
+  select count(*) into v_n from post_discussao_participantes;
+  assert v_n = 1, format('b2 must see only its own row, saw %s', v_n);
+  v_state := null;
+  begin
+    insert into post_discussao_participantes (post_id, conta_id, user_id) values (v_p1, v_ws_a, v_a);
+  exception when insufficient_privilege then v_state := sqlstate; end;
+  assert v_state = '42501', 'authenticated must not insert participant rows';
+  v_state := null;
+  begin
+    update post_discussao_participantes set seguindo = true where user_id = v_b2;
+  exception when insufficient_privilege then v_state := sqlstate; end;
+  assert v_state = '42501', 'authenticated must not update participant rows';
+
+  -- post of B raises
+  v_state := null;
+  begin perform post_discussao_seguir(v_pb, true);
+  exception when others then v_state := sqlstate; end;
+  assert v_state = 'P0002', format('seguir on post of B must raise P0002, got %s', v_state);
+  v_state := null;
+  begin perform * from get_post_discussao_participacao(v_pb);
+  exception when others then v_state := sqlstate; end;
+  assert v_state = 'P0002', format('participacao on post of B must raise P0002, got %s', v_state);
+
+  reset role;
+  raise notice 'PASS 99.6 post_discussao_seguir and get_post_discussao_participacao';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 99.7 get_post_discussao_nao_lidas
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['post_discussao_participantes']);
+do $$
+declare
+  s jsonb := pg_temp.pd_seed();
+  v_ws_a uuid := s->>'ws_a'; v_a uuid := s->>'a'; v_b2 uuid := s->>'b2';
+  v_resp uuid := s->>'resp'; v_bu uuid := s->>'bu';
+  v_x uuid := gen_random_uuid(); v_rm uuid := gen_random_uuid();
+  v_wf bigint := s->>'wf';
+  v_p1 bigint := s->>'p1'; v_p2 bigint := s->>'p2'; v_p3 bigint := s->>'p3';
+  v_geral bigint; v_cont bigint; v_t2 bigint; v_c2 bigint; v_mis bigint;
+  v_total int; v_nl int; v_n int;
+begin
+  -- x: member of A who unfollowed p1; rm: member of A with a row, removed further down
+  insert into auth.users (id) values (v_x), (v_rm);
+  insert into workspace_members (user_id, workspace_id, role) values (v_x, v_ws_a, 'agent'), (v_rm, v_ws_a, 'agent');
+  update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a where id in (v_x, v_rm);
+
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by, field)
+    values (v_p1, v_ws_a, '', v_a, 'geral') returning id into v_geral;
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p1, v_ws_a, 'abc', v_a) returning id into v_cont;
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p2, v_ws_a, 'abc', v_a) returning id into v_t2;
+  insert into post_comments (thread_id, author_id, content) values (v_geral, v_a, 'c1');
+  insert into post_comments (thread_id, author_id, content) values (v_geral, v_b2, 'c2') returning id into v_c2;
+  insert into post_comments (thread_id, author_id, content) values (v_cont, v_b2, 'c3');  -- reply in a conteudo thread
+  insert into post_comments (thread_id, author_id, content) values (v_geral, v_resp, 'c4');
+  insert into post_comments (thread_id, author_id, content) values (v_t2, v_a, 'p2');
+  -- malformed thread on p1 carrying conta B: never counted
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p1, (s->>'ws_b')::uuid, 'zzz', v_a) returning id into v_mis;
+  insert into post_comments (thread_id, author_id, content) values (v_mis, v_b2, 'fora');
+
+  insert into post_discussao_participantes (post_id, conta_id, user_id, seguindo, last_seen_comment_id) values
+    (v_p1, v_ws_a, v_a, true, 0),
+    (v_p1, v_ws_a, v_x, false, 0),
+    (v_p1, v_ws_a, v_rm, true, 0);
+
+  -- participant following with marker 0: everyone else's messages, across threads
+  perform pg_temp.pd_as(v_a);
+  select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(array[v_p1]);
+  assert v_total = 4 and v_nl = 3, format('a: expected (4,3), got (%s,%s)', v_total, v_nl);
+
+  -- p_workflow_ids returns the fluxo's posts with comments (p3 has none)
+  select count(*) into v_n from get_post_discussao_nao_lidas(null, array[v_wf]);
+  assert v_n = 2, format('p_workflow_ids must return p1 and p2, got %s rows', v_n);
+  select count(*) into v_n from get_post_discussao_nao_lidas(null, array[v_wf]) r
+   where r.workflow_id = v_wf and r.post_id in (v_p1, v_p2);
+  assert v_n = 2, 'rows must carry post_id and workflow_id';
+  select count(*) into v_n from get_post_discussao_nao_lidas(array[v_p3]);
+  assert v_n = 0, 'a post without comments must not return a row';
+  select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(null, array[v_wf]) r where r.post_id = v_p2;
+  assert v_total = 1 and v_nl = 0, format('a on p2 (non-participant, own message): expected (1,0), got (%s,%s)', v_total, v_nl);
+
+  -- the marker moves the count
+  perform post_discussao_marcar_lido(v_p1, v_c2);
+  select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(array[v_p1]);
+  assert v_total = 4 and v_nl = 2, format('a after marker: expected (4,2), got (%s,%s)', v_total, v_nl);
+
+  -- non-participant: total only
+  perform pg_temp.pd_as(v_b2);
+  select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(array[v_p1]);
+  assert v_total = 4 and v_nl = 0, format('b2: expected (4,0), got (%s,%s)', v_total, v_nl);
+
+  -- unfollowed
+  perform pg_temp.pd_as(v_x);
+  select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(array[v_p1]);
+  assert v_total = 4 and v_nl = 0, format('x: expected (4,0), got (%s,%s)', v_total, v_nl);
+
+  -- responsável without a row: implicit, marker 0
+  perform pg_temp.pd_as(v_resp);
+  select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(array[v_p1]);
+  assert v_total = 4 and v_nl = 3, format('resp: expected (4,3), got (%s,%s)', v_total, v_nl);
+
+  -- member of B: nothing about A
+  perform pg_temp.pd_as(v_bu);
+  select count(*) into v_n from get_post_discussao_nao_lidas(array[v_p1, v_p2], array[v_wf]);
+  assert v_n = 0, format('member of B must get no rows, got %s', v_n);
+
+  -- removed member (participant row kept): nothing
+  reset role;
+  delete from workspace_members where user_id = v_rm and workspace_id = v_ws_a;
+  assert exists (select 1 from post_discussao_participantes where post_id = v_p1 and user_id = v_rm),
+    'the removed member''s participant row must survive for this case to mean anything';
+  perform pg_temp.pd_as(v_rm);
+  select count(*) into v_n from get_post_discussao_nao_lidas(array[v_p1], array[v_wf]);
+  assert v_n = 0, format('removed member must get no rows, got %s', v_n);
+
+  reset role;
+  raise notice 'PASS 99.7 get_post_discussao_nao_lidas';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 99.8 notification types and grants
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid(); v_fn text;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws, v_user, 'team_message', jsonb_build_object('conversa_id', 1));
+  insert into notifications (workspace_id, user_id, type, metadata)
+    values (v_ws, v_user, 'post_discussion', jsonb_build_object('post_id', 1));
+  insert into notification_inapp_prefs (user_id, type, enabled) values (v_user, 'team_message', false);
+  insert into notification_inapp_prefs (user_id, type, enabled) values (v_user, 'post_discussion', false);
+
+  foreach v_fn in array array[
+    'public.post_discussao_enviar(bigint,text,bigint)',
+    'public.post_discussao_marcar_lido(bigint,bigint)',
+    'public.post_discussao_seguir(bigint,boolean)',
+    'public.get_post_discussao_nao_lidas(bigint[],bigint[])',
+    'public.get_post_discussao_participacao(bigint)'
+  ] loop
+    assert not has_function_privilege('anon', v_fn, 'execute'), format('anon must not execute %s', v_fn);
+    assert has_function_privilege('authenticated', v_fn, 'execute'), format('authenticated must execute %s', v_fn);
+  end loop;
+  assert not has_function_privilege('authenticated', 'public.post_discussao_membro_ids(text,uuid)', 'execute'),
+    'authenticated must not execute the post_discussao_membro_ids helper';
+  assert not has_function_privilege('anon', 'public.post_discussao_membro_ids(text,uuid)', 'execute'),
+    'anon must not execute the post_discussao_membro_ids helper';
+
+  -- the participant table is read-only for authenticated (migration grants, no parity helper here)
+  assert has_table_privilege('authenticated', 'public.post_discussao_participantes', 'select'),
+    'authenticated must select post_discussao_participantes';
+  assert not has_table_privilege('authenticated', 'public.post_discussao_participantes', 'insert,update,delete'),
+    'authenticated must not write post_discussao_participantes';
+  assert not has_table_privilege('anon', 'public.post_discussao_participantes', 'select'),
+    'anon must not read post_discussao_participantes';
+
+  -- realtime
+  assert exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime'
+                 and schemaname = 'public' and tablename = 'post_comment_threads'),
+    'post_comment_threads must be in supabase_realtime';
+  assert exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime'
+                 and schemaname = 'public' and tablename = 'post_comments'),
+    'post_comments must be in supabase_realtime';
+
+  raise notice 'PASS 99.8 notification types, grants and realtime';
+end $$;
+rollback;
