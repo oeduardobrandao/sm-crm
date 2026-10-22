@@ -43,7 +43,12 @@ import { changelogSchema } from '../../apps/crm/src/content/changelog.schema';
 import { renderChangelogHtml } from '../../apps/crm/src/content/changelog.seo';
 import { loadPostsFromDisk } from './blog-fs';
 import { mustReplace } from './mustReplace';
-import { imagePreloadTag, routePreloadTags, type BuildManifest } from './routePreload';
+import {
+  deferEntryScript,
+  imagePreloadTag,
+  routePreloadTags,
+  type BuildManifest,
+} from './routePreload';
 import {
   HERO_MACBOOK_SIZES,
   HERO_MACBOOK_SRCSET,
@@ -150,7 +155,9 @@ for (const route of PUBLIC_ROUTES) {
   // The landing is always dark, so its LCP image is the dark MacBook render.
   const preload = [
     route.path === '/' ? imagePreloadTag(HERO_MACBOOK_SRCSET, HERO_MACBOOK_SIZES) : '',
-    routePreloadTags(manifest, route.path),
+    // `/` is server-rendered: it paints from HTML + CSS, so only its stylesheets are preloaded
+    // and its JS starts after the first paint (deferEntryScript below).
+    routePreloadTags(manifest, route.path, { scripts: route.path !== '/' }),
   ]
     .filter(Boolean)
     .join('\n    ');
@@ -164,6 +171,7 @@ for (const route of PUBLIC_ROUTES) {
     // `data-ssr` tells main.tsx to hydrate; LandingPage removes it on mount. `landing-page` on
     // <body> is what LandingChrome adds on mount, present from the first paint here.
     html = mustReplace(html, '<body>', '<body class="landing-page">', '/:body-class');
+    html = deferEntryScript(html);
     html = mustReplace(
       html,
       '<div id="root"></div>',

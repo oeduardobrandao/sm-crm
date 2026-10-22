@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deferEntryScript,
   imagePreloadTag,
   preloadTagsFor,
   routePreloadTags,
@@ -64,6 +65,14 @@ describe('preloadTagsFor', () => {
     ]);
   });
 
+  it('omits modulepreload tags when scripts are off, keeping the stylesheets', () => {
+    const tags = preloadTagsFor(manifest, 'src/pages/landing/LandingPage.tsx', { scripts: false });
+    expect(tags.split('\n    ')).toEqual([
+      '<link rel="stylesheet" crossorigin href="/assets/landing-A.css">',
+      '<link rel="stylesheet" crossorigin href="/assets/LandingPage-L.css">',
+    ]);
+  });
+
   it('throws when the chunk is missing from the manifest', () => {
     expect(() => preloadTagsFor(manifest, 'src/pages/Nope.tsx')).toThrow(
       'prerender: build manifest has no entry for src/pages/Nope.tsx',
@@ -96,5 +105,33 @@ describe('imagePreloadTag', () => {
     ).toBe(
       '<link rel="preload" as="image" fetchpriority="high" imagesrcset="/a.webp 760w, /b&quot;&amp;.webp 1200w" imagesizes="(max-width: 720px) 100vw, 1140px">',
     );
+  });
+});
+
+describe('deferEntryScript', () => {
+  const shell =
+    '<head><script type="module" crossorigin src="/assets/index-E.js"></script></head><body><div id="root"></div></body>';
+
+  it('replaces the entry tag with a loader that injects it after the first paint', () => {
+    const out = deferEntryScript(shell);
+    expect(out).not.toContain('<script type="module"');
+    expect(out).toContain('s.src="/assets/index-E.js"');
+    expect(out).toContain('s.type="module"');
+    expect(out).toContain('DOMContentLoaded');
+    expect(out).toContain('requestAnimationFrame');
+  });
+
+  it('loads the entry module once the document has painted', async () => {
+    document.head.innerHTML = '';
+    const script = /<script>([\s\S]*?)<\/script>/.exec(deferEntryScript(shell))![1];
+    new Function(script)();
+    await new Promise((r) => setTimeout(r, 50));
+    const injected = document.head.querySelector('script[type="module"]') as HTMLScriptElement;
+    expect(injected.getAttribute('src')).toBe('/assets/index-E.js');
+    expect(injected.crossOrigin).toBe('');
+  });
+
+  it('throws when the shell has no entry script', () => {
+    expect(() => deferEntryScript('<head></head>')).toThrow('no Vite entry');
   });
 });
