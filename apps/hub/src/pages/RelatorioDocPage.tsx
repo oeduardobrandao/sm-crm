@@ -8,6 +8,7 @@ import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
 import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { fetchReportDoc } from '../api';
 import { ReportSkeleton } from '../components/Skeleton';
 
@@ -15,7 +16,7 @@ export function RelatorioDocPage() {
   const { token } = useHub();
   const { workspace, docId } = useParams<{ workspace: string; token: string; docId: string }>();
   const navigate = useNavigate();
-  const base = `/${workspace}/hub/${token}`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
   const { t } = useTranslation('hubReports');
 
   const { data, isLoading, isError } = useQuery({

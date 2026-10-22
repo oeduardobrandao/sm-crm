@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { fetchPage } from '../api';
 import type { HubContentBlock } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
@@ -177,7 +178,7 @@ function renderBlock(block: HubContentBlock, i: number) {
 export function PaginaPage() {
   const { token, workspace } = useHub();
   const { pageId } = useParams<{ pageId: string }>();
-  const base = `/${workspace}/hub/${token}`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
   const { t } = useTranslation('hubPages');
   const { t: tc } = useTranslation();
 

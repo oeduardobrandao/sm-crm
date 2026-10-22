@@ -24,6 +24,7 @@ import { buildUsableTokenMap } from '../../../lib/hubTokenMap';
 import { toPostEntity, type PostEntity } from '../boardEntity';
 import { toLocalISODate } from '@/utils/postDate';
 import { useInstagramAvatars } from '@/hooks/useClienteAvatars';
+import { compactHubToken } from '@/lib/hubLinks';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -281,7 +282,7 @@ export function buildBoardCards(
     const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
     const hubUrl =
       hubToken && workspaceSlug
-        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+        ? `${window.location.origin}/${workspaceSlug}/hub/${compactHubToken(hubToken)}`
         : undefined;
     out.push({
       workflow: w,

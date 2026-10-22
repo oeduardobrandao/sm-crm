@@ -49,6 +49,7 @@ import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 import '../phone/clienteDetalhePhone.css';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
+import { compactHubToken } from '@/lib/hubLinks';
 
 // Raw Postgres error text must never reach the user.
 function mapTokenError(e: { message?: string }): string {
@@ -108,7 +109,7 @@ export default function AcessoPage() {
 
   const hubUrl =
     tokenData && workspaceSlug
-      ? `${window.location.origin}/${workspaceSlug}/hub/${tokenData.token}`
+      ? `${window.location.origin}/${workspaceSlug}/hub/${compactHubToken(tokenData.token)}`
       : '';
 
   const expiresAt = tokenData ? new Date(tokenData.expires_at) : null;

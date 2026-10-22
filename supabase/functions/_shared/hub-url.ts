@@ -2,10 +2,21 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { effectivePlanFeature } from "./entitlements-rpc.ts";
 import { appBaseUrl } from "./app-url.ts";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The token as it goes in a link: the UUID without hyphens. WhatsApp reads a bare UUID
+ * as a Pix random key ("Copiar chave Pix") and stops linking the URL around it. The Hub
+ * accepts both forms and turns this back into the UUID before calling any function.
+ */
+export function compactHubToken(token: string): string {
+  return UUID_RE.test(token) ? token.replace(/-/g, "").toLowerCase() : token;
+}
+
 /** Pure: assembles the public Hub URL. Empty string when any part is missing. */
 export function buildHubUrl(baseUrl: string, slug: string | null, token: string | null): string {
   if (!slug || !token) return "";
-  return `${baseUrl.replace(/\/+$/, "")}/${slug}/hub/${token}`;
+  return `${baseUrl.replace(/\/+$/, "")}/${slug}/hub/${compactHubToken(token)}`;
 }
 
 /**

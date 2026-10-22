@@ -69,6 +69,7 @@ import { ClientePostCalendarPhone } from '../components/ClientePostCalendarPhone
 import { PhoneEmptyCard } from '../phone/PhoneRows';
 import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
+import { compactHubToken } from '@/lib/hubLinks';
 
 interface WorkflowWithEtapas {
   workflow: Workflow;
@@ -335,7 +336,7 @@ export default function EntregasTab() {
     if (!cliente) return [];
     const hubUrl =
       hubToken && workspaceSlug
-        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+        ? `${window.location.origin}/${workspaceSlug}/hub/${compactHubToken(hubToken)}`
         : undefined;
     return workflowsWithEtapas
       .map(({ workflow, etapas }) => {

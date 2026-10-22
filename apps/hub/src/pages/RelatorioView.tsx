@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { fetchReportHtml, fetchReportPdfUrl } from '../api';
 import { ReportSkeleton } from '../components/Skeleton';
 
@@ -17,7 +18,7 @@ export function RelatorioViewPage() {
   const { token } = useHub();
   const { workspace, month } = useParams<{ workspace: string; token: string; month: string }>();
   const navigate = useNavigate();
-  const base = `/${workspace}/hub/${token}`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
   const { t, i18n } = useTranslation('hubReports');
   const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 

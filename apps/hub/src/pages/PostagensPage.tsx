@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { fetchInstagramFeed } from '../api';
 import { useHubPosts } from '../hooks/useHubPosts';
 import { hubPostQuery, invalidateHubPosts } from '../queries';
@@ -36,7 +37,7 @@ export function PostagensPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { postId } = useParams<{ postId: string }>();
-  const base = `/${workspace}/hub/${token}/postagens`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}/postagens`;
   const currentId =
     postId !== undefined && !isNaN(parseInt(postId, 10))
       ? parseInt(postId, 10)

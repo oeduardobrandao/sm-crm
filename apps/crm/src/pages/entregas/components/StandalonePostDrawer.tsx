@@ -91,7 +91,7 @@ import {
   type ProcessTarget,
 } from '../postProcessCommands';
 import { copyAppLink } from '@/lib/copyAppLink';
-import { buildHubPostLink } from '@/lib/hubLinks';
+import { buildHubPostLink, compactHubToken } from '@/lib/hubLinks';
 import { PhoneIconButton } from '@/components/mobile';
 import { useIsPhoneEditor } from './postEditorPhone/useIsPhoneEditor';
 import { PhoneEditorScreen } from './postEditorPhone/PhoneEditorScreen';
@@ -262,7 +262,7 @@ export function StandalonePostDrawer({
   });
   const hubUrl =
     hubToken && workspaceSlug
-      ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+      ? `${window.location.origin}/${workspaceSlug}/hub/${compactHubToken(hubToken)}`
       : undefined;
 
   const [isFullscreen, setIsFullscreen] = useState(

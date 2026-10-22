@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { useHubLook } from '../hooks/useHubLook';
 import { fetchInstagramFeed } from '../api';
 import { hubPostsQuery, invalidateHubPosts } from '../queries';
@@ -65,7 +66,7 @@ export function AprovacoesPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { postId } = useParams<{ postId: string }>();
-  const base = `/${workspace}/hub/${token}/aprovacoes`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}/aprovacoes`;
   const currentId =
     postId !== undefined && !isNaN(parseInt(postId, 10))
       ? parseInt(postId, 10)

@@ -5,6 +5,7 @@ import {
   queryOptions,
 } from '@tanstack/react-query';
 import { matchPath } from 'react-router-dom';
+import { canonicalHubToken } from './lib/hubLinks';
 import {
   fetchAgenda,
   fetchAgendaItem,
@@ -187,8 +188,9 @@ export function createHubQueryClient() {
  */
 export function prefetchHubShell(queryClient: QueryClient, pathname: string) {
   const match = matchPath({ path: '/:workspace/hub/:token', end: false }, pathname);
-  const { workspace, token } = match?.params ?? {};
-  if (!workspace || !token) return;
+  const { workspace, token: urlToken } = match?.params ?? {};
+  if (!workspace || !urlToken) return;
+  const token = canonicalHubToken(urlToken);
   void queryClient.prefetchQuery(hubBootstrapQuery(workspace, token));
   void queryClient.prefetchQuery(hubPostsQuery(token));
 }

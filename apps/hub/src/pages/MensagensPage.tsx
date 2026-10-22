@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { CheckCircle2, FilePen, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { fetchMensagens, markMensagensSeen, sendHubMensagem, submitApproval } from '../api';
 import { HubPostChip } from '../components/HubPostChip';
 import type { MensagemFeedItem, MensagensCursor } from '../types';
@@ -40,7 +41,7 @@ function eventLabel(m: MensagemFeedItem, t: (key: string, defaultValue: string) 
 export function MensagensPage() {
   const { bootstrap, token, workspace } = useHub();
   const { t, i18n } = useTranslation('hubMessages');
-  const base = `/${workspace}/hub/${token}`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
   const qc = useQueryClient();
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<{ post_id: number; titulo: string } | null>(null);

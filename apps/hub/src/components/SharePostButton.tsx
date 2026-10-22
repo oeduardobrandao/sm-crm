@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, Link as LinkIcon } from 'lucide-react';
 import { useHub } from '../HubContext';
-import { buildHubPostLink } from '../lib/hubLinks';
+import { buildHubPostLink, compactHubToken } from '../lib/hubLinks';
 
 export function SharePostButton({ postId, className }: { postId: number; className?: string }) {
   const { t } = useTranslation('hubPostCard');
@@ -11,7 +11,7 @@ export function SharePostButton({ postId, className }: { postId: number; classNa
 
   async function copy() {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const url = buildHubPostLink(`${origin}/${workspace}/hub/${token}`, postId);
+    const url = buildHubPostLink(`${origin}/${workspace}/hub/${compactHubToken(token)}`, postId);
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
