@@ -30,6 +30,7 @@ import { DeadlinePill } from './DeadlinePill';
 import { etapaDeadlineDate } from '../etapaPrazo';
 import { progressColor } from '../progressColor';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import { ClienteFoto } from '@/components/ClienteFoto';
 
 interface WorkflowCardProps {
   card: BoardCard;
@@ -154,39 +155,36 @@ export function WorkflowCard({
         >
           {card.cliente ? (
             <>
-              {card.clienteAvatarUrl ? (
-                <img
-                  src={card.clienteAvatarUrl}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    background: card.cliente.cor || 'var(--surface-hover)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.45rem',
-                    fontWeight: 800,
-                    color: '#fff',
-                    flexShrink: 0,
-                  }}
-                >
-                  {getInitials(card.cliente.nome)}
-                </div>
-              )}
+              <ClienteFoto
+                srcs={[card.clienteAvatarUrl, card.cliente.foto_url]}
+                alt=""
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  flexShrink: 0,
+                }}
+                fallback={
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: card.cliente.cor || 'var(--surface-hover)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.45rem',
+                      fontWeight: 800,
+                      color: '#fff',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {getInitials(card.cliente.nome)}
+                  </div>
+                }
+              />
               <span
                 role="link"
                 tabIndex={0}

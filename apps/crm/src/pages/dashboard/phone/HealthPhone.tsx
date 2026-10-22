@@ -34,6 +34,8 @@ import { HEALTH_TONE } from '../components/ClientHealthCard';
 import { PipelineRow } from '../components/PipelineRow';
 import { useClientHealthActions } from '../useClientHealthActions';
 import { PhoneSection } from './PhoneSection';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useCachedClienteFotoUrl } from '@/hooks/useClienteAvatars';
 
 const EMPTY_SUMMARY: ClientHealthSummary = {
   total: 0,
@@ -55,13 +57,17 @@ const CHIPS: { key: HealthFilterKey; countKey: keyof ClientHealthSummary }[] = [
 const SORTS: HealthSort[] = ['atencao', 'engajamento', 'ultimo_post', 'seguidores', 'nome'];
 
 function Avatar({ c }: { c: ClientHealth }) {
-  if (c.profile_picture_url) {
-    return <img src={c.profile_picture_url} alt="" className="phone-home-avatar" />;
-  }
+  const fotoManual = useCachedClienteFotoUrl(c.client_id);
   return (
-    <span className="phone-home-avatar" style={{ background: c.client_cor }} aria-hidden="true">
-      {c.client_sigla}
-    </span>
+    <ClienteFoto
+      srcs={[c.profile_picture_url, fotoManual]}
+      className="phone-home-avatar"
+      fallback={
+        <span className="phone-home-avatar" style={{ background: c.client_cor }} aria-hidden="true">
+          {c.client_sigla}
+        </span>
+      }
+    />
   );
 }
 

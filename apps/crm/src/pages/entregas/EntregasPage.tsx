@@ -2030,6 +2030,7 @@ export default function EntregasPage() {
         {activeView === 'calendar' && (
           <CalendarView
             cards={filteredCards}
+            clientes={clientes}
             onCardClick={handleCardClick}
             mode={mode}
             openableWorkflowIds={openableWorkflowIds}

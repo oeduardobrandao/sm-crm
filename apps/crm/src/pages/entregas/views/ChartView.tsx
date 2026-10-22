@@ -39,6 +39,7 @@ import {
   type StackedRow,
   type UpcomingTab,
 } from './chartViewData';
+import { ClienteFoto } from '@/components/ClienteFoto';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -333,40 +334,37 @@ function UpcomingChip({ card, onClick }: { card: BoardCard; onClick: () => void 
           marginBottom: '0.3rem',
         }}
       >
-        {card.clienteAvatarUrl ? (
-          <img
-            src={card.clienteAvatarUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: '50%',
-              objectFit: 'cover',
-              flexShrink: 0,
-            }}
-          />
-        ) : (
-          <span
-            aria-hidden
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: '50%',
-              background: card.cliente?.cor || 'var(--surface-hover)',
-              color: 'var(--dark)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '0.45rem',
-              fontWeight: 800,
-              flexShrink: 0,
-            }}
-          >
-            {card.cliente ? getInitials(card.cliente.nome) : ''}
-          </span>
-        )}
+        <ClienteFoto
+          srcs={[card.clienteAvatarUrl, card.cliente?.foto_url]}
+          alt=""
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            objectFit: 'cover',
+            flexShrink: 0,
+          }}
+          fallback={
+            <span
+              aria-hidden
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                background: card.cliente?.cor || 'var(--surface-hover)',
+                color: 'var(--dark)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '0.45rem',
+                fontWeight: 800,
+                flexShrink: 0,
+              }}
+            >
+              {card.cliente ? getInitials(card.cliente.nome) : ''}
+            </span>
+          }
+        />
         <span
           style={{
             fontSize: '0.7rem',

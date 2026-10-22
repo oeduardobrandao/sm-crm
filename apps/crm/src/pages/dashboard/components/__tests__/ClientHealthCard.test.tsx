@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi } from 'vitest';
 import { ClientHealthCard } from '../ClientHealthCard';
 import type { ClientHealth } from '../../../../services/clientHealth';
@@ -37,9 +38,11 @@ const mk = (over: Partial<ClientHealth>): ClientHealth =>
 
 const renderCard = (c: ClientHealth) =>
   render(
-    <MemoryRouter>
-      <ClientHealthCard client={c} />
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <ClientHealthCard client={c} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 
 describe('ClientHealthCard', () => {

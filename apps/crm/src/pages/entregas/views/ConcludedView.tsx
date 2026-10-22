@@ -12,7 +12,6 @@ import {
   type Workflow,
   type PostProcessWithPost,
 } from '../../../store';
-import { supabase } from '@/lib/supabase';
 import { normalize } from '@/lib/normalizeText';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -39,6 +38,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { useInstagramAvatars } from '@/hooks/useClienteAvatars';
 
 type ClientGroup = ConcludedClientGroup;
 
@@ -84,27 +84,9 @@ export function ConcludedView({
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
-  // Mesma chave/fn de useEntregasData (dedupe pelo cache): o avatar do
-  // Instagram sincronizado, quando existe, é bem mais confiável do que o
-  // foto_url manual do cliente (raramente preenchido).
-  const clienteIds = useMemo(() => clientes.map((c) => c.id!).filter(Boolean), [clientes]);
-  const { data: clienteAvatars } = useQuery({
-    queryKey: ['instagram-avatars', clienteIds.join(',')],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('instagram_accounts')
-        .select('client_id, profile_picture_url')
-        .in('client_id', clienteIds)
-        .not('profile_picture_url', 'is', null);
-      const map = new Map<number, string>();
-      if (data)
-        for (const row of data)
-          if (row.client_id && row.profile_picture_url)
-            map.set(row.client_id, row.profile_picture_url);
-      return map;
-    },
-    enabled: clienteIds.length > 0,
-  });
+  // Mesma consulta de useEntregasData (dedupe pelo cache): o avatar do
+  // Instagram sincronizado vem primeiro e o foto_url manual fica de reserva.
+  const { data: clienteAvatars } = useInstagramAvatars(clientes);
 
   const { data: concludedWorkflows = [], isLoading } = useQuery({
     queryKey: ['concluded-workflows'],

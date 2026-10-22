@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { isSameDay } from 'date-fns';
-import type { ActivePost } from '@/store';
+import type { ActivePost, Cliente } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../hooks/useEntregasData';
 import { MonthGrid } from '@/components/ui/month-grid';
@@ -10,12 +10,15 @@ import { dateDayKey, summarizeDay } from '../hooks/scheduledPostsUtils';
 import { PublicacoesPanel } from '../components/PublicacoesPanel';
 import { type EntregasMode } from '../components/ModeToggle';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 import { CalendarViewPhone, type CalendarDeadlineEvent } from '../phone/CalendarViewPhone';
 
 export type CalendarMode = EntregasMode;
 
 interface CalendarViewProps {
   cards: BoardCard[];
+  /** For the client photos on the phone's post rows. */
+  clientes?: Cliente[];
   onCardClick: (card: BoardCard) => void;
   mode: CalendarMode;
   openableWorkflowIds: Set<number>;
@@ -44,8 +47,11 @@ const monthNames = [
   'Dezembro',
 ];
 
+const NO_CLIENTES: Cliente[] = [];
+
 export function CalendarView({
   cards,
+  clientes = NO_CLIENTES,
   onCardClick,
   mode,
   openableWorkflowIds,
@@ -55,6 +61,7 @@ export function CalendarView({
 }: CalendarViewProps) {
   const isPhone = !useIsDesktop(768);
   const qc = useQueryClient();
+  const { fotosDe } = useClienteAvatars(clientes);
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1),
@@ -128,6 +135,7 @@ export function CalendarView({
         noCards={cards.length === 0}
         byDay={byDay}
         igStatuses={igStatuses}
+        fotosDe={fotosDe}
         postsLoading={postsLoading}
         openableWorkflowIds={openableWorkflowIds}
         onCardClick={onCardClick}

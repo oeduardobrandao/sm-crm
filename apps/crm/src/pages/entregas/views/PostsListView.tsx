@@ -5,7 +5,7 @@ import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
 import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { getInitials } from '@/lib/initials';
+import { BoardClienteAvatar } from '../components/BoardClienteAvatar';
 import { formatPostDate } from '@/utils/postDate';
 import { formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
 import { postStageOf, postResponsavelIdOf, type PostStage } from '../postStage';
@@ -252,23 +252,13 @@ export function PostsListView({
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  {card?.clienteAvatarUrl ? (
-                    <img
-                      src={card.clienteAvatarUrl}
-                      alt={p.cliente_nome}
-                      loading="lazy"
-                      decoding="async"
-                      className="board-post-cliente-avatar"
-                      style={{ display: 'block' }}
-                    />
-                  ) : (
-                    <span
-                      className="board-post-cliente-avatar board-post-cliente-avatar--initials"
-                      style={{ background: card?.cliente?.cor || 'var(--surface-hover)' }}
-                    >
-                      {getInitials(p.cliente_nome || '?')}
-                    </span>
-                  )}
+                  <BoardClienteAvatar
+                    srcs={[card?.clienteAvatarUrl, card?.cliente?.foto_url]}
+                    nome={p.cliente_nome || '?'}
+                    cor={card?.cliente?.cor}
+                    alt={p.cliente_nome}
+                    imgStyle={{ display: 'block' }}
+                  />
                 </TooltipTrigger>
                 <TooltipContent>{p.cliente_nome || '—'}</TooltipContent>
               </Tooltip>

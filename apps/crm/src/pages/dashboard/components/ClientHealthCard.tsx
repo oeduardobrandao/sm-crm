@@ -5,6 +5,8 @@ import type { HealthStatus } from '../../../lib/health/score';
 import { useClientHealthActions } from '../useClientHealthActions';
 import { Sparkline } from './Sparkline';
 import { PipelineRow } from './PipelineRow';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useCachedClienteFotoUrl } from '@/hooks/useClienteAvatars';
 
 // status → badge background/text tone (uses project CSS vars)
 export const HEALTH_TONE: Record<HealthStatus, { bg: string; fg: string }> = {
@@ -34,6 +36,7 @@ export function ClientHealthCard({ client: c }: { client: ClientHealth }) {
       ? t('health.lastPost.never')
       : t('health.lastPost.days', { count: c.days_since_last_post });
 
+  const fotoManual = useCachedClienteFotoUrl(c.client_id);
   const isConnectState = c.status === 'desconectado';
   const isReconnectState = c.status === 'reconectar';
   const isStaleState = c.status === 'sem_sincronizar';
@@ -43,20 +46,18 @@ export function ClientHealthCard({ client: c }: { client: ClientHealth }) {
     <div className="card" style={{ padding: '13px 15px', borderRadius: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          {c.profile_picture_url ? (
-            <img
-              src={c.profile_picture_url}
-              alt=""
-              style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
-            />
-          ) : (
-            <span
-              className="avatar"
-              style={{ width: 32, height: 32, fontSize: '0.7rem', background: c.client_cor }}
-            >
-              {c.client_sigla}
-            </span>
-          )}
+          <ClienteFoto
+            srcs={[c.profile_picture_url, fotoManual]}
+            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
+            fallback={
+              <span
+                className="avatar"
+                style={{ width: 32, height: 32, fontSize: '0.7rem', background: c.client_cor }}
+              >
+                {c.client_sigla}
+              </span>
+            }
+          />
           <div>
             <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{c.client_name}</div>
             {c.username && (

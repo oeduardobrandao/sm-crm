@@ -3,6 +3,7 @@ import { Check, FileText, GripVertical, MoreHorizontal } from 'lucide-react';
 import type { ContextMenuTriggerProps } from '@/components/mobile/ContextMenu';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
 import { getInitials } from '@/lib/initials';
+import { useFotoFallback } from '@/components/ClienteFoto';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { PostEntity } from '../boardEntity';
@@ -30,13 +31,23 @@ function ClienteAvatar({
   nome,
   cor,
   url,
+  fotoUrl,
 }: {
   nome: string;
   cor?: string | null;
   url?: string | null;
+  fotoUrl?: string | null;
 }) {
-  return url ? (
-    <img src={url} alt="" loading="lazy" decoding="async" className="phone-ent-card__avatar" />
+  const foto = useFotoFallback([url, fotoUrl]);
+  return foto.src ? (
+    <img
+      src={foto.src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      className="phone-ent-card__avatar"
+      onError={foto.onError}
+    />
   ) : (
     <span
       className="phone-ent-card__avatar phone-ent-card__avatar--initials"
@@ -120,6 +131,7 @@ export function PhoneWorkflowCard({
                   nome={card.cliente.nome}
                   cor={card.cliente.cor}
                   url={card.clienteAvatarUrl}
+                  fotoUrl={card.cliente.foto_url}
                 />
                 <span className="phone-ent-card__client-name">{card.cliente.nome}</span>
               </>

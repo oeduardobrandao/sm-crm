@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi } from 'vitest';
 import { ClientHealthGrid } from '../ClientHealthGrid';
 import type { ClientHealth } from '../../../../services/clientHealth';
@@ -46,9 +47,11 @@ const base = {
 
 const renderGrid = (props: Partial<typeof base>) =>
   render(
-    <MemoryRouter>
-      <ClientHealthGrid {...base} {...props} />
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <ClientHealthGrid {...base} {...props} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 
 describe('ClientHealthGrid', () => {

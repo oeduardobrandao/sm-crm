@@ -17,9 +17,12 @@ import {
 } from '../todayGroups';
 import { TodayRow, initials } from './TodayCard';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 
 const BUCKETS: AgendaBucket[] = ['atrasado', 'hoje', 'proximos'];
 const GROUP_ROWS = 6;
+const EMPTY_CLIENTES: never[] = [];
 
 const isPost = (k: AgendaItem['kind']) =>
   k === 'post_agendado' || k === 'post_aguardando_cliente' || k === 'post_pendente';
@@ -77,6 +80,7 @@ export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
     for (const c of clientes.data ?? []) if (c.id != null) map.set(c.id, c);
     return map;
   }, [clientes.data]);
+  const { fotosDe } = useClienteAvatars(clientes.data ?? EMPTY_CLIENTES);
 
   const groups = useMemo(
     () =>
@@ -148,13 +152,18 @@ export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
       );
     }
     const c = mode === 'cliente' && g.clienteId != null ? clienteById.get(g.clienteId) : undefined;
+    const fotos = mode === 'cliente' && !g.rest ? fotosDe(g.clienteId) : [];
     return (
       <span
         className="inicio-prazos__lead"
         style={c?.cor ? { background: c.cor } : undefined}
         aria-hidden
       >
-        {g.rest ? '?' : (c?.sigla ?? initials(g.label))}
+        <ClienteFoto
+          srcs={fotos}
+          className="inicio-prazos__lead-photo"
+          fallback={g.rest ? '?' : (c?.sigla ?? initials(g.label))}
+        />
       </span>
     );
   };

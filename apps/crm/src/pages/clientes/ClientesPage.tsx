@@ -90,7 +90,6 @@ import {
   type Cliente,
 } from '../../store';
 import { sanitizeUrl } from '../../utils/security';
-import { supabase } from '../../lib/supabase';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
@@ -99,6 +98,8 @@ import { useAuth } from '../../context/AuthContext';
 import { assertNoFinancialColumns, stripFinancialFields } from '@/lib/financialAccess';
 import { ClientesPhone } from './phone/ClientesPhone';
 import { ClienteFormPhoneFields } from './phone/ClienteFormPhoneFields';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 
 type ClienteFormValues = z.infer<ReturnType<typeof createClienteSchema>>;
 
@@ -118,20 +119,6 @@ function createClienteSchema(t: (key: string) => string) {
 
 type FilterStatus = 'todos' | 'ativo' | 'pausado' | 'encerrado';
 const AVATAR_COLORS = ['#e74c3c', '#8e44ad', '#27ae60', '#2980b9', '#d35400', '#16a085'];
-
-async function fetchAvatars(clientIds: number[]): Promise<Record<number, string>> {
-  if (!clientIds.length) return {};
-  const { data } = await supabase
-    .from('instagram_accounts')
-    .select('client_id, profile_picture_url')
-    .in('client_id', clientIds)
-    .not('profile_picture_url', 'is', null);
-  const map: Record<number, string> = {};
-  if (data)
-    for (const row of data)
-      if (row.client_id && row.profile_picture_url) map[row.client_id] = row.profile_picture_url;
-  return map;
-}
 
 function NotionIcon() {
   return (
@@ -196,11 +183,7 @@ export default function ClientesPage() {
   });
 
   const clientsAtLimit = isAtLimit('max_clients', clientes.length);
-  const { data: avatarMap = {} } = useQuery({
-    queryKey: ['instagram_avatars', clientes.map((c) => c.id).join(',')],
-    queryFn: () => fetchAvatars(clientes.map((c) => c.id as number).filter(Boolean)),
-    enabled: clientes.length > 0,
-  });
+  const { fotosDe } = useClienteAvatars(clientes);
 
   const filtered = clientes
     .filter((c) => filter === 'todos' || c.status === filter)
@@ -614,7 +597,6 @@ export default function ClientesPage() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((c) => {
-                    const avatarUrl = c.id ? avatarMap[c.id] : undefined;
                     const initials = getInitials(c.nome);
                     const notionUrl = c.notion_page_url ? sanitizeUrl(c.notion_page_url) : '';
                     return (
@@ -632,32 +614,31 @@ export default function ClientesPage() {
                               minWidth: 0,
                             }}
                           >
-                            {avatarUrl ? (
-                              <img
-                                src={avatarUrl}
-                                alt={initials}
-                                className="avatar"
-                                style={{ width: 28, height: 28, objectFit: 'cover', flexShrink: 0 }}
-                              />
-                            ) : (
-                              <div
-                                className="avatar"
-                                style={{
-                                  width: 28,
-                                  height: 28,
-                                  fontSize: '0.7rem',
-                                  background: c.cor,
-                                  color: '#fff',
-                                  fontWeight: 700,
-                                  flexShrink: 0,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}
-                              >
-                                {initials}
-                              </div>
-                            )}
+                            <ClienteFoto
+                              srcs={fotosDe(c)}
+                              alt={initials}
+                              className="avatar"
+                              style={{ width: 28, height: 28, objectFit: 'cover', flexShrink: 0 }}
+                              fallback={
+                                <div
+                                  className="avatar"
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    fontSize: '0.7rem',
+                                    background: c.cor,
+                                    color: '#fff',
+                                    fontWeight: 700,
+                                    flexShrink: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  {initials}
+                                </div>
+                              }
+                            />
                             <button
                               className="client-link"
                               onClick={(e) => {
@@ -761,7 +742,7 @@ export default function ClientesPage() {
           clientes={clientes}
           filtered={filtered}
           isLoading={isLoading}
-          avatarMap={avatarMap}
+          fotosDe={fotosDe}
           search={search}
           onSearchChange={setSearch}
           filter={filter}

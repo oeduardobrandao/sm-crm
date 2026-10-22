@@ -13,6 +13,8 @@ import type { HealthStatus } from '../../../lib/health/score';
 import { filterAndSortClients, type HealthFilterKey } from '../../../lib/health/filter';
 import { useClientHealthActions } from '../useClientHealthActions';
 import { pipelineText } from './PipelineRow';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useCachedClienteFotoUrl } from '@/hooks/useClienteAvatars';
 
 const TABLE_ROWS = 8;
 const STALE_POST_DAYS = 7;
@@ -105,6 +107,7 @@ function Delta({ pct, locale }: { pct: number; locale: string }) {
 function HealthRow({ c, locale, nowMs }: { c: ClientHealth; locale: string; nowMs: number }) {
   const { t } = useTranslation('dashboard');
   const { busy, handleConnect, handleSync } = useClientHealthActions(c);
+  const fotoManual = useCachedClienteFotoUrl(c.client_id);
   const reason = healthReason(c, nowMs);
   const noMetrics = c.status === 'desconectado' || c.status === 'reconectar';
   const n = (v: number) => v.toLocaleString(locale);
@@ -145,17 +148,19 @@ function HealthRow({ c, locale, nowMs }: { c: ClientHealth; locale: string; nowM
     <tr>
       <th scope="row" className="inicio-health__client">
         <Link to={`/clientes/${c.client_id}`} className="inicio-health__client-link">
-          {c.profile_picture_url ? (
-            <img src={c.profile_picture_url} alt="" className="inicio-health__avatar" />
-          ) : (
-            <span
-              className="inicio-health__avatar"
-              style={{ background: c.client_cor }}
-              aria-hidden
-            >
-              {c.client_sigla}
-            </span>
-          )}
+          <ClienteFoto
+            srcs={[c.profile_picture_url, fotoManual]}
+            className="inicio-health__avatar"
+            fallback={
+              <span
+                className="inicio-health__avatar"
+                style={{ background: c.client_cor }}
+                aria-hidden
+              >
+                {c.client_sigla}
+              </span>
+            }
+          />
           <span className="inicio-health__client-text">
             <span className="inicio-health__name">{c.client_name}</span>
             {c.username && <span className="inicio-health__user">@{c.username}</span>}

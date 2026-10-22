@@ -72,7 +72,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatPostDate } from '@/utils/postDate';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
-import { getInitials } from '@/lib/initials';
+import { BoardClienteAvatar } from '../components/BoardClienteAvatar';
 import { formatEtapaPrazo } from '../etapaPrazo';
 import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
 import {
@@ -325,24 +325,11 @@ function PostBoardCardContent({
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {card?.clienteAvatarUrl ? (
-                      <img
-                        src={card.clienteAvatarUrl}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="board-post-cliente-avatar"
-                      />
-                    ) : (
-                      <span
-                        className="board-post-cliente-avatar board-post-cliente-avatar--initials"
-                        style={{
-                          background: card?.cliente?.cor || 'var(--surface-hover)',
-                        }}
-                      >
-                        {getInitials(post.cliente_nome || '?')}
-                      </span>
-                    )}
+                    <BoardClienteAvatar
+                      srcs={[card?.clienteAvatarUrl, card?.cliente?.foto_url]}
+                      nome={post.cliente_nome || '?'}
+                      cor={card?.cliente?.cor}
+                    />
                   </TooltipTrigger>
                   <TooltipContent>{post.cliente_nome || '—'}</TooltipContent>
                 </Tooltip>

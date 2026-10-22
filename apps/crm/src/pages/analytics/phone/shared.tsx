@@ -5,6 +5,7 @@ import { PickerSheet } from '@/components/mobile/PickerSheet';
 import type { CheckListOption, CheckListValue } from '@/components/mobile/CheckList';
 import { sanitizeUrl } from '../../../utils/security';
 import './analyticsPhone.css';
+import { useFotoFallback } from '@/components/ClienteFoto';
 
 /** pt-BR thousands ("15.320"). */
 export function fmtNumber(n: number | null | undefined): string {
@@ -118,14 +119,21 @@ export function Avatar({
   color,
   large,
 }: {
-  src?: string | null;
+  /** One URL, or several best first: a URL that fails to load falls through to the next. */
+  src?: string | null | readonly (string | null | undefined)[];
   initials: string;
   color?: string | null;
   large?: boolean;
 }) {
-  const safe = src && src.startsWith('https://') ? src : null;
+  const srcs = (Array.isArray(src) ? src : [src]).filter(
+    (s): s is string => !!s && s.startsWith('https://'),
+  );
+  const foto = useFotoFallback(srcs);
   const className = cn('phone-an-avatar', large && 'phone-an-avatar--lg');
-  if (safe) return <img src={safe} alt="" className={className} aria-hidden="true" />;
+  if (foto.src)
+    return (
+      <img src={foto.src} alt="" className={className} aria-hidden="true" onError={foto.onError} />
+    );
   return (
     <span className={className} style={{ background: color || undefined }} aria-hidden="true">
       {initials}
