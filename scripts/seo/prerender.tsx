@@ -8,6 +8,10 @@
  * node_modules/.cache/landing-ssr, never dist/, then imports that bundle. The client hydrates
  * the markup (main.tsx), so landing render code must be hydration-stable: no render-time
  * browser reads, the "anonymous first visit" state on the server and the first client render.
+ * The SSR bundle is single-file (inlineDynamicImports), so every CRM module's top-level code,
+ * every lazy page and not just the landing, runs in Node at prerender: a module-level
+ * window/document/localStorage access anywhere breaks the Vercel build (the
+ * landing-prerender-smoke CI job catches it).
  * Legal pages are rendered from their real React components (pure JSX) via
  * renderToStaticMarkup; the other routes use their .seo.ts mirrors.
  * Run AFTER `vite build` (needs dist/index.html), BEFORE hub/admin builds.

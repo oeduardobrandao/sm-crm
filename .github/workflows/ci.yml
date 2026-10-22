@@ -48,6 +48,7 @@ jobs:
   # render makes no network calls.
   landing-prerender-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       VITE_SUPABASE_URL: https://placeholder.supabase.co
       VITE_SUPABASE_ANON_KEY: placeholder

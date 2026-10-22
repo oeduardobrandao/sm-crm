@@ -27,7 +27,7 @@ import {
   LandingFooter,
   SkipLink,
   useLandingChrome,
-  useLandingUser,
+  useLandingAuth,
   scrollTo,
 } from './LandingChrome';
 import { PricingSection } from './PricingSection';
@@ -176,7 +176,7 @@ function PromoBanner() {
 }
 
 function Hero() {
-  const user = useLandingUser();
+  const { user, ready } = useLandingAuth();
 
   return (
     <section className="hero-wrap" id="top">
@@ -191,7 +191,7 @@ function Hero() {
           <div className="lp2-offer">
             <span className="lp2-offer-text">{LANDING.hero.note}</span>
             <div className="hero-ctas">
-              {user ? (
+              {!ready ? null : user ? (
                 <a href="/dashboard" className="lp-btn lp-btn-cta lg">
                   Acessar painel <ArrowRight size={16} />
                 </a>
@@ -495,7 +495,7 @@ function HowItWorks() {
 }
 
 function CtaFinal() {
-  const user = useLandingUser();
+  const { user, ready } = useLandingAuth();
 
   return (
     <section className="cta-final-wrap">
@@ -518,7 +518,7 @@ function CtaFinal() {
             </>
           )}
           <div className="lp2-cta-row">
-            {user ? (
+            {!ready ? null : user ? (
               <a href="/dashboard" className="lp-btn lp-btn-cta lg">
                 Acessar painel <ArrowRight size={16} />
               </a>

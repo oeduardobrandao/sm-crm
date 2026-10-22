@@ -63,3 +63,13 @@ describe('index.html pre-paint script', () => {
     expect(root.hasAttribute('data-js')).toBe(true);
   });
 });
+
+describe('core style.css pre-paint rules', () => {
+  const coreCss = readFileSync(path.resolve(__dirname, '../../style.css'), 'utf8');
+
+  it('hides the cookie banner for stored consent only while #root is server-rendered', () => {
+    expect(coreCss).toMatch(
+      /html\[data-consent-stored\] #root\[data-ssr\] \.cookie-banner\s*\{[^}]*display:\s*none/,
+    );
+  });
+});

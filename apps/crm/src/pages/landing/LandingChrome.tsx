@@ -3,6 +3,7 @@ import { ArrowRight, Instagram, Linkedin, LogIn, Moon, Sun, Youtube } from 'luci
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 import { useIsHydrated } from '@/lib/useIsHydrated';
+import { isSsrMount } from '@/lib/ssrMount';
 
 export function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -18,14 +19,34 @@ export function useLandingChrome(): void {
 }
 
 /**
- * The signed-in user, or `null` while auth is loading, on the server and during hydration. The
- * prerendered `/` always carries the anonymous CTAs; a signed-in visitor sees them switch to
- * "Acessar painel" right after hydration, with no hydration mismatch.
+ * What the landing CTAs render from.
+ *
+ * `user`: the signed-in user; `null` on the server, during hydration, and while auth is loading
+ * on a page that hydrated server HTML. The prerendered `/` always carries the anonymous CTAs; a
+ * signed-in visitor sees them switch to "Acessar painel" once auth resolves, with no hydration
+ * mismatch.
+ *
+ * `ready`: whether the auth-dependent CTAs render at all. A page that hydrated server HTML keeps
+ * the anonymous CTAs while auth loads (they are in the HTML and must neither mismatch nor vanish
+ * after hydration). A plain `createRoot` mount (a cold open of /precos, /sobre..., or an SPA
+ * navigation to `/`) renders no CTA until auth resolves, so a signed-in visitor never sees
+ * "Entrar" flash before "Acessar painel".
  */
-export function useLandingUser() {
+export function useLandingAuth(): { user: ReturnType<typeof useAuth>['user']; ready: boolean } {
   const { user, loading } = useAuth();
   const hydrated = useIsHydrated();
-  return hydrated && !loading ? user : null;
+  const ssrMount = isSsrMount();
+  return {
+    // Hydrated page: anonymous until auth resolves. `createRoot` mount: whatever auth has, as
+    // before SSR existed (PricingSection reads it ungated).
+    user: !hydrated || (ssrMount && loading) ? null : user,
+    ready: !hydrated || ssrMount || !loading,
+  };
+}
+
+/** The signed-in user per {@link useLandingAuth}, for places that render no matter what. */
+export function useLandingUser() {
+  return useLandingAuth().user;
 }
 
 function readIsDark(): boolean {
@@ -64,7 +85,7 @@ export function LandingHeader({
   variant: 'landing' | 'subpage';
   skipLink?: boolean;
 }) {
-  const user = useLandingUser();
+  const { user, ready } = useLandingAuth();
   const isDark = useSyncExternalStore(subscribeTheme, readIsDark, () => false);
 
   const toggleTheme = () => {
@@ -117,7 +138,7 @@ export function LandingHeader({
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
               </button>
             )}
-            {user ? (
+            {!ready ? null : user ? (
               <a href="/dashboard" className="lp-btn lp-btn-primary">
                 Acessar painel <ArrowRight size={14} />
               </a>

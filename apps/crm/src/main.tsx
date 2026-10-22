@@ -8,6 +8,7 @@ import { captureReferral } from './lib/referral';
 import { initI18n } from '@mesaas/i18n';
 import { I18N_LAZY, I18N_RESOURCES } from './boot/i18nResources';
 import { mountApp } from './boot/mountApp';
+import { markSsrMount } from './lib/ssrMount';
 import App, { preloadLanding, queryClient } from './App';
 import '../style.css';
 
@@ -28,6 +29,7 @@ const container = document.getElementById('root')!;
 // is in `pt`, so i18n starts in `pt` there; App's SavedLanguageSync applies the saved language
 // right after hydration.
 const isSsr = container.dataset.ssr === 'landing' && window.location.pathname === '/';
+if (isSsr) markSsrMount();
 
 initI18n(I18N_RESOURCES, { lazy: I18N_LAZY, ...(isSsr ? { initialLanguage: 'pt' as const } : {}) });
 
