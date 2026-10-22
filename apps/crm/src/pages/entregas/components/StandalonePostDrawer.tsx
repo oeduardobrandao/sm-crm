@@ -574,10 +574,12 @@ export function StandalonePostDrawer({
 
   const handleReplyToComment = useCallback(
     async (threadId: number, content: string) => {
-      await addPostComment(threadId, content);
+      const postId = commentThreads.find((t) => t.id === threadId)?.post_id;
+      if (postId === undefined) throw new Error(`Comment thread ${threadId} not found`);
+      await addPostComment(postId, threadId, content);
       await refetchComments();
     },
-    [refetchComments],
+    [refetchComments, commentThreads],
   );
 
   const handleResolveThread = useCallback(

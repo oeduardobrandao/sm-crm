@@ -333,6 +333,14 @@ describe('PostCommentPopover', () => {
     expect(screen.queryByTitle('Resolver')).not.toBeInTheDocument();
   });
 
+  it('shows no reply box on a resolved thread (the RPC rejects replies to it)', () => {
+    const thread = makeThread({ status: 'resolved' });
+    render(<PostCommentPopover thread={thread} {...defaultProps} />);
+
+    expect(screen.queryByRole('textbox', { name: 'Responder...' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Enviar')).not.toBeInTheDocument();
+  });
+
   it('calls onReply when submitting a reply', async () => {
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} />);

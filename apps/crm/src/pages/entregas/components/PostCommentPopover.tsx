@@ -310,7 +310,7 @@ export default function PostCommentPopover({
         ))}
       </div>
 
-      {!readOnly && (
+      {!readOnly && thread.status === 'active' && (
         <div className="comment-popover-footer">
           <MentionEditor
             className="comment-reply-input"
