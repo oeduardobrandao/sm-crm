@@ -10,7 +10,7 @@ export interface MountAppOptions {
   isSsr: boolean;
   /** Loads the chunk the first render needs (the landing page's). */
   preload: () => Promise<void>;
-  /** Error reporting (Sentry). Called at most once per page load. */
+  /** Error reporting (Sentry). At most once per page load for a preload failure and once for a recoverable hydration error. */
   report: (err: unknown) => void;
   hydrate?: typeof reactHydrateRoot;
   create?: typeof reactCreateRoot;
@@ -70,17 +70,18 @@ export async function mountApp({
     return 'rendered';
   }
 
-  let reported = false;
-  const reportOnce = (err: unknown) => {
-    if (reported) return;
-    reported = true;
-    report(err);
-  };
+  // Separate flags: a preload failure that was reported and then retried successfully must not
+  // swallow a later hydration mismatch (one report per kind per page load).
+  let preloadReported = false;
+  let recoverableReported = false;
 
   let ready = await withTimeout(preload, ssrTimeoutMs).then(
     () => true,
     (err: unknown) => {
-      reportOnce(err);
+      if (!preloadReported) {
+        preloadReported = true;
+        report(err);
+      }
       return false;
     },
   );
@@ -92,6 +93,12 @@ export async function mountApp({
   }
   if (!ready) return 'static';
 
-  hydrate(container, element, { onRecoverableError: (err) => reportOnce(err) });
+  hydrate(container, element, {
+    onRecoverableError: (err) => {
+      if (recoverableReported) return;
+      recoverableReported = true;
+      report(err);
+    },
+  });
   return 'hydrated';
 }

@@ -70,7 +70,8 @@ export default function LandingPage() {
 
   // The prerendered `/` ships `<div id="root" data-ssr="landing">`, and the pre-paint CSS hides
   // stored-state UI (dismissed promo, decided cookie banner) only under `#root[data-ssr]`. This
-  // effect runs once this boundary has hydrated, so React state takes over in the same commit.
+  // effect runs once this boundary has hydrated, in the same passive flush as the post-hydration
+  // re-render, so the CSS hands over to React state without a gap (a frame may paint before it).
   useEffect(() => {
     document.getElementById('root')?.removeAttribute('data-ssr');
   }, []);

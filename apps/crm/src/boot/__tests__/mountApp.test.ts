@@ -94,7 +94,7 @@ describe('mountApp, server-rendered path', () => {
     expect(t.report).toHaveBeenCalledWith(new Error('mismatch 1'));
   });
 
-  it('reports the first failure, retries once and hydrates when the retry succeeds', async () => {
+  it('reports the first failure, retries once, hydrates, and still reports a later recoverable error', async () => {
     const preload = vi
       .fn<() => Promise<void>>()
       .mockRejectedValueOnce(new Error('chunk'))
@@ -104,9 +104,11 @@ describe('mountApp, server-rendered path', () => {
     expect(preload).toHaveBeenCalledTimes(2);
     expect(t.report).toHaveBeenCalledTimes(1);
     expect(t.hydrate).toHaveBeenCalledTimes(1);
-    // A later hydration mismatch must not report a second time on the same page load.
+    // A later hydration mismatch is a different kind: it still reports (once per kind).
     t.recoverable(new Error('mismatch'));
-    expect(t.report).toHaveBeenCalledTimes(1);
+    expect(t.report).toHaveBeenCalledTimes(2);
+    t.recoverable(new Error('mismatch 2'));
+    expect(t.report).toHaveBeenCalledTimes(2);
     expect(t.create).not.toHaveBeenCalled();
   });
 
