@@ -70,7 +70,12 @@ const lazyNamespacesByInstance = new WeakMap<I18nInstance, readonly string[]>();
  */
 export function initI18n(
   resources: Resources,
-  options: { lazy?: LazyNamespaces; instance?: I18nInstance } = {},
+  options: {
+    lazy?: LazyNamespaces;
+    instance?: I18nInstance;
+    /** Overrides the saved language for init only (hydration renders `pt`); never written to storage. */
+    initialLanguage?: Language;
+  } = {},
 ) {
   const instance = options.instance ?? i18n;
   const namespaces = Object.keys(Object.values(resources)[0] ?? {});
@@ -87,7 +92,7 @@ export function initI18n(
   instance.on('languageChanged', syncDocumentLang);
 
   instance.use(initReactI18next).init({
-    lng: getSavedLanguage(),
+    lng: options.initialLanguage ?? getSavedLanguage(),
     fallbackLng: 'pt',
     defaultNS: 'common',
     // Lets `useTranslation('someOtherNamespace')` still resolve bare `t('actions.save')`-style

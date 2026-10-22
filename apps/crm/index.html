@@ -18,9 +18,11 @@
       (function() {
         const hash = window.location.hash;
         if (hash === '#/' || hash === '#/login') return;
-        if (localStorage.getItem('theme') === 'dark') {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
+        try {
+          if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+          }
+        } catch (e) {}
         // Desktop "Vidro" look (src/lib/vidroLook.ts): look-vidro holds the user id it was
         // resolved for; pre-paint only when the stored Supabase session is that user's.
         try {
@@ -70,6 +72,20 @@
           window.addEventListener('load', nudge);
         })();
       }
+    </script>
+    <!-- Pre-paint flags for the prerendered landing (style.css / landing.css hide stored-state UI
+         under #root[data-ssr] until hydration). ES5, storage may throw. -->
+    <script>
+      (function () {
+        var root = document.documentElement;
+        root.setAttribute('data-js', '');
+        try {
+          if (localStorage.getItem('consent_v1') !== null) root.setAttribute('data-consent-stored', '');
+          if (localStorage.getItem('mesaas_promo_dismissed') === '1') {
+            root.setAttribute('data-promo-dismissed', '');
+          }
+        } catch (e) {}
+      })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

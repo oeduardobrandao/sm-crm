@@ -2254,6 +2254,13 @@ body.landing-page #root {
    sidebar breakpoint rules do not apply. On phones the floating nav pill (.mobile-nav-glass, 72px
    tall, z-index 40) sits at the bottom, so lift the banner above it when that nav is rendered. */
 
+/* Prerendered landing (#root[data-ssr] is removed on hydration): a visitor with a stored consent
+   choice must not see the banner flash before React decides. Scoped to data-ssr so it stops
+   applying once hydrated and the banner can reappear if consent is revoked. */
+html[data-consent-stored] #root[data-ssr] .cookie-banner {
+  display: none;
+}
+
 @media (max-width: 900px) {
   body:has(.mobile-nav-glass) .cookie-banner {
     bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
