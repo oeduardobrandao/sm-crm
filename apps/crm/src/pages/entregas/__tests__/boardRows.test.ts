@@ -5,6 +5,8 @@ import {
   findCardColumn,
   isValidDropTarget,
   parseColumnKey,
+  workflowColumnOrdens,
+  workflowDropDirection,
 } from '../boardRows';
 import { toWorkflowEntities } from '../boardEntity';
 import type { PostEntity } from '../boardEntity';
@@ -212,6 +214,90 @@ describe('isValidDropTarget', () => {
   it('rejeita coluna adjacente que o fluxo arrastado não tem', () => {
     // fluxo com 0..2 na ordem 2; a coluna 3 veio de outro fluxo da mesma linha
     expect(isValidDropTarget(etapas, 2, 3)).toBe(false);
+  });
+});
+
+// update_workflow_template casa etapas pelo nome: um fluxo pode guardar uma etapa
+// que o template perdeu e ficar com as seguintes uma ordem à frente do template.
+describe('fluxo com etapa que o template não tem mais', () => {
+  const TPL = [
+    {
+      id: 7,
+      nome: 'Equipe',
+      etapas: [{ nome: 'A' }, { nome: 'C' }, { nome: 'D' }, { nome: 'E' }],
+    } as never,
+  ];
+  // B feita antes de sair do template; C ativa na ordem 2
+  const KEPT_DONE = [
+    { id: 1, ordem: 0, nome: 'A' },
+    { id: 2, ordem: 1, nome: 'B' },
+    { id: 3, ordem: 2, nome: 'C' },
+    { id: 4, ordem: 3, nome: 'D' },
+    { id: 5, ordem: 4, nome: 'E' },
+  ];
+
+  it('o card fica na coluna do template com o nome da etapa ativa, não na da ordem', () => {
+    const card = makeCard(1, 7, KEPT_DONE, 2);
+    for (const e of card.allEtapas) if (e.ordem < 2) e.status = 'concluido';
+    const rows = buildBoardRows(toWorkflowEntities([card]), TPL);
+    expect(rows[0].columns.map((c) => c.nome)).toEqual(['A', 'C', 'D', 'E']);
+    expect(rows[0].columns[1].cards.map((c) => c.workflow.id)).toEqual([1]);
+    expect(rows[0].columns[2].cards).toEqual([]);
+  });
+
+  it('só a coluna da etapa seguinte ou da anterior do próprio fluxo aceita o drop', () => {
+    const steps = KEPT_DONE.map((e) => ({ ordem: e.ordem, nome: e.nome }));
+    const tpl = [{ nome: 'A' }, { nome: 'C' }, { nome: 'D' }, { nome: 'E' }];
+    // C (coluna 1): avançar vai para D (coluna 2); voltar para B, que não tem coluna própria
+    expect(workflowDropDirection(tpl, steps, 2, 2)).toBe('forward');
+    expect(workflowDropDirection(tpl, steps, 2, 3)).toBeNull();
+    expect(workflowDropDirection(tpl, steps, 2, 0)).toBeNull();
+  });
+
+  it('etapa ativa que saiu do template ganha coluna própria logo depois da anterior', () => {
+    const inB = makeCard(1, 7, KEPT_DONE, 1);
+    const rows = buildBoardRows(toWorkflowEntities([inB]), TPL);
+    expect(rows[0].columns.map((c) => [c.ordem, c.nome])).toEqual([
+      [0, 'A'],
+      [0.5, 'B'],
+      [1, 'C'],
+      [2, 'D'],
+      [3, 'E'],
+    ]);
+    expect(rows[0].columns[1].cards.map((c) => c.workflow.id)).toEqual([1]);
+    const steps = KEPT_DONE.map((e) => ({ ordem: e.ordem, nome: e.nome }));
+    const tpl = [{ nome: 'A' }, { nome: 'C' }, { nome: 'D' }, { nome: 'E' }];
+    expect(workflowDropDirection(tpl, steps, 1, 1)).toBe('forward');
+    expect(workflowDropDirection(tpl, steps, 1, 0)).toBe('back');
+  });
+
+  it('etapa com nome customizado no fluxo continua na própria ordem', () => {
+    const custom = [
+      { ordem: 0, nome: 'A' },
+      { ordem: 1, nome: 'C (cliente X)' },
+      { ordem: 2, nome: 'D' },
+    ];
+    expect([
+      ...workflowColumnOrdens([{ nome: 'A' }, { nome: 'C' }, { nome: 'D' }], custom),
+    ]).toEqual([
+      [0, 0],
+      [1, 1],
+      [2, 2],
+    ]);
+  });
+
+  it('nome repetido no template não casa por nome: fica na ordem', () => {
+    const tpl = DUP.map((e) => ({ nome: e.nome }));
+    const steps = DUP.map((e) => ({ ordem: e.ordem, nome: e.nome }));
+    expect([...workflowColumnOrdens(tpl, steps).values()]).toEqual([0, 1, 2, 3]);
+  });
+
+  it('sem template, coluna = ordem e o drop é a ordem vizinha', () => {
+    const steps = DUP.map((e) => ({ ordem: e.ordem, nome: e.nome }));
+    expect([...workflowColumnOrdens(undefined, steps).values()]).toEqual([0, 1, 2, 3]);
+    expect(workflowDropDirection(undefined, steps, 1, 2)).toBe('forward');
+    expect(workflowDropDirection(undefined, steps, 1, 0)).toBe('back');
+    expect(workflowDropDirection(undefined, steps, 1, 3)).toBeNull();
   });
 });
 

@@ -21,9 +21,10 @@ export const explainerStorageKey = (contaId: string) => `entregas_explainer_dism
  * split is `workflows.etapa_atual` vs `workflow_posts.status`; leaving an
  * approval etapa never changes post statuses on its own, the user picks what
  * happens in `ApprovalExitDialog`; template propagation is `saveWorkflowTemplate`
- * (`update_workflow_template`), which updates `pendente` and `ativo` etapas
- * field by field, only where the fluxo still holds the template's previous
- * value (never `concluido`, and never `status`/`iniciado_em`/`concluido_em`).
+ * (`update_workflow_template`), which matches fluxo etapas to the template by
+ * name and updates `pendente` and `ativo` etapas field by field, only where the
+ * fluxo still holds the template's previous value (never `concluido`, and never
+ * the `status`/`iniciado_em`/`concluido_em` of an existing etapa).
  */
 export function ComoFuncionaPanel({
   onDismiss,
