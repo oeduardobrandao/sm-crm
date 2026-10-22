@@ -11,6 +11,10 @@ export type AnalyticsEvent =
   | 'signup_completed'
   // Desktop Vidro opt-out/opt-in from the account menu (src/hooks/useVidro.ts).
   | 'vidro_look_toggled'
+  // Vidro launch intro (src/components/layout/VidroIntro.tsx); its "back to classic" button
+  // fires vidro_look_toggled through useVidro.
+  | 'vidro_intro_shown'
+  | 'vidro_intro_dismissed'
   | 'client_created'
   // Two distinct steps, deliberately not collapsed: `_started` fires when the user leaves for
   // Meta's consent screen, `instagram_connected` is the activation milestone and may only be

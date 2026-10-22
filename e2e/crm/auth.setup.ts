@@ -37,5 +37,13 @@ setup('authenticate crm user', async ({ page }) => {
   await expect(page).not.toHaveURL(/workspace-setup/);
   await expect(page.locator('nav#sidebar')).toBeVisible();
 
+  // Mark the Vidro launch intro as seen (VidroIntro, per user per browser): at the Desktop
+  // Chrome viewport it would otherwise open over the first page of every spec.
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => /^sb-.+-auth-token$/.test(k));
+    const userId = key ? JSON.parse(localStorage.getItem(key) ?? '{}').user?.id : null;
+    if (userId) localStorage.setItem(`vidro-intro:${userId}`, '1');
+  });
+
   await page.context().storageState({ path: authFile });
 });

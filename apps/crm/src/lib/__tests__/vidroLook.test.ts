@@ -3,8 +3,11 @@ import {
   LOOK_CACHE_KEY,
   applyVidro,
   clearVidroCache,
+  isIntroDue,
   isVidroAttributeSet,
   optOutKey,
+  readIntroSeen,
+  writeIntroSeen,
   resetVidroLook,
   readOptOut,
   writeOptOut,
@@ -78,5 +81,21 @@ describe('vidroLook', () => {
     });
     expect(() => resetVidroLook()).not.toThrow();
     expect(document.documentElement.getAttribute('data-look')).toBe('other');
+  });
+
+  it('announces the look once per user, only to accounts older than the launch', () => {
+    const old = '2026-03-01T12:00:00Z';
+    expect(isIntroDue({ vidroShell: true, userId: 'u1', userCreatedAt: old })).toBe(true);
+    expect(isIntroDue({ vidroShell: false, userId: 'u1', userCreatedAt: old })).toBe(false);
+    expect(isIntroDue({ vidroShell: true, userId: null, userCreatedAt: old })).toBe(false);
+    expect(
+      isIntroDue({ vidroShell: true, userId: 'u1', userCreatedAt: '2026-10-30T12:00:00Z' }),
+    ).toBe(false);
+    expect(isIntroDue({ vidroShell: true, userId: 'u1', userCreatedAt: undefined })).toBe(true);
+
+    writeIntroSeen('u1');
+    expect(readIntroSeen('u1')).toBe(true);
+    expect(isIntroDue({ vidroShell: true, userId: 'u1', userCreatedAt: old })).toBe(false);
+    expect(isIntroDue({ vidroShell: true, userId: 'u2', userCreatedAt: old })).toBe(true);
   });
 });

@@ -64,3 +64,42 @@ export function resetVidroLook(): void {
     // No document to touch; nothing to reset.
   }
 }
+
+/**
+ * Launch intro (one modal announcing the look, with a way back to classic). Shown once per user
+ * per browser, like the opt-out it offers. Accounts created on or after the launch never saw the
+ * classic look, so there is nothing to announce to them.
+ */
+export const VIDRO_LAUNCHED_AT = '2026-10-23T03:00:00Z';
+
+export function introSeenKey(userId: string): string {
+  return `vidro-intro:${userId}`;
+}
+
+export function readIntroSeen(userId: string): boolean {
+  try {
+    return localStorage.getItem(introSeenKey(userId)) === '1';
+  } catch {
+    // Storage unavailable: treat as seen rather than announce on every load.
+    return true;
+  }
+}
+
+export function writeIntroSeen(userId: string): void {
+  try {
+    localStorage.setItem(introSeenKey(userId), '1');
+  } catch {
+    // Nothing to persist; readIntroSeen already reports seen without storage.
+  }
+}
+
+export function isIntroDue(i: {
+  vidroShell: boolean;
+  userId: string | null | undefined;
+  userCreatedAt: string | null | undefined;
+}): boolean {
+  if (!i.vidroShell || !i.userId) return false;
+  const created = i.userCreatedAt ? Date.parse(i.userCreatedAt) : NaN;
+  if (Number.isFinite(created) && created >= Date.parse(VIDRO_LAUNCHED_AT)) return false;
+  return !readIntroSeen(i.userId);
+}

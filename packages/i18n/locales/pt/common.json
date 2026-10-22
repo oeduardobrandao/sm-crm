@@ -41,6 +41,17 @@
     "openMenu": "Abrir menu",
     "menu": "Menu"
   },
+  "vidroIntro": {
+    "eyebrow": "Novidade",
+    "title": "O Mesaas está de visual novo",
+    "body": "Barra lateral mais leve, as ações de cada página reunidas no topo e telas mais limpas para você achar o que importa mais rápido.\n\nPrefere o visual anterior? Volte a ele agora ou quando quiser, em **Visual clássico** no menu do seu perfil, no fim da barra lateral.",
+    "continue": "Continuar no novo",
+    "classic": "Voltar ao clássico",
+    "classicToast": {
+      "title": "Visual clássico ativado",
+      "description": "Para usar o visual novo, escolha Visual novo no menu do seu perfil."
+    }
+  },
   "sidebar": {
     "accountOptions": "Opções da Conta",
     "workspace": "Workspace",

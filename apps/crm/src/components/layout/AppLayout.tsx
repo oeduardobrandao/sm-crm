@@ -16,6 +16,7 @@ import { GuideProvider } from '../guide/GuideContext';
 import { GuidePill } from '../guide/GuidePill';
 import { PhoneLayoutContext, usePhoneChromeController } from './PhoneLayoutContext';
 import { useVidro } from '../../hooks/useVidro';
+import { isIntroDue } from '../../lib/vidroLook';
 import { PageToolbarProvider } from './PageToolbarContext';
 import PageToolbar from './PageToolbar';
 import TopBarActions from './TopBarActions';
@@ -24,6 +25,7 @@ import NavigationProgress from './NavigationProgress';
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 const GuideDialog = lazy(() => import('../guide/GuideDialog'));
 const GlobalPopupHost = lazy(() => import('./GlobalPopupHost'));
+const VidroIntro = lazy(() => import('./VidroIntro'));
 
 export const FINANCIAL_PATHS = ['/financeiro'];
 
@@ -171,7 +173,7 @@ function useSidebarPinPref() {
 
 export default function AppLayout() {
   const location = useLocation();
-  const { canSeeFinancials, can } = useAuth();
+  const { canSeeFinancials, can, user, loading: authLoading } = useAuth();
   const isTablet = useIsTablet();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -179,6 +181,15 @@ export default function AppLayout() {
   // Desktop "Vidro" look: only where the static sidebar exists (>=1101px).
   const vidro = useVidro();
   const vidroShell = vidro.active && sidebarCollapsible;
+  // The launch intro takes this session's single modal slot from GlobalPopupHost. Decided once,
+  // after the look is final for this load, so a flag refetch or a resize never swaps them.
+  const [intro, setIntro] = useState<'pending' | 'show' | 'no'>('pending');
+  useEffect(() => {
+    if (intro !== 'pending' || authLoading || !vidro.settled) return;
+    setIntro(
+      isIntroDue({ vidroShell, userId: user?.id, userCreatedAt: user?.created_at }) ? 'show' : 'no',
+    );
+  }, [intro, authLoading, vidro.settled, vidroShell, user?.id, user?.created_at]);
   const [pinPref, choosePinned] = useSidebarPinPref();
   // Unset preference follows the look (spec: Sidebar default open): pinned under Vidro, rail in
   // classic. vidro.active is already seeded from the pre-paint attribute, so no first-paint flash.
@@ -301,7 +312,11 @@ export default function AppLayout() {
               <GuideDialog />
             </Suspense>
             <Suspense fallback={null}>
-              <GlobalPopupHost />
+              {intro === 'show' && user ? (
+                <VidroIntro userId={user.id} onClassic={() => vidro.setOptedOut(true)} />
+              ) : (
+                intro === 'no' && <GlobalPopupHost />
+              )}
             </Suspense>
           </div>
         </PageToolbarProvider>

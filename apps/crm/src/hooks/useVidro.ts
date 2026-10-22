@@ -12,7 +12,7 @@ import { applyVidro, isVidroAttributeSet, readOptOut, writeOptOut } from '@/lib/
 export function useVidro() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
-  const { features, isSuccess } = useWorkspaceLimits();
+  const { features, isSuccess, isLoading } = useWorkspaceLimits();
   // Last resolved value: seeded from the pre-paint attribute, updated on every successful response.
   // A failed (re)fetch keeps it, so the shell never flips (and never remounts the page) on a 5xx.
   const [resolved, setResolved] = useState(isVidroAttributeSet);
@@ -45,5 +45,6 @@ export function useVidro() {
     [userId, enabled],
   );
 
-  return { enabled, active, optedOut, setOptedOut };
+  // settled: the first workspace-limits answer (or failure) is in, so `active` is final for this load.
+  return { enabled, active, optedOut, setOptedOut, settled: !isLoading };
 }

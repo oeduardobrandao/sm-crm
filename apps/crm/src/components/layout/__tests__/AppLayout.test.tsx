@@ -73,6 +73,7 @@ const vidroState = vi.hoisted(() => ({
   active: false,
   enabled: false,
   optedOut: false,
+  settled: true,
   setOptedOut: (() => {}) as (v: boolean) => void,
 }));
 
@@ -134,7 +135,15 @@ vi.mock('../../guide/GuideDialog', () => ({
 }));
 
 vi.mock('../GlobalPopupHost', () => ({
-  default: () => null,
+  default: () => <div data-testid="popup-host" />,
+}));
+
+vi.mock('../VidroIntro', () => ({
+  default: ({ onClassic }: { onClassic: () => void }) => (
+    <button type="button" data-testid="vidro-intro" onClick={onClassic}>
+      intro
+    </button>
+  ),
 }));
 
 import { useAuth } from '../../../context/AuthContext';
@@ -186,6 +195,8 @@ beforeEach(() => {
   vidroState.active = false;
   vidroState.enabled = false;
   vidroState.optedOut = false;
+  vidroState.settled = true;
+  vidroState.setOptedOut = () => {};
   // Default: unrestricted. Non-financial routes render regardless of this
   // value, so only the financial-guard tests below need to vary it.
   setCanSeeFinancials(true);
@@ -729,6 +740,78 @@ describe('AppLayout Vidro shell', () => {
     expect(screen.getByTestId('topbar')).toBeInTheDocument();
     expect(document.querySelector('.vidro-panel')).toBeNull();
     expect(screen.queryByTestId('page-toolbar')).not.toBeInTheDocument();
+  });
+});
+
+describe('Vidro launch intro', () => {
+  function vidroOn() {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setViewport(1280);
+    mockMatchMedia(false);
+  }
+
+  it('takes the popup slot the first time the look is on at desktop width', async () => {
+    vidroOn();
+    renderLayout();
+    expect(await screen.findByTestId('vidro-intro')).toBeInTheDocument();
+    expect(screen.queryByTestId('popup-host')).not.toBeInTheDocument();
+  });
+
+  it('leaves the slot to the popup host once seen, in classic, or below 1101px', async () => {
+    vidroOn();
+    localStorage.setItem('vidro-intro:u1', '1');
+    const first = renderLayout();
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+    expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();
+    first.unmount();
+
+    localStorage.clear();
+    vidroState.active = false;
+    vidroState.optedOut = true;
+    const second = renderLayout();
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+    second.unmount();
+
+    vidroState.active = true;
+    vidroState.optedOut = false;
+    setViewport(1000);
+    mockMatchMedia(true);
+    renderLayout();
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+    expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();
+  });
+
+  it('waits for the look to settle before choosing', async () => {
+    vidroOn();
+    vidroState.settled = false;
+    const { rerender } = renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(screen.queryByTestId('popup-host')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();
+
+    vidroState.settled = true;
+    rerender(layoutTree());
+    expect(await screen.findByTestId('vidro-intro')).toBeInTheDocument();
+  });
+
+  it('skips accounts created after the launch', async () => {
+    vidroOn();
+    mockedUseAuth.mockReturnValue({
+      ...mockedUseAuth(),
+      user: { id: 'u1', created_at: '2026-11-02T12:00:00Z' } as never,
+    });
+    renderLayout();
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+  });
+
+  it('opts the user out from the intro', async () => {
+    vidroOn();
+    const setOptedOut = vi.fn();
+    vidroState.setOptedOut = setOptedOut;
+    renderLayout();
+    fireEvent.click(await screen.findByTestId('vidro-intro'));
+    expect(setOptedOut).toHaveBeenCalledWith(true);
   });
 });
 
