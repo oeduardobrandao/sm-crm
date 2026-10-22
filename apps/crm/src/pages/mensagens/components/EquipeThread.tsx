@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { ArrowLeft, Paperclip, Send, Users, X } from 'lucide-react';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { MentionText } from '@/components/mentions/MentionText';
@@ -10,6 +11,7 @@ import {
   EquipePessoaAvatar,
 } from './EquipeShared';
 import { horaMensagem } from '../equipeChatLogic';
+import { useCornerClearance } from '@/hooks/useCornerClearance';
 import type { useEquipeChatData } from '../hooks/useEquipeChatData';
 import { useEquipeThread } from '../hooks/useEquipeThread';
 
@@ -51,6 +53,9 @@ export function EquipeThread({
     enviar,
     onComposerKeyDown,
   } = useEquipeThread({ conversa, mensagens, send, markSeen });
+  // The composer owns the bottom edge: the floating corner stacks above it.
+  const composerRef = useRef<HTMLDivElement>(null);
+  useCornerClearance(composerRef);
 
   return (
     <div className="flex-1 min-w-0 flex flex-col overflow-hidden mensagens-thread-root">
@@ -82,7 +87,7 @@ export function EquipeThread({
       <div
         ref={scrollRef}
         data-testid="thread-scroll"
-        className="flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto p-4"
+        className="mensagens-thread-scroll flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto p-4"
         style={{ background: 'var(--bg-color)' }}
       >
         {mensagens.hasNextPage && (
@@ -186,7 +191,10 @@ export function EquipeThread({
         })}
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-[var(--border-color)] p-3.5">
+      <div
+        ref={composerRef}
+        className="flex flex-col gap-2 border-t border-[var(--border-color)] p-3.5"
+      >
         {anexosPendentes.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {anexosPendentes.map((a) => (

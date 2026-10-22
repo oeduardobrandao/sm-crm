@@ -435,6 +435,7 @@ describe('MensagensPage — feature-flag behavior', () => {
       last_content: null,
       last_created_at: null,
       last_message_id: null,
+      dm_user_id: 'user-3',
     };
     // The list the page cached on mount is empty; the server has the new DM
     // only after create_equipe_conversa returns.
@@ -450,7 +451,7 @@ describe('MensagensPage — feature-flag behavior', () => {
 
     renderPage('/mensagens');
     fireEvent.click(await screen.findByTestId('mensagens-tab-equipe'));
-    expect(await screen.findByText(/Nenhuma conversa ainda/)).toBeInTheDocument();
+    expect(await screen.findByTestId('equipe-colega-user-3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('nova-conversa-btn'));
     fireEvent.click(await screen.findByTestId('colega-dm-user-3'));
@@ -459,6 +460,51 @@ describe('MensagensPage — feature-flag behavior', () => {
       expect(screen.getByTestId('current-path')).toHaveTextContent('/mensagens/equipe/77'),
     );
     expect(await screen.findByTestId('equipe-conversa-77')).toBeInTheDocument();
+    expect(screen.queryByText('Conversa não encontrada.')).not.toBeInTheDocument();
+  });
+
+  it('(l) the Equipe list shows every colleague with no DM; a click opens the DM in place', async () => {
+    mockMatchMedia(true);
+    const dmBruno = {
+      ...EQUIPE_CONVERSAS[0],
+      conversa_id: 77,
+      tipo: 'dm' as const,
+      nome: null,
+      display_nome: 'Bruno Costa',
+      last_author_name: null,
+      last_content: null,
+      last_created_at: null,
+      last_message_id: null,
+      dm_user_id: 'user-3',
+    };
+    let criada = false;
+    mockEquipeConversas.mockImplementation(async () =>
+      criada ? [...EQUIPE_CONVERSAS, dmBruno] : EQUIPE_CONVERSAS,
+    );
+    mockEquipeMembers.mockResolvedValue([
+      { user_id: 'user-1', nome: 'Eu Mesmo', avatar_url: null, role: 'owner' },
+      { user_id: 'user-3', nome: 'Bruno Costa', avatar_url: null, role: 'agent' },
+    ]);
+    mockCreateEquipe.mockImplementation(async () => {
+      criada = true;
+      return 77;
+    });
+
+    renderPage('/mensagens');
+    fireEvent.click(await screen.findByTestId('mensagens-tab-equipe'));
+    const bruno = await screen.findByTestId('equipe-colega-user-3');
+    expect(screen.getByText('Time de Design')).toBeInTheDocument();
+    // The user is never listed as their own colleague.
+    expect(screen.queryByTestId('equipe-colega-user-1')).not.toBeInTheDocument();
+
+    fireEvent.click(bruno);
+    await waitFor(() => expect(mockCreateEquipe).toHaveBeenCalledWith('dm', null, ['user-3']));
+    await waitFor(() =>
+      expect(screen.getByTestId('current-path')).toHaveTextContent('/mensagens/equipe/77'),
+    );
+    // The colleague row became the DM row: never both at once.
+    expect(await screen.findByTestId('equipe-conversa-77')).toBeInTheDocument();
+    expect(screen.queryByTestId('equipe-colega-user-3')).not.toBeInTheDocument();
     expect(screen.queryByText('Conversa não encontrada.')).not.toBeInTheDocument();
   });
 });

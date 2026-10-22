@@ -1,6 +1,8 @@
+import { useRef } from 'react';
 import { ArrowLeft, CheckCircle2, FilePen, Send, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import { useCornerClearance } from '@/hooks/useCornerClearance';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
 import type { useMensagensData } from '../hooks/useMensagensData';
@@ -32,6 +34,9 @@ export function ConversationThread({
   const { tipo, setTipo, draft, setDraft, replyTo, setReplyTo, itens, scrollRef, enviar } =
     useConversationThread({ conversa, feed, sendGeneral, replyToPost });
   const vidroShell = useVidroShell();
+  // The composer owns the bottom edge: the floating corner stacks above it.
+  const composerRef = useRef<HTMLDivElement>(null);
+  useCornerClearance(composerRef);
 
   return (
     <div className="flex-1 min-w-0 flex flex-col overflow-hidden mensagens-thread-root">
@@ -75,7 +80,7 @@ export function ConversationThread({
       <div
         ref={scrollRef}
         data-testid="thread-scroll"
-        className="flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto p-4"
+        className="mensagens-thread-scroll flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto p-4"
         style={{ background: 'var(--bg-color)' }}
       >
         {feed.hasNextPage && (
@@ -202,7 +207,10 @@ export function ConversationThread({
         })}
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-[var(--border-color)] p-3.5">
+      <div
+        ref={composerRef}
+        className="flex flex-col gap-2 border-t border-[var(--border-color)] p-3.5"
+      >
         {replyTo && (
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
             <span className="min-w-0 truncate">
