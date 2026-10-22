@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import postcss from 'postcss';
 import { describe, expect, it } from 'vitest';
+import { readCrmCss } from '../../../apps/crm/src/test/readCrmCss';
 
 const ROOT = path.resolve(__dirname, '../../..');
 const kit = readFileSync(path.join(ROOT, 'packages/ios-kit/ios-kit.css'), 'utf8');
-const crm = readFileSync(path.join(ROOT, 'apps/crm/style.css'), 'utf8');
+// The CRM kit sections are split rule by rule between apps/crm/style.css (rules the public
+// pages' dialogs use) and apps/crm/app.css (the rest), so parity is checked per rule.
+const crm = readCrmCss();
 
 /** Splits at section header comments: a line starting with `/* ====` or `/* ----`. */
 function sections(css: string): string[] {
@@ -31,12 +35,32 @@ function sections(css: string): string[] {
   );
 }
 
+/** Every rule, keyframes block and comment of a section, verbatim, descending into
+ * @media/@supports (whose children may sit in different CRM files). */
+function pieces(section: string): string[] {
+  const out: string[] = [];
+  const walk = (container: postcss.Container, wrapper: string | null) => {
+    for (const node of container.nodes ?? []) {
+      if (node.type === 'atrule' && ['media', 'supports'].includes(node.name)) {
+        walk(node, `@${node.name} ${node.params} {`);
+        continue;
+      }
+      out.push(node.toString());
+      if (wrapper) out.push(wrapper);
+    }
+  };
+  walk(postcss.parse(section), null);
+  return out;
+}
+
 describe('ios-kit.css is a verbatim copy of the CRM kit sections', () => {
   const list = sections(kit);
   it('has sections', () => {
     expect(list.length).toBeGreaterThan(10);
   });
   it.each(list.map((s) => [s.split('\n')[0], s]))('%s', (_header, section) => {
-    expect(crm.includes(section as string)).toBe(true);
+    const all = pieces(section as string);
+    expect(all.length).toBeGreaterThan(0);
+    expect(all.filter((piece) => !crm.includes(piece))).toEqual([]);
   });
 });

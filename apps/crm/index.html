@@ -76,9 +76,6 @@
     <!-- Non-blocking: the stack falls back to SF Pro/system-ui, so the swap is cosmetic. -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"></noscript>
-    <!-- Pinned (an unpinned URL 302s to whatever is latest) + SRI. The script only injects the
-         jsdelivr stylesheets for the same pinned version; bump the version and the hash together. -->
-    <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2/src/index.js" integrity="sha384-J7cw2fbG1T4C5MirTVUxsZGaMfw2m0XsCgOQEqUvB1OF9VIsHWuZF1GmyVRzs7eu" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="/style.css">
     <!-- style.css hides #lp-ssr (the landing page's prerendered crawler/SEO
          mirror) by default so it never flashes before React mounts. Without

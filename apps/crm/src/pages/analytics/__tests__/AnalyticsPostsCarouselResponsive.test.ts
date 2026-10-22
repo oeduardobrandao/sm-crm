@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 const source = readFileSync('apps/crm/src/pages/analytics/AnalyticsPage.tsx', 'utf8');
 
 describe('Analytics post carousel responsive contract', () => {

@@ -29,9 +29,12 @@ const AppLayout = lazy(() => import('./components/layout/AppLayout'));
 // A stored Supabase session means this visit is headed for the app: fetch the shell chunk now,
 // in parallel with auth hydration, instead of after it. Only the module is warmed (the lazy()
 // above reuses it); the namespaces wait for the route, since initI18n has not run yet when this
-// module evaluates.
+// module evaluates. Only on the app shell (app.html, the one page served with a noindex robots
+// meta; prerendered public pages carry index, follow): the chunk brings the shell CSS and the
+// Phosphor icons, which a signed-in visitor reading the landing or the blog must not download.
 try {
-  for (let i = 0; i < localStorage.length; i++) {
+  const isAppShell = document.querySelector('meta[name="robots"][content*="noindex"]') !== null;
+  for (let i = 0; isAppShell && i < localStorage.length; i++) {
     if (/^sb-[a-z0-9]+-auth-token$/.test(localStorage.key(i) ?? '')) {
       void import('./components/layout/ProtectedRoute').catch(() => {});
       break;

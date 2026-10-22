@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { avatarColorClass, AVATAR_COLOR_COUNT } from '../avatarColor';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 
 describe('avatarColorClass', () => {
   it('is deterministic for the same seed', () => {
