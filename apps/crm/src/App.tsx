@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from 'react';
+import { lazy, Suspense, useEffect, type ComponentType } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { handleEntitlementMutationError } from './lib/entitlement-toast';
@@ -11,7 +11,7 @@ import CookieConsent from './components/consent/CookieConsent';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { loadLazyNamespaces } from '@mesaas/i18n';
+import { getSavedLanguage, i18n, loadLazyNamespaces } from '@mesaas/i18n';
 
 // The authenticated shell stays out of the entry chunk the public landing page downloads.
 // ProtectedRoute imports AppLayout (isLayoutGuardedPath), so both must be lazy for the shell
@@ -159,6 +159,17 @@ export const queryClient = new QueryClient({
   }),
 });
 
+// The prerendered landing hydrates in `pt` (main.tsx passes `initialLanguage: 'pt'` on that path,
+// matching the server HTML); the visitor's saved language is applied right after hydration. On
+// every other boot i18n already starts in the saved language, so this is a no-op there.
+function SavedLanguageSync() {
+  useEffect(() => {
+    const saved = getSavedLanguage();
+    if (i18n.language !== saved) void i18n.changeLanguage(saved);
+  }, []);
+  return null;
+}
+
 const PageFallback = (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
     <Spinner size="lg" />
@@ -180,6 +191,7 @@ export default function App() {
     >
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <SavedLanguageSync />
           <BuildPrefetch />
           <Toaster />
           <Suspense fallback={PageFallback}>
