@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   agruparEquipeMensagens,
   colegasSemDm,
@@ -209,5 +209,21 @@ describe('agruparEquipeMensagens', () => {
       now,
     );
     expect(dia).toEqual({ kind: 'dia', key: 'dia-2025-12-31', label: '31 de dezembro de 2025' });
+  });
+
+  describe('with the clock on another day than `now`', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('still labels "Hoje" and "Ontem" relative to `now`', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 9, 25, 9, 0));
+      const dias = agruparEquipeMensagens(
+        [msg(1, 'eu', at(20, 10, 0)), msg(2, 'eu', at(21, 10, 0))],
+        now,
+      ).filter((r) => r.kind === 'dia');
+      expect(dias.map((r) => r.kind === 'dia' && r.label)).toEqual(['Ontem', 'Hoje']);
+    });
   });
 });
