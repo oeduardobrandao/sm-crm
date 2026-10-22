@@ -107,6 +107,9 @@ export default function AgendaSidebar({
           onMonthChange={setMes}
           onSelect={(d) => d && onDataChange(d)}
           className="agenda-mini"
+          // The month is a flex item: without flex-1 it shrinks to the grid and
+          // sits left of center in the card.
+          classNames={{ month: 'flex-1 space-y-4' }}
         />
       </div>
 
@@ -174,14 +177,9 @@ export default function AgendaSidebar({
       </div>
 
       {onSincronizar && (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-auto min-h-10 w-full justify-start whitespace-normal py-2 text-left"
-          onClick={onSincronizar}
-        >
+        <Button type="button" variant="outline" className="w-full" onClick={onSincronizar}>
           <CalendarSync aria-hidden="true" />
-          Sincronizar com seu calendário
+          Sincronizar calendário
         </Button>
       )}
     </div>

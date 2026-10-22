@@ -421,7 +421,7 @@ describe('AgendaTab', () => {
       await waitFor(() => expect(fc.props).not.toBeNull());
       expect(screen.queryByTestId('feed-dialog')).toBeNull();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Sincronizar com seu calendário' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Sincronizar calendário' }));
       expect(screen.getByTestId('feed-dialog')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: 'fechar-feed-stub' }));
