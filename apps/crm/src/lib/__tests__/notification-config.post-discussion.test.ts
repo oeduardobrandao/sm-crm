@@ -59,7 +59,53 @@ describe('post_discussion notification', () => {
       preview: 'Sem promessa de resultado',
     });
     expect(d.title).toBe('Ana respondeu no trecho “a melhor oferta do ano”');
-    expect(d.body).toBe('Sem promessa de resultado');
+    expect(d.body).toBe('P: Sem promessa de resultado');
+  });
+
+  test('anchored card names the post in the body and keeps the count suffix', () => {
+    const d = getNotificationDisplay('post_discussion', {
+      post_titulo: 'Reels de outubro',
+      thread_field: 'legenda',
+      quoted_text: 'a melhor oferta do ano',
+      author_name: 'Ana',
+      authors: ['Ana'],
+      count: 4,
+      preview: 'Sem promessa',
+    });
+    expect(d.title).toBe('Ana respondeu no trecho “a melhor oferta do ano”');
+    expect(d.body).toBe('Reels de outubro: Sem promessa · 4 mensagens');
+  });
+
+  test('anchored card without a post title leaves the body unchanged', () => {
+    const d = getNotificationDisplay('post_discussion', {
+      thread_field: 'legenda',
+      quoted_text: 'trecho',
+      author_name: 'Ana',
+      preview: 'Oi',
+    });
+    expect(d.body).toBe('Oi');
+  });
+
+  test('"e mais N" counts distinct authors other than the latest, even if it is not in authors', () => {
+    const d = getNotificationDisplay('post_discussion', {
+      post_titulo: 'P',
+      thread_field: 'geral',
+      author_name: 'D',
+      authors: ['A', 'B', 'C'],
+      count: 6,
+    });
+    expect(d.title).toBe('D e mais 3 pessoas escreveram na discussão de P');
+  });
+
+  test('"e mais N" ignores duplicates and the latest author when listed', () => {
+    const d = getNotificationDisplay('post_discussion', {
+      post_titulo: 'P',
+      thread_field: 'geral',
+      author_name: 'A',
+      authors: ['A', 'B', 'B'],
+      count: 3,
+    });
+    expect(d.title).toBe('A e mais 1 pessoa escreveram na discussão de P');
   });
 
   test('anchored thread with several authors uses the plural verb and a short quote', () => {

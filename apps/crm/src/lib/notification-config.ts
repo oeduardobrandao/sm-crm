@@ -65,14 +65,18 @@ function shortQuote(raw: string): string {
   return flat.length > QUOTE_MAX ? `${flat.slice(0, QUOTE_MAX).trimEnd()}…` : flat;
 }
 
-/** post_discussion card. One card per (user, post) while unread; the trigger rewrites the
- * metadata on every new message (last author, up to 3 author names, running count). */
+/** post_discussion card. One card per (user, post) while unread. The metadata shape and the
+ * grouping rules live in the spec, section "Notificações"
+ * (docs/superpowers/specs/2026-10-22-discussao-do-post-design.md). */
 function postDiscussionDisplay(m: Record<string, unknown>): NotificationDisplay {
   const author = s(m.author_name, 'Alguém');
-  const names = Array.isArray(m.authors)
-    ? new Set(m.authors.filter((a): a is string => typeof a === 'string' && a.length > 0)).size
+  // Distinct names other than the latest author, so the count is right whether or not the
+  // trigger keeps the latest author inside `authors`.
+  const others = Array.isArray(m.authors)
+    ? new Set(
+        m.authors.filter((a): a is string => typeof a === 'string' && a.length > 0 && a !== author),
+      ).size
     : 0;
-  const others = Math.max(0, names - 1);
   const count = typeof m.count === 'number' && Number.isFinite(m.count) ? m.count : 1;
   const quoted = typeof m.quoted_text === 'string' ? shortQuote(m.quoted_text) : '';
   const anchored = s(m.thread_field, 'geral') !== 'geral' && quoted.length > 0;
@@ -83,7 +87,10 @@ function postDiscussionDisplay(m: Record<string, unknown>): NotificationDisplay 
     ? `${who} ${others > 0 ? 'responderam' : 'respondeu'} no trecho “${quoted}”`
     : `${who} ${others > 0 ? 'escreveram' : 'escreveu'} na discussão de ${s(m.post_titulo, 'um post')}`;
 
-  const preview = stripMentionTokens(s(m.preview, ''));
+  // An anchored title names the passage, not the post, so the body carries the post title.
+  const postTitle = anchored ? s(m.post_titulo, '') : '';
+  const rawPreview = stripMentionTokens(s(m.preview, ''));
+  const preview = postTitle ? (rawPreview ? `${postTitle}: ${rawPreview}` : postTitle) : rawPreview;
   const countLabel = count > 1 ? `${count} mensagens` : '';
   return {
     icon: MessagesSquare,
