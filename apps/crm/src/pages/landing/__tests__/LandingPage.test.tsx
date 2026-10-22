@@ -222,7 +222,7 @@ describe('LandingPage', () => {
     expect(localStorage.getItem('mesaas_promo_dismissed')).toBe('1');
   });
 
-  it('wires scroll buttons to the right sections and exposes the auth CTAs', async () => {
+  it('wires scroll buttons and nav links to the right sections and exposes the auth CTAs', async () => {
     renderLandingPage();
     triggerPricingIntersection();
     await screen.findByRole('heading', { name: 'Start', level: 3 });
@@ -235,14 +235,19 @@ describe('LandingPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ver como funciona/i }));
     expect(featuresScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Agente IA' }));
-    expect(agenteScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Preços' }));
-    expect(pricingScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'FAQ' }));
-    expect(faqScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
+    // Header nav items are real anchors (they still work in the server HTML without JS);
+    // with JS the click scrolls smoothly instead of jumping.
+    const nav = within(document.querySelector<HTMLElement>('.hdr-nav')!);
+    for (const [name, id, scroll] of [
+      ['Agente IA', 'agente', agenteScroll],
+      ['Preços', 'pricing', pricingScroll],
+      ['FAQ', 'faq', faqScroll],
+    ] as const) {
+      const link = nav.getByRole('link', { name });
+      expect(link).toHaveAttribute('href', `#${id}`);
+      expect(fireEvent.click(link)).toBe(false); // default prevented: no jump, no hash
+      expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth' });
+    }
 
     const registerLinks = screen
       .getAllByRole('link')
