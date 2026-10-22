@@ -23,8 +23,10 @@ function Calendar({
         // the buttons with `absolute left-1`/`right-1` against a `relative` caption that no
         // longer contains them, so they resolved against the fixed popover instead and the
         // hitboxes drifted to the vertical middle of the day grid. `months` now owns the
-        // positioning context and `nav` spans the caption row.
-        months: 'relative flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0',
+        // positioning context and `nav` spans the caption row. `gap`, not `space-x`/`space-y`:
+        // `nav` renders before the first month, so a sibling margin landed on that month and
+        // shifted the whole grid 16px right (down, under `sm`). Absolute `nav` takes no gap.
+        months: 'relative flex flex-col sm:flex-row gap-4',
         month: 'space-y-4',
         month_caption: 'flex h-7 justify-center pt-1 items-center',
         caption_label: 'text-sm font-medium',
