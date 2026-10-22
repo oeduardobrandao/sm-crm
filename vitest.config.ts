@@ -21,6 +21,7 @@ export default defineConfig({
     },
   },
   define: {
+    __BUILD_YEAR__: JSON.stringify(String(new Date().getFullYear())),
     'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://mesaas.supabase.co'),
     'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('anon-key-for-tests'),
   },

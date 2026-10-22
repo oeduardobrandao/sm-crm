@@ -1,6 +1,6 @@
 import i18next from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { initI18n, loadLazyNamespaces, STORAGE_KEY } from '../index';
+import { getSavedLanguage, initI18n, loadLazyNamespaces, STORAGE_KEY } from '../index';
 
 // i18next keeps the resources object it is given and adds fetched bundles into it, so every
 // test gets a fresh copy.
@@ -93,5 +93,37 @@ describe('initI18n with lazy namespaces', () => {
 
     await expect(loadLazyNamespaces(instance)).resolves.toBeUndefined();
     expect(instance.isInitialized).toBe(true);
+  });
+});
+
+describe('server-safe boot', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it('getSavedLanguage is pt and initI18n does not throw when localStorage throws', () => {
+    vi.stubGlobal('localStorage', {
+      getItem() {
+        throw new Error('denied');
+      },
+    });
+    expect(getSavedLanguage()).toBe('pt');
+    const instance = i18next.createInstance();
+    expect(() => initI18n(bundled(), { instance })).not.toThrow();
+    expect(instance.language).toBe('pt');
+  });
+
+  it('getSavedLanguage is pt when localStorage is undefined', () => {
+    vi.stubGlobal('localStorage', undefined);
+    expect(getSavedLanguage()).toBe('pt');
+  });
+
+  it('initialLanguage wins for init without touching the stored language', () => {
+    localStorage.setItem(STORAGE_KEY, 'en');
+    const instance = i18next.createInstance();
+    initI18n(bundled(), { instance, initialLanguage: 'pt' });
+    expect(instance.language).toBe('pt');
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('en');
   });
 });

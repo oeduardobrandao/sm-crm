@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { PointerEvent } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -43,11 +43,17 @@ export const TESTIMONIALS: readonly Testimonial[] = [
 const AUTOPLAY_MS = 7000;
 const SWIPE_MIN_PX = 48;
 
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
 function prefersReducedMotion(): boolean {
-  return (
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
+  return typeof window.matchMedia === 'function' && window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+function subscribeReducedMotion(listener: () => void): () => void {
+  if (typeof window.matchMedia !== 'function') return () => {};
+  const media = window.matchMedia(REDUCED_MOTION_QUERY);
+  media.addEventListener?.('change', listener);
+  return () => media.removeEventListener?.('change', listener);
 }
 
 type SlidePosition = 'active' | 'prev' | 'next';
@@ -64,7 +70,12 @@ export function Testimonials() {
   const [index, setIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [reducedMotion] = useState(prefersReducedMotion);
+  // Server and hydrating render: motion allowed (no autoplay timer runs before effects anyway).
+  const reducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    prefersReducedMotion,
+    () => false,
+  );
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const paused = hovered || focused;
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import {
   ArrowRight,
@@ -18,7 +18,6 @@ import {
   Heart,
   Users,
 } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
 import { LANDING } from '@/content/landing.content';
 import { usePageMeta } from '@/lib/usePageMeta';
 
@@ -28,6 +27,7 @@ import {
   LandingFooter,
   SkipLink,
   useLandingChrome,
+  useLandingAuth,
   scrollTo,
 } from './LandingChrome';
 import { PricingSection } from './PricingSection';
@@ -67,6 +67,14 @@ export default function LandingPage() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useLandingChrome();
+
+  // The prerendered `/` ships `<div id="root" data-ssr="landing">`, and the pre-paint CSS hides
+  // stored-state UI (dismissed promo, decided cookie banner) only under `#root[data-ssr]`. This
+  // effect runs once this boundary has hydrated, in the same passive flush as the post-hydration
+  // re-render, so the CSS hands over to React state without a gap (a frame may paint before it).
+  useEffect(() => {
+    document.getElementById('root')?.removeAttribute('data-ssr');
+  }, []);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -116,9 +124,41 @@ export default function LandingPage() {
   );
 }
 
+const PROMO_DISMISSED_KEY = 'mesaas_promo_dismissed';
+const promoListeners = new Set<() => void>();
+/** Remembers a dismissal when storage is unavailable (private mode, blocked site data). */
+let promoDismissedThisSession = false;
+
+function readPromoDismissed(): boolean {
+  try {
+    return localStorage.getItem(PROMO_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function subscribePromo(listener: () => void): () => void {
+  promoListeners.add(listener);
+  return () => promoListeners.delete(listener);
+}
+
+function dismissPromo(): void {
+  try {
+    localStorage.setItem(PROMO_DISMISSED_KEY, '1');
+  } catch {
+    // Storage unavailable: the session flag keeps it hidden until reload.
+    promoDismissedThisSession = true;
+  }
+  promoListeners.forEach((listener) => listener());
+}
+
 function PromoBanner() {
-  const [dismissed, setDismissed] = useState(
-    () => localStorage.getItem('mesaas_promo_dismissed') === '1',
+  // Server and hydrating render: not dismissed (the pre-paint CSS hides it for visitors who
+  // dismissed it before). The stored value applies right after hydration.
+  const dismissed = useSyncExternalStore(
+    subscribePromo,
+    () => readPromoDismissed() || promoDismissedThisSession,
+    () => false,
   );
   if (dismissed) return null;
   return (
@@ -129,14 +169,7 @@ function PromoBanner() {
       <a href="/login?tab=register" className="promo-banner-cta">
         Começar teste grátis
       </a>
-      <button
-        className="promo-banner-close"
-        aria-label="Fechar aviso"
-        onClick={() => {
-          localStorage.setItem('mesaas_promo_dismissed', '1');
-          setDismissed(true);
-        }}
-      >
+      <button className="promo-banner-close" aria-label="Fechar aviso" onClick={dismissPromo}>
         <X size={16} />
       </button>
     </div>
@@ -144,7 +177,7 @@ function PromoBanner() {
 }
 
 function Hero() {
-  const { user, loading } = useAuth();
+  const { user, ready } = useLandingAuth();
 
   return (
     <section className="hero-wrap" id="top">
@@ -159,16 +192,15 @@ function Hero() {
           <div className="lp2-offer">
             <span className="lp2-offer-text">{LANDING.hero.note}</span>
             <div className="hero-ctas">
-              {!loading &&
-                (user ? (
-                  <a href="/dashboard" className="lp-btn lp-btn-cta lg">
-                    Acessar painel <ArrowRight size={16} />
-                  </a>
-                ) : (
-                  <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
-                    Começar teste grátis <ArrowRight size={16} />
-                  </a>
-                ))}
+              {!ready ? null : user ? (
+                <a href="/dashboard" className="lp-btn lp-btn-cta lg">
+                  Acessar painel <ArrowRight size={16} />
+                </a>
+              ) : (
+                <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
+                  Começar teste grátis <ArrowRight size={16} />
+                </a>
+              )}
               <button onClick={() => scrollTo('features')} className="lp-btn lp-btn-outline lg">
                 Ver como funciona
               </button>
@@ -464,7 +496,7 @@ function HowItWorks() {
 }
 
 function CtaFinal() {
-  const { user, loading } = useAuth();
+  const { user, ready } = useLandingAuth();
 
   return (
     <section className="cta-final-wrap">
@@ -487,21 +519,20 @@ function CtaFinal() {
             </>
           )}
           <div className="lp2-cta-row">
-            {!loading &&
-              (user ? (
-                <a href="/dashboard" className="lp-btn lp-btn-cta lg">
-                  Acessar painel <ArrowRight size={16} />
+            {!ready ? null : user ? (
+              <a href="/dashboard" className="lp-btn lp-btn-cta lg">
+                Acessar painel <ArrowRight size={16} />
+              </a>
+            ) : (
+              <>
+                <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
+                  Começar teste grátis <ArrowRight size={16} />
                 </a>
-              ) : (
-                <>
-                  <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
-                    Começar teste grátis <ArrowRight size={16} />
-                  </a>
-                  <a href="/login" className="lp-btn lp-btn-outline lg">
-                    Entrar <ChevronRight size={16} />
-                  </a>
-                </>
-              ))}
+                <a href="/login" className="lp-btn lp-btn-outline lg">
+                  Entrar <ChevronRight size={16} />
+                </a>
+              </>
+            )}
           </div>
         </div>
       </div>

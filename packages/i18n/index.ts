@@ -20,8 +20,14 @@ interface LazyNamespaces {
   load: NamespaceLoader;
 }
 
-function getSavedLanguage(): Language {
-  const saved = localStorage.getItem(STORAGE_KEY);
+/** The visitor's stored UI language; `'pt'` when there is no storage (server render) or it throws. */
+export function getSavedLanguage(): Language {
+  let saved: string | null = null;
+  try {
+    saved = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return 'pt';
+  }
   if (saved && SUPPORTED_LANGUAGES.includes(saved as Language)) return saved as Language;
   return 'pt';
 }
@@ -64,7 +70,12 @@ const lazyNamespacesByInstance = new WeakMap<I18nInstance, readonly string[]>();
  */
 export function initI18n(
   resources: Resources,
-  options: { lazy?: LazyNamespaces; instance?: I18nInstance } = {},
+  options: {
+    lazy?: LazyNamespaces;
+    instance?: I18nInstance;
+    /** Overrides the saved language for init only (hydration renders `pt`); never written to storage. */
+    initialLanguage?: Language;
+  } = {},
 ) {
   const instance = options.instance ?? i18n;
   const namespaces = Object.keys(Object.values(resources)[0] ?? {});
@@ -81,7 +92,7 @@ export function initI18n(
   instance.on('languageChanged', syncDocumentLang);
 
   instance.use(initReactI18next).init({
-    lng: getSavedLanguage(),
+    lng: options.initialLanguage ?? getSavedLanguage(),
     fallbackLng: 'pt',
     defaultNS: 'common',
     // Lets `useTranslation('someOtherNamespace')` still resolve bare `t('actions.save')`-style

@@ -110,10 +110,13 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 // empirically while writing PaginaRichTextEditor.test.tsx, Task 9 of the portal-cliente-layout
 // plan). Zero-sized stubs are enough: tests don't assert real screen coordinates, they only
 // need ProseMirror to finish applying the transaction instead of throwing.
-if (!document.elementFromPoint) {
+// The rest of this file stubs DOM APIs; `@vitest-environment node` files (server-render tests)
+// have no DOM to stub.
+const hasDom = typeof document !== 'undefined';
+if (hasDom && !document.elementFromPoint) {
   document.elementFromPoint = () => null;
 }
-if (!Range.prototype.getBoundingClientRect) {
+if (hasDom && !Range.prototype.getBoundingClientRect) {
   Range.prototype.getBoundingClientRect = () => ({
     x: 0,
     y: 0,
@@ -128,7 +131,7 @@ if (!Range.prototype.getBoundingClientRect) {
     },
   });
 }
-if (!Range.prototype.getClientRects) {
+if (hasDom && !Range.prototype.getClientRects) {
   Range.prototype.getClientRects = () =>
     ({
       length: 0,
@@ -137,22 +140,23 @@ if (!Range.prototype.getClientRects) {
     }) as unknown as DOMRectList;
 }
 
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: (query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }),
-});
+if (hasDom)
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }),
+  });
 
 afterEach(() => {
-  cleanup();
+  if (hasDom) cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });

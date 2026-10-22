@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { ArrowRight, Instagram, Linkedin, LogIn, Moon, Sun, Youtube } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
+import { useIsHydrated } from '@/lib/useIsHydrated';
+import { isSsrMount } from '@/lib/ssrMount';
 
 export function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -14,6 +16,48 @@ export function useLandingChrome(): void {
     document.body.classList.add('landing-page');
     return () => document.body.classList.remove('landing-page');
   }, []);
+}
+
+/**
+ * What the landing CTAs render from.
+ *
+ * `user`: the signed-in user; `null` on the server, during hydration, and while auth is loading
+ * on a page that hydrated server HTML. The prerendered `/` always carries the anonymous CTAs; a
+ * signed-in visitor sees them switch to "Acessar painel" once auth resolves, with no hydration
+ * mismatch.
+ *
+ * `ready`: whether the auth-dependent CTAs render at all. A page that hydrated server HTML keeps
+ * the anonymous CTAs while auth loads (they are in the HTML and must neither mismatch nor vanish
+ * after hydration). A plain `createRoot` mount (a cold open of /precos, /sobre..., or an SPA
+ * navigation to `/`) renders no CTA until auth resolves, so a signed-in visitor never sees
+ * "Entrar" flash before "Acessar painel".
+ */
+export function useLandingAuth(): { user: ReturnType<typeof useAuth>['user']; ready: boolean } {
+  const { user, loading } = useAuth();
+  const hydrated = useIsHydrated();
+  const ssrMount = isSsrMount();
+  return {
+    // Hydrated page: anonymous until auth resolves. `createRoot` mount: whatever auth has, as
+    // before SSR existed (PricingSection reads it ungated).
+    user: !hydrated || (ssrMount && loading) ? null : user,
+    ready: !hydrated || ssrMount || !loading,
+  };
+}
+
+/** The signed-in user per {@link useLandingAuth}, for places that render no matter what. */
+export function useLandingUser() {
+  return useLandingAuth().user;
+}
+
+function readIsDark(): boolean {
+  return document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
+/** Follows `data-theme` on <html>, whoever sets it. Server snapshot: light. */
+function subscribeTheme(listener: () => void): () => void {
+  const observer = new MutationObserver(listener);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  return () => observer.disconnect();
 }
 
 const NAV_ITEMS = [
@@ -41,16 +85,12 @@ export function LandingHeader({
   variant: 'landing' | 'subpage';
   skipLink?: boolean;
 }) {
-  const { user, loading } = useAuth();
-  const [isDark, setIsDark] = useState(
-    document.documentElement.getAttribute('data-theme') === 'dark',
-  );
+  const { user, ready } = useLandingAuth();
+  const isDark = useSyncExternalStore(subscribeTheme, readIsDark, () => false);
 
   const toggleTheme = () => {
-    const next = !isDark;
-    if (next) document.documentElement.setAttribute('data-theme', 'dark');
+    if (!readIsDark()) document.documentElement.setAttribute('data-theme', 'dark');
     else document.documentElement.removeAttribute('data-theme');
-    setIsDark(next);
   };
 
   return (
@@ -98,22 +138,21 @@ export function LandingHeader({
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
               </button>
             )}
-            {!loading &&
-              (user ? (
-                <a href="/dashboard" className="lp-btn lp-btn-primary">
-                  Acessar painel <ArrowRight size={14} />
+            {!ready ? null : user ? (
+              <a href="/dashboard" className="lp-btn lp-btn-primary">
+                Acessar painel <ArrowRight size={14} />
+              </a>
+            ) : (
+              <>
+                <a href="/login" className="link">
+                  <LogIn size={15} />
+                  Entrar
                 </a>
-              ) : (
-                <>
-                  <a href="/login" className="link">
-                    <LogIn size={15} />
-                    Entrar
-                  </a>
-                  <a href="/login?tab=register" className="lp-btn lp-btn-primary">
-                    Criar conta grátis
-                  </a>
-                </>
-              ))}
+                <a href="/login?tab=register" className="lp-btn lp-btn-primary">
+                  Criar conta grátis
+                </a>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -201,8 +240,7 @@ export function LandingFooter() {
       </div>
       <div className="footer-bottom">
         <span>
-          © {new Date().getFullYear()} Mesaas. Todos os direitos reservados. · CNPJ
-          63.758.902/0001-01 — EBS IT SOLUTIONS
+          {`© ${__BUILD_YEAR__} Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS`}
         </span>
         <div className="footer-socials">
           <a href="https://www.instagram.com/mesaas.com.br/" aria-label="Instagram do Mesaas">
