@@ -1,4 +1,4 @@
-import { format, isSameDay, isSameYear, isToday, isYesterday } from 'date-fns';
+import { format, isSameDay, isSameYear, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { EquipeConversa, EquipeMensagem } from '@/store';
 import { stripMentionTokens } from '@/components/mentions/mentionTokens';
@@ -58,8 +58,8 @@ export type EquipeThreadRow =
 
 /** "Hoje", "Ontem", "Segunda-feira, 19 de outubro", or with the year when it isn't this one. */
 export function rotuloDia(d: Date, now: Date = new Date()): string {
-  if (isToday(d)) return 'Hoje';
-  if (isYesterday(d)) return 'Ontem';
+  if (isSameDay(d, now)) return 'Hoje';
+  if (isSameDay(d, subDays(now, 1))) return 'Ontem';
   const texto = isSameYear(d, now)
     ? format(d, "EEEE, d 'de' MMMM", { locale: ptBR })
     : format(d, "d 'de' MMMM 'de' yyyy", { locale: ptBR });
