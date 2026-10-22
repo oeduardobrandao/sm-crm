@@ -13,18 +13,6 @@ import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
 import App, { preloadLanding, queryClient } from './App';
 import '../style.css';
-import './styles/vidro.css';
-import './styles/vidro-body/tokens.css';
-import './styles/vidro-body/buttons.css';
-import './styles/vidro-body/tables.css';
-import './styles/vidro-body/cards.css';
-import './styles/vidro-body/badges.css';
-import './styles/vidro-body/forms.css';
-import './styles/vidro-body/controls.css';
-import './styles/vidro-body/boards.css';
-import './styles/vidro-body/overlays.css';
-import './styles/vidro-body/chat.css';
-import './styles/vidro-body/compositions.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();

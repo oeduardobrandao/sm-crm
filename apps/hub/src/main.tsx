@@ -32,6 +32,7 @@ import enHubConvite from '../../../packages/i18n/locales/en/hubConvite.json';
 import { router } from './router';
 import { createHubQueryClient, prefetchHubShell } from './queries';
 import '../../crm/style.css';
+import '../../crm/app.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();

@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import postcss, { type AtRule, type Rule } from 'postcss';
 import { describe, expect, it } from 'vitest';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 const sheetSource = readFileSync('apps/crm/src/components/ui/sheet.tsx', 'utf8');
 const root = postcss.parse(css);
 

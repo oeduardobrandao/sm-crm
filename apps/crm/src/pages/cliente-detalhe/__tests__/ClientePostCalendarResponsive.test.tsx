@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const css = readFileSync('apps/crm/style.css', 'utf8');
+const css = readCrmCss();
 
 /**
  * These three checks are pure CSS contracts with no dependency on which

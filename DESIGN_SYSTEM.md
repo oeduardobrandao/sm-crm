@@ -7,7 +7,7 @@ shadcn HSL token names; everything else — fonts, palette, component set — di
 
 | App | Stylesheet | Fonts | Look |
 |---|---|---|---|
-| `apps/crm` | `apps/crm/style.css` (~9.9k lines) | SF Pro (system) | Dense internal dashboard |
+| `apps/crm` | `apps/crm/style.css` (core, ~2.9k lines) + `apps/crm/app.css` (signed-in shell, ~17.6k lines) | SF Pro (system) | Dense internal dashboard |
 | `apps/hub` | inline `<style>` in `apps/hub/index.html` | Fraunces + Instrument Sans | Editorial, whitelabelled per client |
 | `apps/admin` | `apps/admin/src/globals.css` | SF Pro | Platform admin, liquid-glass chrome |
 
@@ -37,16 +37,53 @@ into `apps/crm/src/components/ui/` by hand and correct its imports.
 
 ## CRM (`apps/crm`)
 
+### Two stylesheets: core (`style.css`) and app (`app.css`)
+
+The hand-written CSS is split in two files. Each starts with a header comment saying what
+belongs there.
+
+| File | Loads | Holds |
+|---|---|---|
+| `apps/crm/style.css` (**core**) | Render-blocking on every page, from `main.tsx` | The `@tailwind` directives, both token systems, global element/reset rules, `#lp-ssr`, `.ph-spin`, and every rule a **public** page can render: landing, preços, blog, marketing pages, novidades, legal pages, login/criar conta, configurar-senha, conectar, afiliados, 404, the cookie banner + preferences dialog, toasts and the dialog primitives the entry renders |
+| `apps/crm/app.css` (**app**) | With the ProtectedRoute chunk, via `src/styles/app-shell.ts` | Rules only the signed-in shell renders |
+
+A rule belongs in `app.css` only if **every** selector names at least one class (outside
+`:is()`/`:not()`/`:has()`/`:where()` arguments) that no public code uses. Element, attribute
+and `:root` selectors, `@apply` and `@layer` (they need the Tailwind directives in the same
+file), and keyframes a core rule animates with stay in core. Not sure? Put it in core: a rule
+in the wrong file costs bytes there, but in `app.css` it leaves a public page unstyled.
+
+[`cssSplitBoundary.test.ts`](apps/crm/src/__tests__/cssSplitBoundary.test.ts) enforces it.
+It walks the imports from `main.tsx`, the public lazy routes in `App.tsx` and the prerender
+script, without entering `ProtectedRoute`, `AppLayout` or an authenticated page. It collects
+the class names in those files' string and template literals (`` `status-${x}` `` makes every
+`status-*` class public), and fails on any `app.css` selector whose classes are all public. So a
+public page that starts using an app-only class fails CI, not production.
+
+**Cascade:** `app.css` loads after all of `style.css`, on authenticated pages and in the Hub
+alike. A rule there beats a `style.css` rule of equal specificity even when it used to come
+first in the old single file. The split kept a rule in core whenever moving it could flip such
+a tie. Check for that when you move a rule across. Tailwind's **variant** utilities (`hover:`,
+`focus-visible:`, `data-[state=on]:`, `md:`, `dark:`...) are emitted at the end of `style.css`, the
+file holding `@tailwind utilities`, so they load before `app.css` too: a rule like
+`.x[data-state='on']` (0,2,0) on an element that also carries `data-[state=on]:bg-accent` (0,2,0,
+often via a `components/ui` primitive's cva) would win from `app.css` where it lost in the old
+file. Such rules stay in `style.css`; the guard test checks this as well, asking Tailwind for each
+variant's selector and properties.
+
+Tests that assert on CRM rules wherever they live read both files through
+`readCrmCss()` (`apps/crm/src/test/readCrmCss.ts`).
+
 ### Two token systems, side by side
 
 `style.css` defines shadcn HSL tokens **and** an older hex palette. Both are live. shadcn
 components read the first; hand-written CSS and inline styles read the second.
 
-shadcn tokens (`@layer base`, lines 37–82) — light and `[data-theme='dark']`:
+shadcn tokens (`@layer base`, lines 52–99) — light and `[data-theme='dark']`:
 `--background --foreground --card --popover --primary --secondary --muted --accent
 --destructive --border --input --ring`.
 
-Legacy hex tokens (unlayered `:root`, lines 93–166):
+Legacy hex tokens (unlayered `:root` and `[data-theme='dark']`, lines 110–193):
 
 | Token | Light | Dark |
 |---|---|---|
@@ -69,7 +106,7 @@ AA floor, so error *copy* uses `--danger-text`; `--danger` stays a fill/border c
 ### Gotcha: `--radius` is defined twice
 
 `@layer base :root` sets `--radius: 0.625rem` (10px, the shadcn default); the **unlayered**
-`:root` at line 137 then sets `--radius: 12px`. Unlayered declarations outrank layered ones,
+`:root` at line 160 then sets `--radius: 12px`. Unlayered declarations outrank layered ones,
 so **12px wins** — `rounded-lg` is 12px, `rounded-md` 10px, `rounded-sm` 8px. Editing the
 value inside `@layer base` changes nothing.
 
@@ -117,16 +154,40 @@ Content padding is `clamp(1.25rem, 3vw, 2.5rem)` block / `clamp(1rem, 3vw, 3rem)
 `toast()` from `sonner` over the legacy `showToast()` in `router.ts`.
 
 Everything else — sidebar, KPI cards, kanban board, avatars — is hand-written CSS in
-`style.css`, keyed off the legacy hex tokens.
+`style.css` or `app.css`, keyed off the legacy hex tokens.
+
+### Shell-only CSS (`src/styles/app-shell.ts`)
+
+Styles only the signed-in shell renders stay out of the entry's render-blocking stylesheet,
+which every public page (landing, pricing, blog, login) downloads. `app-shell.ts` is a
+side-effect module imported by `components/layout/ProtectedRoute.tsx` alone, so its CSS rides
+that lazy chunk; Vite's preload helper waits for the CSS before the chunk runs, so the shell
+never paints unstyled. In order it pulls in:
+
+- **Phosphor icons** (`<i class="ph ph-...">`, also `ph-bold`/`ph-fill`), self-hosted from the
+  npm package `@phosphor-icons/web`, pinned exactly at `2.1.2`. Only regular, bold and fill are
+  imported; add another weight here if you use one. The fonts are emitted as hashed `/assets/`
+  files. There is no CDN loader in `index.html` any more, so a Phosphor icon on a public page
+  renders blank: use `lucide-react` there. `.ph-spin` is not part of Phosphor; it lives in
+  `style.css`.
+- `apps/crm/app.css`.
+- **Vidro** (`styles/vidro.css`, then `styles/vidro-body/*.css` in a fixed order that
+  `vidroContracts.test.ts` pins). Every rule is scoped to `html[data-look="vidro"]`.
+
+`App.tsx` warms the ProtectedRoute chunk at module scope for visitors with a stored session, but
+only on `app.html` (the one page with a `noindex` robots meta), so a signed-in visitor reading a
+prerendered public page never downloads the shell CSS or the icon fonts.
 
 ## Hub (`apps/hub`)
 
 The client portal ships no `.css` file of its own. Its styles are an inline `<style>` block in
 `apps/hub/index.html` (36 distinct `.hub-*` selectors) plus Tailwind utilities — **and the
-entire CRM stylesheet**, which `apps/hub/src/main.tsx` imports directly:
+entire CRM stylesheet**, core and app, which `apps/hub/src/main.tsx` imports directly, in the
+same order the CRM's authenticated pages load them:
 
 ```ts
 import '../../crm/style.css';
+import '../../crm/app.css';
 ```
 
 So the Hub inherits every CRM global: the `body` and `#root` rules, the `overflow-x: hidden`
@@ -175,7 +236,8 @@ The Admin's copy is Portuguese throughout.
 
 ## Shared
 
-`packages/ui` is small — currently just `FlagIcon`. Icons are `lucide-react` everywhere.
+`packages/ui` is small — currently just `FlagIcon`. Icons are `lucide-react` everywhere, plus
+Phosphor inside the CRM's signed-in shell (see Shell-only CSS above).
 
 ## Changing things
 
@@ -183,7 +245,7 @@ The Admin's copy is Portuguese throughout.
 |---|---|
 | Tailwind colour/radius/font token names | `tailwind.config.js` |
 | CRM palette, light + dark | `@layer base` block and unlayered `:root` in `apps/crm/style.css` |
-| CRM component styles | search the class name in `apps/crm/style.css` |
+| CRM component styles | search the class name in `apps/crm/style.css` and `apps/crm/app.css` (which file: see "Two stylesheets" above) |
 | Hub palette / fallbacks | `<style>` in `apps/hub/index.html`; resolved values in `apps/hub/src/theme.ts` |
 | Admin palette | `apps/admin/src/globals.css` |
 | New shadcn primitive | `npx shadcn@latest add <name>` |

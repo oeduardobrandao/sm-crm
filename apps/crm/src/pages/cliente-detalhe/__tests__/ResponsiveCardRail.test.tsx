@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ResponsiveCardRail } from '../ResponsiveCardRail';
+import { readCrmCss } from '@/test/readCrmCss';
 
-const crmStyles = readFileSync('apps/crm/style.css', 'utf8');
+const crmStyles = readCrmCss();
 
 describe('ResponsiveCardRail', () => {
   it('marks multiple children as a discoverable rail', () => {

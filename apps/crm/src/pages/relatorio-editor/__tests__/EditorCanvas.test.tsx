@@ -1,11 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { EditorCanvas } from '../EditorCanvas';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { readCrmCss } from '@/test/readCrmCss';
 
 const layout = (): ReportLayout => ({
   version: 1,
@@ -150,7 +149,7 @@ describe('EditorCanvas', () => {
   });
 
   it('toolbar do editor é alcançável por teclado (focus-within na célula, sem display none)', () => {
-    const css = readFileSync(join(__dirname, '../../../../style.css'), 'utf8');
+    const css = readCrmCss();
     expect(css.length).toBeGreaterThan(100000);
     const block = css.slice(css.indexOf('.rb-edit-toolbar'));
     expect(block).toContain('.rb-edit-cell:focus-within .rb-edit-toolbar');

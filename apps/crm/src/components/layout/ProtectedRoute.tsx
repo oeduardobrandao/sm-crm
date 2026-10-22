@@ -1,3 +1,6 @@
+// Shell-only CSS (Phosphor, app.css, Vidro) rides this lazy chunk instead of the entry's
+// render-blocking stylesheet, so the public pages never download it.
+import '@/styles/app-shell';
 import { Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';

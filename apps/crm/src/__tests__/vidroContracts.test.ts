@@ -24,7 +24,11 @@ const BODY_ORDER = [
   'compositions',
 ];
 const shell = parsed.find((p) => p.file.endsWith('/vidro.css'))!.root;
+// The Vidro sheets ride the authenticated shell's lazy chunk (styles/app-shell.ts, imported by
+// ProtectedRoute), not the entry: they follow style.css (entry) and app.css in the cascade.
+const appShell = readFileSync('apps/crm/src/styles/app-shell.ts', 'utf8');
 const main = readFileSync('apps/crm/src/main.tsx', 'utf8');
+const protectedRoute = readFileSync('apps/crm/src/components/layout/ProtectedRoute.tsx', 'utf8');
 const CARD_CHAIN = ':not(.card-blue):not(.card-yellow):not(.card-teal):not(.card-dark)';
 
 function enclosingMedia(rule: Rule): string[] {
@@ -125,8 +129,13 @@ describe('vidro.css contracts', () => {
     expect(selectors).toContain(`html[data-look='vidro'] .app-container .card .card${CARD_CHAIN}`);
   });
 
-  it('is imported once, right after style.css', () => {
-    expect(main).toMatch(/import '\.\.\/style\.css';\s*\nimport '\.\/styles\/vidro\.css';/);
+  it('is imported once, by app-shell.ts right after app.css, and not by the entry', () => {
+    expect(appShell).toMatch(
+      /import '\.\.\/\.\.\/app\.css';\s*\n(?:\/\/.*\n)*import '\.\/vidro\.css';/,
+    );
+    expect(appShell.match(/import '\.\/vidro\.css';/g)).toHaveLength(1);
+    expect(main).not.toMatch(/vidro/);
+    expect(protectedRoute).toMatch(/^import '@\/styles\/app-shell';$/m);
   });
 
   it('declares the --vd-* tokens on body:has(.app-container), not .app-container', () => {
@@ -170,9 +179,9 @@ describe('vidro-body files', () => {
   });
 
   it('imports every vidro-body file after vidro.css, in order', () => {
-    const at = (name: string) => main.indexOf(`./styles/vidro-body/${name}.css`);
-    expect(main.indexOf('./styles/vidro.css')).toBeGreaterThan(-1);
-    let prev = main.indexOf('./styles/vidro.css');
+    const at = (name: string) => appShell.indexOf(`'./vidro-body/${name}.css'`);
+    expect(appShell.indexOf("'./vidro.css'")).toBeGreaterThan(-1);
+    let prev = appShell.indexOf("'./vidro.css'");
     for (const name of BODY_ORDER) {
       expect(at(name), name).toBeGreaterThan(prev);
       prev = at(name);
