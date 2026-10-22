@@ -44,7 +44,7 @@ belongs there.
 
 | File | Loads | Holds |
 |---|---|---|
-| `apps/crm/style.css` (**core**) | Render-blocking on every page, from `main.tsx` | The `@tailwind` directives, both token systems, global element/reset rules, `#lp-ssr`, `.ph-spin`, and every rule a **public** page can render: landing, preços, blog, marketing pages, novidades, legal pages, login/criar conta, configurar-senha, conectar, afiliados, 404, the cookie banner + preferences dialog, toasts and the dialog primitives the entry renders |
+| `apps/crm/style.css` (**core**) | Render-blocking on every page, from `main.tsx` | The `@tailwind` directives, both token systems, global element/reset rules, `.ph-spin`, and every rule a **public** page can render: landing, preços, blog, marketing pages, novidades, legal pages, login/criar conta, configurar-senha, conectar, afiliados, 404, the cookie banner + preferences dialog, toasts and the dialog primitives the entry renders |
 | `apps/crm/app.css` (**app**) | With the ProtectedRoute chunk, via `src/styles/app-shell.ts` | Rules only the signed-in shell renders |
 
 A rule belongs in `app.css` only if **every** selector names at least one class (outside

@@ -46,7 +46,7 @@ installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 
 // Client-rendered documents: on the landing, render once its chunk is in (a short wait); a failed
 // or slow import renders anyway after 2s and falls back to the route's lazy() loading, so a stalled
-// chunk never leaves the page blank until index.html's 8s #lp-ssr fallback.
+// chunk never leaves the page blank.
 // Prerendered landing: hydrate once the chunk is in; a failed chunk is reported once, retried once,
 // and otherwise the server HTML stays as is (mountApp).
 void mountApp({

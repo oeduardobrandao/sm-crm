@@ -320,7 +320,7 @@ html[data-promo-dismissed] #root[data-ssr] .promo-banner {
   display: flex;
   gap: 4px;
 }
-.hdr-nav button {
+.hdr-nav .hdr-nav-link {
   color: #4b5563;
   font-size: 0.88rem;
   font-weight: 500;
@@ -334,7 +334,7 @@ html[data-promo-dismissed] #root[data-ssr] .promo-banner {
   border: none;
   cursor: pointer;
 }
-.hdr-nav button:hover {
+.hdr-nav .hdr-nav-link:hover {
   color: #12151a;
   background: rgba(30, 36, 48, 0.04);
 }
@@ -2022,10 +2022,10 @@ section.lp-pad-alt {
   background: rgba(10, 12, 15, 0.82);
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
-[data-theme='dark'] .hdr-nav button {
+[data-theme='dark'] .hdr-nav .hdr-nav-link {
   color: #9ca3af;
 }
-[data-theme='dark'] .hdr-nav button:hover {
+[data-theme='dark'] .hdr-nav .hdr-nav-link:hover {
   color: #e8eaf0;
   background: rgba(255, 255, 255, 0.06);
 }

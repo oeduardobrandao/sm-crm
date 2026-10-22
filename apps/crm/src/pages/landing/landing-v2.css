@@ -57,10 +57,10 @@
   background: rgba(10, 12, 15, 0.82);
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
-.lp-v2 .hdr-nav button {
+.lp-v2 .hdr-nav .hdr-nav-link {
   color: #9ca3af;
 }
-.lp-v2 .hdr-nav button:hover {
+.lp-v2 .hdr-nav .hdr-nav-link:hover {
   color: #e8eaf0;
   background: rgba(255, 255, 255, 0.06);
 }
@@ -417,12 +417,12 @@ body.landing-page:has(.lp-v2) {
 .lp-v2 .hdr-logo {
   height: 20px;
 }
-.lp-v2 .hdr-nav button {
+.lp-v2 .hdr-nav .hdr-nav-link {
   color: #d2d2d7;
   font-size: 0.82rem;
   font-weight: 400;
 }
-.lp-v2 .hdr-nav button:hover {
+.lp-v2 .hdr-nav .hdr-nav-link:hover {
   color: #ffffff;
   background: transparent;
 }

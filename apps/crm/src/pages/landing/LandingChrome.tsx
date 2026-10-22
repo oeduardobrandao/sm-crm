@@ -121,9 +121,19 @@ export function LandingHeader({
           <nav className="hdr-nav">
             {variant === 'landing'
               ? NAV_ITEMS.map((item) => (
-                  <button key={item.id} onClick={() => scrollTo(item.id)}>
+                  // Real anchors so the server HTML still navigates without JS (or before hydration);
+                  // with JS the click scrolls smoothly instead of jumping.
+                  <a
+                    key={item.id}
+                    href={`#${item.id}`}
+                    className="hdr-nav-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollTo(item.id);
+                    }}
+                  >
                     {item.label}
-                  </button>
+                  </a>
                 ))
               : NAV_ITEMS.map((item) => (
                   <a key={item.id} href={`/#${item.id}`}>
