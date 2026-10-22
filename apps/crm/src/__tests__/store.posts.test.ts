@@ -348,20 +348,6 @@ describe('store workflow posts', () => {
     expect(await store.sendPostToCliente(42, 'aprovado_interno')).toBeNull();
   });
 
-  it('approvePostsInternally updates all non-final posts to aprovado_cliente', async () => {
-    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', { data: null, error: null });
-
-    await store.approvePostsInternally(5);
-
-    const call = getCalls('workflow_posts', 'update').at(-1)!;
-    expect(call.payload).toEqual({ status: 'aprovado_cliente' });
-    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['workflow_id', 5] });
-    expect(call.modifiers).toContainEqual({
-      method: 'not',
-      args: ['status', 'in', '(agendado,postado)'],
-    });
-  });
-
   it('getPostApprovals returns empty array for no post ids', async () => {
     const result = await store.getPostApprovals([]);
     expect(result).toEqual([]);

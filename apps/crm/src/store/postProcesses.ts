@@ -71,6 +71,7 @@ export interface PostProcess {
   created_at: string;
   updated_at: string;
   concluido_em: string | null;
+  aviso_rascunho_dispensado_em: string | null;
   /** Ordenadas por `ordem` ascendente. */
   steps: PostProcessStep[];
 }
@@ -90,7 +91,8 @@ export type PostProcessEvento =
   | 'reaberto'
   | 'removido'
   | 'vinculado'
-  | 'etapa_editada';
+  | 'etapa_editada'
+  | 'voltou_rascunho';
 
 export interface PostProcessEvent {
   id: number;
@@ -107,7 +109,7 @@ export interface PostProcessEvent {
 }
 
 const PROCESS_COLUMNS =
-  'id, conta_id, post_id, template_id, template_nome, assinatura, origem_workflow_id, origem_descricao, estado, motivo_encerramento, etapa_atual, modo_prazo, board_position, revisao, created_by, created_at, updated_at, concluido_em';
+  'id, conta_id, post_id, template_id, template_nome, assinatura, origem_workflow_id, origem_descricao, estado, motivo_encerramento, etapa_atual, modo_prazo, board_position, revisao, created_by, created_at, updated_at, concluido_em, aviso_rascunho_dispensado_em';
 
 const STEP_COLUMNS =
   'id, conta_id, process_id, ordem, nome, tipo, responsavel_id, prazo_dias, tipo_prazo, prazo_efetivo, estado, iniciado_em, concluido_em, interrompido_em, origem_etapa_ordem, origem_etapa_nome';
@@ -330,7 +332,7 @@ export async function applyPostProcess(
 
 export type ProcessCommand = 'avancar' | 'voltar' | 'concluir' | 'reabrir';
 /** Decisão 13 da fase 2: "enviar ao cliente" NÃO é transição. */
-export type ApprovalChoice = 'aprovar_interno' | 'sem_alterar';
+export type ApprovalChoice = 'aprovar_interno' | 'sem_alterar' | 'voltar_rascunho';
 
 export interface TransitionPostProcessArgs {
   processId: number;
@@ -470,6 +472,25 @@ export async function reorderFluxosBoard(args: ReorderFluxosBoardArgs): Promise<
       p_workflow_positions: args.workflowPositions,
       p_process_ids: args.processIds,
       p_process_positions: args.processPositions,
+    }),
+  );
+}
+
+/**
+ * Dispensa (ou, com `reset`, devolve ao rascunho) o aviso de rascunho do
+ * processo. `expectedCiclo` é o `aviso_rascunho_dispensado_em`/ciclo visto pelo
+ * cliente; a RPC levanta `ciclo_changed` se estiver velho.
+ */
+export async function resolvePostProcessRascunhoBanner(
+  processId: number,
+  expectedCiclo: string,
+  reset: boolean,
+): Promise<boolean> {
+  return callRpcWithDeadlockRetry<boolean>(() =>
+    supabase.rpc('resolve_post_process_rascunho_banner', {
+      p_process_id: processId,
+      p_expected_ciclo: expectedCiclo,
+      p_reset: reset,
     }),
   );
 }

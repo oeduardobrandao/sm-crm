@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ClientApprovalChoiceDialog,
   ForwardConfirmDialog,
   RecurringWorkflowDialog,
   RevertConfirmDialog,
@@ -69,67 +68,6 @@ describe('confirmations on phones (action sheets, same copy)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Reverter' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
-  });
-
-  it('client approval choice: three choices with their descriptions, the re-arm note in the message', () => {
-    const onApproveInternally = vi.fn();
-    const onSendToPortal = vi.fn();
-    const onAdvanceWithoutChanges = vi.fn();
-    const onCancel = vi.fn();
-    render(
-      <MemoryRouter>
-        <ClientApprovalChoiceDialog
-          open
-          entityTitle="Campanha X"
-          willRearm
-          onApproveInternally={onApproveInternally}
-          onSendToPortal={onSendToPortal}
-          onAdvanceWithoutChanges={onAdvanceWithoutChanges}
-          onCancel={onCancel}
-        />
-      </MemoryRouter>,
-    );
-    const sheet = screen.getByRole('dialog', {
-      name: 'O cliente ainda não aprovou todos os posts',
-    });
-    expect(sheet).toHaveAccessibleDescription(
-      /"Campanha X" está numa etapa que pede a aprovação do cliente\. Escolha como seguir: A próxima etapa também é de aprovação/,
-    );
-    expect(
-      screen.getByRole('button', {
-        name: /Enviar para o cliente aprovar.*A etapa não avança\./,
-      }),
-    ).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: /^Avançar sem aprovação/ }));
-    expect(onAdvanceWithoutChanges).toHaveBeenCalledTimes(1);
-    expect(onApproveInternally).not.toHaveBeenCalled();
-    expect(onSendToPortal).not.toHaveBeenCalled();
-    expect(onCancel).not.toHaveBeenCalled();
-  });
-
-  it('client approval choice: a disabled send shows the reason and the post wording', () => {
-    render(
-      <MemoryRouter>
-        <ClientApprovalChoiceDialog
-          open
-          entityKind="post"
-          entityTitle="Post 1"
-          withoutChangesLabel="Concluir sem aprovação"
-          sendToPortalDisabledReason="O post já está com o cliente."
-          onApproveInternally={vi.fn()}
-          onSendToPortal={vi.fn()}
-          onAdvanceWithoutChanges={vi.fn()}
-          onCancel={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-    expect(
-      screen.getByRole('dialog', { name: 'O cliente ainda não aprovou este post' }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: /Enviar para o cliente aprovar.*já está com o cliente/ }),
-    ).toBeDisabled();
-    expect(screen.getByRole('button', { name: /^Concluir sem aprovação/ })).toBeEnabled();
   });
 
   it('recurring cycle: Não dismisses', async () => {

@@ -1,5 +1,5 @@
 import { supabase, getUserId, getContaId } from './core';
-import { getWorkflowPostsCounts, resetApprovedPostsForNextCycle } from './posts';
+import { callRpcWithDeadlockRetry, getWorkflowPostsCounts, type PostStatusCounts } from './posts';
 import { fetchAllPaged, fetchAllPagedByIds } from './paging';
 import { toLocalISODate } from '../utils/postDate';
 import type { PlatformId } from '@mesaas/platforms';
@@ -123,6 +123,7 @@ export interface Workflow {
   plataformas?: PlatformId[];
   created_at?: string;
   created_via?: 'human' | 'agent';
+  aviso_rascunho_dispensado_em?: string | null;
 }
 
 export async function getWorkflows(): Promise<Workflow[]> {
@@ -493,39 +494,6 @@ export function cardAutoScheduleGates(
   };
 }
 
-export interface CompleteEtapaWithRearmResult {
-  workflow: Workflow;
-  etapas: WorkflowEtapa[];
-  /** Approved posts were reset to rascunho for the next approval cycle. */
-  rearmed: boolean;
-  /** The etapa advanced but the post reset failed — needs manual remediation. */
-  rearmFailed: boolean;
-}
-
-/**
- * completeEtapa + approval-cycle re-arm: when the completed etapa is an aprovacao_cliente
- * and another approval etapa lies ahead, approved posts are reset to rascunho so the next
- * approval cycle can run. Callers that must NOT touch posts ("Avançar etapa sem alterar
- * posts") keep calling plain completeEtapa.
- */
-export async function completeEtapaWithRearm(
-  workflowId: number,
-  etapaId: number,
-): Promise<CompleteEtapaWithRearmResult> {
-  const before = await getWorkflowEtapas(workflowId);
-  const current = before.find((e) => e.id === etapaId);
-  const rearm = current?.tipo === 'aprovacao_cliente' && hasLaterApprovalEtapa(before, etapaId);
-  const result = await completeEtapa(workflowId, etapaId);
-  if (!rearm) return { ...result, rearmed: false, rearmFailed: false };
-  // The advance already happened — a reset failure must not surface as an advance failure.
-  try {
-    await resetApprovedPostsForNextCycle(workflowId);
-    return { ...result, rearmed: true, rearmFailed: false };
-  } catch {
-    return { ...result, rearmed: false, rearmFailed: true };
-  }
-}
-
 /** Revert a workflow to its previous step (move card one column back). */
 export async function revertEtapa(
   workflowId: number,
@@ -825,4 +793,58 @@ export function getDeadlineInfo(etapa: WorkflowEtapa): {
     estourado: msRestantes < 0,
     urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
   };
+}
+
+export type WorkflowApprovalExitChoice = 'manter' | 'aprovar_todos' | 'voltar_rascunho';
+
+export interface AdvanceWorkflowFromApprovalResult {
+  workflowStatus: Workflow['status'];
+  etapaAtual: number;
+  postsChanged: number;
+}
+
+/**
+ * Sai de uma etapa de aprovação do cliente de forma atômica: confere a etapa e
+ * as contagens por status que a pessoa viu (`etapa_changed` / `posts_changed`)
+ * e aplica a escolha sobre os posts na mesma transação.
+ */
+export async function advanceWorkflowFromApproval(args: {
+  workflowId: number;
+  expectedEtapaId: number;
+  choice: WorkflowApprovalExitChoice;
+  expectedCounts: PostStatusCounts | null;
+}): Promise<AdvanceWorkflowFromApprovalResult> {
+  const data = await callRpcWithDeadlockRetry<{
+    ok: boolean;
+    workflow_status: Workflow['status'];
+    etapa_atual: number;
+    posts_changed: number;
+  }>(() =>
+    supabase.rpc('advance_workflow_from_approval', {
+      p_workflow_id: args.workflowId,
+      p_expected_etapa_id: args.expectedEtapaId,
+      p_choice: args.choice,
+      p_expected_counts: args.expectedCounts,
+    }),
+  );
+  return {
+    workflowStatus: data.workflow_status,
+    etapaAtual: data.etapa_atual,
+    postsChanged: data.posts_changed,
+  };
+}
+
+/** Dispensa (ou, com `reset`, devolve ao rascunho) o aviso de rascunho do fluxo. */
+export async function resolveWorkflowRascunhoBanner(
+  workflowId: number,
+  expectedCiclo: string,
+  reset: boolean,
+): Promise<number> {
+  return callRpcWithDeadlockRetry<number>(() =>
+    supabase.rpc('resolve_workflow_rascunho_banner', {
+      p_workflow_id: workflowId,
+      p_expected_ciclo: expectedCiclo,
+      p_reset: reset,
+    }),
+  );
 }

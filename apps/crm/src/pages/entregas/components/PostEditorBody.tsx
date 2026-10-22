@@ -1162,6 +1162,7 @@ export function PostEditorBody({
             statusOpen={statusSheetOpen}
             onStatusOpenChange={setStatusSheetOpen}
           />
+          {phone.banner}
           <PhoneEditorTabs
             value={phoneTab}
             onChange={setPhoneTab}

@@ -2,7 +2,7 @@ import type { ContentFormat } from '@mesaas/platforms';
 import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
-import { fetchAllPagedByIds } from './paging';
+import { fetchAllPaged, fetchAllPagedByIds } from './paging';
 import { sortByPlatformOrder, type PostTargetSummary } from './postTargets';
 import type { Workflow, WorkflowEtapa } from './workflows';
 
@@ -850,6 +850,25 @@ export async function getWorkflowPostsCounts(workflowIds: number[]): Promise<Map
   return counts;
 }
 
+export type PostStatusCounts = Partial<Record<WorkflowPost['status'], number>>;
+
+/** Contagem de posts do fluxo por status, agregada no cliente (paginada). */
+export async function getWorkflowPostStatusCounts(workflowId: number): Promise<PostStatusCounts> {
+  const rows = await fetchAllPaged(async (from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_posts')
+      .select('status')
+      .eq('workflow_id', workflowId)
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as { status: WorkflowPost['status'] }[];
+  });
+  const counts: PostStatusCounts = {};
+  for (const row of rows) counts[row.status] = (counts[row.status] ?? 0) + 1;
+  return counts;
+}
+
 /**
  * Post statuses that mean the post has cleared client approval — either the
  * client approved it (`aprovado_cliente`) or it moved further down the pipeline
@@ -1408,30 +1427,6 @@ export async function sendPostToCliente(
     .maybeSingle();
   if (error) throw error;
   return data;
-}
-
-export async function approvePostsInternally(workflowId: number): Promise<void> {
-  const { error } = await supabase
-    .from('workflow_posts')
-    .update({ status: 'aprovado_cliente' })
-    .eq('workflow_id', workflowId)
-    .not('status', 'in', '(agendado,postado)');
-  if (error) throw error;
-}
-
-/**
- * Re-arm the next client-approval cycle (multi-approval fluxos): posts the client already
- * approved go back to rascunho so a later aprovacao_cliente etapa can send them to the
- * portal again. Scheduled/posted/failed posts are never touched. Mirrors the manual
- * workaround agencies use for double-approval flows; post_approvals history is preserved.
- */
-export async function resetApprovedPostsForNextCycle(workflowId: number): Promise<void> {
-  const { error } = await supabase
-    .from('workflow_posts')
-    .update({ status: 'rascunho' })
-    .eq('workflow_id', workflowId)
-    .eq('status', 'aprovado_cliente');
-  if (error) throw error;
 }
 
 export async function getPostApprovals(postIds: number[]): Promise<PostApproval[]> {

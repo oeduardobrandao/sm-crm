@@ -55,6 +55,8 @@ export function processEventLabel(ev: PostProcessEvent): string {
       return 'Vinculado a um fluxo, processo encerrado';
     case 'etapa_editada':
       return `Etapa ${str(depois.nome, '')} editada`.replace('  ', ' ');
+    case 'voltou_rascunho':
+      return 'Voltou para Rascunho';
     default:
       return ev.evento;
   }

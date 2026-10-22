@@ -1,22 +1,28 @@
 import { useCallback, useState } from 'react';
 import type { JSX } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  approvePostsInternally,
+  advanceWorkflowFromApproval,
+  completeEtapa,
+  getWorkflowPostStatusCounts,
   hasLaterApprovalEtapa,
   revertEtapa,
   sendPostsToCliente,
+  type PostStatusCounts,
+  type WorkflowApprovalExitChoice,
   type WorkflowEtapa,
 } from '../../../store';
-import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
-import { decideApprovalAdvance } from '../approvalAdvance';
 import type { BoardCard } from './useEntregasData';
-import { AutoScheduleBatchDialog } from '../components/AutoScheduleBatchDialog';
+import { fluxoExitOptions, type ApprovalExitOption } from '../approvalExit';
 import {
-  ClientApprovalChoiceDialog,
-  ForwardConfirmDialog,
-  RevertConfirmDialog,
-} from '../components/WorkflowModals';
+  getErrorIdentifier,
+  getPostProcessErrorToast,
+  isStaleStateError,
+} from '../postProcessErrors';
+import { ApprovalExitDialog } from '../components/ApprovalExitDialog';
+import { AutoScheduleBatchDialog } from '../components/AutoScheduleBatchDialog';
+import { ForwardConfirmDialog, RevertConfirmDialog } from '../components/WorkflowModals';
 
 /**
  * Hooks a board passes to keep its optimistic overlays in step with a move. The
@@ -41,6 +47,8 @@ export interface WorkflowMoveHooks<Ctx> {
 export interface UseWorkflowStageCommandsOptions<Ctx> extends WorkflowMoveHooks<Ctx> {
   onRefresh: () => void;
   onRecurring: (workflowId: number) => void;
+  /** Não usados desde o diálogo de saída de aprovação (que busca as contagens
+   *  por status na hora); mantidos para não mexer nos chamadores. */
   postsCounts: Map<number, number>;
   clearedClienteCounts: Map<number, number>;
   schedulingEnabled?: boolean;
@@ -54,21 +62,44 @@ export interface UseWorkflowStageCommandsOptions<Ctx> extends WorkflowMoveHooks<
 }
 
 export interface WorkflowStageCommands {
-  /** "Concluir etapa e avançar": ForwardConfirm, then the client-approval choice
-   *  when the etapa asks for it. */
+  /** "Concluir etapa e avançar": ApprovalExitDialog on an `aprovacao_cliente`
+   *  etapa, ForwardConfirm on a `padrao` one. */
   forward: (card: BoardCard) => void;
   /** "Voltar etapa": RevertConfirm. */
   revert: (card: BoardCard) => void;
   dialogs: JSX.Element;
 }
 
+/** The etapa after the card's current one by `ordem`, or undefined on the last. */
+function nextEtapaOf(card: BoardCard): WorkflowEtapa | undefined {
+  return [...card.allEtapas]
+    .sort((a, b) => a.ordem - b.ordem)
+    .find((e) => e.ordem > card.etapa.ordem);
+}
+
+const EXIT_CHOICE: Record<
+  Exclude<ApprovalExitOption, 'enviar_portal'>,
+  WorkflowApprovalExitChoice
+> = {
+  manter: 'manter',
+  aprovar: 'aprovar_todos',
+  voltar_rascunho: 'voltar_rascunho',
+};
+
+const EXIT_SUCCESS: Record<WorkflowApprovalExitChoice, string> = {
+  manter: 'Etapa concluída. Status dos posts mantidos.',
+  aprovar_todos: 'Posts aprovados e etapa concluída.',
+  voltar_rascunho: 'Etapa concluída. Posts voltaram para rascunho.',
+};
+
 /**
  * The fluxo stage chain shared by the Kanban board, the phone card menus and the
- * phone list swipe actions: ForwardConfirm -> decideApprovalAdvance ->
- * ClientApprovalChoice -> completeEtapa (with re-arm) / approvePostsInternally /
- * sendPostsToCliente, RevertConfirm -> revertEtapa, the recurring-cycle hand-off
- * and the batch auto-schedule nudge. Extracted from KanbanView as-is: same copy,
- * same toasts, same ordering.
+ * phone list swipe actions. Forward on an `aprovacao_cliente` etapa opens the
+ * ApprovalExitDialog (counts fetched on open) and confirms through the atomic
+ * `advanceWorkflowFromApproval` RPC, or sends the posts to the portal; forward on
+ * a `padrao` etapa is ForwardConfirm -> completeEtapa. RevertConfirm ->
+ * revertEtapa, the recurring-cycle hand-off and the batch auto-schedule nudge
+ * complete the chain.
  */
 export function useWorkflowStageCommands<Ctx = unknown>(
   opts: UseWorkflowStageCommandsOptions<Ctx>,
@@ -76,8 +107,6 @@ export function useWorkflowStageCommands<Ctx = unknown>(
   const {
     onRefresh,
     onRecurring,
-    postsCounts,
-    clearedClienteCounts,
     schedulingEnabled,
     tiktokEnabled,
     recurringWfId,
@@ -89,42 +118,82 @@ export function useWorkflowStageCommands<Ctx = unknown>(
   } = opts;
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<BoardCard | null>(null);
-  const [approvalChoice, setApprovalChoice] = useState<{
-    card: BoardCard;
-    willRearm: boolean;
-  } | null>(null);
+  /** Card whose approval-exit dialog is open. */
+  const [approvalTarget, setApprovalTarget] = useState<BoardCard | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  /** True from a posts_changed until its refetch settles: the stale numbers must
+   *  not be confirmable in the render before the query reports `isFetching`. */
+  const [countsRefreshing, setCountsRefreshing] = useState(false);
+  /** Bumped when the dialog must come back after a choice that did not close it
+   *  (posts_changed, retry): the phone sheet hides itself on a pick and only a
+   *  remount shows it again. */
+  const [approvalSession, setApprovalSession] = useState(0);
   /** Fluxo cujo resumo de agendamento em lote está aberto (peça 2 da spec), com o
-   *  booleano do gate de segurança capturado no MOMENTO em que `!willRearm` foi
-   *  checado em handleApproveInternally. */
+   *  booleano do gate de segurança capturado no momento da aprovação. */
   const [batchSchedule, setBatchSchedule] = useState<{
     workflowId: number;
     isFinalApprovalCycle: boolean;
   } | null>(null);
 
-  // opts.rearm === false keeps the plain completeEtapa (post statuses untouched) -- used by
-  // "Avançar etapa sem alterar posts", whose literal contract is to leave posts alone.
-  const advanceEtapa = useCallback(
-    async (card: BoardCard, successMessage: string, advanceOpts?: { rearm?: boolean }) => {
+  const approvalWfId = approvalTarget?.workflow.id ?? null;
+  const countsQuery = useQuery({
+    queryKey: ['workflow-post-status-counts', approvalWfId],
+    // Closure on purpose: only touched while the dialog is open.
+    queryFn: () => getWorkflowPostStatusCounts(approvalWfId!),
+    enabled: approvalWfId != null,
+    refetchOnWindowFocus: false,
+  });
+  // null while (re)fetching, so stale numbers can never be confirmed (the
+  // posts_changed refetch included).
+  const counts: PostStatusCounts | null =
+    approvalWfId != null && !countsQuery.isFetching && !countsRefreshing && countsQuery.data
+      ? countsQuery.data
+      : null;
+  const countsError =
+    approvalWfId != null && countsQuery.isError && !countsQuery.isFetching && !countsRefreshing;
+  const refetchCounts = countsQuery.refetch;
+  const refreshCounts = () => {
+    setCountsRefreshing(true);
+    setApprovalSession((n) => n + 1);
+    void refetchCounts().finally(() => setCountsRefreshing(false));
+  };
+
+  const approvalNext = approvalTarget ? nextEtapaOf(approvalTarget) : undefined;
+  const temAprovacaoAdiante = approvalTarget
+    ? hasLaterApprovalEtapa(approvalTarget.allEtapas, approvalTarget.etapa.id!)
+    : false;
+  // Options come from the last numbers React Query holds, even mid-refetch, so the
+  // list (and the user's pick) does not collapse to "Manter" while `counts` is null.
+  const exit = fluxoExitOptions({
+    counts: (approvalWfId != null ? countsQuery.data : undefined) ?? {},
+    isLastEtapa: approvalNext === undefined,
+    temAprovacaoAdiante,
+  });
+
+  const handleRecurringOrToast = useCallback(
+    (card: BoardCard, concluded: boolean, successMessage: string) => {
       const wfId = card.workflow.id!;
+      if (concluded && card.workflow.recorrente) {
+        // Recurring-completion wins over the batch-schedule nudge: also CLEAR it,
+        // so dismissing RecurringWorkflowDialog doesn't bring the nudge back.
+        setBatchSchedule((prev) => (prev?.workflowId === wfId ? null : prev));
+        onRecurring(wfId);
+      } else {
+        toast.success(successMessage);
+      }
+    },
+    [onRecurring],
+  );
+
+  /** Plain advance of a `padrao` etapa (post statuses untouched). */
+  const advanceEtapa = useCallback(
+    async (card: BoardCard) => {
       // On the last etapa there is no next column: the card leaves the board when
       // the refetch lands.
-      const nextEtapa = card.allEtapas.find((e) => e.ordem === card.etapa.ordem + 1);
-      const ctx = onBeforeMove?.(card, nextEtapa);
+      const ctx = onBeforeMove?.(card, nextEtapaOf(card));
       try {
-        const result = await completeEtapaForAdvance(
-          card.workflow.id!,
-          card.etapa.id!,
-          advanceOpts,
-        );
-        if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-          // Recurring-completion wins over the batch-schedule nudge: also CLEAR it,
-          // so dismissing RecurringWorkflowDialog doesn't bring the nudge back.
-          setBatchSchedule((prev) => (prev?.workflowId === wfId ? null : prev));
-          onRecurring(card.workflow.id!);
-        } else {
-          toast.success(successMessage);
-        }
-        notifyRearmOutcome(result);
+        const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
+        handleRecurringOrToast(card, result.workflow.status === 'concluido', 'Etapa concluída!');
         await onMoveSucceeded?.(card, ctx);
         onRefresh();
       } catch (err: unknown) {
@@ -132,65 +201,18 @@ export function useWorkflowStageCommands<Ctx = unknown>(
         toast.error((err as Error).message || 'Erro ao avançar etapa');
       }
     },
-    [onRefresh, onRecurring, onBeforeMove, onMoveSucceeded, onMoveFailed],
-  );
-
-  const executeForward = useCallback(
-    (card: BoardCard) => {
-      const wfId = card.workflow.id!;
-      const decision = decideApprovalAdvance({
-        tipo: card.etapa.tipo,
-        total: postsCounts.get(wfId) ?? 0,
-        // "Cleared" (approved / scheduled / posted / publish-failed), not just
-        // aprovado_cliente: a workflow whose approved posts are already scheduled
-        // must not prompt the approval dialog on advance.
-        cleared: clearedClienteCounts.get(wfId) ?? 0,
-        temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, card.etapa.id!),
-      });
-      if (decision.kind === 'choose') setApprovalChoice({ card, willRearm: decision.willRearm });
-      else advanceEtapa(card, 'Etapa concluída!');
-    },
-    [advanceEtapa, postsCounts, clearedClienteCounts],
+    [onRefresh, onBeforeMove, onMoveSucceeded, onMoveFailed, handleRecurringOrToast],
   );
 
   const handleForwardConfirm = () => {
     if (!forwardTarget) return;
     const card = forwardTarget;
     setForwardTarget(null);
-    executeForward(card);
+    void advanceEtapa(card);
   };
 
-  const handleApproveInternally = async () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    const { willRearm } = approvalChoice;
-    setApprovalChoice(null);
-    try {
-      await approvePostsInternally(card.workflow.id!);
-    } catch (err: unknown) {
-      // The advance never runs, so a captured drop position must not survive to
-      // reorder a later, unrelated advance of this workflow.
-      onAbandon?.();
-      toast.error((err as Error).message || 'Erro ao aprovar internamente');
-      return;
-    }
-    // Aviso de agendamento em lote (spec peça 2), aberto AQUI e não depois de
-    // advanceEtapa: advanceEtapa captura o próprio erro e devolve void. O gate
-    // !willRearm garante que nenhum rearm vai devolver estes posts para rascunho.
-    if (
-      !willRearm &&
-      schedulingEnabled === true &&
-      card.cliente?.auto_publish_on_approval === true
-    ) {
-      setBatchSchedule({ workflowId: card.workflow.id!, isFinalApprovalCycle: !willRearm });
-    }
-    await advanceEtapa(card, 'Posts aprovados internamente — etapa concluída!');
-  };
-
-  const handleSendToPortal = async () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    setApprovalChoice(null);
+  const handleSendToPortal = async (card: BoardCard) => {
+    setApprovalTarget(null);
     // Send-only: the workflow does not move.
     onAbandon?.();
     try {
@@ -198,15 +220,60 @@ export function useWorkflowStageCommands<Ctx = unknown>(
       toast.success('Posts enviados ao portal do cliente!');
       onRefresh();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro ao enviar ao portal');
+      toast.error(getPostProcessErrorToast(err, 'Erro ao enviar ao portal'));
     }
   };
 
-  const handleAdvanceWithoutApproval = () => {
-    if (!approvalChoice) return;
-    const card = approvalChoice.card;
-    setApprovalChoice(null);
-    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.', { rearm: false });
+  const handleApprovalConfirm = async (option: ApprovalExitOption) => {
+    if (!approvalTarget || approvalBusy) return;
+    const card = approvalTarget;
+    if (option === 'enviar_portal') {
+      await handleSendToPortal(card);
+      return;
+    }
+    const choice = EXIT_CHOICE[option];
+    const expectedCounts = choice === 'manter' ? null : counts;
+    // Captured now: the dialog's derived values follow approvalTarget.
+    const laterApproval = temAprovacaoAdiante;
+    const wfId = card.workflow.id!;
+    setApprovalBusy(true);
+    const ctx = onBeforeMove?.(card, nextEtapaOf(card));
+    try {
+      const result = await advanceWorkflowFromApproval({
+        workflowId: wfId,
+        expectedEtapaId: card.etapa.id!,
+        choice,
+        expectedCounts,
+      });
+      setApprovalTarget(null);
+      // Aviso de agendamento em lote (spec peça 2): só depois do RPC atômico (sem
+      // sucesso nada foi aprovado) e só sem aprovação adiante, que pediria uma
+      // nova aprovação do cliente antes de publicar.
+      if (
+        choice === 'aprovar_todos' &&
+        !laterApproval &&
+        schedulingEnabled === true &&
+        card.cliente?.auto_publish_on_approval === true
+      ) {
+        setBatchSchedule({ workflowId: wfId, isFinalApprovalCycle: true });
+      }
+      handleRecurringOrToast(card, result.workflowStatus === 'concluido', EXIT_SUCCESS[choice]);
+      await onMoveSucceeded?.(card, ctx);
+      onRefresh();
+    } catch (err: unknown) {
+      onMoveFailed?.(card, ctx);
+      const code = getErrorIdentifier(err);
+      toast.error(getPostProcessErrorToast(err, 'Erro ao avançar etapa'));
+      if (code === 'posts_changed') {
+        // Stays open with the fresh numbers; the user confirms again.
+        refreshCounts();
+      } else {
+        setApprovalTarget(null);
+        if (isStaleStateError(err)) onRefresh();
+      }
+    } finally {
+      setApprovalBusy(false);
+    }
   };
 
   const handleRevertConfirm = async () => {
@@ -233,13 +300,7 @@ export function useWorkflowStageCommands<Ctx = unknown>(
       <ForwardConfirmDialog
         open={!!forwardTarget}
         entityTitle={forwardTarget?.workflow.titulo || ''}
-        nextEtapaName={
-          forwardTarget
-            ? ([...forwardTarget.allEtapas]
-                .sort((a, b) => a.ordem - b.ordem)
-                .find((e) => e.ordem > forwardTarget.etapa.ordem)?.nome ?? '')
-            : ''
-        }
+        nextEtapaName={forwardTarget ? (nextEtapaOf(forwardTarget)?.nome ?? '') : ''}
         onConfirm={handleForwardConfirm}
         onCancel={() => {
           onAbandon?.();
@@ -255,16 +316,31 @@ export function useWorkflowStageCommands<Ctx = unknown>(
           setRevertTarget(null);
         }}
       />
-      <ClientApprovalChoiceDialog
-        open={!!approvalChoice}
-        entityTitle={approvalChoice?.card.workflow.titulo || ''}
-        willRearm={approvalChoice?.willRearm ?? false}
-        onApproveInternally={handleApproveInternally}
-        onSendToPortal={handleSendToPortal}
-        onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
+      <ApprovalExitDialog
+        open={!!approvalTarget}
+        entityKind="fluxo"
+        entityTitle={approvalTarget?.workflow.titulo || ''}
+        nextEtapaName={approvalNext?.nome ?? null}
+        counts={counts}
+        options={exit.options}
+        recommended={exit.recommended}
+        numbers={{
+          pendentes: exit.pendentes,
+          alteraveisRascunho: exit.alteraveisRascunho,
+          aprovadoInterno: exit.aprovadoInterno,
+        }}
+        busy={approvalBusy}
+        countsError={countsError}
+        onRetry={refreshCounts}
+        // Session only, not the fluxo id: closing must keep the sheet mounted (it
+        // closes through `open`), and a new target already resets the sheet.
+        sessionKey={approvalSession}
+        onConfirm={(option) => void handleApprovalConfirm(option)}
         onCancel={() => {
+          // A confirm in flight owns the move hooks; ignore the dismissal.
+          if (approvalBusy) return;
           onAbandon?.();
-          setApprovalChoice(null);
+          setApprovalTarget(null);
         }}
       />
       <AutoScheduleBatchDialog
@@ -284,7 +360,10 @@ export function useWorkflowStageCommands<Ctx = unknown>(
   );
 
   return {
-    forward: useCallback((card: BoardCard) => setForwardTarget(card), []),
+    forward: useCallback((card: BoardCard) => {
+      if (card.etapa.tipo === 'aprovacao_cliente') setApprovalTarget(card);
+      else setForwardTarget(card);
+    }, []),
     revert: useCallback((card: BoardCard) => setRevertTarget(card), []),
     dialogs,
   };

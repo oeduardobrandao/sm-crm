@@ -128,43 +128,46 @@ describe('usePostProcessCommands', () => {
     expect(toast.success).toHaveBeenCalledWith('Etapa avançada.');
   });
 
-  it('avançar em aprovação com post não liberado abre a escolha; "Aprovar internamente" manda aprovar_interno + status esperado', async () => {
+  it('avançar em aprovação abre o diálogo de saída direto (sem ForwardConfirm); "Aprovar" manda aprovar_interno + status esperado', async () => {
     const t = target(
       [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
       'enviado_cliente',
     );
     renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Aprovar internamente' }));
+    expect(await screen.findByText('Avançar "Post X" para E2?')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Manter status/ })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: /^Aprovar/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
     await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
     expect(store.transitionPostProcess.mock.calls[0][0]).toMatchObject({
       command: 'avancar',
       approvalChoice: 'aprovar_interno',
       expectedPostStatus: 'enviado_cliente',
     });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Etapa avançada. Post aprovado.'),
+    );
+    expect(toast.success).toHaveBeenCalledTimes(1);
   });
 
-  it('"Enviar ao portal" desabilitado só quando o post já está com o cliente', async () => {
+  it('"Enviar ao portal" some quando o post já está com o cliente', async () => {
     const t = target(
       [step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
       'enviado_cliente',
     );
     renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-    expect(
-      await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }),
-    ).toBeDisabled();
-    expect(screen.getByText('O post já está no portal, aguardando o cliente.')).toBeInTheDocument();
+    await screen.findByRole('radio', { name: /Manter status/ });
+    expect(screen.queryByRole('radio', { name: /Enviar ao portal/ })).toBeNull();
   });
 
   it('"Enviar ao portal" com rascunho manda direto ao cliente, condicionado ao status visto, sem transicionar', async () => {
     const t = target([step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')], 'rascunho');
     renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Enviar ao portal/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar ao portal' }));
     await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77, 'rascunho'));
     expect(store.transitionPostProcess).not.toHaveBeenCalled();
   });
@@ -175,8 +178,8 @@ describe('usePostProcessCommands', () => {
     );
     const { onRefresh } = renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Enviar ao portal/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar ao portal' }));
     await waitFor(() =>
       expect(store.sendPostToCliente).toHaveBeenCalledWith(77, 'aprovado_interno'),
     );
@@ -202,8 +205,8 @@ describe('usePostProcessCommands', () => {
     );
     const { onRefresh } = renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Enviar ao portal/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar ao portal' }));
     await waitFor(() =>
       expect(store.sendPostToCliente).toHaveBeenCalledWith(77, 'aprovado_interno'),
     );
@@ -217,7 +220,7 @@ describe('usePostProcessCommands', () => {
     await waitFor(() => expect(onRefresh).toHaveBeenCalled());
   });
 
-  it('avançar liberado com outra aprovação PENDENTE adiante: avança direto e avisa o re-arm quando o post volta a rascunho', async () => {
+  it('avançar aprovado_cliente com outra aprovação PENDENTE adiante: "Voltar para rascunho" vem recomendado e manda voltar_rascunho', async () => {
     store.transitionPostProcess.mockResolvedValueOnce({
       ok: true,
       revisao: 4,
@@ -231,18 +234,68 @@ describe('usePostProcessCommands', () => {
     );
     renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+    const reset = await screen.findByRole('radio', { name: /Voltar para rascunho/ });
+    expect(reset).toBeChecked();
+    expect(reset.closest('label')).toHaveTextContent('Recomendado');
+    expect(screen.queryByRole('radio', { name: /^Aprovar/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
     await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('button', { name: 'Aprovar internamente' })).toBeNull();
     expect(store.transitionPostProcess.mock.calls[0][0]).toMatchObject({
-      approvalChoice: null,
+      command: 'avancar',
+      approvalChoice: 'voltar_rascunho',
+      expectedPostStatus: 'aprovado_cliente',
+    });
+    // Um toast só, que já diz o que aconteceu com o post.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Etapa avançada. O post voltou para rascunho.'),
+    );
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('"Manter status" manda sem_alterar e não avisa rascunho mesmo se o RPC devolver rascunho', async () => {
+    store.transitionPostProcess.mockResolvedValueOnce({
+      ok: true,
+      revisao: 4,
+      post_status: 'rascunho',
+      post_status_changed: true,
+      steps: [],
+    });
+    const t = target(
+      [step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente', 'aprovacao_cliente')],
+      'aprovado_cliente',
+    );
+    renderHarness(t);
+    fireEvent.click(screen.getByText('avancar'));
+    fireEvent.click(await screen.findByRole('radio', { name: /Manter status/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+    await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
+    expect(store.transitionPostProcess.mock.calls[0][0]).toMatchObject({
+      approvalChoice: 'sem_alterar',
       expectedPostStatus: 'aprovado_cliente',
     });
     await waitFor(() =>
-      expect(toast.info).toHaveBeenCalledWith(
-        'O post voltou para rascunho para o próximo ciclo de aprovação.',
-      ),
+      expect(toast.success).toHaveBeenCalledWith('Etapa avançada. Status do post mantido.'),
     );
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('post agendado: só a confirmação "O status do post não muda." e o avanço manda sem_alterar', async () => {
+    const t = target(
+      [step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente', 'aprovacao_cliente')],
+      'agendado',
+    );
+    renderHarness(t);
+    fireEvent.click(screen.getByText('avancar'));
+    expect(await screen.findByText('O status do post não muda.')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+    await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
+    expect(store.transitionPostProcess.mock.calls[0][0]).toMatchObject({
+      command: 'avancar',
+      approvalChoice: 'sem_alterar',
+      expectedPostStatus: 'agendado',
+    });
   });
 
   it('rollback: RPC falha com process_changed → overlay desfeito, toast mapeado, refetch, sem sucesso', async () => {
@@ -277,25 +330,64 @@ describe('usePostProcessCommands', () => {
     );
   });
 
-  it('concluir em aprovação com pendência abre a escolha SEM aviso de re-arm e com rótulo "Concluir sem aprovação"', async () => {
+  it('concluir em aprovação abre o diálogo direto, sem "Voltar para rascunho"; Manter manda sem_alterar', async () => {
+    const t = target(
+      [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente')],
+      'aprovado_interno',
+    );
+    renderHarness(t);
+    fireEvent.click(screen.getByText('concluir'));
+    expect(await screen.findByText('Concluir "Post X"?')).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Voltar para rascunho/ })).toBeNull();
+    expect(screen.getByRole('radio', { name: /^Aprovar/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
+    await waitFor(() =>
+      expect(store.transitionPostProcess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'concluir',
+          approvalChoice: 'sem_alterar',
+          expectedPostStatus: 'aprovado_interno',
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Processo concluído. O post mantém status e agendamento.',
+      ),
+    );
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it('concluir em aprovação com "Aprovar" avisa que o post foi aprovado', async () => {
     const t = target(
       [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente')],
       'enviado_cliente',
     );
     renderHarness(t);
     fireEvent.click(screen.getByText('concluir'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Concluir' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Concluir sem aprovação' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /^Aprovar/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Processo concluído. Post aprovado.'),
+    );
+    expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
+  it('concluir em etapa padrão segue pelo AlertDialog de confirmação', async () => {
+    const t = target([step(0, 'concluido'), step(1, 'ativo')], 'rascunho');
+    renderHarness(t);
+    fireEvent.click(screen.getByText('concluir'));
+    expect(await screen.findByText('Concluir processo?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
     await waitFor(() =>
       expect(store.transitionPostProcess).toHaveBeenCalledWith(
         expect.objectContaining({
           command: 'concluir',
-          approvalChoice: 'sem_alterar',
-          expectedPostStatus: 'enviado_cliente',
+          approvalChoice: null,
+          expectedPostStatus: null,
         }),
       ),
     );
-    expect(screen.queryByText(/volta para rascunho/)).toBeNull();
   });
 
   it('reabrir e remover confirmam e chamam as RPCs certas', async () => {
@@ -343,7 +435,7 @@ describe('usePostProcessCommands', () => {
       expect(store.transitionPostProcess).not.toHaveBeenCalled();
     });
 
-    it('escolha de aprovação: Cancelar chama onDismiss -- e confirmar o Avançar anterior NÃO chama', async () => {
+    it('diálogo de saída de aprovação: Cancelar chama onDismiss uma única vez e não roda o comando', async () => {
       const t = target(
         [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
         'enviado_cliente',
@@ -351,15 +443,47 @@ describe('usePostProcessCommands', () => {
       const onDismiss = vi.fn();
       renderHarness(t, undefined, onDismiss);
       fireEvent.click(screen.getByText('avancar'));
-      // Confirmar o ForwardConfirmDialog segue por decideThenRun -- NUNCA um
-      // dismiss, mesmo abrindo a escolha de aprovação a seguir.
-      fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-      expect(await screen.findByRole('button', { name: 'Aprovar internamente' })).toBeVisible();
+      await screen.findByRole('radio', { name: /Manter status/ });
       expect(onDismiss).not.toHaveBeenCalled();
-      // Só agora, ao cancelar a ESCOLHA em si, onDismiss deve disparar.
       fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
       await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+      // Um Esc depois do fechamento (eco tardio) não dispara de novo.
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onDismiss).toHaveBeenCalledTimes(1);
       expect(store.transitionPostProcess).not.toHaveBeenCalled();
+    });
+
+    it('diálogo de saída de aprovação: Esc chama onDismiss uma única vez', async () => {
+      const t = target(
+        [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
+        'enviado_cliente',
+      );
+      const onDismiss = vi.fn();
+      renderHarness(t, undefined, onDismiss);
+      fireEvent.click(screen.getByText('avancar'));
+      const radio = await screen.findByRole('radio', { name: /Manter status/ });
+      fireEvent.keyDown(radio, { key: 'Escape' });
+      await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByRole('radio')).toBeNull());
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+    });
+
+    it('confirmar o diálogo de saída NÃO chama onDismiss e aplica o overlay otimista', async () => {
+      const t = target(
+        [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
+        'enviado_cliente',
+      );
+      const onDismiss = vi.fn();
+      const optimistic = vi.fn();
+      renderHarness(t, optimistic, onDismiss);
+      fireEvent.click(screen.getByText('avancar'));
+      await screen.findByRole('radio', { name: /Manter status/ });
+      fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+      await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
+      expect(optimistic).toHaveBeenCalledWith(5, 2);
+      await waitFor(() => expect(screen.queryByRole('radio')).toBeNull());
+      expect(onDismiss).not.toHaveBeenCalled();
     });
 
     it('confirmar avancar NÃO chama onDismiss', async () => {
@@ -390,8 +514,8 @@ describe('usePostProcessCommands', () => {
       const onDismiss = vi.fn();
       renderHarness(t, undefined, onDismiss);
       fireEvent.click(screen.getByText('avancar'));
-      fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-      fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
+      fireEvent.click(await screen.findByRole('radio', { name: /Enviar ao portal/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar ao portal' }));
       await waitFor(() =>
         expect(store.sendPostToCliente).toHaveBeenCalledWith(77, 'aprovado_interno'),
       );

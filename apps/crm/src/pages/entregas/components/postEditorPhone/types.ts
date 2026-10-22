@@ -36,4 +36,6 @@ export interface PhoneEditorChrome {
   autoSchedule?: { needsDate: boolean; onClick: () => void } | null;
   /** Process events for "Histórico do post" (the desktop row's timeline popover). */
   processEvents?: PostProcessEvent[];
+  /** Aviso entre o cabeçalho e as abas (ex.: banner de rascunho do processo individual). */
+  banner?: ReactNode;
 }

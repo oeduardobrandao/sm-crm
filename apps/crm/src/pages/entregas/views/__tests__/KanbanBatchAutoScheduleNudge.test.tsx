@@ -4,15 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Task 4 — piece 2 of the auto-schedule nudge spec: the batch summary dialog
-// opened right after "Aprovar internamente" in the Fluxos board. Follows
-// KanbanRearm.test.tsx's harness verbatim (store mock shape, dialog stubs,
-// dnd-kit-free render helper) and adds only the batch-nudge-specific plumbing.
+// opened right after "Aprovar todos" (saída de etapa de aprovação) in the Fluxos
+// board. Follows KanbanApprovalExit.test.tsx's harness (store mock shape, dialog
+// stubs) and adds only the batch-nudge-specific plumbing.
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
+  advanceWorkflowFromApproval: vi.fn(),
+  getWorkflowPostStatusCounts: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
-  approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
@@ -162,7 +162,7 @@ function makeCard(overrides: Record<string, unknown> = {}): BoardCard {
       recorrente: false,
     },
     etapa: approvalEtapa,
-    // Ao contrário de KanbanRearm.test.tsx (cliente: undefined), este arquivo
+    // Ao contrário de KanbanApprovalExit.test.tsx (cliente: undefined), este arquivo
     // exercita o gate auto_publish_on_approval — o cliente precisa existir.
     cliente: { id: 1, nome: 'Aurora', auto_publish_on_approval: true },
     membro: undefined,
@@ -204,10 +204,13 @@ function renderBoard(
   );
 }
 
-async function openApprovalChoiceAndApproveInternally() {
+const COUNTS = { rascunho: 1, aprovado_interno: 1 };
+
+/** Abre o diálogo de saída de aprovação, escolhe "Aprovar todos" e confirma. */
+async function openExitDialogAndApproveAll() {
   fireEvent.click(screen.getByText('forward'));
-  fireEvent.click(await screen.findByText('Avançar'));
-  fireEvent.click(await screen.findByText('Aprovar internamente'));
+  fireEvent.click(await screen.findByRole('radio', { name: /Aprovar todos/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
 }
 
 // Regression harness for the post-Task-4-review finding: KanbanView itself
@@ -259,53 +262,65 @@ function RecurringAwareHarness({ card }: { card: BoardCard }) {
 describe('KanbanView batch auto-schedule nudge (spec peça 2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    store.completeEtapa.mockResolvedValue({ workflow: { status: 'ativo' }, etapas: [] });
-    store.completeEtapaWithRearm.mockResolvedValue({
-      workflow: { status: 'ativo' },
-      etapas: [],
-      rearmed: false,
-      rearmFailed: false,
+    store.advanceWorkflowFromApproval.mockResolvedValue({
+      workflowStatus: 'ativo',
+      etapaAtual: 2,
+      postsChanged: 2,
     });
-    // Default: no later approval etapa ahead -> willRearm false, so the batch
-    // dialog's !willRearm gate is satisfied by default. Individual tests flip
-    // this to true for the "never opens when willRearm is true" case.
+    store.getWorkflowPostStatusCounts.mockResolvedValue(COUNTS);
+    // Default: no later approval etapa ahead, so the batch dialog's gate is
+    // satisfied by default. Individual tests flip this to true.
     store.hasLaterApprovalEtapa.mockReturnValue(false);
-    store.approvePostsInternally.mockResolvedValue(undefined);
     store.sendPostsToCliente.mockResolvedValue(undefined);
   });
 
-  it('opens the batch dialog right after approvePostsInternally resolves', async () => {
-    renderBoard(0); // cleared !== total -> approval-choice dialog
-    await openApprovalChoiceAndApproveInternally();
-    await waitFor(() => expect(store.approvePostsInternally).toHaveBeenCalledWith(1));
-    expect(await screen.findByTestId('batch-nudge')).toHaveTextContent('1');
-  });
-
-  // Decision 4 / the Codex correction: advanceEtapa's completeEtapaForAdvance
-  // (without { rearm: false }) calls the store's completeEtapaWithRearm, which
-  // swallows its own error and returns void from advanceEtapa's perspective --
-  // the batch dialog must not depend on that call succeeding.
-  it('still opens the dialog when completeEtapaForAdvance rejects afterwards', async () => {
-    store.completeEtapaWithRearm.mockRejectedValue(new Error('db offline'));
+  it('opens the batch dialog right after "Aprovar todos" advances', async () => {
     renderBoard(0);
-    await openApprovalChoiceAndApproveInternally();
-    await waitFor(() => expect(store.approvePostsInternally).toHaveBeenCalledWith(1));
-    expect(await screen.findByTestId('batch-nudge')).toHaveTextContent('1');
-    // The advance's own error toast still fires -- the batch dialog opening
-    // doesn't swallow or race it.
+    await openExitDialogAndApproveAll();
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/db offline/i)),
+      expect(store.advanceWorkflowFromApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ workflowId: 1, choice: 'aprovar_todos' }),
+      ),
     );
+    expect(await screen.findByTestId('batch-nudge')).toHaveTextContent('1');
   });
 
-  it('never opens the dialog when willRearm is true', async () => {
+  // The approval and the advance are one atomic RPC now: when it rejects,
+  // nothing was approved, so there is nothing to schedule.
+  it('never opens the dialog when advanceWorkflowFromApproval rejects', async () => {
+    store.advanceWorkflowFromApproval.mockRejectedValue(new Error('db offline'));
+    renderBoard(0);
+    await openExitDialogAndApproveAll();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao avançar etapa'));
+    expect(screen.queryByTestId('batch-nudge')).toBeNull();
+  });
+
+  it('never opens the dialog when a later approval etapa exists', async () => {
     store.hasLaterApprovalEtapa.mockReturnValue(true);
     renderBoard(0);
-    await openApprovalChoiceAndApproveInternally();
-    // approvePostsInternally still succeeded -- the advance still proceeds --
-    // but the batch dialog must not open (rearm will wipe the approvals back
-    // to rascunho for the next cycle).
-    await waitFor(() => expect(store.completeEtapaWithRearm).toHaveBeenCalledWith(1, 11));
+    await openExitDialogAndApproveAll();
+    // The advance still proceeds, but the client approves again later: the
+    // batch dialog must not offer to schedule now.
+    await waitFor(() => expect(store.advanceWorkflowFromApproval).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Posts aprovados e etapa concluída.'),
+    );
+    expect(screen.queryByTestId('batch-nudge')).toBeNull();
+  });
+
+  it('never opens the dialog for "Manter status atuais"', async () => {
+    renderBoard(0);
+    fireEvent.click(screen.getByText('forward'));
+    // Wait for the counts (options beyond "Manter" only appear with them).
+    await screen.findByRole('radio', { name: /Aprovar todos/ });
+    fireEvent.click(screen.getByRole('radio', { name: /Manter status atuais/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+    await waitFor(() =>
+      expect(store.advanceWorkflowFromApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ choice: 'manter' }),
+      ),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(screen.queryByTestId('batch-nudge')).toBeNull();
   });
 
@@ -313,35 +328,24 @@ describe('KanbanView batch auto-schedule nudge (spec peça 2)', () => {
     renderBoard(0, {
       card: makeCard({ cliente: { id: 1, nome: 'Aurora', auto_publish_on_approval: false } }),
     });
-    await openApprovalChoiceAndApproveInternally();
-    await waitFor(() => expect(store.completeEtapaWithRearm).toHaveBeenCalledWith(1, 11));
+    await openExitDialogAndApproveAll();
+    await waitFor(() => expect(store.advanceWorkflowFromApproval).toHaveBeenCalled());
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(screen.queryByTestId('batch-nudge')).toBeNull();
   });
 
   it('never opens the dialog when schedulingEnabled is false', async () => {
     renderBoard(0, { schedulingEnabled: false });
-    await openApprovalChoiceAndApproveInternally();
-    await waitFor(() => expect(store.completeEtapaWithRearm).toHaveBeenCalledWith(1, 11));
+    await openExitDialogAndApproveAll();
+    await waitFor(() => expect(store.advanceWorkflowFromApproval).toHaveBeenCalled());
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(screen.queryByTestId('batch-nudge')).toBeNull();
   });
 
-  it('never opens the dialog when approvePostsInternally itself fails', async () => {
-    store.approvePostsInternally.mockRejectedValue(new Error('Erro ao aprovar'));
-    renderBoard(0);
-    await openApprovalChoiceAndApproveInternally();
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/erro ao aprovar/i)),
-    );
-    expect(screen.queryByTestId('batch-nudge')).toBeNull();
-    // Non-vacuity: the advance never even runs when the approval write itself failed.
-    expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
-    expect(store.completeEtapa).not.toHaveBeenCalled();
-  });
-
-  // Post-review fix (round 1): when the SAME handleApproveInternally call both
+  // Post-review fix (round 1): when the SAME "Aprovar todos" confirm both
   // (a) passes the batch-dialog gates (schedulingEnabled,
-  // auto_publish_on_approval, !willRearm) AND (b) completes a recorrente
-  // workflow's final etapa, advanceEtapa's onRecurring branch fires on top of
+  // auto_publish_on_approval, no later approval etapa) AND (b) completes a
+  // recorrente workflow's final etapa, the onRecurring branch fires on top of
   // the already-set batchScheduleWfId. Both are AlertDialogs; the
   // recurring-completion one must win, not stack.
   //
@@ -354,11 +358,10 @@ describe('KanbanView batch auto-schedule nudge (spec peça 2)', () => {
   // happens: batchScheduleWfId must be cleared for good, not just suppressed
   // while recurringWfId happens to be non-null.
   it('suppresses the batch dialog when the same advance also completes a recorrente workflow cycle, and it stays closed after the recurring dialog is dismissed', async () => {
-    store.completeEtapaWithRearm.mockResolvedValue({
-      workflow: { status: 'concluido', recorrente: true },
-      etapas: [],
-      rearmed: false,
-      rearmFailed: false,
+    store.advanceWorkflowFromApproval.mockResolvedValue({
+      workflowStatus: 'concluido',
+      etapaAtual: 1,
+      postsChanged: 2,
     });
     const recorrenteCard = makeCard({
       workflow: {
@@ -371,7 +374,7 @@ describe('KanbanView batch auto-schedule nudge (spec peça 2)', () => {
       },
     });
     render(<RecurringAwareHarness card={recorrenteCard} />);
-    await openApprovalChoiceAndApproveInternally();
+    await openExitDialogAndApproveAll();
     // The recurring signal actually reached the parent (unchanged behaviour --
     // this fix must not swallow or delay onRecurring).
     await waitFor(() => expect(screen.getByTestId('recurring-open')).toHaveTextContent('1'));

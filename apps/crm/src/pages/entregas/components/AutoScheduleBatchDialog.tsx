@@ -29,8 +29,8 @@ export interface AutoScheduleBatchDialogProps {
   tiktokFeatureEnabled: boolean;
   /** Espelho client-side do ciclo final de aprovação (PR#400) para O FLUXO de
    *  `workflowId`, avaliado pelo caller no ponto de escrita/render que tem o
-   *  `card` (ou o `willRearm` derivado dele) em mãos. Ver nota de segurança
-   *  abaixo -- este componente NÃO recalcula isso por conta própria. */
+   *  `card` (ou a "aprovação adiante" derivada dele) em mãos. Ver nota de
+   *  segurança abaixo -- este componente NÃO recalcula isso por conta própria. */
   isFinalApprovalCycle: boolean;
   onClose: () => void;
   onScheduled: () => void;
@@ -38,23 +38,24 @@ export interface AutoScheduleBatchDialogProps {
 
 /**
  * Resumo da aprovação em lote (peça 2 da spec). Os gates (auto_publish_on_approval,
- * feature_post_scheduling, !willRearm) são do caller; aqui só a contagem e o loop.
+ * feature_post_scheduling, nenhuma aprovação adiante) são do caller; aqui só a
+ * contagem e o loop.
  *
  * Segurança (PR#400 / fix da revisão final, item B): `isFinalApprovalCycle` é um
  * gate OBRIGATÓRIO que este componente aplica sozinho (linha do early return
- * abaixo), não só um valor que os três callers (KanbanView, EntregasTab,
- * WorkflowDrawer) prometem já ter checado antes de setar `workflowId`. Os três
- * hoje calculam esse booleano por dois caminhos equivalentes mas estruturalmente
- * diferentes (KanbanView/EntregasTab: `!willRearm`, um cálculo baseado em ORDEM
- * via `hasLaterApprovalEtapa`; WorkflowDrawer: `isFinalClientApprovalCycle(card.allEtapas)`,
- * baseado em STATUS) -- concordam em todo estado alcançável hoje, mas nada além
- * deste early return impede um quarto caller futuro, ou um refactor de
- * `willRearm`, de reabrir exatamente a falha do PR#400. Por isso o gate mora
- * AQUI, não só nos três call sites.
+ * abaixo), não só um valor que os callers (useWorkflowStageCommands, usado pelo
+ * KanbanView e pela EntregasTab, e o WorkflowDrawer) prometem já ter checado antes
+ * de setar `workflowId`. Eles hoje calculam esse booleano por dois caminhos
+ * equivalentes mas estruturalmente diferentes (useWorkflowStageCommands: sem
+ * aprovação adiante, um cálculo baseado em ORDEM via `hasLaterApprovalEtapa`;
+ * WorkflowDrawer: `isFinalClientApprovalCycle(card.allEtapas)`, baseado em STATUS)
+ * -- concordam em todo estado alcançável hoje, mas nada além deste early return
+ * impede um caller futuro, ou um refactor desse cálculo, de reabrir exatamente a
+ * falha do PR#400. Por isso o gate mora AQUI, não só nos call sites.
  *
  * Por que buscar em vez de usar um snapshot do board: nem KanbanView nem
  * EntregasTab têm as linhas de workflow_posts do fluxo (só contagens por fluxo),
- * e approvePostsInternally devolve void. A busca depois da escrita também é mais
+ * e a escrita de aprovação devolve void. A busca depois da escrita também é mais
  * fresca do que qualquer snapshot anterior a ela. Ver a nota de desvio no plano
  * docs/superpowers/plans/2026-09-17-manual-approval-auto-schedule-nudge.md.
  *

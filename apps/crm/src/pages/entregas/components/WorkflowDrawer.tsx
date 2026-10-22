@@ -105,6 +105,8 @@ import {
   type DetachKeepingProcessResult,
   isFinalClientApprovalCycle,
   cardAutoScheduleGates,
+  advanceWorkflowFromApproval,
+  resolveWorkflowRascunhoBanner,
 } from '../../../store';
 import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
 import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
@@ -113,7 +115,9 @@ import { AutoScheduleBatchDialog } from './AutoScheduleBatchDialog';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
-import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
+import { fluxoRascunhoBanner } from '../approvalExit';
+import { getErrorIdentifier, getPostProcessErrorToast } from '../postProcessErrors';
+import { RascunhoBanner } from './RascunhoBanner';
 import { PostTimelinePopover } from './PostTimelinePopover';
 import { useAuth } from '@/context/AuthContext';
 import { hasVideoMissingThumbnail } from './PostMediaGallery';
@@ -330,10 +334,14 @@ export function WorkflowDrawer({
     if (!approvalEtapa) return;
     (async () => {
       try {
-        const result = await completeEtapaForAdvance(workflowId, approvalEtapa.id!);
-        toast.success('Todos os posts aprovados — etapa concluída!');
+        await advanceWorkflowFromApproval({
+          workflowId,
+          expectedEtapaId: approvalEtapa.id!,
+          choice: 'manter',
+          expectedCounts: null,
+        });
+        toast.success('Todos os posts aprovados. Etapa concluída!');
         qc.invalidateQueries({ queryKey: ['workflow-events', workflowId] });
-        notifyRearmOutcome(result);
         onRefresh();
       } catch {
         /* silent, etapa completion is a bonus */
@@ -343,6 +351,36 @@ export function WorkflowDrawer({
     // on their identity would risk a duplicate completion.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts, isLoading]);
+
+  // "Voltar todos para rascunho" banner: shown after an approval etapa closed with posts still
+  // approved. `dismissedCiclo` hides it at once (optimistic) so the X does not flash back
+  // before the refetch; it is cleared when the resolve call fails.
+  const [dismissedCiclo, setDismissedCiclo] = useState<string | null>(null);
+  const [bannerBusy, setBannerBusy] = useState(false);
+  const bannerApprovedCount = posts.filter((p) => p.status === 'aprovado_cliente').length;
+  const rascunhoBanner = fluxoRascunhoBanner({
+    etapas: card.allEtapas,
+    approvedCount: bannerApprovedCount,
+    dispensadoEm: card.workflow.aviso_rascunho_dispensado_em,
+    workflowStatus: card.workflow.status,
+  });
+  const resolveRascunhoBanner = async (ciclo: string, reset: boolean) => {
+    if (bannerBusy) return;
+    setBannerBusy(true);
+    setDismissedCiclo(ciclo);
+    try {
+      await resolveWorkflowRascunhoBanner(workflowId, ciclo, reset);
+      if (reset) toast.success('Posts voltaram para rascunho.');
+      qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
+      onRefresh();
+    } catch (err) {
+      setDismissedCiclo(null);
+      toast.error(getPostProcessErrorToast(err, 'Não foi possível atualizar o aviso.'));
+      if (getErrorIdentifier(err) === 'ciclo_changed') onRefresh();
+    } finally {
+      setBannerBusy(false);
+    }
+  };
 
   // Drops any selected id that no longer belongs to this workflow's post list --
   // e.g. the post was removed (trash icon) or detached from another tab while
@@ -1238,6 +1276,16 @@ export function WorkflowDrawer({
                     <Plus className="h-3.5 w-3.5" /> Novo Post
                   </button>
                 </div>
+              )}
+
+              {rascunhoBanner.show && rascunhoBanner.ciclo !== dismissedCiclo && (
+                <RascunhoBanner
+                  count={bannerApprovedCount}
+                  entityKind="fluxo"
+                  busy={bannerBusy}
+                  onReset={() => void resolveRascunhoBanner(rascunhoBanner.ciclo, true)}
+                  onDismiss={() => void resolveRascunhoBanner(rascunhoBanner.ciclo, false)}
+                />
               )}
 
               {isLoading ? (

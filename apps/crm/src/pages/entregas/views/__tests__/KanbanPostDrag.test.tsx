@@ -55,9 +55,7 @@ vi.mock('@dnd-kit/utilities', () => ({
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
-  approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
@@ -192,8 +190,8 @@ function makePostEntity(): PostEntity {
 }
 
 // Variante com uma etapa de aprovação do cliente ATIVA (ordem 1) e o post já
-// aprovado_interno -- as duas condições que fazem decideApprovalAdvance abrir
-// a escolha (ClientApprovalChoiceDialog) COM "Enviar para o cliente aprovar"
+// aprovado_interno -- as duas condições que fazem o drag abrir o diálogo
+// de saída de aprovação (ApprovalExitDialog) COM "Enviar para o cliente aprovar"
 // habilitado (sendToPortalDisabledReasonFor só desabilita em 'enviado_cliente'). Usada só pelo teste de "Enviar ao portal" abaixo -- os demais
 // testes deste arquivo usam STAGE_STEPS (tudo 'padrao') de propósito, para
 // nunca abrir esta escolha.
@@ -387,17 +385,17 @@ describe('KanbanView drag de um post individual (fase 4, Task 8)', () => {
     );
     expect(dndHandlers.onDragEnd).toBeDefined();
 
-    // 1) Drag para frente ("Aprovação" -> "Publicação"): seta pendingInsertRef
-    // e abre o ForwardConfirmDialog do hook.
+    // 1) Drag para frente ("Aprovação" -> "Publicação"): seta pendingInsertRef.
+    // A etapa ativa é de aprovação do cliente, então o hook abre direto o
+    // diálogo de saída de aprovação (sem ForwardConfirmDialog).
     const overId = emptyColumnOverId(post, 2);
     await act(async () => {
       await dndHandlers.onDragEnd?.({ active: { id: 'post:9' }, over: { id: overId } });
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
 
-    // 2) A etapa ativa é de aprovação do cliente e o post ainda não está
-    // liberado (aprovado_interno) -- decideThenRun abre a escolha.
-    fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
+    // 2) O post ainda não está liberado (aprovado_interno): escolhe "Enviar ao portal".
+    fireEvent.click(await screen.findByRole('radio', { name: /Enviar ao portal/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar ao portal' }));
 
     // 3) Com o fix, "Enviar ao portal" passa por dismissChoice() (mesmo
     // caminho do Cancelar) ANTES de rodar sendToPortal -- pendingInsertRef já

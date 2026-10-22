@@ -7,14 +7,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * Proves the drawer's approval auto-complete is really wired: the effect must observe the
  * awaiting -> aprovado_cliente transition on the posts query and complete the active approval
- * etapa through the re-arming advance path. The code this replaced was dead, so "the pure
+ * etapa through the approval-exit advance path. The code this replaced was dead, so "the pure
  * transition rule and the store function are each tested" is not sufficient on its own.
  */
 
 const store = vi.hoisted(() => ({
   getWorkflowPostsWithProperties: vi.fn(),
-  completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
+  advanceWorkflowFromApproval: vi.fn(),
+  resolveWorkflowRascunhoBanner: vi.fn(),
   addWorkflowPost: vi.fn(),
   updateWorkflowPost: vi.fn(),
   removeWorkflowPost: vi.fn(),
@@ -165,15 +165,14 @@ function renderDrawer(onRefresh = vi.fn()) {
 describe('WorkflowDrawer approval auto-complete', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    store.completeEtapaWithRearm.mockResolvedValue({
-      workflow: { status: 'ativo' },
-      etapas: [],
-      rearmed: true,
-      rearmFailed: false,
+    store.advanceWorkflowFromApproval.mockResolvedValue({
+      workflowStatus: 'ativo',
+      etapaAtual: 2,
+      postsChanged: 0,
     });
   });
 
-  it('completes the active approval etapa via the re-arming path when the last awaiting post is approved', async () => {
+  it('completes the active approval etapa keeping posts approved (no reset) when the last awaiting post is approved', async () => {
     store.getWorkflowPostsWithProperties
       .mockResolvedValueOnce([
         makePost(1, 'aprovado_cliente'),
@@ -186,21 +185,25 @@ describe('WorkflowDrawer approval auto-complete', () => {
 
     const { queryClient, onRefresh } = renderDrawer();
     await waitForSnapshot('aguardando cliente');
-    expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
+    expect(store.advanceWorkflowFromApproval).not.toHaveBeenCalled();
 
     await queryClient.invalidateQueries({ queryKey: ['workflow-posts-with-props', 1] });
     await waitForSnapshot('cliente aprovou');
 
-    await waitFor(() => expect(store.completeEtapaWithRearm).toHaveBeenCalledWith(1, 11));
+    await waitFor(() =>
+      expect(store.advanceWorkflowFromApproval).toHaveBeenCalledWith({
+        workflowId: 1,
+        expectedEtapaId: 11,
+        choice: 'manter',
+        expectedCounts: null,
+      }),
+    );
     const { toast } = await import('sonner');
     await waitFor(() =>
-      expect(toast.success).toHaveBeenCalledWith('Todos os posts aprovados — etapa concluída!'),
+      expect(toast.success).toHaveBeenCalledWith('Todos os posts aprovados. Etapa concluída!'),
     );
-    expect(toast.info).toHaveBeenCalledWith(
-      'Posts voltaram para rascunho para o próximo ciclo de aprovação.',
-    );
+    expect(toast.info).not.toHaveBeenCalled();
     expect(onRefresh).toHaveBeenCalled();
-    expect(store.completeEtapa).not.toHaveBeenCalled();
   });
 
   it('does not fire on open when the cycle was already approved before the drawer opened', async () => {
@@ -222,7 +225,7 @@ describe('WorkflowDrawer approval auto-complete', () => {
 
     await waitForSnapshot('ainda aprovado');
     expect(store.getWorkflowPostsWithProperties).toHaveBeenCalledTimes(2);
-    expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
+    expect(store.advanceWorkflowFromApproval).not.toHaveBeenCalled();
   });
 
   it('does not fire while a post is still awaiting the client', async () => {
@@ -243,31 +246,6 @@ describe('WorkflowDrawer approval auto-complete', () => {
 
     await waitForSnapshot('um aprovado');
     expect(store.getWorkflowPostsWithProperties).toHaveBeenCalledTimes(2);
-    expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
-  });
-
-  it('surfaces the manual-remediation toast when the advance succeeded but the re-arm failed', async () => {
-    store.completeEtapaWithRearm.mockResolvedValue({
-      workflow: { status: 'ativo' },
-      etapas: [],
-      rearmed: false,
-      rearmFailed: true,
-    });
-    store.getWorkflowPostsWithProperties
-      .mockResolvedValueOnce([makePost(1, 'correcao_cliente', 'correcao pedida')])
-      .mockResolvedValue([makePost(1, 'aprovado_cliente', 'correcao aceita')]);
-
-    const { queryClient, onRefresh } = renderDrawer();
-    await waitForSnapshot('correcao pedida');
-    await queryClient.invalidateQueries({ queryKey: ['workflow-posts-with-props', 1] });
-    await waitForSnapshot('correcao aceita');
-
-    const { toast } = await import('sonner');
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(
-        'A etapa avançou, mas não foi possível preparar os posts para o próximo ciclo de aprovação. Reinicie os status dos posts manualmente.',
-      ),
-    );
-    expect(onRefresh).toHaveBeenCalled();
+    expect(store.advanceWorkflowFromApproval).not.toHaveBeenCalled();
   });
 });

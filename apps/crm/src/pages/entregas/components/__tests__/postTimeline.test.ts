@@ -157,6 +157,7 @@ describe('buildPostTimeline com eventos de processo', () => {
       'Voltou para Copy',
     );
     expect(processEventLabel(pev({ evento: 'concluido' }))).toBe('Processo concluído');
+    expect(processEventLabel(pev({ evento: 'voltou_rascunho' }))).toBe('Voltou para Rascunho');
     expect(processEventLabel(pev({ evento: 'reaberto' }))).toBe('Processo reaberto');
     expect(processEventLabel(pev({ evento: 'removido' }))).toBe('Processo removido');
     expect(processEventLabel(pev({ evento: 'vinculado' }))).toBe(

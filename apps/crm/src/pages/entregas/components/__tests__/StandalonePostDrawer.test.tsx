@@ -14,6 +14,8 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
   useIsPhoneEditor: () => false,
 }));
+// Same for the dialogs (ApprovalExitDialog switches to a phone sheet below 768px).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 // `can` e um vi.fn() para cada teste poder negar uma permissao especifica.
@@ -92,6 +94,7 @@ vi.mock('@/store', () => ({
   getPostProcessEvents: vi.fn(async () => []),
   transitionPostProcess: vi.fn(),
   removePostProcess: vi.fn(),
+  resolvePostProcessRascunhoBanner: vi.fn(),
   CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   // Consumed by ApplyProcessDialog, which this drawer mounts in its header for the
   // "Aplicar processo" action -- the module-namespace mock below must list every
@@ -190,7 +193,9 @@ import {
   updateWorkflowPost,
   removeWorkflowPost,
   transitionPostProcess,
+  resolvePostProcessRascunhoBanner,
 } from '@/store';
+import { toast } from 'sonner';
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);
 const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
@@ -198,6 +203,7 @@ const mockGetPostStatusEvents = vi.mocked(getPostStatusEvents);
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockRemove = vi.mocked(removeWorkflowPost);
 const mockTransition = vi.mocked(transitionPostProcess);
+const mockResolveBanner = vi.mocked(resolvePostProcessRascunhoBanner);
 
 function basePost(overrides: Record<string, unknown> = {}) {
   return {
@@ -742,5 +748,83 @@ describe('StandalonePostDrawer', () => {
     renderDrawer(qc2);
     await screen.findByText('Avulso');
     expect(screen.queryByRole('button', { name: 'Aplicar processo' })).toBeNull();
+  });
+  // Saída de etapa de aprovação: o post continua aprovado_cliente numa etapa
+  // padrão entre duas aprovações -> aviso para voltar a rascunho.
+  describe('banner de rascunho', () => {
+    // Microssegundos de propósito: o ciclo precisa chegar à RPC intacto.
+    const CICLO = '2026-10-20T10:00:00.123456+00:00';
+    const bannerProcess = (dispensadoEm: string | null = null) => ({
+      ...processFixture,
+      aviso_rascunho_dispensado_em: dispensadoEm,
+      steps: [
+        processStep(0, 'concluido', { tipo: 'aprovacao_cliente', concluido_em: CICLO }),
+        processStep(1, 'ativo'),
+        processStep(2, 'pendente', { tipo: 'aprovacao_cliente' }),
+      ],
+    });
+    const approvedPost = () => ({ ...postFixture, status: 'aprovado_cliente' });
+
+    it('aparece com o post aprovado entre duas aprovações; o X dispensa com o ciclo intacto e some', async () => {
+      mockGetStandalonePost.mockResolvedValue(approvedPost() as never);
+      mockGetVigentePostProcess.mockResolvedValue(bannerProcess() as never);
+      mockResolveBanner.mockResolvedValueOnce(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      const { onRefresh } = renderDrawer(qc);
+      expect(await screen.findByText('Este post continua aprovado.')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Dispensar aviso' }));
+      expect(mockResolveBanner).toHaveBeenCalledWith(9, CICLO, false);
+      expect(screen.queryByText('Este post continua aprovado.')).toBeNull();
+      await waitFor(() =>
+        expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-process', 5] }),
+      );
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
+      expect(onRefresh).toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('"Voltar para rascunho" confirmado chama a RPC com reset e avisa', async () => {
+      mockGetStandalonePost.mockResolvedValue(approvedPost() as never);
+      mockGetVigentePostProcess.mockResolvedValue(bannerProcess() as never);
+      mockResolveBanner.mockResolvedValueOnce(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+      await screen.findByText('Este post continua aprovado.');
+      fireEvent.click(screen.getByRole('button', { name: 'Voltar para rascunho' }));
+      expect(await screen.findByText('Voltar o post para rascunho?')).toBeInTheDocument();
+      const confirm = screen
+        .getAllByRole('button', { name: 'Voltar para rascunho' })
+        .find((b) => b.closest('[role="alertdialog"]'))!;
+      fireEvent.click(confirm);
+      await waitFor(() => expect(mockResolveBanner).toHaveBeenCalledWith(9, CICLO, true));
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith('O post voltou para rascunho.'),
+      );
+    });
+
+    it('não aparece quando o aviso já foi dispensado neste ciclo', async () => {
+      mockGetStandalonePost.mockResolvedValue(approvedPost() as never);
+      mockGetVigentePostProcess.mockResolvedValue(
+        bannerProcess('2026-10-20T11:00:00+00:00') as never,
+      );
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+      await screen.findByText('Individual · Etapa 1');
+      expect(screen.queryByText('Este post continua aprovado.')).toBeNull();
+    });
+
+    it('ciclo_changed: o aviso volta, mostra a mensagem e recarrega', async () => {
+      mockGetStandalonePost.mockResolvedValue(approvedPost() as never);
+      mockGetVigentePostProcess.mockResolvedValue(bannerProcess() as never);
+      mockResolveBanner.mockRejectedValueOnce({ message: 'ciclo_changed', code: 'P0001' });
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { onRefresh } = renderDrawer(qc);
+      await screen.findByText('Este post continua aprovado.');
+      fireEvent.click(screen.getByRole('button', { name: 'Dispensar aviso' }));
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      expect(await screen.findByText('Este post continua aprovado.')).toBeInTheDocument();
+      expect(onRefresh).toHaveBeenCalled();
+    });
   });
 });

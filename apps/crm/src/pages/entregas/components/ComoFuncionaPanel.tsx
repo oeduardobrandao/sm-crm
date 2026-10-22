@@ -18,8 +18,9 @@ export const explainerStorageKey = (contaId: string) => `entregas_explainer_dism
  * paragraph blocks and read as a wall of text.
  *
  * Every claim is drawn from live behaviour, not aspiration: the etapa/post
- * split is `workflows.etapa_atual` vs `workflow_posts.status`; the re-arm is
- * `completeEtapaWithRearm`; template propagation is `saveWorkflowTemplate`
+ * split is `workflows.etapa_atual` vs `workflow_posts.status`; leaving an
+ * approval etapa never changes post statuses on its own, the user picks what
+ * happens in `ApprovalExitDialog`; template propagation is `saveWorkflowTemplate`
  * (`update_workflow_template`), which updates `pendente` and `ativo` etapas
  * field by field, only where the fluxo still holds the template's previous
  * value (never `concluido`, and never `status`/`iniciado_em`/`concluido_em`).
@@ -126,8 +127,8 @@ export function ComoFuncionaPanel({
             etapa — um fluxo pode estar em “Agendamento” com tudo ainda em Rascunho.
           </p>
           <p className="ex-aside">
-            <strong>Exceção:</strong> concluir uma etapa de aprovação quando existe outra mais
-            adiante devolve os posts aprovados para Rascunho.
+            <strong>Exceção:</strong> ao concluir uma etapa de aprovação, você escolhe o que
+            acontece com os posts: manter, aprovar todos ou voltar para Rascunho.
           </p>
           <p className="ex-aside">
             {postProcessesEnabled
