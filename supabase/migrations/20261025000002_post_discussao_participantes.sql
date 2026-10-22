@@ -85,8 +85,9 @@ AS $$
   SELECT COALESCE(array_agg(DISTINCT mb.id), '{}'::bigint[])
     FROM regexp_matches(COALESCE(p_content, ''), '\]\(membro:([0-9]+)\)', 'g') AS m(g)
     JOIN membros mb
-      ON length(m.g[1]) <= 18
-     AND mb.id = m.g[1]::bigint
+      -- CASE, not an AND'ed length check: a qual's evaluation order is not guaranteed,
+      -- and a 19+ digit token must be ignored, not overflow the cast.
+      ON mb.id = CASE WHEN length(m.g[1]) <= 18 THEN m.g[1]::bigint END
      AND mb.conta_id = p_conta_id;
 $$;
 
