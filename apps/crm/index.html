@@ -87,14 +87,6 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Non-blocking. Apple devices render SF Pro and never use it; elsewhere (Android, Linux)
-         Plus Jakarta Sans is the landing's face. display=optional: if it isn't in by the first
-         paint the page keeps the fallback for that load (cached for the next), because a late
-         swap reflowed the server-rendered hero (CLS 0.074 on PageSpeed mobile). -->
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=optional" rel="stylesheet" media="print" onload="this.media='all'">
-    <noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=optional" rel="stylesheet"></noscript>
     <link rel="stylesheet" href="/style.css">
     <!-- Crisp: only the $crisp queue and the website id live here. The widget script is injected
          by lib/crispLoader.ts after the visitor consents to the support category. $crisp queues

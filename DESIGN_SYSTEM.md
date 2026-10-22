@@ -116,8 +116,9 @@ value inside `@layer base` changes nothing.
 `body` uses `var(--font-main)` at weight 400 with antialiasing. On non-Apple platforms these
 fall through to the generic `sans-serif`.
 
-Plus Jakarta Sans *is* loaded from Google Fonts in `apps/crm/index.html`, but only the
-marketing landing page references it, and there only as a fallback behind SF Pro. A handful
+No sans web font is loaded: the landing and marketing pages use SF Pro on Apple devices and
+`system-ui` elsewhere (Roboto on Android). Plus Jakarta Sans was dropped there because its
+late swap shifted the server-rendered hero. A handful
 of files still name `Playfair Display` / `DM Sans` inside `var(--font-heading, …)` fallbacks
 and chart configs — leftovers from an older system, not live choices.
 

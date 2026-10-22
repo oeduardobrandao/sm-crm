@@ -316,7 +316,7 @@ body.landing-page:has(.lp-v2) {
   --lp2-text-3: #86868b;
   --lp2-accent: #ffbf30;
   --lp2-radius: 28px;
-  --lp2-font: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --lp2-font: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   background: var(--lp2-bg);
   color: var(--lp2-text);
 }
