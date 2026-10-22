@@ -231,7 +231,7 @@ export function ConcludedViewPhone(p: ConcludedViewPhoneProps) {
               icon={
                 <ClienteAvatar
                   nome={g.cliente.nome}
-                  fotoUrl={p.clienteAvatars?.get(g.cliente.id!) ?? g.cliente.foto_url}
+                  fotoUrl={p.clienteAvatars?.get(g.cliente.id!)}
                   cliente={g.cliente}
                 />
               }

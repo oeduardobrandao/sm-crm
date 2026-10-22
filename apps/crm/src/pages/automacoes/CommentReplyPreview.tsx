@@ -16,12 +16,14 @@ export default function CommentReplyPreview({
   clientName,
   clientSigla,
   clientCor,
+  clientFotos,
   replies,
   keyword,
 }: {
   clientName: string | null;
   clientSigla?: string | null;
   clientCor?: string | null;
+  clientFotos?: string[];
   replies: string[];
   keyword?: string | null;
 }) {
@@ -67,6 +69,7 @@ export default function CommentReplyPreview({
                 clientName={clientName}
                 clientSigla={clientSigla}
                 clientCor={clientCor}
+                clientFotos={clientFotos}
                 size={22}
               />
               <div style={{ fontSize: '0.78rem', color: IG.text, lineHeight: 1.35, minWidth: 0 }}>

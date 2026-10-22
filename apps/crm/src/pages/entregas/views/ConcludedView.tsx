@@ -258,7 +258,7 @@ export function ConcludedView({
               <div className="concluded-client-card-top">
                 <ClienteAvatar
                   nome={group.cliente.nome}
-                  fotoUrl={clienteAvatars?.get(group.cliente.id!) ?? group.cliente.foto_url}
+                  fotoUrl={clienteAvatars?.get(group.cliente.id!)}
                   cliente={group.cliente}
                   size="lg"
                 />
@@ -287,9 +287,7 @@ export function ConcludedView({
               <div className="concluded-client-card-top">
                 <ClienteAvatar
                   nome={selectedGroup.cliente.nome}
-                  fotoUrl={
-                    clienteAvatars?.get(selectedGroup.cliente.id!) ?? selectedGroup.cliente.foto_url
-                  }
+                  fotoUrl={clienteAvatars?.get(selectedGroup.cliente.id!)}
                   cliente={selectedGroup.cliente}
                   size="lg"
                 />

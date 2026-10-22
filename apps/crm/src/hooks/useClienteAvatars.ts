@@ -77,6 +77,8 @@ export function useClienteAvatars(clientes: readonly ClienteFotoSource[]) {
  * an RPC that only carries the Instagram avatar.
  */
 export function useCachedClienteFotoUrl(clienteId: number | null | undefined): string | undefined {
+  // Observes the cache only: no queryFn and `enabled: false`, so this never fetches;
+  // the page's own getClientes query fills and refreshes the entry.
   const { data } = useQuery<ClienteFotoSource[]>({ queryKey: ['clientes'], enabled: false });
   if (clienteId == null) return undefined;
   return data?.find((c) => c.id === clienteId)?.foto_url ?? undefined;

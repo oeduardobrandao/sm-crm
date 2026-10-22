@@ -65,6 +65,7 @@ import { ProductionCard, PublishedCard } from './TargetCards';
 import { dmMessageLimit, MAX_BUTTON_TITLE, MAX_DM_BUTTONS, validateDmButtons } from './dmButtons';
 import TourOverlay, { type TourOverlayProps } from './tour/TourOverlay';
 import { AutomationFormPhone } from './phone/AutomationFormPhone';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 
 /**
  * Stacking for the copy opened from inside the Entregas drawer. The default
@@ -345,6 +346,7 @@ export default function AutomationFormDialog({
   }, [open]);
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
+  const { fotosDe } = useClienteAvatars(clientes);
   const clientIds = useMemo(
     () => clientes.filter((c) => c.id != null).map((c) => c.id as number),
     [clientes],
@@ -1045,6 +1047,7 @@ export default function AutomationFormDialog({
         clientName={selectedCliente?.nome ?? null}
         clientSigla={selectedCliente?.sigla ?? null}
         clientCor={selectedCliente?.cor ?? null}
+        clientFotos={fotosDe(selectedCliente)}
         text={form.dmMessage}
         buttons={form.buttons}
         mediaUrl={form.dmMediaPreviewUrl || null}
@@ -1055,6 +1058,7 @@ export default function AutomationFormDialog({
           clientName={selectedCliente?.nome ?? null}
           clientSigla={selectedCliente?.sigla ?? null}
           clientCor={selectedCliente?.cor ?? null}
+          clientFotos={fotosDe(selectedCliente)}
           replies={form.publicReplies}
           keyword={form.keywords[0] ?? null}
         />
