@@ -165,8 +165,13 @@ nomeando os papéis, `GRANT EXECUTE … TO authenticated`).
   `p_comment_id` é de um fio deste post; upsert da linha do usuário com
   `last_seen_comment_id = GREATEST(atual, p_comment_id)` (cria com `seguindo = true` quando não há).
 - `post_discussao_seguir(p_post_id bigint, p_seguir boolean)`: upsert de `seguindo`.
-- `get_post_discussao_nao_lidas(p_post_ids bigint[]) RETURNS TABLE (post_id bigint, total int,
-  nao_lidas int)`: por post do workspace do chamador, `total` = comentários de **qualquer fio**
+- `get_post_discussao_participacao(p_post_id bigint) RETURNS TABLE (seguindo boolean,
+  last_seen_comment_id bigint, implicito boolean)`: o estado do próprio usuário (uma linha
+  sempre; `implicito` para o responsável sem linha), para o sino e a marca de lido.
+- `get_post_discussao_nao_lidas(p_post_ids bigint[] DEFAULT NULL, p_workflow_ids bigint[] DEFAULT
+  NULL) RETURNS TABLE (post_id bigint, workflow_id bigint, total int, nao_lidas int)` (por post ou
+  por fluxo, porque o quadro conhece os fluxos e não os ids dos posts; só linhas com `total > 0`):
+  por post do workspace do chamador, `total` = comentários de **qualquer fio**
   do post; `nao_lidas` = desses, os com `id > last_seen_comment_id` e autor diferente do usuário,
   **só para participantes que seguem** (linha com `seguindo = true`, ou o responsável implícito
   sem linha, com marca 0). Para quem não participa ou deixou de seguir, `nao_lidas = 0`. Decisão

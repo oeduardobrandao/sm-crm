@@ -79,7 +79,8 @@ Expected: FAIL on 99.1 (`geral` violates the old CHECK).
 - Drop and re-add the `field` CHECK with `('conteudo','ig_caption','geral')`; drop and re-add `post_comment_threads_anchor_chk` with the existing two branches plus `(field = 'geral' AND anchor_start IS NULL AND anchor_end IS NULL AND NOT orphaned AND quoted_text = '' AND status = 'active')`. Find the auto-generated name of the inline `field` CHECK from `20260925000020` with a `DO` block over `pg_constraint` (it was declared inline, so it is not named).
 - `CREATE UNIQUE INDEX post_comment_threads_geral_uq ON post_comment_threads (post_id) WHERE field = 'geral';`
 - Restrictive policies `AS RESTRICTIVE … TO authenticated` as listed in Interfaces (insert check `field <> 'geral'`; comments insert check `author_id = auth.uid()`; geral update/delete using `author_id = auth.uid() OR thread_id NOT IN (SELECT id FROM post_comment_threads WHERE field = 'geral')`).
-- Guard triggers `BEFORE UPDATE` / `BEFORE DELETE` on `post_comment_threads`, raising `ERRCODE = '42501'` with messages `geral_thread_immutable` / `geral_thread_undeletable`. Delete guard allows the row when `NOT EXISTS (SELECT 1 FROM workflow_posts WHERE id = OLD.post_id)` (the cascade path); verify with 99.2.
+- Guard triggers `BEFORE UPDATE` / `BEFORE DELETE` on `post_comment_threads`, both functions `SECURITY DEFINER SET search_path = public` (so the EXISTS below is not filtered by `workflow_posts` RLS), raising `ERRCODE = '42501'` with messages `geral_thread_immutable` / `geral_thread_undeletable`. Delete guard allows the row when `NOT EXISTS (SELECT 1 FROM workflow_posts WHERE id = OLD.post_id)` (the cascade path: the FK cascade runs after the parent row is gone); verify with 99.2.
+- The inline `field` CHECK from `20260925000020` is named `post_comment_threads_field_check`; the `DO` block that finds it must assert it found exactly one row.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -111,9 +112,9 @@ git commit -m "feat(db): general discussion thread per post with database guards
 
 - [ ] **Step 1: Write the failing psql sections**
 
-- 99.4 `enviar`: member of A sends to own post → returns row with `author_id` = caller and creates exactly one `geral` thread; second send reuses it; `p_thread_id` of an active `conteudo` thread of the same post inserts there; `p_thread_id` of another post or a resolved thread raises; post of workspace B raises; `''`, `'   '` and 4001 chars raise; a `@[X](membro:<id>)` token creates a `mencoes` row in the same call (`sync_mentions` in-transaction).
+- 99.4 `enviar`: member of A sends to own post → returns row with `author_id` = caller and creates exactly one `geral` thread (with `created_by` = caller, `quoted_text = ''`); second send reuses it (sequential case only: the concurrency guarantee is the `ON CONFLICT … DO NOTHING` path, not provable in one psql session); `p_thread_id` of an active `conteudo` thread of the same post inserts there; `p_thread_id` of another post, a resolved thread, or a thread whose `conta_id` differs from its post's `conta_id` (seed it as postgres) raises; post of workspace B raises; `''`, `'   '` and 4001 chars raise; a `@[X](membro:<id>)` token creates a `mencoes` row in the same call (`sync_mentions` in-transaction); after the call `current_setting('app.discussao_via_rpc', true)` is `''` or NULL.
 - 99.5 `marcar_lido`: advances `last_seen_comment_id`, never moves it back; comment id from another post raises; post of B raises.
-- 99.6 `seguir`: toggles the row; post of B raises.
+- 99.6 `seguir` and `participacao`: `seguir` toggles the row; post of B raises. `get_post_discussao_participacao`: responsável without a row → `(true, 0, true)`; non-participant → `(false, 0, false)`; row with `seguindo = false` → `(false, <last_seen>, false)`; post of B raises.
 - 99.7 `get_post_discussao_nao_lidas`: participant following with marker 0 sees `nao_lidas = total` minus own messages; non-participant sees `nao_lidas = 0` and correct `total`; `seguindo = false` sees 0; responsável without row sees all others' messages; counts include replies in `conteudo` threads; `p_workflow_ids` returns the fluxo's posts; member of B gets no rows for A's posts; removed member (row in participants, no `workspace_members`) gets no rows.
 - 99.8 types: as postgres, insert one `notifications` row of type `team_message` and one of `post_discussion`, and one `notification_inapp_prefs` row of each; all succeed. Grants: `anon` has no EXECUTE on any of the five functions.
 
@@ -125,7 +126,8 @@ Expected: FAIL at 99.4 (function does not exist).
 - [ ] **Step 3: Write the migration**
 
 - Every function starts by loading `workflow_posts` by id and raising `post_not_found` (`P0002`) unless `conta_id IN (SELECT get_my_conta_id())` and the caller is in `workspace_members` of that `conta_id`.
-- `enviar`: trim check, get-or-create the `geral` thread with `INSERT … ON CONFLICT (post_id) WHERE field = 'geral' DO NOTHING` then `SELECT`, insert the comment with `author_id = auth.uid()`, call `sync_mentions('post_comment', v_comment.id, <membro ids parsed from content>)`. Parse ids with the regex in `mentionTokens.ts` `MENTION_TOKEN_RE`, keeping only the `membro` entity.
+- Helper `post_discussao_membro_ids(p_content text, p_conta_id uuid) RETURNS bigint[]` (STABLE, SECURITY DEFINER, no grant to `authenticated`): ids from `regexp_matches(p_content, '\]\(membro:([0-9]+)\)', 'g')` joined to `membros` with `conta_id = p_conta_id`. Task 3's trigger reuses it.
+- `enviar`: trim check; on the `p_thread_id` path assert `thread.post_id = p_post_id AND thread.conta_id = wp.conta_id AND thread.status = 'active'` (because `sync_mentions` is SECURITY INVOKER by design and, called from this DEFINER function, no longer gets RLS as its tenant proof; `enviar` is that proof). Get-or-create the `geral` thread with `INSERT (post_id, conta_id, quoted_text, created_by, field) VALUES (p_post_id, wp.conta_id, '', auth.uid(), 'geral') ON CONFLICT (post_id) WHERE field = 'geral' DO NOTHING` then `SELECT`. Then `PERFORM set_config('app.discussao_via_rpc', '1', true)`, insert the comment with `author_id = auth.uid()`, immediately `PERFORM set_config('app.discussao_via_rpc', '', true)` (the GUC is transaction-scoped, so it must be reset right after the INSERT), then `sync_mentions('post_comment', v_comment.id, post_discussao_membro_ids(content, wp.conta_id))`. The GUC is harmless until Task 3's trigger reads it.
 - `marcar_lido`: comment must belong to a thread with `post_id = p_post_id`; `INSERT … ON CONFLICT (post_id, user_id) DO UPDATE SET last_seen_comment_id = GREATEST(...)`, `updated_at = now()`.
 - Realtime: add `post_comment_threads` and `post_comments` to `supabase_realtime` with the idempotent block + assertion copied from `20261021100000` lines ~265–288.
 - Re-create `notifications_type_check` and `notification_inapp_prefs_type_check` copied from the latest definitions plus `'post_discussion'`; header comment "Este arquivo passa a ser a definicao mais recente".
@@ -157,7 +159,9 @@ git commit -m "feat(db): discussion participants, RPCs, realtime and post_discus
 - 99.9 recipients (users: author U, follower F, unfollowed N, responsável R without row, mentioned M, removed ex-member X with a row): U sends via `enviar` with `@M`: notifications exist for F and R only; none for U, N, M, X; M has a `mention` row whose `link` is `/entregas?drawer=<wf>&post=<post>&discussao=1`.
 - 99.10 coalescing: two more messages from another author → F still has exactly one unread `post_discussion` with `metadata->>'count' = '3'`, `metadata->'authors'` has ≤ 3 names, `preview` has no raw `@[` token; after F marks it read, the next message creates a new row.
 - 99.11 edge cases: insert by postgres with no JWT (`auth.uid()` null) creates no notification; post with no responsável and no participants: `enviar` succeeds, zero notifications; first message of a new `conteudo` thread via direct inserts (legacy path) with `@M` still notifies F and does not exclude M; edit adding `@Y` creates Y's participant row and no `post_discussion`; avulso post (no `workflow_id`) link is `/entregas?post=<id>&discussao=1`.
-- 99.12 backfill: run the migration's backfill statement on a seeded post with one active and one resolved `conteudo` thread: only authors of the active thread get rows, `last_seen_comment_id` = the post's max comment id.
+- 99.9 also: a responsável who also has a following participant row receives exactly one `post_discussion` row (no "cannot affect row a second time").
+- 99.11 also: the "no JWT" case runs `reset role` and `set_config('request.jwt.claims', '', true)` first (or runs before any impersonation in its section).
+- 99.12 backfill: call `post_discussao_backfill_participantes()` on a seeded post with one active and one resolved `conteudo` thread: only authors of the active thread get rows, `last_seen_comment_id` = the post's max comment id; a post whose `conta_id` has no `workspaces` row is skipped without error.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -167,10 +171,12 @@ Expected: FAIL at 99.9.
 - [ ] **Step 3: Write the migration**
 
 - Both triggers SECURITY DEFINER, whole body in `BEGIN … EXCEPTION WHEN OTHERS THEN RAISE WARNING '…: % %', SQLERRM, SQLSTATE; END;`, skip when `auth.uid() IS NULL` or thread `conta_id` ≠ post `conta_id`.
-- Recipient exclusion of mentioned users only when the insert came through `enviar`: `enviar` sets `set_config('mesaas.discussao_via_rpc', '1', true)` before inserting, the trigger reads `current_setting('mesaas.discussao_via_rpc', true) = '1'`. Add that line to `enviar` here with `CREATE OR REPLACE` (copy Task 2's body).
+- Mentioned users come from `post_discussao_membro_ids(NEW.content, post.conta_id)` → `membros.crm_user_id` (the `mencoes` rows do not exist yet when this AFTER INSERT trigger fires). They are excluded from recipients only when `current_setting('app.discussao_via_rpc', true) = '1'` (NULL and `''` mean "not via RPC"; Task 2's `enviar` already sets and resets it).
+- Build the recipient set with `UNION` (followers with `seguindo = true` UNION the implicit responsável), never `UNION ALL`, so a user appears once; `ON CONFLICT DO UPDATE` raises if one statement hits the same row twice.
+- Store `metadata->>'post_id'` as text (`post_id::text`), like `conversa_id` in `team_message`.
 - Notification insert: `ON CONFLICT (user_id, ((metadata->>'post_id'))) WHERE type = 'post_discussion' AND read_at IS NULL AND dismissed_at IS NULL DO UPDATE SET metadata = …, created_at = now()` keeping `count`, `authors` (dedup, max 3), `author_name`, `preview` (mention tokens replaced like `20261021103000` part b, then `left(…, 280)`), `post_id`, `workflow_id`, `post_titulo`, `thread_field`, `quoted_text`.
 - `trg_notify_mention`: copy the latest definition (find it: `grep -l "FUNCTION trg_notify_mention" supabase/migrations/* | sort | tail -1`), change only the `post_comment` branch's `v_link`.
-- Backfill as specified in the spec ("Participantes de fios antigos").
+- Backfill as specified in the spec ("Participantes de fios antigos"), wrapped in `post_discussao_backfill_participantes() RETURNS int` (SECURITY DEFINER, `REVOKE ALL … FROM PUBLIC, anon, authenticated, service_role`), joining `workspaces` so orphan posts are skipped, called once at the end of the migration.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -189,7 +195,8 @@ git commit -m "feat(db): post_discussion notifications, participant triggers and
 **Files:**
 - Modify: `apps/crm/src/store/comments.ts`
 - Modify: callers of `addPostComment` (`WorkflowDrawer.tsx:988`, `StandalonePostDrawer.tsx:577`)
-- Test: `apps/crm/src/store/__tests__/comments.discussao.test.ts`
+- Modify: `apps/crm/src/pages/entregas/components/PostCommentPopover.tsx` (~313-324: show the reply `MentionEditor` only when `thread.status === 'active'`; resolved threads show no reply box, since the RPC rejects replies to resolved threads)
+- Test: `apps/crm/src/store/__tests__/comments.discussao.test.ts`; update `apps/crm/src/__tests__/store.comments.test.ts:204-270` (asserts the old direct insert + `sync_mentions` for `addPostComment`); extend `components/__tests__/PostCommentPopover.test.tsx` (no reply box on a resolved thread). Drawer tests that mock `addPostComment` (`WorkflowDrawer*.test.tsx`, `StandalonePostDrawer*.test.tsx`) must keep passing with the new 3-argument call.
 
 **Interfaces:**
 - Produces:
@@ -205,8 +212,8 @@ git commit -m "feat(db): post_discussion notifications, participant triggers and
 
 - [ ] **Step 1: Write the failing tests** with the `lib/__mocks__/supabase.ts` mock: each function calls the right RPC with the right `p_*` params; `addPostComment` calls `post_discussao_enviar` with `p_thread_id` and never `sync_mentions`; `getDiscussaoNaoLidas({})` with both lists empty returns `[]` without calling the RPC; RPC errors reject.
 - [ ] **Step 2: Run** `npx vitest run apps/crm/src/store/__tests__/comments.discussao.test.ts` → FAIL.
-- [ ] **Step 3: Implement**, update the two callers to pass `post.id`/the thread's `post_id`.
-- [ ] **Step 4: Run** the new test plus `npx vitest run apps/crm/src/pages/entregas` → PASS (existing comment tests updated where they asserted `addPostComment(threadId, …)`; grep both `__tests__` trees for `addPostComment`).
+- [ ] **Step 3: Implement**, update the two callers: the handlers only have `threadId` in scope, so pass `commentThreads.find((t) => t.id === threadId)?.post_id` (throw a clear error if not found).
+- [ ] **Step 4: Run** the new test plus `npx vitest run apps/crm/src/__tests__/store.comments.test.ts apps/crm/src/pages/entregas` → PASS.
 - [ ] **Step 5: Commit** `feat(entregas): discussion store functions; replies go through post_discussao_enviar`.
 
 ### Task 5: Timeline builder (pure)
@@ -246,16 +253,17 @@ export function buildTimeline(args: {
 - Test: `apps/crm/src/pages/entregas/discussao/__tests__/useDiscussao.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 4 functions; the drawer's comment-threads query key (WorkflowDrawer `useQuery` at line ~477; read its key and invalidate that).
+- Consumes: Task 4 functions. Both drawers key the threads query under the prefix `['post-comment-threads', …]` and already invalidate that prefix (`WorkflowDrawer.tsx:510`, `StandalonePostDrawer.tsx:292`); the hook invalidates the prefix, so no query key is threaded through `PostEditorBody` and lane A never edits the drawers for this.
 - Produces:
 ```ts
 export function useDiscussao(args: {
   postId: number;
   threads: CommentThreadWithComments[];   // this post's threads, from the drawer query
-  threadsQueryKey: QueryKey;
+  currentUserId: string;
 }): {
   participacao: { seguindo: boolean; lastSeenCommentId: number; implicito: boolean } | undefined;
   isParticipant: boolean;                  // seguindo || implicito
+  naoLidas: number;                        // comments of all the post's threads with id > lastSeenCommentId and author_id !== currentUserId; 0 when !isParticipant
   unreadAnchorId: number | null;           // lastSeen frozen at mount, for the 'unread' divider
   send: (content: string) => Promise<void>; // throws on failure
   sending: boolean;
@@ -263,9 +271,9 @@ export function useDiscussao(args: {
   sectionRef: (el: HTMLElement | null) => void; // IntersectionObserver target
 };
 ```
-- Behaviour: realtime channel `post-discussao-<postId>` with `postgres_changes` on `post_comment_threads` (`post_id=eq.<id>`) and on `post_comments` (`thread_id=in.(<ids>)`, re-subscribed when the id set changes); every event invalidates `threadsQueryKey` and `['post-discussao-nao-lidas']`; channel removed on unmount and on `postId` change; refetch on window focus. When `sectionRef`'s element is ≥ 50% visible, after 800 ms, call `markDiscussaoLida(postId, maxCommentIdOfPost)` if it is greater than the last value sent. `unreadAnchorId` captured once per `postId`.
+- Behaviour: realtime channel `post-discussao-<postId>` with `postgres_changes` on `post_comment_threads` (`post_id=eq.<id>`) and on `post_comments` (`thread_id=in.(<ids>)`, re-subscribed when the id set changes); every event invalidates `{ queryKey: ['post-comment-threads'] }` and `{ queryKey: ['post-discussao-nao-lidas'] }`; channel removed on unmount and on `postId` change; refetch on window focus. When `sectionRef`'s element is ≥ 50% visible, after 800 ms, call `markDiscussaoLida(postId, maxCommentIdOfPost)` if it is greater than the last value sent. `unreadAnchorId` captured once per `postId`.
 
-- [ ] **Step 1: Write the failing tests**: subscribes with both filters; changing `postId` removes the old channel before creating the new one (Review Focus 2); an INSERT event invalidates the key; visibility (mock IntersectionObserver) marks read once with the max id and not again for the same id; `unreadAnchorId` does not move after marking read; `send` rejects and leaves `sending = false` when the RPC errors; `toggleSeguir` calls `setDiscussaoSeguindo(postId, !seguindo)`.
+- [ ] **Step 1: Write the failing tests**: subscribes with both filters; changing `postId` removes the old channel before creating the new one (Review Focus 2); an INSERT event invalidates both prefixes; `naoLidas` counts others' comments above the marker across all threads and is 0 for a non-participant; visibility (mock IntersectionObserver) marks read once with the max id and not again for the same id; `unreadAnchorId` does not move after marking read; `send` rejects and leaves `sending = false` when the RPC errors; `toggleSeguir` calls `setDiscussaoSeguindo(postId, !seguindo)`.
 - [ ] **Step 2: Run** `npx vitest run apps/crm/src/pages/entregas/discussao/__tests__/useDiscussao.test.tsx` → FAIL.
 - [ ] **Step 3: Implement** (model the channel code on `hooks/useEquipeChatRealtime.ts`).
 - [ ] **Step 4: Run** → PASS.
@@ -276,12 +284,12 @@ export function useDiscussao(args: {
 **Files:**
 - Create: `apps/crm/src/pages/entregas/discussao/DiscussaoEquipe.tsx`
 - Modify: `apps/crm/src/pages/entregas/components/PostEditorBody.tsx` (replace `<PostCommentSummary …/>` at ~1619; relabel the `drawer-approval-thread` header at ~1642)
-- Modify: `apps/crm/app.css` (new `.discussao-*` rules next to `.comment-summary`)
+- Modify: `apps/crm/app.css` (new `.discussao-*` rules inserted directly after the `.comment-summary*` block, never at EOF: lanes cherry-pick into the same file)
 - Test: `apps/crm/src/pages/entregas/discussao/__tests__/DiscussaoEquipe.test.tsx`; update `PostEditorBody` tests that assert "Comentários internos" or "Comentários".
 
 **Interfaces:**
 - Consumes: Tasks 5–6, `MentionEditor`, `MentionText`, `useWorkspaceLimits`, `useUnsavedWork`, `onThreadClick` (existing handler in PostEditorBody). The bridge is a slot: `chatBridge?: ReactNode`, rendered in the header only when the flag check passes; Task 13 passes `<DiscutirNoChat …/>` into it.
-- Produces: `<DiscussaoEquipe postId threads threadsQueryKey membros workspaceUsers currentUserId onThreadClick readOnly? chatBridge?: ReactNode />` and an exported `<DiscussaoTimeline items … />` reused by phone (Task 8) and HistoryDrawer (Task 12).
+- Produces: `<DiscussaoEquipe discussao={ReturnType<typeof useDiscussao>} threads membros workspaceUsers currentUserId onThreadClick chatBridge?: ReactNode />` (PostEditorBody calls `useDiscussao({ postId: post.id, threads: commentThreads, currentUserId })` ONCE, above the desktop/phone split, and passes the result to both layouts) and an exported `<DiscussaoTimeline items … />` reused by phone (Task 8) and HistoryDrawer (Task 12).
 
 - [ ] **Step 1: Write the failing tests**: header shows "Discussão da equipe" and "Só a equipe vê"; bell label "Seguindo" when following and "Seguir" when not; "Discutir no chat" absent when `features.feature_team_chat !== true` and not unlimited, present otherwise; messages render name, time and mention chips; thread card shows the quote, "2 respostas" or "1 novas"/"N novas", "Ver no texto" calls `onThreadClick(id)`; resolved group "1 comentário no texto resolvido" expands; "Não lidas" divider only for participants; Enter sends trimmed text and clears, Shift+Enter does not send, IME composing does not send; send failure keeps the text and toasts "Não foi possível enviar. Tente novamente." (Review Focus 1); own message menu: edit disables Salvar on empty text, delete asks "Excluir mensagem?" (Review Focus 5); deleting the last message shows only the composer; `useUnsavedWork(true)` while the draft is non-empty. PostEditorBody: section title "Conversa com o cliente" and "O cliente vê" present; "Comentários internos" absent.
 - [ ] **Step 2: Run** `npx vitest run apps/crm/src/pages/entregas/discussao apps/crm/src/pages/entregas/components/__tests__/PostEditorBody` → FAIL.
@@ -298,9 +306,9 @@ export function useDiscussao(args: {
 
 **Interfaces:**
 - Consumes: Tasks 6–7 (`useDiscussao`, `DiscussaoTimeline`).
-- Produces: `PhoneComments` props gain `postId`, `threadsQueryKey`, `currentUserId`, `naoLidasEquipe: number`; the tab count is `naoLidasEquipe + approvals.length`.
+- Produces: `PhoneComments` props gain `postId`, `currentUserId`, `chatBridge?: ReactNode` (same slot as Task 7, filled by Task 13b); `PhoneComments` also receives `discussao` (the same `useDiscussao` result Task 7 computes once in `PostEditorBody`) and `naoLidasEquipe = discussao.naoLidas`, so the tab count and the pill agree; the tab count is `naoLidasEquipe + approvals.length`. Also in this task: phone `captionThreadCount` (~664) and `activeThreads` skip `isGeralThread`.
 
-- [ ] **Step 1: Write the failing tests**: pills "Equipe · N novas" (or "Equipe" when 0) and "Cliente"; only one composer is in the DOM-visible state at a time (`placeholder` "Mensagem para a equipe" vs "Responder ao cliente…"); initial pill rule: Equipe if `naoLidasEquipe > 0`, else Cliente when the newest approval is from the client, else Equipe; "Só a equipe vê esta conversa." line with bell and "Discutir no chat" icon buttons (40px, `aria-label`); both panes stay mounted when switching; tab count = unread + `approvals.length`.
+- [ ] **Step 1: Write the failing tests**: pills "Equipe · N novas" (or "Equipe" when 0) and "Cliente"; only one composer is in the DOM-visible state at a time (`placeholder` "Mensagem para a equipe" vs "Responder ao cliente…"); initial pill rule: Equipe if `naoLidasEquipe > 0`, else Cliente when the newest approval is from the client, else Equipe; "Só a equipe vê esta conversa." line with the bell icon button (40px, `aria-label`) and the `chatBridge` slot rendered (test passes a stub button); both panes stay mounted when switching; tab count = unread + `approvals.length`; `captionThreadCount` ignores a `geral` thread.
 - [ ] **Step 2: Run** `npx vitest run apps/crm/src/pages/entregas/components` → FAIL.
 - [ ] **Step 3: Implement.** Find how an approval is marked as from the client by reading `.approval-bubble--client` usage in `PostEditorBody.tsx` (`PostApprovalBubble`).
 - [ ] **Step 4: Run** → PASS.
@@ -311,7 +319,10 @@ export function useDiscussao(args: {
 **Files:**
 - Create: `apps/crm/src/pages/entregas/discussao/usePostDiscussaoNaoLidas.ts`
 - Modify: `WorkflowDrawer.tsx` (~1954 `drawer-post-comment-badge`), `StandalonePostDrawer.tsx` (same badge if present), `phone/FluxoPhone.tsx` (~542), `components/WorkflowCard.tsx`, `components/PostProcessCard.tsx`, `phone/PhoneBoardCards.tsx`, `views/KanbanView.tsx` (fetch once per board load and pass props)
-- Test: `discussao/__tests__/usePostDiscussaoNaoLidas.test.tsx`, extend `WorkflowCard.badge.test.tsx`, `WorkflowDrawer.test.tsx`
+- Modify: `apps/crm/app.css` only if a new rule is needed: insert next to `.drawer-post-comment-badge` (never at EOF)
+- Test: `discussao/__tests__/usePostDiscussaoNaoLidas.test.tsx`, extend `WorkflowCard.badge.test.tsx`, `WorkflowDrawer.test.tsx`; the KanbanView batching test copies the harness of an existing `views/__tests__/Kanban*.test.tsx` (e.g. `KanbanFullColumnOrder.test.tsx`; there is no `KanbanView.test.tsx`)
+- Note: the drawer trigger badge changes meaning on purpose: today it counts `commentThreads.length` (threads); it now shows unread or total **comments** across all threads (RPC `total`). Update the existing assertion in `WorkflowDrawer.test.tsx` deliberately, and say so in the commit body.
+- Board: fluxo cards ask by `workflowIds` (the board knows workflow ids, not post ids); post cards (filter "Posts", avulsos) ask by `postIds`; one hook call per board load.
 
 **Interfaces:**
 - Produces: `usePostDiscussaoNaoLidas(args: { postIds?: number[]; workflowIds?: number[] }): { byPost: Map<number, DiscussaoNaoLidas>; byWorkflow: Map<number, number> }` (query key `['post-discussao-nao-lidas', sortedPostIds, sortedWorkflowIds]`, prefix invalidated by Task 6); props `discussaoNaoLidas?: number` on `WorkflowCard`, `PostProcessCard`, phone board cards.
@@ -360,14 +371,14 @@ export function useDiscussao(args: {
 - [ ] **Step 2–4:** run → FAIL, implement, run → PASS.
 - [ ] **Step 5: Commit** `feat(entregas): read-only discussion in history`.
 
-Also in this task: grep for remaining `commentThreads` consumers that count or list threads (`PostEditor.tsx` highlight sync, `captionAnchors.ts`, `PostCommentSummary.tsx`, phone `captionThreadCount`) and make each skip `isGeralThread`; add one assertion per consumer to its existing test.
+Also in this task: grep for remaining `commentThreads` consumers that count or list threads (`PostEditor.tsx` highlight sync, `captionAnchors.ts`, `PostCommentSummary.tsx`; the phone `captionThreadCount` was done in Task 8) and make each skip `isGeralThread`; add one assertion per consumer to its existing test.
 
 ### Task 13: "Discutir no chat" bridge
 
 **Files:**
-- Create: `apps/crm/src/pages/entregas/discussao/DiscutirNoChat.tsx`
-- Modify: `DiscussaoEquipe.tsx` and `PhoneComments.tsx` to render it in the `chatBridge` slot
+- Create: `apps/crm/src/pages/entregas/discussao/DiscutirNoChat.tsx` (component only; mounting it is Task 13b, after Tasks 7, 8 and 13 have landed)
 - Test: `discussao/__tests__/DiscutirNoChat.test.tsx`
+- Pessoas: built from `getEquipeChatMembers()` minus self; each person maps to the DM in `getEquipeConversas()` whose `dm_user_id` matches (send to its `conversa_id`), else `createEquipeConversa('dm', null, [user_id])` on send. `getEquipeConversas()` does not list colleagues without a DM and DMs must not also appear as a separate row (see how `EquipeConversationList`'s Equipe tab merges them). Grupos: conversations with `tipo = 'grupo'`.
 
 **Interfaces:**
 - Consumes: `getEquipeConversas`, `getEquipeChatMembers`, `createEquipeConversa('dm', null, [userId])`, `sendEquipeMensagem(conversaId, content)` from `store/equipeChat.ts` (query keys `['equipe-conversas']`, `['equipe-chat-members']`).
@@ -377,12 +388,27 @@ Also in this task: grep for remaining `commentThreads` consumers that count or l
 - [ ] **Step 2–4:** run → FAIL, implement, run → PASS.
 - [ ] **Step 5: Commit** `feat(entregas): Discutir no chat bridge`.
 
+### Task 13b: Mount the bridge
+
+**Files:**
+- Modify: `apps/crm/src/pages/entregas/components/PostEditorBody.tsx` (pass `chatBridge` to `DiscussaoEquipe` and `PhoneComments`)
+- Test: extend `discussao/__tests__/DiscussaoEquipe.test.tsx` or the PostEditorBody tests
+
+**Interfaces:**
+- Consumes: Task 7/8 `chatBridge?: ReactNode` slots, Task 13 `<DiscutirNoChat post variant />`.
+
+- [ ] **Step 1: Write the failing test**: in PostEditorBody desktop, with `feature_team_chat: true` the "Discutir no chat" button opens the popover with "Levar este post para o chat"; on phone the icon button opens the sheet; with the flag off neither renders.
+- [ ] **Step 2–4:** run → FAIL, wire `variant="popover"` (desktop) / `"sheet"` (phone) with `post={{ id: post.id, titulo: post.titulo, workflowId: post.workflow_id ?? null }}`, run → PASS.
+- [ ] **Step 5: Commit** `feat(entregas): mount Discutir no chat in the editor`.
+
 ### Task 14: Post blocks in the team chat
 
 **Files:**
 - Create: `apps/crm/src/pages/mensagens/components/PostChipsBelow.tsx`
 - Modify: `pages/mensagens/components/EquipeThread.tsx` (~172), `pages/mensagens/phone/EquipeThreadPhone.tsx`, `pages/mensagens/components/PostChip.tsx` (preview: "N mensagens na discussão" from `getDiscussaoNaoLidas({ postIds: [id] })` `total`, and link "Abrir na discussão do post" to `postChipHref(...) + '&discussao=1'`)
 - Test: `pages/mensagens/components/__tests__/EquipeThread.test.tsx` (extend), `PostChipsBelow.test.tsx`
+- `getDiscussaoNaoLidas` returns no row for a post with no comments: treat "no row" as 0 and hide "N mensagens na discussão". Fetch it inside the existing `usePostPreview` `enabled` gate (only while the preview is open).
+- CSS, if any: insert next to the existing `.post-chip` rules (never at EOF).
 
 **Interfaces:**
 - Produces: `<PostChipsBelow text={m.content} variant="desktop" | "phone" />`: renders `PostChip` (desktop) or `PostChipPhone` (phone) for up to 3 distinct `post` mentions parsed with `parseMentionTokens`; renders nothing when none.
