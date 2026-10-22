@@ -47,9 +47,20 @@ function staticClosure(manifest: BuildManifest, start: string): string[] {
   return order;
 }
 
+export interface PreloadOptions {
+  /** Emit `modulepreload` for the chunk's scripts (default). Off for a server-rendered route,
+   * whose first paint needs no JS: the preloads would only share the bandwidth the
+   * render-blocking CSS needs. */
+  scripts?: boolean;
+}
+
 /** Head tags preloading `chunkKey` and its static imports, minus whatever the
  * entry already loads (the shell's own script/link tags cover those). */
-export function preloadTagsFor(manifest: BuildManifest, chunkKey: string): string {
+export function preloadTagsFor(
+  manifest: BuildManifest,
+  chunkKey: string,
+  { scripts: withScripts = true }: PreloadOptions = {},
+): string {
   chunkOrThrow(manifest, chunkKey);
   const entryKeys = Object.keys(manifest).filter((k) => manifest[k].isEntry);
   if (entryKeys.length === 0) throw new Error('prerender: build manifest has no entry chunk');
@@ -86,14 +97,40 @@ export function preloadTagsFor(manifest: BuildManifest, chunkKey: string): strin
 
   return [
     ...styles.map((f) => `<link rel="stylesheet" crossorigin href="/${f}">`),
-    ...scripts.map((f) => `<link rel="modulepreload" crossorigin href="/${f}">`),
+    ...(withScripts ? scripts : []).map(
+      (f) => `<link rel="modulepreload" crossorigin href="/${f}">`,
+    ),
   ].join('\n    ');
 }
 
 /** Preload tags for a prerendered route, or '' when the route has no mapped chunk. */
-export function routePreloadTags(manifest: BuildManifest, routePath: string): string {
+export function routePreloadTags(
+  manifest: BuildManifest,
+  routePath: string,
+  options?: PreloadOptions,
+): string {
   const key = ROUTE_CHUNKS[routePath];
-  return key ? preloadTagsFor(manifest, key) : '';
+  return key ? preloadTagsFor(manifest, key, options) : '';
+}
+
+const ENTRY_SCRIPT = /<script type="module" crossorigin src="(\/assets\/[^"]+\.js)"><\/script>/;
+
+/** Starts the entry module after the first paint instead of from the HTML parser.
+ *
+ * For a server-rendered page the markup paints without JS, so the entry (and the chunks it
+ * pulls in) would only compete with the render-blocking CSS for bandwidth; on a slow phone
+ * that delayed first paint by about a second. The loader waits for DOMContentLoaded (the entry
+ * reads #root), then one frame, then a task, so the request goes out right after the page has
+ * painted. Hydration starts correspondingly later; links work before it, being plain anchors. */
+export function deferEntryScript(html: string): string {
+  const match = ENTRY_SCRIPT.exec(html);
+  if (!match) throw new Error('prerender: no Vite entry <script type="module"> to defer');
+  const loader =
+    '<script>(function(){function load(){var s=document.createElement("script");' +
+    `s.type="module";s.crossOrigin="";s.src=${JSON.stringify(match[1])};document.head.appendChild(s)}` +
+    'function afterPaint(){requestAnimationFrame(function(){setTimeout(load,0)})}' +
+    'if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",afterPaint);else afterPaint()})()</script>';
+  return html.replace(match[0], () => loader);
 }
 
 function escapeAttr(value: string): string {
