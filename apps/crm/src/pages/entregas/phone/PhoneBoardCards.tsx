@@ -6,11 +6,12 @@ import { getInitials } from '@/lib/initials';
 import { useFotoFallback } from '@/components/ClienteFoto';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { BoardCard } from '../hooks/useEntregasData';
-import type { PostEntity } from '../boardEntity';
+import { publicacaoPill, type PostEntity } from '../boardEntity';
 import { TIPO_ICONS } from '../tipoIcons';
 import { TIPO_LABELS } from '../postLabels';
 import { progressColor } from '../progressColor';
 import { PostStatusChip } from '../components/PostStatusChip';
+import { PublicacaoPillContent } from '../components/PublicacaoPillContent';
 import {
   deadlineTone,
   relativeDeadline,
@@ -203,6 +204,9 @@ export interface PhonePostProcessCardProps {
   triggerProps?: ContextMenuTriggerProps;
   dragHandle?: ReactNode;
   preview?: boolean;
+  /** The column sorts by publish date: the pill shows that date instead of the
+   *  etapa deadline. */
+  showPublishDate?: boolean;
 }
 
 /** Post individual card on the phone board: same family as the fluxo card. */
@@ -214,11 +218,13 @@ export function PhonePostProcessCard({
   triggerProps,
   dragHandle,
   preview,
+  showPublishDate,
 }: PhonePostProcessCardProps) {
   const registry = useStatusRegistry();
   const post = entity.process.post;
   const hasDeadline = entity.prazoEfetivo != null;
-  const tone = hasDeadline ? deadlineTone(entity.deadline) : 'ok';
+  const publicacao = showPublishDate ? publicacaoPill(entity) : null;
+  const tone = publicacao || !hasDeadline ? 'ok' : deadlineTone(entity.deadline);
   const TipoIcon = TIPO_ICONS[post.tipo];
   const etapaIdx = entity.steps.findIndex((s) => s.ordem === entity.etapaOrdem);
   const title = entity.titulo || 'Post sem título';
@@ -260,8 +266,14 @@ export function PhonePostProcessCard({
               <FileText size={11} aria-hidden="true" />
             </span>
           </span>
-          <span className="phone-ent-card__deadline" data-tone={tone}>
-            {hasDeadline ? relativeDeadline(entity.deadline) : 'Sem prazo'}
+          <span className="phone-ent-card__deadline" data-tone={tone} title={publicacao?.title}>
+            {publicacao ? (
+              <PublicacaoPillContent pill={publicacao} />
+            ) : hasDeadline ? (
+              relativeDeadline(entity.deadline)
+            ) : (
+              'Sem prazo'
+            )}
           </span>
         </span>
         <strong className="phone-ent-card__title">{title}</strong>

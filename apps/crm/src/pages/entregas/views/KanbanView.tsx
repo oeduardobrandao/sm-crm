@@ -407,6 +407,7 @@ function SortablePostCard({
   onRemoveProcessClick,
   onDeleteClick,
   onDuplicateClick,
+  showPublishDate,
 }: {
   entity: PostEntity;
   onClick?: () => void;
@@ -415,6 +416,7 @@ function SortablePostCard({
   onRemoveProcessClick?: () => void;
   onDeleteClick?: () => void;
   onDuplicateClick?: () => void;
+  showPublishDate?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entity.id,
@@ -441,6 +443,7 @@ function SortablePostCard({
         onDuplicateClick={onDuplicateClick}
         canRevert={previousStepOf(entity.process) != null}
         forwardLabel={forwardLabelFor(entity.process)}
+        showPublishDate={showPublishDate}
       />
     </div>
   );
@@ -544,6 +547,7 @@ export function KanbanView({
   // sintético -- o overlay lê a entidade real (WorkflowEntity | PostEntity) e
   // decide o componente a renderizar pelo `kind`.
   const [activeEntity, setActiveEntity] = useState<BoardEntity | null>(null);
+  const [activeShowsPublishDate, setActiveShowsPublishDate] = useState(false);
   // Valid adjacent column currently hovered during a drag ("rowKey::ordem"),
   // plus the dragged card's height so the slot opens exactly its size.
   const [dropSlot, setDropSlot] = useState<{ colKey: string; index: number } | null>(null);
@@ -856,9 +860,15 @@ export function KanbanView({
       const card = findCard(id);
       const post = card ? undefined : findPost(id);
       setActiveEntity(card ? toWorkflowEntity(card) : (post ?? null));
+      // O clone do DragOverlay mostra a mesma pill que o card na coluna de origem.
+      const origin = post ? findCardColumn(id, boardRows) : null;
+      setActiveShowsPublishDate(
+        origin != null &&
+          sortModeFor(columnKey(origin.row.key, origin.column.ordem)) === 'publicacao',
+      );
       setDragHeight(event.active.rect.current?.initial?.height ?? 120);
     },
-    [localCards, posts],
+    [localCards, posts, boardRows, sortModeFor],
   );
 
   // Opens a slot in the hovered column when the drop would be accepted there:
@@ -1378,6 +1388,7 @@ export function KanbanView({
                             onDuplicateClick={
                               onDuplicatePostClick ? () => onDuplicatePostClick(entity) : undefined
                             }
+                            showPublishDate={sortMode === 'publicacao'}
                           />
                         </Fragment>
                       );
@@ -1512,7 +1523,13 @@ export function KanbanView({
               awaitingClienteCount={awaitingClienteCounts.get(activeEntity.card.workflow.id!) ?? 0}
             />
           )}
-          {activeEntity?.kind === 'post' && <PostProcessCard entity={activeEntity} isDragOverlay />}
+          {activeEntity?.kind === 'post' && (
+            <PostProcessCard
+              entity={activeEntity}
+              isDragOverlay
+              showPublishDate={activeShowsPublishDate}
+            />
+          )}
         </DragOverlay>
       </DndContext>
       {stage.dialogs}

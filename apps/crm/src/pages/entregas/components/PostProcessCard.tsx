@@ -22,10 +22,11 @@ import { copyAppLink } from '@/lib/copyAppLink';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { getInitials } from '@/lib/initials';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
-import type { PostEntity } from '../boardEntity';
+import { publicacaoPill, type PostEntity } from '../boardEntity';
 import { TIPO_LABELS } from '../postLabels';
 import { PostStatusChip } from './PostStatusChip';
 import { DeadlinePill } from './DeadlinePill';
+import { PublicacaoPillContent } from './PublicacaoPillContent';
 import { progressColor } from '../progressColor';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import type { WorkflowPost } from '../../../store';
@@ -52,6 +53,9 @@ interface PostProcessCardProps {
   onDeleteClick?: () => void;
   /** "Duplicar post": copia o post e o processo na mesma etapa. */
   onDuplicateClick?: () => void;
+  /** A coluna ordena por data de publicação: a pill mostra essa data no lugar
+   *  do prazo da etapa. */
+  showPublishDate?: boolean;
 }
 
 /**
@@ -83,6 +87,7 @@ export function PostProcessCard({
   onRemoveProcessClick,
   onDeleteClick,
   onDuplicateClick,
+  showPublishDate,
 }: PostProcessCardProps) {
   const navigate = useNavigate();
   // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
@@ -117,6 +122,17 @@ export function PostProcessCard({
   const post = entity.process.post;
   const cliente = entity.cliente;
   const TipoIcon = TIPO_ICONS[post.tipo];
+  const publicacao = showPublishDate ? publicacaoPill(entity) : null;
+  const pillStyle: React.CSSProperties = {
+    fontSize: '0.66rem',
+    fontWeight: 700,
+    padding: '0.12rem 0.5rem',
+    borderRadius: '999px',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  };
 
   // Copiar link do post está sempre disponível num card real; só o clone
   // efêmero do DragOverlay (sem props de ação) fica sem kebab.
@@ -291,23 +307,24 @@ export function PostProcessCard({
           gap: '0.4rem',
         }}
       >
-        <DeadlinePill
-          className={`board-card-deadline board-card-deadline-pill ${hasDeadline ? deadlineClass : 'deadline-ok'}`}
-          style={{
-            fontSize: '0.66rem',
-            fontWeight: 700,
-            padding: '0.12rem 0.5rem',
-            borderRadius: '999px',
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-          relativeText={deadlineText}
-          dueDate={entity.prazoEfetivo}
-          estourado={dl.estourado}
-          tipoPrazo={entity.step.tipo_prazo}
-        />
+        {publicacao ? (
+          <span
+            className="board-card-deadline board-card-deadline-pill deadline-neutral"
+            title={publicacao.title}
+            style={pillStyle}
+          >
+            <PublicacaoPillContent pill={publicacao} />
+          </span>
+        ) : (
+          <DeadlinePill
+            className={`board-card-deadline board-card-deadline-pill ${hasDeadline ? deadlineClass : 'deadline-ok'}`}
+            style={pillStyle}
+            relativeText={deadlineText}
+            dueDate={entity.prazoEfetivo}
+            estourado={dl.estourado}
+            tipoPrazo={entity.step.tipo_prazo}
+          />
+        )}
         <span className="board-card-type-status-chip" style={{ flexShrink: 0 }}>
           <PostStatusChip post={post} registry={registry} />
         </span>
