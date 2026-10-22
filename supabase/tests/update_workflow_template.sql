@@ -1,14 +1,18 @@
 -- Valida supabase/migrations/20260925130002_template_propagation_preserve_overrides.sql
 -- (update_workflow_template novo; propagate_template_to_workflows reduzido a backfill)
 -- e supabase/migrations/20261020000010_template_shrink_removes_orphan_etapas.sql
--- (template encolhido remove a cauda herdada e nunca iniciada).
+-- (template encolhido remove a cauda herdada e nunca iniciada) e
+-- supabase/migrations/20261024000010_template_propagation_aligns_by_name.sql
+-- (etapas casadas pelo nome; insercao, remocao e reordenacao renumeram o fluxo).
 --
--- Regra (por campo, por etapa, casamento posicional):
+-- Regra (por campo, por etapa casada com _align_etapa_nomes):
 --   template antigo X, novo X            -> mantem
 --   template antigo X, novo Y, fluxo X   -> Y
 --   template antigo X, novo Y, fluxo Z   -> mantem Z
---   sem etapa no template novo           -> removida se for cauda herdada, pendente,
---                                           nunca iniciada e sem historico; senao intocada
+--   posicao removida do template         -> sai se herdada, nunca iniciada e sem
+--                                           historico; senao fica como etapa propria
+--   posicao nova                         -> criada; antes da ativa entra concluida
+--                                           sem datas (pulada), depois pendente
 --   prazo = par (prazo_dias, tipo_prazo)
 --
 -- Casos:
@@ -41,6 +45,12 @@
 --   (u) espacos nas bordas do nome (20261021000010): template legado com "Agendar ",
 --       fluxo com "Postado " -- o merge e a cauda comparam com btrim; o save grava
 --       nomes aparados; o trigger apara qualquer INSERT/UPDATE de etapas
+--   (v) incidente 2026-10-22 (Equipe Azul): etapa inserida antes da ativa nao muda o
+--       fluxo de etapa; entra pulada; etapa_atual acompanha; sem notificacao
+--   (w) remocao no meio: etapa feita ou ativa fica como etapa propria e o save
+--       seguinte nao desalinha o fluxo
+--   (x) rename e insercao no mesmo save, em trechos diferentes
+--   (y) _align_etapa_nomes direto
 --
 -- A RPC faz set_config('app.suppress_workflow_events','1', true), que persiste pelo
 -- resto da transacao de teste: toda chamada bem-sucedida e seguida de reset para '0'.
@@ -321,9 +331,11 @@ begin
   select nome into v_err from workflow_etapas where id = v_e1;
   assert v_err = 'B2', '(g) pendente herdada segue';
   select * into r from workflow_etapas where id = v_e2;
-  assert r.nome = 'Extra' and r.prazo_dias = 8, '(g) sem valor antigo na posicao 2: Extra fica';
-  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf;
-  assert v_cnt = 3, '(g) G1 ja tinha a ordem 2: sem backfill';
+  assert r.nome = 'Extra' and r.prazo_dias = 8 and r.ordem = 2,
+    format('(g) etapa propria Extra fica logo depois de B2, veio %s %s %s', r.nome, r.prazo_dias, r.ordem);
+  select string_agg(nome, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf;
+  assert v_err = 'A|B2|Extra|C2',
+    format('(g) G1 recebe C2 mesmo tendo etapa propria na ordem 2, veio %s', v_err);
   select nome into v_err from workflow_etapas where id = v_e3;
   assert v_err = 'A2', '(j) ativa herdada segue';
   select * into r from workflow_etapas where workflow_id = v_wf2 and ordem = 2;
@@ -334,15 +346,15 @@ begin
   assert (v_meta->>'etapas_atualizadas')::int = 1 and (v_meta->>'etapas_criadas')::int = 2,
     format('(j) contagens G2: %s', v_meta);
 
-  -- (h) encolhe para [A2]. G1 termina em Extra (so do fluxo, nome != C2): a caminhada
-  -- para nela, e B2 tambem fica (apaga-la abriria um buraco na ordem 1).
+  -- (h) encolhe para [A2]. G1 [A, B2, Extra, C2]: B2 e C2 herdadas e intocadas saem;
+  -- Extra (so do fluxo) fica e sobe para a ordem 1, sem buraco.
   -- G2 termina em B2, C2 vindos do backfill: cauda herdada, sai inteira.
   perform update_workflow_template(v_tpl, 'TG', '[{"nome":"A2","prazo_dias":1,"tipo_prazo":"corridos"}]', 'padrao');
   perform set_config('app.suppress_workflow_events', '0', true);
-  select nome into v_err from workflow_etapas where id = v_e1;
-  assert v_err = 'B2', '(h) G1: B2 antes da etapa propria Extra fica intocada';
-  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf;
-  assert v_cnt = 3, '(h) G1: nada e apagado (Extra trava a caminhada)';
+  select string_agg(nome || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf;
+  assert v_err = 'A:0|Extra:1', format('(h) G1: sobram A e Extra, sem buraco, veio %s', v_err);
+  perform 1 from workflow_etapas where id = v_e1;
+  assert not found, '(h) G1: B2 herdada sai mesmo antes da etapa propria';
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf2;
   assert v_cnt = 1, format('(h) G2: cauda herdada B2, C2 deve sair, sobraram %s', v_cnt);
   select nome into v_err from workflow_etapas where id = v_e3;
@@ -353,13 +365,17 @@ begin
   assert (v_meta->>'etapas_removidas')::int = 2 and (v_meta->>'etapas_atualizadas')::int = 0
      and (v_meta->>'etapas_criadas')::int = 0,
     format('(h) G2: contagens do evento de remocao: %s', v_meta);
-  select count(*) into v_cnt from workflow_events
+  select metadata into v_meta from workflow_events
     where workflow_id = v_wf and event_type = 'template_propagado'
-      and (metadata->>'etapas_removidas')::int > 0;
-  assert v_cnt = 0, '(h) G1 nada removido: sem evento de remocao';
+    order by id desc limit 1;
+  assert (v_meta->>'etapas_removidas')::int = 2 and (v_meta->>'etapas_atualizadas')::int = 1
+     and jsonb_path_exists(v_meta, '$.alteracoes[*] ? (@.campo == "ordem" && @.de == 2 && @.para == 1)'),
+    format('(h) G1: duas removidas e Extra 2 -> 1 no evento, veio %s', v_meta);
 
   -- ---------------------------------------------------------------------
-  -- (i) reordenacao: [A 1, B 2] -> [B 2, A 1]; fluxo [A prazo 10 (custom), B 2]
+  -- (i) reordenacao: [A 1, B 2] -> [B 2, A 1]; fluxo [A prazo 10 (custom), B 2].
+  --     As linhas trocam de ordem com os valores delas (antes o nome trocava de
+  --     linha e o prazo customizado ficava na posicao, grudado na etapa errada).
   -- ---------------------------------------------------------------------
   insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
     values (v_ws, v_owner, 'TI', '[{"nome":"A","prazo_dias":1,"tipo_prazo":"corridos"},{"nome":"B","prazo_dias":2,"tipo_prazo":"corridos"}]', 'padrao')
@@ -376,9 +392,11 @@ begin
   perform set_config('app.suppress_workflow_events', '0', true);
 
   select * into r from workflow_etapas where id = v_e0;
-  assert r.nome = 'B' and r.prazo_dias = 10, format('(i) posicao 0: nome segue, prazo custom fica, veio %s %s', r.nome, r.prazo_dias);
+  assert r.nome = 'A' and r.prazo_dias = 10 and r.ordem = 1,
+    format('(i) A vai para a ordem 1 com o prazo custom, veio %s %s %s', r.nome, r.prazo_dias, r.ordem);
   select * into r from workflow_etapas where id = v_e1;
-  assert r.nome = 'A' and r.prazo_dias = 1, format('(i) posicao 1: tudo herdado segue, veio %s %s', r.nome, r.prazo_dias);
+  assert r.nome = 'B' and r.prazo_dias = 2 and r.ordem = 0,
+    format('(i) B vai para a ordem 0, veio %s %s %s', r.nome, r.prazo_dias, r.ordem);
 
   -- ---------------------------------------------------------------------
   -- (l) tenancy
@@ -614,7 +632,14 @@ begin
   ), 'padrao');
   perform set_config('app.suppress_workflow_events', '0', true);
   select count(*) into v_cnt from workflow_etapas where workflow_id in (v_wf, v_wf2) and ordem = 3 and nome = 'Agendamento';
-  assert v_cnt = 2, format('(s) save 1: backfill da ordem 3 nos dois fluxos, veio %s', v_cnt);
+  assert v_cnt = 2, format('(s) save 1: Agendamento desce para a ordem 3 nos dois fluxos, veio %s', v_cnt);
+  select * into r from workflow_etapas where id = v_e1;
+  assert r.nome = 'Edicao' and r.ordem = 2, format('(s) save 1: S1 Edicao e a mesma linha, na ordem 2, veio %s', to_jsonb(r));
+  select * into r from workflow_etapas where id = v_e3;
+  assert r.nome = 'Agendamento' and r.ordem = 3 and r.status = 'ativo', '(s) save 1: S2 continua na Agendamento';
+  select * into r from workflow_etapas where workflow_id = v_wf2 and ordem = 1;
+  assert r.nome = 'Em gravacao' and r.status = 'concluido' and r.iniciado_em is null,
+    format('(s) save 1: S2 recebe Em gravacao pulada antes da ativa, veio %s', to_jsonb(r));
 
   -- save 2: remove "Em gravacao"
   perform update_workflow_template(v_tpl, 'TS', jsonb_build_array(
@@ -650,19 +675,20 @@ begin
     format('(s) etapas_removidas = 1, veio %s', v_meta);
   select a into v_rem from jsonb_array_elements(v_meta->'alteracoes') a where a->>'campo' = 'removida';
   assert v_rem is not null, format('(s) alteracoes deve ter a remocao: %s', v_meta->'alteracoes');
-  assert (v_rem->>'ordem')::int = 3 and v_rem->'para' = 'null'::jsonb
+  assert (v_rem->>'ordem')::int = 1 and v_rem->'para' = 'null'::jsonb
      and v_rem->'de' = jsonb_build_object(
-       'nome', 'Agendamento', 'prazo_dias', 1, 'tipo_prazo', 'uteis',
-       'responsavel_id', v_mb, 'tipo', 'padrao', 'data_limite', null),
+       'nome', 'Em gravacao', 'prazo_dias', 20, 'tipo_prazo', 'corridos',
+       'responsavel_id', null, 'tipo', 'padrao', 'data_limite', null),
     format('(s) snapshot da remocao inesperado: %s', v_rem);
   assert (v_rem->>'etapa_id') is not null
      and not exists (select 1 from workflow_etapas where id = (v_rem->>'etapa_id')::bigint),
     '(s) etapa_id do snapshot aponta para a linha apagada';
 
   -- ---------------------------------------------------------------------
-  -- (t) cauda que nao sai: [X0, X1, X2] encolhe para [X0]
-  --     T1 cauda ativa | T2 cauda com nome customizado | T3 cauda com portal_approvals
-  --     T4 cauda com evento proprio | T5 cauda limpa (controle: sai inteira)
+  -- (t) etapa removida do template que nao sai: [X0, X1, X2] encolhe para [X0]
+  --     T1 X2 ativa | T2 X2 com nome customizado | T3 X2 com portal_approvals
+  --     T4 X2 com evento proprio | T5 limpa (controle: sai inteira)
+  --     X1 (herdada, limpa) sai em todos: a renumeracao nao deixa buraco
   -- ---------------------------------------------------------------------
   insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
     values (v_ws, v_owner, 'TT', '[{"nome":"X0","prazo_dias":1,"tipo_prazo":"corridos"},{"nome":"X1","prazo_dias":1,"tipo_prazo":"corridos"},{"nome":"X2","prazo_dias":1,"tipo_prazo":"corridos"}]', 'padrao')
@@ -718,18 +744,22 @@ begin
   perform set_config('app.suppress_workflow_events', '0', true);
 
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf;
-  assert v_cnt = 3, format('(t) T1: cauda ativa trava a remocao, veio %s', v_cnt);
-  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf2;
-  assert v_cnt = 3, format('(t) T2: cauda customizada trava a remocao (X1 fica, sem buraco), veio %s', v_cnt);
-  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf3;
-  assert v_cnt = 3, format('(t) T3: cauda com portal_approvals fica, veio %s', v_cnt);
-  select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf4;
-  assert v_cnt = 3, format('(t) T4: cauda com evento proprio fica, veio %s', v_cnt);
+  assert v_cnt = 3, format('(t) T1: X1 concluida e X2 ativa ficam, veio %s', v_cnt);
+  select etapa_atual into v_cnt from workflows where id = v_wf;
+  assert v_cnt = 2, format('(t) T1: continua na X2 (ordem 2), veio %s', v_cnt);
+  select string_agg(nome || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf2;
+  assert v_err = 'X0:0|Minha etapa:1', format('(t) T2: X1 sai, a customizada fica e sobe, veio %s', v_err);
+  select string_agg(nome || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf3;
+  assert v_err = 'X0:0|X2:1', format('(t) T3: X2 com portal_approvals fica, veio %s', v_err);
+  perform 1 from workflow_etapas where id = v_e0 and ordem = 1;
+  assert found, '(t) T3: e a mesma linha (aprovacao continua ligada)';
+  select string_agg(nome || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf4;
+  assert v_err = 'X0:0|X2:1', format('(t) T4: X2 com evento proprio fica, veio %s', v_err);
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf5;
   assert v_cnt = 1, format('(t) T5: cauda limpa sai inteira, veio %s', v_cnt);
   select count(*) into v_cnt from workflow_events
-    where workflow_id in (v_wf, v_wf2, v_wf3, v_wf4) and event_type = 'template_propagado';
-  assert v_cnt = 0, '(t) fluxos sem nada removido nem alterado: sem evento';
+    where workflow_id = v_wf and event_type = 'template_propagado';
+  assert v_cnt = 0, '(t) T1 sem nada removido nem alterado: sem evento';
 
   -- (t) posicao antiga nao-objeto: [U0, U1] corrompido para [U0, 5], encolhe para [U0]
   insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
@@ -819,6 +849,221 @@ begin
   assert v_err = 'Arquivar', format('(u) backfill grava o nome aparado, veio [%s]', v_err);
   select nome into v_err from workflow_etapas where workflow_id = v_wf2 and ordem = 2;
   assert v_err = 'Postado ', format('(u) espaco-so nao e reescrito no fluxo, veio [%s]', v_err);
+
+  -- ---------------------------------------------------------------------
+  -- (v) incidente 2026-10-22 (video da Equipe Azul): "Em gravacao" inserida no
+  --     indice 2. Os fluxos em "Design Vitoria" (ordem 2) ficam em Design Vitoria,
+  --     agora na ordem 3, com a mesma linha (data_limite, responsavel, iniciado_em);
+  --     antes a linha ativa era renomeada para "Em gravacao" e ganhava o
+  --     responsavel e o prazo dela.
+  -- ---------------------------------------------------------------------
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'Equipe Azul', jsonb_build_array(
+      jsonb_build_object('nome','Copy','prazo_dias',3,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','padrao'),
+      jsonb_build_object('nome','Aprovacao da Copy','prazo_dias',3,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','aprovacao_cliente'),
+      jsonb_build_object('nome','Design Vitoria','prazo_dias',3,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','padrao'),
+      jsonb_build_object('nome','Aprovacao do Design','prazo_dias',2,'tipo_prazo','corridos','responsavel_id',v_ma,'tipo','aprovacao_cliente'),
+      jsonb_build_object('nome','Edicao','prazo_dias',3,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','padrao'),
+      jsonb_build_object('nome','Aprovacao do Video','prazo_dias',2,'tipo_prazo','corridos','responsavel_id',v_ma,'tipo','aprovacao_cliente'),
+      jsonb_build_object('nome','Agendamento','prazo_dias',1,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','padrao')
+    ), 'padrao') returning id into v_tpl;
+  -- V1: em Design Vitoria (ordem 2), Copy e Aprovacao concluidas
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'V1', v_tpl, 'ativo', 2, false, 'padrao') returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status, iniciado_em, concluido_em)
+    values (v_wf, 0, 'Copy', 3, 'uteis', v_ma, 'padrao', 'concluido', '2026-10-10 10:00+00', '2026-10-12 10:00+00')
+    returning id into v_e0;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status, iniciado_em, concluido_em)
+    values (v_wf, 1, 'Aprovacao da Copy', 3, 'uteis', v_ma, 'aprovacao_cliente', 'concluido', '2026-10-12 10:00+00', '2026-10-19 10:00+00')
+    returning id into v_e1;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status, iniciado_em, data_limite)
+    values (v_wf, 2, 'Design Vitoria', 3, 'uteis', v_ma, 'padrao', 'ativo', '2026-10-19 10:00+00', '2026-10-22')
+    returning id into v_e2;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status)
+    values (v_wf, 3, 'Aprovacao do Design', 2, 'corridos', v_ma, 'aprovacao_cliente', 'pendente'),
+           (v_wf, 4, 'Edicao', 3, 'uteis', v_ma, 'padrao', 'pendente'),
+           (v_wf, 5, 'Aprovacao do Video', 2, 'corridos', v_ma, 'aprovacao_cliente', 'pendente'),
+           (v_wf, 6, 'Agendamento', 1, 'uteis', v_ma, 'padrao', 'pendente');
+  -- V2: ainda em Copy
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'V2', v_tpl, 'ativo', 0, false, 'padrao') returning id into v_wf2;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status, iniciado_em)
+    values (v_wf2, 0, 'Copy', 3, 'uteis', v_ma, 'padrao', 'ativo', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status)
+    values (v_wf2, 1, 'Aprovacao da Copy', 3, 'uteis', v_ma, 'aprovacao_cliente', 'pendente');
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status)
+    values (v_wf2, 2, 'Design Vitoria', 3, 'uteis', v_ma, 'padrao', 'pendente') returning id into v_e3;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status)
+    values (v_wf2, 3, 'Aprovacao do Design', 2, 'corridos', v_ma, 'aprovacao_cliente', 'pendente'),
+           (v_wf2, 4, 'Edicao', 3, 'uteis', v_ma, 'padrao', 'pendente'),
+           (v_wf2, 5, 'Aprovacao do Video', 2, 'corridos', v_ma, 'aprovacao_cliente', 'pendente'),
+           (v_wf2, 6, 'Agendamento', 1, 'uteis', v_ma, 'padrao', 'pendente');
+
+  perform update_workflow_template(v_tpl, 'Equipe Azul', jsonb_build_array(
+    jsonb_build_object('nome','Copy','prazo_dias',3,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','padrao'),
+    jsonb_build_object('nome','Aprovacao da Copy','prazo_dias',3,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','aprovacao_cliente'),
+    jsonb_build_object('nome','Em gravacao','prazo_dias',3,'tipo_prazo','corridos','responsavel_id',v_mb,'tipo','padrao'),
+    jsonb_build_object('nome','Design Vitoria','prazo_dias',3,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','padrao'),
+    jsonb_build_object('nome','Aprovacao do Design','prazo_dias',2,'tipo_prazo','corridos','responsavel_id',v_ma,'tipo','aprovacao_cliente'),
+    jsonb_build_object('nome','Edicao','prazo_dias',3,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','padrao'),
+    jsonb_build_object('nome','Aprovacao do Video','prazo_dias',2,'tipo_prazo','corridos','responsavel_id',v_ma,'tipo','aprovacao_cliente'),
+    jsonb_build_object('nome','Agendamento','prazo_dias',1,'tipo_prazo','uteis','responsavel_id',v_ma,'tipo','padrao')
+  ), 'padrao');
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  -- V1
+  select * into r from workflow_etapas where id = v_e2;
+  assert r.nome = 'Design Vitoria' and r.status = 'ativo' and r.ordem = 3
+     and r.responsavel_id = v_ma and r.prazo_dias = 3 and r.tipo_prazo = 'uteis'
+     and r.data_limite = '2026-10-22'::date and r.iniciado_em = '2026-10-19 10:00+00'::timestamptz,
+    format('(v) V1: a ativa fica em Design Vitoria, so desce para a ordem 3, veio %s', to_jsonb(r));
+  select * into r from workflow_etapas where workflow_id = v_wf and ordem = 2;
+  assert r.nome = 'Em gravacao' and r.status = 'concluido' and r.responsavel_id = v_mb
+     and r.iniciado_em is null and r.concluido_em is null and r.data_limite is null,
+    format('(v) V1: Em gravacao entra antes da ativa como concluida (pulada), veio %s', to_jsonb(r));
+  select etapa_atual into v_cnt from workflows where id = v_wf;
+  assert v_cnt = 3, format('(v) V1: etapa_atual acompanha a ativa (3), veio %s', v_cnt);
+  select * into r from workflow_etapas where id = v_e0;
+  assert r.ordem = 0 and r.status = 'concluido' and r.concluido_em = '2026-10-12 10:00+00'::timestamptz,
+    '(v) V1: concluida antes da insercao intocada';
+  select * into r from workflow_etapas where id = v_e1;
+  assert r.ordem = 1 and r.status = 'concluido', '(v) V1: concluida antes da insercao intocada';
+  select string_agg(nome, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf;
+  assert v_err = 'Copy|Aprovacao da Copy|Em gravacao|Design Vitoria|Aprovacao do Design|Edicao|Aprovacao do Video|Agendamento',
+    format('(v) V1: escada igual ao template novo, veio %s', v_err);
+  select count(distinct ordem) into v_cnt from workflow_etapas where workflow_id = v_wf and ordem between 0 and 7;
+  assert v_cnt = 8, format('(v) V1: ordens 0..7 sem buraco nem repeticao, veio %s', v_cnt);
+
+  -- V2
+  select * into r from workflow_etapas where id = v_e3;
+  assert r.nome = 'Design Vitoria' and r.ordem = 3 and r.status = 'pendente' and r.responsavel_id = v_ma,
+    format('(v) V2: Design Vitoria pendente desce para a ordem 3, veio %s', to_jsonb(r));
+  select * into r from workflow_etapas where workflow_id = v_wf2 and ordem = 2;
+  assert r.nome = 'Em gravacao' and r.status = 'pendente' and r.responsavel_id = v_mb and r.prazo_dias = 3
+     and r.tipo_prazo = 'corridos',
+    format('(v) V2: Em gravacao entra pendente depois da ativa, veio %s', to_jsonb(r));
+  select etapa_atual into v_cnt from workflows where id = v_wf2;
+  assert v_cnt = 0, '(v) V2: etapa_atual continua 0';
+  select string_agg(nome, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf2;
+  assert v_err = 'Copy|Aprovacao da Copy|Em gravacao|Design Vitoria|Aprovacao do Design|Edicao|Aprovacao do Video|Agendamento',
+    format('(v) V2: escada igual ao template novo, veio %s', v_err);
+
+  -- evento: undo record com a reordenacao, sem ruido de notificacao
+  select metadata into v_meta from workflow_events where workflow_id = v_wf and event_type = 'template_propagado';
+  assert (v_meta->>'etapas_criadas')::int = 1 and (v_meta->>'etapas_removidas')::int = 0,
+    format('(v) V1: contagens do evento, veio %s', v_meta);
+  assert jsonb_path_exists(v_meta, '$.alteracoes[*] ? (@.campo == "ordem" && @.de == 2 && @.para == 3)'),
+    format('(v) V1: evento registra a ativa 2 -> 3, veio %s', v_meta->'alteracoes');
+  assert not jsonb_path_exists(v_meta, '$.alteracoes[*] ? (@.campo == "nome")'),
+    format('(v) V1: nenhuma etapa renomeada, veio %s', v_meta->'alteracoes');
+  select count(*) into v_cnt from notifications
+    where type in ('step_completed', 'step_activated')
+      and (metadata->>'workflow_id')::bigint in (v_wf, v_wf2);
+  assert v_cnt = 0, format('(v) nenhuma notificacao de etapa, veio %s', v_cnt);
+
+  -- ---------------------------------------------------------------------
+  -- (w) remocao no meio: [A, B, C, D] perde B
+  --     W1 ja fez B de verdade e esta em C: B fica como etapa propria, C ativa intocada
+  --     W2 esta em B (removida): continua em B, que vira etapa propria
+  --     W3 em A, B limpa: B sai, C e D sobem
+  --     Save seguinte ([A, C, D] ganha E no fim): W1 e W2 nao desalinham por causa
+  --     da etapa propria (o fluxo casa com o template pelo nome)
+  -- ---------------------------------------------------------------------
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'TWD', '[{"nome":"A","prazo_dias":1},{"nome":"B","prazo_dias":1},{"nome":"C","prazo_dias":1},{"nome":"D","prazo_dias":1}]', 'padrao')
+    returning id into v_tpl;
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'W1', v_tpl, 'ativo', 2, false, 'padrao') returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em, concluido_em)
+    values (v_wf, 0, 'A', 1, 'corridos', 'padrao', 'concluido', now(), now()),
+           (v_wf, 1, 'B', 1, 'corridos', 'padrao', 'concluido', now(), now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em, data_limite)
+    values (v_wf, 2, 'C', 1, 'corridos', 'padrao', 'ativo', now(), '2026-11-01') returning id into v_e0;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf, 3, 'D', 1, 'corridos', 'padrao', 'pendente');
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'W2', v_tpl, 'ativo', 1, false, 'padrao') returning id into v_wf2;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em, concluido_em)
+    values (v_wf2, 0, 'A', 1, 'corridos', 'padrao', 'concluido', now(), now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em)
+    values (v_wf2, 1, 'B', 1, 'corridos', 'padrao', 'ativo', now()) returning id into v_e1;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf2, 2, 'C', 1, 'corridos', 'padrao', 'pendente'),
+           (v_wf2, 3, 'D', 1, 'corridos', 'padrao', 'pendente');
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'W3', v_tpl, 'ativo', 0, false, 'padrao') returning id into v_wf3;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em)
+    values (v_wf3, 0, 'A', 1, 'corridos', 'padrao', 'ativo', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf3, 1, 'B', 1, 'corridos', 'padrao', 'pendente'),
+           (v_wf3, 2, 'C', 1, 'corridos', 'padrao', 'pendente'),
+           (v_wf3, 3, 'D', 1, 'corridos', 'padrao', 'pendente');
+
+  perform update_workflow_template(v_tpl, 'TWD', '[{"nome":"A","prazo_dias":1},{"nome":"C","prazo_dias":1},{"nome":"D","prazo_dias":1}]', 'padrao');
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  select string_agg(nome || ':' || status || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf;
+  assert v_err = 'A:concluido:0|B:concluido:1|C:ativo:2|D:pendente:3',
+    format('(w) W1: B feita fica, nada muda de lugar, veio %s', v_err);
+  select * into r from workflow_etapas where id = v_e0;
+  assert r.data_limite = '2026-11-01'::date, '(w) W1: data_limite da ativa intocada';
+  select string_agg(nome || ':' || status || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf2;
+  assert v_err = 'A:concluido:0|B:ativo:1|C:pendente:2|D:pendente:3',
+    format('(w) W2: continua em B, veio %s', v_err);
+  select string_agg(nome || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf3;
+  assert v_err = 'A:0|C:1|D:2', format('(w) W3: B limpa sai, C e D sobem, veio %s', v_err);
+
+  perform update_workflow_template(v_tpl, 'TWD', '[{"nome":"A","prazo_dias":1},{"nome":"C","prazo_dias":5},{"nome":"D","prazo_dias":1},{"nome":"E","prazo_dias":1}]', 'padrao');
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  select string_agg(nome || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf;
+  assert v_err = 'A:0|B:1|C:2|D:3|E:4', format('(w) W1 save 2: E no fim, nada renomeado, veio %s', v_err);
+  select prazo_dias into v_cnt from workflow_etapas where id = v_e0;
+  assert v_cnt = 5, format('(w) W1 save 2: C (a ativa) recebe o prazo novo de C, veio %s', v_cnt);
+  select string_agg(nome || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf2;
+  assert v_err = 'A:0|B:1|C:2|D:3|E:4', format('(w) W2 save 2: E no fim, nada renomeado, veio %s', v_err);
+  select string_agg(nome || ':' || prazo_dias || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf3;
+  assert v_err = 'A:1:0|C:5:1|D:1:2|E:1:3', format('(w) W3 save 2, veio %s', v_err);
+
+  -- ---------------------------------------------------------------------
+  -- (x) rename em um lugar e insercao em outro, no mesmo save:
+  --     [A, B, C] -> [A, Novo, B, C-renomeada]; fluxo em C
+  -- ---------------------------------------------------------------------
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'TX', '[{"nome":"A","prazo_dias":1},{"nome":"B","prazo_dias":1},{"nome":"C","prazo_dias":1}]', 'padrao')
+    returning id into v_tpl;
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'X1', v_tpl, 'ativo', 2, false, 'padrao') returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em, concluido_em)
+    values (v_wf, 0, 'A', 1, 'corridos', 'padrao', 'concluido', now(), now()),
+           (v_wf, 1, 'B', 1, 'corridos', 'padrao', 'concluido', now(), now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em)
+    values (v_wf, 2, 'C', 1, 'corridos', 'padrao', 'ativo', now()) returning id into v_e0;
+
+  perform update_workflow_template(v_tpl, 'TX', '[{"nome":"A","prazo_dias":1},{"nome":"Novo","prazo_dias":1},{"nome":"B","prazo_dias":1},{"nome":"C2","prazo_dias":1}]', 'padrao');
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  select string_agg(nome || ':' || status || ':' || ordem, '|' order by ordem) into v_err from workflow_etapas where workflow_id = v_wf;
+  assert v_err = 'A:concluido:0|Novo:concluido:1|B:concluido:2|C2:ativo:3',
+    format('(x) Novo entra pulada, a ativa C vira C2 na ordem 3, veio %s', v_err);
+  perform 1 from workflow_etapas where id = v_e0 and ordem = 3 and status = 'ativo';
+  assert found, '(x) a ativa e a mesma linha';
+  select etapa_atual into v_cnt from workflows where id = v_wf;
+  assert v_cnt = 3, format('(x) etapa_atual 3, veio %s', v_cnt);
+
+  -- ---------------------------------------------------------------------
+  -- (y) _align_etapa_nomes direto
+  -- ---------------------------------------------------------------------
+  assert _align_etapa_nomes(array['A','B','C'], array['A','X','B','C']) = array[0,null,1,2],
+    '(y) insercao';
+  assert _align_etapa_nomes(array['A','B','C'], array['A','C']) = array[0,2], '(y) remocao';
+  assert _align_etapa_nomes(array['A','B','C'], array['A','B2','C']) = array[0,1,2], '(y) rename no lugar';
+  assert _align_etapa_nomes(array['A','B','C'], array['C','A','B']) = array[2,0,1], '(y) movida';
+  assert _align_etapa_nomes(array['A','P','P'], array['A','P']) = array[0,1], '(y) duplicada: a primeira casa';
+  assert _align_etapa_nomes(array['A ',null,'B'], array['A','Z','B']) = array[0,1,2],
+    '(y) nome aparado casa; antigo sem nome casa por posicao';
+  assert _align_etapa_nomes(array[]::text[], array['A','B']) = array[null,null]::int[], '(y) antigo vazio';
+  assert _align_etapa_nomes(array['A'], array[]::text[]) = array[]::int[], '(y) novo vazio';
 
   raise notice 'PASS update_workflow_template';
 end $$;

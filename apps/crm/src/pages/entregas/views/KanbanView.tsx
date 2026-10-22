@@ -50,7 +50,7 @@ import {
   columnKey,
   parseColumnKey,
   findCardColumn,
-  isValidDropTarget,
+  workflowDropDirection,
 } from '../boardRows';
 import type { BoardRow, BoardColumn } from '../boardRows';
 import {
@@ -853,6 +853,10 @@ export function KanbanView({
 
   const findCard = (id: string) => localCards.find((c) => String(c.workflow.id) === id);
   const findPost = (id: string) => posts.find((p) => p.id === id);
+  const templateEtapasOf = (card: BoardCard) =>
+    card.workflow.template_id != null
+      ? templates.find((t) => t.id === card.workflow.template_id)?.etapas
+      : undefined;
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -883,8 +887,6 @@ export function KanbanView({
         setDropSlot(null);
         return;
       }
-      const draggedSteps = draggedCard ? draggedCard.allEtapas : draggedPost!.steps;
-      const draggedOrdem = draggedCard ? draggedCard.etapa.ordem : draggedPost!.etapaOrdem;
       const overId = String(over.id);
       const rows = buildBoardRows(localEntities, templates, { signatureRows });
       const activeLocation = findCardColumn(activeId, rows);
@@ -913,12 +915,17 @@ export function KanbanView({
         setDropSlot(null);
         return;
       }
-      // Fluxo: adjacência por ordem (como hoje). Post: o MESMO alvo dos
-      // botões (spec §12.2: drag e botão dão o mesmo resultado) -- avançar
-      // vai para a próxima etapa PENDENTE, voltar para a anterior por ordem,
-      // qualquer estado. (draggedSteps/draggedOrdem só valem no ramo fluxo.)
+      // Fluxo: a coluna da etapa seguinte ou da anterior do próprio fluxo
+      // (workflowDropDirection). Post: o MESMO alvo dos botões (spec §12.2:
+      // drag e botão dão o mesmo resultado) -- avançar vai para a próxima
+      // etapa PENDENTE, voltar para a anterior por ordem, qualquer estado.
       const valid = draggedCard
-        ? isValidDropTarget(draggedSteps, draggedOrdem, targetColumn.ordem)
+        ? workflowDropDirection(
+            templateEtapasOf(draggedCard),
+            draggedCard.allEtapas,
+            draggedCard.etapa.ordem,
+            targetColumn.ordem,
+          ) !== null
         : nextPendingStepOf(draggedPost!.process)?.ordem === targetColumn.ordem ||
           previousStepOf(draggedPost!.process)?.ordem === targetColumn.ordem;
       if (!valid) {
@@ -1032,16 +1039,24 @@ export function KanbanView({
           toast.error(getPostProcessErrorToast(err, 'Erro ao salvar ordem dos cartões'));
         }
       } else {
-        // Between-column move: a coluna alvo precisa existir na sequência de
-        // etapas do PRÓPRIO fluxo arrastado (linhas por template aceitam
-        // fluxos com listas divergentes; ver isValidDropTarget). Post: o
+        // Between-column move: a coluna alvo precisa ser a da etapa seguinte ou
+        // da anterior do PRÓPRIO fluxo arrastado (linhas por template aceitam
+        // fluxos com listas divergentes; ver workflowDropDirection). Post: o
         // MESMO alvo dos botões (spec §12.2) -- avançar vai para a próxima
         // etapa PENDENTE, voltar para a anterior por ordem, qualquer estado,
         // então um herdado/ignorado/concluído entre as duas colunas nunca
         // manda o comando errado.
         if (targetRow.key !== activeLocation.row.key) return; // troca de linha por drag fica bloqueada (spec §4.2)
+        const direction = draggedCard
+          ? workflowDropDirection(
+              templateEtapasOf(draggedCard),
+              draggedCard.allEtapas,
+              draggedCard.etapa.ordem,
+              targetColumn.ordem,
+            )
+          : null;
         const valid = draggedCard
-          ? isValidDropTarget(draggedCard.allEtapas, draggedCard.etapa.ordem, targetColumn.ordem)
+          ? direction !== null
           : nextPendingStepOf(draggedPost!.process)?.ordem === targetColumn.ordem ||
             previousStepOf(draggedPost!.process)?.ordem === targetColumn.ordem;
         if (!valid) {
@@ -1088,8 +1103,7 @@ export function KanbanView({
           return;
         }
 
-        const diff = targetColumn.ordem - draggedCard!.etapa.ordem;
-        if (diff === 1) {
+        if (direction === 'forward') {
           stage.forward(draggedCard!);
         } else {
           // Backward — show confirm dialog
