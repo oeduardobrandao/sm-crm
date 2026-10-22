@@ -271,7 +271,13 @@ describe('PagarmeCheckoutDialog', () => {
     render(<PagarmeCheckoutDialog {...baseProps({ onSuccess, onClose })} />);
     fillForm();
     fireEvent.click(screen.getByRole('button', { name: 'Começar 30 dias grátis' }));
-    const cta = await screen.findByRole('button', { name: 'Fechar' });
+    // The dialog's own X is also "Fechar" and exists from the form step on, so a bare
+    // findByRole could hand back the X while the checkout is still in flight (and closing
+    // then is refused). Wait for the success step and take the CTA, not the X.
+    await screen.findByText('Assinatura confirmada!');
+    const [cta] = screen
+      .getAllByRole('button', { name: 'Fechar' })
+      .filter((b) => !b.querySelector('.sr-only'));
     fireEvent.click(cta);
     expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
