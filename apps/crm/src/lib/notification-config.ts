@@ -18,6 +18,7 @@ import {
   Lightbulb,
   MessageCircle,
   MessageSquare,
+  MessagesSquare,
   Paperclip,
   Play,
   Shield,
@@ -55,6 +56,42 @@ export const NOTIFICATION_FALLBACK_ICON: LucideIcon = Bell;
 
 const s = (v: unknown, fallback: string): string =>
   typeof v === 'string' && v.length > 0 ? v : fallback;
+
+const QUOTE_MAX = 60;
+
+/** Collapses whitespace and cuts a long quoted passage so the card title stays short. */
+function shortQuote(raw: string): string {
+  const flat = raw.replace(/\s+/g, ' ').trim();
+  return flat.length > QUOTE_MAX ? `${flat.slice(0, QUOTE_MAX).trimEnd()}…` : flat;
+}
+
+/** post_discussion card. One card per (user, post) while unread; the trigger rewrites the
+ * metadata on every new message (last author, up to 3 author names, running count). */
+function postDiscussionDisplay(m: Record<string, unknown>): NotificationDisplay {
+  const author = s(m.author_name, 'Alguém');
+  const names = Array.isArray(m.authors)
+    ? new Set(m.authors.filter((a): a is string => typeof a === 'string' && a.length > 0)).size
+    : 0;
+  const others = Math.max(0, names - 1);
+  const count = typeof m.count === 'number' && Number.isFinite(m.count) ? m.count : 1;
+  const quoted = typeof m.quoted_text === 'string' ? shortQuote(m.quoted_text) : '';
+  const anchored = s(m.thread_field, 'geral') !== 'geral' && quoted.length > 0;
+
+  const who =
+    others > 0 ? `${author} e mais ${others} ${others === 1 ? 'pessoa' : 'pessoas'}` : author;
+  const title = anchored
+    ? `${who} ${others > 0 ? 'responderam' : 'respondeu'} no trecho “${quoted}”`
+    : `${who} ${others > 0 ? 'escreveram' : 'escreveu'} na discussão de ${s(m.post_titulo, 'um post')}`;
+
+  const preview = stripMentionTokens(s(m.preview, ''));
+  const countLabel = count > 1 ? `${count} mensagens` : '';
+  return {
+    icon: MessagesSquare,
+    tone: 'teal',
+    title,
+    body: [preview, countLabel].filter(Boolean).join(' · '),
+  };
+}
 
 /** "seg., 5 de out., 14:00" (all-day: no time). Shown in the viewer's timezone. */
 function formatEventWhen(m: Record<string, unknown>): string {
@@ -277,6 +314,8 @@ export function getNotificationDisplay(
         body: conversaNome ? `${authorName}: ${preview}` : preview,
       };
     }
+    case 'post_discussion':
+      return postDiscussionDisplay(m);
     case 'post_publish_failed':
       return {
         icon: AlertCircle,
