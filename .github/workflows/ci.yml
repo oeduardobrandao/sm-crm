@@ -41,6 +41,32 @@ jobs:
       - name: Tests with coverage
         run: npm run test:coverage
 
+  # The landing (`/`) is server-rendered at build time (scripts/seo/prerender.tsx runs a Vite
+  # SSR build of apps/crm/src/entry-server.tsx) and hydrated by main.tsx. Nothing else runs the
+  # prerender before the Vercel deploy, so a server-render break would only surface there.
+  # Placeholder VITE_* values: lib/supabase.ts throws at module load without them, and the
+  # render makes no network calls.
+  landing-prerender-smoke:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: https://placeholder.supabase.co
+      VITE_SUPABASE_ANON_KEY: placeholder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build CRM and prerender
+        run: npx vite build --config apps/crm/vite.config.ts && npm run prerender
+
+      - name: Assert / is the server-rendered landing
+        run: grep -q 'data-ssr="landing"' dist/index.html && grep -q 'lp2-hero' dist/index.html
+
   e2e:
     runs-on: ubuntu-latest
     needs: typecheck-and-test

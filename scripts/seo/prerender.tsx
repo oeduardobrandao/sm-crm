@@ -3,6 +3,11 @@
  * - dist/404.html    = branded 404 (Vercel serves it with HTTP 404 for unmatched paths)
  * - dist/<file>.html = shell + per-route head tags + semantic HTML in #root
  * - dist/sitemap.xml, dist/llms.txt
+ * `/` is the real landing page, server-rendered from apps/crm/src/entry-server.tsx: this
+ * script first runs a Vite SSR build of it (apps/crm/vite.ssr.config.ts) into
+ * node_modules/.cache/landing-ssr, never dist/, then imports that bundle. The client hydrates
+ * the markup (main.tsx), so landing render code must be hydration-stable: no render-time
+ * browser reads, the "anonymous first visit" state on the server and the first client render.
  * Legal pages are rendered from their real React components (pure JSX) via
  * renderToStaticMarkup; the other routes use their .seo.ts mirrors.
  * Run AFTER `vite build` (needs dist/index.html), BEFORE hub/admin builds.
@@ -14,7 +19,10 @@
  * but the fix is a fresh `vite build`, not a retry: run `npm run build`
  * again before re-running `npm run prerender`. */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { build } from 'vite';
 import { PUBLIC_ROUTES } from '../../apps/crm/src/content/site-meta';
 import { buildHeadTags } from '../../apps/crm/src/content/seo-head';
 import { jsonLdForPath } from '../../apps/crm/src/content/route-jsonld';
@@ -24,7 +32,6 @@ import {
   sitemapRoutes,
 } from '../../apps/crm/src/content/sitemap';
 import { buildLlmsTxt } from '../../apps/crm/src/content/llms';
-import { renderLandingHtml } from '../../apps/crm/src/content/landing.seo';
 import { renderPrecosHtml } from '../../apps/crm/src/content/precos.seo';
 import { marketingPageBySlug } from '../../apps/crm/src/content/paginas';
 import { renderMarketingPageHtml } from '../../apps/crm/src/content/paginas.seo';
@@ -53,8 +60,31 @@ const parsed = changelogSchema.safeParse(rawChangelog);
 const releases = parsed.success ? parsed.data.releases : [];
 const posts = loadPostsFromDisk();
 
+// Must match build.outDir + entryFileNames in apps/crm/vite.ssr.config.ts.
+const LANDING_SSR_ENTRY = resolve('node_modules/.cache/landing-ssr/entry-server.mjs');
+
+interface LandingServerEntry {
+  render(url: string): Promise<{ html: string }>;
+}
+
+async function renderLanding(): Promise<string> {
+  await build({ configFile: resolve('apps/crm/vite.ssr.config.ts'), logLevel: 'warn' });
+  const entry = (await import(pathToFileURL(LANDING_SSR_ENTRY).href)) as LandingServerEntry;
+  const { html } = await entry.render('/');
+  // entry-server already throws on a render error; these guard the contract main.tsx hydrates.
+  if (!html.includes('lp2-hero')) {
+    throw new Error('prerender: server-rendered landing has no lp2-hero (Suspense fallback?)');
+  }
+  if (html.includes('__staticRouterHydrationData')) {
+    throw new Error('prerender: landing must render with hydrate={false}');
+  }
+  return html;
+}
+
+const landingHtml = await renderLanding();
+
 function bodyFor(path: string): string | undefined {
-  if (path === '/') return renderLandingHtml();
+  if (path === '/') return landingHtml;
   if (path === '/precos') return renderPrecosHtml();
   if (path === '/novidades') return renderChangelogHtml(releases);
   if (path === '/blog') return renderBlogIndexHtml(posts);
@@ -126,12 +156,24 @@ for (const route of PUBLIC_ROUTES) {
     `    ${buildHeadTags(route, jsonLd)}\n${preload ? `    ${preload}\n` : ''}  </head>`,
     `${route.path}:head`,
   );
-  html = mustReplace(
-    html,
-    '<div id="root"></div>',
-    `<div id="root">${body}</div>`,
-    `${route.path}:body`,
-  );
+  if (route.path === '/') {
+    // `data-ssr` tells main.tsx to hydrate; LandingPage removes it on mount. `landing-page` on
+    // <body> is what LandingChrome adds on mount, present from the first paint here.
+    html = mustReplace(html, '<body>', '<body class="landing-page">', '/:body-class');
+    html = mustReplace(
+      html,
+      '<div id="root"></div>',
+      `<div id="root" data-ssr="landing">${body}</div>`,
+      '/:body',
+    );
+  } else {
+    html = mustReplace(
+      html,
+      '<div id="root"></div>',
+      `<div id="root">${body}</div>`,
+      `${route.path}:body`,
+    );
+  }
   writeFileSync(`dist/${route.file}`, html);
   written++;
 }
@@ -180,3 +222,5 @@ writeFileSync('dist/llms.txt', buildLlmsTxt(routes, posts));
 console.log(
   `Prerendered ${written} routes + ${posts.length} blog posts (+app.html, 404.html, sitemap.xml, llms.txt).`,
 );
+// The server bundle's module graph (Supabase client, timers) can keep Node alive.
+process.exit(0);

@@ -50,7 +50,7 @@ npx supabase db push --linked                   # push migrations to staging
 ### What CI actually runs
 
 `.github/workflows/ci.yml` is the source of truth. It fires on pull requests and
-pushes to `main` and `staging`, with **eight** jobs:
+pushes to `main` and `staging`, with **nine** jobs:
 
 | Job | Runs |
 |---|---|
@@ -62,6 +62,7 @@ pushes to `main` and `staging`, with **eight** jobs:
 | `migration-version-guard` | fails on duplicate migration version prefixes |
 | `e2e` | Playwright |
 | `e2e-secrets-guard` | warns when E2E secrets are absent |
+| `landing-prerender-smoke` | `vite build` + `npm run prerender` with placeholder `VITE_*`, then asserts `dist/index.html` has `data-ssr="landing"` and `lp2-hero` |
 
 Four things this list is here to prevent:
 
@@ -329,6 +330,13 @@ Monorepo with npm workspaces:
 - Backend: **Supabase** (Postgres + Edge Functions + Auth)
 - Media storage: **Cloudflare R2** (presigned upload URLs)
 - `vercel.json` configures rewrites and runs both `build` and `build:hub`
+- `npm run prerender` server-renders the landing (`/`): it runs a Vite SSR build of
+  `apps/crm/src/entry-server.tsx` (`apps/crm/vite.ssr.config.ts`) into
+  `node_modules/.cache/landing-ssr` (never `dist/`), writes the result into `dist/index.html`
+  as `<div id="root" data-ssr="landing">`, and `main.tsx` hydrates it. Landing render code must
+  be hydration-stable: no browser reads during render (storage, `document`, `matchMedia`); the
+  server and the first client render show the anonymous first-visit state, effects adjust after.
+  Only `/` is server-rendered; the other prerendered routes keep their `.seo.ts` mirrors
 
 ## Reference files
 

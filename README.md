@@ -119,9 +119,10 @@ npm run lint           # eslint apps/ packages/
 npm run format:check   # prettier
 ```
 
-Jobs do CI (oito, em `.github/workflows/ci.yml`): `typecheck-and-test`,
+Jobs do CI (nove, em `.github/workflows/ci.yml`): `typecheck-and-test`,
 `edge-function-tests`, `entitlement-tests`, `coverage-threshold`, `format-check`,
-`migration-version-guard`, `e2e` e `e2e-secrets-guard`.
+`migration-version-guard`, `e2e`, `e2e-secrets-guard` e `landing-prerender-smoke` (build +
+prerender com `VITE_*` de mentira, conferindo que a landing saiu renderizada no servidor).
 
 Quatro detalhes que costumam enganar:
 
@@ -144,6 +145,15 @@ npm run build          # CRM   -> dist/
 npm run build:hub      # Hub   -> dist/hub/  (base path /hub/)
 npm run build:admin    # Admin
 ```
+
+- **Prerender da landing:** `npm run prerender` (depois do `build`) faz um build SSR do Vite de
+  `apps/crm/src/entry-server.tsx` (`apps/crm/vite.ssr.config.ts`) em
+  `node_modules/.cache/landing-ssr`, nunca em `dist/`, e grava a página real em
+  `dist/index.html` (`<div id="root" data-ssr="landing">`), que o `main.tsx` hidrata. Por isso o
+  código que renderiza a landing precisa ser estável na hidratação: nada de ler `localStorage`,
+  `document` ou `matchMedia` durante o render; servidor e primeiro render do cliente mostram o
+  estado de primeira visita anônima e os efeitos ajustam depois. Só `/` é renderizada assim; as
+  outras rotas pré-renderizadas seguem com os espelhos `.seo.ts`.
 
 - **Hosting:** Vercel. `vercel.json` roda os builds e faz os rewrites. **Não há catch-all
   para o CRM** — as rotas são uma lista nomeada:
