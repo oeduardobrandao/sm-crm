@@ -1,5 +1,6 @@
 import type { Cliente, MensagemFeedItem } from '@/store';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { useFotoFallback } from '@/components/ClienteFoto';
 
 export function initialsOf(name: string): string {
   return name
@@ -14,8 +15,9 @@ export function initialsOf(name: string): string {
 const SMALL = { width: 28, height: 28, fontSize: '0.65rem', flexShrink: 0 } as const;
 const LARGE = { width: 40, height: 40, fontSize: '0.8rem', flexShrink: 0 } as const;
 
-/** Cliente avatar: connected Instagram photo when available, else sigla + cor,
- * else initials on the base .avatar tokens. */
+/** Cliente avatar: connected Instagram photo when available, else the photo
+ * uploaded on the client page, else sigla + cor, else initials on the base
+ * .avatar tokens. A photo that fails to load falls through to the next. */
 export function ClienteAvatar({
   nome,
   fotoUrl,
@@ -24,15 +26,17 @@ export function ClienteAvatar({
 }: {
   nome: string;
   fotoUrl?: string | null;
-  cliente?: Pick<Cliente, 'sigla' | 'cor'>;
+  cliente?: Pick<Cliente, 'sigla' | 'cor'> & Partial<Pick<Cliente, 'foto_url'>>;
   size?: 'sm' | 'lg';
 }) {
   const dims = size === 'lg' ? LARGE : SMALL;
-  if (fotoUrl) {
+  const foto = useFotoFallback([fotoUrl, cliente?.foto_url]);
+  if (foto.src) {
     return (
       <img
-        src={fotoUrl}
+        src={foto.src}
         alt=""
+        onError={foto.onError}
         data-testid="cliente-avatar-foto"
         className="avatar"
         style={{ ...dims, objectFit: 'cover' }}
@@ -62,7 +66,7 @@ export function AutorAvatar({
   clienteFotoUrl,
 }: {
   item: MensagemFeedItem;
-  cliente?: Pick<Cliente, 'sigla' | 'cor'>;
+  cliente?: Pick<Cliente, 'sigla' | 'cor'> & Partial<Pick<Cliente, 'foto_url'>>;
   clienteFotoUrl?: string | null;
 }) {
   if (item.is_workspace_user) {

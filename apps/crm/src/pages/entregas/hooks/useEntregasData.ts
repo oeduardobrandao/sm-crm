@@ -23,6 +23,7 @@ import { getWorkflowCovers, getPostCovers } from '../../../services/postMedia';
 import { buildUsableTokenMap } from '../../../lib/hubTokenMap';
 import { toPostEntity, type PostEntity } from '../boardEntity';
 import { toLocalISODate } from '@/utils/postDate';
+import { useInstagramAvatars } from '@/hooks/useClienteAvatars';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -365,23 +366,7 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
   const postResponsaveis: Map<number, number[]> = postStats?.responsaveis ?? EMPTY_RESPONSAVEIS_MAP;
 
   const clienteIds = useMemo(() => clientes.map((c) => c.id!).filter(Boolean), [clientes]);
-  const { data: clienteAvatars } = useQuery({
-    queryKey: ['instagram-avatars', clienteIds.join(',')],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('instagram_accounts')
-        .select('client_id, profile_picture_url')
-        .in('client_id', clienteIds)
-        .not('profile_picture_url', 'is', null);
-      const map = new Map<number, string>();
-      if (data)
-        for (const row of data)
-          if (row.client_id && row.profile_picture_url)
-            map.set(row.client_id, row.profile_picture_url);
-      return map;
-    },
-    enabled: clienteIds.length > 0,
-  });
+  const { data: clienteAvatars } = useInstagramAvatars(clientes);
 
   const { data: workspaceSlug } = useQuery({
     queryKey: ['workspace-slug'],

@@ -168,9 +168,9 @@ const EMPTY_COUNTS: Map<number, number> = new Map();
  * for now, since there is no post-process equivalent of HistoryDrawer yet. It
  * deliberately never fetches Instagram (`igSummary`) data — that belongs to
  * the Redes sociais tab — so `BoardCard.clienteAvatarUrl` is always left
- * `undefined` here; `WorkflowCard` already falls back to a colored-initials
- * avatar when it's unset, so this is a graceful, contained trade-off rather
- * than a broken render.
+ * `undefined` here; `WorkflowCard` then shows the client's uploaded
+ * `foto_url`, or the colored initials without one, so this is a graceful,
+ * contained trade-off rather than a broken render.
  *
  * `BoardCard.hubUrl` is the one narrow exception: it IS fetched here (via
  * `['workspace-slug']` and `['hub-token', clienteId]`, mirroring the

@@ -38,6 +38,8 @@ import { TIPO_ORDER, TIPO_LABELS, TIPO_COLORS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { StatusKey } from '../statusRegistry';
 import { PRAZO_PRESET_LABELS, PRAZO_PRESET_ORDER, type PrazoPreset } from '../etapaPrazo';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 
 export type StatusFilter = 'atrasado' | 'urgente' | 'em_dia';
 
@@ -144,33 +146,32 @@ function membroAvatar(m: Pick<Membro, 'id' | 'nome' | 'avatar_url'>): React.Reac
   );
 }
 
-function clienteAvatar(c: Cliente): React.ReactNode {
-  return c.foto_url ? (
-    <img
-      src={c.foto_url}
-      alt=""
-      loading="lazy"
+function clienteAvatar(c: Cliente, fotos: string[]): React.ReactNode {
+  return (
+    <ClienteFoto
+      srcs={fotos}
       style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+      fallback={
+        <span
+          aria-hidden="true"
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            background: c.cor || 'var(--surface-hover)',
+            color: '#fff',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '0.5rem',
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {(c.sigla || getInitials(c.nome)).slice(0, 2).toUpperCase()}
+        </span>
+      }
     />
-  ) : (
-    <span
-      aria-hidden="true"
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: '50%',
-        background: c.cor || 'var(--surface-hover)',
-        color: '#fff',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '0.5rem',
-        fontWeight: 700,
-        flexShrink: 0,
-      }}
-    >
-      {(c.sigla || getInitials(c.nome)).slice(0, 2).toUpperCase()}
-    </span>
   );
 }
 
@@ -431,6 +432,7 @@ export function EntregasFilters({
   const isPosts = mode === 'posts';
   const [sheetOpen, setSheetOpen] = useState(false);
   const statusRegistry = useStatusRegistry();
+  const { fotosDe } = useClienteAvatars(clientes);
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -441,7 +443,7 @@ export function EntregasFilters({
 
   const clienteOptions = activeClientes
     .filter((c) => c.id != null)
-    .map((c) => ({ value: c.id!, label: c.nome, avatar: clienteAvatar(c) }));
+    .map((c) => ({ value: c.id!, label: c.nome, avatar: clienteAvatar(c, fotosDe(c)) }));
   const membroOptions = sortedMembros
     .filter((m) => m.id != null)
     .map((m) => ({ value: m.id!, label: m.nome, avatar: membroAvatar(m) }));

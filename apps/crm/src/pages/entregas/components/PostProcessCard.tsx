@@ -29,6 +29,7 @@ import { DeadlinePill } from './DeadlinePill';
 import { progressColor } from '../progressColor';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import type { WorkflowPost } from '../../../store';
+import { ClienteFoto } from '@/components/ClienteFoto';
 
 interface PostProcessCardProps {
   entity: PostEntity;
@@ -203,39 +204,36 @@ export function PostProcessCard({
           >
             {cliente ? (
               <>
-                {entity.clienteAvatarUrl ? (
-                  <img
-                    src={entity.clienteAvatarUrl}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                      flexShrink: 0,
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: '50%',
-                      background: cliente.cor || '#6b7280',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.4rem',
-                      fontWeight: 800,
-                      color: '#fff',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {getInitials(cliente.nome)}
-                  </div>
-                )}
+                <ClienteFoto
+                  srcs={[entity.clienteAvatarUrl, cliente.foto_url]}
+                  alt=""
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    flexShrink: 0,
+                  }}
+                  fallback={
+                    <div
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: '50%',
+                        background: cliente.cor || '#6b7280',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.4rem',
+                        fontWeight: 800,
+                        color: '#fff',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {getInitials(cliente.nome)}
+                    </div>
+                  }
+                />
                 <span
                   role="link"
                   tabIndex={0}

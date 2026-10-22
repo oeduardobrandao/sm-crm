@@ -33,6 +33,7 @@ import { useEntitlements } from '@/hooks/useEntitlements';
 import { reportPaywallHit } from '@/lib/paywall-report';
 import { sanitizeUrl } from '@/utils/security';
 import { getInitials, type Cliente } from '@/store';
+import { ClienteFoto } from '@/components/ClienteFoto';
 
 export type ClienteFilterStatus = 'todos' | 'ativo' | 'pausado' | 'encerrado';
 export type ClienteSortBy = 'nome' | 'valor_mensal' | 'data_pagamento';
@@ -42,7 +43,8 @@ export interface ClientesPhoneProps {
   clientes: Cliente[];
   filtered: Cliente[];
   isLoading: boolean;
-  avatarMap: Record<number, string>;
+  /** Client photo candidates, best first (see `useClienteAvatars`). */
+  fotosDe: (c: Cliente) => string[];
   search: string;
   onSearchChange: (value: string) => void;
   filter: ClienteFilterStatus;
@@ -81,7 +83,7 @@ export function ClientesPhone(props: ClientesPhoneProps) {
     clientes,
     filtered,
     isLoading,
-    avatarMap,
+    fotosDe,
     search,
     onSearchChange,
     filter,
@@ -332,7 +334,7 @@ export function ClientesPhone(props: ClientesPhoneProps) {
             <ClienteRow
               key={c.id ?? c.nome}
               cliente={c}
-              avatarUrl={c.id ? avatarMap[c.id] : undefined}
+              fotos={fotosDe(c)}
               canEdit={canEdit}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -369,13 +371,13 @@ export function ClientesPhone(props: ClientesPhoneProps) {
 
 function ClienteRow({
   cliente: c,
-  avatarUrl,
+  fotos,
   canEdit,
   onEdit,
   onDelete,
 }: {
   cliente: Cliente;
-  avatarUrl?: string;
+  fotos: string[];
   canEdit: boolean;
   onEdit: (c: Cliente) => void;
   onDelete: (id: number) => void;
@@ -453,13 +455,16 @@ function ClienteRow({
       leadingActions={leading}
       trailingActions={trailing}
     >
-      {avatarUrl ? (
-        <img src={avatarUrl} alt={initials} className="phone-el-avatar" />
-      ) : (
-        <span className="phone-el-avatar" style={{ background: c.cor }} aria-hidden="true">
-          {initials}
-        </span>
-      )}
+      <ClienteFoto
+        srcs={fotos}
+        alt={initials}
+        className="phone-el-avatar"
+        fallback={
+          <span className="phone-el-avatar" style={{ background: c.cor }} aria-hidden="true">
+            {initials}
+          </span>
+        }
+      />
       <span className="phone-el-text">
         <span className="phone-el-title">{c.nome}</span>
         <span className="phone-el-subtitle">

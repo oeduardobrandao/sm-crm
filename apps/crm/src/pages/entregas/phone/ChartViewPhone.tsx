@@ -16,6 +16,7 @@ import {
   type UpcomingTab,
 } from '../views/chartViewData';
 import './viewsPhone.css';
+import { ClienteFoto } from '@/components/ClienteFoto';
 
 const STATUS_SEMANTIC: Record<DeadlineStatus, keyof ChartTheme['semantic']> = {
   em_dia: 'success',
@@ -305,22 +306,19 @@ export function ChartViewPhone(p: ChartViewPhoneProps) {
                   <Cell
                     key={card.workflow.id}
                     icon={
-                      card.clienteAvatarUrl ? (
-                        <img
-                          src={card.clienteAvatarUrl}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="phone-ent-v-avatar"
-                        />
-                      ) : (
-                        <span
-                          className="phone-ent-v-avatar phone-ent-v-avatar--initials"
-                          style={{ background: card.cliente?.cor || undefined }}
-                        >
-                          {card.cliente ? getInitials(card.cliente.nome) : ''}
-                        </span>
-                      )
+                      <ClienteFoto
+                        srcs={[card.clienteAvatarUrl, card.cliente?.foto_url]}
+                        alt=""
+                        className="phone-ent-v-avatar"
+                        fallback={
+                          <span
+                            className="phone-ent-v-avatar phone-ent-v-avatar--initials"
+                            style={{ background: card.cliente?.cor || undefined }}
+                          >
+                            {card.cliente ? getInitials(card.cliente.nome) : ''}
+                          </span>
+                        }
+                      />
                     }
                     label={card.workflow.titulo}
                     subtitle={`${card.cliente?.nome ?? 'Sem cliente'} · etapa: ${card.etapa.nome}`}

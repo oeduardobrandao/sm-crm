@@ -9,6 +9,7 @@ import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import type { WorkflowAnalytics } from '@/services/workflowAnalytics';
 import type { Cliente, Membro } from '../../../store';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 import { Avatar, PickerChip, SectionHead } from '../../analytics/phone/shared';
 import {
   formatDataCurta,
@@ -75,6 +76,7 @@ export function FluxosPhone({
   canExport,
   onExport,
 }: FluxosPhoneProps) {
+  const { fotosDe } = useClienteAvatars(clientes);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
 
@@ -143,6 +145,7 @@ export function FluxosPhone({
             emptyFiltered={emptyFiltered}
             clientesById={clientesById}
             membrosById={membrosById}
+            fotosDe={fotosDe}
           />
         ))}
 
@@ -166,11 +169,13 @@ function FluxosSections({
   emptyFiltered,
   clientesById,
   membrosById,
+  fotosDe,
 }: {
   data: WorkflowAnalytics;
   emptyFiltered: boolean;
   clientesById: Map<number, Cliente>;
   membrosById: Map<number, Membro>;
+  fotosDe: (clienteId: number) => string[];
 }) {
   const [showAllEtapas, setShowAllEtapas] = useState(false);
   const pontos = useMemo(
@@ -264,7 +269,7 @@ function FluxosSections({
                     to={`/clientes/${linha.cliente_id}/entregas`}
                     icon={
                       <Avatar
-                        src={cliente?.foto_url}
+                        src={fotosDe(linha.cliente_id)}
                         initials={(
                           cliente?.sigla ||
                           cliente?.nome?.slice(0, 2) ||

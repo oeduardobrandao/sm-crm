@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import type { IgAccountStatus, ScheduledPost } from '@/store';
 import { cn } from '@/lib/utils';
 import { getInitials } from '@/lib/initials';
+import { ClienteFoto } from '@/components/ClienteFoto';
 import { sanitizeUrl } from '@/router';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -68,6 +69,8 @@ export interface CalendarViewPhoneProps {
   /** Publicações mode: the month's scheduled posts by local day. */
   byDay: Map<string, ScheduledPost[]>;
   igStatuses: Map<number, IgAccountStatus>;
+  /** Client photo candidates by client id (see `useClienteAvatars`). */
+  fotosDe?: (clienteId: number) => string[];
   postsLoading: boolean;
   openableWorkflowIds: Set<number>;
   onCardClick: (card: BoardCard) => void;
@@ -130,12 +133,14 @@ function PostRow({
   post,
   openable,
   igStatus,
+  fotos,
   onPostClick,
   onStatusChange,
 }: {
   post: ScheduledPost;
   openable: boolean;
   igStatus: IgAccountStatus | null;
+  fotos: string[];
   onPostClick: (post: ScheduledPost) => void;
   onStatusChange: () => void;
 }) {
@@ -151,9 +156,15 @@ function PostRow({
       </span>
       <span className="phone-ent-v-cal-item__text">
         <span className="phone-ent-v-cal-item__client">
-          <span className="phone-ent-v-avatar phone-ent-v-avatar--xs" aria-hidden="true">
-            {getInitials(post.cliente_nome || '')}
-          </span>
+          <ClienteFoto
+            srcs={fotos}
+            className="phone-ent-v-avatar phone-ent-v-avatar--xs"
+            fallback={
+              <span className="phone-ent-v-avatar phone-ent-v-avatar--xs" aria-hidden="true">
+                {getInitials(post.cliente_nome || '')}
+              </span>
+            }
+          />
           <span className="phone-ent-v-cal-item__client-name">
             {post.cliente_nome || 'Sem cliente'}
           </span>
@@ -413,6 +424,7 @@ export function CalendarViewPhone(p: CalendarViewPhoneProps) {
               igStatus={
                 post.cliente_id != null ? (p.igStatuses.get(post.cliente_id) ?? null) : null
               }
+              fotos={post.cliente_id != null ? (p.fotosDe?.(post.cliente_id) ?? []) : []}
               onPostClick={p.onPostClick}
               onStatusChange={p.onStatusChange}
             />

@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import type { Membro } from '../../../../store';
 
@@ -20,14 +21,16 @@ const membro = (id: number, nome: string, avatar_url: string | null): Membro => 
 
 function renderWithResponsavel(selected: Membro) {
   return render(
-    <EntregasFilters
-      filters={{ ...EMPTY_FILTERS, filterMembros: [selected.id!] }}
-      onChange={() => {}}
-      clientes={[]}
-      membros={[selected]}
-      templates={[]}
-      etapaNames={[]}
-    />,
+    <QueryClientProvider client={new QueryClient()}>
+      <EntregasFilters
+        filters={{ ...EMPTY_FILTERS, filterMembros: [selected.id!] }}
+        onChange={() => {}}
+        clientes={[]}
+        membros={[selected]}
+        templates={[]}
+        etapaNames={[]}
+      />
+    </QueryClientProvider>,
   );
 }
 

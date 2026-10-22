@@ -1,11 +1,12 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgendaBuckets, AgendaItem } from '../../todayAgenda';
 
-const { card, getClientesMock, mutateMock } = vi.hoisted(() => ({
+const { card, getClientesMock, mutateMock, igRows } = vi.hoisted(() => ({
+  igRows: [] as { client_id: number; profile_picture_url: string }[],
   card: {
     status: 'ready' as string,
     scope: 'workspace' as 'workspace' | 'mine',
@@ -17,6 +18,15 @@ const { card, getClientesMock, mutateMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../../store', () => ({ getClientes: getClientesMock }));
+
+// The Instagram avatars query (useClienteAvatars): from().select().in().not().
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({ in: () => ({ not: () => Promise.resolve({ data: igRows }) }) }),
+    }),
+  },
+}));
 
 // The data hook is covered by TodayCard.test / todayAgenda.test; here it only feeds buckets.
 vi.mock('../../useTodayCard', () => ({
@@ -68,6 +78,7 @@ const groupNames = () =>
 
 describe('InicioPrazos', () => {
   beforeEach(() => {
+    igRows.length = 0;
     getClientesMock.mockResolvedValue([
       { id: 1, nome: 'Clínica Vida', sigla: 'CV', cor: '#0f766e' },
     ]);
@@ -130,6 +141,26 @@ describe('InicioPrazos', () => {
     expect(screen.getByRole('button', { name: /Hoje/ })).toHaveTextContent('1 tarefa');
     expect(groupNames()).toEqual(['Clínica Vida', 'Studio Leve']);
     expect(screen.getByText('O mais antigo venceu há 7 dias')).toBeInTheDocument();
+  });
+
+  it("shows each client's photo on its group, the initials only without one", async () => {
+    getClientesMock.mockResolvedValue([
+      { id: 1, nome: 'Clínica Vida', sigla: 'CV', cor: '#0f766e', foto_url: null },
+      { id: 2, nome: 'Studio Leve', sigla: 'SL', cor: '#7c3aed', foto_url: null },
+    ]);
+    igRows.push({ client_id: 1, profile_picture_url: 'https://cdn.test/cv.jpg' });
+    renderPrazos();
+
+    const leads = () => Array.from(document.querySelectorAll('.inicio-prazos__lead'));
+    await waitFor(() =>
+      expect(leads()[0].querySelector('img')).toHaveAttribute('src', 'https://cdn.test/cv.jpg'),
+    );
+    expect(leads()[1].querySelector('img')).toBeNull();
+    expect(leads()[1]).toHaveTextContent('SL');
+
+    // An expired Instagram link falls back to the initials.
+    fireEvent.error(leads()[0].querySelector('img')!);
+    expect(leads()[0]).toHaveTextContent('CV');
   });
 
   it('opens the first group and drops the client name from its rows', () => {

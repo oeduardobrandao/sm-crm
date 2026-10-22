@@ -98,6 +98,8 @@ import TourOverlay from './tour/TourOverlay';
 import { useAutomationTour } from './tour/useAutomationTour';
 import { TOUR_STEPS } from './tour/tourSteps';
 import { AutomacoesPhone } from './phone/AutomacoesPhone';
+import { ClienteFoto } from '@/components/ClienteFoto';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 
 /** Module-level so other surfaces (e.g. useEffectiveNavFeatures' sibling
  * count query) can invalidate the same cache entry after a write. */
@@ -168,6 +170,7 @@ export default function AutomacoesPage() {
   const automations = useMemo(() => automationsQuery.data ?? [], [automationsQuery.data]);
   const isLoading = automationsQuery.isLoading;
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
+  const { fotosDe } = useClienteAvatars(clientes);
 
   const clientesById = useMemo(() => {
     const map = new Map<number, Cliente>();
@@ -679,17 +682,24 @@ export default function AutomacoesPage() {
                           </TableCell>
                           <TableCell>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <div
-                                className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
-                                style={{
-                                  width: 24,
-                                  height: 24,
-                                  fontSize: '0.65rem',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {cliente ? getInitials(cliente.nome) : '?'}
-                              </div>
+                              <ClienteFoto
+                                srcs={fotosDe(cliente)}
+                                className="avatar avatar--photo"
+                                style={{ width: 24, height: 24, objectFit: 'cover', flexShrink: 0 }}
+                                fallback={
+                                  <div
+                                    className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
+                                    style={{
+                                      width: 24,
+                                      height: 24,
+                                      fontSize: '0.65rem',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {cliente ? getInitials(cliente.nome) : '?'}
+                                  </div>
+                                }
+                              />
                               <span>{cliente?.nome ?? t('clientRemoved')}</span>
                             </div>
                           </TableCell>
@@ -851,12 +861,19 @@ export default function AutomacoesPage() {
                             color: 'var(--text-muted)',
                           }}
                         >
-                          <div
-                            className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
-                            style={{ width: 18, height: 18, fontSize: '0.6rem', flexShrink: 0 }}
-                          >
-                            {cliente ? getInitials(cliente.nome) : '?'}
-                          </div>
+                          <ClienteFoto
+                            srcs={fotosDe(cliente)}
+                            className="avatar avatar--photo"
+                            style={{ width: 18, height: 18, objectFit: 'cover', flexShrink: 0 }}
+                            fallback={
+                              <div
+                                className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
+                                style={{ width: 18, height: 18, fontSize: '0.6rem', flexShrink: 0 }}
+                              >
+                                {cliente ? getInitials(cliente.nome) : '?'}
+                              </div>
+                            }
+                          />
                           <span>{cliente?.nome ?? t('clientRemoved')}</span>
                         </div>
                         <div
