@@ -271,7 +271,12 @@ describe('PagarmeCheckoutDialog', () => {
     render(<PagarmeCheckoutDialog {...baseProps({ onSuccess, onClose })} />);
     fillForm();
     fireEvent.click(screen.getByRole('button', { name: 'Começar 30 dias grátis' }));
-    const cta = await screen.findByRole('button', { name: 'Fechar' });
+    // The dialog's own X is also named "Fechar" and exists from the first render, so wait for
+    // the success step and pick the CTA (the one without the X's .sr-only label).
+    await screen.findByText('Assinatura confirmada!');
+    const [cta] = screen
+      .getAllByRole('button', { name: 'Fechar' })
+      .filter((b) => !b.querySelector('.sr-only'));
     fireEvent.click(cta);
     expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
