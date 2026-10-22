@@ -63,15 +63,26 @@ export function preloadTagsFor(manifest: BuildManifest, chunkKey: string): strin
   }
 
   const scripts: string[] = [];
-  const styles: string[] = [];
   for (const key of staticClosure(manifest, chunkKey)) {
-    if (loadedByEntry.has(key)) continue;
-    const chunk = manifest[key];
-    scripts.push(chunk.file);
+    if (!loadedByEntry.has(key)) scripts.push(manifest[key].file);
+  }
+
+  // Stylesheets go in the order Vite's runtime would insert them: a chunk's imports' CSS
+  // before its own (dependencies first). Same-specificity rules resolve by that order:
+  // the landing's dark `.lp-v2` (LandingPage css) must follow the light base `.lp-root`
+  // it imports (landing-styles css), or the page ground turns light.
+  const styles: string[] = [];
+  const visited = new Set<string>();
+  const collectCss = (key: string) => {
+    if (visited.has(key) || loadedByEntry.has(key)) return;
+    visited.add(key);
+    const chunk = chunkOrThrow(manifest, key);
+    for (const dep of chunk.imports ?? []) collectCss(dep);
     for (const css of chunk.css ?? []) {
       if (!entryCss.has(css) && !styles.includes(css)) styles.push(css);
     }
-  }
+  };
+  collectCss(chunkKey);
 
   return [
     ...styles.map((f) => `<link rel="stylesheet" crossorigin href="/${f}">`),

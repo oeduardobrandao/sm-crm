@@ -34,8 +34,8 @@ describe('preloadTagsFor', () => {
   it('preloads the chunk, its transitive static imports and css, minus the entry graph', () => {
     const tags = preloadTagsFor(manifest, 'src/pages/landing/LandingPage.tsx');
     expect(tags.split('\n    ')).toEqual([
-      '<link rel="stylesheet" crossorigin href="/assets/LandingPage-L.css">',
       '<link rel="stylesheet" crossorigin href="/assets/landing-A.css">',
+      '<link rel="stylesheet" crossorigin href="/assets/LandingPage-L.css">',
       '<link rel="modulepreload" crossorigin href="/assets/LandingPage-L.js">',
       '<link rel="modulepreload" crossorigin href="/assets/landing-A.js">',
       '<link rel="modulepreload" crossorigin href="/assets/icon-I.js">',
@@ -43,6 +43,25 @@ describe('preloadTagsFor', () => {
     expect(tags).not.toContain('Heavy');
     expect(tags).not.toContain('index-E');
     expect(tags).not.toContain('shared-S');
+  });
+
+  it('orders stylesheets dependencies first, as Vite inserts them at runtime', () => {
+    // A -> B -> C: C's css must come before B's, and B's before A's, so the importing
+    // chunk's rules win ties against the rules of what it imports.
+    const chain: BuildManifest = {
+      'index.html': { file: 'assets/index.js', isEntry: true },
+      'src/A.tsx': { file: 'assets/A.js', imports: ['_B.js', '_C.js'], css: ['assets/A.css'] },
+      '_B.js': { file: 'assets/B.js', imports: ['_C.js'], css: ['assets/B.css'] },
+      '_C.js': { file: 'assets/C.js', css: ['assets/C.css'] },
+    };
+    const css = preloadTagsFor(chain, 'src/A.tsx')
+      .split('\n    ')
+      .filter((t) => t.includes('stylesheet'));
+    expect(css).toEqual([
+      '<link rel="stylesheet" crossorigin href="/assets/C.css">',
+      '<link rel="stylesheet" crossorigin href="/assets/B.css">',
+      '<link rel="stylesheet" crossorigin href="/assets/A.css">',
+    ]);
   });
 
   it('throws when the chunk is missing from the manifest', () => {
