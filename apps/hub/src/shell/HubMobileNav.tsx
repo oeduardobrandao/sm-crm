@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { useHubLook } from '../hooks/useHubLook';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { useMensagensUnreadCount } from '../hooks/useMensagensUnreadCount';
@@ -20,14 +21,13 @@ function cycleLanguage(current: string) {
 }
 
 export function HubMobileNav() {
-  const { bootstrap, theme, toggleTheme } = useHub();
-  const { workspace, token } = useParams<{ workspace: string; token: string }>();
+  const { bootstrap, theme, toggleTheme, token, workspace } = useHub();
   const { pathname } = useLocation();
   const { t, i18n } = useTranslation();
   const pauta = useHubLook() === 'pauta';
-  const base = `/${workspace}/hub/${token}`;
-  const pendingCount = usePendingApprovalsCount(token!);
-  const mensagensUnread = useMensagensUnreadCount(token!, bootstrap.feature_mensagens);
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
+  const pendingCount = usePendingApprovalsCount(token);
+  const mensagensUnread = useMensagensUnreadCount(token, bootstrap.feature_mensagens);
   const badgeCounts: Record<HubBadgeKey, number> = {
     aprovacoes: pendingCount,
     mensagens: mensagensUnread,

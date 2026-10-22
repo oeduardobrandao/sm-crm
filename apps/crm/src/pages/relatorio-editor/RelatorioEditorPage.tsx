@@ -41,6 +41,7 @@ import { applyTemplateLayout, layoutHasFilledImage } from './templateOps';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportExportBar, ReportPhoneView } from './phone/ReportPhoneView';
+import { compactHubToken } from '@/lib/hubLinks';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
@@ -95,7 +96,9 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     queryFn: async () => {
       const [tok, slug] = await Promise.all([getHubToken(doc.client_id), getWorkspaceSlug()]);
       return tok && slug && tok.is_active && tok.expires_at > new Date().toISOString()
-        ? { url: `${window.location.origin}/${slug}/hub/${tok.token}/relatorios/doc/${doc.id}` }
+        ? {
+            url: `${window.location.origin}/${slug}/hub/${compactHubToken(tok.token)}/relatorios/doc/${doc.id}`,
+          }
         : null;
     },
   });
