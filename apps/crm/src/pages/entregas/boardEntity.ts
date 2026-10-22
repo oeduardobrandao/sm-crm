@@ -1,9 +1,11 @@
 import type { BoardCard } from './hooks/useEntregasData';
+import { formatPostDateFull } from '@/utils/postDate';
 import type { Cliente, Membro, PostMedia, PostProcessStep, PostProcessWithPost } from '../../store';
 import {
   deadlineFromPrazoEfetivo,
   etapaDeadlineDate,
   etapaDeadlineDateOf,
+  formatEtapaDeadlineDay,
   type DeadlineInfo,
 } from './etapaPrazo';
 
@@ -185,12 +187,15 @@ export function sortEntitiesByPrazo(entities: BoardEntity[]): BoardEntity[] {
   });
 }
 
-/** Data de publicação do post individual (scheduled_at) primeiro, sem data por
- *  último; fluxos não têm data própria e caem no fim. Empate (inclusive entre
- *  todos os sem data) mantém a ordem manual, como sortEntitiesByPosicao. */
+/** Data de publicação do post individual primeiro (published_at, senão
+ *  scheduled_at: a mesma que publicacaoPill mostra), sem data por último;
+ *  fluxos não têm data própria e caem no fim. Empate (inclusive entre todos os
+ *  sem data) mantém a ordem manual, como sortEntitiesByPosicao. */
 export function sortEntitiesByPublicacao(entities: BoardEntity[]): BoardEntity[] {
   const publicacaoOf = (e: BoardEntity): number => {
-    const at = isPostEntity(e) ? e.process.post.scheduled_at : null;
+    const at = isPostEntity(e)
+      ? (e.process.post.published_at ?? e.process.post.scheduled_at)
+      : null;
     return at ? new Date(at).getTime() : Infinity;
   };
   return [...entities].sort((a, b) => {
@@ -199,6 +204,37 @@ export function sortEntitiesByPublicacao(entities: BoardEntity[]): BoardEntity[]
     if (ad !== bd) return ad - bd;
     return a.posicao - b.posicao || entityNumericId(a) - entityNumericId(b);
   });
+}
+
+export interface PublicacaoPill {
+  estado: 'publicado' | 'agendado' | 'sem_data';
+  /** Dia curto ("25 out"); o estado vai no ícone para caber ao lado do chip
+   *  de status. "Sem data" quando o post não tem data nenhuma. */
+  text: string;
+  /** Forma longa, com a hora: tooltip e leitor de tela. */
+  title: string;
+}
+
+/** O que a pill do card de post mostra quando a coluna ordena por data de
+ *  publicação: a data em que saiu (published_at) ou a agendada (scheduled_at),
+ *  no lugar do prazo da etapa. */
+export function publicacaoPill(e: PostEntity): PublicacaoPill {
+  const { published_at, scheduled_at } = e.process.post;
+  if (published_at) {
+    return {
+      estado: 'publicado',
+      text: formatEtapaDeadlineDay(new Date(published_at)),
+      title: `Publicado em ${formatPostDateFull(published_at)}`,
+    };
+  }
+  if (scheduled_at) {
+    return {
+      estado: 'agendado',
+      text: formatEtapaDeadlineDay(new Date(scheduled_at)),
+      title: `Publicação em ${formatPostDateFull(scheduled_at)}`,
+    };
+  }
+  return { estado: 'sem_data', text: 'Sem data', title: 'Sem data de publicação' };
 }
 
 /** Ordem manual mista (spec §4.2): valor numérico dos dois campos, desempate por id. */

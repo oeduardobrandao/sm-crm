@@ -83,6 +83,22 @@ function makeEntity(overrides: Partial<PostEntity> = {}): PostEntity {
 }
 
 describe('PostProcessCard', () => {
+  it('showPublishDate: a pill mostra a data de publicação no lugar do prazo, sem tom de urgência', () => {
+    const scheduledAt = new Date(new Date().getFullYear(), 9, 25, 14, 0).toISOString();
+    const base = makeEntity();
+    const entity = makeEntity({
+      process: { ...base.process, post: { ...base.process.post, scheduled_at: scheduledAt } },
+      prazoEfetivo: new Date(),
+      deadline: { diasRestantes: -3, horasRestantes: 0, estourado: true, urgente: true } as never,
+    });
+    render(<PostProcessCard entity={entity} showPublishDate />);
+
+    const pill = screen.getByText('25 out').closest('.board-card-deadline-pill')!;
+    expect(pill.className).toContain('deadline-neutral');
+    expect(pill.textContent).toContain('Publicação em 25 de outubro');
+    expect(screen.queryByText(/atrasado/)).not.toBeInTheDocument();
+  });
+
   it('sem prazo efetivo: o card fica deadline-ok mesmo com diasRestantes <= 3', () => {
     // dl.diasRestantes (2) <= 3 would compute 'deadline-caution' unconditionally
     // if the card ignored hasDeadline, even though prazoEfetivo is null.

@@ -5472,6 +5472,13 @@ body.role-agent input[name='valor_total'] {
   color: var(--danger);
 }
 
+/* Data de publicação no lugar do prazo (coluna ordenada por publicação): sem
+   tom de urgência. Depois das regras acima para vencer o tom do card pai. */
+.board-card-deadline.deadline-neutral {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
 .board-card-assignee {
   display: flex;
   align-items: center;

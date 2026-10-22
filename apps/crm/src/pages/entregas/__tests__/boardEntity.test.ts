@@ -3,6 +3,7 @@ import {
   derivePostStepFields,
   entityNumericId,
   isPostEntity,
+  publicacaoPill,
   sortEntitiesByPosicao,
   sortEntitiesByPrazo,
   sortEntitiesByPublicacao,
@@ -313,6 +314,26 @@ describe('derivePostStepFields', () => {
   });
 });
 
+describe('publicacaoPill', () => {
+  const withPost = (post: { scheduled_at?: string | null; published_at?: string | null }) => {
+    const process = makeProcess({});
+    return toPostEntity({ ...process, post: { ...process.post, ...post } }, ctx)!;
+  };
+  const at = (day: number, hour: number) =>
+    new Date(new Date().getFullYear(), 9, day, hour, 0).toISOString();
+
+  it('publicado vence o agendado; sem nenhuma data, "Sem data"', () => {
+    expect(publicacaoPill(withPost({ scheduled_at: at(25, 14) }))).toMatchObject({
+      estado: 'agendado',
+      text: '25 out',
+    });
+    expect(
+      publicacaoPill(withPost({ scheduled_at: at(25, 14), published_at: at(26, 9) })),
+    ).toMatchObject({ estado: 'publicado', text: '26 out' });
+    expect(publicacaoPill(withPost({}))).toMatchObject({ estado: 'sem_data', text: 'Sem data' });
+  });
+});
+
 describe('sorts', () => {
   it('sortEntitiesByPrazo: mais cedo primeiro, sem prazo por último, empate por posicao', () => {
     const a = toWorkflowEntity(makeCard({ id: 1, position: 5, data_limite: '2026-07-20' }));
@@ -339,19 +360,26 @@ describe('sorts', () => {
   });
 
   it('sortEntitiesByPublicacao: scheduled_at crescente, sem data e fluxos por último em ordem manual', () => {
-    const scheduled = (id: number, board_position: number, scheduled_at: string | null) => {
+    const scheduled = (
+      id: number,
+      board_position: number,
+      scheduled_at: string | null,
+      published_at: string | null = null,
+    ) => {
       const process = makeProcess({ id, board_position });
-      return toPostEntity({ ...process, post: { ...process.post, scheduled_at } }, ctx)!;
+      return toPostEntity(
+        { ...process, post: { ...process.post, scheduled_at, published_at } },
+        ctx,
+      )!;
     };
     const late = scheduled(1, 0, '2026-11-05T12:00:00Z');
     const early = scheduled(2, 9, '2026-10-25T12:00:00Z');
     const undated = scheduled(3, 2, null);
     const w = toWorkflowEntity(makeCard({ id: 4, position: 1 }));
-    expect(sortEntitiesByPublicacao([undated, late, w, early]).map((e) => e.id)).toEqual([
-      'post:2',
-      'post:1',
-      'workflow:4',
-      'post:3',
-    ]);
+    // Agendado para depois, mas já saiu antes de todos: vale o published_at.
+    const published = scheduled(5, 3, '2026-11-20T12:00:00Z', '2026-10-20T12:00:00Z');
+    expect(sortEntitiesByPublicacao([undated, late, w, early, published]).map((e) => e.id)).toEqual(
+      ['post:5', 'post:2', 'post:1', 'workflow:4', 'post:3'],
+    );
   });
 });

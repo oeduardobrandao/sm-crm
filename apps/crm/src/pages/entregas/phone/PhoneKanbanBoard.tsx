@@ -169,6 +169,7 @@ export function PhoneKanbanBoard({
   if (!row || !column) return null;
 
   const sortMode = sortModeFor(colKey);
+  const showPublishDate = sortMode === 'publicacao';
   const isFirstColumn = row.columns[0]?.ordem === column.ordem;
   const offersPostIndividual =
     row.templateId != null && postProcessesEnabled === true && !!onAddPostIndividual;
@@ -199,11 +200,14 @@ export function PhoneKanbanBoard({
           onRemoveProcess={() => post.removeProcess(entity)}
           onDuplicate={post.duplicate ? () => post.duplicate!(entity) : undefined}
           onDelete={post.remove ? () => post.remove!(entity) : undefined}
-          preview={<PhonePostProcessCard entity={entity} preview />}
+          preview={
+            <PhonePostProcessCard entity={entity} preview showPublishDate={showPublishDate} />
+          }
         >
           {({ triggerProps }) => (
             <PhonePostProcessCard
               entity={entity}
+              showPublishDate={showPublishDate}
               onOpen={post.open ? () => post.open!(entity) : undefined}
               onForward={reorder ? undefined : () => post.forward(entity)}
               forwardLabel={post.forwardLabel(entity)}
@@ -368,7 +372,11 @@ export function PhoneKanbanBoard({
               />
             )}
             {activeEntity?.kind === 'post' && (
-              <PhonePostProcessCard entity={activeEntity} preview />
+              <PhonePostProcessCard
+                entity={activeEntity}
+                preview
+                showPublishDate={showPublishDate}
+              />
             )}
           </DragOverlay>
         </DndContext>
