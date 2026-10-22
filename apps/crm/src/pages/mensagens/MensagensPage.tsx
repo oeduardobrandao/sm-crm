@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import type { Cliente } from '@/store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useAuth } from '@/context/AuthContext';
@@ -26,6 +27,7 @@ import { ConversationThreadPhone } from './phone/ConversationThreadPhone';
 import { ThreadPhoneShell } from './phone/ThreadPhoneShell';
 import { EquipeListPhone } from './phone/EquipeListPhone';
 import { EquipeThreadPhone } from './phone/EquipeThreadPhone';
+import { colegasSemDm } from './equipeChatLogic';
 
 type MensagensTab = 'clientes' | 'equipe';
 
@@ -146,15 +148,33 @@ function EquipePane({
   const conversaAtual =
     conversaId != null ? equipe.conversas.data?.find((c) => c.conversa_id === conversaId) : null;
 
+  // Every colleague with no DM yet is listed too, like every client on the
+  // Clientes tab; a click opens (creates) the DM. A failed members fetch only
+  // drops those rows, the conversations still show.
+  const conversas = equipe.conversas.data ?? [];
+  const colegas = colegasSemDm(equipe.membros.data ?? [], conversas, user?.id ?? null);
+  const listaLoading = equipe.conversas.isLoading || equipe.membros.isLoading;
+  const abrindoColegaId = equipe.abrirDm.isPending ? (equipe.abrirDm.variables ?? null) : null;
+  function abrirColega(userId: string) {
+    if (equipe.abrirDm.isPending) return;
+    equipe.abrirDm.mutate(userId, {
+      onSuccess: onSelect,
+      onError: () => toast.error('Não foi possível abrir a conversa.'),
+    });
+  }
+
   const lista = (
     <EquipeConversationList
       className="min-h-0 min-w-0 flex-1"
-      conversas={equipe.conversas.data ?? []}
-      isLoading={equipe.conversas.isLoading}
+      conversas={conversas}
+      colegas={colegas}
+      isLoading={listaLoading}
       isError={conversasHardError}
       selectedConversaId={conversaId}
       currentUserId={user?.id ?? null}
       onSelect={onSelect}
+      onSelectColega={abrirColega}
+      abrindoColegaId={abrindoColegaId}
       onNovaConversa={onNovaConversa}
     />
   );
@@ -176,11 +196,14 @@ function EquipePane({
     if (conversaId == null && !invalidId) {
       return (
         <EquipeListPhone
-          conversas={equipe.conversas.data ?? []}
-          isLoading={equipe.conversas.isLoading}
+          conversas={conversas}
+          colegas={colegas}
+          isLoading={listaLoading}
           isError={conversasHardError}
           currentUserId={user?.id ?? null}
           onSelect={onSelect}
+          onSelectColega={abrirColega}
+          abrindoColegaId={abrindoColegaId}
           onNovaConversa={onNovaConversa}
           headerExtra={tabs}
         />

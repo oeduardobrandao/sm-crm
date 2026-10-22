@@ -1,5 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  createEquipeConversa,
+  getEquipeChatMembers,
   getEquipeConversas,
   getEquipeMensagens,
   markEquipeConversaSeen,
@@ -16,6 +18,13 @@ export function useEquipeChatData(conversaId: number | null) {
     queryKey: ['equipe-conversas'],
     queryFn: getEquipeConversas,
     refetchInterval: 60_000,
+  });
+
+  // Same key as NovaConversaDialog's picker: the Equipe list shows every
+  // colleague with no DM yet, so the dialog opens on an already warm cache.
+  const membros = useQuery({
+    queryKey: ['equipe-chat-members'],
+    queryFn: getEquipeChatMembers,
   });
 
   const conversaExists =
@@ -57,5 +66,16 @@ export function useEquipeChatData(conversaId: number | null) {
     },
   });
 
-  return { conversas, mensagens, send, markSeen };
+  /** Opens (or creates) the DM with a colleague and resolves to its id. The page
+   * finds the thread in the cached conversation list, so the list has to hold the
+   * new DM before the page navigates to it. */
+  const abrirDm = useMutation({
+    mutationFn: async (userId: string) => {
+      const id = await createEquipeConversa('dm', null, [userId]);
+      await qc.invalidateQueries({ queryKey: ['equipe-conversas'] });
+      return id;
+    },
+  });
+
+  return { conversas, membros, mensagens, send, markSeen, abrirDm };
 }

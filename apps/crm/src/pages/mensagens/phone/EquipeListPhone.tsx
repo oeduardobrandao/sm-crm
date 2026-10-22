@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDownUp, Check, Plus, Search, X } from 'lucide-react';
-import type { EquipeConversa } from '@/store';
+import type { EquipeChatMember, EquipeConversa } from '@/store';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -8,8 +8,10 @@ import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { EquipeConversaAvatar } from '../components/EquipeShared';
 import { formatTime } from '../mensagensLogic';
 import {
+  EQUIPE_SEM_MENSAGENS,
   equipeConversaPreview,
-  sortEquipeConversas,
+  equipeListaItemNome,
+  sortEquipeLista,
   type EquipeConversasSort,
 } from '../equipeChatLogic';
 import './mensagensPhone.css';
@@ -24,11 +26,17 @@ const SORT_LABEL: Record<EquipeConversasSort, string> = {
 
 interface Props {
   conversas: EquipeConversa[];
+  /** Colleagues with no DM yet: listed with the empty conversations. */
+  colegas: EquipeChatMember[];
   isLoading: boolean;
   isError: boolean;
   /** Last message by this user shows as "Você: ...". */
   currentUserId: string | null;
   onSelect: (conversaId: number) => void;
+  /** Opens the DM with a colleague from `colegas`. */
+  onSelectColega: (userId: string) => void;
+  /** Colleague whose DM is being opened: their rows are disabled meanwhile. */
+  abrindoColegaId?: string | null;
   onNovaConversa: () => void;
   /** Rendered first under the large title (the Clientes | Equipe control). */
   headerExtra?: ReactNode;
@@ -40,10 +48,13 @@ interface Props {
  */
 export function EquipeListPhone({
   conversas,
+  colegas,
   isLoading,
   isError,
   currentUserId,
   onSelect,
+  onSelectColega,
+  abrindoColegaId = null,
   onNovaConversa,
   headerExtra,
 }: Props) {
@@ -54,10 +65,12 @@ export function EquipeListPhone({
   const searchRef = useRef<HTMLInputElement>(null);
 
   const visiveis = useMemo(() => {
-    const ordenadas = sortEquipeConversas(conversas, sort);
+    const ordenadas = sortEquipeLista(conversas, colegas, sort);
     const q = busca.trim().toLowerCase();
-    return q ? ordenadas.filter((c) => c.display_nome.toLowerCase().includes(q)) : ordenadas;
-  }, [conversas, sort, busca]);
+    return q
+      ? ordenadas.filter((item) => equipeListaItemNome(item).toLowerCase().includes(q))
+      : ordenadas;
+  }, [conversas, colegas, sort, busca]);
 
   return (
     <div className="phone-msg">
@@ -131,39 +144,71 @@ export function EquipeListPhone({
       )}
       {visiveis.length > 0 && (
         <ul className="phone-kit phone-msg-group" aria-label="Conversas da equipe">
-          {visiveis.map((c) => (
-            <li key={c.conversa_id} className="phone-msg-row">
-              <button
-                type="button"
-                className="phone-msg-row__main"
-                data-testid={`equipe-conversa-${c.conversa_id}`}
-                onClick={() => onSelect(c.conversa_id)}
-              >
-                <EquipeConversaAvatar conversa={c} size={44} />
-                <span className="phone-msg-row__body">
-                  <span className="phone-msg-row__line">
-                    <span className="phone-msg-row__name">{c.display_nome}</span>
-                    {c.last_created_at != null && (
-                      <span className="phone-msg-row__time">{formatTime(c.last_created_at)}</span>
-                    )}
-                  </span>
-                  <span className="phone-msg-row__line">
-                    <span className="phone-msg-row__preview">
-                      {equipeConversaPreview(c, currentUserId)}
-                    </span>
-                    {c.unread_count > 0 && (
-                      <span
-                        className="phone-msg-row__badge"
-                        aria-label={`${c.unread_count} não lidas`}
-                      >
-                        {c.unread_count > 99 ? '99+' : c.unread_count}
+          {visiveis.map((item) => {
+            if (item.kind === 'colega') {
+              const m = item.colega;
+              return (
+                <li key={`colega-${m.user_id}`} className="phone-msg-row">
+                  <button
+                    type="button"
+                    className="phone-msg-row__main"
+                    data-testid={`equipe-colega-${m.user_id}`}
+                    disabled={abrindoColegaId != null}
+                    aria-busy={abrindoColegaId === m.user_id || undefined}
+                    style={abrindoColegaId === m.user_id ? { opacity: 0.6 } : undefined}
+                    onClick={() => onSelectColega(m.user_id)}
+                  >
+                    <EquipeConversaAvatar
+                      conversa={{ tipo: 'dm', avatar_url: m.avatar_url, display_nome: m.nome }}
+                      size={44}
+                    />
+                    <span className="phone-msg-row__body">
+                      <span className="phone-msg-row__line">
+                        <span className="phone-msg-row__name">{m.nome}</span>
                       </span>
-                    )}
+                      <span className="phone-msg-row__line">
+                        <span className="phone-msg-row__preview">{EQUIPE_SEM_MENSAGENS}</span>
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            }
+            const c = item.conversa;
+            return (
+              <li key={c.conversa_id} className="phone-msg-row">
+                <button
+                  type="button"
+                  className="phone-msg-row__main"
+                  data-testid={`equipe-conversa-${c.conversa_id}`}
+                  onClick={() => onSelect(c.conversa_id)}
+                >
+                  <EquipeConversaAvatar conversa={c} size={44} />
+                  <span className="phone-msg-row__body">
+                    <span className="phone-msg-row__line">
+                      <span className="phone-msg-row__name">{c.display_nome}</span>
+                      {c.last_created_at != null && (
+                        <span className="phone-msg-row__time">{formatTime(c.last_created_at)}</span>
+                      )}
+                    </span>
+                    <span className="phone-msg-row__line">
+                      <span className="phone-msg-row__preview">
+                        {equipeConversaPreview(c, currentUserId)}
+                      </span>
+                      {c.unread_count > 0 && (
+                        <span
+                          className="phone-msg-row__badge"
+                          aria-label={`${c.unread_count} não lidas`}
+                        >
+                          {c.unread_count > 99 ? '99+' : c.unread_count}
+                        </span>
+                      )}
+                    </span>
                   </span>
-                </span>
-              </button>
-            </li>
-          ))}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 

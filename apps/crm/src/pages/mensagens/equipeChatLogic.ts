@@ -1,23 +1,53 @@
-import { format, isSameDay, isSameYear, isToday, isYesterday } from 'date-fns';
+import { format, isSameDay, isSameYear, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import type { EquipeConversa, EquipeMensagem } from '@/store';
+import type { EquipeChatMember, EquipeConversa, EquipeMensagem } from '@/store';
 import { stripMentionTokens } from '@/components/mentions/mentionTokens';
 
 export type EquipeConversasSort = 'recentes' | 'antigas';
 
-/** Active conversations sorted by recency (or oldest); empty conversations
- * always sink to the bottom, alphabetically. */
-export function sortEquipeConversas(
-  rows: EquipeConversa[],
-  sort: EquipeConversasSort,
-): EquipeConversa[] {
-  const ativas = rows.filter((r) => r.last_created_at != null);
-  const vazias = rows
-    .filter((r) => r.last_created_at == null)
-    .sort((a, b) => a.display_nome.localeCompare(b.display_nome, 'pt-BR'));
-  const sorted = [...ativas].sort((a, b) => a.last_created_at!.localeCompare(b.last_created_at!));
-  return [...(sort === 'antigas' ? sorted : sorted.reverse()), ...vazias];
+/** A row of the Equipe list: a conversation, or a colleague with no DM yet, so
+ * every colleague is one click away, the way every client is on the Clientes tab. */
+export type EquipeListaItem =
+  | { kind: 'conversa'; conversa: EquipeConversa }
+  | { kind: 'colega'; colega: EquipeChatMember };
+
+export function equipeListaItemNome(item: EquipeListaItem): string {
+  return item.kind === 'conversa' ? item.conversa.display_nome : item.colega.nome;
 }
+
+/** Colleagues the user has no DM with yet (the user excluded). */
+export function colegasSemDm(
+  membros: EquipeChatMember[],
+  conversas: EquipeConversa[],
+  currentUserId: string | null,
+): EquipeChatMember[] {
+  const comDm = new Set(conversas.map((c) => c.dm_user_id).filter((id) => id != null));
+  return membros.filter((m) => m.user_id !== currentUserId && !comDm.has(m.user_id));
+}
+
+/** Active conversations sorted by recency (or oldest); everything without
+ * messages (empty conversations and colleagues with no DM) always sinks to
+ * the bottom, alphabetically. */
+export function sortEquipeLista(
+  conversas: EquipeConversa[],
+  colegas: EquipeChatMember[],
+  sort: EquipeConversasSort,
+): EquipeListaItem[] {
+  const ativas = conversas
+    .filter((c) => c.last_created_at != null)
+    .sort((a, b) => a.last_created_at!.localeCompare(b.last_created_at!))
+    .map((conversa): EquipeListaItem => ({ kind: 'conversa', conversa }));
+  const vazias: EquipeListaItem[] = [
+    ...conversas
+      .filter((c) => c.last_created_at == null)
+      .map((conversa): EquipeListaItem => ({ kind: 'conversa', conversa })),
+    ...colegas.map((colega): EquipeListaItem => ({ kind: 'colega', colega })),
+  ].sort((a, b) => equipeListaItemNome(a).localeCompare(equipeListaItemNome(b), 'pt-BR'));
+  return [...(sort === 'antigas' ? ativas : ativas.reverse()), ...vazias];
+}
+
+/** Preview of a row with no messages yet: an empty conversation, or a colleague with no DM. */
+export const EQUIPE_SEM_MENSAGENS = 'Sem mensagens ainda. Comece a conversa!';
 
 /** One-line preview for a conversation row: "Autor: texto", "Autor: Anexo",
  * just the author, or the empty-conversation copy. The current user's own
@@ -26,7 +56,7 @@ export function equipeConversaPreview(
   c: EquipeConversa,
   currentUserId: string | null = null,
 ): string {
-  if (c.last_created_at == null) return 'Sem mensagens ainda. Comece a conversa!';
+  if (c.last_created_at == null) return EQUIPE_SEM_MENSAGENS;
   const minha = currentUserId != null && c.last_author_id === currentUserId;
   const autor = minha ? 'Você' : (c.last_author_name ?? 'Equipe');
   // last_content may carry raw @[Label](tipo:id) mention tokens: this is a
@@ -58,8 +88,10 @@ export type EquipeThreadRow =
 
 /** "Hoje", "Ontem", "Segunda-feira, 19 de outubro", or with the year when it isn't this one. */
 export function rotuloDia(d: Date, now: Date = new Date()): string {
-  if (isToday(d)) return 'Hoje';
-  if (isYesterday(d)) return 'Ontem';
+  // Relative to `now`, not the clock (isToday/isYesterday read the clock), so a
+  // caller's `now` decides both labels the same way it decides the year.
+  if (isSameDay(d, now)) return 'Hoje';
+  if (isSameDay(d, subDays(now, 1))) return 'Ontem';
   const texto = isSameYear(d, now)
     ? format(d, "EEEE, d 'de' MMMM", { locale: ptBR })
     : format(d, "d 'de' MMMM 'de' yyyy", { locale: ptBR });

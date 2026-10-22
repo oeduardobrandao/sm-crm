@@ -12027,7 +12027,8 @@ a.hub-fill__row-inner:hover {
 .context-help {
   position: fixed;
   right: 20px;
-  bottom: 20px;
+  /* --corner-clearance: a bottom bar's height (a chat composer, useCornerClearance). */
+  bottom: max(20px, calc(var(--corner-clearance, 0px) + 12px));
   z-index: 45;
   display: flex;
 }
@@ -12064,7 +12065,20 @@ a.hub-fill__row-inner:hover {
 
 @media (min-width: 1101px) {
   body:has(.guide-pill) .context-help {
-    bottom: 72px;
+    bottom: max(72px, calc(var(--corner-clearance, 0px) + 64px));
+  }
+}
+
+/* A Mensagens thread keeps its newest message clear of the corner stacked above
+   its composer. */
+@media (min-width: 768px) {
+  body:has(.context-help) .mensagens-thread-scroll {
+    padding-bottom: 64px;
+  }
+}
+@media (min-width: 1101px) {
+  body:has(.guide-pill) .mensagens-thread-scroll {
+    padding-bottom: 116px;
   }
 }
 
@@ -13841,7 +13855,7 @@ a.hub-fill__row-inner:hover {
   .guide-pill {
     position: fixed;
     right: 20px;
-    bottom: 20px;
+    bottom: max(20px, calc(var(--corner-clearance, 0px) + 12px));
     z-index: 40;
     display: inline-flex;
     align-items: center;

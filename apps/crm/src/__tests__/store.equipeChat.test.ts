@@ -54,7 +54,55 @@ describe('store/equipeChat', () => {
       unread_count: 2,
     };
     m.__queueSupabaseRpc('get_equipe_conversas', { data: [row], error: null });
-    expect(await getEquipeConversas()).toEqual([row]);
+    expect(await getEquipeConversas()).toEqual([{ ...row, dm_user_id: null }]);
+  });
+
+  it('getEquipeConversas marca cada DM com o colega, lido dos participantes', async () => {
+    const base = {
+      nome: null,
+      avatar_url: null,
+      participantes_count: 2,
+      last_author_name: null,
+      last_author_id: null,
+      last_content: null,
+      last_has_anexo: false,
+      last_created_at: null,
+      last_message_id: null,
+      unread_count: 0,
+    };
+    m.__queueSupabaseRpc('get_equipe_conversas', {
+      data: [
+        { ...base, conversa_id: 1, tipo: 'dm', display_nome: 'Ana' },
+        { ...base, conversa_id: 2, tipo: 'grupo', display_nome: 'Time' },
+      ],
+      error: null,
+    });
+    m.__queueSupabaseResult('equipe_conversa_participantes', 'select', {
+      data: [
+        { conversa_id: 1, user_id: 'u-ana' },
+        { conversa_id: 2, user_id: 'u-ana' },
+        { conversa_id: 2, user_id: 'u-bia' },
+      ],
+      error: null,
+    });
+    const rows = await getEquipeConversas();
+    expect(rows.map((r) => [r.conversa_id, r.dm_user_id])).toEqual([
+      [1, 'u-ana'],
+      [2, null],
+    ]);
+    const select = m
+      .__getSupabaseCalls()
+      .find((c) => c.table === 'equipe_conversa_participantes' && c.operation === 'select')!;
+    expect(select.modifiers).toContainEqual({ method: 'neq', args: ['user_id', 'user-1'] });
+  });
+
+  it('getEquipeConversas falha quando a leitura dos participantes falha', async () => {
+    m.__queueSupabaseRpc('get_equipe_conversas', { data: [], error: null });
+    m.__queueSupabaseResult('equipe_conversa_participantes', 'select', {
+      data: null,
+      error: { message: 'boom' },
+    });
+    await expect(getEquipeConversas()).rejects.toEqual({ message: 'boom' });
   });
 
   it('getEquipeMensagens passa o cursor composto', async () => {

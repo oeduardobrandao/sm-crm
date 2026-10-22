@@ -623,18 +623,19 @@
   }
 
   /* ---------- Floating corner, report editor rail ---------- */
+  /* --corner-clearance lifts the corner above a chat composer (style.css). */
   html[data-look='vidro'] .app-container .guide-pill {
     right: 30px;
-    bottom: 30px;
+    bottom: max(30px, calc(var(--corner-clearance, 0px) + 12px));
   }
 
   html[data-look='vidro'] .app-container .context-help {
     right: 30px;
-    bottom: 30px;
+    bottom: max(30px, calc(var(--corner-clearance, 0px) + 12px));
   }
 
   html[data-look='vidro'] body:has(.guide-pill) .app-container .context-help {
-    bottom: 82px;
+    bottom: max(82px, calc(var(--corner-clearance, 0px) + 64px));
   }
 
   html[data-look='vidro'] .app-container .rb-layers-rail {
