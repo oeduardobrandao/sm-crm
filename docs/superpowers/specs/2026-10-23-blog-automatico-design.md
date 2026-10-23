@@ -73,7 +73,7 @@ Table `blog_posts` (my call on exact columns; builder may refine):
 |---|---|
 | `id` uuid pk | |
 | `slug` text unique | lowercase-hyphen, validated; must not collide with a file post's slug |
-| `status` text | `rascunho` · `ajuste_solicitado` · `publicando` · `publicado` · `rejeitado` |
+| `status` text | `rascunho` · `ajuste_solicitado` · `publicando` · `publicado` · `rejeitado` · `despublicado` |
 | `category` text | see Categories below |
 | `title`, `h1`, `description` | same limits as `blogFrontmatterSchema` (title 50–60, h1 10–120, description 120–160) |
 | `lede` text | the standfirst under the H1 |
@@ -186,6 +186,11 @@ hand-written posts in git and lets CI build without a database). DB posts are me
    `apps/crm/src/content/blog/_db/`. Both loaders read `blog/**/*.md` (`blog.client.ts` glob and
    `blog-fs.ts`), so prerender, sitemap, llms.txt, related posts and the React pages pick them up
    unchanged. Extend the frontmatter schema for the new fields (author, lede, cover, feature, etc.).
+   Note `blog.client.ts`'s glob is `./blog/*.md` (not recursive) and eager today. My call: widen it
+   and make post bodies **lazy per post** (non-eager glob, or a generated index of frontmatter plus
+   per-post chunks), so the blog chunk doesn't grow with every daily post. The index page needs
+   only frontmatter; the post page awaits its body (it's prerendered, so hydration must render the
+   same content the static HTML has; builder resolves the loading so first client render matches).
 2. Failure modes: on Vercel production (`VERCEL_ENV=production`) a fetch error **fails the build**
    (never silently drop published posts). Elsewhere (CI `landing-prerender-smoke`, local) a missing
    or placeholder URL skips the sync with a log line; zero DB posts is fine there because the six
@@ -225,6 +230,18 @@ re-fires the hook.
 
 Approving deploys `main` as it is right then, same as any deploy. Acceptable.
 
+Published posts (my calls):
+- "Editar texto" is available on the Publicados tab too (Admin only; the MCP `update_blog_draft`
+  stays limited to unpublished drafts). Saving sets `updated` and re-fires the hook.
+- "Despublicar" action on published posts (confirm dialog) → status `despublicado`, re-fires the
+  hook. The anon RLS predicate excludes it, so the next build drops the page, sitemap and llms.txt
+  entries and the URL returns the site's normal 404. A despublicado post can be republished
+  (back to `publicando`). Slug stays reserved so it is never reused for another post.
+
+Silent-failure guard (my call): the Admin Blog page shows a warning banner when no new draft has
+arrived in 36 hours ("Nenhum rascunho novo desde …: confira a rotina e o conector"). Covers an
+expired connector grant or a Routine that stopped.
+
 Feature list (for the CTA block and the Routine's rotation): a code-side map in
 `apps/crm/src/content/` keyed by `feature_slug` (aprovacao, hub-do-cliente, relatorios,
 agendamento, briefing, agenda, ...; builder fills from existing funnel pages in `paginas/`), each
@@ -255,10 +272,16 @@ account, daily 06:00 America/Sao_Paulo, with web access; add the Admin MCP conne
 platform admin, tick `blog:read` + `blog:write`); paste the brief; run once manually and approve a
 post end to end. Caveats: Routines are a research preview, owned by one personal account, with
 per-account run caps, and they spend the Max plan's automation credit. If Routines go away, the
-fallback is a Console API key + scheduled GitHub Action calling the same MCP tools.
+fallback is a Console API key + scheduled GitHub Action calling the same MCP tools, which would
+need a non-interactive auth path in `mcp-admin` (today it's OAuth-only). Not built in v1.
 
 ## Rollout
 
+0. **Spike first:** before building, create a throwaway Routine on Eduardo's account with the
+   existing Admin MCP connector and have it call an existing read tool (e.g. list KB articles)
+   unattended on a schedule. This proves an unattended Routine can use the OAuth connector. If it
+   can't, stop and revisit drafting (the fallback below would then need a non-interactive auth
+   path in `mcp-admin`, which v1 deliberately doesn't build).
 1. Migration (table, RLS, bucket) on staging, then prod.
 2. Deploy `mcp-admin`, `mcp-oauth-consent`, `platform-admin` to staging, then prod. Set
    `VERCEL_BLOG_DEPLOY_HOOK` per environment (unset on staging: approve then shows "Publicação
@@ -296,3 +319,6 @@ is fine).
 - Infographics rendered as HTML in a fixed house style, never as generated images.
 - Failing checks warn but don't block approval.
 - The post-page visual refresh applies to the six existing posts too.
+- Published posts can be edited in the Admin and unpublished ("Despublicar" → 404 on next build).
+- A 36h "no new draft" warning in the Admin; no non-interactive MCP auth in v1 (spike proves the Routine path first).
+- Post bodies load lazily per post on the client.
