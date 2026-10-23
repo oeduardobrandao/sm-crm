@@ -45,11 +45,11 @@ async function linkReferencesToApproval(
   postId: unknown,
   contaId: string,
 ): Promise<void> {
-  const approvalId = typeof approvalData === "number" || typeof approvalData === "string"
-    ? Number(approvalData)
-    : NaN;
+  // record_client_approval_with_notes returns table(approval_id, open_note_count).
+  const first = Array.isArray(approvalData) ? approvalData[0] : approvalData;
+  const approvalId = Number((first as { approval_id?: unknown } | null | undefined)?.approval_id);
   if (!Number.isSafeInteger(approvalId) || approvalId <= 0) {
-    console.error("[hub-approve] record_client_approval returned no approval id; references stay post-level");
+    console.error("[hub-approve] record_client_approval_with_notes returned no approval id; references stay post-level");
     return;
   }
   try {
@@ -235,26 +235,35 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         return json({ error: "Post não está aguardando revisão do cliente." }, 400);
       }
       const newStatus = action === "aprovado" ? "aprovado_cliente" : "correcao_cliente";
-      const { data: approvalData, error: approvalErr } = await db.rpc("record_client_approval", {
+      const { data: approvalData, error: approvalErr } = await db.rpc("record_client_approval_with_notes", {
         p_post_id: post_id,
+        p_conta_id: hubToken.conta_id,
+        // Defense in depth: the RPC also locks by cliente, like the other two Hub RPCs.
+        p_cliente_id: hubToken.cliente_id,
         p_token: token,
         p_action: action,
         p_comentario: approvalComentario,
-        p_is_workspace_user: false,
         p_new_status: newStatus,
         p_motivo: action === "correcao" ? (motivo ?? null) : null,
       });
       if (approvalErr) {
-        // record_client_approval refuses a client approval/correction while an edit
-        // suggestion is pending (migration 20260928150001): the status change would make the
-        // auto-reject trigger silently discard it.
+        // record_client_approval (called inside the _with_notes wrapper) refuses a client
+        // approval/correction while an edit suggestion is pending (migration 20260928150001):
+        // the status change would make the auto-reject trigger silently discard it. The
+        // wrapper re-checks the status under its row lock and raises post_not_pending.
         const message = (approvalErr as { message?: unknown }).message;
-        if (typeof message === "string" && message.includes("pending_suggestion")) {
-          return json({ error: "Há uma sugestão de edição pendente." }, 409);
+        if (typeof message === "string") {
+          if (message.includes("pending_suggestion")) {
+            return json({ error: "Há uma sugestão de edição pendente." }, 409);
+          }
+          if (message.includes("post_not_pending")) {
+            return json({ error: "Post não está mais aguardando aprovação." }, 409);
+          }
+          if (message.includes("post_not_found")) return json({ error: "Post não encontrado." }, 404);
         }
         return json({ error: "Erro ao registrar aprovação." }, 500);
       }
-      // record_client_approval já commitou (este UPDATE é outra requisição, sem lock).
+      // record_client_approval_with_notes já commitou (este UPDATE é outra requisição, sem lock).
       // É seguro porque o post saiu de enviado_cliente: um finalize atrasado dá 409
       // (post_not_pending) e nunca cria referência nova depois deste ponto.
       if (referenceIds.length > 0) {

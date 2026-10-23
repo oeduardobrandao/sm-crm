@@ -467,6 +467,60 @@ export interface StatusEventRow {
   created_at: string;
 }
 
+/**
+ * Normalized media-note row (post_media_notes_v) plus its replies. Only
+ * visibility = 'client' notes ever reach the tool: internal threads are the
+ * agency's own, and list_post_feedback is the client-feedback view. `file_id`
+ * and `hub_token` are deliberately not part of this shape.
+ */
+export interface MediaNoteRow {
+  id: number;
+  post_id: number;
+  media_kind: "image" | "video";
+  slide_index_at_creation: number;
+  /** 0-based position of the file in the post today; null when the file left the post. */
+  current_slide_index: number | null;
+  is_previous_version: boolean;
+  t_seconds: number | null;
+  x: number | null;
+  visibility: "client" | "internal";
+  author_kind: "client" | "team";
+  body: string;
+  status: "open" | "resolved";
+  created_at: string;
+  replies?: { author_kind: "client" | "team"; body: string; created_at: string }[];
+}
+
+/** Title/status/client of a post that has notes but no post_approvals row. */
+export interface PostMeta {
+  titulo: string;
+  status: string;
+  cliente_id: number;
+}
+
+/** Video moment as m:ss (42 -> "0:42", 125.9 -> "2:05"). */
+export function formatMediaMoment(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+/**
+ * Human label of where a note sits: "slide N" (1-based, current position unless the
+ * file left the post), " · m:ss" for a video moment, " · ponto" for a spot and
+ * " (versão anterior)" when the note belongs to a replaced file.
+ */
+export function mediaNoteAnchor(n: MediaNoteRow): string {
+  const current = !n.is_previous_version && n.current_slide_index != null;
+  const slide = (current ? (n.current_slide_index as number) : n.slide_index_at_creation) + 1;
+  let label = `slide ${slide}`;
+  if (n.media_kind === "video" && n.t_seconds != null) label += ` · ${formatMediaMoment(Number(n.t_seconds))}`;
+  if (n.x != null) label += " · ponto";
+  if (n.is_previous_version) label += " (versão anterior)";
+  return label;
+}
+
 export interface PostFeedbackItem {
   post_id: number;
   titulo: string;
@@ -485,6 +539,16 @@ export interface PostFeedbackItem {
     source: string;
     actor_name: string | null;
     created_at: string;
+  }[];
+  /** Client-visible notes pinned to media, oldest first, each with its replies. */
+  media_notes: {
+    id: number;
+    anchor: string;
+    status: "open" | "resolved";
+    body: string;
+    author: "client" | "workspace";
+    created_at: string;
+    replies: { body: string; author: "client" | "workspace"; created_at: string }[];
   }[];
 }
 
@@ -508,12 +572,26 @@ export function topDistinctPostIds(rows: { post_id: number }[], limit: number): 
 /**
  * Group feedback rows by post into PostFeedbackItem[]: feedback newest-first,
  * timeline oldest->newest, `author` derived from is_workspace_user, and posts
- * ordered by latest_feedback_at desc. ISO-8601 timestamps compare lexicographically.
+ * ordered by latest_feedback_at desc (approvals, notes and replies all count as
+ * activity). ISO-8601 timestamps compare lexicographically.
+ * `mediaNotes` are client-visible notes (anything else is dropped here too); a post
+ * with notes but no approval row is built from `postMeta`, and skipped without it.
  */
 export function buildPostFeedback(
   feedbackRows: FeedbackRow[],
   statusEvents: StatusEventRow[],
+  mediaNotes: MediaNoteRow[] = [],
+  postMeta: Map<number, PostMeta> = new Map(),
 ): PostFeedbackItem[] {
+  const workspaceOrClient = (kind: string): "client" | "workspace" => (kind === "team" ? "workspace" : "client");
+  const notesByPost = new Map<number, MediaNoteRow[]>();
+  for (const n of mediaNotes) {
+    if (n.visibility !== "client") continue;
+    const arr = notesByPost.get(n.post_id) ?? [];
+    arr.push(n);
+    notesByPost.set(n.post_id, arr);
+  }
+
   const eventsByPost = new Map<number, StatusEventRow[]>();
   for (const e of statusEvents) {
     const arr = eventsByPost.get(e.post_id) ?? [];
@@ -528,8 +606,23 @@ export function buildPostFeedback(
     else byPost.set(r.post_id, { meta: r, rows: [r] });
   }
 
+  // Posts that have client notes but no approval row still get an item.
+  const noteOnly: { meta: FeedbackRow; rows: FeedbackRow[] }[] = [];
+  for (const [postId] of notesByPost) {
+    if (byPost.has(postId)) continue;
+    const m = postMeta.get(postId);
+    if (!m) continue;
+    noteOnly.push({
+      meta: {
+        post_id: postId, titulo: m.titulo, status: m.status, cliente_id: m.cliente_id,
+        action: "", comentario: null, is_workspace_user: false, created_at: "",
+      },
+      rows: [],
+    });
+  }
+
   const items: PostFeedbackItem[] = [];
-  for (const { meta, rows } of byPost.values()) {
+  for (const { meta, rows } of [...byPost.values(), ...noteOnly]) {
     const feedback = rows
       .slice()
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
@@ -549,14 +642,35 @@ export function buildPostFeedback(
         actor_name: e.actor_name,
         created_at: e.created_at,
       }));
+    const postNotes = (notesByPost.get(meta.post_id) ?? [])
+      .slice()
+      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id - b.id));
+    const media_notes = postNotes.map((n) => ({
+      id: n.id,
+      anchor: mediaNoteAnchor(n),
+      status: n.status,
+      body: n.body,
+      author: workspaceOrClient(n.author_kind),
+      created_at: n.created_at,
+      replies: (n.replies ?? [])
+        .slice()
+        .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))
+        .map((r) => ({ body: r.body, author: workspaceOrClient(r.author_kind), created_at: r.created_at })),
+    }));
+    let latest = feedback[0]?.created_at ?? "";
+    for (const n of media_notes) {
+      if (n.created_at > latest) latest = n.created_at;
+      for (const r of n.replies) if (r.created_at > latest) latest = r.created_at;
+    }
     items.push({
       post_id: meta.post_id,
       titulo: meta.titulo,
       cliente_id: meta.cliente_id,
       status: meta.status,
-      latest_feedback_at: feedback[0]?.created_at ?? meta.created_at,
+      latest_feedback_at: latest || meta.created_at,
       feedback,
       timeline,
+      media_notes,
     });
   }
 

@@ -236,6 +236,13 @@ export const NOTIFICATION_CATALOG = {
     recipients: 'participantes da conversa, exceto quem enviou',
     emailEligible: false,
   },
+  post_discussion: {
+    category: 'equipe',
+    label: 'Mensagem na discussão de um post',
+    when: 'alguém escreve na discussão de um post que você segue',
+    recipients: 'quem escreveu, foi mencionado ou é responsável pelo post e segue a discussão',
+    emailEligible: false,
+  },
   instagram_connected_by_client: {
     category: 'integracoes',
     label: 'Instagram conectado',

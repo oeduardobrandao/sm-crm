@@ -174,6 +174,40 @@ describe('MensagensPage', () => {
       );
     });
 
+    it('renders media_note with label and post chip, and media_note_reply as a team bubble', async () => {
+      mockFetchMensagens.mockResolvedValue({
+        items: [
+          {
+            ...ITEMS[0],
+            source: 'media_note',
+            item_id: 21,
+            action: 'nota',
+            content: 'Trocar a cor da fonte',
+            created_at: '2026-07-31T10:00:00.000Z',
+          },
+          {
+            ...ITEMS[1],
+            source: 'media_note_reply',
+            item_id: 22,
+            action: 'resposta_nota',
+            content: 'Ajustado no slide 3',
+            created_at: '2026-07-31T11:00:00.000Z',
+          },
+        ],
+        unread: 0,
+      });
+      renderPage({ feature_mensagens: true });
+      expect(await screen.findByText('Trocar a cor da fonte')).toBeInTheDocument();
+      expect(screen.getByText('Comentário na mídia')).toBeInTheDocument();
+      expect(screen.getByText('Ajustado no slide 3')).toBeInTheDocument();
+      expect(screen.getByText('Resposta a um comentário na mídia')).toBeInTheDocument();
+      expect(screen.getByText('Ana')).toBeInTheDocument();
+      const chips = screen.getAllByRole('link', { name: /Post de julho/ });
+      expect(chips).toHaveLength(2);
+      // Neither is a centered event row: both keep the bubble and its Responder action.
+      expect(screen.getAllByRole('button', { name: 'Responder' })).toHaveLength(2);
+    });
+
     it('marks the thread seen on mount', async () => {
       renderPage({ feature_mensagens: true });
       await waitFor(() => expect(mockSeen).toHaveBeenCalledTimes(1));

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { VideoHTMLAttributes } from 'react';
 
 // Shared across the CRM and Hub apps as '@mesaas/ui/VideoPlayer' (see the
@@ -25,12 +25,30 @@ export interface VideoPlayerProps extends Omit<
   poster?: string;
   /** Fires only when the FALLBACK source also errors -- i.e. nothing left to try. */
   onFatalError?: () => void;
+  /** Receives the mounted <video>, and fires again (null, then the new element) whenever
+   *  the player recreates it (e.g. HLS -> fallback). */
+  onVideoElement?: (el: HTMLVideoElement | null) => void;
 }
 
 type Mode = 'native-hls' | 'hlsjs' | 'fallback';
 
-export function VideoPlayer({ hlsSrc, src, poster, onFatalError, ...rest }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+export function VideoPlayer({
+  hlsSrc,
+  src,
+  poster,
+  onFatalError,
+  onVideoElement,
+  ...rest
+}: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Latest callback in a ref so the ref callback below stays stable: an inline
+  // onVideoElement would otherwise get null + element on every parent render.
+  const onVideoElementRef = useRef(onVideoElement);
+  onVideoElementRef.current = onVideoElement;
+  const setVideoEl = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    onVideoElementRef.current?.(el);
+  }, []);
   const [mode, setMode] = useState<Mode>(() => {
     if (!hlsSrc) return 'fallback';
     const probe = document.createElement('video');
@@ -74,7 +92,7 @@ export function VideoPlayer({ hlsSrc, src, poster, onFatalError, ...rest }: Vide
   return (
     <video
       key={mode}
-      ref={videoRef}
+      ref={setVideoEl}
       src={mode === 'hlsjs' ? undefined : mode === 'native-hls' ? (hlsSrc ?? src) : src}
       poster={poster}
       onError={() => {

@@ -4,6 +4,7 @@ import { signGetUrl } from "../_shared/r2.ts";
 import { McpKeyContext, McpInputError } from "../_shared/mcp-token.ts";
 import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
 import { throwTaskWriteError } from "./task-errors.ts";
+import { chunk, fetchAllRows } from "../_shared/paginate.ts";
 import {
   allowlistClient,
   allowlistMember,
@@ -20,11 +21,13 @@ import {
   IG_RATE_WEIGHTS,
   instantiateTemplateEtapas,
   isPlanLimitExceeded,
+  MediaNoteRow,
   MEMBER_PUBLIC_FIELDS,
   MIN_SAMPLE,
   normalizeTemplateEtapas,
   pageContentToMarkdown,
   performanceTier,
+  PostMeta,
   projectTemplateEtapas,
   quartiles,
   Quartiles,
@@ -992,16 +995,55 @@ export async function listPostFeedback(
     return q;
   };
 
-  // Phase 1 — pick post ids (capped scan).
-  const { data: scanData, error: scanErr } = await applyFilters(
-    d.db.from("post_approvals").select("post_id, created_at, workflow_posts!inner(conta_id)"),
-  ).order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP);
+  // Same tenant + filters for the client-note scan. Notes are not approvals, so an
+  // `action` filter (which only approvals carry) turns the note SCAN off: notes never
+  // make a post qualify then. The notes of the posts the approvals picked are still
+  // loaded in phase 2. `since` filters on the note's own created_at only (replies and
+  // later activity on an older note do not requalify it).
+  // Internal notes are never read: list_post_feedback is the client-feedback view.
+  const scanNotes = async (): Promise<any[]> => {
+    if (args.action) return [];
+    let q = d.db.from("post_media_notes")
+      .select("post_id, created_at, workflow_posts!inner(titulo, status, conta_id, cliente_id)")
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("visibility", "client");
+    if (args.post_id !== undefined) q = q.eq("post_id", args.post_id);
+    if (args.client_id !== undefined) q = q.eq("workflow_posts.cliente_id", args.client_id);
+    if (args.since) q = q.gte("created_at", args.since);
+    const { data, error } = await q.order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP);
+    // Notes are additive: a failed scan (e.g. this function deployed before migration
+    // 20261026000001) leaves the approvals feed working instead of failing the tool.
+    if (error) {
+      console.error("[mcp] list_post_feedback note scan failed:", error);
+      return [];
+    }
+    return (data ?? []) as any[];
+  };
+
+  // Phase 1 — pick post ids (capped scans of approvals and client notes, newest first).
+  const [{ data: scanData, error: scanErr }, noteScanRows] = await Promise.all([
+    applyFilters(
+      d.db.from("post_approvals").select("post_id, created_at, workflow_posts!inner(conta_id)"),
+    ).order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP),
+    scanNotes(),
+  ]);
   if (scanErr) throw scanErr;
   const scanRows = (scanData ?? []) as any[];
-  if (scanRows.length === FEEDBACK_SCAN_CAP) {
+  if (scanRows.length === FEEDBACK_SCAN_CAP || noteScanRows.length === FEEDBACK_SCAN_CAP) {
     console.warn(`[mcp] list_post_feedback hit SCAN_CAP=${FEEDBACK_SCAN_CAP} for conta ${d.ctx.conta_id}`);
   }
-  const chosenIds = topDistinctPostIds(scanRows, limit);
+  const postMeta = new Map<number, PostMeta>();
+  for (const r of noteScanRows) {
+    if (!r.workflow_posts || postMeta.has(r.post_id)) continue;
+    postMeta.set(r.post_id, {
+      titulo: r.workflow_posts.titulo,
+      status: r.workflow_posts.status,
+      cliente_id: r.workflow_posts.cliente_id,
+    });
+  }
+  const merged = [...scanRows, ...noteScanRows]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+  const chosenIds = topDistinctPostIds(merged, limit);
   if (chosenIds.length === 0) return [];
 
   // Phase 2a (feedback) + 2b (timeline), in parallel.
@@ -1016,7 +1058,15 @@ export async function listPostFeedback(
     .eq("conta_id", d.ctx.conta_id)
     .in("post_id", chosenIds)
     .order("created_at", { ascending: true });
-  const [{ data: fbData, error: fbErr }, { data: evData, error: evErr }] = await Promise.all([feedbackP, eventsP]);
+  const [{ data: fbData, error: fbErr }, { data: evData, error: evErr }, mediaNotes] = await Promise.all([
+    feedbackP,
+    eventsP,
+    loadClientMediaNotesForPosts(d, chosenIds).catch((e) => {
+      // Same degrade as the scan: the feedback and timeline still answer.
+      console.error("[mcp] list_post_feedback note load failed:", e);
+      return [] as MediaNoteRow[];
+    }),
+  ]);
   if (fbErr) throw fbErr;
   if (evErr) throw evErr;
 
@@ -1042,7 +1092,70 @@ export async function listPostFeedback(
     created_at: e.created_at,
   }));
 
-  return buildPostFeedback(feedbackRows, statusEvents);
+  return buildPostFeedback(feedbackRows, statusEvents, mediaNotes, postMeta);
+}
+
+/**
+ * Client-visible notes of the chosen posts with their replies. Complete threads: the
+ * `since` filter only picks which posts qualify, it never cuts a thread. The tenant
+ * filter is on every read (service role bypasses RLS). `file_id` and `hub_token` are
+ * never selected. Paginated, so the 1000-row PostgREST cap cannot truncate silently.
+ */
+async function loadClientMediaNotesForPosts(
+  d: Deps,
+  postIds: number[],
+): Promise<MediaNoteRow[]> {
+  if (postIds.length === 0) return [];
+  const notes = await fetchAllRows<any>((from, to) =>
+    d.db.from("post_media_notes_v")
+      .select(
+        "id, post_id, media_kind, slide_index_at_creation, current_slide_index, is_previous_version, " +
+        "t_seconds, x, visibility, author_kind, body, status, created_at",
+      )
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("visibility", "client")
+      .in("post_id", postIds)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+  if (notes.length === 0) return [];
+
+  const replyChunks = await Promise.all(
+    chunk(notes.map((n) => n.id as number)).map((ids) =>
+      fetchAllRows<any>((from, to) =>
+        d.db.from("post_media_note_replies")
+          .select("note_id, author_kind, body, created_at")
+          .eq("conta_id", d.ctx.conta_id)
+          .in("note_id", ids)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+      )
+    ),
+  );
+  const repliesByNote = new Map<number, NonNullable<MediaNoteRow["replies"]>>();
+  for (const r of replyChunks.flat()) {
+    const arr = repliesByNote.get(r.note_id) ?? [];
+    arr.push({ author_kind: r.author_kind, body: r.body, created_at: r.created_at });
+    repliesByNote.set(r.note_id, arr);
+  }
+  return notes.map((n) => ({
+    id: n.id,
+    post_id: n.post_id,
+    media_kind: n.media_kind,
+    slide_index_at_creation: n.slide_index_at_creation,
+    current_slide_index: n.current_slide_index ?? null,
+    is_previous_version: n.is_previous_version === true,
+    t_seconds: n.t_seconds == null ? null : Number(n.t_seconds),
+    x: n.x ?? null,
+    visibility: n.visibility,
+    author_kind: n.author_kind,
+    body: n.body,
+    status: n.status,
+    created_at: n.created_at,
+    replies: repliesByNote.get(n.id) ?? [],
+  }));
 }
 
 // ---- writes ------------------------------------------------------------------

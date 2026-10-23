@@ -18,8 +18,11 @@ export interface CommentThread {
   resolved_by: string | null;
   created_at: string;
   resolved_at: string | null;
-  /** 'conteudo' = TipTap mark inside conteudo; 'ig_caption' = offsets into ig_caption. */
-  field: 'conteudo' | 'ig_caption';
+  /**
+   * 'conteudo' = TipTap mark inside conteudo; 'ig_caption' = offsets into ig_caption;
+   * 'geral' = the post's single general discussion thread (no anchor, never resolved).
+   */
+  field: 'conteudo' | 'ig_caption' | 'geral';
   /** UTF-16 code-unit offsets into ig_caption. Null for 'conteudo' threads and orphans. */
   anchor_start: number | null;
   anchor_end: number | null;
@@ -116,17 +119,115 @@ export async function createCommentThread(
   return { ...thread, post_comments: [comment] } as CommentThreadWithComments;
 }
 
-export async function addPostComment(threadId: number, content: string): Promise<PostComment> {
-  const profile = await getCurrentProfile();
-  if (!profile) throw new Error('No profile');
-  const { data, error } = await supabase
-    .from('post_comments')
-    .insert({ thread_id: threadId, author_id: profile.id, content })
-    .select()
-    .single();
+/** Longest message `post_discussao_enviar` accepts (it raises `content_too_long` above it). */
+export const DISCUSSAO_MAX_CHARS = 4000;
+
+/**
+ * Sends a message to the post's internal discussion through `post_discussao_enviar`.
+ * Without `threadId` it lands in the general thread (created on the first message); with one
+ * it replies in an active passage thread of the same post. Mentions are synced inside the
+ * RPC's transaction, so there is no client-side `syncMentions` here.
+ */
+export async function sendDiscussaoMessage(
+  postId: number,
+  content: string,
+  threadId?: number,
+): Promise<PostComment> {
+  const { data, error } = await supabase.rpc('post_discussao_enviar', {
+    p_post_id: postId,
+    p_content: content,
+    p_thread_id: threadId ?? null,
+  });
   if (error) throw error;
-  await syncMentions('post_comment', data.id, membroMentionIds(content));
   return data as PostComment;
+}
+
+/** Reply in a passage thread. Delegates to the discussion RPC (mentions are synced server side). */
+export async function addPostComment(
+  postId: number,
+  threadId: number,
+  content: string,
+): Promise<PostComment> {
+  return sendDiscussaoMessage(postId, content, threadId);
+}
+
+/** Moves the caller's read watermark for the post's discussion up to `commentId`. */
+export async function markDiscussaoLida(postId: number, commentId: number): Promise<void> {
+  const { error } = await supabase.rpc('post_discussao_marcar_lido', {
+    p_post_id: postId,
+    p_comment_id: commentId,
+  });
+  if (error) throw error;
+}
+
+export async function setDiscussaoSeguindo(postId: number, seguir: boolean): Promise<void> {
+  const { error } = await supabase.rpc('post_discussao_seguir', {
+    p_post_id: postId,
+    p_seguir: seguir,
+  });
+  if (error) throw error;
+}
+
+export interface DiscussaoParticipacao {
+  seguindo: boolean;
+  lastSeenCommentId: number;
+  /** True for the post's responsible who has no participation row yet. */
+  implicito: boolean;
+}
+
+export async function getDiscussaoParticipacao(postId: number): Promise<DiscussaoParticipacao> {
+  const { data, error } = await supabase.rpc('get_post_discussao_participacao', {
+    p_post_id: postId,
+  });
+  if (error) throw error;
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    seguindo: boolean;
+    last_seen_comment_id: number | string;
+    implicito: boolean;
+  } | null;
+  if (!row) return { seguindo: false, lastSeenCommentId: 0, implicito: false };
+  return {
+    seguindo: !!row.seguindo,
+    lastSeenCommentId: Number(row.last_seen_comment_id) || 0,
+    implicito: !!row.implicito,
+  };
+}
+
+export interface DiscussaoNaoLidas {
+  postId: number;
+  workflowId: number | null;
+  total: number;
+  naoLidas: number;
+}
+
+/**
+ * Discussion totals and unread counts, by post and/or by workflow. Both lists empty means
+ * nothing to ask: returns `[]` without calling the RPC (a NULL/NULL call would be the
+ * whole workspace).
+ */
+export async function getDiscussaoNaoLidas(args: {
+  postIds?: number[];
+  workflowIds?: number[];
+}): Promise<DiscussaoNaoLidas[]> {
+  const postIds = args.postIds ?? [];
+  const workflowIds = args.workflowIds ?? [];
+  if (postIds.length === 0 && workflowIds.length === 0) return [];
+  const { data, error } = await supabase.rpc('get_post_discussao_nao_lidas', {
+    p_post_ids: postIds.length > 0 ? postIds : null,
+    p_workflow_ids: workflowIds.length > 0 ? workflowIds : null,
+  });
+  if (error) throw error;
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    postId: Number(r.post_id),
+    workflowId: r.workflow_id == null ? null : Number(r.workflow_id),
+    total: Number(r.total) || 0,
+    naoLidas: Number(r.nao_lidas) || 0,
+  }));
+}
+
+/** The post's general discussion thread (as opposed to a thread anchored to a passage). */
+export function isGeralThread(t: CommentThread): boolean {
+  return t.field === 'geral';
 }
 
 export async function updatePostComment(commentId: number, content: string): Promise<void> {

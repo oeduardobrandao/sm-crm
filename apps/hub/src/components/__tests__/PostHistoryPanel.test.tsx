@@ -414,3 +414,124 @@ describe('TextDiff', () => {
     expect(delElement?.className).not.toContain('no-underline');
   });
 });
+
+describe('PostHistoryPanel media notes', () => {
+  const base = {
+    id: 1,
+    post_id: 7,
+    media_kind: 'image' as const,
+    link_id: 100,
+    slide_index: 2,
+    is_previous_version: false,
+    t_seconds: null,
+    x: 0.4,
+    y: 0.4,
+    author: 'client' as const,
+    author_name: null,
+    body: 'Trocar a cor',
+    status: 'open' as const,
+    resolved_at: null,
+    created_at: '2026-09-01T10:30:00.000Z',
+    replies: [],
+  };
+
+  function history(over: Partial<PostHistoryResponse>): PostHistoryResponse {
+    return {
+      events: [
+        {
+          id: 1,
+          to_status: 'enviado_cliente',
+          source: 'team',
+          created_at: '2026-09-01T10:00:00.000Z',
+          post_approval_id: null,
+          snapshot: { conteudo_plain: 'texto', ig_caption: 'legenda v1' },
+        },
+      ],
+      approvals: [],
+      ...over,
+    };
+  }
+
+  beforeEach(() => {
+    mockedFetch.mockReset();
+  });
+
+  async function open(h: PostHistoryResponse) {
+    mockedFetch.mockResolvedValue(h);
+    render(<PostHistoryPanel post={makePost()} token="tok" approvals={[]} embedded />);
+    await screen.findByText('v1: enviado para aprovação');
+  }
+
+  it('renders a note entry with its anchor label, status and body', async () => {
+    await open(
+      history({
+        media_notes: [
+          base,
+          { ...base, id: 2, status: 'resolved', body: 'Feito', slide_index: 0, x: null, y: null },
+        ],
+      }),
+    );
+    expect(screen.getByText('Slide 3 · ponto 1')).toBeInTheDocument();
+    expect(screen.getByText('Trocar a cor')).toBeInTheDocument();
+    expect(screen.getByText('Em aberto')).toBeInTheDocument();
+    expect(screen.getByText('Slide 1')).toBeInTheDocument();
+    expect(screen.getByText('Resolvido')).toBeInTheDocument();
+  });
+
+  it('correction entry shows open note count', async () => {
+    await open(
+      history({
+        approvals: [
+          {
+            id: 10,
+            action: 'correcao',
+            comentario: 'ajustar',
+            motivo: 'midia',
+            is_workspace_user: false,
+            created_at: '2026-09-01T11:00:00.000Z',
+            open_note_count: 2,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText('2 comentários na mídia em aberto')).toBeInTheDocument();
+  });
+
+  it('uses the singular for one open note and shows it on an approval too', async () => {
+    await open(
+      history({
+        approvals: [
+          {
+            id: 11,
+            action: 'aprovado',
+            comentario: null,
+            motivo: null,
+            is_workspace_user: false,
+            created_at: '2026-09-01T11:00:00.000Z',
+            open_note_count: 1,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText('1 comentário na mídia em aberto')).toBeInTheDocument();
+  });
+
+  it('shows no count line when none were open', async () => {
+    await open(
+      history({
+        approvals: [
+          {
+            id: 11,
+            action: 'aprovado',
+            comentario: null,
+            motivo: null,
+            is_workspace_user: false,
+            created_at: '2026-09-01T11:00:00.000Z',
+            open_note_count: 0,
+          },
+        ],
+      }),
+    );
+    expect(screen.queryByText(/na mídia em aberto/)).toBeNull();
+  });
+});

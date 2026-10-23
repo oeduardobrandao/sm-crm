@@ -12,9 +12,15 @@ const { mockUseAuth } = vi.hoisted(() => ({
 vi.mock('@/context/AuthContext', () => ({
   useAuth: mockUseAuth,
 }));
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}));
+
+import { toast } from 'sonner';
+import { DISCUSSAO_MAX_CHARS } from '@/store/comments';
 
 import PostCommentPopover from '../PostCommentPopover';
-import { setEditorText } from '@/test/mentionEditor';
+import { editorOf, setEditorText } from '@/test/mentionEditor';
 
 const replyInput = () => screen.getByRole('textbox', { name: 'Responder...' });
 
@@ -333,6 +339,14 @@ describe('PostCommentPopover', () => {
     expect(screen.queryByTitle('Resolver')).not.toBeInTheDocument();
   });
 
+  it('shows no reply box on a resolved thread (the RPC rejects replies to it)', () => {
+    const thread = makeThread({ status: 'resolved' });
+    render(<PostCommentPopover thread={thread} {...defaultProps} />);
+
+    expect(screen.queryByRole('textbox', { name: 'Responder...' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Enviar')).not.toBeInTheDocument();
+  });
+
   it('calls onReply when submitting a reply', async () => {
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} />);
@@ -496,6 +510,52 @@ describe('PostCommentPopover', () => {
 
     const sendBtn = screen.getByText('Enviar');
     expect(sendBtn).toBeDisabled();
+  });
+
+  it('toasts and keeps the typed reply when the send fails', async () => {
+    defaultProps.onReply.mockRejectedValueOnce(new Error('thread_resolved'));
+    render(<PostCommentPopover thread={makeThread()} {...defaultProps} />);
+
+    setEditorText(replyInput(), 'Resposta que falha');
+    fireEvent.click(screen.getByText('Enviar'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Não foi possível enviar. Tente novamente.');
+    });
+    expect(editorOf(replyInput()).getText()).toBe('Resposta que falha');
+    await waitFor(() => expect(screen.getByText('Enviar')).not.toBeDisabled());
+  });
+
+  it('blocks a reply above the limit, by button and by Enter, with a visible hint', () => {
+    render(<PostCommentPopover thread={makeThread()} {...defaultProps} />);
+
+    setEditorText(replyInput(), 'a'.repeat(DISCUSSAO_MAX_CHARS + 1));
+
+    expect(screen.getByText('Enviar')).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      `Mensagem muito longa. O limite é de ${DISCUSSAO_MAX_CHARS} caracteres.`,
+    );
+    fireEvent.keyDown(replyInput(), { key: 'Enter', shiftKey: false });
+    expect(defaultProps.onReply).not.toHaveBeenCalled();
+  });
+
+  it('sends a reply exactly at the limit', async () => {
+    render(<PostCommentPopover thread={makeThread()} {...defaultProps} />);
+
+    const text = 'a'.repeat(DISCUSSAO_MAX_CHARS);
+    setEditorText(replyInput(), text);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Enviar'));
+    await waitFor(() => expect(defaultProps.onReply).toHaveBeenCalledWith(1, text));
+  });
+
+  it('keeps send disabled for a whitespace-only reply', () => {
+    render(<PostCommentPopover thread={makeThread()} {...defaultProps} />);
+
+    setEditorText(replyInput(), '   ');
+
+    expect(screen.getByText('Enviar')).toBeDisabled();
   });
 
   it('falls back to "Membro" when author is not in membros list', () => {

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FileText,
   FolderMinus,
+  MessageSquare,
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
@@ -53,6 +54,8 @@ interface PostProcessCardProps {
   onDeleteClick?: () => void;
   /** "Duplicar post": copia o post e o processo na mesma etapa. */
   onDuplicateClick?: () => void;
+  /** Unread discussion messages on this post. Badge only when > 0. */
+  discussaoNaoLidas?: number;
   /** A coluna ordena por data de publicação: a pill mostra essa data no lugar
    *  do prazo da etapa. */
   showPublishDate?: boolean;
@@ -88,6 +91,7 @@ export function PostProcessCard({
   onDeleteClick,
   onDuplicateClick,
   showPublishDate,
+  discussaoNaoLidas,
 }: PostProcessCardProps) {
   const navigate = useNavigate();
   // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
@@ -128,7 +132,9 @@ export function PostProcessCard({
     fontWeight: 700,
     padding: '0.12rem 0.5rem',
     borderRadius: '999px',
-    minWidth: 0,
+    // Keeps its full width; ellipsizes only when wider than the card alone.
+    flexShrink: 0,
+    maxWidth: '100%',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -288,6 +294,17 @@ export function PostProcessCard({
             </span>
           </span>
         </div>
+        {discussaoNaoLidas != null && discussaoNaoLidas > 0 && (
+          <span
+            className="board-card-discussao-badge"
+            role="img"
+            aria-label={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+            title={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+          >
+            <MessageSquare className="h-3 w-3" aria-hidden="true" />
+            {discussaoNaoLidas}
+          </span>
+        )}
         <span
           className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual post-fluxo-tag--icon-only"
           role="img"
@@ -299,12 +316,15 @@ export function PostProcessCard({
         </span>
       </div>
 
+      {/* Wraps instead of squeezing: when both pills don't fit, the status chip
+          drops below rather than cutting the deadline off. */}
       <div
         style={{
           display: 'flex',
+          flexWrap: 'wrap',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '0.4rem',
+          gap: '0.35rem 0.4rem',
         }}
       >
         {publicacao ? (
@@ -325,7 +345,7 @@ export function PostProcessCard({
             tipoPrazo={entity.step.tipo_prazo}
           />
         )}
-        <span className="board-card-type-status-chip" style={{ flexShrink: 0 }}>
+        <span style={{ display: 'inline-flex', flexShrink: 0 }}>
           <PostStatusChip post={post} registry={registry} />
         </span>
       </div>

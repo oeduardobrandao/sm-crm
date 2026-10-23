@@ -20,7 +20,11 @@ export function matchesTipo(i: MensagemFeedItem, tipo: MensagensTipoFilter): boo
     case 'mensagens':
       return i.source === 'mensagem' || (i.source === 'post_feedback' && i.action === 'mensagem');
     case 'aprovacoes':
-      return i.source === 'post_feedback' && (i.action === 'aprovado' || i.action === 'correcao');
+      return (
+        (i.source === 'post_feedback' && (i.action === 'aprovado' || i.action === 'correcao')) ||
+        i.source === 'media_note' ||
+        i.source === 'media_note_reply'
+      );
     case 'sugestoes':
       return i.source === 'edit_suggestion';
   }
@@ -61,8 +65,20 @@ export function conversaPreview(c: MensagemConversa): string {
     if (c.last_action === 'correcao') return c.last_content?.trim() || 'Pediu correção';
   }
   const text = c.last_content?.trim() ?? '';
+  if (c.last_source === 'media_note') return `Comentário na mídia: ${text}`;
   if (c.last_is_workspace_user) return `${c.last_author_name ?? 'Equipe'}: ${text}`;
   return text;
+}
+
+const MEDIA_NOTE_LABEL = 'Comentário na mídia';
+const MEDIA_NOTE_REPLY_LABEL = 'Resposta a um comentário na mídia';
+
+/** Label shown above a media-note bubble (client note pinned to a post's media,
+ * or a team reply to one); null for every other feed source. */
+export function mediaNoteLabel(i: MensagemFeedItem): string | null {
+  if (i.source === 'media_note') return MEDIA_NOTE_LABEL;
+  if (i.source === 'media_note_reply') return MEDIA_NOTE_REPLY_LABEL;
+  return null;
 }
 
 /** Centered event row inside a thread: commentless approvals/corrections and

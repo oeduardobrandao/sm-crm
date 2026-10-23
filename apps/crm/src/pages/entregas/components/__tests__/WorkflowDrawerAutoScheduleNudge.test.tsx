@@ -11,6 +11,14 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // renderDrawer shape) and adds only the nudge-specific plumbing.
 
 // Desktop layout; the phone branch has its own suite (WorkflowDrawerPhone.test.tsx).
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 // Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
@@ -191,6 +199,25 @@ vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
 }));
 vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
   default: () => <div data-testid="post-comment-summary-stub" />,
+}));
+// The post's team discussion mounts a MentionEditor (needs getMembros on the @/store mock)
+// and useDiscussao opens a realtime channel (this supabase stub has no channel/rpc):
+// stub both, they have their own suites.
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: () => <div data-testid="discussao-equipe-stub" />,
+  DiscussaoTimeline: () => null,
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: () => ({
+    participacao: undefined,
+    isParticipant: false,
+    naoLidas: 0,
+    unreadAnchorId: null,
+    send: async () => {},
+    sending: false,
+    toggleSeguir: async () => {},
+    sectionRef: () => {},
+  }),
 }));
 vi.mock('@/pages/entregas/components/PostTimelinePopover', () => ({
   PostTimelinePopover: () => <div data-testid="post-timeline-popover-stub" />,

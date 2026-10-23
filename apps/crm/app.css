@@ -5440,6 +5440,26 @@ body.role-agent input[name='valor_total'] {
   background: var(--surface-3);
 }
 
+/* Mensagens não lidas da discussão do post (ou da soma dos posts do fluxo). */
+
+.board-card-discussao-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-main);
+  font-size: 0.65rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.board-card-discussao-badge svg {
+  color: var(--primary-color);
+}
+
 .board-card-drag-handle {
   color: var(--text-muted);
 }
@@ -6308,6 +6328,19 @@ body.role-agent input[name='valor_total'] {
   flex-shrink: 0;
 }
 
+/* Não lidas na discussão (só para quem participa e segue): número em destaque e ponto. */
+.drawer-post-comment-badge--unread {
+  color: var(--text-main);
+}
+
+.drawer-post-comment-badge--unread::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary-color);
+}
+
 .drawer-post-preview {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -6902,17 +6935,6 @@ body.role-agent input[name='valor_total'] {
   gap: 0.5rem;
 }
 
-.drawer-thread-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
 .approval-bubble {
   padding: 0.5rem 0.65rem;
   border-radius: 8px;
@@ -6953,6 +6975,315 @@ body.role-agent input[name='valor_total'] {
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.45;
+}
+
+/* Feedback em mídia: client notes in the conversation */
+
+.client-conversation__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.client-conversation__filter {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.client-conversation__filter[aria-pressed='true'] {
+  background: var(--text-main);
+  border-color: var(--text-main);
+  color: var(--bg-color);
+}
+
+.client-conversation__empty {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.client-conversation__approval {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.client-conversation__flag {
+  align-self: flex-start;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(245, 163, 66, 0.18);
+  color: var(--text-main);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.client-conversation__summary {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.client-conversation--phone .drawer-thread-label {
+  display: none;
+}
+
+.media-note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-main);
+  font-size: 0.82rem;
+}
+
+.media-note-card--resolved {
+  opacity: 0.8;
+}
+
+.media-note-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.media-note-card__anchor {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-main);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.media-note-card__anchor--static {
+  cursor: default;
+}
+
+.media-note-card__status {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.media-note-card__status--open {
+  color: #b45309;
+}
+
+[data-theme='dark'] .media-note-card__status--open {
+  /* The warning token clears AA on the dark surface; #b45309 does not. */
+  color: var(--warning);
+}
+
+.media-note-card__status--resolved {
+  color: var(--text-muted);
+}
+
+.media-note-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.media-note-card__body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.media-note-card__replies {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0 0 0 0.6rem;
+  list-style: none;
+  border-left: 2px solid var(--border-color);
+}
+
+.media-note-card__reply--team .media-note-card__meta strong {
+  color: var(--text-main);
+}
+
+.media-note-card__reply-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.media-note-card__reply-row .drawer-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.media-note-card__toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.media-note-card__toggle:hover:not(:disabled) {
+  color: var(--text-main);
+}
+
+/* Pins over the media preview (lightbox): ink = client, dashed = internal */
+
+.crm-pin-anchor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+/* Each anchor is its own stacking context (transform): lift the one with open details so a
+   later sibling's pin cannot paint over the panel. */
+.crm-pin-anchor[data-open='true'] {
+  z-index: 2;
+}
+
+.crm-pin {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #12151a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* While placing, the layer owns the click: pins must not swallow it. */
+.crm-pin-layer--placing .crm-pin {
+  pointer-events: none;
+}
+
+.crm-pin[data-visibility='internal'] {
+  border: 2px dashed #12151a;
+  background: #ffffff;
+  color: #12151a;
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Resolved comes after internal and is more specific, so a resolved internal pin reads as
+   resolved: faded, dashed outline kept so it is still told apart from a client pin. */
+.crm-pin[data-state='resolved'] {
+  border-color: #12151a;
+  background: rgba(255, 255, 255, 0.85);
+  color: #12151a;
+}
+
+.crm-pin[data-visibility='internal'][data-state='resolved'] {
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.7),
+    0 1px 4px rgba(0, 0, 0, 0.35);
+  opacity: 0.8;
+}
+
+.crm-pin--draft {
+  background: transparent;
+  box-shadow: 0 0 0 2px #12151a;
+  pointer-events: none;
+}
+
+.crm-pin-details {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 2;
+  width: 14rem;
+  max-width: 70vw;
+  padding: 0.5rem 0.6rem;
+  transform: translateX(-50%);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #12151a;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: left;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  cursor: default;
+  /* The layer is pointer-events: none outside placing mode; the panel must opt back in. */
+  pointer-events: auto;
+}
+
+.crm-pin-details__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.7rem;
+  color: #4b5563;
+}
+
+.crm-pin-details__meta strong {
+  color: #12151a;
+}
+
+.crm-pin-details__body {
+  margin: 0 0 0.4rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.crm-pin-details__actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.crm-pin-details__actions button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.phone-media__notes {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #12151a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 /* Reply row */
@@ -8351,6 +8682,10 @@ a.mention-chip:hover {
   cursor: not-allowed;
 }
 
+.comment-popover-limit {
+  padding: 0 0.75rem 0.5rem;
+}
+
 /* Edit mode inline input */
 
 .comment-edit-input {
@@ -8633,6 +8968,441 @@ a.mention-chip:hover {
   font-size: 0.65rem;
   color: var(--text-muted);
   margin-left: auto;
+}
+
+/* ── Discussão da equipe (post editor, desktop) ─────────────── */
+
+.discussao {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.discussao-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.discussao-header-icon {
+  color: var(--text-main);
+  flex-shrink: 0;
+}
+
+.discussao-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.discussao-badge {
+  gap: 0.25rem;
+}
+
+.discussao-header-spacer {
+  flex: 1;
+}
+
+.discussao-follow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 32px;
+  padding: 0 0.625rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.discussao-follow:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+.discussao-follow:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.discussao-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.discussao-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.discussao-divider::before,
+.discussao-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.discussao-divider--unread {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.discussao-divider--unread::before {
+  height: 2px;
+  background: var(--primary-color);
+}
+
+.discussao-divider--unread::after {
+  display: none;
+}
+
+.discussao-message {
+  display: flex;
+  gap: 0.625rem;
+}
+
+.discussao-avatar {
+  flex-shrink: 0;
+}
+
+.discussao-message-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.discussao-message-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  min-height: 1.25rem;
+}
+
+.discussao-message-author {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.discussao-message-time,
+.discussao-message-edited {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.discussao-message-actions {
+  display: inline-flex;
+  gap: 0.125rem;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.discussao-message:hover .discussao-message-actions,
+.discussao-message-actions:focus-within {
+  opacity: 1;
+}
+
+/* Touch tablets run the desktop layout (768-1100px) with no hover to reveal them. */
+@media (hover: none) {
+  .discussao-message-actions {
+    opacity: 1;
+  }
+}
+
+.discussao-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.discussao-icon-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+.discussao-icon-btn--danger:hover:not(:disabled) {
+  color: var(--danger-text);
+}
+
+.discussao-message-text {
+  margin: 0.125rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-main);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.discussao-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.discussao-edit-actions {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.discussao-edit-save,
+.discussao-edit-cancel {
+  height: 28px;
+  padding: 0 0.625rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.discussao-edit-save {
+  border: none;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
+}
+
+.discussao-edit-cancel {
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-main);
+}
+
+.discussao-edit-save:disabled,
+.discussao-edit-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.discussao-thread {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.discussao-thread:hover {
+  border-color: var(--text-light);
+}
+
+.discussao-thread--resolved {
+  opacity: 0.75;
+}
+
+.discussao-thread-icon {
+  margin-top: 0.125rem;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.discussao-thread-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.discussao-thread-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.discussao-thread-author {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.discussao-thread-chip {
+  margin-left: 0.375rem;
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.625rem;
+  font-weight: 600;
+}
+
+.discussao-thread-quote {
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--primary-color);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.discussao-thread-preview {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.discussao-thread-count--new {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.discussao-thread-link {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-light);
+  white-space: nowrap;
+}
+
+.discussao-resolved {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.discussao-resolved-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.discussao-resolved-toggle:hover {
+  color: var(--text-main);
+}
+
+.discussao-composer-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.discussao-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.375rem 0.375rem 0.375rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--card-bg);
+}
+
+.discussao-composer:focus-within {
+  border-color: var(--primary-color);
+}
+
+.discussao-composer-field,
+.discussao-edit-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.discussao-input {
+  padding: 0.375rem 0;
+  font-size: 0.8125rem;
+  font-family: var(--font-main);
+  color: var(--text-main);
+  outline: none;
+}
+
+.discussao-edit-field .discussao-input {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--primary-color);
+  border-radius: 6px;
+  background: var(--card-bg);
+}
+
+.discussao-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: var(--cta-bg);
+  color: var(--cta-fg);
+  cursor: pointer;
+}
+
+.discussao-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.discussao-hint {
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.discussao-limit {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--danger-text);
+}
+
+.discussao-follow:focus-visible,
+.discussao-icon-btn:focus-visible,
+.discussao-thread:focus-visible,
+.discussao-resolved-toggle:focus-visible,
+.discussao-send:focus-visible,
+.discussao-edit-save:focus-visible,
+.discussao-edit-cancel:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* Section relabel: "Conversa com o cliente" (post_approvals) */
+
+.drawer-client-thread-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.drawer-client-thread-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.drawer-client-thread-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 /* ── Edit Workflow Modal toolbar (ações de navegação, abaixo do título) ─────── */
@@ -17462,7 +18232,128 @@ button.phone-stat-tile:active {
 }
 
 .phone-comments__composer {
+  align-items: flex-end;
   gap: 8px;
+}
+
+.phone-comments__pills {
+  display: flex;
+  gap: 8px;
+}
+
+.phone-comments__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.phone-comments__pill[aria-pressed='true'] {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+
+.phone-comments__pill svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* Both panes stay mounted; the inactive one is only hidden (its composer is a fixed bar,
+   which an ancestor with display: none hides too). */
+.phone-comments__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.phone-comments__pane[hidden] {
+  display: none;
+}
+
+.phone-comments__team-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+
+.phone-comments__team-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.phone-comments__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  cursor: pointer;
+}
+
+.phone-comments__icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.phone-comments__icon-btn:disabled {
+  opacity: 0.4;
+}
+
+/* Marker for the read position: the end of the timeline, above the fixed composer. */
+.phone-comments__end {
+  height: 1px;
+  margin-top: -14px;
+}
+
+.phone-comments__editor {
+  flex: 1;
+  min-width: 0;
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--phone-separator);
+  border-radius: 20px;
+  background: var(--phone-cell);
+}
+
+.phone-comments__editor-input {
+  min-height: 38px;
+  padding: 9px 14px;
+  box-sizing: border-box;
+  color: var(--phone-label);
+  font-family: inherit;
+  /* 16px keeps iOS from zooming the page when the field is focused. */
+  font-size: 16px;
+  line-height: 20px;
+  outline: none;
+}
+
+/* Edit/delete on own messages are hover-revealed on desktop; a touch screen has no hover. */
+.phone-comments .discussao-message-actions {
+  opacity: 1;
+}
+
+.phone-comments .discussao-icon-btn {
+  width: 32px;
+  height: 32px;
 }
 
 .phone-comments__input {

@@ -1,4 +1,4 @@
-import type { Ref } from 'react';
+import { useEffect, type Ref } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +6,14 @@ import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 // The phone header now carries the shell's help links and bell (PhonePageHeader); their
 // own suites cover them, and they need the KB query and notifications.
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
 vi.mock('@/components/layout/PhoneShellHeader', () => ({
   PhoneShellActions: () => <div data-testid="shell-actions" />,
 }));
@@ -647,23 +655,42 @@ vi.mock('../views/PostsListView', () => ({
   ),
 }));
 
+// Counts WorkflowDrawer mounts: a `&discussao=1` link to the post that is already open must
+// refocus without remounting it (a remount drops the typed drafts and unsaved edits).
+const drawerMounts = vi.hoisted(() => ({ count: 0 }));
+function DrawerMountProbe() {
+  useEffect(() => {
+    drawerMounts.count += 1;
+  }, []);
+  return null;
+}
+
 vi.mock('../components/WorkflowDrawer', () => ({
   WorkflowDrawer: ({
     card,
     onClose,
     initialPostId,
+    focusRequest,
+    onDiscussaoFocused,
     onOpenWorkflow,
     onDetachedKeepingProcess,
   }: {
     card: { workflow: { titulo: string } };
     onClose: () => void;
     initialPostId?: number;
+    focusRequest?: number;
+    onDiscussaoFocused?: () => void;
     onOpenWorkflow?: (workflowId: number, seed?: unknown) => void;
     onDetachedKeepingProcess?: (postIds: number[]) => void;
   }) => (
     <div>
       <div>Workflow drawer: {card.workflow.titulo}</div>
       <div data-testid="drawer-initial-post">{initialPostId ?? 'none'}</div>
+      <div data-testid="drawer-focus-discussao">{String(!!focusRequest)}</div>
+      <div data-testid="drawer-focus-request">{focusRequest ?? 0}</div>
+      <DrawerMountProbe />
+      <input aria-label="Drawer draft" />
+      <button onClick={onDiscussaoFocused}>Drawer focused discussao</button>
       <button onClick={onClose}>Close drawer</button>
       <button onClick={() => onOpenWorkflow?.(99)}>Move posts to workflow 99</button>
       <button
@@ -692,15 +719,18 @@ vi.mock('../components/WorkflowDrawer', () => ({
 vi.mock('../components/StandalonePostDrawer', () => ({
   StandalonePostDrawer: ({
     postId,
+    focusRequest,
     onClose,
     onAttached,
   }: {
     postId: number;
+    focusRequest?: number;
     onClose: () => void;
     onAttached: (workflowId: number, postId: number) => void;
   }) => (
     <div>
       <div>Standalone drawer: {postId}</div>
+      <div data-testid="standalone-focus-discussao">{String(!!focusRequest)}</div>
       <button onClick={onClose}>Close standalone drawer</button>
       <button onClick={() => onAttached(2, postId)}>Attach standalone post to fluxo 2</button>
     </div>
@@ -828,6 +858,9 @@ function DeepLinkProbe() {
     <>
       <button onClick={() => navigate('/entregas?drawer=2&post=5')}>Deep link from search</button>
       <button onClick={() => navigate('/entregas?post=5')}>Deep link to bare post</button>
+      <button onClick={() => navigate('/entregas?drawer=2&post=5&discussao=1')}>
+        Deep link with discussao
+      </button>
     </>
   );
 }
@@ -1390,6 +1423,121 @@ describe('EntregasPage', () => {
 
     expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
     expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+  });
+
+  describe('&discussao=1 deep link', () => {
+    const boardWithFluxo2 = () =>
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+        membros: [{ id: 7, nome: 'Ana' }],
+        templates: [],
+        cards: [
+          makeCard({
+            workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+          }),
+        ],
+        activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+
+    it('asks the workflow drawer to focus the discussion and drops discussao from the URL like post', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5&discussao=1');
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('stops asking once the drawer reports it handled the link', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5&discussao=1');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      fireEvent.click(screen.getByText('Drawer focused discussao'));
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+    });
+
+    it('does not focus the discussion without discussao=1', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+    });
+
+    it('ignores discussao=1 when the link names no post', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&discussao=1');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+    });
+
+    it('works for a post avulso (?post= only)', async () => {
+      boardWithFluxo2();
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 5,
+        workflow_id: null,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+      renderPage('/entregas?post=5&discussao=1');
+      expect(await screen.findByText('Standalone drawer: 5')).toBeInTheDocument();
+      expect(screen.getByTestId('standalone-focus-discussao')).toHaveTextContent('true');
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('survives the bare-post hand-off to a workflow drawer', async () => {
+      boardWithFluxo2();
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 5,
+        workflow_id: 2,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+      renderPage('/entregas?post=5&discussao=1');
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+    });
+
+    it('a re-link to the post that is already open refocuses without remounting the drawer', async () => {
+      boardWithFluxo2();
+      drawerMounts.count = 0;
+      renderPage('/entregas?drawer=2&post=5&discussao=1');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      expect(screen.getByTestId('drawer-focus-request')).toHaveTextContent('1');
+      expect(drawerMounts.count).toBe(1);
+
+      // The drawer applied the first request and the user starts typing in it.
+      fireEvent.click(screen.getByText('Drawer focused discussao'));
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+      fireEvent.change(screen.getByLabelText('Drawer draft'), { target: { value: 'rascunho' } });
+
+      // A notification for the same post is clicked.
+      fireEvent.click(screen.getByText('Deep link with discussao'));
+      await waitFor(() => {
+        expect(screen.getByTestId('drawer-focus-request')).toHaveTextContent('2');
+      });
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+      // Same drawer instance: not remounted, so the draft survives.
+      expect(drawerMounts.count).toBe(1);
+      expect(screen.getByLabelText('Drawer draft')).toHaveValue('rascunho');
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('a link that arrives while already on /entregas works too', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas');
+      fireEvent.click(screen.getByText('Deep link with discussao'));
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+    });
   });
 
   describe('bare ?post= deep link (no ?drawer=)', () => {

@@ -56,6 +56,7 @@ export function PostagensPage() {
     data,
     posts,
     postApprovals,
+    mediaNotes,
     isLoading,
     isError,
     loadOlder,
@@ -316,6 +317,7 @@ export function PostagensPage() {
           currentId={currentId}
           token={token}
           approvals={singlePost ? (single.data?.postApprovals ?? []) : approvals}
+          mediaNotes={singlePost ? (single.data?.mediaNotes ?? []) : mediaNotes}
           standalone={!!singlePost}
           instagramProfile={instagramProfile}
           workspaceName={bootstrap.workspace.name}

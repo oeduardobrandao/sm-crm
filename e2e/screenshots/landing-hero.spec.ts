@@ -23,6 +23,13 @@ const CAMILA_URI =
  * blocks rewrite text/numbers in the DOM before the shot so the marketing
  * image reads as a healthy workspace; nothing is persisted.
  *
+ * The MacBook dark render (public/landing/hero-macbook-dark.webp, 1800x1087)
+ * was refreshed for the Vidro look by pasting the new capture into the
+ * existing composite instead of the raw bezel: screen panel x 185..1614,
+ * y 27..956 (1430x930, the 1512:982 panel), top corners r=8, notch x 813..986
+ * down to y 56; mask drawn at 4x and box-downsampled, capture Lanczos-scaled
+ * into the panel, then -1200w/-760w regenerated at webp q75 (kept at or under the old byte weight: it is the LCP image).
+ *
  * The committed hero assets (public/landing/hero-macbook.webp and
  * hero-iphone.webp) are these captures composited into Apple's official
  * product bezels — MacBook Pro M5 14" Space Black and iPhone 16 Pro Black
@@ -41,41 +48,70 @@ test.describe.configure({ mode: 'serial' });
 test('macbook: crm entregas (dressed)', async ({ page }) => {
   const violations = await installSafetyNet(page);
 
+  // Load straight into the shell the hero shows: Vidro look in dark, with the
+  // launch intro, the "Como funciona" explainer and the tour already
+  // dismissed. Reads only -- localStorage is never written.
+  await page.addInitScript(() => {
+    const get = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (key: string) {
+      if (key === 'theme') return 'dark';
+      if (key.startsWith('vidro-intro:')) return '1';
+      if (key.startsWith('entregas_explainer_dismissed_') || key.startsWith('entregas_tour_done_'))
+        return 'true';
+      return get.call(this, key);
+    };
+  });
+
   // Match the Apple MacBook Pro 14" bezel's screen panel (1512x982 pt).
   await page.setViewportSize({ width: 1512, height: 982 });
   await page.goto('/entregas');
   await page.locator('nav#sidebar').waitFor();
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(2000);
-  const fechar = page.getByRole('button', { name: 'Fechar explicação' });
-  if (await fechar.isVisible().catch(() => false)) await fechar.click();
-  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => document.documentElement.dataset.look)).toBe('vidro');
   // The multi-etapa board lives under the "Produção de Conteúdo" template group.
   await page
     .locator('button, [role="tab"]')
     .filter({ hasText: /produção de conteúdo/i })
     .first()
     .click();
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(1500);
 
-  // Marketing dressing: anonymize every name and neutralize overdue markers so
-  // the shot reads as a healthy, fictional workspace. Screenshot-only —
-  // nothing is persisted anywhere.
-  await page.evaluate((camila) => {
+  // Every real name on screen, collected before dressing so the self-check
+  // below can prove none survived into the marketing image.
+  const realNames: string[] = await page.evaluate(() => {
+    const names = new Set<string>(['DK TESTE', 'Test User', 'Débora Kristin']);
+    document
+      .querySelectorAll('.board-card-client span[role="link"]')
+      .forEach((el) => names.add(el.textContent?.trim() ?? ''));
+    names.delete('');
+    return [...names];
+  });
+
+  // Marketing dressing: anonymize every name and turn overdue markers into
+  // upcoming due dates so the shot reads as a healthy, fictional workspace.
+  // Screenshot-only -- nothing is persisted anywhere.
+  await page.evaluate(() => {
     const RENAMES: Array<[RegExp, string]> = [
       [/Dra\. Marina Pacheco/g, 'Bella Moda'],
       [/Dr\. Rafael Nunes/g, 'Café da Manhã'],
       [/Dra\. Helena Costa/g, 'Clínica Raiz'],
       [/Studio Bem-Estar/g, 'Studio Vilma'],
       [/Débora Kristin|Test User/g, 'Ana Ribeiro'],
-      [/Campanha Abril — Posts \+ Reels/g, 'Campanha de Setembro'],
-      [/Lançamento Procedimento/g, 'Novo cardápio de inverno'],
+      [/DK TESTE/g, 'Aura Social'],
+      [/Campanha Abril — Posts \+ Reels/g, 'Campanha de Novembro'],
+      [/Lançamento Procedimento/g, 'Novo cardápio de verão'],
       [/Série Educativa — Reels/g, 'Série Educativa em Reels'],
       [/\s—\s(?:MP|HC|RN|BE|VP)\b/g, ''],
-      [/iniciada em .+/g, 'iniciada em 28 de ago.'],
-      [/\s*[·•]\s*9 atrasados/g, ''],
     ];
-    const INITIALS: Record<string, string> = { DM: 'BM', DH: 'CR', SB: 'SV', DK: 'AR', TU: 'AR' };
+    const INITIALS: Record<string, string> = {
+      DM: 'BM',
+      DH: 'CR',
+      DR: 'CM',
+      SB: 'SV',
+      DK: 'AR',
+      TU: 'AR',
+    };
     const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const textNodes: Text[] = [];
     for (let n = tw.nextNode(); n; n = tw.nextNode()) textNodes.push(n as Text);
@@ -87,75 +123,87 @@ test('macbook: crm entregas (dressed)', async ({ page }) => {
       if (t !== n.textContent) n.textContent = t;
     }
 
-    const walk = (fn: (el: HTMLElement) => void) =>
-      document.querySelectorAll<HTMLElement>('body *').forEach(fn);
+    const leaves = () =>
+      [...document.querySelectorAll<HTMLElement>('body *')].filter(
+        (el) => el.children.length === 0,
+      );
 
-    // Red overdue counter in the header ("· 9 atrasados"), stale start dates,
-    // and danger-red progress bars.
-    walk((el) => {
+    // Header "9 atrasados" chip, the plan badge beside the workspace name and
+    // the floating help-articles button (it covers the last column).
+    leaves().forEach((el) => {
       const t = el.textContent?.trim() ?? '';
-      if (el.children.length === 0 && (/atrasados$/.test(t) || /^[·•]$/.test(t)))
-        el.style.display = 'none';
-      if (el.children.length === 0 && /^iniciada/.test(t))
-        el.textContent = 'iniciada em 28 de ago.';
-      const bg = getComputedStyle(el).backgroundColor;
-      const rgb = /^rgba?\((\d+), (\d+), (\d+)/.exec(bg);
-      if (rgb && +rgb[1] > 190 && +rgb[2] < 130 && +rgb[3] < 130) {
-        el.style.background = '#3ecf8e';
-        el.style.backgroundImage = 'none';
-      }
+      if (/^\d+ atrasados$/.test(t) || t === 'Lifetime') el.style.display = 'none';
+    });
+    document
+      .querySelectorAll<HTMLElement>('.context-help__trigger')
+      .forEach((el) => (el.style.display = 'none'));
+
+    // The test workspace has two unnamed template groups; give them the names
+    // a real agency would use.
+    const groupNames = ['Publicação', 'Produção'];
+    let gi = 0;
+    leaves().forEach((el) => {
+      if (el.textContent?.trim() === 'Etapas personalizadas' && gi < groupNames.length)
+        el.textContent = groupNames[gi++];
     });
 
-    // Overdue pills on cards → friendly due-date labels
-    const due = ['entrega sex', 'entrega qui', 'entrega 12/09', 'entrega 15/09', 'entrega ter'];
+    // React renders these as several adjacent text nodes, so rewrite the whole
+    // leaf element instead of a single node.
+    leaves().forEach((el) => {
+      const t = el.textContent?.trim() ?? '';
+      if (/^iniciada em /.test(t)) el.textContent = 'iniciada em 20 de out.';
+      if (/^21 fluxos · \d+ posts$/.test(t)) el.textContent = '21 fluxos · 64 posts';
+    });
+
+    // Overdue pills -> upcoming due dates, in the on-time colour. The relative
+    // text is a bare text node beside the "úteis" span.
+    const due = ['3d restantes', '5d restantes', '2d restantes', '6d restantes', '4d restantes'];
     let di = 0;
-    walk((el) => {
-      if (el.children.length === 0 && /^\d+d atrasado$/.test(el.textContent?.trim() ?? '')) {
-        el.textContent = due[di++ % due.length];
-        el.style.background = '#f1f5f9';
-        el.style.color = '#374151';
-      }
+    document.querySelectorAll<HTMLElement>('.board-card-deadline-pill').forEach((pill) => {
+      const node = [...pill.querySelectorAll('*'), pill]
+        .flatMap((el) => [...el.childNodes])
+        .find((n) => n.nodeType === Node.TEXT_NODE && /\d+d atrasado/.test(n.textContent ?? ''));
+      if (!node) return;
+      node.textContent = (node.textContent ?? '').replace(/\d+d atrasado/, due[di++ % due.length]);
+    });
+    // The card carries the tone too (.deadline-overdue .board-card-deadline).
+    document
+      .querySelectorAll('.deadline-overdue')
+      .forEach((el) => el.classList.replace('deadline-overdue', 'deadline-ok'));
+
+    // Posts chips: the test workspace has almost no posts attached.
+    const counts = ['6 posts · 2 ✓', '4 posts', '8 posts · 5 ✓', '3 posts · 3 ✓', '5 posts'];
+    let ci = 0;
+    document.querySelectorAll<HTMLElement>('.board-card-posts-chip').forEach((chip) => {
+      const label = [...chip.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE);
+      label.forEach((n, i) => (n.textContent = i === 0 ? counts[ci++ % counts.length] : ''));
     });
 
-    // Hide the empty "Roteiro" column so the frame fills with busy columns
-    walk((ph) => {
-      if (ph.children.length !== 0 || ph.textContent?.trim() !== 'Nenhuma entrega') return;
+    // Hide the empty "Roteiro" column so the frame fills with busy columns.
+    leaves().forEach((ph) => {
+      if (ph.textContent?.trim() !== 'Nenhuma entrega') return;
       let col: HTMLElement = ph;
       while (col.parentElement && col.parentElement.offsetWidth <= 600) col = col.parentElement;
       col.style.display = 'none';
     });
 
-    // Tiny avatar photos: Camila's generated portrait for Café da Manhã,
-    // plain brand-colored dots elsewhere (anonymized)
+    // Photos (client avatars, the user's own): brand-coloured dots.
     document.querySelectorAll<HTMLImageElement>('main img, nav img').forEach((img) => {
       if (img.clientWidth > 0 && img.clientWidth <= 48 && img.clientHeight <= 48) {
-        const chipText = img.parentElement?.parentElement?.textContent ?? '';
-        if (chipText.includes('Café da Manhã')) {
-          img.src = camila;
-          img.style.objectFit = 'cover';
-          return;
-        }
         const dot = document.createElement('span');
         dot.style.cssText = `display:inline-block;width:${img.clientWidth}px;height:${img.clientHeight}px;border-radius:9999px;background:#FFBF30;flex-shrink:0`;
         img.replaceWith(dot);
       }
     });
-  }, CAMILA_URI);
-  await page.waitForTimeout(600);
-  await shoot(page, SLUG, 1, 'crm-dashboard');
-
-  // Dark variant: the CRM theme is pure CSS keyed off data-theme, so flipping
-  // the attribute is enough; re-tint the inline-styled due pills for dark.
-  await page.evaluate(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    document.querySelectorAll<HTMLElement>('body *').forEach((el) => {
-      if (el.children.length === 0 && /^entrega /.test(el.textContent?.trim() ?? '')) {
-        el.style.background = 'rgba(255,255,255,.08)';
-        el.style.color = '#9ca3af';
-      }
-    });
   });
   await page.waitForTimeout(600);
+
+  const leaked = await page.evaluate(
+    (names) => names.filter((n) => document.body.innerText.includes(n)),
+    realNames,
+  );
+  expect(leaked, 'real names survived the dressing').toEqual([]);
+
   await shoot(page, SLUG, 3, 'crm-dashboard-dark');
 
   assertNoViolations(violations);

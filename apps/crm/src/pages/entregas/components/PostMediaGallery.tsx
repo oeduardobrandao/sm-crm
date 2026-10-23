@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
@@ -15,6 +15,7 @@ import {
   Plus,
   Star,
   Move,
+  MessageSquare,
 } from 'lucide-react';
 import { sanitizeUrl } from '@/utils/security';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
@@ -58,7 +59,16 @@ import { getIntlLocale } from '@mesaas/i18n';
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
 import { MediaUnavailable } from '../../../components/MediaUnavailable';
-import { PostMediaLightbox } from './PostMediaLightbox';
+import { PostMediaLightbox, type InternalNoteInput } from './PostMediaLightbox';
+// By path, not through the store barrel: the drawer test harnesses mock '@/store'.
+import {
+  createInternalMediaNote,
+  openNotesOnLink,
+  setMediaNoteStatus,
+  type MediaNote,
+} from '@/store/mediaNotes';
+import { ResolveNotesPrompt } from './mediaNotes/ResolveNotesPrompt';
+import type { MediaNoteAuthors } from './mediaNotes/MediaNoteCard';
 import { FilePickerModal } from '../../arquivos/components/FilePickerModal';
 import { linkFileToPost, unlinkFileFromPost } from '../../../services/fileService';
 
@@ -81,6 +91,16 @@ interface PostMediaGalleryProps {
   /** `phone`: the horizontal strip of the phone editor ("N de 10", Capa, Adicionar),
    *  long-press menu per item and an explicit Reordenar mode (D20). Default: the grid. */
   variant?: 'grid' | 'phone';
+  /** Client and internal notes pinned to this post's media (feedback em mídia). Omitted
+   *  where there is no client approval step (express posts): no pins, no resolve prompt. */
+  notes?: MediaNote[];
+  /** Called after this gallery changed notes (resolved them, added an internal one). */
+  onNotesChanged?: () => void | Promise<void>;
+  /** A conversation anchor chip asked to see this media item. Open the lightbox on it;
+   *  `nonce` makes a repeated request for the same item open it again. */
+  openLinkRequest?: { linkId: number; nonce: number } | null;
+  /** Names for the author line in a pin's details. */
+  noteAuthors?: MediaNoteAuthors;
 }
 
 // Mirror of CAROUSEL_MAX_ITEMS in
@@ -113,6 +133,10 @@ export function PostMediaGallery({
   instagramPermalink,
   tiktokPostUrl,
   variant = 'grid',
+  notes,
+  onNotesChanged,
+  openLinkRequest,
+  noteAuthors,
 }: PostMediaGalleryProps) {
   const phone = variant === 'phone';
   const { t } = useTranslation('posts');
@@ -219,6 +243,75 @@ export function PostMediaGallery({
     queueSweepTimers.current.add(id);
   }
   const [movingCover, setMovingCover] = useState(false);
+
+  // ── Feedback em mídia ──────────────────────────────────────────────────────────
+  // Open notes (client + internal, current file only) per media item, for the tile badges.
+  const openNoteCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const n of notes ?? []) {
+      if (n.status !== 'open' || n.is_previous_version || n.current_link_id == null) continue;
+      counts.set(n.current_link_id, (counts.get(n.current_link_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [notes]);
+
+  // After a slide is replaced or removed, offer to close the open notes on it.
+  const [resolvePrompt, setResolvePrompt] = useState<{
+    ids: number[];
+    kind: 'image' | 'video';
+  } | null>(null);
+  const adjustNotes = useRef<{ ids: number[]; kind: 'image' | 'video' }>({
+    ids: [],
+    kind: 'image',
+  });
+  // Every open note on the file, the client's and the team's internal ones: it matches
+  // the tile badge, and none of them points at what was replaced.
+  const openIdsOn = (linkId: number) => openNotesOnLink(notes ?? [], linkId).map((n) => n.id);
+  const offerResolve = (ids: number[], kind: 'image' | 'video') => {
+    if (ids.length > 0) setResolvePrompt({ ids, kind });
+  };
+  async function confirmResolve() {
+    const ids = resolvePrompt?.ids;
+    setResolvePrompt(null);
+    if (!ids || ids.length === 0) return;
+    await changeNoteStatus(ids, 'resolved');
+  }
+  /** Resolve / reopen, then refresh. Returns false when the change itself failed (after a
+   *  pt-BR toast, never raw RPC text). A refresh failure after a saved change is not the
+   *  user's problem: it is logged, not toasted. */
+  async function changeNoteStatus(ids: number[], status: 'open' | 'resolved'): Promise<boolean> {
+    try {
+      await setMediaNoteStatus(ids, status);
+    } catch {
+      toast.error('Não foi possível atualizar a nota. Tente novamente.');
+      return false;
+    }
+    try {
+      await onNotesChanged?.();
+    } catch (e) {
+      console.warn('media notes refresh failed', e);
+    }
+    return true;
+  }
+  /** Opens the replace/adjust editor, remembering which open notes were on that file. */
+  function startAdjust(m: PostMedia) {
+    adjustNotes.current = { ids: openIdsOn(m.id), kind: m.kind };
+    setAdjustingMedia(m);
+  }
+  async function handleCreateInternalNote(input: InternalNoteInput) {
+    await createInternalMediaNote({ postId, ...input });
+    await onNotesChanged?.();
+  }
+
+  // A conversation chip asks for a media item: open the lightbox on it.
+  const handledFocusNonce = useRef<number | null>(null);
+  useEffect(() => {
+    if (!openLinkRequest || handledFocusNonce.current === openLinkRequest.nonce) return;
+    const i = media.findIndex((m) => m.id === openLinkRequest.linkId);
+    if (i < 0) return;
+    handledFocusNonce.current = openLinkRequest.nonce;
+    setLightboxIndex(i);
+  }, [openLinkRequest, media]);
 
   // Preload images into browser cache so lightbox opens instantly.
   const preloadCache = useRef<HTMLImageElement[]>([]);
@@ -478,6 +571,7 @@ export function PostMediaGallery({
   async function handleUseAsReelCover() {
     if (!reelCover || movingCover) return;
     const { video, image } = reelCover;
+    const openIds = openIdsOn(image.id);
     setMovingCover(true);
     try {
       await trackUnsavedWork(
@@ -494,6 +588,7 @@ export function PostMediaGallery({
         })(),
       );
       toast.success(t('mediaGallery.reelCoverMoved'));
+      offerResolve(openIds, 'image');
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -514,9 +609,12 @@ export function PostMediaGallery({
   }
 
   async function handleDelete(id: number) {
+    const openIds = openIdsOn(id);
+    const kind = media.find((m) => m.id === id)?.kind ?? 'image';
     try {
       await deletePostMedia(id);
       refresh();
+      offerResolve(openIds, kind);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -644,7 +742,7 @@ export function PostMediaGallery({
                 <button
                   type="button"
                   aria-label={`Ajustar proporção de ${m.original_filename}`}
-                  onClick={() => setAdjustingMedia(m)}
+                  onClick={() => startAdjust(m)}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#12151a] px-3 py-2 text-xs font-semibold text-white hover:bg-black"
                 >
                   <Crop size={14} />
@@ -664,7 +762,7 @@ export function PostMediaGallery({
             <button
               key={m.id}
               type="button"
-              onClick={() => setAdjustingMedia(m)}
+              onClick={() => startAdjust(m)}
               className="mr-2 mt-1 rounded-lg border px-2 py-1 text-foreground hover:bg-muted"
             >
               Ajustar {m.original_filename} para 9:16
@@ -712,6 +810,7 @@ export function PostMediaGallery({
           onChooseFromLibrary={() => setShowFilePicker(true)}
           onDownloadAll={handleDownloadAll}
           onOpen={(i) => setLightboxIndex(i)}
+          openNoteCounts={openNoteCounts}
           actionsFor={(m, i) => {
             const edit: ContextMenuAction[] = [];
             if (!effectiveDisabled) {
@@ -730,7 +829,7 @@ export function PostMediaGallery({
               if (canAdjust && !m.media_lost_at)
                 edit.push({
                   label: 'Ajustar proporção',
-                  onSelect: () => setAdjustingMedia(m),
+                  onSelect: () => startAdjust(m),
                   icon: <Crop />,
                 });
               if (canAdjust && reelCover && m.id === reelCover.image.id)
@@ -781,9 +880,8 @@ export function PostMediaGallery({
                     media={m}
                     disabled={effectiveDisabled}
                     onOpen={() => setLightboxIndex(i)}
-                    onAdjust={
-                      canAdjust && !m.media_lost_at ? () => setAdjustingMedia(m) : undefined
-                    }
+                    openNotes={openNoteCounts.get(m.id) ?? 0}
+                    onAdjust={canAdjust && !m.media_lost_at ? () => startAdjust(m) : undefined}
                     needsAdjustment={invalidMedia.includes(m)}
                     onDelete={() => handleDelete(m.id)}
                     onEditThumbnail={
@@ -923,6 +1021,18 @@ export function PostMediaGallery({
         onOpenChange={(o) => {
           if (!o) setLightboxIndex(null);
         }}
+        notes={notes}
+        onCreateInternalNote={notes !== undefined ? handleCreateInternalNote : undefined}
+        onNoteStatus={notes !== undefined ? changeNoteStatus : undefined}
+        authors={noteAuthors}
+      />
+
+      <ResolveNotesPrompt
+        open={resolvePrompt !== null}
+        count={resolvePrompt?.ids.length ?? 0}
+        kind={resolvePrompt?.kind}
+        onConfirm={() => void confirmResolve()}
+        onCancel={() => setResolvePrompt(null)}
       />
 
       {adjustingMedia && (
@@ -933,6 +1043,11 @@ export function PostMediaGallery({
           isCarousel={isCarousel}
           layout={phone ? 'phone' : 'default'}
           onClose={() => setAdjustingMedia(null)}
+          onReplaced={() => {
+            // Success only: onUpdated also fires after a failed or aborted save.
+            offerResolve(adjustNotes.current.ids, adjustNotes.current.kind);
+            adjustNotes.current = { ids: [], kind: 'image' };
+          }}
           onUpdated={() => {
             refreshWithCovers();
             qc.invalidateQueries({ queryKey: ['workflow-grid'] });
@@ -985,6 +1100,7 @@ interface PhoneMediaStripProps {
   onChooseFromLibrary: () => void;
   onDownloadAll: () => void;
   onOpen: (index: number) => void;
+  openNoteCounts: Map<number, number>;
   actionsFor: (m: PostMedia, index: number) => ContextMenuAction[][];
 }
 
@@ -1012,6 +1128,7 @@ function PhoneMediaStrip({
   onChooseFromLibrary,
   onDownloadAll,
   onOpen,
+  openNoteCounts,
   actionsFor,
 }: PhoneMediaStripProps) {
   const canReorder = reorderMode && !disabled && media.length > 1;
@@ -1071,11 +1188,15 @@ function PhoneMediaStrip({
                   <button
                     type="button"
                     className="phone-media__tile"
-                    aria-label={`${m.original_filename}${i === 0 ? ' (capa)' : ''}. Toque para ver, segure para mais ações`}
+                    aria-label={`${m.original_filename}${i === 0 ? ' (capa)' : ''}${openNoteLabel(openNoteCounts.get(m.id) ?? 0)}. Toque para ver, segure para mais ações`}
                     onClick={() => onOpen(i)}
                   >
                     <PhoneTileVisual media={m} />
                     {i === 0 && <span className="phone-media__badge">Capa</span>}
+                    <OpenNotesCount
+                      count={openNoteCounts.get(m.id) ?? 0}
+                      className="phone-media__notes"
+                    />
                     {(invalidMedia.includes(m) || m.id === reelCoverImageId) && (
                       <span className="phone-media__warn" title="Mídia precisa de ajuste">
                         <AlertTriangle size={12} aria-hidden="true" />
@@ -1160,6 +1281,8 @@ interface SortableMediaTileProps {
   media: PostMedia;
   disabled?: boolean;
   onOpen: () => void;
+  /** Open notes (client + internal) on this item. */
+  openNotes?: number;
   onDelete: () => void;
   onEditThumbnail?: () => void;
   onAdjust?: () => void;
@@ -1170,6 +1293,7 @@ function SortableMediaTile({
   media: m,
   disabled,
   onOpen,
+  openNotes = 0,
   onDelete,
   onEditThumbnail,
   onAdjust,
@@ -1191,79 +1315,121 @@ function SortableMediaTile({
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
+      className="group flex min-w-0 cursor-grab touch-none flex-col gap-1 active:cursor-grabbing"
     >
-      {m.media_lost_at ? (
-        <MediaUnavailable size="full" />
-      ) : m.kind === 'image' ? (
-        <OptimizedImage
-          src={m.url ?? ''}
-          alt={m.original_filename}
-          width={m.width ?? undefined}
-          height={m.height ?? undefined}
-          blurDataURL={m.blur_data_url ?? undefined}
-          // Every other reader of this same url is cors-mode (preloader, lightbox,
-          // zip download). Requesting it no-cors here would fetch each image twice
-          // and keep two browser-cache entries for one object.
-          crossOrigin="anonymous"
-          className="w-full h-full object-cover pointer-events-none"
+      <div className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80">
+        {m.media_lost_at ? (
+          <MediaUnavailable size="full" />
+        ) : m.kind === 'image' ? (
+          <OptimizedImage
+            src={m.url ?? ''}
+            alt={m.original_filename}
+            width={m.width ?? undefined}
+            height={m.height ?? undefined}
+            blurDataURL={m.blur_data_url ?? undefined}
+            // Every other reader of this same url is cors-mode (preloader, lightbox,
+            // zip download). Requesting it no-cors here would fetch each image twice
+            // and keep two browser-cache entries for one object.
+            crossOrigin="anonymous"
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        ) : (
+          <video
+            src={m.url ?? undefined}
+            poster={m.thumbnail_url ?? undefined}
+            crossOrigin="anonymous"
+            muted
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        )}
+        <OpenNotesCount
+          count={openNotes}
+          className="absolute left-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-[#12151a] px-1.5 py-0.5 text-[10px] font-bold text-white"
         />
-      ) : (
-        <video
-          src={m.url ?? undefined}
-          poster={m.thumbnail_url ?? undefined}
-          crossOrigin="anonymous"
-          muted
-          className="w-full h-full object-cover pointer-events-none"
-        />
-      )}
-      {needsAdjustment && (
-        <span
-          className="absolute bottom-1.5 left-1.5 rounded-md bg-amber-100 p-1 text-amber-800"
-          title="Mídia precisa de ajuste"
-        >
-          <AlertTriangle size={14} />
-        </span>
-      )}
-      {!disabled && (
-        <div
-          className="absolute top-1.5 right-1.5 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {onAdjust && (
-            <button
-              type="button"
-              onClick={onAdjust}
-              title="Ajustar proporção"
-              aria-label="Ajustar proporção"
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12151a] text-white hover:bg-black"
-            >
-              <Crop className="h-3 w-3" />
-            </button>
-          )}
-          {onEditThumbnail && (
-            <button
-              type="button"
-              onClick={onEditThumbnail}
-              title="Miniatura do vídeo"
-              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
-            >
-              <ImageIcon className="h-3 w-3" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onDelete}
-            title="Remover"
-            className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-rose-600"
+        {needsAdjustment && (
+          <span
+            className="absolute bottom-1.5 left-1.5 rounded-md bg-amber-100 p-1 text-amber-800"
+            title="Mídia precisa de ajuste"
           >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
-      )}
+            <AlertTriangle size={14} />
+          </span>
+        )}
+        {!disabled && (
+          <div
+            className="absolute top-1.5 right-1.5 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {onAdjust && (
+              <button
+                type="button"
+                onClick={onAdjust}
+                title="Ajustar proporção"
+                aria-label="Ajustar proporção"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12151a] text-white hover:bg-black"
+              >
+                <Crop className="h-3 w-3" />
+              </button>
+            )}
+            {onEditThumbnail && (
+              <button
+                type="button"
+                onClick={onEditThumbnail}
+                title="Miniatura do vídeo"
+                className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
+              >
+                <ImageIcon className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Remover"
+              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-rose-600"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+      </div>
+      <MediaFilename name={m.original_filename} />
     </div>
   );
+}
+
+/** File name under a tile, so the uploader can check the order without opening each one.
+ *  Long names lose the middle, not the end: the trailing number and extension are what
+ *  tell "slide-9.png" from "slide-10.png". */
+function MediaFilename({ name }: { name: string }) {
+  const tail = name.length > 14 ? name.slice(-8) : '';
+  const head = tail ? name.slice(0, -8) : name;
+  return (
+    <span
+      title={name}
+      className="flex min-w-0 px-0.5 text-[11px] leading-tight text-stone-500 dark:text-stone-400"
+    >
+      <span className="truncate">{head}</span>
+      {tail && <span className="shrink-0 whitespace-pre">{tail}</span>}
+    </span>
+  );
+}
+
+/** Count of open notes on a media tile. The number is text and the label says what it is. */
+function OpenNotesCount({ count, className }: { count: number; className: string }) {
+  if (count <= 0) return null;
+  return (
+    <span className={className}>
+      <MessageSquare className="h-2.5 w-2.5" aria-hidden="true" />
+      <span aria-hidden="true">{count}</span>
+      <span className="sr-only">{`${count} ${count === 1 ? 'comentário' : 'comentários'} em aberto`}</span>
+    </span>
+  );
+}
+
+/** ", 2 comentários em aberto" for a tile button's accessible name; empty for none. */
+function openNoteLabel(count: number): string {
+  if (count <= 0) return '';
+  return `, ${count} ${count === 1 ? 'comentário' : 'comentários'} em aberto`;
 }
 
 // Exported helper so WorkflowDrawer can gate the "send to client" button.

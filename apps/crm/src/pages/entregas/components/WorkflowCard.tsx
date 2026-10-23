@@ -11,6 +11,7 @@ import {
   Trash2,
   Copy,
   CopyPlus,
+  MessageSquare,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -49,6 +50,8 @@ interface WorkflowCardProps {
   onPostsClick?: () => void;
   /** Number of posts associated with this workflow (shown as badge) */
   postsCount?: number;
+  /** Unread discussion messages across the workflow's posts. Badge only when > 0. */
+  discussaoNaoLidas?: number;
   /** Number of posts approved by client */
   approvedPostsCount?: number;
   /** Number of posts that have cleared client approval — approved, scheduled,
@@ -79,6 +82,7 @@ export function WorkflowCard({
   onForwardClick,
   onPostsClick,
   postsCount,
+  discussaoNaoLidas,
   approvedPostsCount,
   clearedClienteCount,
   revisaoInternaCount,
@@ -137,10 +141,22 @@ export function WorkflowCard({
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
     >
       {/* Top row: client + recurrent + drag handle */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Wraps instead of squeezing: a long client name keeps one line and the
+          chips drop below it. */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '0.35rem 0.5rem',
+        }}
+      >
         <span
           className="board-card-client"
           style={{
+            minWidth: 0,
+            maxWidth: '100%',
             borderLeft: 'none',
             paddingLeft: 0,
             fontSize: '0.74rem',
@@ -203,7 +219,12 @@ export function WorkflowCard({
                   color: card.cliente.cor || 'var(--text-muted)',
                   opacity: 0.85,
                   fontWeight: 500,
+                  minWidth: 0,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                 }}
+                title={card.cliente.nome}
               >
                 {card.cliente.nome}
               </span>
@@ -262,6 +283,17 @@ export function WorkflowCard({
               }}
             >
               ↻
+            </span>
+          )}
+          {discussaoNaoLidas != null && discussaoNaoLidas > 0 && (
+            <span
+              className="board-card-discussao-badge"
+              role="img"
+              aria-label={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+              title={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+            >
+              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+              {discussaoNaoLidas}
             </span>
           )}
           <button

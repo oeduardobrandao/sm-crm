@@ -2,6 +2,8 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
+import { fetchAllRows } from "../_shared/paginate.ts";
+import { type HubMediaNoteDTO, loadClientMediaNotes } from "../_shared/media-notes.ts";
 
 type DbClient = {
   // deno-lint-ignore no-explicit-any
@@ -51,6 +53,8 @@ export interface HubHistoryApproval {
   /** Always false for action = "mensagem": team messages never leave this function. */
   is_workspace_user: boolean;
   created_at: string;
+  /** Notes snapshotted when the client sent this approval (post_approval_media_notes). */
+  open_note_count: number;
 }
 
 export interface RawApprovalRow {
@@ -104,7 +108,10 @@ export function sanitizeHistoryEvents(rows: RawStatusEventRow[]): HubHistoryEven
  *    the first send event would erase the client's own history.
  * Never copies token or author_user_id.
  */
-export function sanitizeHistoryApprovals(rows: RawApprovalRow[]): HubHistoryApproval[] {
+export function sanitizeHistoryApprovals(
+  rows: RawApprovalRow[],
+  openNoteCounts: Map<number, number> = new Map(),
+): HubHistoryApproval[] {
   return [...rows]
     .sort(compareByCreatedAtThenId)
     .filter(isClientVisibleApproval)
@@ -115,6 +122,7 @@ export function sanitizeHistoryApprovals(rows: RawApprovalRow[]): HubHistoryAppr
       motivo: r.motivo ?? null,
       is_workspace_user: r.is_workspace_user === true,
       created_at: r.created_at,
+      open_note_count: openNoteCounts.get(r.id) ?? 0,
     }));
 }
 
@@ -189,9 +197,58 @@ export function createHubPostHistoryHandler(deps: HubPostHistoryHandlerDeps) {
       return json({ error: "Erro ao carregar histórico." }, 500);
     }
 
+    const approvalRows = (approvals ?? []) as RawApprovalRow[];
+    const historyEvents = sanitizeHistoryEvents((events ?? []) as RawStatusEventRow[]);
+
+    // Visibility parity with the events: client-visible notes are only ever client-authored
+    // (team pins are always internal), so they exist only after the post reached the client.
+    // Same temporal floor as the events builder: no enviado_cliente event, no notes. The
+    // ownership check above still applies to everything.
+    const reachedClient = historyEvents.some((e) => e.to_status === "enviado_cliente");
+
+    const loadSnapshotCounts = async (): Promise<Map<number, number>> => {
+      const counts = new Map<number, number>();
+      if (approvalRows.length === 0) return counts;
+      try {
+        // Join table (post_approval_id, note_id), migration 20261026000001. Drained by
+        // pages: the 1000-row PostgREST cap must not silently truncate the counts.
+        const ids = approvalRows.map((a) => a.id);
+        const snapshots = await fetchAllRows<{ post_approval_id: number }>((from, to) =>
+          db
+            .from("post_approval_media_notes")
+            .select("post_approval_id, note_id")
+            .in("post_approval_id", ids)
+            .order("post_approval_id", { ascending: true })
+            .order("note_id", { ascending: true })
+            .range(from, to)
+        );
+        for (const row of snapshots) {
+          counts.set(row.post_approval_id, (counts.get(row.post_approval_id) ?? 0) + 1);
+        }
+      } catch (err) {
+        console.error("[hub-post-history] note snapshots lookup failed:", err);
+      }
+      return counts;
+    };
+
+    // Notes stay visible even when the post is back in production (read-only in the Hub),
+    // so beyond the floor this is not gated on status. Failures degrade like the snapshots.
+    const loadNotes = async (): Promise<HubMediaNoteDTO[]> => {
+      if (!reachedClient) return [];
+      try {
+        return await loadClientMediaNotes(db, hubToken.conta_id, [postId]);
+      } catch (err) {
+        console.error("[hub-post-history] media notes lookup failed:", err);
+        return [];
+      }
+    };
+
+    const [openNoteCounts, mediaNotes] = await Promise.all([loadSnapshotCounts(), loadNotes()]);
+
     return json({
-      events: sanitizeHistoryEvents((events ?? []) as RawStatusEventRow[]),
-      approvals: sanitizeHistoryApprovals((approvals ?? []) as RawApprovalRow[]),
+      events: historyEvents,
+      approvals: sanitizeHistoryApprovals(approvalRows, openNoteCounts),
+      media_notes: mediaNotes,
     });
   };
 }

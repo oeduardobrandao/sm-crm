@@ -229,14 +229,26 @@
   }
 
   /* Compact rows so the whole nav fits a laptop viewport without scrolling. */
+  /* Header hugs its own items (4px below) and breathes from the group above
+     (10px), so each section reads as one block. */
   html[data-look='vidro'] .app-container .sidebar-group-label {
-    padding: 6px 0.75rem 1px;
+    padding: 10px 0.75rem 4px;
     line-height: 14px;
     text-transform: none;
     letter-spacing: 0;
     font-size: 11px;
     font-weight: 600;
     color: var(--vd-txt3);
+  }
+
+  html[data-look='vidro'] .app-container .sidebar-group:first-child .sidebar-group-label {
+    padding-top: 4px;
+  }
+
+  /* The 12px caret outweighed the 11px label; keep it small and quiet. */
+  html[data-look='vidro'] .app-container .sidebar-group-caret {
+    font-size: 9px;
+    opacity: 0.7;
   }
 
   html[data-look='vidro'] .app-container .sidebar-sub-link {

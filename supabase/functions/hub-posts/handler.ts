@@ -3,6 +3,7 @@ import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
 import { fetchAllRows } from "../_shared/paginate.ts";
+import { type HubMediaNoteDTO, loadClientMediaNotes } from "../_shared/media-notes.ts";
 import {
   computeEmProducaoByPost,
   INTERNAL_STATUSES,
@@ -369,6 +370,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       { data: mediaLinks },
       autoPublishSuspendedWorkflowIds,
       autoPublishSuspendedPostIds,
+      allMediaNotes,
     ] = await Promise.all([
       loadEmProducao(),
       postIds.length > 0
@@ -436,6 +438,15 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         : none,
       loadSuspendedWorkflowIds(),
       loadSuspendedPostIds(),
+      // Client-visible notes only (the loader filters visibility twice). Queried with
+      // every post id to stay in this round trip, then pruned to visibleIds below.
+      // Like the other lookups, a failure logs and degrades to none.
+      postIds.length > 0
+        ? loadClientMediaNotes(db, hubToken.conta_id, postIds).catch((err): HubMediaNoteDTO[] => {
+            console.error("[hub-posts] media notes lookup failed:", err);
+            return [];
+          })
+        : Promise.resolve([] as HubMediaNoteDTO[]),
     ]);
     warnIfCapped("workflow_select_options", workflowSelectOptions);
 
@@ -575,6 +586,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     return json({
       posts: postsWithResolvedContent,
       postApprovals,
+      mediaNotes: allMediaNotes.filter((n) => visibleIds.has(n.post_id)),
       propertyValues: ((propertyValues ?? []) as { post_id: number }[])
         .filter((v) => visibleIds.has(v.post_id)),
       workflowSelectOptions: ((workflowSelectOptions ?? []) as { workflow_id: number }[])

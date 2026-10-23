@@ -25,7 +25,14 @@ vi.mock('@/services/equipeChatMedia', () => ({
 // MentionEditor mounts useMentionSearch, which queries these on mount.
 vi.mock('@/store', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, getMembros: vi.fn(), getClientes: vi.fn(), getTarefas: vi.fn() };
+  return {
+    ...actual,
+    getMembros: vi.fn(),
+    getClientes: vi.fn(),
+    getTarefas: vi.fn(),
+    getPostChipPreview: vi.fn().mockResolvedValue(null),
+    getDiscussaoNaoLidas: vi.fn().mockResolvedValue([]),
+  };
 });
 vi.mock('@/store/posts', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -184,7 +191,7 @@ describe('EquipeThreadPhone', () => {
     },
   ];
 
-  function renderThread() {
+  function renderThread(mensagens: EquipeMensagem[] = MENSAGENS) {
     const send = { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false };
     const onOpenDetalhes = vi.fn();
     type P = ComponentProps<typeof EquipeThreadPhone>;
@@ -193,7 +200,7 @@ describe('EquipeThreadPhone', () => {
         conversa={conversa()}
         mensagens={
           {
-            data: { pages: [MENSAGENS] },
+            data: { pages: [mensagens] },
             isLoading: false,
             isError: false,
             hasNextPage: false,
@@ -225,6 +232,24 @@ describe('EquipeThreadPhone', () => {
     expect(outros.className).not.toContain('--mine');
     expect(minha).not.toHaveTextContent('Eu');
     expect(minha.className).toContain('phone-msg-bubble-row--mine');
+  });
+
+  it('renders the phone post chip under a message that mentions a post', () => {
+    renderThread([
+      { ...MENSAGENS[0], id: 8, content: 'Vê isso\n@[Post de julho](post:7:3)' },
+      { ...MENSAGENS[0], id: 9, content: '@[Outro](post:8)' },
+    ]);
+    const com = screen.getByTestId('equipe-msg-8');
+    expect(com).toHaveTextContent('Vê isso');
+    expect(com.querySelectorAll('.mention-chip--post')).toHaveLength(1);
+    const bloco = com.querySelector('.phone-msg-post-blocks')!;
+    const chip = within(bloco as HTMLElement).getByRole('link', { name: 'Post de julho' });
+    expect(chip).toHaveClass('phone-msg-chip');
+    expect(chip).toHaveAttribute('href', '/entregas?drawer=3&post=7');
+    // Only the token: the block stands alone, no inline chip.
+    const solo = screen.getByTestId('equipe-msg-9');
+    expect(solo.querySelector('.mention-chip')).toBeNull();
+    expect(solo.querySelector('.phone-msg-chip')).not.toBeNull();
   });
 
   it('sends on Enter but not while an IME is composing', async () => {
