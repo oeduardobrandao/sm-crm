@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import {
   containedRect,
   isNearMoment,
@@ -9,7 +8,7 @@ import {
   type Box,
 } from '@mesaas/ui/mediaPins/geometry';
 import type { MediaNote } from '@/store/mediaNotes';
-import { authorLabel, type MediaNoteAuthors } from './MediaNoteCard';
+import { authorLabel, formatWhen, type MediaNoteAuthors } from './MediaNoteCard';
 
 interface CrmPinLayerProps {
   /** Every note of the post: the layer keeps the current ones on `linkId`. */
@@ -26,17 +25,10 @@ interface CrmPinLayerProps {
   draft?: { x: number; y: number } | null;
   /** Names for the author line of a pin's details. */
   authors?: MediaNoteAuthors;
-  /** Resolve / reopen from a pin's details. Absent: the details are read-only. */
-  onStatus?: (noteIds: number[], status: 'open' | 'resolved') => Promise<void>;
-}
-
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  /** Resolve / reopen from a pin's details. Absent: the details are read-only. It reports
+   *  its own errors (toast); resolving to `false` means the change failed and the details
+   *  stay open for another try. */
+  onStatus?: (noteIds: number[], status: 'open' | 'resolved') => Promise<boolean | void>;
 }
 
 function readBox(el: HTMLElement): Box {
@@ -134,10 +126,8 @@ export function CrmPinLayer({
     if (!onStatus || changing) return;
     setChanging(true);
     try {
-      await onStatus([note.id], note.status === 'resolved' ? 'open' : 'resolved');
-      setOpenId(null);
-    } catch {
-      toast.error('Não foi possível atualizar a nota. Tente novamente.');
+      const ok = await onStatus([note.id], note.status === 'resolved' ? 'open' : 'resolved');
+      if (ok !== false) setOpenId(null);
     } finally {
       setChanging(false);
     }
@@ -162,6 +152,7 @@ export function CrmPinLayer({
             <span
               key={n.id}
               className="crm-pin-anchor"
+              data-open={expanded ? 'true' : undefined}
               style={toPercentStyle({ x: n.x as number, y: n.y as number }, box, rendered)}
             >
               <button

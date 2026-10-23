@@ -276,14 +276,22 @@ export function PostMediaGallery({
     if (!ids || ids.length === 0) return;
     await changeNoteStatus(ids, 'resolved');
   }
-  /** Resolve / reopen, then refresh. Never surfaces raw RPC / RLS text. */
-  async function changeNoteStatus(ids: number[], status: 'open' | 'resolved') {
+  /** Resolve / reopen, then refresh. Returns false when the change itself failed (after a
+   *  pt-BR toast, never raw RPC text). A refresh failure after a saved change is not the
+   *  user's problem: it is logged, not toasted. */
+  async function changeNoteStatus(ids: number[], status: 'open' | 'resolved'): Promise<boolean> {
     try {
       await setMediaNoteStatus(ids, status);
-      await onNotesChanged?.();
     } catch {
       toast.error('Não foi possível atualizar a nota. Tente novamente.');
+      return false;
     }
+    try {
+      await onNotesChanged?.();
+    } catch (e) {
+      console.warn('media notes refresh failed', e);
+    }
+    return true;
   }
   /** Opens the replace/adjust editor, remembering which open notes were on that file. */
   function startAdjust(m: PostMedia) {

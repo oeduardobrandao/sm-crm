@@ -23,7 +23,8 @@ export function authorLabel(
   return userId ? resolveAuthorName(userId, membros, workspaceUsers) : 'Equipe';
 }
 
-function formatWhen(iso: string): string {
+/** "23 de out., 10:00" style stamp shared by the note cards and the pin details. */
+export function formatWhen(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: 'short',

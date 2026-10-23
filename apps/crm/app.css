@@ -7130,6 +7130,12 @@ body.role-agent input[name='valor_total'] {
   transform: translate(-50%, -50%);
 }
 
+/* Each anchor is its own stacking context (transform): lift the one with open details so a
+   later sibling's pin cannot paint over the panel. */
+.crm-pin-anchor[data-open='true'] {
+  z-index: 2;
+}
+
 .crm-pin {
   position: relative;
   display: flex;
@@ -7204,6 +7210,8 @@ body.role-agent input[name='valor_total'] {
   text-align: left;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
   cursor: default;
+  /* The layer is pointer-events: none outside placing mode; the panel must opt back in. */
+  pointer-events: auto;
 }
 
 .crm-pin-details__meta {

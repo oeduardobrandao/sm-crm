@@ -30,7 +30,7 @@ interface PostMediaLightboxProps {
   /** Enables "Nota interna": the team pins a note that never leaves the CRM. */
   onCreateInternalNote?: (input: InternalNoteInput) => Promise<void>;
   /** Resolve / reopen from a pin's details or from the internal notes list. */
-  onNoteStatus?: (noteIds: number[], status: 'open' | 'resolved') => Promise<void>;
+  onNoteStatus?: (noteIds: number[], status: 'open' | 'resolved') => Promise<boolean | void>;
   /** Names for the author line in a pin's details. */
   authors?: MediaNoteAuthors;
 }
@@ -177,14 +177,6 @@ export function PostMediaLightbox({
     .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
   const internalPinNumbers = pinNumbers(internalNotes, (n) => n.current_link_id);
 
-  const changeStatus = async (ids: number[], status: 'open' | 'resolved') => {
-    try {
-      await onNoteStatus?.(ids, status);
-    } catch {
-      toast.error('Não foi possível atualizar a nota. Tente novamente.');
-    }
-  };
-
   const startPlacing = () => {
     // On video the spot belongs to a moment: freeze it.
     if (isVideo) videoEl?.pause();
@@ -281,7 +273,7 @@ export function PostMediaLightbox({
                 natural={natural}
                 currentTime={isVideo ? videoTime : null}
                 authors={authors}
-                onStatus={onNoteStatus ? changeStatus : undefined}
+                onStatus={onNoteStatus}
                 placing={mode === 'placing'}
                 onPlace={place}
                 draft={
@@ -329,7 +321,7 @@ export function PostMediaLightbox({
                         <button
                           type="button"
                           className="mt-1 rounded-md border border-stone-300 px-2 py-0.5 text-[11px] font-semibold hover:bg-stone-100"
-                          onClick={() => void changeStatus([n.id], resolved ? 'open' : 'resolved')}
+                          onClick={() => void onNoteStatus([n.id], resolved ? 'open' : 'resolved')}
                         >
                           {resolved ? 'Reabrir' : 'Marcar como resolvido'}
                         </button>

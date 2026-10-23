@@ -216,4 +216,37 @@ describe('CrmPinLayer', () => {
     fireEvent.keyDown(screen.getByRole('group', { name: 'Detalhes da nota' }), { key: 'Escape' });
     expect(screen.queryByRole('group', { name: 'Detalhes da nota' })).not.toBeInTheDocument();
   });
+
+  it('keeps the details open when the status change failed (handler reports false)', async () => {
+    const onStatus = vi.fn().mockResolvedValue(false);
+    render(
+      <CrmPinLayer
+        linkId={5}
+        natural={{ w: 400, h: 400 }}
+        onStatus={onStatus}
+        notes={[makeNote({ id: 1, x: 0.5, y: 0.5 })]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Ponto 1:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvido' }));
+    await waitFor(() => expect(onStatus).toHaveBeenCalled());
+    expect(screen.getByRole('group', { name: 'Detalhes da nota' })).toBeInTheDocument();
+  });
+
+  it('marks the anchor of the open details so it can stack above its siblings', () => {
+    render(
+      <CrmPinLayer
+        linkId={5}
+        natural={{ w: 400, h: 400 }}
+        notes={[makeNote({ id: 1, x: 0.5, y: 0.5 }), makeNote({ id: 2, x: 0.6, y: 0.6 })]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Ponto 1:/ }));
+    expect(
+      screen.getByRole('button', { name: /^Ponto 1:/ }).closest('.crm-pin-anchor'),
+    ).toHaveAttribute('data-open', 'true');
+    expect(
+      screen.getByRole('button', { name: /^Ponto 2:/ }).closest('.crm-pin-anchor'),
+    ).not.toHaveAttribute('data-open', 'true');
+  });
 });

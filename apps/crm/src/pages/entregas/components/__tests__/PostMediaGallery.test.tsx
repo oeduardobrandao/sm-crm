@@ -941,4 +941,26 @@ describe('PostMediaGallery feedback em mídia', () => {
       ),
     );
   });
+
+  it('a refresh failure after a successful change stays silent', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(setMediaNoteStatus).mockResolvedValueOnce(undefined);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onNotesChanged = vi.fn().mockRejectedValue(new Error('refetch failed'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery
+          postId={42}
+          notes={[]}
+          onNotesChanged={onNotesChanged}
+          openLinkRequest={{ linkId: 5, nonce: 1 }}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'stub-resolver-nota' }));
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+    expect(setMediaNoteStatus).toHaveBeenCalledWith([77], 'resolved');
+    expect(toast.error).not.toHaveBeenCalled();
+  });
 });
