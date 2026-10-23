@@ -71,4 +71,23 @@ describe('projetarAgendamentos with recorrentes', () => {
   it('projects nothing without the financial capability', () => {
     expect(projetarAgendamentos([], [], [], false, [canva])).toHaveLength(0);
   });
+
+  it('uses the last day of a shorter month for client and member payment days too', () => {
+    vi.setSystemTime(new Date(2026, 1, 3)); // February 2026
+    const out = projetarAgendamentos(
+      [],
+      [
+        {
+          id: 1,
+          nome: 'Cliente',
+          status: 'ativo',
+          data_pagamento: 30,
+          valor_mensal: 1000,
+        } as never,
+      ],
+      [{ id: 2, nome: 'Membro', data_pagamento: 31, custo_mensal: 500 } as never],
+      true,
+    );
+    expect(out.map((t) => t.data)).toEqual(['2026-02-28', '2026-02-28']);
+  });
 });

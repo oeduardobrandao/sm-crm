@@ -24,6 +24,8 @@ export function projetarAgendamentos(
   const now = new Date();
   const mes = String(now.getMonth() + 1).padStart(2, '0');
   const ano = now.getFullYear();
+  // Payment days 29-31 fall on the last day of shorter months (no "2026-02-31").
+  const ultimoDia = new Date(ano, now.getMonth() + 1, 0).getDate();
 
   const addAgendamento = (
     idRef: string,
@@ -42,7 +44,7 @@ export function projetarAgendamentos(
         descricao: desc,
         detalhe,
         categoria,
-        data: `${ano}-${mes}-${String(dia).padStart(2, '0')}`,
+        data: `${ano}-${mes}-${String(Math.min(dia, ultimoDia)).padStart(2, '0')}`,
         status: 'agendado',
         referencia_agendamento: idRef,
       } as Transacao);
@@ -75,13 +77,12 @@ export function projetarAgendamentos(
 
   // inicio/fim are always the 1st, so comparing to this month's 1st as text works.
   const primeiroDoMes = `${ano}-${mes}-01`;
-  const ultimoDia = new Date(ano, now.getMonth() + 1, 0).getDate();
   recorrentes
     .filter((r) => r.id != null && r.inicio <= primeiroDoMes && (!r.fim || r.fim >= primeiroDoMes))
     .forEach((r) => {
       addAgendamento(
         referenciaRecorrente(r.id!, ano, now.getMonth() + 1),
-        Math.min(r.dia, ultimoDia),
+        r.dia,
         Number(r.valor),
         r.descricao,
         r.tipo,
