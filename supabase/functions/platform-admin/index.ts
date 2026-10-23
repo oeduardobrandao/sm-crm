@@ -43,6 +43,18 @@ import {
   handleUpdateAffiliate,
   handleUpdateCommissionRule,
 } from "./affiliates.ts";
+import {
+  defaultBlogAdminDeps,
+  handleApproveBlogPost,
+  handleGetBlogPost,
+  handleListBlogPosts,
+  handleRejectBlogPost,
+  handleRepublishBlogPost,
+  handleRequestBlogChanges,
+  handleRetryBlogPublish,
+  handleUnpublishBlogPost,
+  handleUpdateBlogPost,
+} from "./blog-posts.ts";
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
 
 // Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
@@ -61,6 +73,9 @@ const kbVideoStream: KbVideoStreamDeps = {
   deleteVideo: (uid) => deleteStreamVideo(uid),
   now: () => Date.now(),
 };
+
+// Blog (spec 2026-10-23-blog-automatico §7): deploy hook da Vercel e checagem da página no ar.
+const blogDeps = defaultBlogAdminDeps();
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -231,6 +246,24 @@ Deno.serve(async (req: Request) => {
         return await handleUpdateAffiliate(svc, body, user.id, headers);
       case "update-affiliate-commission-rule":
         return await handleUpdateCommissionRule(svc, body, user.id, headers);
+      case "list-blog-posts":
+        return await handleListBlogPosts(svc, body, user.id, headers, blogDeps);
+      case "get-blog-post":
+        return await handleGetBlogPost(svc, body, headers);
+      case "update-blog-post":
+        return await handleUpdateBlogPost(svc, body, user.id, headers, blogDeps);
+      case "approve-blog-post":
+        return await handleApproveBlogPost(svc, body, user.id, headers, blogDeps);
+      case "request-blog-changes":
+        return await handleRequestBlogChanges(svc, body, user.id, headers, blogDeps);
+      case "reject-blog-post":
+        return await handleRejectBlogPost(svc, body, user.id, headers, blogDeps);
+      case "unpublish-blog-post":
+        return await handleUnpublishBlogPost(svc, body, user.id, headers, blogDeps);
+      case "republish-blog-post":
+        return await handleRepublishBlogPost(svc, body, user.id, headers, blogDeps);
+      case "retry-blog-publish":
+        return await handleRetryBlogPublish(svc, body, user.id, headers, blogDeps);
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers });
     }
