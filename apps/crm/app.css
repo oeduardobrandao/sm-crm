@@ -3504,6 +3504,79 @@ select.form-input option {
   font-weight: 500;
 }
 
+/* ---- Papéis editor (Configurações > Papéis) ---- */
+
+/* Equal columns sized to the widest label ("Sem acesso"), so every row's
+   control lines up without a fixed width that wraps under larger fonts. */
+.papeis-seg {
+  display: inline-grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  flex-shrink: 0;
+}
+
+.papeis-seg .agenda-segmented__item {
+  padding: 4px 12px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.papeis-form-group + .papeis-form-group {
+  margin-top: 1.1rem;
+}
+
+.papeis-form-group-label {
+  margin: 0 0 0.45rem 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-light);
+}
+
+.papeis-form-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.papeis-form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.6rem 0.5rem 0.9rem;
+}
+
+.papeis-form-row + .papeis-form-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.papeis-form-row__label {
+  min-width: 0;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.papeis-server-tag {
+  display: inline-block;
+  margin-left: 0.45rem;
+  vertical-align: 1px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.papeis-form-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* ---- Calendar card + toolbar ---- */
 
 .agenda-view {

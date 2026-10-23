@@ -325,58 +325,15 @@ function RoleRow({
 }
 
 function ServerTag() {
-  return (
-    <span
-      style={{
-        fontSize: '0.62rem',
-        color: 'var(--text-muted)',
-        border: '1px solid var(--border-color)',
-        borderRadius: 5,
-        padding: '1px 5px',
-        marginLeft: 7,
-        fontWeight: 600,
-        verticalAlign: 1,
-        display: 'inline-block',
-      }}
-    >
-      servidor
-    </span>
-  );
-}
-
-function segmentItemStyle(
-  level: PermissionLevel,
-  active: boolean,
-  isFirst: boolean,
-): React.CSSProperties {
-  const base: React.CSSProperties = {
-    borderRadius: 0,
-    fontSize: '0.7rem',
-    fontWeight: 600,
-    padding: '0.3rem 0.7rem',
-    borderLeft: isFirst ? 'none' : '1px solid var(--border-color)',
-  };
-  if (!active) {
-    return { ...base, background: 'var(--card-bg)', color: 'var(--text-muted)' };
-  }
-  if (level === 'none') {
-    return { ...base, background: 'var(--surface-2)', color: 'var(--text-main)' };
-  }
-  if (level === 'ver') {
-    return {
-      ...base,
-      background: 'var(--card-bg)',
-      color: 'var(--text-main)',
-      boxShadow: 'inset 0 0 0 2px var(--text-main)',
-    };
-  }
-  return { ...base, background: 'var(--text-main)', color: 'var(--card-bg)' };
+  return <span className="papeis-server-tag">servidor</span>;
 }
 
 /** 3-state segmented control (Sem acesso / Ver / Editar) replacing the old
  * per-module Select — one click per module, every state visible at once.
  * Built on the same Radix ToggleGroup used by PlatformSelector, which gives
- * radiogroup semantics (role="radio" per item) and keyboard nav for free. */
+ * radiogroup semantics (role="radio" per item) and keyboard nav for free.
+ * Skinned with the Agenda's segmented classes so every level shares one
+ * selected look; `.papeis-seg` only sizes the three segments equally. */
 function LevelSegmented({
   mod,
   value,
@@ -386,7 +343,6 @@ function LevelSegmented({
   value: PermissionLevel;
   onChange: (level: PermissionLevel) => void;
 }) {
-  const levels = LEVEL_ORDER;
   const handleChange = (next: string) => {
     if (!next || next === value) return;
     onChange(next as PermissionLevel);
@@ -397,21 +353,10 @@ function LevelSegmented({
       value={value}
       onValueChange={handleChange}
       aria-label={`Nível de acesso para ${MODULE_LABELS[mod]}`}
-      style={{
-        display: 'inline-flex',
-        border: '1px solid var(--border-color)',
-        borderRadius: 999,
-        overflow: 'hidden',
-        gap: 0,
-        flexShrink: 0,
-      }}
+      className="agenda-segmented papeis-seg"
     >
-      {levels.map((level, i) => (
-        <ToggleGroupItem
-          key={level}
-          value={level}
-          style={segmentItemStyle(level, value === level, i === 0)}
-        >
+      {LEVEL_ORDER.map((level) => (
+        <ToggleGroupItem key={level} value={level} className="agenda-segmented__item">
           {LEVEL_SEGMENT_LABELS[level]}
         </ToggleGroupItem>
       ))}
@@ -611,7 +556,7 @@ export default function PapeisTab() {
         open={dialogOpen}
         onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}
       >
-        <DialogContent style={{ maxWidth: 660, maxHeight: '85vh', overflowY: 'auto' }}>
+        <DialogContent style={{ maxWidth: 680 }}>
           <DialogHeader>
             <DialogTitle>{form?.roleId ? 'Editar papel' : 'Criar papel'}</DialogTitle>
           </DialogHeader>
@@ -667,49 +612,28 @@ export default function PapeisTab() {
 
               <div>
                 {MODULE_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <div
-                      className="papeis-form-group-label"
-                      style={{
-                        fontSize: '0.68rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        color: 'var(--text-light)',
-                        fontWeight: 700,
-                        margin: '1rem 0 0.2rem',
-                      }}
-                    >
-                      {group.label}
+                  <section key={group.label} className="papeis-form-group">
+                    <div className="papeis-form-group-label">{group.label}</div>
+                    <div className="papeis-form-panel">
+                      {group.modules.map((mod) => (
+                        <div key={mod} className="papeis-form-row">
+                          <Label className="papeis-form-row__label">
+                            {MODULE_LABELS[mod]}
+                            {SERVER_ENFORCED_MODULES.has(mod) && <ServerTag />}
+                          </Label>
+                          <LevelSegmented
+                            mod={mod}
+                            value={form.permissions[mod]}
+                            onChange={(level) => handleLevelChange(mod, level)}
+                          />
+                        </div>
+                      ))}
                     </div>
-                    {group.modules.map((mod) => (
-                      <div
-                        key={mod}
-                        className="papeis-form-row"
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: '0.75rem',
-                          padding: '0.4rem 0',
-                          borderBottom: '1px solid var(--border-color)',
-                        }}
-                      >
-                        <Label>
-                          {MODULE_LABELS[mod]}
-                          {SERVER_ENFORCED_MODULES.has(mod) && <ServerTag />}
-                        </Label>
-                        <LevelSegmented
-                          mod={mod}
-                          value={form.permissions[mod]}
-                          onChange={(level) => handleLevelChange(mod, level)}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  </section>
                 ))}
               </div>
 
-              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+              <p className="papeis-form-note">
                 Módulos com selo &quot;servidor&quot; são aplicados no banco. Os demais são
                 aplicados na interface do CRM.
               </p>
