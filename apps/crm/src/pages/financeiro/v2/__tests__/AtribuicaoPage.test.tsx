@@ -77,6 +77,21 @@ function renderPage() {
 const celula = (membro: string, cliente: string) =>
   screen.findByRole('checkbox', { name: `${membro} atende ${cliente}` });
 
+function adiado() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+/** The fixture without the given `[membro_id, cliente_id]` assignments. */
+const sem = (...pares: Array<[number, number]>) =>
+  variante((r) => {
+    for (const [m, c] of pares) {
+      const cliente = r.clientes.find((x) => x.cliente_id === c)!;
+      cliente.pessoas = cliente.pessoas.filter((p) => p.membro_id !== m);
+    }
+  });
+
 beforeEach(() => {
   vi.clearAllMocks();
   useAuthMock.mockReturnValue({
@@ -146,6 +161,109 @@ describe('AtribuicaoPage', () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
+  it('clears the override on success: a refetch with the old state flips the cell back', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const cb = await celula('Ana', 'Cinara');
+    await user.click(cb);
+    expect(store.salvarAtribuicoes).toHaveBeenCalledTimes(1);
+
+    // The refetch still says Ana atende Cinara: once it lands, the server wins.
+    await waitFor(() => expect(store.getRentabilidade).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(cb).toBeChecked());
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  it('keeps two in-flight toggles on different cells', async () => {
+    const user = userEvent.setup();
+    const primeiro = adiado();
+    const segundo = adiado();
+    store.salvarAtribuicoes
+      .mockImplementationOnce(() => primeiro.promise)
+      .mockImplementationOnce(() => segundo.promise);
+    renderPage();
+
+    const ana = await celula('Ana', 'Cinara');
+    const bruno = await celula('Bruno', 'Roberta');
+    await user.click(ana);
+    await user.click(bruno);
+    expect(ana).not.toBeChecked();
+    expect(bruno).not.toBeChecked();
+    expect(store.salvarAtribuicoes).toHaveBeenNthCalledWith(1, '2026-10-01', [
+      { membro_id: 3, cliente_id: 1, ativo: false },
+    ]);
+    expect(store.salvarAtribuicoes).toHaveBeenNthCalledWith(2, '2026-10-01', [
+      { membro_id: 4, cliente_id: 2, ativo: false },
+    ]);
+
+    // The first save lands; its refetch does not have the second change yet.
+    store.getRentabilidade.mockImplementation(async () => sem([3, 1]));
+    primeiro.resolve();
+    await waitFor(() => expect(store.getRentabilidade).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ana).toBeEnabled());
+    expect(ana).not.toBeChecked();
+    expect(bruno).not.toBeChecked();
+    expect(bruno).toBeDisabled();
+
+    store.getRentabilidade.mockImplementation(async () => sem([3, 1], [4, 2]));
+    segundo.resolve();
+    await waitFor(() => expect(store.getRentabilidade).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(bruno).toBeEnabled());
+    expect(ana).not.toBeChecked();
+    expect(bruno).not.toBeChecked();
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  it('disables a cell only while its own save is in flight', async () => {
+    const user = userEvent.setup();
+    const save = adiado();
+    store.salvarAtribuicoes.mockImplementationOnce(() => save.promise);
+    renderPage();
+
+    const cb = await celula('Ana', 'Cinara');
+    await user.click(cb);
+    expect(cb).toBeDisabled();
+    expect(await celula('Ana', 'Roberta')).toBeEnabled();
+    expect(await celula('Bruno', 'Cinara')).toBeEnabled();
+
+    store.getRentabilidade.mockImplementation(async () => sem([3, 1]));
+    save.resolve();
+    await waitFor(() => expect(cb).toBeEnabled());
+    await waitFor(() => expect(store.getRentabilidade).toHaveBeenCalledTimes(2));
+    expect(cb).not.toBeChecked();
+  });
+
+  it('keeps the grid and the saved state when the refetch after a save fails', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const cb = await celula('Ana', 'Cinara');
+    store.getRentabilidade.mockRejectedValue(new Error('rede'));
+    await user.click(cb);
+
+    expect(
+      await screen.findByText(
+        'Não foi possível atualizar os dados. Os valores podem estar desatualizados.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText('Não foi possível carregar a equipe por cliente.')).toBeNull();
+    // The write landed: the cached data predates it, so the cell keeps the new state.
+    expect(await celula('Ana', 'Cinara')).not.toBeChecked();
+    expect(toastMock.error).not.toHaveBeenCalled();
+
+    store.getRentabilidade.mockImplementation(async () => sem([3, 1]));
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(
+          'Não foi possível atualizar os dados. Os valores podem estar desatualizados.',
+        ),
+      ).toBeNull(),
+    );
+    expect(await celula('Ana', 'Cinara')).not.toBeChecked();
+  });
+
   it('marcar_todos_sends_all_active', async () => {
     const user = userEvent.setup();
     // Roberta pausada: out of "Marcar todos". Caio lacks Cinara and Talitha (both active).
@@ -191,7 +309,7 @@ describe('AtribuicaoPage', () => {
 
     expect(await screen.findByText('21 de 20')).toBeVisible();
     expect(screen.getByText('Acima do limite')).toBeVisible();
-    expect(screen.getByRole('progressbar', { name: '21 de 20 clientes do limite' })).toBeVisible();
+    expect(screen.getByRole('progressbar', { name: '21 de 20 clientes' })).toBeVisible();
   });
 
   it('limite_progress_within', async () => {

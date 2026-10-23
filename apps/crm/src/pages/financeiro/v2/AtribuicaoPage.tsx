@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -56,8 +57,19 @@ export default function AtribuicaoPage() {
     enabled: !!valeDesde,
   });
 
+  const tentarNovamente = () => {
+    if (editaveis.isError) void editaveis.refetch();
+    if (rentabilidade.isError) void rentabilidade.refetch();
+  };
+  // A failed background refetch (after a save, on focus) keeps the cached data: the grid
+  // stays mounted with its in-flight and optimistic state, under a small warning. The
+  // full error only stands in for the grid when there is nothing to show.
+  const semDados =
+    (editaveis.isError && !editaveis.data) || (rentabilidade.isError && !rentabilidade.data);
+  const refetchFalhou = !semDados && (editaveis.isError || rentabilidade.isError);
+
   let corpo: React.ReactNode;
-  if (editaveis.isError || rentabilidade.isError) {
+  if (semDados) {
     // The period select above stays rendered, so a failed pick is never a dead end.
     corpo = (
       <div className="flex flex-wrap items-center gap-2">
@@ -67,7 +79,7 @@ export default function AtribuicaoPage() {
           variant="outline"
           size="sm"
           className="mb-0"
-          onClick={() => void (editaveis.isError ? editaveis.refetch() : rentabilidade.refetch())}
+          onClick={tentarNovamente}
         >
           Tentar novamente
         </Button>
@@ -130,6 +142,20 @@ export default function AtribuicaoPage() {
           )}
         </div>
       </div>
+      {refetchFalhou && (
+        <div role="status" className="flex flex-wrap items-center gap-2">
+          <Aviso>Não foi possível atualizar os dados. Os valores podem estar desatualizados.</Aviso>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mb-0"
+            onClick={tentarNovamente}
+          >
+            Tentar novamente
+          </Button>
+        </div>
+      )}
       {corpo}
     </section>
   );
@@ -155,6 +181,9 @@ function Matriz({ data, valeDesde, podeEditar, access }: MatrizProps) {
   const [pendentes, setPendentes] = useState<Set<string>>(() => new Set());
   // Bumped on every toggle of a key, so a slow save never clears a newer override.
   const versoes = useRef(new Map<string, number>());
+  // A "Marcar todos" save has no focused or changed control for the silent-update
+  // heuristic to see, so the in-flight saves are registered explicitly.
+  useUnsavedWork(pendentes.size > 0);
 
   const grupos = useMemo(
     () =>
@@ -226,7 +255,9 @@ function Matriz({ data, valeDesde, podeEditar, access }: MatrizProps) {
     }
     soltar();
     await qc.invalidateQueries({ queryKey: ['financeiro-v2'] });
-    // The refetch has landed: from here the server's answer is the truth.
+    // The refetch has landed: from here the server's answer is the truth. If it failed,
+    // the cached data predates the write that did land, so the override stays.
+    if (qc.getQueryState(['financeiro-v2', 'rentabilidade', valeDesde])?.status === 'error') return;
     limpar(chaves, versao);
   }
 
@@ -488,7 +519,7 @@ function ContagemClientes({ membro: m }: { membro: MembroRentabilidade }) {
   return (
     <div className="flex min-w-24 flex-col items-center gap-1">
       <span className="font-semibold text-foreground">{rotulo}</span>
-      <Progress value={uso} aria-label={`${rotulo} clientes do limite`} className="h-1.5 w-24" />
+      <Progress value={uso} aria-label={`${rotulo} clientes`} className="h-1.5 w-24" />
       {m.n_clientes > limite && (
         <Badge variant="warning" size="sm">
           Acima do limite
