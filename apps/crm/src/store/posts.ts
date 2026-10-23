@@ -535,6 +535,10 @@ export interface PostApproval {
   action: 'aprovado' | 'correcao' | 'mensagem';
   comentario: string | null;
   is_workspace_user: boolean;
+  /** Autor da mensagem da equipe; null para respostas do cliente (via Hub). */
+  author_user_id: string | null;
+  /** Notas de mídia (post_media_notes) enviadas junto com esta resposta. */
+  media_note_ids: number[];
   created_at: string;
 }
 
@@ -1433,11 +1437,21 @@ export async function getPostApprovals(postIds: number[]): Promise<PostApproval[
   if (postIds.length === 0) return [];
   const { data, error } = await supabase
     .from('post_approvals')
-    .select('*')
+    .select('*, post_approval_media_notes(note_id)')
     .in('post_id', postIds)
     .order('created_at', { ascending: true });
   if (error) throw error;
-  return data || [];
+  return (data || []).map(
+    ({
+      post_approval_media_notes,
+      ...approval
+    }: Omit<PostApproval, 'media_note_ids'> & {
+      post_approval_media_notes?: { note_id: number }[] | null;
+    }) => ({
+      ...approval,
+      media_note_ids: (post_approval_media_notes ?? []).map((link) => link.note_id),
+    }),
+  );
 }
 
 export async function getPostStatusEvents(postIds: number[]): Promise<PostStatusEvent[]> {
