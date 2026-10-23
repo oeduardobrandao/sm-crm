@@ -17,6 +17,7 @@ import {
   getMembros,
   getPostCommentThreads,
   getWorkflowEvents,
+  getWorkspaceUsers,
   type Workflow,
   type WorkflowEtapa,
   type WorkflowPost,
@@ -27,7 +28,7 @@ import {
 } from '../../../store';
 import { isGeralThread } from '@/store/comments';
 import { Badge } from '@/components/ui/badge';
-import { DiscussaoTimeline } from '../discussao/DiscussaoEquipe';
+import { DiscussaoTimeline, type DiscussaoWorkspaceUser } from '../discussao/DiscussaoEquipe';
 import { buildTimeline } from '../discussao/timeline';
 import { computeDeadlineDate } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
@@ -123,6 +124,12 @@ export function HistoryDrawer({
   const { data: membros = [] } = useQuery({
     queryKey: ['membros'],
     queryFn: getMembros,
+  });
+
+  // Same key as the fluxo drawer so the cache is shared; resolves authors without a membros row.
+  const { data: workspaceUsers = [] } = useQuery({
+    queryKey: ['workspace-users'],
+    queryFn: getWorkspaceUsers,
   });
 
   const postIds = posts.map((p) => p.id).filter(Boolean) as number[];
@@ -271,11 +278,13 @@ export function HistoryDrawer({
                     <HistoryDiscussao
                       threads={commentThreads.filter((t) => t.post_id === post.id)}
                       membros={membros}
+                      workspaceUsers={workspaceUsers}
                     />
 
                     <PostCommentSummary
                       threads={commentThreads.filter((t) => t.post_id === post.id)}
                       membros={membros}
+                      workspaceUsers={workspaceUsers}
                       onThreadClick={() => {}}
                       readOnly
                     />
@@ -343,9 +352,11 @@ export function HistoryDrawer({
 function HistoryDiscussao({
   threads,
   membros,
+  workspaceUsers,
 }: {
   threads: CommentThreadWithComments[];
   membros: Membro[];
+  workspaceUsers: DiscussaoWorkspaceUser[];
 }) {
   const items = useMemo(
     () =>
@@ -372,7 +383,7 @@ function HistoryDiscussao({
       <DiscussaoTimeline
         items={items}
         membros={membros}
-        workspaceUsers={[]}
+        workspaceUsers={workspaceUsers}
         currentUserId=""
         onThreadClick={() => {}}
       />

@@ -1,6 +1,6 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render as rtlRender, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Workflow, WorkflowEvent } from '@/store';
 
@@ -21,6 +21,7 @@ vi.mock('@/store', async (importOriginal) => {
     getPostApprovals: vi.fn(),
     getPostCommentThreads: vi.fn(),
     getWorkflowEvents: vi.fn(),
+    getWorkspaceUsers: vi.fn(),
     getPostStatusDefinitions: vi.fn(),
   };
 });
@@ -66,6 +67,7 @@ describe('HistoryDrawer — Histórico section', () => {
     (store.getPostCommentThreads as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
     (store.getPostStatusDefinitions as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
     (store.getWorkflowEvents as ReturnType<typeof vi.fn>).mockReset();
+    (store.getWorkspaceUsers as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
   });
 
   it('renders the Histórico section with event nodes when workflow_events exist', async () => {
@@ -131,6 +133,25 @@ describe('HistoryDrawer: discussão da equipe (somente leitura)', () => {
     ],
   };
 
+  const anchored = {
+    ...geral,
+    id: 2,
+    quoted_text: 'Trecho citado da legenda',
+    field: 'ig_caption',
+    anchor_start: 0,
+    anchor_end: 10,
+    post_comments: [
+      {
+        id: 200,
+        thread_id: 2,
+        author_id: 'user-1',
+        content: 'Ajustar este trecho',
+        created_at: '2026-06-01T11:00:00Z',
+        updated_at: null,
+      },
+    ],
+  };
+
   beforeEach(async () => {
     const store = await import('@/store');
     (store.getWorkflowEtapas as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
@@ -141,9 +162,10 @@ describe('HistoryDrawer: discussão da equipe (somente leitura)', () => {
     (store.getPostApprovals as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
     (store.getPostCommentThreads as ReturnType<typeof vi.fn>)
       .mockReset()
-      .mockResolvedValue([geral]);
+      .mockResolvedValue([geral, anchored]);
     (store.getPostStatusDefinitions as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
     (store.getWorkflowEvents as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkspaceUsers as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
   });
 
   it('shows the geral thread messages with no composer, bell or chat bridge, and keeps the summary free of it', async () => {
@@ -156,7 +178,33 @@ describe('HistoryDrawer: discussão da equipe (somente leitura)', () => {
     expect(screen.queryByPlaceholderText(/Escreva para a equipe/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Seguir|Seguindo/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Discutir no chat/)).not.toBeInTheDocument();
-    // PostCommentSummary ignores the geral thread: no "Comentários internos" block.
-    expect(screen.queryByText('Comentários internos')).not.toBeInTheDocument();
+    // The anchored thread stays out of the discussion block (geral-only filter)...
+    const discussao = screen.getByRole('region', { name: 'Discussão da equipe' });
+    expect(within(discussao).queryByText('Ajustar este trecho')).not.toBeInTheDocument();
+    expect(within(discussao).queryByText('Trecho citado da legenda')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ver no texto/)).not.toBeInTheDocument();
+    // ...and the geral thread stays out of PostCommentSummary: it lists only the anchored one.
+    const summary = screen
+      .getByText('Comentários internos')
+      .closest('.comment-summary') as HTMLElement;
+    expect(within(summary).getByText('Ajustar este trecho')).toBeInTheDocument();
+    expect(within(summary).queryByText('Vamos trocar a capa')).not.toBeInTheDocument();
+    expect(within(summary).getByText('(1)')).toBeInTheDocument();
+  });
+
+  it('resolves authors that only exist in workspace users (no membros row)', async () => {
+    const store = await import('@/store');
+    (store.getWorkspaceUsers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'user-1', nome: 'Dona do Workspace', avatar_url: null },
+    ]);
+
+    render(<HistoryDrawer workflow={workflow} onClose={() => {}} />);
+    fireEvent.click(await screen.findByText('Post com discussão'));
+
+    const discussao = await screen.findByRole('region', { name: 'Discussão da equipe' });
+    await waitFor(() => {
+      expect(within(discussao).getAllByText('Dona do Workspace').length).toBeGreaterThan(0);
+    });
+    expect(within(discussao).queryByText('Membro')).not.toBeInTheDocument();
   });
 });
