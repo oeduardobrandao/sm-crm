@@ -45,6 +45,8 @@ describe('hubPosts locale files', () => {
       'history.sending',
       'history.sendError',
       'history.motivoLabel',
+      'history.openNotes_one',
+      'history.openNotes_other',
       'correctionReason.title',
       'correctionReason.midia',
       'correctionReason.texto',

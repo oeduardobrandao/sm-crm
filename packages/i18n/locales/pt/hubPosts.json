@@ -168,7 +168,9 @@
     "send": "Enviar",
     "sending": "Enviando...",
     "sendError": "Não foi possível enviar o comentário.",
-    "motivoLabel": "Motivo"
+    "motivoLabel": "Motivo",
+    "openNotes_one": "{{count}} comentário na mídia em aberto",
+    "openNotes_other": "{{count}} comentários na mídia em aberto"
   },
   "correctionReason": {
     "title": "Motivo da correção",

@@ -227,7 +227,9 @@ export interface PostHistoryApproval {
 export interface PostHistoryResponse {
   events: PostHistoryEvent[];
   approvals: PostHistoryApproval[];
-  media_notes: HubMediaNote[];
+  /** Client-visible media notes of the post, present once it has been sent to the client.
+   * Absent on stale cached payloads and before the function deploy: treat as []. */
+  media_notes?: HubMediaNote[];
 }
 
 export interface HubBrand {

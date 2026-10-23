@@ -168,7 +168,9 @@
     "send": "Send",
     "sending": "Sending...",
     "sendError": "Could not send the comment.",
-    "motivoLabel": "Reason"
+    "motivoLabel": "Reason",
+    "openNotes_one": "{{count}} open media comment",
+    "openNotes_other": "{{count}} open media comments"
   },
   "correctionReason": {
     "title": "Correction reason",
