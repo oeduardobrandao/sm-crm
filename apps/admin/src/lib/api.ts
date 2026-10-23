@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { SubscriptionInfo, SubscriptionSummary, WorkspaceStatusGroup } from './subscription';
+import type { BlogPostDetail, BlogPostRow, BlogTab, EditableField } from '../pages/blog/blog-view';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -1094,4 +1095,60 @@ export function updateAffiliateCommissionRule(params: UpdateAffiliateCommissionR
     'update-affiliate-commission-rule',
     params,
   );
+}
+
+// ─── Blog (spec 2026-10-23-blog-automatico §6-§7) ─────────────
+// Row shapes live in pages/blog/blog-view.ts. Mutations return the list columns (no body_md);
+// callers refetch get-blog-post for the full row. expected_revision is always sent where the
+// server accepts it, so a save or a note never lands on a draft the Routine has rewritten.
+
+type BlogFields = Partial<Record<EditableField, string>>;
+
+export function listBlogPosts(tab: BlogTab) {
+  return adminApi<{ posts: BlogPostRow[]; last_draft_at: string | null }>('list-blog-posts', {
+    tab,
+  });
+}
+
+export function getBlogPost(id: string) {
+  return adminApi<{ post: BlogPostDetail }>('get-blog-post', { id });
+}
+
+export function updateBlogPost(id: string, fields: BlogFields, expectedRevision: number) {
+  return adminApi<{ post: BlogPostRow }>('update-blog-post', {
+    id,
+    fields,
+    expected_revision: expectedRevision,
+  });
+}
+
+export function approveBlogPost(id: string, expectedRevision: number) {
+  return adminApi<{ post: BlogPostRow }>('approve-blog-post', {
+    id,
+    expected_revision: expectedRevision,
+  });
+}
+
+export function requestBlogChanges(id: string, note: string, expectedRevision: number) {
+  return adminApi<{ post: BlogPostRow }>('request-blog-changes', {
+    id,
+    note,
+    expected_revision: expectedRevision,
+  });
+}
+
+export function rejectBlogPost(id: string, reason?: string) {
+  return adminApi<{ post: BlogPostRow }>('reject-blog-post', reason ? { id, reason } : { id });
+}
+
+export function unpublishBlogPost(id: string) {
+  return adminApi<{ post: BlogPostRow }>('unpublish-blog-post', { id });
+}
+
+export function republishBlogPost(id: string) {
+  return adminApi<{ post: BlogPostRow }>('republish-blog-post', { id });
+}
+
+export function retryBlogPublish(id: string) {
+  return adminApi<{ post: BlogPostRow }>('retry-blog-publish', { id });
 }

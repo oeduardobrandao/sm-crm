@@ -6,6 +6,7 @@ import {
   HandCoins,
   LayoutDashboard,
   Megaphone,
+  Newspaper,
   Package,
   Plug,
   TrendingUp,
@@ -23,6 +24,7 @@ export type NavId =
   | 'integracoes'
   | 'banners'
   | 'popups'
+  | 'blog'
   | 'artigos'
   | 'videos';
 
@@ -71,6 +73,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     items: [
       item('banners', '/admin/banners', 'Banners', Megaphone, '#ff6b35'),
       item('popups', '/admin/popups', 'Popups', AppWindow, '#5856d6'),
+      item('blog', '/admin/blog', 'Blog', Newspaper, '#34aadc'),
     ],
   },
   {
