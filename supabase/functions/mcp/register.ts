@@ -92,7 +92,10 @@ export function register(
         }
       }
       const data = await run(args ?? {});
-      await audit(deps, name, (auditArgs ?? ((a: any) => a))(args ?? {}, data));
+      // Owner-only tools never audit raw args (they carry valores/nomes); without an explicit
+      // auditArgs the metadata is empty.
+      const defaultAudit = opts?.ownerOnly ? () => ({}) : (a: any) => a;
+      await audit(deps, name, (auditArgs ?? defaultAudit)(args ?? {}, data));
       return jsonResult(data);
     } catch (e) {
       return errorResult(e);

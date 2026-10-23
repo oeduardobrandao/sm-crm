@@ -28,6 +28,7 @@ import {
   listWorkflows,
 } from "./queries.ts";
 import { createMediaUpload, setPostMedia } from "./media.ts";
+import { registerFinanceiroTools } from "./financeiro-tools.ts";
 import { REGISTERED, register } from "./register.ts";
 
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
@@ -337,4 +338,6 @@ export function registerTools(server: any, deps: Deps): void {
       has_cargo: !!a.cargo,
       has_custo_mensal: a.custo_mensal != null,
     }));
+
+  registerFinanceiroTools(server, deps);
 }

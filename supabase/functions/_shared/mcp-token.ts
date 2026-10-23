@@ -105,7 +105,7 @@ export class McpOwnerError extends Error {
 export const OWNER_ONLY_SCOPES = ["financeiro:read", "financeiro:write"] as const;
 
 /** True if `scopes` carries an owner-only scope and `role` is not 'owner'. */
-export function ownerOnlyScopeViolation(scopes: string[], role: string | null): boolean {
+export function ownerOnlyScopeViolation(scopes: string[], role?: string | null): boolean {
   if (role === "owner") return false;
   return scopes.some((s) => (OWNER_ONLY_SCOPES as readonly string[]).includes(s));
 }

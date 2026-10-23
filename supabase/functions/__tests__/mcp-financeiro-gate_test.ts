@@ -10,7 +10,6 @@ import {
   OWNER_CTX,
 } from "./mcp-financeiro-helpers.ts";
 import {
-  hashToken,
   McpOwnerError,
   OWNER_ONLY_SCOPES,
   ownerOnlyScopeViolation,
@@ -209,7 +208,6 @@ Deno.test("mcp-financeiro-gate: demoted creator loses access (resolveMcpKey read
   const ctxGone = await resolveMcpKey(gone.db as any, raw, "2026-10-23T12:00:00.000Z");
   assert(ctxGone !== null, "key still resolves");
   assertEquals(ctxGone?.role, null);
-  assertEquals(await hashToken(raw), await hashToken(raw)); // sanity: hashing is deterministic
 });
 
 function fakeJwt(claims: Record<string, unknown>): string {
@@ -334,4 +332,21 @@ Deno.test("mcp-financeiro-gate: audit resource_id from lancamento_id/recorrente_
     assertEquals(row.resource_id, expected, JSON.stringify(args));
     assertEquals(row.action, "mcp.financeiro_x");
   }
+});
+
+Deno.test("mcp-financeiro-gate: an ownerOnly tool without auditArgs audits empty args", async () => {
+  const { db, calls } = makeFakeDb({});
+  const server = fakeServer();
+  register(server, makeDeps(db), "financeiro_x", "financeiro:read", "d", {}, async () => ({ ok: true }), undefined, {
+    ownerOnly: true,
+  });
+  await server.handlers["financeiro_x"]({ valor: 1234, descricao: "segredo" });
+  const ins = calls.find((c) => c.table === "audit_log" && c.method === "insert");
+  assert(ins, "audit insert");
+  assertEquals((ins!.args[0] as any).metadata.args, {});
+});
+
+Deno.test("mcp-financeiro-gate: ownerOnlyScopeViolation treats an undefined role as non-owner", () => {
+  assertEquals(ownerOnlyScopeViolation(["financeiro:read"], undefined), true);
+  assertEquals(ownerOnlyScopeViolation(["clientes:read"], undefined), false);
 });
