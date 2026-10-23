@@ -19,7 +19,9 @@
 -- (i) anon sem acesso às três tabelas e à view;
 -- (j) hub_create_media_note; (k) hub_add_media_note_reply;
 -- (l) record_client_approval_with_notes e o snapshot; (m) create_team_media_note
---   e grants das RPCs; (n) link da notificação com &post=.
+--   e grants das RPCs; (n) link da notificação com &post=;
+-- (o) Mensagens: notas e respostas do cliente no feed, nos não lidos e nas
+--   conversas; nota interna e suas respostas nunca aparecem.
 --
 -- Toda nota com file_id exige um post_file_links (post_id, file_id) no insert
 -- (trigger post_media_notes_require_link): as fixtures vinculam o arquivo antes.
@@ -1042,5 +1044,114 @@ begin
   assert v_link = '/entregas?post=' || v_avulso, format('avulso so com post, veio %s', v_link);
 
   raise notice 'PASS 99_post_media_notes (n) notificacao abre o post';
+end $$;
+rollback;
+
+-- ---- (o) Mensagens: só notas visíveis ao cliente ----
+-- Linhas visíveis em now() + 10..30 min, internas em now() + 1 h: se o filtro
+-- de visibilidade falhar, a interna seria a mais recente (feed e conversas).
+begin;
+do $$
+declare
+  a record; b record;
+  v_post bigint; v_file bigint; v_c bigint; v_i bigint;
+  r_team bigint; r_client bigint; r_int_team bigint; r_int_client bigint;
+  v_long text := repeat('a', 300);
+  v_row record; v_n int; v_ids bigint[];
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  a := pg_temp.pmn_env();
+  b := pg_temp.pmn_env();
+  v_post := pg_temp.pmn_post(a.ws, a.wf);
+  v_file := pg_temp.pmn_file(a.ws);
+  perform pg_temp.pmn_link(a.ws, v_post, v_file, 0);
+
+  v_c := pg_temp.pmn_client_note(a.ws, v_post, v_file);
+  update post_media_notes set body = v_long, created_at = now() + interval '10 minutes' where id = v_c;
+  insert into post_media_note_replies (note_id, conta_id, author_kind, hub_token, body, created_at)
+    values (v_c, a.ws, 'client', 'tok', 'Do cliente', now() + interval '20 minutes') returning id into r_client;
+  insert into post_media_note_replies (note_id, conta_id, author_kind, author_user_id, body, created_at)
+    values (v_c, a.ws, 'team', a.usr, 'Da equipe', now() + interval '30 minutes') returning id into r_team;
+
+  insert into post_media_notes (conta_id, post_id, file_id, slide_index_at_creation, media_kind,
+      visibility, author_kind, author_user_id, body, created_at)
+    values (a.ws, v_post, v_file, 0, 'image', 'internal', 'team', a.usr, 'Interna', now() + interval '1 hour')
+    returning id into v_i;
+  insert into post_media_note_replies (note_id, conta_id, author_kind, author_user_id, body, created_at)
+    values (v_i, a.ws, 'team', a.usr, 'Interna equipe', now() + interval '1 hour') returning id into r_int_team;
+  -- o write path nunca grava isto; a tabela aceita, então o filtro precisa barrar
+  insert into post_media_note_replies (note_id, conta_id, author_kind, hub_token, body, created_at)
+    values (v_i, a.ws, 'client', 'tok', 'Interna cliente', now() + interval '1 hour') returning id into r_int_client;
+
+  -- feed (service role, Hub e CRM leem o mesmo RPC)
+  select count(*) into v_n from get_mensagens_feed(a.ws, a.cli)
+   where (source = 'media_note' and item_id = v_i)
+      or (source = 'media_note_reply' and item_id in (r_int_team, r_int_client))
+      or content like 'Interna%';
+  assert v_n = 0, format('nada da nota interna no feed, veio %s', v_n);
+
+  select * into v_row from get_mensagens_feed(a.ws, a.cli) where source = 'media_note';
+  assert v_row.item_id = v_c and v_row.action = 'nota' and v_row.content = left(v_long, 280)
+     and length(v_row.content) = 280 and v_row.is_workspace_user = false and v_row.author_user_id is null
+     and v_row.cliente_id = a.cli and v_row.post_id = v_post and v_row.workflow_id = a.wf
+     and v_row.post_titulo = 'Post' and v_row.cliente_nome = 'Cliente',
+    format('linha da nota do cliente, veio %s', v_row);
+  select array_agg(item_id order by item_id) into v_ids
+    from get_mensagens_feed(a.ws, a.cli) where source = 'media_note_reply';
+  assert v_ids = array[r_client, r_team], format('respostas da nota do cliente, veio %s', v_ids);
+  select * into v_row from get_mensagens_feed(a.ws, a.cli) where source = 'media_note_reply' and item_id = r_team;
+  assert v_row.action = 'resposta_nota' and v_row.is_workspace_user and v_row.author_user_id = a.usr
+     and v_row.content = 'Da equipe' and v_row.post_id = v_post,
+    format('resposta da equipe, veio %s', v_row);
+  select * into v_row from get_mensagens_feed(a.ws, a.cli) where source = 'media_note_reply' and item_id = r_client;
+  assert v_row.action = 'resposta_nota' and not v_row.is_workspace_user and v_row.author_user_id is null,
+    format('resposta do cliente, veio %s', v_row);
+  select * into v_row from get_mensagens_feed(a.ws, a.cli) limit 1;
+  assert v_row.source = 'media_note_reply' and v_row.item_id = r_team, 'mais recente visivel primeiro';
+  select count(*) into v_n from get_mensagens_feed(a.ws, a.cli);
+  assert v_n = 3, format('feed com 3 linhas, veio %s', v_n);
+  select count(*) into v_n from get_mensagens_feed(b.ws, b.cli);
+  assert v_n = 0, 'outro workspace nao ve';
+
+  -- keyset: a página depois da resposta da equipe traz as outras duas
+  select count(*) into v_n from get_mensagens_feed(a.ws, a.cli, now() + interval '30 minutes', 50,
+                                                   'media_note_reply', r_team);
+  assert v_n = 2, format('cursor composto pula a resposta da equipe, veio %s', v_n);
+
+  -- não lidos do Hub: só a resposta da equipe na nota do cliente
+  select unread_count into v_n from get_mensagens_unread(a.ws, a.cli);
+  assert v_n = 1, format('Hub: 1 nao lida (resposta da equipe), veio %s', v_n);
+  insert into mensagens_last_seen (conta_id, cliente_id, last_seen_at)
+    values (a.ws, a.cli, now() + interval '30 minutes');
+  select unread_count into v_n from get_mensagens_unread(a.ws, a.cli);
+  assert v_n = 0, format('Hub: lida ate o created_at da resposta, veio %s', v_n);
+
+  -- CRM (authenticated): nota e resposta do cliente; conversas idem
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', a.usr, 'role', 'authenticated')::text, true);
+  select unread_count into v_n from get_mensagens_unread() where cliente_id = a.cli;
+  assert v_n = 2, format('CRM: nota e resposta do cliente nao lidas, veio %s', v_n);
+  select * into v_row from get_mensagens_conversas() where cliente_id = a.cli;
+  assert v_row.unread_count = 2, format('conversas: 2 nao lidas, veio %s', v_row.unread_count);
+  assert v_row.last_source = 'media_note_reply' and v_row.last_action = 'resposta_nota'
+     and v_row.last_content = 'Da equipe' and v_row.last_is_workspace_user,
+    format('conversas: ultima e a resposta da equipe, veio %s', v_row);
+  select count(*) into v_n from get_mensagens_feed(null, a.cli);
+  assert v_n = 3, format('feed do CRM com 3 linhas, veio %s', v_n);
+  reset role;
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  -- CRM: lido até a nota, sobra a resposta do cliente
+  insert into mensagens_last_seen (conta_id, user_id, last_seen_at)
+    values (a.ws, a.usr, now() + interval '10 minutes');
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', a.usr, 'role', 'authenticated')::text, true);
+  select unread_count into v_n from get_mensagens_unread() where cliente_id = a.cli;
+  assert v_n = 1, format('CRM: so a resposta do cliente depois do last_seen, veio %s', v_n);
+  reset role;
+
+  raise notice 'PASS 99_post_media_notes (o) mensagens: notas do cliente, nunca internas';
 end $$;
 rollback;
