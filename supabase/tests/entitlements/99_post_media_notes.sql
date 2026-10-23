@@ -97,7 +97,8 @@ declare v_t text;
 begin
   foreach v_t in array array['public.post_media_notes', 'public.post_media_note_replies'] loop
     assert has_table_privilege('authenticated', v_t, 'SELECT'), format('authenticated le %s', v_t);
-    assert has_table_privilege('authenticated', v_t, 'INSERT'), format('authenticated insere %s', v_t);
+    assert not has_table_privilege('authenticated', v_t, 'INSERT'),
+      format('authenticated sem INSERT de tabela inteira em %s (so por coluna)', v_t);
     assert not has_table_privilege('authenticated', v_t, 'DELETE'), format('authenticated nao apaga %s', v_t);
     assert not has_table_privilege('authenticated', v_t, 'TRUNCATE'), format('authenticated nao trunca %s', v_t);
     assert has_table_privilege('service_role', v_t, 'INSERT,UPDATE,DELETE'), format('service_role escreve %s', v_t);
@@ -113,6 +114,25 @@ begin
     'authenticated nao atualiza body';
   assert not has_column_privilege('authenticated', 'public.post_media_notes', 'resolved_by', 'UPDATE'),
     'authenticated nao atualiza resolved_by';
+
+  -- INSERT por coluna: só o que a equipe preenche numa nota/resposta
+  foreach v_t in array array['conta_id', 'post_id', 'file_id', 'slide_index_at_creation', 'media_kind',
+                             't_seconds', 'x', 'y', 'visibility', 'author_kind', 'author_user_id', 'body'] loop
+    assert has_column_privilege('authenticated', 'public.post_media_notes', v_t, 'INSERT'),
+      format('authenticated insere nota com %s', v_t);
+  end loop;
+  foreach v_t in array array['id', 'status', 'resolved_by', 'resolved_at', 'created_at', 'updated_at', 'hub_token'] loop
+    assert not has_column_privilege('authenticated', 'public.post_media_notes', v_t, 'INSERT'),
+      format('authenticated nao insere nota com %s', v_t);
+  end loop;
+  foreach v_t in array array['note_id', 'conta_id', 'author_kind', 'author_user_id', 'body'] loop
+    assert has_column_privilege('authenticated', 'public.post_media_note_replies', v_t, 'INSERT'),
+      format('authenticated insere resposta com %s', v_t);
+  end loop;
+  foreach v_t in array array['id', 'created_at', 'hub_token'] loop
+    assert not has_column_privilege('authenticated', 'public.post_media_note_replies', v_t, 'INSERT'),
+      format('authenticated nao insere resposta com %s', v_t);
+  end loop;
 
   assert has_table_privilege('authenticated', 'public.post_approval_media_notes', 'SELECT'),
     'authenticated le post_approval_media_notes';
@@ -223,6 +243,20 @@ begin
   perform pg_temp.pmn_expect(format(
     'insert into post_media_notes (conta_id, post_id, file_id, slide_index_at_creation, media_kind, visibility, author_kind, author_user_id, body) values (%L::uuid, %s, %s, 0, %L, %L, %L, %L::uuid, %L)',
     b.ws, v_post_b, v_file_b, 'image', 'internal', 'team', a.usr, 'No workspace errado'), '42501');
+
+  -- (b) nota interna própria nomeando colunas de estado/data: recusada pelo grant
+  perform pg_temp.pmn_expect(format(
+    'insert into post_media_notes (conta_id, post_id, file_id, slide_index_at_creation, media_kind, visibility, author_kind, author_user_id, body, status, resolved_at) values (%L::uuid, %s, %s, 0, %L, %L, %L, %L::uuid, %L, %L, now())',
+    a.ws, v_post_a, v_file_a, 'image', 'internal', 'team', a.usr, 'Ja resolvida', 'resolved'), '42501');
+  perform pg_temp.pmn_expect(format(
+    'insert into post_media_notes (conta_id, post_id, file_id, slide_index_at_creation, media_kind, visibility, author_kind, author_user_id, body, resolved_by) values (%L::uuid, %s, %s, 0, %L, %L, %L, %L::uuid, %L, %L::uuid)',
+    a.ws, v_post_a, v_file_a, 'image', 'internal', 'team', a.usr, 'Forjada', b.usr), '42501');
+  perform pg_temp.pmn_expect(format(
+    'insert into post_media_notes (conta_id, post_id, file_id, slide_index_at_creation, media_kind, visibility, author_kind, author_user_id, body, created_at) values (%L::uuid, %s, %s, 0, %L, %L, %L, %L::uuid, %L, now() - interval %L)',
+    a.ws, v_post_a, v_file_a, 'image', 'internal', 'team', a.usr, 'Antiga', '1 day'), '42501');
+  perform pg_temp.pmn_expect(format(
+    'insert into post_media_note_replies (note_id, conta_id, author_kind, author_user_id, body, created_at) values (%s, %L::uuid, %L, %L::uuid, %L, now() - interval %L)',
+    v_note_a, a.ws, 'team', a.usr, 'Antiga', '1 day'), '42501');
 
   -- (b) nota interna própria: aceita e visível (grant + policy + sequência)
   insert into post_media_notes (conta_id, post_id, file_id, slide_index_at_creation,
@@ -427,12 +461,16 @@ begin
   assert v_row.resolved_by is null and v_row.resolved_at is not null, 'service role resolve sem uid';
   update post_media_notes set resolved_at = now() - interval '1 day', resolved_by = b.usr
    where id = v_note_b;
+  -- o trigger reescreve updated_at em todo update: o retrocesso some no próximo
+  alter table post_media_notes disable trigger post_media_notes_before_update;
+  update post_media_notes set updated_at = now() - interval '1 day' where id = v_note_b;
+  alter table post_media_notes enable trigger post_media_notes_before_update;
   update post_media_notes set body = 'Editado' where id = v_note_b;
   select * into v_row from post_media_notes where id = v_note_b;
   assert v_row.status = 'resolved' and v_row.resolved_by = b.usr
      and v_row.resolved_at = now() - interval '1 day' and v_row.body = 'Editado',
     'update sem troca de status preserva resolved_*';
-  assert v_row.updated_at = now(), 'updated_at tocado no update';
+  assert v_row.updated_at = now(), 'updated_at tocado pelo trigger no update';
 
   raise notice 'PASS 99_post_media_notes (d) update de status + vinculo de aprovacao';
 end $$;
