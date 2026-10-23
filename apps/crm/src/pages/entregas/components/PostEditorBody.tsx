@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Expand } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { MessageSquare, Send, History, Loader2 } from 'lucide-react';
+import { Eye, Send, History, Loader2 } from 'lucide-react';
 import {
   type WorkflowPost,
   type PostApproval,
@@ -19,7 +19,9 @@ import {
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import { PostProductionSection } from './PostProductionSection';
-import PostCommentSummary from './PostCommentSummary';
+import { DiscussaoEquipe } from '../discussao/DiscussaoEquipe';
+import { useDiscussao } from '../discussao/useDiscussao';
+import { Badge } from '@/components/ui/badge';
 import { PostMediaGallery } from './PostMediaGallery';
 import { PostClientReferences } from './references/PostClientReferences';
 import { ReferenceViewerDialog } from './references/ReferenceViewerDialog';
@@ -243,6 +245,20 @@ export function PostEditorBody({
 
   const { features } = useWorkspaceLimits();
   const statusRegistry = useStatusRegistry();
+  // Once per post row, shared by the desktop section and the phone tab. Every row mounts
+  // this component, so it only subscribes and fetches while the post is expanded.
+  // Hosts already pass this post's threads; filter anyway, since a foreign comment id would
+  // make post_discussao_marcar_lido raise and widen the realtime filter.
+  const postThreads = useMemo(
+    () => commentThreads.filter((t) => t.post_id === post.id),
+    [commentThreads, post.id],
+  );
+  const discussao = useDiscussao({
+    postId: post.id ?? 0,
+    threads: postThreads,
+    currentUserId: currentUserId ?? '',
+    enabled: isExpanded && post.id != null && !!currentUserId,
+  });
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   // Plataformas por fluxo (P2), dark atrás de feature_multiplatform. Desligada ou
@@ -1616,43 +1632,51 @@ export function PostEditorBody({
         hasInstagramAccount={hasInstagramAccount}
       />
 
-      <PostCommentSummary
-        threads={commentThreads}
-        membros={membros}
-        workspaceUsers={workspaceUsers}
-        onThreadClick={(threadId) => {
-          const thread = commentThreads.find((t) => t.id === threadId);
-          if (thread?.field !== 'ig_caption') return;
-          if (multiplatform) {
-            if (!currentPlatforms.includes('instagram')) {
-              toast.info('Ative o Instagram em Destinos para ver este comentário.');
+      {currentUserId && post.id != null && (
+        <DiscussaoEquipe
+          discussao={discussao}
+          threads={postThreads}
+          membros={membros}
+          workspaceUsers={workspaceUsers}
+          currentUserId={currentUserId}
+          onThreadClick={(threadId) => {
+            const thread = commentThreads.find((t) => t.id === threadId);
+            if (thread?.field !== 'ig_caption') return;
+            if (multiplatform) {
+              if (!currentPlatforms.includes('instagram')) {
+                toast.info('Ative o Instagram em Destinos para ver este comentário.');
+                return;
+              }
+              setCaptionTab('instagram');
+              // A aba do Instagram pode estar escondida (forceMount + hidden) e o popover
+              // se posiciona pelos retângulos do texto: foca depois de revelar a aba.
+              requestAnimationFrame(() => captionRef.current?.focusThread(threadId));
               return;
             }
-            setCaptionTab('instagram');
-            // A aba do Instagram pode estar escondida (forceMount + hidden) e o popover
-            // se posiciona pelos retângulos do texto: foca depois de revelar a aba.
-            requestAnimationFrame(() => captionRef.current?.focusThread(threadId));
-            return;
-          }
-          captionRef.current?.focusThread(threadId);
-        }}
-      />
-
-      {approvals.length > 0 && (
-        <div className="drawer-approval-thread">
-          <div className="drawer-thread-label">
-            <MessageSquare className="h-3.5 w-3.5" /> Comentários
-          </div>
-          {approvals.map((a) => (
-            <PostApprovalBubble
-              key={a.id}
-              approval={a}
-              references={references.filter((r) => r.post_approval_id === a.id)}
-              onOpenReference={setViewingReference}
-            />
-          ))}
-        </div>
+            captionRef.current?.focusThread(threadId);
+          }}
+        />
       )}
+
+      <section className="drawer-approval-thread" aria-labelledby={`cliente-conversa-${post.id}`}>
+        <div className="drawer-client-thread-header">
+          <Eye className="drawer-client-thread-icon h-3.5 w-3.5" aria-hidden="true" />
+          <h3 id={`cliente-conversa-${post.id}`} className="drawer-client-thread-title">
+            Conversa com o cliente
+          </h3>
+          <Badge variant="info" size="sm">
+            O cliente vê
+          </Badge>
+        </div>
+        {approvals.map((a) => (
+          <PostApprovalBubble
+            key={a.id}
+            approval={a}
+            references={references.filter((r) => r.post_approval_id === a.id)}
+            onOpenReference={setViewingReference}
+          />
+        ))}
+      </section>
 
       <div className="drawer-reply-row">
         <input

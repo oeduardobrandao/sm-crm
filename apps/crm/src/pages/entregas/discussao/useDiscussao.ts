@@ -26,6 +26,11 @@ export interface UseDiscussaoArgs {
   /** This post's threads (general + passage), from the drawer's query. */
   threads: CommentThreadWithComments[];
   currentUserId: string;
+  /**
+   * False while the post row is collapsed (PostEditorBody mounts for every row of the
+   * drawer): no participation fetch, no realtime channel, no read marker. Default true.
+   */
+  enabled?: boolean;
 }
 
 export interface UseDiscussaoResult {
@@ -48,6 +53,7 @@ export function useDiscussao({
   postId,
   threads,
   currentUserId,
+  enabled = true,
 }: UseDiscussaoArgs): UseDiscussaoResult {
   const qc = useQueryClient();
 
@@ -55,6 +61,7 @@ export function useDiscussao({
     queryKey: participacaoKey(postId),
     queryFn: () => getDiscussaoParticipacao(postId),
     refetchOnWindowFocus: 'always',
+    enabled,
   });
   const participacao = participacaoQuery.data;
   const isParticipant = !!participacao && (participacao.seguindo || participacao.implicito);
@@ -82,11 +89,16 @@ export function useDiscussao({
   const [anchor, setAnchor] = useState<{ postId: number; id: number } | null>(null);
   const hasFreshParticipacao = participacaoQuery.isFetchedAfterMount && !!participacao;
   useEffect(() => {
+    // Collapsing the post ends the "open" session: the next expand takes a new anchor.
+    if (!enabled) {
+      setAnchor(null);
+      return;
+    }
     if (!hasFreshParticipacao || !participacao) return;
     setAnchor((prev) =>
       prev && prev.postId === postId ? prev : { postId, id: participacao.lastSeenCommentId },
     );
-  }, [hasFreshParticipacao, participacao, postId]);
+  }, [enabled, hasFreshParticipacao, participacao, postId]);
   const unreadAnchorId = anchor && anchor.postId === postId && isParticipant ? anchor.id : null;
 
   // ── Realtime ────────────────────────────────────────────────
@@ -101,6 +113,7 @@ export function useDiscussao({
   );
 
   useEffect(() => {
+    if (!enabled) return;
     const onChange = () => {
       void qc.invalidateQueries({ queryKey: THREADS_KEY });
       void qc.invalidateQueries({ queryKey: NAO_LIDAS_KEY });
@@ -131,18 +144,19 @@ export function useDiscussao({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [postId, threadIdsKey, qc]);
+  }, [enabled, postId, threadIdsKey, qc]);
 
   // Refetch when the window regains focus (a DELETE by someone else has no filterable
   // event, so this is also how it shows up).
   useEffect(() => {
+    if (!enabled) return;
     const onFocus = () => {
       void qc.invalidateQueries({ queryKey: THREADS_KEY });
       void qc.invalidateQueries({ queryKey: NAO_LIDAS_KEY });
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [qc]);
+  }, [enabled, qc]);
 
   // ── Visibility -> read marker ───────────────────────────────
   const [sectionEl, setSectionEl] = useState<HTMLElement | null>(null);
@@ -172,7 +186,7 @@ export function useDiscussao({
   const lastSentRef = useRef<{ postId: number; id: number }>({ postId, id: 0 });
   useEffect(() => {
     // Reading must not turn a bystander into a participant: only participants get a marker.
-    if (!visible || !isParticipant || maxCommentId <= 0) return;
+    if (!enabled || !visible || !isParticipant || maxCommentId <= 0) return;
     if (lastSentRef.current.postId !== postId) lastSentRef.current = { postId, id: 0 };
     if (maxCommentId <= Math.max(lastSentRef.current.id, lastSeen)) return;
     const timer = setTimeout(() => {
@@ -190,7 +204,7 @@ export function useDiscussao({
         });
     }, MARK_READ_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [visible, isParticipant, maxCommentId, lastSeen, postId, qc]);
+  }, [enabled, visible, isParticipant, maxCommentId, lastSeen, postId, qc]);
 
   // ── Mutations ───────────────────────────────────────────────
   const sendMutation = useMutation({
@@ -218,12 +232,13 @@ export function useDiscussao({
     },
   });
   const { mutateAsync: seguirAsync } = seguirMutation;
-  const seguindo = participacao?.seguindo ?? false;
+  // The implicit responsible (no row yet) already gets notices, so for them the bell
+  // reads "Seguindo" and a click unfollows: isParticipant is the "following" state.
   const hasParticipacao = !!participacao;
   const toggleSeguir = useCallback(async () => {
     if (!hasParticipacao) return;
-    await seguirAsync(!seguindo);
-  }, [hasParticipacao, seguindo, seguirAsync]);
+    await seguirAsync(!isParticipant);
+  }, [hasParticipacao, isParticipant, seguirAsync]);
 
   return {
     participacao,

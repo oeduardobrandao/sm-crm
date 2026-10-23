@@ -405,4 +405,40 @@ describe('useDiscussao mutations', () => {
     await act(() => result.current.toggleSeguir());
     expect(rpcCalls('post_discussao_seguir')[0][1]).toEqual({ p_post_id: 1, p_seguir: true });
   });
+
+  it('toggleSeguir unfollows for the implicit responsible (no row, already notified)', async () => {
+    const { result } = setup({}, { seguindo: false, last_seen_comment_id: 0, implicito: true });
+    await waitFor(() => expect(result.current.isParticipant).toBe(true));
+    await act(() => result.current.toggleSeguir());
+    expect(rpcCalls('post_discussao_seguir')[0][1]).toEqual({ p_post_id: 1, p_seguir: false });
+  });
+});
+
+describe('useDiscussao enabled', () => {
+  function setupEnabled(enabled: boolean) {
+    participacaoRow = { seguindo: true, last_seen_comment_id: 2, implicito: false };
+    return renderHook(
+      (p: { enabled: boolean }) =>
+        useDiscussao({ postId: 1, threads: THREADS, currentUserId: ME, enabled: p.enabled }),
+      { wrapper, initialProps: { enabled } },
+    );
+  }
+
+  it('does nothing while disabled: no channel, no participation fetch', async () => {
+    const { result } = setupEnabled(false);
+    await act(async () => {});
+    expect(h.state.log).toEqual([]);
+    expect(rpcCalls('get_post_discussao_participacao')).toHaveLength(0);
+    expect(result.current.unreadAnchorId).toBeNull();
+  });
+
+  it('subscribes and fetches once enabled, and drops the channel when disabled again', async () => {
+    const { result, rerender } = setupEnabled(false);
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.unreadAnchorId).toBe(2));
+    expect(h.state.log).toContain('subscribe:post-discussao-1');
+    rerender({ enabled: false });
+    expect(h.state.log.at(-1)).toBe('remove:post-discussao-1');
+    expect(result.current.unreadAnchorId).toBeNull();
+  });
 });

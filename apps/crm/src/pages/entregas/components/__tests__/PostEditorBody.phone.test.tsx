@@ -52,7 +52,7 @@ vi.mock('@/pages/entregas/components/PostEditor', () => ({
   ),
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
-vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({ default: () => null }));
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({ DiscussaoEquipe: () => null }));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: ({ variant }: { variant?: string }) => (
     <div data-testid="media-stub" data-variant={variant} />

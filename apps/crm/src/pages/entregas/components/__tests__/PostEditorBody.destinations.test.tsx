@@ -41,7 +41,24 @@ vi.mock('@/services/inlineImage', () => ({
 }));
 vi.mock('@/pages/entregas/components/PostEditor', () => ({ PostEditor: () => <div /> }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
-vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({ default: () => null }));
+const discussaoMock = vi.hoisted(() => ({
+  result: { marker: 'discussao-result' },
+  useDiscussao: vi.fn(),
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: (args: unknown) => {
+    discussaoMock.useDiscussao(args);
+    return discussaoMock.result;
+  },
+}));
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: ({ discussao }: { discussao: unknown }) => (
+    <section
+      data-testid="discussao-stub"
+      data-shared={String(discussao === discussaoMock.result)}
+    />
+  ),
+}));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: () => null,
   hasVideoMissingThumbnail: () => false,
@@ -622,5 +639,45 @@ describe('PostEditorBody, colaboradores do Instagram (desktop, feature_multiplat
       ),
     );
     await waitFor(() => expect(screen.getByPlaceholderText('Adicionar @usuário')).toHaveFocus());
+  });
+});
+
+describe('PostEditorBody, Discussão da equipe and Conversa com o cliente', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('labels the client thread as client-visible and drops "Comentários internos"', () => {
+    renderBody();
+    expect(screen.getByRole('heading', { name: 'Conversa com o cliente' })).toBeInTheDocument();
+    expect(screen.getByText('O cliente vê')).toBeInTheDocument();
+    expect(screen.queryByText('Comentários internos')).toBeNull();
+    expect(screen.queryByText(/^Comentários$/)).toBeNull();
+    expect(screen.getByPlaceholderText('Responder ao cliente…')).toBeInTheDocument();
+  });
+
+  it('renders the team discussion with the hook result computed once for the post', () => {
+    renderBody();
+    expect(screen.getByTestId('discussao-stub')).toHaveAttribute('data-shared', 'true');
+    expect(discussaoMock.useDiscussao).toHaveBeenLastCalledWith(
+      expect.objectContaining({ postId: 42, currentUserId: 'user-1', enabled: true }),
+    );
+  });
+
+  it("hands the hook only this post's threads", () => {
+    const mk = (id: number, postId: number) =>
+      ({ id, post_id: postId, field: 'geral', status: 'active', post_comments: [] }) as never;
+    renderBody({ commentThreads: [mk(1, 42), mk(2, 99)] });
+    const args = discussaoMock.useDiscussao.mock.lastCall?.[0] as { threads: { id: number }[] };
+    expect(args.threads.map((t) => t.id)).toEqual([1]);
+  });
+
+  it('keeps the hook disabled while the post row is collapsed', () => {
+    renderBody({ isExpanded: false });
+    expect(screen.queryByTestId('discussao-stub')).toBeNull();
+    expect(discussaoMock.useDiscussao).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
   });
 });
