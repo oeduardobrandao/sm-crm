@@ -82,7 +82,10 @@ export async function listLancamentos(
   if (faixa) q = q.gte("data", faixa.de).lt("data", faixa.ate);
   if (args.tipo) q = q.eq("tipo", args.tipo);
   if (args.status) q = q.eq("status", args.status);
-  const { data, error } = await q.order("data", { ascending: false }).limit(args.limit ?? 100);
+  const { data, error } = await q
+    .order("data", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(args.limit ?? 100);
   if (error) fail(error);
   return { lancamentos: ((data ?? []) as any[]).map((r) => pick(r, LANCAMENTO_FIELDS)) };
 }
@@ -513,7 +516,18 @@ export async function setCustoMembro(d: Deps, a: Record<string, any>): Promise<R
   if (a.dia_pagamento !== undefined) legacy.data_pagamento = a.dia_pagamento;
   exigirMudanca(legacy);
   if (await financeiroV2Ativo(d)) {
-    throw new McpInputError("Com o Financeiro v2 ligado, o custo vem do acordo. Use save_acordo.");
+    // Sem seed, save_acordo também recusaria (nao_configurado): o caminho é seed_financeiro_v2 primeiro.
+    const { data: config, error: cfgErr } = await (d.db as any)
+      .from("financeiro_config")
+      .select("seeded_at")
+      .eq("conta_id", d.ctx.conta_id)
+      .maybeSingle();
+    if (cfgErr) fail(cfgErr);
+    throw new McpInputError(
+      config?.seeded_at != null
+        ? "Com o Financeiro v2 ligado, o custo vem do acordo. Use save_acordo."
+        : "Com o Financeiro v2 ligado, o custo vem do acordo, e o Financeiro v2 ainda não foi configurado. Use seed_financeiro_v2 primeiro e depois save_acordo.",
+    );
   }
   await exigirDoWorkspace(d, "membros", a.membro_id);
   const { data, error } = await (d.db as any)
@@ -574,7 +588,8 @@ export async function saveAcordo(d: Deps, a: Record<string, any>): Promise<Recor
   // Mesmas regras do diálogo de acordo do CRM (AcordoDialog), antes de qualquer leitura ou RPC.
   const inteiroPositivo = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v > 0;
   if (
-    (a.modelo === "mensal_meta" && !inteiroPositivo(a.meta_quantidade)) ||
+    // meta_periodo nunca ganha padrão: o diálogo do CRM sempre envia um, então ausente = inválido.
+    (a.modelo === "mensal_meta" && (!inteiroPositivo(a.meta_quantidade) || a.meta_periodo == null)) ||
     (a.modelo === "mensal_limite" && !inteiroPositivo(a.limite_clientes)) ||
     (a.vigencia_inicio && a.vigencia_fim && a.vigencia_fim < a.vigencia_inicio)
   ) {

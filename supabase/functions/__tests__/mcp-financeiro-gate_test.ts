@@ -11,13 +11,15 @@ import {
 } from "./mcp-financeiro-helpers.ts";
 import {
   McpOwnerError,
+  memberRole,
   OWNER_ONLY_SCOPES,
   ownerOnlyScopeViolation,
   requireOwner,
   resolveMcpKey,
 } from "../_shared/mcp-token.ts";
 import { resolveOAuthCtx } from "../_shared/mcp-oauth.ts";
-import { REGISTERED, register } from "../mcp/register.ts";
+import { register } from "../mcp/register.ts";
+import type { RegisteredTool } from "../mcp/queries.ts";
 import { registerTools } from "../mcp/tools.ts";
 
 const OWNER_ONLY_MSG = "somente o dono do workspace";
@@ -136,26 +138,41 @@ Deno.test("mcp-financeiro-gate: non-ownerOnly tools never run the owner or plan 
   assertEquals(calls.length, 0);
 });
 
-Deno.test("mcp-financeiro-gate: REGISTERED records name, scope and ownerOnly", () => {
+Deno.test("mcp-financeiro-gate: the opt-in registry records name, scope and ownerOnly", () => {
   const { db } = makeFakeDb({});
   const server = fakeServer();
-  REGISTERED.length = 0;
-  register(server, makeDeps(db), "a", "financeiro:read", "d", {}, async () => ({}), undefined, { ownerOnly: true });
-  register(server, makeDeps(db), "b", "clientes:read", "d", { x: z.string().optional() }, async () => ({}));
-  assertEquals(REGISTERED, [
+  const registry: RegisteredTool[] = [];
+  const deps = makeDeps(db, {}, registry);
+  register(server, deps, "a", "financeiro:read", "d", {}, async () => ({}), undefined, { ownerOnly: true });
+  register(server, deps, "b", "clientes:read", "d", { x: z.string().optional() }, async () => ({}));
+  assertEquals(registry, [
     { name: "a", scope: "financeiro:read", ownerOnly: true },
     { name: "b", scope: "clientes:read", ownerOnly: false },
   ]);
 });
 
+Deno.test("mcp-financeiro-gate: without a registry (production) register touches no shared state", async () => {
+  const { db } = makeFakeDb({});
+  const server = fakeServer();
+  const deps = makeDeps(db);
+  register(server, deps, "a", "financeiro:read", "d", {}, async () => ({ ok: true }), undefined, { ownerOnly: true });
+  assert(!("registry" in deps), "no collector is created on the deps");
+  assert(!(await server.handlers["a"]({})).isError, "the tool still runs");
+  // The module no longer exports a shared, per-isolate collector.
+  const mod = await import("../mcp/register.ts");
+  assert(!("REGISTERED" in mod), "no module-global REGISTERED");
+});
+
 Deno.test("mcp-financeiro-gate: every financeiro:* tool registered by registerTools is ownerOnly (structural)", () => {
   const { db } = makeFakeDb({});
-  registerTools(fakeServer() as any, makeDeps(db));
-  const first = REGISTERED.length;
-  assert(first > 0, "registerTools populates REGISTERED");
-  registerTools(fakeServer() as any, makeDeps(db));
-  assertEquals(REGISTERED.length, first, "REGISTERED is reset on every registerTools call");
-  for (const t of REGISTERED) {
+  const first: RegisteredTool[] = [];
+  const second: RegisteredTool[] = [];
+  // Two requests in the same isolate each get their own collector: nothing interleaves.
+  registerTools(fakeServer() as any, makeDeps(db, {}, first));
+  registerTools(fakeServer() as any, makeDeps(db, {}, second));
+  assert(first.length > 0, "registerTools populates the registry");
+  assertEquals(second, first, "each registerTools call collects only its own tools");
+  for (const t of first) {
     if (t.scope.startsWith("financeiro:")) assert(t.ownerOnly, `${t.name} (${t.scope}) must be ownerOnly`);
   }
 });
@@ -208,6 +225,36 @@ Deno.test("mcp-financeiro-gate: demoted creator loses access (resolveMcpKey read
   const ctxGone = await resolveMcpKey(gone.db as any, raw, "2026-10-23T12:00:00.000Z");
   assert(ctxGone !== null, "key still resolves");
   assertEquals(ctxGone?.role, null);
+});
+
+Deno.test("mcp-financeiro-gate: memberRole fails loud when the workspace_members read errors", async () => {
+  const { db } = makeFakeDb({ workspace_members: [{ data: null, error: { message: "boom" } }] });
+  let caught: unknown;
+  try {
+    await memberRole(db as any, "user-1", "workspace-A");
+  } catch (e) {
+    caught = e;
+  }
+  assert(caught !== undefined, "memberRole must throw, never resolve to null (fail open)");
+  assertEquals((caught as { message?: string }).message, "boom");
+
+  // resolveMcpKey propagates it instead of resolving a ctx with role null.
+  const raw = "mesaas_sk_" + "a".repeat(64);
+  const keyRow = {
+    id: "key-1", conta_id: "workspace-A", created_by: "user-1", scopes: ["financeiro:read"],
+    expires_at: null, revoked_at: null,
+  };
+  const k = makeFakeDb({
+    mcp_api_keys: [{ data: keyRow, error: null }, { data: null, error: null }],
+    workspace_members: [{ data: null, error: { message: "boom" } }],
+  });
+  let caught2: unknown;
+  try {
+    await resolveMcpKey(k.db as any, raw, "2026-10-23T12:00:00.000Z");
+  } catch (e) {
+    caught2 = e;
+  }
+  assert(caught2 !== undefined, "resolveMcpKey propagates the role read error");
 });
 
 function fakeJwt(claims: Record<string, unknown>): string {

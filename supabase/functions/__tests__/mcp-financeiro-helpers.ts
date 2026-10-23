@@ -2,7 +2,7 @@
 // mcp-admin-helpers.ts): from(table) com fila de respostas por tabela + rpc com fila por
 // nome de função. `effective_plan_feature` responde `true` quando nenhuma fila é dada, para que
 // o gate do `register` (feature_financial / feature_financeiro_v2) passe sem boilerplate.
-import type { Deps } from "../mcp/queries.ts";
+import type { Deps, RegisteredTool } from "../mcp/queries.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
 
 export type Resp = { data: unknown; error: unknown };
@@ -86,8 +86,9 @@ export const OWNER_CTX: McpKeyContext = {
   role: "owner",
 };
 
-export function makeDeps(db: unknown, ctx: Partial<McpKeyContext> = {}): Deps {
-  return { db, ctx: { ...OWNER_CTX, ...ctx } } as unknown as Deps;
+/** `registry` opts the deps into tool collection (the structural tests); production never passes one. */
+export function makeDeps(db: unknown, ctx: Partial<McpKeyContext> = {}, registry?: RegisteredTool[]): Deps {
+  return { db, ctx: { ...OWNER_CTX, ...ctx }, ...(registry ? { registry } : {}) } as unknown as Deps;
 }
 
 export function insertPayload(calls: Call[], table: string): Record<string, unknown> | undefined {

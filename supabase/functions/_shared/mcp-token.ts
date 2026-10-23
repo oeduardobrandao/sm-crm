@@ -117,18 +117,20 @@ export function requireOwner(ctx: McpKeyContext): void {
   if (ctx.role !== "owner") throw new McpOwnerError();
 }
 
-/** The user's role in the workspace (workspace_members.role), or null when not a member. */
+/** The user's role in the workspace (workspace_members.role), or null when not a member.
+ * A failed read throws (fail loud): it must never be mistaken for "not a member" or open a gate. */
 export async function memberRole(
   db: SupabaseClient,
   userId: string,
   contaId: string,
 ): Promise<string | null> {
-  const { data } = await db
+  const { data, error } = await db
     .from("workspace_members")
     .select("role")
     .eq("user_id", userId)
     .eq("workspace_id", contaId)
     .maybeSingle();
+  if (error) throw error;
   if (!data) return null;
   const role = (data as { role?: unknown }).role;
   return typeof role === "string" ? role : null;

@@ -60,9 +60,6 @@ const FEATURE_OFF_MESSAGE: Record<FinanceiroFeature, string> = {
   feature_financeiro_v2: "O Financeiro v2 não está ativo neste workspace.",
 };
 
-/** Every tool registered through `register`, for the structural test (all `financeiro:*` must be ownerOnly). */
-export const REGISTERED: Array<{ name: string; scope: string; ownerOnly: boolean }> = [];
-
 /** Register one tool with scope-gating + audit. `auditArgs` also receives the RESULT, so write
  * audits can carry result metadata (ids, counts) without ever carrying payloads; existing
  * single-param callbacks are unaffected. */
@@ -77,7 +74,8 @@ export function register(
   auditArgs?: (args: any, result: any) => Record<string, unknown>,
   opts?: RegisterOpts,
 ) {
-  REGISTERED.push({ name, scope, ownerOnly: opts?.ownerOnly === true });
+  // Per-deps and opt-in (never a module global): the structural test reads it, production skips it.
+  deps.registry?.push({ name, scope, ownerOnly: opts?.ownerOnly === true });
   server.tool(name, description, shape, async (args: any) => {
     try {
       requireScope(deps.ctx, scope);

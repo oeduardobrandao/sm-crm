@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { assert, assertEquals } from "./assert.ts";
 import { fakeServer, has, makeDeps, makeFakeDb, rpcArgs } from "./mcp-financeiro-helpers.ts";
-import { REGISTERED } from "../mcp/register.ts";
+import type { RegisteredTool } from "../mcp/queries.ts";
 import { registerTools } from "../mcp/tools.ts";
 import { registerFinanceiroTools } from "../mcp/financeiro-tools.ts";
 import { mesSaoPaulo } from "../mcp/financeiro.ts";
@@ -48,8 +48,9 @@ Deno.test("mcp-financeiro-read: mesSaoPaulo uses America/Sao_Paulo, not UTC", ()
 Deno.test("mcp-financeiro-read: all financeiro tools are ownerOnly", () => {
   const { db } = makeFakeDb({});
   const server = fakeServer();
-  registerTools(server, makeDeps(db));
-  const fin = REGISTERED.filter((t) => t.scope.startsWith("financeiro:"));
+  const registry: RegisteredTool[] = [];
+  registerTools(server, makeDeps(db, {}, registry));
+  const fin = registry.filter((t) => t.scope.startsWith("financeiro:"));
   assert(fin.length >= FIN_READ_TOOLS.length, "financeiro tools are registered by registerTools");
   for (const name of FIN_READ_TOOLS) {
     const t = fin.find((x) => x.name === name);
@@ -115,6 +116,9 @@ Deno.test("mcp-financeiro-read: list_lancamentos filters by conta_id, month, tip
   assert(has(calls, "transacoes", "gte", ["data", "2026-11-01"]));
   assert(has(calls, "transacoes", "lt", ["data", "2026-12-01"]));
   assert(has(calls, "transacoes", "order", ["data", { ascending: false }]));
+  // Tie-break on id so "mais recentes primeiro" is deterministic within a day, after data.
+  const orders = calls.filter((c) => c.table === "transacoes" && c.method === "order").map((c) => c.args);
+  assertEquals(orders, [["data", { ascending: false }], ["id", { ascending: false }]]);
   assert(has(calls, "transacoes", "limit", [50]));
   const sel = calls.find((c) => c.table === "transacoes" && c.method === "select")!.args[0] as string;
   assert(!sel.includes("*") && !sel.includes("user_id") && !sel.includes("conta_id"), "closed select list");

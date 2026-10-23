@@ -29,7 +29,7 @@ import {
 } from "./queries.ts";
 import { createMediaUpload, setPostMedia } from "./media.ts";
 import { DATE_ONLY, registerFinanceiroTools } from "./financeiro-tools.ts";
-import { REGISTERED, register } from "./register.ts";
+import { register } from "./register.ts";
 
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
 const FORMATO = z.enum(CONTENT_FORMATS);
@@ -50,7 +50,6 @@ function requireOwnerFor(deps: Deps, ...values: unknown[]): void {
 }
 
 export function registerTools(server: any, deps: Deps): void {
-  REGISTERED.length = 0;
   register(server, deps, "list_clients", "clientes:read",
     "Lista os clientes do workspace (campos não sensíveis).",
     { status: STATUS_CLIENTE.optional() },

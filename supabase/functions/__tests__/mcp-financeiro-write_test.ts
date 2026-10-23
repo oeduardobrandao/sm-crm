@@ -2,7 +2,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { fakeServer, has, insertPayload, makeDeps, makeFakeDb, rpcArgs, updatePayload } from "./mcp-financeiro-helpers.ts";
 import { z } from "npm:zod@3";
-import { REGISTERED } from "../mcp/register.ts";
+import type { RegisteredTool } from "../mcp/queries.ts";
 import { registerFinanceiroTools } from "../mcp/financeiro-tools.ts";
 
 type Q = Record<string, { data: unknown; error: unknown }[]>;
@@ -22,10 +22,11 @@ const WRITE_TOOLS = [
 function setup(responses: Q = {}, rpc: Q = {}, ctx: Record<string, unknown> = {}, now?: string) {
   const { db, calls } = makeFakeDb(responses, rpc);
   const server = fakeServer();
-  const deps = makeDeps(db, ctx);
+  const registry: RegisteredTool[] = [];
+  const deps = makeDeps(db, ctx, registry);
   if (now) deps.now = () => now;
   registerFinanceiroTools(server, deps);
-  return { server, calls, deps };
+  return { server, calls, deps, registry };
 }
 
 const parse = (r: { content: { text: string }[] }) => JSON.parse(r.content[0].text);
@@ -53,9 +54,9 @@ const TX_ROW = {
 // ---- registration -----------------------------------------------------------------------------
 
 Deno.test("mcp-financeiro-write: every write tool is financeiro:write and ownerOnly", () => {
-  setup();
+  const { registry } = setup();
   for (const name of WRITE_TOOLS) {
-    const t = REGISTERED.find((x) => x.name === name);
+    const t = registry.find((x) => x.name === name);
     assert(t, `${name} registered`);
     assertEquals(t!.scope, "financeiro:write");
     assert(t!.ownerOnly, `${name} ownerOnly`);
@@ -72,6 +73,23 @@ Deno.test("mcp-financeiro-write: a non-owner never reaches the db", async () => 
 });
 
 // ---- create_lancamento ------------------------------------------------------------------------
+Deno.test("mcp-financeiro-write: hand-written categoria refuses the projection categories Agendamento and Recorrente", () => {
+  const { server } = setup();
+  const base: Record<string, Record<string, unknown>> = {
+    create_lancamento: { tipo: "saida", descricao: "X", valor: 1, data: "2026-11-05" },
+    update_lancamento: { lancamento_id: 1 },
+    create_recorrente: { tipo: "saida", descricao: "X", valor: 1, dia: 5 },
+    update_recorrente: { recorrente_id: 1 },
+  };
+  for (const [name, args] of Object.entries(base)) {
+    const shape = z.object(server.shapes[name] as any);
+    assert(shape.safeParse({ ...args, categoria: "Outro" }).success, `${name} accepts Outro`);
+    for (const categoria of ["Agendamento", "Recorrente"]) {
+      assert(!shape.safeParse({ ...args, categoria }).success, `${name} refuses ${categoria}`);
+    }
+  }
+});
+
 
 Deno.test("mcp-financeiro-write: writes use ctx.conta_id and user_id = created_by", async () => {
   const { server, calls } = setup(
@@ -576,12 +594,38 @@ Deno.test("mcp-financeiro-write: cobranca maps RPC errors (periodo_fechado)", as
 
 // ---- set_custo_membro -------------------------------------------------------------------------
 
-Deno.test("mcp-financeiro-write: custo_membro refused with v2 on", async () => {
-  const { server, calls } = setup({}, { effective_plan_feature: [ok(true), ok(true)] });
+Deno.test("mcp-financeiro-write: custo_membro refused with v2 on and configured", async () => {
+  const { server, calls } = setup(
+    { financeiro_config: [ok({ seeded_at: "2026-10-01T00:00:00Z" })] },
+    { effective_plan_feature: [ok(true), ok(true)] },
+  );
   const r = await server.handlers["set_custo_membro"]({ membro_id: 2, custo_mensal: 100 });
   assert(r.isError === true);
   assertEquals(parse(r).error, "Com o Financeiro v2 ligado, o custo vem do acordo. Use save_acordo.");
+  assert(has(calls, "financeiro_config", "eq", eq("conta_id", "workspace-A")), "config read is scoped");
   assert(!calls.some((c) => c.table === "membros"), "no membros query");
+});
+
+Deno.test("mcp-financeiro-write: custo_membro with v2 on but not configured points to seed_financeiro_v2", async () => {
+  const { server, calls } = setup(
+    { financeiro_config: [ok(null)] },
+    { effective_plan_feature: [ok(true), ok(true)] },
+  );
+  const r = await server.handlers["set_custo_membro"]({ membro_id: 2, custo_mensal: 100 });
+  assert(r.isError === true);
+  assertEquals(
+    parse(r).error,
+    "Com o Financeiro v2 ligado, o custo vem do acordo, e o Financeiro v2 ainda não foi configurado. Use seed_financeiro_v2 primeiro e depois save_acordo.",
+  );
+  assert(!calls.some((c) => c.table === "membros"), "no membros query");
+});
+
+Deno.test("mcp-financeiro-write: set_custo_membro and encerrar_recorrente descriptions", () => {
+  const { server } = setup();
+  const custo = server.descriptions["set_custo_membro"];
+  assert(custo.includes("seed_financeiro_v2"), custo);
+  const enc = server.descriptions["encerrar_recorrente"];
+  assert(enc.includes("Se já tinha fim até o mês anterior, devolve acao 'encerrado' com esse fim, sem alterar nada"), enc);
 });
 
 Deno.test("mcp-financeiro-write: custo_membro writes the legacy columns with v2 off", async () => {

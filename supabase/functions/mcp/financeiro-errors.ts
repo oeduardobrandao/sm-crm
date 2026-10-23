@@ -1,6 +1,10 @@
 import { McpInputError } from "../_shared/mcp-token.ts";
 
-/** Categorias de lançamento: a lista do CRM mais as duas categorias de projeção (agendados). */
+/**
+ * Categorias que o agente pode escrever à mão: exatamente as do formulário do CRM
+ * (FinanceiroPage.tsx `CATEGORIAS`). 'Agendamento' fica de fora: só a confirmação de um agendado
+ * (RPC) a grava. Nenhuma ferramenta filtra por categoria na leitura.
+ */
 export const CATEGORIAS_FINANCEIRO = [
   "Mensalidade",
   "Produção",
@@ -9,8 +13,6 @@ export const CATEGORIAS_FINANCEIRO = [
   "Imposto",
   "Ferramenta",
   "Outro",
-  "Agendamento",
-  "Recorrente",
 ] as const;
 
 /**

@@ -2,7 +2,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { fakeServer, has, insertPayload, makeDeps, makeFakeDb, rpcArgs } from "./mcp-financeiro-helpers.ts";
 import { z } from "npm:zod@3";
-import { REGISTERED } from "../mcp/register.ts";
+import type { RegisteredTool } from "../mcp/queries.ts";
 import { registerFinanceiroTools } from "../mcp/financeiro-tools.ts";
 
 type Q = Record<string, { data: unknown; error: unknown }[]>;
@@ -22,8 +22,9 @@ const V2_WRITE_TOOLS = [
 function setup(responses: Q = {}, rpc: Q = {}, ctx: Record<string, unknown> = {}) {
   const { db, calls } = makeFakeDb(responses, rpc);
   const server = fakeServer();
-  registerFinanceiroTools(server, makeDeps(db, ctx));
-  return { server, calls };
+  const registry: RegisteredTool[] = [];
+  registerFinanceiroTools(server, makeDeps(db, ctx, registry));
+  return { server, calls, registry };
 }
 
 const CTX = { conta_id: "workspace-B", created_by: "u-9" };
@@ -35,9 +36,9 @@ const eq = (col: string, v: unknown) => [col, v];
 // ---- registration and gates -------------------------------------------------------------------
 
 Deno.test("mcp-financeiro-v2: every v2 write tool is financeiro:write and ownerOnly", () => {
-  setup();
+  const { registry } = setup();
   for (const name of V2_WRITE_TOOLS) {
-    const t = REGISTERED.find((x) => x.name === name);
+    const t = registry.find((x) => x.name === name);
     assert(t, `${name} registered`);
     assertEquals(t!.scope, "financeiro:write");
     assert(t!.ownerOnly, `${name} ownerOnly`);
@@ -218,6 +219,9 @@ Deno.test("mcp-financeiro-v2: save_acordo applies the CRM rules before any acord
   const cases: Record<string, unknown>[] = [
     { ...base, modelo: "mensal_meta" },
     { ...base, modelo: "mensal_meta", meta_quantidade: 0 },
+    // meta_periodo is required for mensal_meta (the CRM dialog always sends it): never defaulted.
+    { ...base, modelo: "mensal_meta", meta_quantidade: 5 },
+    { ...base, modelo: "mensal_meta", meta_quantidade: 5, meta_periodo: null },
     { ...base, modelo: "mensal_limite" },
     { ...base, modelo: "mensal_limite", limite_clientes: 0, meta_quantidade: 5 },
     { ...base, modelo: "por_entrega", vigencia_inicio: "2026-10-10", vigencia_fim: "2026-10-09" },
@@ -277,6 +281,18 @@ Deno.test("mcp-financeiro-v2: save_acordo schema validates modelo, meta_periodo,
   assert(!shape.safeParse({ ...base, meta_periodo: "ano" }).success);
   assert(!shape.safeParse({ ...base, dia_pagamento: 32 }).success);
   assert(shape.safeParse({ ...base, dia_pagamento: null, funcao_id: null, unidade: null }).success);
+});
+
+Deno.test("mcp-financeiro-v2: save_acordo description says mensal_meta requires meta_quantidade and meta_periodo", () => {
+  const { server } = setup();
+  const d = server.descriptions["save_acordo"];
+  assert(d.includes("mensal_meta exige meta_quantidade >= 1 e meta_periodo"), d);
+});
+
+Deno.test("mcp-financeiro-v2: save_financeiro_config description says periodo_dia only applies from the next period", () => {
+  const { server } = setup();
+  const d = server.descriptions["save_financeiro_config"];
+  assert(d.includes("só vale a partir do próximo período"), d);
 });
 
 // ---- save_atribuicoes -------------------------------------------------------------------------

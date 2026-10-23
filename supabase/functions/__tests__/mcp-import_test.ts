@@ -197,6 +197,9 @@ Deno.test("mcp-import: createMember inserts with defaults and ctx stamps, no cus
   assertEquals(row.custo_mensal, 3000);
   assertEquals(out.already_existed, false);
   assert(!("custo_mensal" in out), "custo_mensal never echoed");
+  assert(!("data_pagamento" in out), "data_pagamento never echoed");
+  const sel = calls.find((c) => c.table === "membros" && c.method === "select" && String(c.args[0]).includes("crm_user_id") && !String(c.args[0]).includes("custo_mensal"))!.args[0] as string;
+  assert(!sel.includes("data_pagamento"), "insert returns no financial field");
 });
 
 Deno.test("mcp-import: create_member does not send avatar_url", async () => {
@@ -231,6 +234,7 @@ Deno.test("mcp-import: createMember matches nome, fills empty cargo and NULL cus
   assertEquals(out.already_existed, true);
   assertEquals(out.filled_fields, ["cargo"]);
   assertEquals(out.tipo, "freelancer_mensal", "existing tipo reported");
+  assert(!("custo_mensal" in out) && !("data_pagamento" in out), "already_existed return carries no financial field");
 });
 
 Deno.test("mcp-import: createMember same nome in another workspace still inserts (scan is conta-scoped)", async () => {
@@ -261,6 +265,9 @@ Deno.test("mcp-import: listMembers projects public fields, scoped and ordered", 
   assert(has(calls, "membros", "order", ["created_at", { ascending: false }]), "newest first");
   assertEquals(out.length, 1);
   assert(!("custo_mensal" in out[0]), "custo_mensal stripped even if selected by accident");
+  assert(!("data_pagamento" in out[0]), "data_pagamento stripped: list_members carries no financial field");
+  const sel = calls.find((c) => c.table === "membros" && c.method === "select")!.args[0] as string;
+  assert(!sel.includes("data_pagamento") && !sel.includes("custo_mensal"), "no financial column selected");
   assertEquals(out[0].nome, "Ana");
 });
 

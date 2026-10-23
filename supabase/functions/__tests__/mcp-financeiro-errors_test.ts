@@ -84,7 +84,7 @@ Deno.test("mcp-financeiro-errors: mapFinanceiroError maps a P0001 code, 23514, 2
   assertEquals(mapFinanceiroError({ message: "toString" }), null);
 });
 
-Deno.test("mcp-financeiro-errors: categorias are the CRM list plus the two projection categories", () => {
+Deno.test("mcp-financeiro-errors: categorias are exactly the CRM form list (no projection categories)", async () => {
   assertEquals([...CATEGORIAS_FINANCEIRO], [
     "Mensalidade",
     "Produção",
@@ -93,7 +93,13 @@ Deno.test("mcp-financeiro-errors: categorias are the CRM list plus the two proje
     "Imposto",
     "Ferramenta",
     "Outro",
-    "Agendamento",
-    "Recorrente",
   ]);
+  // Parity with the categories the CRM form offers (FinanceiroPage.tsx `CATEGORIAS`).
+  const page = await Deno.readTextFile(
+    new URL("../../../apps/crm/src/pages/financeiro/FinanceiroPage.tsx", import.meta.url),
+  );
+  const block = page.match(/const CATEGORIAS = \[([\s\S]*?)\];/);
+  assert(block, "found CATEGORIAS in FinanceiroPage.tsx");
+  const crm = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assertEquals([...CATEGORIAS_FINANCEIRO], crm);
 });

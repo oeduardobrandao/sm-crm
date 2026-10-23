@@ -52,6 +52,13 @@ export interface PostMetricRow {
   impressions: number; unavailable: string[]; media_type: string;
 }
 
+/** One tool as `register` saw it (name, scope, ownerOnly), for the structural tests. */
+export interface RegisteredTool {
+  name: string;
+  scope: string;
+  ownerOnly: boolean;
+}
+
 export interface Deps {
   db: SupabaseClient;
   ctx: McpKeyContext;
@@ -65,6 +72,9 @@ export interface Deps {
   headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   /** Plan storage quota in bytes (null = unlimited). */
   storageQuota?: (contaId: string) => Promise<number | null>;
+  /** Opt-in collector: `register` pushes every tool here when set. Only the structural tests pass
+   * one; production leaves it unset, so concurrent requests in one isolate share no state. */
+  registry?: RegisteredTool[];
 }
 
 const sign = (d: Deps) => d.signUrl ?? ((key: string) => signGetUrl(key, 3600));

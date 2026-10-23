@@ -102,7 +102,7 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
   const ID = z.number().int();
 
   register(server, deps, "create_lancamento", "financeiro:write",
-    "Cria um lançamento (linha de transacoes) no Financeiro. valor em reais (> 0), data YYYY-MM-DD, categoria da lista do CRM, status 'pago' (padrão) ou 'agendado'. cliente_id opcional (precisa ser do workspace). Para confirmar um agendado projetado use confirmar_agendamento (não crie à mão, senão duplica). Somente para o dono do workspace.",
+    "Cria um lançamento (linha de transacoes) no Financeiro. valor em reais (> 0), data YYYY-MM-DD, categoria da lista do CRM ('Agendamento' só vem de confirmar_agendamento), status 'pago' (padrão) ou 'agendado'. cliente_id opcional (precisa ser do workspace). Para confirmar um agendado projetado use confirmar_agendamento (não crie à mão, senão duplica). Somente para o dono do workspace.",
     {
       tipo: TIPO,
       descricao: z.string().min(1).max(200),
@@ -182,7 +182,7 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     own);
 
   register(server, deps, "encerrar_recorrente", "financeiro:write",
-    "Encerra um modelo recorrente: se começou neste mês (ou depois) ele é removido (acao 'removido'); senão recebe fim = primeiro dia do mês anterior (acao 'encerrado', com fim). Mês em America/Sao_Paulo. Somente para o dono do workspace.",
+    "Encerra um modelo recorrente: se começou neste mês (ou depois) ele é removido (acao 'removido'); senão recebe fim = primeiro dia do mês anterior (acao 'encerrado', com fim). Se já tinha fim até o mês anterior, devolve acao 'encerrado' com esse fim, sem alterar nada. Mês em America/Sao_Paulo. Somente para o dono do workspace.",
     { recorrente_id: ID },
     (a) => encerrarRecorrente(deps, a),
     (a, r) => ({ recorrente_id: a.recorrente_id, acao: r?.acao }),
@@ -202,7 +202,7 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     own);
 
   register(server, deps, "set_custo_membro", "financeiro:write",
-    "Define o custo mensal (>= 0) e/ou o dia de pagamento (1..31 ou null) de um membro, direto no cadastro. Só sem o Financeiro v2: com ele ligado o custo vem do acordo e a ferramenta recusa (use save_acordo). Somente para o dono do workspace.",
+    "Define o custo mensal (>= 0) e/ou o dia de pagamento (1..31 ou null) de um membro, direto no cadastro. Só sem o Financeiro v2: com ele ligado o custo vem do acordo e a ferramenta recusa (use save_acordo; se o v2 ainda não foi configurado, rode seed_financeiro_v2 antes). Somente para o dono do workspace.",
     {
       membro_id: ID,
       custo_mensal: z.number().min(0).optional(),
@@ -223,7 +223,7 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     v2);
 
   register(server, deps, "save_financeiro_config", "financeiro:write",
-    "Altera a configuração do Financeiro v2: periodo_dia (1..28, dia em que cada período começa) e/ou meta_margem (0..100, em %). Informe ao menos um; o omitido fica como está. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    "Altera a configuração do Financeiro v2: periodo_dia (1..28, dia em que cada período começa; a mudança só vale a partir do próximo período, o período aberto não muda) e/ou meta_margem (0..100, em %). Informe ao menos um; o omitido fica como está. Somente para o dono do workspace e com o Financeiro v2 ativo.",
     { periodo_dia: DIA_PERIODO.optional(), meta_margem: z.number().min(0).max(100).optional() },
     (a) => saveFinanceiroConfig(deps, a),
     (a) => ({ periodo_dia: a.periodo_dia }),
@@ -244,7 +244,7 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     v2);
 
   register(server, deps, "save_acordo", "financeiro:write",
-    "Grava uma nova versão do acordo de um membro no Financeiro v2, válida desde vale_desde (YYYY-MM-DD; padrão: início do período aberto; períodos fechados são recusados). Envie o acordo COMPLETO: o que for omitido vira null (não herda da versão anterior; consulte get_acordo_versoes antes). modelo: 'mensal_meta' | 'mensal_limite' | 'por_entrega'; valor em reais (>= 0); unidade, meta_quantidade e meta_periodo ('dia_util'|'semana'|'mes') descrevem a meta; mensal_meta exige meta_quantidade >= 1 e mensal_limite exige limite_clientes >= 1 (unidade e meta só valem em mensal_meta, limite só em mensal_limite; o resto é descartado); dia_pagamento 1..31; vigencia_inicio/vigencia_fim YYYY-MM-DD. O contrato anexado é mantido. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    "Grava uma nova versão do acordo de um membro no Financeiro v2, válida desde vale_desde (YYYY-MM-DD; padrão: início do período aberto; períodos fechados são recusados). Envie o acordo COMPLETO: o que for omitido vira null (não herda da versão anterior; consulte get_acordo_versoes antes). modelo: 'mensal_meta' | 'mensal_limite' | 'por_entrega'; valor em reais (>= 0); unidade, meta_quantidade e meta_periodo ('dia_util'|'semana'|'mes') descrevem a meta; mensal_meta exige meta_quantidade >= 1 e meta_periodo (sem padrão; unidade é opcional) e mensal_limite exige limite_clientes >= 1 (unidade e meta só valem em mensal_meta, limite só em mensal_limite; o resto é descartado); dia_pagamento 1..31; vigencia_inicio/vigencia_fim YYYY-MM-DD. O contrato anexado é mantido. Somente para o dono do workspace e com o Financeiro v2 ativo.",
     {
       membro_id: ID,
       vale_desde: DATE_ONLY.optional(),
