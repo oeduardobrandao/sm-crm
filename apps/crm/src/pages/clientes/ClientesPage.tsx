@@ -154,10 +154,12 @@ export default function ClientesPage() {
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  // With Financeiro v2 a client's status is versioned in its Financeiro tab ("Vale a partir
-  // de"): the edit form neither shows nor writes it (the create form keeps 'ativo').
+  // With Financeiro v2 a client's fee, payment day and status are versioned in its
+  // Financeiro tab ("Vale a partir de"): the edit form neither shows nor writes them (a
+  // legacy write would become a version at the current period's start). The create form
+  // keeps them: a new client's first version comes from the insert.
   const { ativo: v2Ativo } = useFinanceiroV2();
-  const statusNoFinanceiro = v2Ativo && canSeeFinancials === true;
+  const noFinanceiro = v2Ativo && canSeeFinancials === true;
 
   // The edit/add modal can hold a valor_mensal value in its form state. On
   // live revocation, close it rather than let the value linger on screen.
@@ -251,8 +253,12 @@ export default function ClientesPage() {
           status: values.status,
         };
         const stripped = stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']);
-        // Omit the key (not undefined): the hidden field still holds the old status.
-        if (statusNoFinanceiro) delete stripped.status;
+        // Omit the keys (not undefined): the hidden fields still hold the old values.
+        if (noFinanceiro) {
+          delete stripped.status;
+          delete stripped.valor_mensal;
+          delete stripped.data_pagamento;
+        }
         await updateCliente(editing.id, stripped);
         toast.success(t('toast.updated'));
       } else {
@@ -829,7 +835,7 @@ export default function ClientesPage() {
                       </FormItem>
                     )}
                   />
-                  {canSeeFinancials === true && (
+                  {canSeeFinancials === true && !(editing && noFinanceiro) && (
                     <FormField
                       control={form.control}
                       name="valor"
@@ -844,20 +850,22 @@ export default function ClientesPage() {
                       )}
                     />
                   )}
-                  <FormField
-                    control={form.control}
-                    name="diaPag"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('form.paymentDay')}</FormLabel>
-                        <FormControl>
-                          <Input type="number" min={1} max={31} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  {editing && !statusNoFinanceiro && (
+                  {!(editing && noFinanceiro) && (
+                    <FormField
+                      control={form.control}
+                      name="diaPag"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('form.paymentDay')}</FormLabel>
+                          <FormControl>
+                            <Input type="number" min={1} max={31} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                  {editing && !noFinanceiro && (
                     <FormField
                       control={form.control}
                       name="status"
@@ -885,11 +893,12 @@ export default function ClientesPage() {
               ) : (
                 <ClienteFormPhoneFields
                   form={form}
-                  showValor={canSeeFinancials === true}
-                  showStatus={!!editing && !statusNoFinanceiro}
+                  showValor={canSeeFinancials === true && !(editing && noFinanceiro)}
+                  showStatus={!!editing && !noFinanceiro}
+                  showDiaPag={!(editing && noFinanceiro)}
                 />
               )}
-              {editing?.id != null && statusNoFinanceiro && (
+              {editing?.id != null && noFinanceiro && (
                 <p className="text-sm text-muted-foreground">
                   <Link
                     to={`/clientes/${editing.id}/financeiro`}

@@ -21,7 +21,7 @@
     "notionUrl": "URL do Notion",
     "paymentDay": "Dia de Pagamento (1-31)",
     "status": "Status",
-    "statusNoFinanceiro": "O status agora fica na aba Financeiro."
+    "statusNoFinanceiro": "A mensalidade e o status agora ficam na aba Financeiro."
   },
   "deleteConfirm": "Remover este cliente?",
   "toast": {

@@ -21,7 +21,7 @@
     "notionUrl": "Notion URL",
     "paymentDay": "Payment Day (1-31)",
     "status": "Status",
-    "statusNoFinanceiro": "Status now lives in the Financeiro tab."
+    "statusNoFinanceiro": "The monthly fee and the status now live in the Financeiro tab."
   },
   "deleteConfirm": "Remove this client?",
   "toast": {

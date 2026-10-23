@@ -731,6 +731,40 @@ describe('ClientesPage', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
   });
 
+  it('with Financeiro v2 the edit form neither shows nor writes the fee or the payment day', async () => {
+    v2.ativo = true;
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 7, nome: 'Beta Care' })]);
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Beta Care' });
+    fireEvent.click(within(getClientCard('Beta Care')).getByRole('button', { name: 'Editar' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByLabelText('Valor Mensal (R$)')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Dia de Pagamento (1-31)')).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('link', {
+        name: 'A mensalidade e o status agora ficam na aba Financeiro.',
+      }),
+    ).toHaveAttribute('href', '/clientes/7/financeiro');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
+    const payload = mockedUpdateCliente.mock.calls[0][1];
+    expect(payload).not.toHaveProperty('valor_mensal');
+    expect(payload).not.toHaveProperty('data_pagamento');
+    expect(payload).toMatchObject({ nome: 'Beta Care' });
+  });
+
+  it('keeps the fee and the payment day in the create form with v2 on', async () => {
+    v2.ativo = true;
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Novo Cliente/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByLabelText('Valor Mensal (R$)')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Dia de Pagamento (1-31)')).toBeInTheDocument();
+  });
+
   it('with Financeiro v2 the edit form neither shows nor writes status', async () => {
     v2.ativo = true;
     mockedGetClientes.mockResolvedValue([makeCliente({ id: 7, nome: 'Beta Care' })]);
@@ -742,7 +776,9 @@ describe('ClientesPage', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).queryByRole('button', { name: 'Pausado' })).not.toBeInTheDocument();
     expect(
-      within(dialog).getByRole('link', { name: 'O status agora fica na aba Financeiro.' }),
+      within(dialog).getByRole('link', {
+        name: 'A mensalidade e o status agora ficam na aba Financeiro.',
+      }),
     ).toHaveAttribute('href', '/clientes/7/financeiro');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
 
@@ -760,7 +796,7 @@ describe('ClientesPage', () => {
     fireEvent.click(within(getClientCard('Beta Care')).getByRole('button', { name: 'Editar' }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Pausado' })).toBeInTheDocument();
-    expect(within(dialog).queryByText(/O status agora fica/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/agora ficam na aba Financeiro/)).not.toBeInTheDocument();
   });
 
   it('removes a client after confirmation', async () => {
