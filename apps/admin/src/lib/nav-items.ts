@@ -97,9 +97,11 @@ export function isRouteActive(pathname: string, to: string): boolean {
 const PUSHED_EDITORS = [
   /^\/admin\/kb-articles\/(new|[^/]+\/edit)\/?$/,
   /^\/admin\/kb-videos\/(new|[^/]+\/edit)\/?$/,
+  // The blog post screen: review toolbar, note and editor on phone.
+  /^\/admin\/blog\/[^/]+\/?$/,
 ];
 
-/** The phone tab bar is hidden on the pushed full-screen editors. */
+/** The phone tab bar is hidden on the pushed full-screen editors and the blog post screen. */
 export function hidesTabBar(pathname: string): boolean {
   return PUSHED_EDITORS.some((re) => re.test(pathname));
 }

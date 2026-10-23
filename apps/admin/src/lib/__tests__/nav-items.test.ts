@@ -40,12 +40,14 @@ describe('nav-items', () => {
     expect(isRouteActive('/admin/workspaces/abc', '/admin/workspaces')).toBe(true);
     expect(isRouteActive('/admin/workspaces-x', '/admin/workspaces')).toBe(false);
   });
-  it('hidesTabBar only on the pushed KB editors', () => {
+  it('hidesTabBar only on the pushed editors and the blog post screen', () => {
     expect(hidesTabBar('/admin/kb-articles/new')).toBe(true);
     expect(hidesTabBar('/admin/kb-articles/123/edit')).toBe(true);
     expect(hidesTabBar('/admin/kb-videos/new')).toBe(true);
     expect(hidesTabBar('/admin/kb-videos/9/edit')).toBe(true);
     expect(hidesTabBar('/admin/kb-articles')).toBe(false);
     expect(hidesTabBar('/admin/workspaces/1')).toBe(false);
+    expect(hidesTabBar('/admin/blog/00000000-0000-4000-8000-000000000001')).toBe(true);
+    expect(hidesTabBar('/admin/blog')).toBe(false);
   });
 });

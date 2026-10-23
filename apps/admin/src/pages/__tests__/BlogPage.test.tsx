@@ -244,4 +244,107 @@ describe('BlogPage', () => {
       ),
     );
   });
+  it('closes the confirm dialog when the approve hits a revision conflict', async () => {
+    vi.mocked(approveBlogPost).mockRejectedValue(apiError(409, { error: 'conflict' }));
+    renderAt(`/admin/blog/${ID1}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aprovar e publicar' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publicar este post?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publicar' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Publicar este post?' })).not.toBeInTheDocument(),
+    );
+    expect(approveBlogPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the confirm buttons while the action is in flight', async () => {
+    vi.mocked(approveBlogPost).mockReturnValue(new Promise(() => {}));
+    renderAt(`/admin/blog/${ID1}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aprovar e publicar' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publicar este post?' });
+    const publish = within(dialog).getByRole('button', { name: 'Publicar' });
+    fireEvent.click(publish);
+    await waitFor(() => expect(publish).toBeDisabled());
+    expect(within(dialog).getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+    fireEvent.click(publish);
+    expect(approveBlogPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the draft in the editor on a save conflict and reloads only on request', async () => {
+    vi.mocked(updateBlogPost).mockRejectedValueOnce(apiError(409, { error: 'conflict' }));
+    renderAt(`/admin/blog/${ID1}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar texto' }));
+    fireEvent.change(screen.getByLabelText('Lede'), { target: { value: 'Meu texto novo.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(
+      await screen.findByText(
+        'Este post mudou enquanto você editava. Copie seu texto e recarregue.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Lede')).toHaveValue('Meu texto novo.');
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+
+    vi.mocked(getBlogPost).mockResolvedValue({
+      post: detail({ revision: 4, lede: 'Versão da rotina.' }),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Recarregar' }));
+    await waitFor(() => expect(screen.getByLabelText('Lede')).toHaveValue('Versão da rotina.'));
+    expect(
+      screen.queryByText('Este post mudou enquanto você editava. Copie seu texto e recarregue.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('asks before leaving an edited draft for another post', async () => {
+    vi.mocked(listBlogPosts).mockResolvedValue({
+      posts: [row(), row({ id: ID2, title: 'Outro rascunho da fila' })],
+      last_draft_at: ago(2 * HOUR),
+    });
+    renderAt(`/admin/blog/${ID1}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar texto' }));
+    fireEvent.change(screen.getByLabelText('Lede'), { target: { value: 'Mudei.' } });
+    fireEvent.click(screen.getByRole('link', { name: 'Outro rascunho da fila' }));
+    const ask = await screen.findByRole('dialog', { name: 'Descartar alterações?' });
+    fireEvent.click(within(ask).getByRole('button', { name: 'Continuar editando' }));
+    expect(screen.getByLabelText('Lede')).toHaveValue('Mudei.');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Outro rascunho da fila' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog', { name: 'Descartar alterações?' })).getByRole(
+        'button',
+        { name: 'Descartar' },
+      ),
+    );
+    await waitFor(() => expect(getBlogPost).toHaveBeenCalledWith(ID2));
+    expect(screen.queryByLabelText('Lede')).not.toBeInTheDocument();
+  });
+
+  it('refetches the open post when the list shows it changed', async () => {
+    vi.mocked(getBlogPost).mockResolvedValue({
+      post: detail({ status: 'publicando', publish_attempt_at: ago(60_000) }),
+    });
+    vi.mocked(listBlogPosts).mockResolvedValue({
+      posts: [row({ status: 'publicado' })],
+      last_draft_at: ago(2 * HOUR),
+    });
+    renderAt(`/admin/blog/${ID1}?tab=publicados`);
+    await screen.findByRole('button', { name: 'Editar texto' });
+    await waitFor(() => expect(vi.mocked(getBlogPost).mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it('opens preview links in a new tab, resolved on the public site', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.mocked(getBlogPost).mockResolvedValue({
+      post: detail({ body_md: 'Veja [o recurso](/aprovacao-de-post).' }),
+    });
+    renderAt(`/admin/blog/${ID1}`);
+    const link = await screen.findByRole('link', { name: 'o recurso' });
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    expect(open).toHaveBeenCalledWith(
+      'https://www.mesaas.com.br/aprovacao-de-post',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    open.mockRestore();
+  });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -20,8 +20,17 @@ import { blogPath } from '../lib/routes';
 import { useIsPhone } from '../hooks/useIsPhone';
 import { PageHeader } from '../components/PageHeader';
 import { GlassPanel } from '../components/shell/GlassPanel';
+import { Button } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import { BlogList } from './blog/BlogList';
-import { BlogDetail, type BlogCommand } from './blog/BlogDetail';
+import { BlogDetail, type BlogCommand, type RunResult } from './blog/BlogDetail';
 import {
   BLOG_TABS,
   formatDay,
@@ -85,10 +94,19 @@ export default function BlogPage() {
 
   const [editing, setEditing] = useState(false);
   const [editorErrors, setEditorErrors] = useState<string[]>([]);
-  useEffect(() => {
+  // The post as it was when the editor opened: saves diff against it and send its revision.
+  const [editBase, setEditBase] = useState<BlogPostDetail | undefined>();
+  const [editorConflict, setEditorConflict] = useState(false);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [pendingNav, setPendingNav] = useState<string | null>(null);
+  const stopEditing = useCallback(() => {
     setEditing(false);
+    setEditBase(undefined);
     setEditorErrors([]);
-  }, [id]);
+    setEditorConflict(false);
+    setEditorDirty(false);
+  }, []);
+  useEffect(() => stopEditing(), [id, stopEditing]);
 
   const list = useQuery({
     queryKey: listKey(tab),
@@ -103,6 +121,7 @@ export default function BlogPage() {
     // A focus refetch mid-edit would swap the post under the form; the save's
     // expected_revision catches a real conflict instead.
     refetchOnWindowFocus: !editing,
+    refetchOnReconnect: !editing,
   });
 
   const rows = useMemo(() => sortQueue(list.data?.posts ?? [], now), [list.data, now]);
@@ -111,6 +130,18 @@ export default function BlogPage() {
 
   const refresh = () => qc.invalidateQueries({ queryKey: BLOG_KEY });
 
+  // The list is what confirms a go-live (and polls while publishing): when it shows the open
+  // post with another status or revision, the detail is stale.
+  const listed = id ? list.data?.posts.find((r) => r.id === id) : undefined;
+  const listedStatus = listed?.status;
+  const listedRevision = listed?.revision;
+  useEffect(() => {
+    if (!id || !post || listedStatus === undefined) return;
+    if (listedStatus !== post.status || listedRevision !== post.revision) {
+      void qc.invalidateQueries({ queryKey: postKey(id) });
+    }
+  }, [id, post, listedStatus, listedRevision, qc]);
+
   const mutation = useMutation({
     // id and post ride in the variables: a toast's "Tentar de novo" may fire after the admin
     // has opened another post.
@@ -118,29 +149,39 @@ export default function BlogPage() {
       send(v.id, v.post, v.c),
   });
 
-  async function run(c: BlogCommand, target = post): Promise<boolean> {
-    if (!target) return false;
+  // One action at a time: a double click or the toast's "Tentar de novo" while another call
+  // is in flight sends nothing (mutation.isPending lags a render behind a fast second click).
+  const inFlight = useRef(false);
+
+  async function run(c: BlogCommand, target = post): Promise<RunResult> {
+    if (!target) return 'failed';
+    if (inFlight.current) return 'busy';
+    inFlight.current = true;
     setEditorErrors([]);
     try {
       await mutation.mutateAsync({ id: target.id, post: target, c });
     } catch (e) {
       handleError(e as AdminApiError, c, target);
-      return false;
+      return 'failed';
+    } finally {
+      inFlight.current = false;
     }
     toast.success(
       c.kind === 'update' && isLive(target) ? 'Texto salvo. Publicação iniciada.' : SUCCESS[c.kind],
     );
-    if (c.kind === 'update') setEditing(false);
+    if (c.kind === 'update') stopEditing();
     // Mutations return the list columns only (no body): refetch the post instead of using them.
     await refresh();
-    return true;
+    return 'ok';
   }
 
   function handleError(err: AdminApiError, c: BlogCommand, target: BlogPostDetail) {
     const code = typeof err.body?.error === 'string' ? err.body.error : '';
-    if (err.status === 409 || code === 'conflict') {
+    if ((err.status === 409 || code === 'conflict') && c.kind === 'update') {
+      // Never rebase or drop the draft: the editor says so and offers Recarregar.
+      setEditorConflict(true);
+    } else if (err.status === 409 || code === 'conflict') {
       toast.error('Este post mudou enquanto você revisava. Carregamos a versão atual.');
-      setEditing(false);
       void refresh();
     } else if (code === 'publish_unavailable') {
       toast.error('Publicação indisponível neste ambiente.');
@@ -153,7 +194,7 @@ export default function BlogPage() {
       toast.error('Texto salvo, mas a publicação não começou.', {
         action: { label: 'Tentar de novo', onClick: () => void run({ kind: 'retry' }, target) },
       });
-      setEditing(false);
+      stopEditing();
       void refresh();
     } else if (code === 'deploy_hook_failed') {
       toast.error('Não foi possível iniciar a publicação. Tente de novo.');
@@ -187,9 +228,53 @@ export default function BlogPage() {
       aria-label="Fila"
       options={BLOG_TABS}
       value={tab}
-      onChange={(v) => navigate(blogPath(v))}
+      onChange={(v) => go(blogPath(v))}
       className="inline-flex [&>button]:px-3"
     />
+  );
+
+  // Leaving a changed draft (another row, a tab) asks first.
+  const guard = editing && editorDirty;
+  function go(to: string) {
+    if (guard) setPendingNav(to);
+    else navigate(to);
+  }
+
+  const reloadEditor = async () => {
+    const r = await detail.refetch();
+    if (!r.data) return;
+    setEditBase(r.data.post);
+    setEditorConflict(false);
+    setEditorErrors([]);
+  };
+
+  const discardDialog = (
+    <Dialog open={pendingNav !== null} onOpenChange={(o) => !o && setPendingNav(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Descartar alterações?</DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            O texto que você editou neste post ainda não foi salvo.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setPendingNav(null)}>
+            Continuar editando
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              const to = pendingNav;
+              setPendingNav(null);
+              stopEditing();
+              if (to) navigate(to);
+            }}
+          >
+            Descartar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 
   const listView = (
@@ -201,6 +286,7 @@ export default function BlogPage() {
       isLoading={list.isLoading}
       isError={list.isError}
       onRetry={() => void list.refetch()}
+      onOpen={guard ? go : undefined}
     />
   );
 
@@ -215,10 +301,17 @@ export default function BlogPage() {
       pending={mutation.isPending}
       editing={editing}
       onEditingChange={(e) => {
-        setEditing(e);
+        if (!e) return stopEditing();
+        setEditBase(post);
         setEditorErrors([]);
+        setEditorConflict(false);
+        setEditing(true);
       }}
       editorErrors={editorErrors}
+      editBase={editBase}
+      editorConflict={editorConflict}
+      onReloadEditor={() => void reloadEditor()}
+      onEditorDirtyChange={setEditorDirty}
       run={(c) => run(c)}
     />
   );
@@ -231,6 +324,7 @@ export default function BlogPage() {
         <div>
           <PageHeader title="Post" back={{ to: blogPath(tab), label: 'Blog' }} />
           <GlassPanel flush>{detailView}</GlassPanel>
+          {discardDialog}
         </div>
       );
     }
@@ -255,6 +349,7 @@ export default function BlogPage() {
         <GlassPanel flush>{listView}</GlassPanel>
         <GlassPanel flush>{detailView}</GlassPanel>
       </div>
+      {discardDialog}
     </div>
   );
 }

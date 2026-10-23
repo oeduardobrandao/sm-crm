@@ -32,6 +32,9 @@ export interface BlogListProps {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  /** Set while leaving the open post needs a confirmation (an edited draft); it gets the
+   * target instead of the router. */
+  onOpen?: (to: string) => void;
 }
 
 export function BlogList({
@@ -42,6 +45,7 @@ export function BlogList({
   isLoading,
   isError,
   onRetry,
+  onOpen,
 }: BlogListProps) {
   const navigate = useNavigate();
 
@@ -71,7 +75,7 @@ export function BlogList({
         return (
           <li
             key={r.id}
-            onClick={() => navigate(to)}
+            onClick={() => (onOpen && r.id !== selectedId ? onOpen(to) : navigate(to))}
             aria-current={selected ? 'true' : undefined}
             className={cn(
               'flex cursor-pointer gap-3 border-t border-border/60 px-[18px] py-3 transition-colors first:border-t-0 hover:bg-foreground/[0.04]',
@@ -99,7 +103,16 @@ export function BlogList({
                 <span aria-hidden="true">·</span>
                 <span className="tabular-nums">{formatDateTime(r.created_at)}</span>
               </div>
-              <RowLink to={to} className="mt-0.5 line-clamp-2 block text-sm leading-snug">
+              <RowLink
+                to={to}
+                onClick={(e) => {
+                  if (onOpen && r.id !== selectedId) {
+                    e.preventDefault();
+                    onOpen(to);
+                  }
+                }}
+                className="mt-0.5 line-clamp-2 block text-sm leading-snug"
+              >
                 {r.title}
               </RowLink>
               {chips.length > 0 && (

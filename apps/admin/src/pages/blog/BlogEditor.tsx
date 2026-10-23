@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '../../components/ui/button';
@@ -42,17 +42,32 @@ function Counter({ value, limits }: { value: string; limits: readonly [number, n
 }
 
 export interface BlogEditorProps {
+  /** The post as it was when editing began: the diff and the expected_revision both come
+   * from it, so a background refetch never rebases the draft. */
   post: BlogPostDetail;
   saving: boolean;
   /** Field-by-field messages from the server's 400 invalid_fields. */
   errors: string[];
   onSave: (fields: Partial<Record<EditableField, string>>) => void;
   onCancel: () => void;
+  /** The save hit a 409: someone else changed the post. The draft stays until Recarregar. */
+  conflict: boolean;
+  onReload: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }
 
 /** "Editar texto": title, H1, description, lede and the Markdown body, with live counters
  * against the limits and a preview toggle. Counters are hints; the server validates. */
-export function BlogEditor({ post, saving, errors, onSave, onCancel }: BlogEditorProps) {
+export function BlogEditor({
+  post,
+  saving,
+  errors,
+  onSave,
+  onCancel,
+  conflict,
+  onReload,
+  onDirtyChange,
+}: BlogEditorProps) {
   const uid = useId();
   const [draft, setDraft] = useState<Record<EditableField, string>>(() => ({
     title: post.title ?? '',
@@ -66,6 +81,8 @@ export function BlogEditor({ post, saving, errors, onSave, onCancel }: BlogEdito
   const dirty = Object.keys(changes).length > 0;
   const live = isLive(post);
   useUnsavedWork(dirty || saving);
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   const set = (key: EditableField) => (value: string) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -83,6 +100,21 @@ export function BlogEditor({ post, saving, errors, onSave, onCancel }: BlogEdito
         <p className="rounded-xl bg-warning/10 px-3 py-2 text-sm text-foreground">
           Este post está no ar. Salvar publica o texto novo.
         </p>
+      )}
+
+      {conflict && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3"
+        >
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-destructive">
+            <AlertTriangle size={14} aria-hidden="true" />
+            Este post mudou enquanto você editava. Copie seu texto e recarregue.
+          </p>
+          <Button variant="outline" size="sm" onClick={onReload} disabled={saving}>
+            Recarregar
+          </Button>
+        </div>
       )}
 
       {errors.length > 0 && (
@@ -146,7 +178,7 @@ export function BlogEditor({ post, saving, errors, onSave, onCancel }: BlogEdito
         <Button variant="outline" onClick={onCancel} disabled={saving}>
           Cancelar
         </Button>
-        <Button onClick={() => onSave(changes)} disabled={!dirty || saving}>
+        <Button onClick={() => onSave(changes)} disabled={!dirty || saving || conflict}>
           {live ? 'Salvar e publicar' : 'Salvar'}
         </Button>
       </div>

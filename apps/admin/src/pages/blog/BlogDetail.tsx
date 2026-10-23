@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Check, ExternalLink, Maximize2, Newspaper, X } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { EmptyState } from '../../components/EmptyState';
@@ -44,6 +44,9 @@ export type BlogCommand =
   | { kind: 'retry' }
   | { kind: 'update'; fields: Partial<Record<EditableField, string>> };
 
+/** ok / failed: the action ran. busy: another action was still in flight, nothing was sent. */
+export type RunResult = 'ok' | 'failed' | 'busy';
+
 export interface BlogDetailProps {
   post: BlogPostDetail | undefined;
   isLoading: boolean;
@@ -54,8 +57,13 @@ export interface BlogDetailProps {
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
   editorErrors: string[];
-  /** Runs one action; resolves true on success (the caller toasts and refetches). */
-  run: (command: BlogCommand) => Promise<boolean>;
+  /** The post as it was when the editor opened (see BlogEditor). */
+  editBase: BlogPostDetail | undefined;
+  editorConflict: boolean;
+  onReloadEditor: () => void;
+  onEditorDirtyChange: (dirty: boolean) => void;
+  /** Runs one action (the caller toasts and refetches). */
+  run: (command: BlogCommand) => Promise<RunResult>;
 }
 
 type ConfirmKind = 'approve' | 'reject' | 'unpublish' | 'republish';
@@ -126,6 +134,11 @@ export function BlogDetail(p: BlogDetailProps) {
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   useUnsavedWork(note.trim() !== '');
+  // A confirm is about the revision the admin read. If the post changes under an open dialog
+  // (a 409 refetch, the publishing poll), close it rather than re-bind it to unread text.
+  const revision = p.post?.revision;
+  const status = p.post?.status;
+  useEffect(() => setConfirm(null), [revision, status]);
 
   if (p.isLoading) {
     return (
@@ -164,22 +177,26 @@ export function BlogDetail(p: BlogDetailProps) {
   const liveHref = `${LIVE_BASE}${encodeURIComponent(post.slug)}`;
 
   const confirmAndClose = async (command: Parameters<BlogDetailProps['run']>[0]) => {
-    const ok = await p.run(command);
-    if (ok) {
-      setConfirm(null);
-      setReason('');
-    }
+    // Closed on failure too: after a conflict the dialog must not confirm the reloaded post.
+    if ((await p.run(command)) === 'busy') return;
+    setConfirm(null);
+    setReason('');
   };
 
   if (p.editing) {
     return (
       <div className="px-[18px] py-4">
         <BlogEditor
-          post={post}
+          // Recarregar swaps the base; remount so the form starts from it.
+          key={(p.editBase ?? post).revision}
+          post={p.editBase ?? post}
           saving={p.pending}
           errors={p.editorErrors}
           onSave={(fields) => void p.run({ kind: 'update', fields })}
           onCancel={() => p.onEditingChange(false)}
+          conflict={p.editorConflict}
+          onReload={p.onReloadEditor}
+          onDirtyChange={p.onEditorDirtyChange}
         />
       </div>
     );
@@ -343,7 +360,7 @@ export function BlogDetail(p: BlogDetailProps) {
                   size="sm"
                   disabled={note.trim() === '' || p.pending}
                   onClick={async () => {
-                    if (await p.run({ kind: 'request', note: note.trim() })) setNote('');
+                    if ((await p.run({ kind: 'request', note: note.trim() })) === 'ok') setNote('');
                   }}
                 >
                   Pedir ajuste
