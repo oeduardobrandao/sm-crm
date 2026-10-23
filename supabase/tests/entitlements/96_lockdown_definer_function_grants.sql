@@ -4,6 +4,8 @@
 -- Grant-surface assertions for 20260924000001_lockdown_definer_function_grants.sql,
 -- plus the service-role-only helpers/trigger functions/generator added by
 -- 20260925000030_tarefa_series.sql (the last seven entries of the first array).
+-- _financeiro_calcular (20261025000003_financeiro_v2_calculo.sql) is the Financeiro v2
+-- allocation core: called by the read RPCs and the pg_cron close job, never by a user.
 --
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE
 -- at function-creation time (see _helpers.sql), so `anon`/`authenticated` already
@@ -76,7 +78,8 @@ declare
     'public.agenda_claim_emails_lembrete(int)',
     'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)',
     'public.rebuild_instagram_automation_contacts(uuid, uuid)',
-    'public.instagram_automation_contact_source(uuid, uuid)'
+    'public.instagram_automation_contact_source(uuid, uuid)',
+    'public._financeiro_calcular(uuid, date)'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
