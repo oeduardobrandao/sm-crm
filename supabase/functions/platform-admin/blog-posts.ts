@@ -318,7 +318,9 @@ export async function handleUpdateBlogPost(
   if (goesLive) {
     // A página no ar mantém a revisão antiga até o marcador bater (live_revision não muda).
     patch.status = "publicando";
-    patch.updated = saoPauloDate(now);
+    // "Atualizado em" só para quem já esteve no ar: um post aprovado cujo primeiro build ainda
+    // não confirmou estrearia com dateModified posterior ao datePublished.
+    if (row.live_revision != null) patch.updated = saoPauloDate(now);
     patch.publish_attempt_at = now.toISOString();
   }
 

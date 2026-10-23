@@ -435,6 +435,25 @@ Deno.test("editar post publicado → publicando, revision +1, live_revision igua
   assert(!JSON.stringify(tables.audit_log[0].metadata).includes("lede novo"));
 });
 
+Deno.test("editar publicando que nunca esteve no ar → sem updated, hook dispara", async () => {
+  const { db, row } = makeDb([
+    post({ status: "publicando", revision: 2, live_revision: null, date: "2026-10-22" }),
+  ]);
+  const { deps, hookCalls } = makeDeps();
+  const res = await handleUpdateBlogPost(
+    db,
+    { id: ID, expected_revision: 2, fields: { lede: "Um lede novo." } },
+    ADMIN,
+    H,
+    deps,
+  );
+  assertEquals(res.status, 200);
+  assertEquals(row().status, "publicando");
+  assertEquals(row().revision, 3);
+  assertEquals(row().updated, null);
+  assertEquals(hookCalls.length, 1);
+});
+
 Deno.test("editar rascunho → revision +1, status igual, checks regravados, sem hook", async () => {
   const { db, row } = makeDb([post()]);
   const { deps, hookCalls } = makeDeps();
