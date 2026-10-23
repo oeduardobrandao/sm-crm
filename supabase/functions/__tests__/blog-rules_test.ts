@@ -78,9 +78,42 @@ Deno.test("blog-rules: shape errors use the CRM's wording", () => {
   ]);
 });
 
-Deno.test("blog-rules: unclosed and foreign fences are ignored", () => {
-  assertEquals(extractInfograficos('```infografico\n{"tipo": "etapas"}\n'), []);
+Deno.test("blog-rules: fence detection follows CommonMark", () => {
+  assertEquals(extractInfograficos(`Texto\n\n\`\`\`infografico\n${JSON.stringify(BARRAS)}\n`), [
+    { index: 0, value: BARRAS },
+  ]);
+  assertEquals(extractInfograficos("````md\n```infografico\n{}\n```\n````"), []);
+  assertEquals(extractInfograficos("```infografico `x`\n{}\n```"), []);
   assertEquals(extractInfograficos("```json\n{}\n```"), []);
+});
+
+const WRAPS: Array<[string, (json: string) => string]> = [
+  ["a tilde fence", (json) => `~~~infografico\n${json}\n~~~`],
+  ["4 backticks", (json) => `\`\`\`\`infografico\n${json}\n\`\`\`\``],
+  ["a 2-space indent", (json) => `  \`\`\`infografico\n${json}\n  \`\`\``],
+  ["an info string after the word", (json) => `\`\`\`infografico json\n${json}\n\`\`\``],
+  ["an unclosed fence", (json) => `Texto\n\n\`\`\`infografico\n${json}\n`],
+];
+
+for (const [label, wrap] of WRAPS) {
+  Deno.test(`blog-rules: validates the block in ${label}`, () => {
+    assertEquals(validateInfograficos(wrap(JSON.stringify(BARRAS)), 2), []);
+    assertEquals(validateInfograficos(wrap(JSON.stringify({ ...BARRAS, fonte: 3 })), 2), [
+      "infografico[0].fonte: índice 3 fora de sources (0..1)",
+    ]);
+  });
+}
+
+Deno.test("blog-rules: closing fence length, empty and unclosed broken blocks", () => {
+  const body = `\`\`\`\`infografico\n${JSON.stringify(BARRAS)}\n\`\`\`\n\`\`\`\`\`\n\nDepois`;
+  assertEquals(validateInfograficos(body, 2), ["infografico[0]: JSON inválido"]);
+  assertEquals(validateInfograficos("```infografico\n```", 2), ["infografico[0]: JSON inválido"]);
+  assertEquals(validateInfograficos("```infografico\n   \n```", 2), [
+    "infografico[0]: JSON inválido",
+  ]);
+  assertEquals(validateInfograficos('```infografico\n{"tipo": "barras",\n', 2), [
+    "infografico[0]: JSON inválido",
+  ]);
 });
 
 Deno.test("blog-rules: source and image schemas reject non-http URLs and empty credit", () => {

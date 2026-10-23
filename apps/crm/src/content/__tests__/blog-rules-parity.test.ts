@@ -43,6 +43,41 @@ describe('Deno blog-rules mirror', () => {
   });
 });
 
+/** Comments, whitespace and quote style are formatting, not behaviour; the
+ * zod import differs by runtime on purpose. What remains must be identical.
+ * Only block comments and whole-line `//` comments are stripped (a trailing
+ * `//` could be inside a regex literal such as `/^https?:\/\//`). */
+function normalize(code: string): string {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace(/^import \{ z \} from .*$/m, '')
+    .replace(/"/g, "'")
+    .replace(/\s+/g, '');
+}
+
+/** From the first declaration both files share down to the end. */
+function schemaSection(source: string): string {
+  const start = source.search(/^const DATE\b/m);
+  if (start === -1) throw new Error('const DATE not found');
+  return normalize(source.slice(start));
+}
+
+describe('Deno blog-rules schemas and validator', () => {
+  test('match packages/ui/blog/model.ts token for token', () => {
+    const model = readFileSync(resolve(ROOT, 'packages/ui/blog/model.ts'), 'utf8');
+    const mirror = readFileSync(resolve(SHARED, 'blog-rules.ts'), 'utf8');
+    expect(schemaSection(mirror)).toBe(schemaSection(model));
+  });
+
+  test('the normalizer keeps a one-character drift visible', () => {
+    const a = 'const DATE = 1;\n// nota\nconst x = z.string().max(90);\n';
+    const b = 'const DATE = 1;\n/** doc */\nconst x = z.string().max(91);\n';
+    expect(schemaSection(a)).not.toBe(schemaSection(b));
+    expect(schemaSection(a)).toBe(schemaSection(b.replace('91', '90')));
+  });
+});
+
 describe('Deno blog-file-posts mirror', () => {
   const source = readFileSync(resolve(SHARED, 'blog-file-posts.ts'), 'utf8');
   const mirrored = literal(source, 'BLOG_FILE_POSTS') as Array<{ slug: string; title: string }>;

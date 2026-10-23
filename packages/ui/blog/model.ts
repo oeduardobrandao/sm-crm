@@ -159,25 +159,54 @@ const INFOGRAFICO_KINDS: Record<string, z.ZodTypeAny> = {
   etapas: etapasSchema,
 };
 
-/** A ```infografico fence: optional trailing spaces on the opening line, CRLF
- * tolerated. An unclosed fence does not match; it renders as plain code. */
-const INFOGRAFICO_FENCE = /^```infografico[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/gm;
+/** Fenced code blocks as CommonMark (and so react-markdown) reads them: up
+ * to 3 spaces of indent, 3+ backticks or tildes, then an info string. A
+ * backtick fence's info string may not contain a backtick. The block closes
+ * on a line of the same char, at least as long, indented 0-3, with nothing
+ * else; without one it runs to the end of the body, and the renderer still
+ * draws it as a code block. Every fence is tracked, not just infographics,
+ * so an ```infografico example quoted inside another code block is content. */
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+const INFOGRAFICO_INFO = /^[ \t]*infografico\b/;
 
 export interface ExtractedInfografico {
   /** Zero-based position among the post's infographics. */
   index: number;
   /** Parsed JSON; undefined when `error` is set. */
   value: unknown;
-  /** Set when the fence content is not valid JSON. */
+  /** Set when the fence content is empty or not valid JSON. */
   error?: string;
 }
 
 export function extractInfograficos(body: string): ExtractedInfografico[] {
   const found: ExtractedInfografico[] = [];
-  for (const match of body.matchAll(INFOGRAFICO_FENCE)) {
+  const lines = body.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const open = FENCE_OPEN.exec(lines[i]);
+    i++;
+    if (!open) continue;
+    const marker = open[1];
+    const info = open[2];
+    if (marker[0] === '`' && info.includes('`')) continue;
+    const content: string[] = [];
+    while (i < lines.length) {
+      const close = FENCE_CLOSE.exec(lines[i]);
+      if (close && close[1][0] === marker[0] && close[1].length >= marker.length) break;
+      content.push(lines[i]);
+      i++;
+    }
+    i++;
+    if (!INFOGRAFICO_INFO.test(info)) continue;
     const index = found.length;
+    const text = content.join('\n');
+    if (!text.trim()) {
+      found.push({ index, value: undefined, error: 'JSON inválido' });
+      continue;
+    }
     try {
-      found.push({ index, value: JSON.parse(match[1]) });
+      found.push({ index, value: JSON.parse(text) });
     } catch {
       found.push({ index, value: undefined, error: 'JSON inválido' });
     }

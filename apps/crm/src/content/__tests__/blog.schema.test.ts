@@ -264,8 +264,19 @@ describe('extractInfograficos', () => {
     expect(found[1].error).toBeDefined();
   });
 
-  test('ignores an unclosed fence', () => {
-    expect(extractInfograficos('```infografico\n{"tipo": "etapas"}\n')).toEqual([]);
+  test('an unclosed fence runs to the end of the body', () => {
+    expect(extractInfograficos(`Texto\n\n\`\`\`infografico\n${JSON.stringify(BARRAS)}\n`)).toEqual([
+      { index: 0, value: BARRAS },
+    ]);
+  });
+
+  test('does not see an infographic quoted inside another code block', () => {
+    const body = '````md\n```infografico\n{}\n```\n````';
+    expect(extractInfograficos(body)).toEqual([]);
+  });
+
+  test('a backtick info string with a backtick is not a fence', () => {
+    expect(extractInfograficos('```infografico `x`\n{}\n```')).toEqual([]);
   });
 
   test('ignores other code fences', () => {
@@ -345,6 +356,40 @@ describe('validateInfograficos', () => {
     expect(validateInfograficos(fence(bad), 2).sort()).toEqual([
       'infografico[0].titulo: máximo de 90 caracteres',
       'infografico[0]: chave desconhecida: cor',
+    ]);
+  });
+
+  test.each([
+    ['a tilde fence', (json: string) => `~~~infografico\n${json}\n~~~`],
+    ['4 backticks', (json: string) => `\`\`\`\`infografico\n${json}\n\`\`\`\``],
+    ['a 2-space indent', (json: string) => `  \`\`\`infografico\n${json}\n  \`\`\``],
+    ['an info string after the word', (json: string) => `\`\`\`infografico json\n${json}\n\`\`\``],
+    ['an unclosed fence', (json: string) => `Texto\n\n\`\`\`infografico\n${json}\n`],
+  ])('validates the block in %s', (_label, wrap) => {
+    expect(validateInfograficos(wrap(JSON.stringify(BARRAS)), 2)).toEqual([]);
+    expect(validateInfograficos(wrap(JSON.stringify({ ...BARRAS, fonte: 3 })), 2)).toEqual([
+      'infografico[0].fonte: índice 3 fora de sources (0..1)',
+    ]);
+  });
+
+  test('a longer closing fence closes; a shorter one does not', () => {
+    const body = `\`\`\`\`infografico\n${JSON.stringify(BARRAS)}\n\`\`\`\n\`\`\`\`\`\n\nDepois`;
+    // The 3-backtick line is content, so the JSON is followed by a stray line.
+    expect(validateInfograficos(body, 2)).toEqual(['infografico[0]: JSON inválido']);
+  });
+
+  test('flags an empty fence', () => {
+    expect(validateInfograficos('```infografico\n```', 2)).toEqual([
+      'infografico[0]: JSON inválido',
+    ]);
+    expect(validateInfograficos('```infografico\n   \n```', 2)).toEqual([
+      'infografico[0]: JSON inválido',
+    ]);
+  });
+
+  test('flags an unclosed fence with broken JSON', () => {
+    expect(validateInfograficos('```infografico\n{"tipo": "barras",\n', 2)).toEqual([
+      'infografico[0]: JSON inválido',
     ]);
   });
 
