@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Check, RotateCcw, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
+// By path, not through the store barrel: the drawer test harnesses mock '@/store'.
+import { DISCUSSAO_MAX_CHARS } from '@/store/comments';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { MentionText } from '@/components/mentions/MentionText';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
@@ -221,17 +224,24 @@ export default function PostCommentPopover({
     }
   }, [thread.post_comments.length]);
 
+  const replyTrimmed = replyContent.trim();
+  const replyTooLong = replyTrimmed.length > DISCUSSAO_MAX_CHARS;
+
   const handleReply = useCallback(async () => {
-    const trimmed = replyContent.trim();
-    if (!trimmed || submitting) return;
+    // Enter reaches here past the button's `disabled`, so the guards repeat it.
+    if (!replyTrimmed || replyTooLong || submitting) return;
     setSubmitting(true);
     try {
-      await onReply(thread.id, trimmed);
+      await onReply(thread.id, replyTrimmed);
       setReplyContent('');
+    } catch {
+      // The reply goes through `post_discussao_enviar`, which can reject (thread resolved
+      // meanwhile, post gone, network). The typed text stays for a retry.
+      toast.error('Não foi possível enviar. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
-  }, [replyContent, submitting, onReply, thread.id]);
+  }, [replyTrimmed, replyTooLong, submitting, onReply, thread.id]);
 
   const handleReplyKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -324,11 +334,16 @@ export default function PostCommentPopover({
           <button
             className="comment-reply-submit"
             onClick={handleReply}
-            disabled={submitting || !replyContent.trim()}
+            disabled={submitting || !replyTrimmed || replyTooLong}
           >
             Enviar
           </button>
         </div>
+      )}
+      {!readOnly && thread.status === 'active' && replyTooLong && (
+        <p className="discussao-limit comment-popover-limit" role="alert">
+          Mensagem muito longa. O limite é de {DISCUSSAO_MAX_CHARS} caracteres.
+        </p>
       )}
     </div>
   );

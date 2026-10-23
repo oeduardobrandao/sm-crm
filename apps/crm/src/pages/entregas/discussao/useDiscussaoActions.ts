@@ -4,11 +4,16 @@ import { toast } from 'sonner';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import type { MentionEditorHandle } from '@/components/mentions/MentionEditor';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
-import { deletePostComment, updatePostComment, type PostComment } from '@/store/comments';
+import {
+  DISCUSSAO_MAX_CHARS,
+  deletePostComment,
+  updatePostComment,
+  type PostComment,
+} from '@/store/comments';
 import type { UseDiscussaoResult } from './useDiscussao';
 
-/** Same limit as the team chat and `post_discussao_enviar`. */
-export const DISCUSSAO_MAX_CHARS = 4000;
+// Defined next to the RPC wrapper; re-exported for the composers that import it from here.
+export { DISCUSSAO_MAX_CHARS };
 const NOW_REFRESH_MS = 60_000;
 
 const SEND_ERROR = 'Não foi possível enviar. Tente novamente.';

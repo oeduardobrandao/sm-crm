@@ -119,6 +119,9 @@ export async function createCommentThread(
   return { ...thread, post_comments: [comment] } as CommentThreadWithComments;
 }
 
+/** Longest message `post_discussao_enviar` accepts (it raises `content_too_long` above it). */
+export const DISCUSSAO_MAX_CHARS = 4000;
+
 /**
  * Sends a message to the post's internal discussion through `post_discussao_enviar`.
  * Without `threadId` it lands in the general thread (created on the first message); with one

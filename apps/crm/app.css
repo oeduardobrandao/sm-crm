@@ -8373,6 +8373,10 @@ a.mention-chip:hover {
   cursor: not-allowed;
 }
 
+.comment-popover-limit {
+  padding: 0 0.75rem 0.5rem;
+}
+
 /* Edit mode inline input */
 
 .comment-edit-input {
