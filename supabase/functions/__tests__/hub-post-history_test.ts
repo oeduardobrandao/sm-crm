@@ -82,6 +82,7 @@ Deno.test("sanitizeHistoryApprovals drops team-authored mensagem rows, keeps cli
     motivo: null,
     is_workspace_user: false,
     created_at: "2026-09-05T12:00:00.000Z",
+    open_note_count: 0,
   });
   for (const a of approvals) {
     assert(!("token" in a), "token must not leak");
@@ -170,4 +171,75 @@ Deno.test("hub-post-history returns 429 when the read rate limit trips", async (
   db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
   const response = await makeHandler(db, async () => false)(new Request("https://example.test/hub-post-history?token=hub-123&post_id=99"));
   assertEquals(response.status, 429);
+});
+
+function noteRow(over: Record<string, unknown> = {}) {
+  return {
+    id: 1, post_id: 99, media_kind: "image", slide_index_at_creation: 0, t_seconds: null, x: 0.2, y: 0.4,
+    visibility: "client", author_kind: "client", author_user_id: null, body: "Trocar a cor", status: "open",
+    resolved_at: null, created_at: "2026-09-03T08:00:00.000Z", current_link_id: 41, current_slide_index: 0,
+    is_previous_version: false, ...over,
+  };
+}
+
+Deno.test("hub-post-history includes media_notes and approvals carry open_note_count", async () => {
+  const db = createSupabaseQueryMock();
+  queueOwnedPost(db);
+  db.queue("post_status_events", "select", { data: rawEvents, error: null });
+  db.queue("post_approvals", "select", { data: rawApprovals, error: null });
+  db.queue("post_approval_media_notes", "select", {
+    data: [{ approval_id: 501 }, { approval_id: 501 }],
+    error: null,
+  });
+  db.queue("post_media_notes_v", "select", { data: [noteRow()], error: null });
+
+  const response = await makeHandler(db)(new Request("https://example.test/hub-post-history?token=hub-123&post_id=99"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.media_notes.map((n: { id: number }) => n.id), [1]);
+  assertEquals(body.media_notes[0].link_id, 41);
+  assertEquals(
+    body.approvals.map((a: { id: number; open_note_count: number }) => [a.id, a.open_note_count]),
+    [[501, 2], [503, 0]],
+  );
+  const view = db.calls.find((c) => c.table === "post_media_notes_v")!;
+  assert(view.modifiers.some((m) => m.method === "eq" && m.args[0] === "visibility" && m.args[1] === "client"));
+  assert(view.modifiers.some((m) => m.method === "in" && m.args[0] === "post_id"));
+});
+
+Deno.test("hub-post-history never serializes an internal note", async () => {
+  const db = createSupabaseQueryMock();
+  queueOwnedPost(db);
+  db.queue("post_status_events", "select", { data: rawEvents, error: null });
+  db.queue("post_approvals", "select", { data: rawApprovals, error: null });
+  // A misbehaving store hands back an internal row anyway.
+  db.queue("post_media_notes_v", "select", {
+    data: [noteRow({ id: 1 }), noteRow({ id: 2, visibility: "internal", body: "so equipe" })],
+    error: null,
+  });
+
+  const response = await makeHandler(db)(new Request("https://example.test/hub-post-history?token=hub-123&post_id=99"));
+  const text = JSON.stringify(await response.json());
+  assert(!text.includes("so equipe"), "internal note body leaked");
+  assert(!text.includes('"hub_token"'), "hub_token leaked");
+});
+
+Deno.test("hub-post-history still answers when the notes lookup fails", async () => {
+  const db = createSupabaseQueryMock();
+  queueOwnedPost(db);
+  db.queue("post_status_events", "select", { data: rawEvents, error: null });
+  db.queue("post_approvals", "select", { data: rawApprovals, error: null });
+  db.queue("post_media_notes_v", "select", { data: null, error: { message: "boom" } });
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const response = await makeHandler(db)(new Request("https://example.test/hub-post-history?token=hub-123&post_id=99"));
+    const body = await readJson(response);
+    assertEquals(response.status, 200);
+    assertEquals(body.media_notes, []);
+    assertEquals(body.approvals.length, 2);
+  } finally {
+    console.error = original;
+  }
 });

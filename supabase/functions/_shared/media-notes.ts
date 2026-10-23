@@ -1,3 +1,5 @@
+import { chunk, fetchAllRows } from "./paginate.ts";
+
 // Shared loader for "feedback em mídia" notes as the CLIENT sees them (Hub).
 //
 // Reads go through the service role, so this module is the only thing standing
@@ -155,6 +157,8 @@ function fail(scope: string, error: unknown): never {
 /**
  * Notes visible to the client for the given posts, with replies and team names.
  * `db` is typed with `from` only because hub-post-history's DbClient has no `rpc`.
+ * Notes and replies are drained with fetchAllRows so PostgREST's db-max-rows cap
+ * (1000) never truncates them silently. Any failed read throws a generic error.
  */
 export async function loadClientMediaNotes(
   db: FromClient,
@@ -163,35 +167,58 @@ export async function loadClientMediaNotes(
 ): Promise<HubMediaNoteDTO[]> {
   if (postIds.length === 0) return [];
 
-  const notesRes = await db
-    .from("post_media_notes_v")
-    .select(NOTE_COLUMNS)
-    .eq("conta_id", contaId)
-    .in("post_id", postIds)
-    .eq("visibility", "client")
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true });
-  if (notesRes.error) fail("notes", notesRes.error);
-  const notes = (notesRes.data ?? []) as NoteViewRow[];
+  let notes: NoteViewRow[];
+  try {
+    notes = await fetchAllRows<NoteViewRow>((from, to) =>
+      db
+        .from("post_media_notes_v")
+        .select(NOTE_COLUMNS)
+        .eq("conta_id", contaId)
+        .in("post_id", postIds)
+        .eq("visibility", "client")
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
+  } catch (e) {
+    fail("notes", e);
+  }
   if (notes.length === 0) return [];
 
   const noteIds = notes.map((n) => n.id);
-  const [repliesRes, membersRes] = await Promise.all([
-    db
-      .from("post_media_note_replies")
-      .select(REPLY_COLUMNS)
-      .in("note_id", noteIds)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true }),
-    db.from("membros").select("crm_user_id, nome").eq("conta_id", contaId),
-  ]);
-  if (repliesRes.error) fail("replies", repliesRes.error);
-  if (membersRes.error) fail("members", membersRes.error);
+  let replies: ReplyRow[];
+  let members: Array<{ crm_user_id: string | null; nome: string | null }>;
+  try {
+    const [replyChunks, membersRes] = await Promise.all([
+      Promise.all(
+        chunk(noteIds).map((ids) =>
+          fetchAllRows<ReplyRow>((from, to) =>
+            db
+              .from("post_media_note_replies")
+              .select(REPLY_COLUMNS)
+              .in("note_id", ids)
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
+        ),
+      ),
+      db.from("membros").select("crm_user_id, nome").eq("conta_id", contaId),
+    ]);
+    if (membersRes.error) throw membersRes.error;
+    // Chunks interleave by note, so restore the global (created_at, id) order.
+    replies = replyChunks.flat().sort((a, b) =>
+      a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id - b.id
+    );
+    members = membersRes.data ?? [];
+  } catch (e) {
+    fail("replies or members", e);
+  }
 
   const names = new Map<string, string>();
-  for (const m of (membersRes.data ?? []) as Array<{ crm_user_id: string | null; nome: string | null }>) {
+  for (const m of members) {
     if (m.crm_user_id && m.nome) names.set(m.crm_user_id, m.nome);
   }
 
-  return buildHubMediaNotes(notes, (repliesRes.data ?? []) as ReplyRow[], names);
+  return buildHubMediaNotes(notes, replies, names);
 }

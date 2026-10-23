@@ -2,6 +2,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
+import { type HubMediaNoteDTO, loadClientMediaNotes } from "../_shared/media-notes.ts";
 
 type DbClient = {
   // deno-lint-ignore no-explicit-any
@@ -51,6 +52,8 @@ export interface HubHistoryApproval {
   /** Always false for action = "mensagem": team messages never leave this function. */
   is_workspace_user: boolean;
   created_at: string;
+  /** Notes snapshotted when the client sent this approval (post_approval_media_notes). */
+  open_note_count: number;
 }
 
 export interface RawApprovalRow {
@@ -104,7 +107,10 @@ export function sanitizeHistoryEvents(rows: RawStatusEventRow[]): HubHistoryEven
  *    the first send event would erase the client's own history.
  * Never copies token or author_user_id.
  */
-export function sanitizeHistoryApprovals(rows: RawApprovalRow[]): HubHistoryApproval[] {
+export function sanitizeHistoryApprovals(
+  rows: RawApprovalRow[],
+  openNoteCounts: Map<number, number> = new Map(),
+): HubHistoryApproval[] {
   return [...rows]
     .sort(compareByCreatedAtThenId)
     .filter(isClientVisibleApproval)
@@ -115,6 +121,7 @@ export function sanitizeHistoryApprovals(rows: RawApprovalRow[]): HubHistoryAppr
       motivo: r.motivo ?? null,
       is_workspace_user: r.is_workspace_user === true,
       created_at: r.created_at,
+      open_note_count: openNoteCounts.get(r.id) ?? 0,
     }));
 }
 
@@ -189,9 +196,37 @@ export function createHubPostHistoryHandler(deps: HubPostHistoryHandlerDeps) {
       return json({ error: "Erro ao carregar histórico." }, 500);
     }
 
+    const approvalRows = (approvals ?? []) as RawApprovalRow[];
+
+    // Per-approval snapshot counts: one extra query over the join table (approval_id, note_id).
+    // The join only ever holds client-visible notes. A failure degrades to 0 counts.
+    const openNoteCounts = new Map<number, number>();
+    if (approvalRows.length > 0) {
+      const { data: snapshots, error: snapshotsError } = await db
+        .from("post_approval_media_notes")
+        .select("approval_id")
+        .in("approval_id", approvalRows.map((a) => a.id));
+      if (snapshotsError) {
+        console.error("[hub-post-history] note snapshots lookup failed:", snapshotsError);
+      }
+      for (const row of (snapshots ?? []) as { approval_id: number }[]) {
+        openNoteCounts.set(row.approval_id, (openNoteCounts.get(row.approval_id) ?? 0) + 1);
+      }
+    }
+
+    // Notes stay visible even when the post is back in production (read-only in the Hub),
+    // so this is not gated on status. Failure degrades to none, like the snapshots above.
+    let mediaNotes: HubMediaNoteDTO[] = [];
+    try {
+      mediaNotes = await loadClientMediaNotes(db, hubToken.conta_id, [postId]);
+    } catch (err) {
+      console.error("[hub-post-history] media notes lookup failed:", err);
+    }
+
     return json({
       events: sanitizeHistoryEvents((events ?? []) as RawStatusEventRow[]),
-      approvals: sanitizeHistoryApprovals((approvals ?? []) as RawApprovalRow[]),
+      approvals: sanitizeHistoryApprovals(approvalRows, openNoteCounts),
+      media_notes: mediaNotes,
     });
   };
 }

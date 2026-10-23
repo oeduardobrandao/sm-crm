@@ -180,3 +180,48 @@ Deno.test("loadClientMediaNotes throws a generic error when the query fails", as
     console.error = original;
   }
 });
+
+Deno.test("loadClientMediaNotes drains notes past a single page", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue(
+    "post_media_notes_v",
+    "select",
+    { data: [noteRow({ id: 1 })], error: null },
+    { data: [noteRow({ id: 2 })], error: null },
+  );
+  db.queue("post_media_note_replies", "select", { data: [], error: null });
+  db.queue("membros", "select", { data: [], error: null });
+  const out = await loadClientMediaNotes(db, "c1", [10]);
+  assertEquals(out.map((n) => n.id), [1, 2]);
+  const ranges = db.calls
+    .filter((c) => c.table === "post_media_notes_v")
+    .map((c) => c.modifiers.find((m) => m.method === "range")?.args);
+  assertEquals(ranges, [[0, 999], [1, 1000], [2, 1001]]);
+});
+
+for (const failing of ["post_media_note_replies", "membros"]) {
+  Deno.test(`loadClientMediaNotes throws a generic error when ${failing} fails`, async () => {
+    const db = createSupabaseQueryMock();
+    db.queue("post_media_notes_v", "select", { data: [noteRow()], error: null });
+    db.queue("post_media_note_replies", "select", failing === "post_media_note_replies"
+      ? { data: null, error: { message: "boom internal detail" } }
+      : { data: [], error: null });
+    db.queue("membros", "select", failing === "membros"
+      ? { data: null, error: { message: "boom internal detail" } }
+      : { data: [], error: null });
+    const original = console.error;
+    console.error = () => {};
+    try {
+      let message = "";
+      try {
+        await loadClientMediaNotes(db, "c1", [10]);
+      } catch (e) {
+        message = (e as Error).message;
+      }
+      assert(message.length > 0, "expected a throw");
+      assert(!message.includes("boom"), "must not leak the db detail");
+    } finally {
+      console.error = original;
+    }
+  });
+}
