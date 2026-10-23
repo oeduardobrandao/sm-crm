@@ -175,8 +175,6 @@ export function BlogDetail(p: BlogDetailProps) {
     return (
       <div className="px-[18px] py-4">
         <BlogEditor
-          // A refetched revision resets the form to what the server holds.
-          key={post.revision}
           post={post}
           saving={p.pending}
           errors={p.editorErrors}

@@ -100,6 +100,9 @@ export default function BlogPage() {
     queryKey: postKey(id ?? ''),
     queryFn: () => getBlogPost(id!),
     enabled: !!id,
+    // A focus refetch mid-edit would swap the post under the form; the save's
+    // expected_revision catches a real conflict instead.
+    refetchOnWindowFocus: !editing,
   });
 
   const rows = useMemo(() => sortQueue(list.data?.posts ?? [], now), [list.data, now]);
