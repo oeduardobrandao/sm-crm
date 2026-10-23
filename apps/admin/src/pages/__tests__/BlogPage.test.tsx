@@ -247,6 +247,25 @@ describe('BlogPage', () => {
       ),
     );
   });
+  it('shows the server-side validation errors of an approve in a toast', async () => {
+    vi.mocked(approveBlogPost).mockRejectedValue(
+      apiError(400, {
+        error: 'invalid_fields',
+        details: ['title: 5 caracteres; precisa ter de 50 a 60.'],
+      }),
+    );
+    renderAt(`/admin/blog/${ID1}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aprovar e publicar' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publicar este post?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publicar' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post tem campos inválidos. Corrija em Editar texto.',
+        { description: 'title: 5 caracteres; precisa ter de 50 a 60.' },
+      ),
+    );
+  });
+
   it('closes the confirm dialog when the approve hits a revision conflict', async () => {
     vi.mocked(approveBlogPost).mockRejectedValue(apiError(409, { error: 'conflict' }));
     renderAt(`/admin/blog/${ID1}`);

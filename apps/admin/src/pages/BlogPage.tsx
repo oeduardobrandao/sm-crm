@@ -198,7 +198,15 @@ export default function BlogPage() {
       const details = Array.isArray(err.body?.details)
         ? err.body.details.filter((d): d is string => typeof d === 'string')
         : [];
-      setEditorErrors(details.length > 0 ? details : ['Revise os campos e tente de novo.']);
+      if (c.kind === 'update') {
+        setEditorErrors(details.length > 0 ? details : ['Revise os campos e tente de novo.']);
+      } else {
+        // Approve, republish and retry re-validate the whole row: the editor is closed, so the
+        // problems go in a toast. Editar texto fixes them.
+        toast.error('O post tem campos inválidos. Corrija em Editar texto.', {
+          description: details.slice(0, 3).join(' '),
+        });
+      }
     } else if (code === 'deploy_hook_failed' && err.body?.saved === true) {
       toast.error('Texto salvo, mas a publicação não começou.', {
         action: { label: 'Tentar de novo', onClick: () => void run({ kind: 'retry' }, target) },

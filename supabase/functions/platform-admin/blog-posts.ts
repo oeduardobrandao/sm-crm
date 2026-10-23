@@ -204,6 +204,16 @@ function imageUrlPrefix(svc: SupabaseClient): string {
   return probe.slice(0, -1);
 }
 
+/** Revalida a linha inteira antes de mandá-la ao build: um rascunho salvo antes de uma mudança
+ * do validador não pode ser aprovado (nem republicado) e travar o blog:sync de todo deploy.
+ * Devolve a resposta 400 invalid_fields, ou null quando a linha é válida. */
+function invalidRow(svc: SupabaseClient, row: Row, headers: Headers): Response | null {
+  const draft: Row = {};
+  for (const f of BLOG_DRAFT_FIELDS) draft[f] = row[f];
+  const v = validateBlogDraft(draft, { partial: false, imageUrlPrefix: imageUrlPrefix(svc) });
+  return v.ok ? null : json({ error: "invalid_fields", details: v.errors }, 400, headers);
+}
+
 // ---------------------------------------------------------------------------
 // Leitura
 // ---------------------------------------------------------------------------
@@ -341,6 +351,8 @@ export async function handleApproveBlogPost(
   const row = await loadRow(svc, id);
   if (!row) return notFound(headers);
   if (!REVIEWABLE.includes(row.status) || row.revision !== expected) return conflict(headers);
+  const invalid = invalidRow(svc, row, headers);
+  if (invalid) return invalid;
 
   const now = deps.now();
   const saved = await guardedUpdate(svc, id, { status: row.status, revision: expected }, {
@@ -462,9 +474,11 @@ export async function handleRepublishBlogPost(
   if (!id) return badRequest(headers);
   if (!deps.hookConfigured()) return unavailable(headers);
 
-  const row = await loadRow(svc, id, "id, status, revision, publish_attempt_at");
+  const row = await loadRow(svc, id);
   if (!row) return notFound(headers);
   if (row.status !== "despublicado") return conflict(headers);
+  const invalid = invalidRow(svc, row, headers);
+  if (invalid) return invalid;
 
   const saved = await guardedUpdate(svc, id, { status: "despublicado", revision: row.revision }, {
     status: "publicando",
@@ -493,9 +507,11 @@ export async function handleRetryBlogPublish(
   if (!id) return badRequest(headers);
   if (!deps.hookConfigured()) return unavailable(headers);
 
-  const row = await loadRow(svc, id, "id, status, revision");
+  const row = await loadRow(svc, id);
   if (!row) return notFound(headers);
   if (row.status !== "publicando") return conflict(headers);
+  const invalid = invalidRow(svc, row, headers);
+  if (invalid) return invalid;
 
   // Redisparar para a mesma revisão é idempotente; o status não muda em nenhum caso.
   const saved = await guardedUpdate(svc, id, { status: "publicando", revision: row.revision }, {

@@ -282,6 +282,37 @@ Deno.test("approve de post rejeitado ou já publicado → 409", async () => {
   }
 });
 
+Deno.test("approve/republish/retry revalidam a linha: inválida → 400 invalid_fields, nada muda, hook não dispara", async () => {
+  const bad = { title: "curto" };
+  const { db, row, tables } = makeDb([
+    post({ ...bad, revision: 2 }),
+    post({ ...bad, id: ID2, status: "despublicado", revision: 3, live_revision: 3 }),
+  ]);
+  const { deps, hookCalls } = makeDeps();
+
+  const ap = await handleApproveBlogPost(db, { id: ID, expected_revision: 2 }, ADMIN, H, deps);
+  assertEquals(ap.status, 400);
+  const out = await body(ap);
+  assertEquals(out.error, "invalid_fields");
+  assert(out.details.some((e: string) => e.startsWith("title:")));
+  assertEquals(row().status, "rascunho");
+  assertEquals(row().approved_at, null);
+
+  const re = await handleRepublishBlogPost(db, { id: ID2 }, ADMIN, H, deps);
+  assertEquals(re.status, 400);
+  assertEquals((await body(re)).error, "invalid_fields");
+  assertEquals(row(ID2).status, "despublicado");
+
+  row().status = "publicando";
+  const rt = await handleRetryBlogPublish(db, { id: ID }, ADMIN, H, deps);
+  assertEquals(rt.status, 400);
+  assertEquals((await body(rt)).error, "invalid_fields");
+  assertEquals(row().publish_attempt_at, null);
+
+  assertEquals(hookCalls.length, 0);
+  assertEquals(tables.audit_log.length, 0);
+});
+
 Deno.test("approve: id inválido ou expected_revision ausente → 400; id desconhecido → 404", async () => {
   const { db } = makeDb([post()]);
   const { deps } = makeDeps();
