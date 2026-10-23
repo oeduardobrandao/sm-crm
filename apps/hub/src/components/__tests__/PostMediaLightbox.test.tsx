@@ -625,6 +625,34 @@ describe('PostMediaLightbox media notes', () => {
       expect(onClose).not.toHaveBeenCalled();
     });
 
+    it('one Escape stays a single close when the flush hands the lightbox a new onClose', async () => {
+      const onClose = vi.fn();
+      const newOnClose = vi.fn();
+      const props = {
+        media: [video(), SECOND()],
+        initialIndex: 0,
+        notes: [] as HubMediaNote[],
+        canWrite: true,
+        onCreateNote: vi.fn().mockResolvedValue(undefined),
+      };
+      const { rerender } = render(<PostMediaLightbox {...props} onClose={onClose} />);
+      clock();
+      fireEvent.click(screen.getByRole('button', { name: /^Comentar em/ }));
+      await screen.findByPlaceholderText(PH);
+      // What PostDetailDialog does when the composer's overlay report re-renders it: a new
+      // inline onClose lands between the capture and the bubble phase of the same key.
+      const swap = () =>
+        flushSync(() => {
+          rerender(<PostMediaLightbox {...props} onClose={newOnClose} />);
+        });
+      document.addEventListener('keydown', swap, true);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      document.removeEventListener('keydown', swap, true);
+      await waitFor(() => expect(screen.queryByPlaceholderText(PH)).toBeNull());
+      expect(onClose).not.toHaveBeenCalled();
+      expect(newOnClose).not.toHaveBeenCalled();
+    });
+
     it('Escape still closes the lightbox when the outer dialog also preventDefaults it', () => {
       const { onClose } = renderTwo();
       const outer = (e: Event) => e.preventDefault();
@@ -682,6 +710,43 @@ describe('PostMediaLightbox media notes', () => {
       expect(
         await screen.findByRole('textbox', { name: 'Comentário em 0:42' }),
       ).toBeInTheDocument();
+    });
+
+    it('initialSeek is dropped when the user swipes away before loadedmetadata', () => {
+      renderTwo({ initialSeek: 30 });
+      // Away to the second item, then back, before the first video ever reported metadata.
+      fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Anterior' }));
+      const again = document.querySelector('video')!;
+      let ct = 0;
+      Object.defineProperty(again, 'currentTime', {
+        configurable: true,
+        get: () => ct,
+        set: (v: number) => {
+          ct = v;
+        },
+      });
+      fireEvent(again, new Event('loadedmetadata'));
+      expect(ct).toBe(0);
+    });
+
+    it('the stored moment and the composer title read the live clock, not the throttled label', async () => {
+      const { onCreateNote } = renderTwo();
+      const c = clock();
+      c.setTime(42);
+      // The clock moved on without a timeupdate yet: the button still says 0:42.
+      Object.defineProperty(c.el, 'currentTime', {
+        configurable: true,
+        get: () => 43.4,
+        set: () => {},
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Comentar em 0:42' }));
+      const field = await screen.findByRole('textbox', { name: 'Comentário em 0:43' });
+      fireEvent.change(field, { target: { value: 'ao vivo' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar comentário' }));
+      await waitFor(() =>
+        expect(onCreateNote).toHaveBeenCalledWith({ link_id: 5, t_seconds: 43.4, body: 'ao vivo' }),
+      );
     });
 
     it('initialSeek does not re-apply after swiping away and back', () => {

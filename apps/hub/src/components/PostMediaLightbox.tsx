@@ -146,9 +146,11 @@ export function PostMediaLightbox({
   function startMoment(point: { x: number; y: number } | null) {
     if (!current) return;
     videoRef.current?.pause();
-    // The moment the button/marker row showed, so the label and the composer title agree.
+    // The live clock (the label is throttled to timeupdate): the stored moment and the composer
+    // title both come from this one read.
+    const live = videoRef.current?.currentTime ?? time;
     setPending(point);
-    setComposer({ linkId: current.id, t: Math.round(time * 100) / 100, point });
+    setComposer({ linkId: current.id, t: Math.round(live * 100) / 100, point });
   }
   function closeComposer() {
     setComposer(null);
@@ -193,26 +195,30 @@ export function PostMediaLightbox({
     }
   }, [idx, media]);
 
+  // Keys that arrived while the note composer was open. The composer's Radix dialog takes
+  // Escape in the capture phase and React may flush its close before the bubble listener
+  // runs, so "is the composer open" is sampled BEFORE Radix sees the key. (Not
+  // `defaultPrevented`: the outer HubDialog preventDefaults Escape too, and the lightbox must
+  // still close on it.) The set and the handlers live in refs so that the flush, which can hand
+  // us a new `onClose` and re-render the parent, never swaps the listener (and the set) out
+  // between the capture and bubble phases of the same key.
+  const claimedByComposer = useRef(new WeakSet<Event>());
+  const keyHandlers = useRef({ onClose, prev, next });
+  keyHandlers.current = { onClose, prev, next };
   useEffect(() => {
-    // Keys that arrived while the note composer was open. The composer's Radix dialog takes
-    // Escape in the capture phase and React may flush its close before this bubble listener
-    // runs, so "is the composer open" has to be sampled BEFORE Radix sees the key. (Not
-    // `defaultPrevented`: the outer HubDialog preventDefaults Escape too, and the lightbox
-    // must still close on it.)
-    const claimedByComposer = new WeakSet<Event>();
     const onKeyCapture = (e: KeyboardEvent) => {
-      if (composerOpenRef.current) claimedByComposer.add(e);
+      if (composerOpenRef.current) claimedByComposer.current.add(e);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (claimedByComposer.has(e)) return;
+      if (claimedByComposer.current.has(e)) return;
       if (e.key === 'Escape') {
-        onClose();
+        keyHandlers.current.onClose();
         return;
       }
       // Arrows belong to the caret while typing.
       if (isEditable(e.target)) return;
-      if (e.key === 'ArrowLeft') prev();
-      if (e.key === 'ArrowRight') next();
+      if (e.key === 'ArrowLeft') keyHandlers.current.prev();
+      if (e.key === 'ArrowRight') keyHandlers.current.next();
     };
     window.addEventListener('keydown', onKeyCapture, true);
     window.addEventListener('keydown', onKey);
@@ -220,7 +226,7 @@ export function PostMediaLightbox({
       window.removeEventListener('keydown', onKeyCapture, true);
       window.removeEventListener('keydown', onKey);
     };
-  }, [prev, next, onClose]);
+  }, []);
 
   // Touch swipe: horizontal swipe > 50px advances; vertical-dominant gestures are ignored
   // so scrolling/pinching inside videos still works.
