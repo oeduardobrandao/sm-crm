@@ -244,17 +244,17 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     v2);
 
   register(server, deps, "save_acordo", "financeiro:write",
-    "Grava uma nova versão do acordo de um membro no Financeiro v2, válida desde vale_desde (YYYY-MM-DD; padrão: início do período aberto; períodos fechados são recusados). Envie o acordo COMPLETO: o que for omitido vira null (não herda da versão anterior; consulte get_acordo_versoes antes). modelo: 'mensal_meta' | 'mensal_limite' | 'por_entrega'; valor em reais (>= 0); unidade, meta_quantidade e meta_periodo ('dia_util'|'semana'|'mes') descrevem a meta; limite_clientes vale para mensal_limite; dia_pagamento 1..31; vigencia_inicio/vigencia_fim YYYY-MM-DD. O contrato anexado é mantido. Somente para o dono do workspace e com o Financeiro v2 ativo.",
+    "Grava uma nova versão do acordo de um membro no Financeiro v2, válida desde vale_desde (YYYY-MM-DD; padrão: início do período aberto; períodos fechados são recusados). Envie o acordo COMPLETO: o que for omitido vira null (não herda da versão anterior; consulte get_acordo_versoes antes). modelo: 'mensal_meta' | 'mensal_limite' | 'por_entrega'; valor em reais (>= 0); unidade, meta_quantidade e meta_periodo ('dia_util'|'semana'|'mes') descrevem a meta; mensal_meta exige meta_quantidade >= 1 e mensal_limite exige limite_clientes >= 1 (unidade e meta só valem em mensal_meta, limite só em mensal_limite; o resto é descartado); dia_pagamento 1..31; vigencia_inicio/vigencia_fim YYYY-MM-DD. O contrato anexado é mantido. Somente para o dono do workspace e com o Financeiro v2 ativo.",
     {
       membro_id: ID,
       vale_desde: DATE_ONLY.optional(),
       funcao_id: ID.nullable().optional(),
       modelo: z.enum(["mensal_meta", "mensal_limite", "por_entrega"]),
       valor: z.number().min(0),
-      unidade: z.string().max(40).nullable().optional(),
-      meta_quantidade: z.number().int().min(0).nullable().optional(),
+      unidade: z.string().nullable().optional(),
+      meta_quantidade: z.number().int().min(1).nullable().optional(),
       meta_periodo: z.enum(["dia_util", "semana", "mes"]).nullable().optional(),
-      limite_clientes: z.number().int().min(0).nullable().optional(),
+      limite_clientes: z.number().int().min(1).nullable().optional(),
       dia_pagamento: DIA.nullable().optional(),
       vigencia_inicio: DATE_ONLY.nullable().optional(),
       vigencia_fim: DATE_ONLY.nullable().optional(),
@@ -278,7 +278,7 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     {
       inicio: DATE_ONLY,
       membro_id: ID,
-      itens: z.array(z.object({ cliente_id: ID, quantidade: z.number().min(0).nullable() })).min(1).max(200),
+      itens: z.array(z.object({ cliente_id: ID, quantidade: z.number().int().min(0).nullable() })).min(1).max(200),
     },
     (a) => saveEntregas(deps, a),
     (a, r) => ({ inicio: a.inicio, membro_id: a.membro_id, count: r?.itens ?? a.itens?.length }),

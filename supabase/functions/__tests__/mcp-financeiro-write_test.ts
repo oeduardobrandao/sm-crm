@@ -237,7 +237,7 @@ Deno.test("mcp-financeiro-write: confirmar passes origem/id to the RPC (never p_
   const b = setup({ clientes: [ok({ id: 5 })] }, { financeiro_agendamento_confirmar_as: [err("ja_confirmado")] });
   const r2 = await b.server.handlers["confirmar_agendamento"]({ origem: "cliente", id: 5 });
   assert(r2.isError === true);
-  assertEquals(parse(r2).error, "Este agendamento já foi confirmado neste mês.");
+  assertEquals(parse(r2).error, "Já existe um lançamento deste agendamento neste mês. Para alterá-lo, use update_lancamento.");
 });
 
 Deno.test("mcp-financeiro-write: confirmar checks the id belongs to the workspace per origem", async () => {

@@ -139,7 +139,7 @@ Deno.test("mcp-financeiro-v2: save_acordo fills omitted keys with null and keeps
     { financeiro_acordo_salvar_as: [ok(null)] },
     CTX,
   );
-  const r = await server.handlers["save_acordo"]({ membro_id: 4, modelo: "mensal_meta", valor: 2500 });
+  const r = await server.handlers["save_acordo"]({ membro_id: 4, modelo: "por_entrega", valor: 2500 });
   assert(!r.isError, r.content[0].text);
   assertEquals(rpcArgs(calls, "financeiro_acordo_salvar_as"), {
     p_conta: "workspace-B",
@@ -148,7 +148,7 @@ Deno.test("mcp-financeiro-v2: save_acordo fills omitted keys with null and keeps
     p_vale_desde: "2026-11-01",
     p_acordo: {
       funcao_id: null,
-      modelo: "mensal_meta",
+      modelo: "por_entrega",
       valor: 2500,
       unidade: null,
       meta_quantidade: null,
@@ -171,29 +171,70 @@ Deno.test("mcp-financeiro-v2: save_acordo fills omitted keys with null and keeps
   assertEquals(parse(r), { ok: true, membro_id: 4, vale_desde: "2026-11-01" });
 });
 
-Deno.test("mcp-financeiro-v2: save_acordo sends every given field and null arquivo_path when there is no version", async () => {
+Deno.test("mcp-financeiro-v2: save_acordo sends every given field for mensal_meta and null arquivo_path when there is no version", async () => {
   const { server, calls } = setup(
     { membros: [ok({ id: 4 })], financeiro_acordo_versoes: [ok(null)] },
     { financeiro_acordo_salvar_as: [ok(null)] },
   );
   const r = await server.handlers["save_acordo"]({
-    membro_id: 4, vale_desde: "2026-10-05", funcao_id: 3, modelo: "por_entrega", valor: 40, unidade: "reel",
+    membro_id: 4, vale_desde: "2026-10-05", funcao_id: 3, modelo: "mensal_meta", valor: 40, unidade: "reel",
     meta_quantidade: 8, meta_periodo: "semana", limite_clientes: 6, dia_pagamento: 5,
     vigencia_inicio: "2026-10-01", vigencia_fim: "2027-09-30",
   });
   assert(!r.isError, r.content[0].text);
   const a = rpcArgs(calls, "financeiro_acordo_salvar_as")!;
   assertEquals(a.p_vale_desde, "2026-10-05");
+  // limite_clientes does not belong to mensal_meta: nulled like the CRM dialog does
   assertEquals(a.p_acordo, {
-    funcao_id: 3, modelo: "por_entrega", valor: 40, unidade: "reel", meta_quantidade: 8, meta_periodo: "semana",
-    limite_clientes: 6, dia_pagamento: 5, vigencia_inicio: "2026-10-01", vigencia_fim: "2027-09-30", arquivo_path: null,
+    funcao_id: 3, modelo: "mensal_meta", valor: 40, unidade: "reel", meta_quantidade: 8, meta_periodo: "semana",
+    limite_clientes: null, dia_pagamento: 5, vigencia_inicio: "2026-10-01", vigencia_fim: "2027-09-30", arquivo_path: null,
   });
   assert(!calls.some((c) => c.table === "financeiro_periodos"), "explicit vale_desde skips the open-period lookup");
 });
 
+Deno.test("mcp-financeiro-v2: save_acordo nulls the fields that do not belong to the model", async () => {
+  const mk = () =>
+    setup(
+      { membros: [ok({ id: 4 })], financeiro_acordo_versoes: [ok(null)] },
+      { financeiro_acordo_salvar_as: [ok(null)] },
+    );
+  const extras = {
+    membro_id: 4, vale_desde: "2026-10-05", valor: 10, unidade: "reel", meta_quantidade: 8, meta_periodo: "mes",
+    limite_clientes: 6,
+  };
+  const a = mk();
+  await a.server.handlers["save_acordo"]({ ...extras, modelo: "mensal_limite" });
+  const pa = rpcArgs(a.calls, "financeiro_acordo_salvar_as")!.p_acordo as any;
+  assertEquals([pa.unidade, pa.meta_quantidade, pa.meta_periodo, pa.limite_clientes], [null, null, null, 6]);
+
+  const b = mk();
+  await b.server.handlers["save_acordo"]({ ...extras, modelo: "por_entrega" });
+  const pb = rpcArgs(b.calls, "financeiro_acordo_salvar_as")!.p_acordo as any;
+  assertEquals([pb.unidade, pb.meta_quantidade, pb.meta_periodo, pb.limite_clientes], [null, null, null, null]);
+});
+
+Deno.test("mcp-financeiro-v2: save_acordo applies the CRM rules before any acordo read or RPC", async () => {
+  const base = { membro_id: 4, vale_desde: "2026-10-05", valor: 10 };
+  const cases: Record<string, unknown>[] = [
+    { ...base, modelo: "mensal_meta" },
+    { ...base, modelo: "mensal_meta", meta_quantidade: 0 },
+    { ...base, modelo: "mensal_limite" },
+    { ...base, modelo: "mensal_limite", limite_clientes: 0, meta_quantidade: 5 },
+    { ...base, modelo: "por_entrega", vigencia_inicio: "2026-10-10", vigencia_fim: "2026-10-09" },
+  ];
+  for (const args of cases) {
+    const { server, calls } = setup({ membros: [ok({ id: 4 })] }, { financeiro_acordo_salvar_as: [ok(null)] });
+    const r = await server.handlers["save_acordo"](args);
+    assert(r.isError === true, JSON.stringify(args));
+    assertEquals(parse(r).error, "Acordo inválido. Confira modelo, valor, meta e limite de clientes.");
+    assert(!calls.some((c) => c.table === "rpc:financeiro_acordo_salvar_as"), JSON.stringify(args));
+    assert(!calls.some((c) => c.table === "financeiro_acordo_versoes"), JSON.stringify(args));
+  }
+});
+
 Deno.test("mcp-financeiro-v2: save_acordo for a foreign membro is not_found before any write", async () => {
   const { server, calls } = setup({ membros: [ok(null)] }, { financeiro_acordo_salvar_as: [ok(null)] });
-  const r = await server.handlers["save_acordo"]({ membro_id: 99, vale_desde: "2026-11-01", modelo: "mensal_meta", valor: 1 });
+  const r = await server.handlers["save_acordo"]({ membro_id: 99, vale_desde: "2026-11-01", modelo: "por_entrega", valor: 1 });
   assert(r.isError === true);
   assertEquals(parse(r).error, "Registro não encontrado neste workspace.");
   assert(!calls.some((c) => c.table === "rpc:financeiro_acordo_salvar_as"));
@@ -202,13 +243,13 @@ Deno.test("mcp-financeiro-v2: save_acordo for a foreign membro is not_found befo
 
 Deno.test("mcp-financeiro-v2: save_acordo rejects impossible dates and maps acordo_invalido / periodo_fechado", async () => {
   const a = setup({ membros: [ok({ id: 4 })] });
-  const r = await a.server.handlers["save_acordo"]({ membro_id: 4, vale_desde: "2026-02-30", modelo: "mensal_meta", valor: 1 });
+  const r = await a.server.handlers["save_acordo"]({ membro_id: 4, vale_desde: "2026-02-30", modelo: "por_entrega", valor: 1 });
   assert(r.isError === true);
   assert(!a.calls.some((c) => c.table === "rpc:financeiro_acordo_salvar_as"));
 
   const b = setup({ membros: [ok({ id: 4 })] });
   const r1 = await b.server.handlers["save_acordo"]({
-    membro_id: 4, vale_desde: "2026-11-01", modelo: "mensal_meta", valor: 1, vigencia_fim: "2026-13-40",
+    membro_id: 4, vale_desde: "2026-11-01", modelo: "por_entrega", valor: 1, vigencia_fim: "2026-13-40",
   });
   assert(r1.isError === true);
 
@@ -217,7 +258,7 @@ Deno.test("mcp-financeiro-v2: save_acordo rejects impossible dates and maps acor
       { membros: [ok({ id: 4 })], financeiro_acordo_versoes: [ok(null)] },
       { financeiro_acordo_salvar_as: [err(code)] },
     );
-    const r2 = await c.server.handlers["save_acordo"]({ membro_id: 4, vale_desde: "2026-11-01", modelo: "mensal_meta", valor: 1 });
+    const r2 = await c.server.handlers["save_acordo"]({ membro_id: 4, vale_desde: "2026-11-01", modelo: "por_entrega", valor: 1 });
     assert(r2.isError === true);
     assert(!parse(r2).error.includes("Internal"), code);
   }
@@ -226,8 +267,11 @@ Deno.test("mcp-financeiro-v2: save_acordo rejects impossible dates and maps acor
 Deno.test("mcp-financeiro-v2: save_acordo schema validates modelo, meta_periodo, dia and valor", () => {
   const { server } = setup();
   const shape = z.object(server.shapes["save_acordo"] as z.ZodRawShape);
-  const base = { membro_id: 1, modelo: "mensal_meta", valor: 1 };
+  const base = { membro_id: 1, modelo: "por_entrega", valor: 1 };
   assert(shape.safeParse(base).success);
+  assert(!shape.safeParse({ ...base, meta_quantidade: 0 }).success);
+  assert(!shape.safeParse({ ...base, limite_clientes: 0 }).success);
+  assert(shape.safeParse({ ...base, unidade: "x".repeat(100) }).success);
   assert(!shape.safeParse({ ...base, modelo: "outro" }).success);
   assert(!shape.safeParse({ ...base, valor: -1 }).success);
   assert(!shape.safeParse({ ...base, meta_periodo: "ano" }).success);
@@ -286,6 +330,7 @@ Deno.test("mcp-financeiro-v2: save_atribuicoes and save_entregas bound the list 
   assert(!en.safeParse({ inicio: "2026-11-01", membro_id: 1, itens: Array(201).fill(it) }).success);
   assert(en.safeParse({ inicio: "2026-11-01", membro_id: 1, itens: [{ cliente_id: 2, quantidade: null }] }).success);
   assert(!en.safeParse({ inicio: "2026-11-01", membro_id: 1, itens: [{ cliente_id: 2, quantidade: -1 }] }).success);
+  assert(!en.safeParse({ inicio: "2026-11-01", membro_id: 1, itens: [{ cliente_id: 2, quantidade: 2.5 }] }).success);
 });
 
 // ---- save_entregas ----------------------------------------------------------------------------
@@ -356,7 +401,7 @@ Deno.test("mcp-financeiro-v2: save_acordo audit carries ids and vale_desde only"
     { financeiro_acordo_salvar_as: [ok(null)] },
   );
   await server.handlers["save_acordo"]({
-    membro_id: 4, vale_desde: "2026-11-01", modelo: "mensal_meta", valor: 98765, unidade: "SEGREDO",
+    membro_id: 4, vale_desde: "2026-11-01", modelo: "por_entrega", valor: 98765, unidade: "SEGREDO",
   });
   const row = insertPayload(calls, "audit_log") as Record<string, any>;
   assertEquals(row.metadata.args, { membro_id: 4, vale_desde: "2026-11-01" });

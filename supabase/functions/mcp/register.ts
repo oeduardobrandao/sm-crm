@@ -10,6 +10,7 @@ import {
   requireScope,
 } from "../_shared/mcp-token.ts";
 import type { Deps } from "./queries.ts";
+import { FINANCEIRO_ERROS } from "./financeiro-errors.ts";
 
 export function jsonResult(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
@@ -19,7 +20,7 @@ export function errorResult(e: unknown) {
   const message = e instanceof McpScopeError
     ? `Permission denied: missing scope '${e.scope}'.`
     : e instanceof McpOwnerError
-    ? "Permission denied: somente o dono do workspace pode usar as ferramentas do Financeiro."
+    ? FINANCEIRO_ERROS.owner_only
     : e instanceof McpInputError
     ? e.message
     : "Internal error.";

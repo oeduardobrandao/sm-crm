@@ -567,15 +567,19 @@ export async function deleteFuncao(d: Deps, a: { funcao_id: number }): Promise<{
   return { ok: true };
 }
 
-const ACORDO_CHAVES = [
-  "funcao_id", "modelo", "valor", "unidade", "meta_quantidade", "meta_periodo", "limite_clientes", "dia_pagamento",
-  "vigencia_inicio", "vigencia_fim",
-] as const;
-
 export async function saveAcordo(d: Deps, a: Record<string, any>): Promise<Record<string, any>> {
   if (a.vale_desde != null) exigirData(a.vale_desde);
   for (const k of ["vigencia_inicio", "vigencia_fim"]) if (a[k] != null) exigirData(a[k]);
   await exigirDoWorkspace(d, "membros", a.membro_id);
+  // Mesmas regras do diálogo de acordo do CRM (AcordoDialog), antes de qualquer leitura ou RPC.
+  const inteiroPositivo = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v > 0;
+  if (
+    (a.modelo === "mensal_meta" && !inteiroPositivo(a.meta_quantidade)) ||
+    (a.modelo === "mensal_limite" && !inteiroPositivo(a.limite_clientes)) ||
+    (a.vigencia_inicio && a.vigencia_fim && a.vigencia_fim < a.vigencia_inicio)
+  ) {
+    throw new McpInputError(FINANCEIRO_ERROS.acordo_invalido);
+  }
 
   const valeDesde: string = a.vale_desde ?? (await valeDesdePadrao(d));
   // O contrato anexado (arquivo_path) não é editável por aqui: segue o da versão vigente em vale_desde.
@@ -590,10 +594,22 @@ export async function saveAcordo(d: Deps, a: Record<string, any>): Promise<Recor
     .maybeSingle();
   if (error) fail(error);
 
-  // Formato completo do AcordoInput do CRM: toda chave presente, omitida = null.
-  const acordo: Record<string, any> = {};
-  for (const k of ACORDO_CHAVES) acordo[k] = a[k] ?? null;
-  acordo.arquivo_path = atual?.arquivo_path ?? null;
+  // Formato completo do AcordoInput do CRM: toda chave presente, omitida = null. Como o diálogo do CRM,
+  // unidade/meta só valem em mensal_meta e o limite só em mensal_limite.
+  const meta = a.modelo === "mensal_meta";
+  const acordo: Record<string, any> = {
+    funcao_id: a.funcao_id ?? null,
+    modelo: a.modelo,
+    valor: a.valor,
+    unidade: meta ? a.unidade ?? null : null,
+    meta_quantidade: meta ? a.meta_quantidade ?? null : null,
+    meta_periodo: meta ? a.meta_periodo ?? null : null,
+    limite_clientes: a.modelo === "mensal_limite" ? a.limite_clientes ?? null : null,
+    dia_pagamento: a.dia_pagamento ?? null,
+    vigencia_inicio: a.vigencia_inicio ?? null,
+    vigencia_fim: a.vigencia_fim ?? null,
+    arquivo_path: atual?.arquivo_path ?? null,
+  };
 
   await callAs(d, "financeiro_acordo_salvar_as", {
     p_membro_id: a.membro_id,

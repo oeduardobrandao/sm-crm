@@ -35,7 +35,7 @@ export const FINANCEIRO_ERROS: Record<string, string> = {
   itens_invalidos: "Itens de entrega inválidos.",
   mudancas_invalidas: "Mudanças de atribuição inválidas.",
   sem_atribuicao: "O membro não está atribuído a esse cliente no período.",
-  ja_confirmado: "Este agendamento já foi confirmado neste mês.",
+  ja_confirmado: "Já existe um lançamento deste agendamento neste mês. Para alterá-lo, use update_lancamento.",
   origem_invalida: "Origem inválida. Use cliente, membro ou recorrente.",
   nao_agendado: "Não há agendamento deste item no mês corrente.",
   valor_indefinido: "O valor deste agendamento não está definido (nulo ou zero). Cadastre o valor antes de confirmar.",
