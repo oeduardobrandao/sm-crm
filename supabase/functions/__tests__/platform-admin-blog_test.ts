@@ -420,7 +420,7 @@ Deno.test("editar post publicado → publicando, revision +1, live_revision igua
     post({ status: "publicado", revision: 2, live_revision: 2, date: "2026-10-01" }),
   ]);
   const { deps, hookCalls } = makeDeps();
-  const res = await handleUpdateBlogPost(db, { id: ID, fields: { lede: "Um lede novo." } }, ADMIN, H, deps);
+  const res = await handleUpdateBlogPost(db, { id: ID, expected_revision: 2, fields: { lede: "Um lede novo." } }, ADMIN, H, deps);
   assertEquals(res.status, 200);
   const r = row();
   assertEquals(r.status, "publicando");
@@ -457,7 +457,7 @@ Deno.test("editar publicando que nunca esteve no ar → sem updated, hook dispar
 Deno.test("editar rascunho → revision +1, status igual, checks regravados, sem hook", async () => {
   const { db, row } = makeDb([post()]);
   const { deps, hookCalls } = makeDeps();
-  const res = await handleUpdateBlogPost(db, { id: ID, fields: { lede: "Outro lede." } }, ADMIN, H, deps);
+  const res = await handleUpdateBlogPost(db, { id: ID, expected_revision: 1, fields: { lede: "Outro lede." } }, ADMIN, H, deps);
   assertEquals(res.status, 200);
   assertEquals(row().status, "rascunho");
   assertEquals(row().revision, 2);
@@ -469,15 +469,29 @@ Deno.test("editar rascunho → revision +1, status igual, checks regravados, sem
 Deno.test("editar: campo inválido → 400 com os erros; campo não editável → 400; status rejeitado → 409", async () => {
   const { db, row } = makeDb([post(), post({ id: ID2, status: "rejeitado" })]);
   const { deps } = makeDeps();
-  const bad = await handleUpdateBlogPost(db, { id: ID, fields: { title: "curto" } }, ADMIN, H, deps);
+  const bad = await handleUpdateBlogPost(db, { id: ID, expected_revision: 1, fields: { title: "curto" } }, ADMIN, H, deps);
   assertEquals(bad.status, 400);
   const out = await body(bad);
   assertEquals(out.error, "invalid_fields");
   assert(out.details.some((e: string) => e.startsWith("title:")));
   assertEquals(row().revision, 1);
-  assertEquals((await handleUpdateBlogPost(db, { id: ID, fields: { slug: "outro-slug" } }, ADMIN, H, deps)).status, 400);
-  assertEquals((await handleUpdateBlogPost(db, { id: ID, fields: {} }, ADMIN, H, deps)).status, 400);
-  assertEquals((await handleUpdateBlogPost(db, { id: ID2, fields: { lede: "x" } }, ADMIN, H, deps)).status, 409);
+  assertEquals((await handleUpdateBlogPost(db, { id: ID, expected_revision: 1, fields: { slug: "outro-slug" } }, ADMIN, H, deps)).status, 400);
+  assertEquals((await handleUpdateBlogPost(db, { id: ID, expected_revision: 1, fields: {} }, ADMIN, H, deps)).status, 400);
+  assertEquals((await handleUpdateBlogPost(db, { id: ID2, expected_revision: 1, fields: { lede: "x" } }, ADMIN, H, deps)).status, 409);
+});
+
+Deno.test("editar ou pedir ajuste sem expected_revision → 400 invalid_fields sem gravar", async () => {
+  const { db, row } = makeDb([post()]);
+  const { deps } = makeDeps();
+  const ed = await handleUpdateBlogPost(db, { id: ID, fields: { lede: "Outro lede." } }, ADMIN, H, deps);
+  assertEquals(ed.status, 400);
+  assertEquals(await body(ed), { error: "invalid_fields", details: ["expected_revision: obrigatório."] });
+  const rq = await handleRequestBlogChanges(db, { id: ID, note: "Troque o exemplo." }, ADMIN, H, deps);
+  assertEquals(rq.status, 400);
+  assertEquals((await body(rq)).error, "invalid_fields");
+  assertEquals(row().revision, 1);
+  assertEquals(row().status, "rascunho");
+  assertEquals(row().lede, post().lede);
 });
 
 Deno.test("editar com expected_revision antiga → 409 sem gravar", async () => {
@@ -491,7 +505,7 @@ Deno.test("editar com expected_revision antiga → 409 sem gravar", async () => 
 Deno.test("editar publicado sem hook configurado → 503 sem gravar", async () => {
   const { db, row } = makeDb([post({ status: "publicado", revision: 2 })]);
   const { deps } = makeDeps({ hookConfigured: () => false });
-  const res = await handleUpdateBlogPost(db, { id: ID, fields: { lede: "x." } }, ADMIN, H, deps);
+  const res = await handleUpdateBlogPost(db, { id: ID, expected_revision: 2, fields: { lede: "x." } }, ADMIN, H, deps);
   assertEquals(res.status, 503);
   assertEquals(row().revision, 2);
   assertEquals(row().status, "publicado");
@@ -500,7 +514,7 @@ Deno.test("editar publicado sem hook configurado → 503 sem gravar", async () =
 Deno.test("editar publicado com hook falhando → texto salvo, fica publicando, 502", async () => {
   const { db, row } = makeDb([post({ status: "publicado", revision: 2, live_revision: 2 })]);
   const { deps } = makeDeps({ fireHook: () => Promise.resolve(false) });
-  const res = await handleUpdateBlogPost(db, { id: ID, fields: { lede: "Novo." } }, ADMIN, H, deps);
+  const res = await handleUpdateBlogPost(db, { id: ID, expected_revision: 2, fields: { lede: "Novo." } }, ADMIN, H, deps);
   assertEquals(res.status, 502);
   const out = await body(res);
   assertEquals(out.error, "deploy_hook_failed");
@@ -587,7 +601,7 @@ Deno.test("pedir ajuste com nota vazia ou longa demais → 400", async () => {
   const { db, row } = makeDb([post()]);
   const { deps } = makeDeps();
   for (const note of [undefined, "", "   ", "x".repeat(1001)]) {
-    assertEquals((await handleRequestBlogChanges(db, { id: ID, note }, ADMIN, H, deps)).status, 400);
+    assertEquals((await handleRequestBlogChanges(db, { id: ID, expected_revision: 1, note }, ADMIN, H, deps)).status, 400);
   }
   assertEquals(row().status, "rascunho");
 });
@@ -595,7 +609,7 @@ Deno.test("pedir ajuste com nota vazia ou longa demais → 400", async () => {
 Deno.test("pedir ajuste → ajuste_solicitado com a nota e o chip de reescrita zerado", async () => {
   const { db, row, tables } = makeDb([post({ revised_after_note: true })]);
   const { deps } = makeDeps();
-  const res = await handleRequestBlogChanges(db, { id: ID, note: "  Troque o exemplo.  " }, ADMIN, H, deps);
+  const res = await handleRequestBlogChanges(db, { id: ID, expected_revision: 1, note: "  Troque o exemplo.  " }, ADMIN, H, deps);
   assertEquals(res.status, 200);
   assertEquals(row().status, "ajuste_solicitado");
   assertEquals(row().revision_note, "Troque o exemplo.");

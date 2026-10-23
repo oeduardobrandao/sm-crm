@@ -123,6 +123,10 @@ const notFound = (h: Headers) => json({ error: "not_found" }, 404, h);
 const conflict = (h: Headers) => json({ error: "conflict" }, 409, h);
 const unavailable = (h: Headers) => json({ error: "publish_unavailable" }, 503, h);
 const hookFailed = (h: Headers, extra: Row = {}) => json({ error: "deploy_hook_failed", ...extra }, 502, h);
+/** Editar e pedir ajuste exigem a revisão que o admin leu: sem ela o save ou a nota cairiam às
+ * cegas sobre um rascunho que a rotina reescreveu. */
+const missingRevision = (h: Headers) =>
+  json({ error: "invalid_fields", details: ["expected_revision: obrigatório."] }, 400, h);
 
 function parseId(body: Row): string | null {
   return typeof body.id === "string" && UUID_RE.test(body.id) ? body.id : null;
@@ -292,6 +296,7 @@ export async function handleUpdateBlogPost(
   if (!id || expected === null || !fields || typeof fields !== "object" || Array.isArray(fields)) {
     return badRequest(headers);
   }
+  if (expected === undefined) return missingRevision(headers);
   const keys = Object.keys(fields);
   if (keys.length === 0 || keys.some((k) => !(EDITABLE_FIELDS as readonly string[]).includes(k))) {
     return badRequest(headers);
@@ -300,7 +305,7 @@ export async function handleUpdateBlogPost(
   const row = await loadRow(svc, id);
   if (!row) return notFound(headers);
   if (!EDITABLE_STATUSES.includes(row.status)) return conflict(headers);
-  if (expected !== undefined && expected !== row.revision) return conflict(headers);
+  if (expected !== row.revision) return conflict(headers);
   const goesLive = LIVE.includes(row.status);
   if (goesLive && !deps.hookConfigured()) return unavailable(headers);
 
@@ -391,11 +396,11 @@ export async function handleRequestBlogChanges(
   const expected = parseRevision(body.expected_revision);
   const note = typeof body.note === "string" ? body.note.trim() : "";
   if (!id || expected === null || note.length < 1 || note.length > NOTE_MAX) return badRequest(headers);
+  if (expected === undefined) return missingRevision(headers);
 
   const row = await loadRow(svc, id, "id, status, revision");
   if (!row) return notFound(headers);
-  if (!REVIEWABLE.includes(row.status)) return conflict(headers);
-  if (expected !== undefined && expected !== row.revision) return conflict(headers);
+  if (!REVIEWABLE.includes(row.status) || expected !== row.revision) return conflict(headers);
 
   const saved = await guardedUpdate(svc, id, { status: row.status, revision: row.revision }, {
     status: "ajuste_solicitado",
