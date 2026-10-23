@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,9 +40,56 @@ vi.mock('@/services/inlineImage', () => ({
   stripSignedUrls: vi.fn((c: unknown) => c),
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
-vi.mock('@/pages/entregas/components/PostEditor', () => ({ PostEditor: () => <div /> }));
+const editorMock = vi.hoisted(() => ({ focusThread: vi.fn() }));
+vi.mock('@/pages/entregas/components/PostEditor', async () => {
+  const { useImperativeHandle } = await import('react');
+  return {
+    PostEditor: function PostEditorStub({
+      ref,
+    }: {
+      ref?: import('react').Ref<{ focusThread(id: number): void }>;
+    }) {
+      useImperativeHandle(ref, () => ({ focusThread: editorMock.focusThread }));
+      return <div />;
+    },
+  };
+});
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
-vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({ default: () => null }));
+const discussaoMock = vi.hoisted(() => ({
+  result: { marker: 'discussao-result' },
+  useDiscussao: vi.fn(),
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: (args: unknown) => {
+    discussaoMock.useDiscussao(args);
+    return discussaoMock.result;
+  },
+}));
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: ({
+    discussao,
+    chatBridge,
+    onThreadClick,
+  }: {
+    discussao: unknown;
+    chatBridge?: ReactNode;
+    onThreadClick: (threadId: number) => void;
+  }) => (
+    <section data-testid="discussao-stub" data-shared={String(discussao === discussaoMock.result)}>
+      {chatBridge}
+      <button type="button" onClick={() => onThreadClick(5)}>
+        stub-ver-no-texto
+      </button>
+    </section>
+  ),
+}));
+vi.mock('@/pages/entregas/discussao/DiscutirNoChat', () => ({
+  DiscutirNoChat: ({ variant, post }: { variant: string; post: unknown }) => (
+    <button type="button" data-testid="bridge-stub" data-variant={variant}>
+      {JSON.stringify(post)}
+    </button>
+  ),
+}));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: () => null,
   hasVideoMissingThumbnail: () => false,
@@ -622,5 +670,89 @@ describe('PostEditorBody, colaboradores do Instagram (desktop, feature_multiplat
       ),
     );
     await waitFor(() => expect(screen.getByPlaceholderText('Adicionar @usuário')).toHaveFocus());
+  });
+});
+
+describe('PostEditorBody, Discussão da equipe and Conversa com o cliente', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('labels the client thread as client-visible and drops "Comentários internos"', () => {
+    renderBody();
+    expect(screen.getByRole('heading', { name: 'Conversa com o cliente' })).toBeInTheDocument();
+    expect(screen.getByText('O cliente vê')).toBeInTheDocument();
+    expect(screen.queryByText('Comentários internos')).toBeNull();
+    expect(screen.queryByText(/^Comentários$/)).toBeNull();
+    expect(screen.getByPlaceholderText('Responder ao cliente…')).toBeInTheDocument();
+  });
+
+  it('renders the team discussion with the hook result computed once for the post', () => {
+    renderBody();
+    expect(screen.getByTestId('discussao-stub')).toHaveAttribute('data-shared', 'true');
+    expect(discussaoMock.useDiscussao).toHaveBeenLastCalledWith(
+      expect.objectContaining({ postId: 42, currentUserId: 'user-1', enabled: true }),
+    );
+  });
+
+  it("hands the hook only this post's threads", () => {
+    const mk = (id: number, postId: number) =>
+      ({ id, post_id: postId, field: 'geral', status: 'active', post_comments: [] }) as never;
+    renderBody({ commentThreads: [mk(1, 42), mk(2, 99)] });
+    const args = discussaoMock.useDiscussao.mock.lastCall?.[0] as { threads: { id: number }[] };
+    expect(args.threads.map((t) => t.id)).toEqual([1]);
+  });
+
+  it('Ver no texto on a Roteiro thread focuses it in the editor', async () => {
+    const roteiro = {
+      id: 5,
+      post_id: 42,
+      field: 'conteudo',
+      status: 'active',
+      post_comments: [],
+    } as never;
+    renderBody({ commentThreads: [roteiro] });
+    fireEvent.click(screen.getByRole('button', { name: 'stub-ver-no-texto' }));
+    await waitFor(() => expect(editorMock.focusThread).toHaveBeenCalledWith(5));
+  });
+
+  it('keeps the hook disabled while the post row is collapsed', () => {
+    renderBody({ isExpanded: false });
+    expect(screen.queryByTestId('discussao-stub')).toBeNull();
+    expect(discussaoMock.useDiscussao).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+  });
+});
+
+describe('PostEditorBody, Discutir no chat bridge (desktop)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('hands the popover bridge and the post to the Discussão da equipe section', () => {
+    renderBody();
+    const bridge = within(screen.getByTestId('discussao-stub')).getByTestId('bridge-stub');
+    expect(bridge).toHaveAttribute('data-variant', 'popover');
+    expect(JSON.parse(bridge.textContent ?? '')).toEqual({
+      id: 42,
+      titulo: 'Post',
+      workflowId: 10,
+    });
+  });
+
+  it('sends a null workflowId for a standalone post', () => {
+    renderBody({ post: { ...basePost, workflow_id: null } });
+    expect(JSON.parse(screen.getByTestId('bridge-stub').textContent ?? '')).toMatchObject({
+      workflowId: null,
+    });
+  });
+
+  it('renders neither the section nor the bridge for an unsaved post', () => {
+    renderBody({ post: { ...basePost, id: undefined } });
+    expect(screen.queryByTestId('discussao-stub')).toBeNull();
+    expect(screen.queryByTestId('bridge-stub')).toBeNull();
   });
 });

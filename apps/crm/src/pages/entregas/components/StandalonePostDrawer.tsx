@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -64,6 +64,7 @@ import {
   type CaptionAnchorPatch,
   type CommentAnchor,
 } from '../../../store';
+import { isGeralThread } from '@/store/comments';
 import { supabase } from '@/lib/supabase';
 import { buildUsableTokenMap } from '@/lib/hubTokenMap';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
@@ -101,6 +102,12 @@ import type { PhoneMenuAction } from './postEditorPhone/types';
 
 export interface StandalonePostDrawerProps {
   postId: number;
+  /** `&discussao=1` deep link: scroll to the post's team discussion and focus the composer
+   *  (phone: open Comentários on Equipe, no keyboard). A counter: a new value asks again
+   *  without a remount; 0/undefined = no request. */
+  focusRequest?: number;
+  /** Fires once `focusRequest` has been applied, so the host stops asking. */
+  onDiscussaoFocused?: () => void;
   membros: Membro[];
   onClose: () => void;
   onRefresh: () => void;
@@ -152,6 +159,8 @@ function PostEditorSkeleton() {
  *  fresh. */
 export function StandalonePostDrawer({
   postId,
+  focusRequest,
+  onDiscussaoFocused,
   membros,
   onClose,
   onRefresh,
@@ -279,6 +288,11 @@ export function StandalonePostDrawer({
   /** Mesmo par de abas do drawer de fluxo, reduzido ao que faz sentido para um
    *  post sozinho: o editor e o calendário do cliente. */
   const [drawerView, setDrawerView] = useState<'post' | 'calendar'>('post');
+  // A `&discussao=1` link while the Calendário tab is showing: back to the post, whose
+  // discussion then scrolls into view and takes focus.
+  useEffect(() => {
+    if (focusRequest) setDrawerView('post');
+  }, [focusRequest]);
   const [attachOpen, setAttachOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
@@ -574,10 +588,12 @@ export function StandalonePostDrawer({
 
   const handleReplyToComment = useCallback(
     async (threadId: number, content: string) => {
-      await addPostComment(threadId, content);
+      const postId = commentThreads.find((t) => t.id === threadId)?.post_id;
+      if (postId === undefined) throw new Error(`Comment thread ${threadId} not found`);
+      await addPostComment(postId, threadId, content);
       await refetchComments();
     },
-    [refetchComments],
+    [refetchComments, commentThreads],
   );
 
   const handleResolveThread = useCallback(
@@ -607,7 +623,9 @@ export function StandalonePostDrawer({
   const handleDeleteComment = useCallback(
     async (commentId: number, threadId: number) => {
       const thread = commentThreads.find((t) => t.id === threadId);
-      if (thread && thread.post_comments.length <= 1) {
+      // The post's general thread is permanent (the database rejects deleting it): even
+      // with a single message left, only the comment goes.
+      if (thread && !isGeralThread(thread) && thread.post_comments.length <= 1) {
         await deleteCommentThread(threadId);
       } else {
         await deletePostComment(commentId);
@@ -948,6 +966,8 @@ export function StandalonePostDrawer({
               editorVersion={editorVersion}
               onAcceptSuggestion={handleAcceptSuggestion}
               onRejectSuggestion={handleRejectSuggestion}
+              focusRequest={focusRequest}
+              onDiscussaoFocused={onDiscussaoFocused}
               onProcessAvancar={
                 target
                   ? () =>
@@ -1190,6 +1210,8 @@ export function StandalonePostDrawer({
                 editorVersion={editorVersion}
                 onAcceptSuggestion={handleAcceptSuggestion}
                 onRejectSuggestion={handleRejectSuggestion}
+                focusRequest={focusRequest}
+                onDiscussaoFocused={onDiscussaoFocused}
                 onProcessAvancar={
                   target
                     ? () =>

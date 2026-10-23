@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, FileText, GitBranch } from 'lucide-react';
-import { getPostChipPreview, type WorkflowPost } from '@/store';
+import { ArrowUpRight, FileText, GitBranch, MessageSquare } from 'lucide-react';
+import { getDiscussaoNaoLidas, getPostChipPreview, type WorkflowPost } from '@/store';
 import { listPostMedia } from '@/services/postMedia';
 import { STATUS_LABELS, TIPO_LABELS } from '@/pages/entregas/postLabels';
 
@@ -12,6 +12,11 @@ interface Props {
    *  universal `?post=` deep-link form. */
   workflowId: number | null;
   titulo: string | null;
+  /** Team-chat blocks: the preview adds the discussion message count and a link that
+   *  opens the post straight on its team discussion. */
+  comDiscussao?: boolean;
+  /** Which edge the preview card aligns to (right-aligned bubbles use 'end'). */
+  align?: 'start' | 'end';
 }
 
 const OPEN_DELAY_MS = 200;
@@ -23,6 +28,11 @@ export function postChipHref(postId: number, workflowId: number | null): string 
   return workflowId != null
     ? `/entregas?drawer=${workflowId}&post=${postId}`
     : `/entregas?post=${postId}`;
+}
+
+/** Deep link that opens the post on its team discussion (`&discussao=1`). */
+export function postDiscussaoHref(postId: number, workflowId: number | null): string {
+  return `${postChipHref(postId, workflowId)}&discussao=1`;
 }
 
 /** The absolutely-positioned card is clipped by the nearest scrollable ancestor,
@@ -45,7 +55,7 @@ function placementFor(el: HTMLElement | null): 'above' | 'below' {
 
 /** Lazy preview data of a linked post (thumbnail, tipo/status, fluxo). Loads only
  *  while `enabled` (the card is open). */
-export function usePostPreview(postId: number, enabled: boolean) {
+export function usePostPreview(postId: number, enabled: boolean, comDiscussao = false) {
   const preview = useQuery({
     queryKey: ['post-preview', postId],
     queryFn: () => getPostChipPreview(postId),
@@ -58,11 +68,20 @@ export function usePostPreview(postId: number, enabled: boolean) {
     enabled,
     staleTime: 60_000,
   });
+  // getDiscussaoNaoLidas returns no row for a post without comments: no row = 0.
+  const discussao = useQuery({
+    queryKey: ['post-preview-discussao', postId],
+    queryFn: () => getDiscussaoNaoLidas({ postIds: [postId] }),
+    enabled: enabled && comDiscussao,
+    staleTime: 60_000,
+  });
+  const discussaoTotal = discussao.data?.find((r) => r.postId === postId)?.total ?? 0;
   const first = media.data?.[0];
   const thumb = first ? (first.thumbnail_url ?? (first.kind === 'image' ? first.url : null)) : null;
   return {
     thumb,
     titulo: preview.data?.titulo ?? null,
+    discussaoTotal,
     isLoading: preview.isLoading,
     tipo: preview.data?.tipo as WorkflowPost['tipo'] | undefined,
     status: preview.data?.status as WorkflowPost['status'] | undefined,
@@ -74,9 +93,12 @@ export function usePostPreview(postId: number, enabled: boolean) {
 export function PostPreviewBody({
   data,
   fallbackTitulo,
+  discussaoHref,
 }: {
   data: ReturnType<typeof usePostPreview>;
   fallbackTitulo: string | null;
+  /** Shows "Abrir na discussão do post" (desktop card only; the phone uses a menu action). */
+  discussaoHref?: string;
 }) {
   const { thumb, tipo, status } = data;
   return (
@@ -107,6 +129,25 @@ export function PostPreviewBody({
             <span className="truncate">{data.workflowTitulo}</span>
           </div>
         )}
+        {data.discussaoTotal > 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+            <MessageSquare size={12} className="shrink-0" />
+            <span>
+              {data.discussaoTotal === 1
+                ? '1 mensagem na discussão'
+                : `${data.discussaoTotal} mensagens na discussão`}
+            </span>
+          </div>
+        )}
+        {discussaoHref && (
+          <Link
+            to={discussaoHref}
+            className="flex w-fit items-center gap-1 text-xs font-semibold text-[var(--text-main)] underline-offset-2 hover:underline"
+          >
+            Abrir na discussão do post
+            <ArrowUpRight size={12} className="shrink-0" />
+          </Link>
+        )}
       </div>
     </>
   );
@@ -114,12 +155,18 @@ export function PostPreviewBody({
 
 /** Linked-post chip with a lazy hover preview: media thumbnail, tipo/status
  * badges and the fluxo it belongs to. Data loads only when the card opens. */
-export function PostChip({ postId, workflowId, titulo }: Props) {
+export function PostChip({
+  postId,
+  workflowId,
+  titulo,
+  comDiscussao = false,
+  align = 'start',
+}: Props) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<'above' | 'below'>('above');
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const preview = usePostPreview(postId, open);
+  const preview = usePostPreview(postId, open, comDiscussao);
 
   function scheduleOpen() {
     timer.current = setTimeout(() => {
@@ -139,7 +186,12 @@ export function PostChip({ postId, workflowId, titulo }: Props) {
       onMouseEnter={scheduleOpen}
       onMouseLeave={cancelOpen}
       onFocus={scheduleOpen}
-      onBlur={cancelOpen}
+      onBlur={(e) => {
+        // Focus moving into the card (its discussion link) must not close it.
+        if (e.relatedTarget instanceof Node && wrapperRef.current?.contains(e.relatedTarget))
+          return;
+        cancelOpen();
+      }}
     >
       <Link
         to={postChipHref(postId, workflowId)}
@@ -151,14 +203,22 @@ export function PostChip({ postId, workflowId, titulo }: Props) {
         <ArrowUpRight size={12} className="shrink-0 text-[var(--text-light)]" />
       </Link>
       {open && (
+        // The gap to the chip is padding of this wrapper (not a margin), so the pointer can
+        // cross it into the card and reach the link without the hover closing.
         <div
           role="tooltip"
           data-testid="post-hover-preview"
-          className={`absolute left-0 z-50 w-72 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--card-bg)] text-left shadow-lg ${
-            placement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+          className={`absolute z-50 w-72 text-left ${align === 'end' ? 'right-0' : 'left-0'} ${
+            placement === 'above' ? 'bottom-full pb-2' : 'top-full pt-2'
           }`}
         >
-          <PostPreviewBody data={preview} fallbackTitulo={titulo} />
+          <div className="overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--card-bg)] shadow-lg">
+            <PostPreviewBody
+              data={preview}
+              fallbackTitulo={titulo}
+              discussaoHref={comDiscussao ? postDiscussaoHref(postId, workflowId) : undefined}
+            />
+          </div>
         </div>
       )}
     </span>

@@ -97,6 +97,7 @@ import {
   type Membro,
   type PostPropertyValue,
   type CommentThreadWithComments,
+  type DiscussaoNaoLidas,
   type CaptionAnchorPatch,
   type CommentAnchor,
   type PostEditSuggestion,
@@ -108,6 +109,10 @@ import {
   advanceWorkflowFromApproval,
   resolveWorkflowRascunhoBanner,
 } from '../../../store';
+import {
+  discussaoTriggerBadge,
+  usePostDiscussaoNaoLidas,
+} from '../discussao/usePostDiscussaoNaoLidas';
 import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
 import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
 import { AutoScheduleBadge } from './AutoScheduleBadge';
@@ -149,6 +154,7 @@ import { Badge } from '@/components/ui/badge';
 // By path, not through the '../../../store' barrel: the drawer test harnesses mock '@/store'
 // with explicit factories, so a new barrel export would be missing from every one of them.
 import { getPostReferenceCounts } from '@/store/postReferences';
+import { isGeralThread } from '@/store/comments';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   FluxoPhoneHeader,
@@ -175,6 +181,13 @@ interface WorkflowDrawerProps {
   onClose: () => void;
   onRefresh: () => void;
   initialPostId?: number;
+  /** `&discussao=1` deep link: after opening `initialPostId`, scroll to its team discussion
+   *  and focus the composer (phone: open Comentários on Equipe, no keyboard). A counter, not
+   *  a flag: a new value (also for the post that is already open) asks again without a
+   *  remount; 0/undefined = no request. */
+  focusRequest?: number;
+  /** Fires once `focusRequest` has been applied, so the host stops asking. */
+  onDiscussaoFocused?: () => void;
   /** Opens another workflow's drawer (used after moving posts to a new or
    *  existing flow, so the user lands where the posts went). `seed` carries a
    *  freshly created flow's row + etapas so the caller can open its drawer
@@ -197,6 +210,8 @@ export function WorkflowDrawer({
   onClose,
   onRefresh,
   initialPostId,
+  focusRequest,
+  onDiscussaoFocused,
   onOpenWorkflow,
   onDetachedKeepingProcess,
 }: WorkflowDrawerProps) {
@@ -268,6 +283,17 @@ export function WorkflowDrawer({
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const statusRegistry = useStatusRegistry();
   const [drawerView, setDrawerView] = useState<'posts' | 'calendar' | 'grid' | 'history'>('posts');
+  // A `&discussao=1` link to the post this drawer already shows (no remount, so the typed
+  // drafts survive): back to the Posts view (the request would otherwise stay armed behind
+  // Grade/Calendário/Histórico), open the post again if the user collapsed it and bring it
+  // into view; the row then scrolls to and focuses its discussion. First mount is covered
+  // by the seeds.
+  useEffect(() => {
+    if (!focusRequest || initialPostId == null) return;
+    setDrawerView('posts');
+    setExpandedId(initialPostId);
+    setScrollTargetId(initialPostId);
+  }, [focusRequest, initialPostId]);
   const [isFullscreen, setIsFullscreen] = useState(
     () => localStorage.getItem('workflow-drawer-fullscreen') === '1',
   );
@@ -479,6 +505,9 @@ export function WorkflowDrawer({
     queryFn: () => getPostCommentThreads(postIds),
     enabled: postIds.length > 0,
   });
+
+  // Discussion total / unread per post for the collapsed rows' badge: one RPC for the drawer.
+  const { byPost: discussaoByPost } = usePostDiscussaoNaoLidas({ postIds });
 
   const clienteId = card.workflow.cliente_id;
 
@@ -985,10 +1014,12 @@ export function WorkflowDrawer({
 
   const handleReplyToComment = useCallback(
     async (threadId: number, content: string) => {
-      await addPostComment(threadId, content);
+      const postId = commentThreads.find((t) => t.id === threadId)?.post_id;
+      if (postId === undefined) throw new Error(`Comment thread ${threadId} not found`);
+      await addPostComment(postId, threadId, content);
       await refetchComments();
     },
-    [refetchComments],
+    [refetchComments, commentThreads],
   );
 
   const handleResolveThread = useCallback(
@@ -1018,7 +1049,9 @@ export function WorkflowDrawer({
   const handleDeleteComment = useCallback(
     async (commentId: number, threadId: number) => {
       const thread = commentThreads.find((t) => t.id === threadId);
-      if (thread && thread.post_comments.length <= 1) {
+      // The post's general thread is permanent (the database rejects deleting it): even
+      // with a single message left, only the comment goes.
+      if (thread && !isGeralThread(thread) && thread.post_comments.length <= 1) {
         await deleteCommentThread(threadId);
       } else {
         await deletePostComment(commentId);
@@ -1327,6 +1360,7 @@ export function WorkflowDrawer({
                           replyText={replyText[post.id!] || ''}
                           sendingReply={sendingReply === post.id}
                           commentThreads={commentThreads.filter((t) => t.post_id === post.id)}
+                          discussao={discussaoByPost.get(post.id!)}
                           currentUserId={user?.id}
                           currentUserRole={role}
                           canManageAutomations={canManageAutomations}
@@ -1374,6 +1408,10 @@ export function WorkflowDrawer({
                           showAutoScheduleBadge={offerAutoSchedule(post)}
                           onAutoScheduleClick={() => maybeNudge(post)}
                           phoneListMode={isPhone ? phoneListMode : undefined}
+                          focusRequest={post.id === initialPostId ? focusRequest : 0}
+                          onDiscussaoFocused={
+                            post.id === initialPostId ? onDiscussaoFocused : undefined
+                          }
                         />
                       ))}
                     </div>
@@ -1523,6 +1561,10 @@ export function WorkflowDrawer({
               editorVersion={editorVersions[phoneExpandedPost.id!] ?? 0}
               onAcceptSuggestion={handleAcceptSuggestion}
               onRejectSuggestion={handleRejectSuggestion}
+              focusRequest={phoneExpandedPost.id === initialPostId ? focusRequest : 0}
+              onDiscussaoFocused={
+                phoneExpandedPost.id === initialPostId ? onDiscussaoFocused : undefined
+              }
             />
           )}
         </PhoneEditorScreen>
@@ -1735,6 +1777,8 @@ interface SortablePostItemProps {
   replyText: string;
   sendingReply: boolean;
   commentThreads: CommentThreadWithComments[];
+  /** Discussion total and unread count for this post (get_post_discussao_nao_lidas). */
+  discussao?: DiscussaoNaoLidas;
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
   canManageAutomations: boolean;
@@ -1779,6 +1823,8 @@ interface SortablePostItemProps {
   onAutoScheduleClick: () => void;
   /** Set only on phones (< 768px): the trigger row becomes FluxoPhonePostRow in this mode. */
   phoneListMode?: FluxoPhoneListMode;
+  focusRequest?: number;
+  onDiscussaoFocused?: () => void;
 }
 
 function SortablePostItem({
@@ -1799,6 +1845,7 @@ function SortablePostItem({
   replyText,
   sendingReply,
   commentThreads,
+  discussao,
   currentUserId,
   currentUserRole,
   canManageAutomations,
@@ -1833,6 +1880,8 @@ function SortablePostItem({
   showAutoScheduleBadge,
   onAutoScheduleClick,
   phoneListMode,
+  focusRequest,
+  onDiscussaoFocused,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
@@ -1847,6 +1896,7 @@ function SortablePostItem({
   };
 
   const isExternallyVisible = isVisibleToClient(post.status);
+  const discussaoBadge = discussaoTriggerBadge(discussao);
 
   // Publish date shown in the collapsed row: once a post is actually live the real
   // published_at wins, otherwise fall back to the scheduled "Data de postagem".
@@ -1872,7 +1922,7 @@ function SortablePostItem({
           hasMedia={hasMedia}
           editSuggestion={editSuggestion}
           referenceCount={referenceCount}
-          commentCount={commentThreads.length}
+          discussaoBadge={discussaoBadge}
           approvals={approvals}
           statusEvents={statusEvents}
           processEvents={processEvents}
@@ -1951,13 +2001,15 @@ function SortablePostItem({
                 {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
               </Badge>
             )}
-            {commentThreads.length > 0 && (
+            {discussaoBadge && (
               <span
-                className="drawer-post-comment-badge"
-                title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}
+                className={`drawer-post-comment-badge${discussaoBadge.unread ? ' drawer-post-comment-badge--unread' : ''}`}
+                role="img"
+                title={discussaoBadge.label}
+                aria-label={discussaoBadge.label}
               >
-                <MessageSquare className="h-3 w-3" />
-                {commentThreads.length}
+                <MessageSquare className="h-3 w-3" aria-hidden="true" />
+                {discussaoBadge.count}
               </span>
             )}
           </div>
@@ -2054,6 +2106,8 @@ function SortablePostItem({
         editorVersion={editorVersion}
         onAcceptSuggestion={onAcceptSuggestion}
         onRejectSuggestion={onRejectSuggestion}
+        focusRequest={focusRequest}
+        onDiscussaoFocused={onDiscussaoFocused}
       />
     </div>
   );

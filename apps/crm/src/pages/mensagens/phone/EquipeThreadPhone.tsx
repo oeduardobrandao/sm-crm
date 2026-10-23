@@ -5,6 +5,7 @@ import { MentionText } from '@/components/mentions/MentionText';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import type { EquipeConversa } from '@/store';
 import { ThreadSkeleton } from '../components/ConversationThread';
+import { PostChipsBelow, hideInlineText } from '../components/PostChipsBelow';
 import {
   AnexoChip,
   AnexoImagem,
@@ -134,11 +135,16 @@ export function EquipeThreadPhone({
                   {!minha && inicio && (
                     <div className="phone-msg-bubble__author">{m.author_name}</div>
                   )}
-                  {m.content && (
+                  {m.content && !hideInlineText(m.content) && (
                     <p className="phone-msg-bubble__text">
                       <MentionText text={m.content} />
                     </p>
                   )}
+                  <PostChipsBelow
+                    text={m.content}
+                    variant="phone"
+                    className="phone-msg-post-blocks"
+                  />
                   {m.anexos.map((a) =>
                     a.mime_type.startsWith('image/') ? (
                       <AnexoImagem key={a.id} anexo={a} className="phone-msg-bubble__img" />

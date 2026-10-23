@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { ArrowLeft, Paperclip, Send, Users, X } from 'lucide-react';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { MentionText } from '@/components/mentions/MentionText';
+import { PostChipsBelow, hideInlineText } from './PostChipsBelow';
 import type { EquipeConversa } from '@/store';
 import {
   AnexoChip,
@@ -167,11 +168,16 @@ export function EquipeThread({
                       {m.author_name}
                     </div>
                   )}
-                  {m.content && (
+                  {m.content && !hideInlineText(m.content) && (
                     <p className="whitespace-pre-wrap">
                       <MentionText text={m.content} />
                     </p>
                   )}
+                  <PostChipsBelow
+                    text={m.content}
+                    variant="desktop"
+                    align={minha ? 'end' : 'start'}
+                  />
                   {m.anexos.map((a) =>
                     a.mime_type.startsWith('image/') ? (
                       <AnexoImagem key={a.id} anexo={a} />

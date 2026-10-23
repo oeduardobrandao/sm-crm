@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FileText,
   FolderMinus,
+  MessageSquare,
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
@@ -53,6 +54,8 @@ interface PostProcessCardProps {
   onDeleteClick?: () => void;
   /** "Duplicar post": copia o post e o processo na mesma etapa. */
   onDuplicateClick?: () => void;
+  /** Unread discussion messages on this post. Badge only when > 0. */
+  discussaoNaoLidas?: number;
   /** A coluna ordena por data de publicação: a pill mostra essa data no lugar
    *  do prazo da etapa. */
   showPublishDate?: boolean;
@@ -88,6 +91,7 @@ export function PostProcessCard({
   onDeleteClick,
   onDuplicateClick,
   showPublishDate,
+  discussaoNaoLidas,
 }: PostProcessCardProps) {
   const navigate = useNavigate();
   // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
@@ -288,6 +292,17 @@ export function PostProcessCard({
             </span>
           </span>
         </div>
+        {discussaoNaoLidas != null && discussaoNaoLidas > 0 && (
+          <span
+            className="board-card-discussao-badge"
+            role="img"
+            aria-label={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+            title={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+          >
+            <MessageSquare className="h-3 w-3" aria-hidden="true" />
+            {discussaoNaoLidas}
+          </span>
+        )}
         <span
           className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual post-fluxo-tag--icon-only"
           role="img"

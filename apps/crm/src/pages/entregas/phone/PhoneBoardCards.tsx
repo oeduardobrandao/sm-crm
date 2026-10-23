@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Check, FileText, GripVertical, MoreHorizontal } from 'lucide-react';
+import { Check, FileText, GripVertical, MessageSquare, MoreHorizontal } from 'lucide-react';
 import type { ContextMenuTriggerProps } from '@/components/mobile/ContextMenu';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
 import { getInitials } from '@/lib/initials';
@@ -21,11 +21,17 @@ import {
 import './entregasPhone.css';
 
 export interface WorkflowCardCounts {
+  /** Unread discussion messages across the fluxo's posts; the badge shows only when > 0. */
+  discussaoNaoLidas?: number;
   postsCount: number;
   approvedPostsCount: number;
   clearedClienteCount: number;
   revisaoInternaCount: number;
   awaitingClienteCount: number;
+}
+
+function discussaoLabel(n: number): string {
+  return `${n} ${n === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`;
 }
 
 function ClienteAvatar({
@@ -149,6 +155,17 @@ export function PhoneWorkflowCard({
                 IA
               </span>
             )}
+            {!!counts.discussaoNaoLidas && counts.discussaoNaoLidas > 0 && (
+              <span
+                className="phone-ent-card__badge"
+                role="img"
+                aria-label={discussaoLabel(counts.discussaoNaoLidas)}
+                title={discussaoLabel(counts.discussaoNaoLidas)}
+              >
+                <MessageSquare size={11} aria-hidden="true" />
+                {counts.discussaoNaoLidas}
+              </span>
+            )}
           </span>
           <span className="phone-ent-card__deadline" data-tone={tone}>
             {relativeDeadline(card.deadline)}
@@ -207,6 +224,8 @@ export interface PhonePostProcessCardProps {
   /** The column sorts by publish date: the pill shows that date instead of the
    *  etapa deadline. */
   showPublishDate?: boolean;
+  /** Unread discussion messages on this post; the badge shows only when > 0. */
+  discussaoNaoLidas?: number;
 }
 
 /** Post individual card on the phone board: same family as the fluxo card. */
@@ -219,6 +238,7 @@ export function PhonePostProcessCard({
   dragHandle,
   preview,
   showPublishDate,
+  discussaoNaoLidas,
 }: PhonePostProcessCardProps) {
   const registry = useStatusRegistry();
   const post = entity.process.post;
@@ -257,6 +277,17 @@ export function PhonePostProcessCard({
             <span className="phone-ent-card__client-name">
               {clienteNome} · {TIPO_LABELS[post.tipo]}
             </span>
+            {!!discussaoNaoLidas && discussaoNaoLidas > 0 && (
+              <span
+                className="phone-ent-card__badge"
+                role="img"
+                aria-label={discussaoLabel(discussaoNaoLidas)}
+                title={discussaoLabel(discussaoNaoLidas)}
+              >
+                <MessageSquare size={11} aria-hidden="true" />
+                {discussaoNaoLidas}
+              </span>
+            )}
             <span
               className="phone-ent-card__badge"
               role="img"

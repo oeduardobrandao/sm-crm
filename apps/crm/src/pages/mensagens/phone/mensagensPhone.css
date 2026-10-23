@@ -277,6 +277,18 @@
 .phone-msg-bubble__chip {
   margin-top: 8px;
 }
+/* Post blocks under a team-chat message's text. */
+.phone-msg-post-blocks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.phone-msg-bubble__text + .phone-msg-post-blocks {
+  margin-top: 8px;
+}
 
 /* Post chip (tap opens the post, long-press opens the menu). */
 .phone-msg-chip-hold {
