@@ -80,7 +80,17 @@ Deno.serve(async (req) => {
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const ctx = await resolveCtx(db, rawToken, new Date().toISOString());
+  // A failed lookup (e.g. the workspace_members role read) throws: fail closed with a generic 500.
+  let ctx: Awaited<ReturnType<typeof resolveCtx>>;
+  try {
+    ctx = await resolveCtx(db, rawToken, new Date().toISOString());
+  } catch (e) {
+    console.error("[mcp] auth lookup failed", e);
+    return new Response(JSON.stringify({ error: "Internal error." }), {
+      status: 500,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
   if (!ctx) {
     // RFC 9728 §5.1: advertise the resource metadata so OAuth clients can discover the AS.
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
