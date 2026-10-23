@@ -501,6 +501,32 @@ begin
   raise notice 'PASS ativo_clamped_before_future_encerrado';
 end $$;
 
+-- ativo_across_encerrado_gap_keeps_later_row: encerrado from November, ativo again from
+-- December with Ana re-assigned from December; turning Ana on from October (before the gap)
+-- clamps the October row at the cutoff and must not delete the December re-assignment
+do $$
+declare v_ws uuid := pg_temp.novo_ws(); v_dono uuid; v_tal bigint; v_ana bigint; v_rows text;
+begin
+  perform pg_temp.fixture_planilha(v_ws);
+  v_dono := pg_temp.dono(v_ws);
+  v_tal := pg_temp.cid(v_ws, 'Talitha');
+  v_ana := pg_temp.mid(v_ws, 'Ana');
+  perform pg_temp.ok(v_dono, format(
+    'select public.financeiro_cliente_salvar(%s, %L, 2500, null, %L)', v_tal, '2026-11-01', 'encerrado'));
+  perform pg_temp.ok(v_dono, format(
+    'select public.financeiro_cliente_salvar(%s, %L, 2500, null, %L)', v_tal, '2026-12-01', 'ativo'));
+  perform pg_temp.ok(v_dono, format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-12-01',
+    jsonb_build_array(jsonb_build_object('membro_id', v_ana, 'cliente_id', v_tal, 'ativo', true))));
+  perform pg_temp.ok(v_dono, format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-10-01',
+    jsonb_build_array(jsonb_build_object('membro_id', v_ana, 'cliente_id', v_tal, 'ativo', true))));
+  select string_agg(desde || '..' || coalesce(ate::text, 'null'), ',' order by desde) into v_rows
+    from financeiro_atribuicoes where membro_id = v_ana and cliente_id = v_tal;
+  assert v_rows = '2026-10-01..2026-11-01,2026-12-01..null', 'encerrado_gap: rows ' || coalesce(v_rows, 'none');
+  assert pg_temp.atende(public._financeiro_calcular(v_ws, date '2026-12-01'), 'Talitha', 'Ana'),
+    'encerrado_gap: Ana lost December';
+  raise notice 'PASS ativo_across_encerrado_gap_keeps_later_row';
+end $$;
+
 -- acordo_por_entrega_legacy_null
 do $$
 declare v_ws uuid := pg_temp.novo_ws(); v_ana bigint; v_av record; v_dono uuid; r jsonb;

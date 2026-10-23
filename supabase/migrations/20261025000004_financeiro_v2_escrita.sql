@@ -425,7 +425,8 @@ $$;
 -- all applied in this one transaction (one bad entry rolls back the batch). Per pair:
 --   ativo:   the pair must be active from v until the client ends. A client whose
 --            effective version at v is encerrado is rejected (cliente_encerrado).
---            Rows starting after v are subsumed and deleted; then a row covering v, or
+--            Rows starting after v and before the encerrado cutoff below are subsumed
+--            and deleted (a re-assignment after that gap is kept); then a row covering v, or
 --            one ending exactly at v, is extended, otherwise a row (desde = v) is
 --            inserted. Either way ate = the client's first encerrado version after v
 --            (NULL when there is none), so an assignment never outlives an encerrado
@@ -492,9 +493,11 @@ BEGIN
        WHERE cv.conta_id = v_conta AND cv.cliente_id = v_cliente
          AND cv.status = 'encerrado' AND cv.vale_desde > p_vale_desde;
 
+      -- bounded by the cutoff: a re-assignment after a later encerrado gap is kept
       DELETE FROM public.financeiro_atribuicoes t
        WHERE t.conta_id = v_conta AND t.membro_id = v_membro AND t.cliente_id = v_cliente
-         AND t.desde > p_vale_desde;
+         AND t.desde > p_vale_desde
+         AND (v_corte IS NULL OR t.desde < v_corte);
       v_id := NULL;
       SELECT t.id INTO v_id FROM public.financeiro_atribuicoes t
        WHERE t.conta_id = v_conta AND t.membro_id = v_membro AND t.cliente_id = v_cliente
