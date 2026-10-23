@@ -295,22 +295,33 @@ export async function deleteLancamento(d: Deps, a: { lancamento_id: number }): P
 
 const ORIGEM_TABELA = { cliente: "clientes", membro: "membros", recorrente: "transacoes_recorrentes" } as const;
 
-export async function confirmarAgendamento(d: Deps, a: { origem: string; id: number }): Promise<unknown> {
+export async function confirmarAgendamento(d: Deps, a: { origem: string; id: number }): Promise<Record<string, any> | null> {
   if (!Object.hasOwn(ORIGEM_TABELA, a.origem)) throw new McpInputError(FINANCEIRO_ERROS.origem_invalida);
   // O núcleo SQL também filtra por conta_id; conferir aqui recusa o id alheio antes de qualquer escrita.
   await exigirDoWorkspace(d, ORIGEM_TABELA[a.origem as keyof typeof ORIGEM_TABELA], a.id);
-  return await rpcAs(d, "financeiro_agendamento_confirmar_as", { p_origem: a.origem, p_id: a.id });
+  const row = (await rpcAs(d, "financeiro_agendamento_confirmar_as", { p_origem: a.origem, p_id: a.id })) as any;
+  return row ? pick(row, LANCAMENTO_FIELDS) : null;
 }
 
 // ---- escritas: recorrentes ---------------------------------------------------------------------
 
-export async function createRecorrente(d: Deps, a: Record<string, any>): Promise<unknown> {
+const LANCAMENTO_PRIMEIRO_FIELDS = [
+  "id", "data", "descricao", "detalhe", "categoria", "tipo", "valor", "status", "referencia_agendamento",
+] as const;
+
+export async function createRecorrente(
+  d: Deps,
+  a: Record<string, any>,
+): Promise<{ recorrente: Record<string, any>; lancamento: Record<string, any> | null }> {
   const inicioMes: string = a.inicio_mes ?? mesSaoPaulo(nowIso(d)).primeiro.slice(0, 7);
   const [, mes] = inicioMes.split("-").map(Number);
   if (!/^\d{4}-\d{2}$/.test(inicioMes) || mes < 1 || mes > 12) {
     throw new McpInputError("Mês inválido. Use o formato YYYY-MM.");
   }
   const registrar = a.registrar_primeiro_pago === true;
+  if (!registrar && a.data_primeiro != null) {
+    throw new McpInputError("data_primeiro só vale com registrar_primeiro_pago.");
+  }
   let dataPrimeiro: string | null = null;
   if (registrar) {
     if (!a.data_primeiro) {
@@ -322,7 +333,7 @@ export async function createRecorrente(d: Deps, a: Record<string, any>): Promise
     }
     dataPrimeiro = a.data_primeiro;
   }
-  return await rpcAs(d, "financeiro_recorrente_criar_as", {
+  const r = (await rpcAs(d, "financeiro_recorrente_criar_as", {
     p_tipo: a.tipo,
     p_descricao: a.descricao,
     p_categoria: a.categoria,
@@ -331,7 +342,11 @@ export async function createRecorrente(d: Deps, a: Record<string, any>): Promise
     p_inicio: `${inicioMes}-01`,
     p_registrar_primeiro_pago: registrar,
     p_data_primeiro: dataPrimeiro,
-  });
+  })) as any;
+  return {
+    recorrente: pick(r?.recorrente ?? {}, RECORRENTE_FIELDS),
+    lancamento: r?.lancamento ? pick(r.lancamento, LANCAMENTO_PRIMEIRO_FIELDS) : null,
+  };
 }
 
 export async function updateRecorrente(d: Deps, a: Record<string, any>): Promise<Record<string, any>> {

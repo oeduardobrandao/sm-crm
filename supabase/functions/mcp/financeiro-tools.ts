@@ -109,7 +109,7 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     own);
 
   register(server, deps, "update_lancamento", "financeiro:write",
-    "Altera campos de um lançamento por lancamento_id (informe ao menos um: tipo, descricao, valor, data, categoria, status, detalhe, cliente_id). Não muda a referência de agendamento. Somente para o dono do workspace.",
+    "Altera campos de um lançamento por lancamento_id (informe ao menos um: tipo, descricao, valor, data, categoria, status, detalhe, cliente_id; detalhe e cliente_id aceitam null para limpar). Não muda a referência de agendamento. Somente para o dono do workspace.",
     {
       lancamento_id: ID,
       tipo: TIPO.optional(),
@@ -118,8 +118,8 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
       data: DATE_ONLY.optional(),
       categoria: CATEGORIA.optional(),
       status: z.enum(["pago", "agendado"]).optional(),
-      detalhe: z.string().max(200).optional(),
-      cliente_id: ID.optional(),
+      detalhe: z.string().max(200).nullable().optional(),
+      cliente_id: ID.nullable().optional(),
     },
     (a) => updateLancamento(deps, a),
     (a) => ({ lancamento_id: a.lancamento_id }),
@@ -140,7 +140,7 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     own);
 
   register(server, deps, "create_recorrente", "financeiro:write",
-    "Cria um modelo de lançamento recorrente (aparece todo mês como agendado a confirmar). dia 1..31 (meses curtos usam o último dia), inicio_mes YYYY-MM (padrão: mês corrente). Com registrar_primeiro_pago, grava também a primeira ocorrência paga: exige data_primeiro dentro de inicio_mes. Não é idempotente: liste com list_recorrentes antes de recriar. Somente para o dono do workspace.",
+    "Cria um modelo de lançamento recorrente (aparece todo mês como agendado a confirmar). dia 1..31 (meses curtos usam o último dia), inicio_mes YYYY-MM (padrão: mês corrente). Com registrar_primeiro_pago, grava também a primeira ocorrência paga: exige data_primeiro dentro de inicio_mes (sem registrar_primeiro_pago, data_primeiro é recusado). Devolve { recorrente, lancamento|null }. Não é idempotente: liste com list_recorrentes antes de recriar. Somente para o dono do workspace.",
     {
       tipo: TIPO,
       descricao: z.string().min(1).max(200),
@@ -153,8 +153,8 @@ export function registerFinanceiroTools(server: any, deps: Deps): void {
     },
     (a) => createRecorrente(deps, a),
     (a, r) => ({
-      recorrente_id: r?.id ?? r?.recorrente_id ?? r?.recorrente?.id,
-      inicio_mes: a.inicio_mes,
+      recorrente_id: r?.recorrente?.id,
+      inicio_mes: typeof r?.recorrente?.inicio === "string" ? r.recorrente.inicio.slice(0, 7) : undefined,
       registrar_primeiro_pago: a.registrar_primeiro_pago === true,
     }),
     own);

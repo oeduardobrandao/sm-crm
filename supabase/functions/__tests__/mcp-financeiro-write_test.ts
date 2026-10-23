@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { assert, assertEquals } from "./assert.ts";
 import { fakeServer, has, insertPayload, makeDeps, makeFakeDb, rpcArgs, updatePayload } from "./mcp-financeiro-helpers.ts";
+import { z } from "npm:zod@3";
 import { REGISTERED } from "../mcp/register.ts";
 import { registerFinanceiroTools } from "../mcp/financeiro-tools.ts";
 
@@ -164,6 +165,17 @@ Deno.test("mcp-financeiro-write: update_lancamento filters id and conta_id and n
   assertEquals(Object.keys(parse(r)).includes("user_id"), false);
 });
 
+Deno.test("mcp-financeiro-write: update_lancamento can clear cliente_id and detalhe with null, no ownership lookup", async () => {
+  const { server, calls } = setup({ transacoes: [ok(TX_ROW)] });
+  const r = await server.handlers["update_lancamento"]({ lancamento_id: 11, cliente_id: null, detalhe: null });
+  assert(!r.isError, r.content[0].text);
+  assertEquals(updatePayload(calls, "transacoes"), { detalhe: null, cliente_id: null });
+  assert(!calls.some((c) => c.table === "clientes"), "no clientes lookup when clearing");
+  // the zod schema accepts null for both
+  const parsed = z.object(server.shapes["update_lancamento"] as any).safeParse({ lancamento_id: 11, cliente_id: null, detalhe: null });
+  assert(parsed.success, "schema accepts null");
+});
+
 Deno.test("mcp-financeiro-write: update_lancamento zero rows → not_found", async () => {
   const { server } = setup({ transacoes: [ok(null)] });
   const r = await server.handlers["update_lancamento"]({ lancamento_id: 404, valor: 1 });
@@ -204,12 +216,16 @@ Deno.test("mcp-financeiro-write: delete_lancamento deletes by id + conta_id and 
 Deno.test("mcp-financeiro-write: confirmar passes origem/id to the RPC (never p_hoje) and maps ja_confirmado", async () => {
   const a = setup(
     { clientes: [ok({ id: 5 })] },
-    { financeiro_agendamento_confirmar_as: [ok({ id: 77, status: "pago" })] },
+    { financeiro_agendamento_confirmar_as: [ok({ ...TX_ROW, id: 77, referencia_agendamento: "cliente_5_2026_11" })] },
     { conta_id: "workspace-B", created_by: "u-9" },
   );
   const r = await a.server.handlers["confirmar_agendamento"]({ origem: "cliente", id: 5 });
   assert(!r.isError, r.content[0].text);
-  assertEquals(parse(r), { id: 77, status: "pago" });
+  // closed field list: user_id/conta_id/created_at from the RPC row never leave
+  assertEquals(Object.keys(parse(r)).sort(), [
+    "categoria", "cliente_id", "data", "descricao", "detalhe", "id", "referencia_agendamento", "status", "tipo", "valor",
+  ]);
+  assertEquals(parse(r).id, 77);
   assertEquals(rpcArgs(a.calls, "financeiro_agendamento_confirmar_as"), {
     p_conta: "workspace-B",
     p_user: "u-9",
@@ -249,12 +265,25 @@ Deno.test("mcp-financeiro-write: confirmar maps valor_indefinido and rejects an 
 // ---- create_recorrente ------------------------------------------------------------------------
 
 const REC_BASE = { tipo: "saida", descricao: "Aluguel", valor: 2000, dia: 5, categoria: "Outro" };
+const REC_ROW = {
+  id: 4, tipo: "saida", descricao: "Aluguel", categoria: "Outro", valor: 2000, dia: 5, inicio: "2026-11-01", fim: null,
+  user_id: "u-9", conta_id: "workspace-B", created_at: "2026-11-05T00:00:00Z",
+};
+const REC_FIELDS = ["categoria", "descricao", "dia", "fim", "id", "inicio", "tipo", "valor"];
 
 Deno.test("mcp-financeiro-write: create_recorrente requires data_primeiro when registrar_primeiro_pago", async () => {
   const { server, calls } = setup();
   const r = await server.handlers["create_recorrente"]({ ...REC_BASE, inicio_mes: "2026-11", registrar_primeiro_pago: true });
   assert(r.isError === true);
   assert(parse(r).error.includes("data_primeiro"), r.content[0].text);
+  assertEquals(callsOn(calls, "rpc:financeiro_recorrente_criar_as").length, 0);
+});
+
+Deno.test("mcp-financeiro-write: create_recorrente refuses data_primeiro without registrar_primeiro_pago", async () => {
+  const { server, calls } = setup();
+  const r = await server.handlers["create_recorrente"]({ ...REC_BASE, inicio_mes: "2026-11", data_primeiro: "2026-11-05" });
+  assert(r.isError === true);
+  assertEquals(parse(r).error, "data_primeiro só vale com registrar_primeiro_pago.");
   assertEquals(callsOn(calls, "rpc:financeiro_recorrente_criar_as").length, 0);
 });
 
@@ -270,13 +299,20 @@ Deno.test("mcp-financeiro-write: create_recorrente refuses data_primeiro outside
 Deno.test("mcp-financeiro-write: create_recorrente calls the RPC with ctx and the first of the month", async () => {
   const { server, calls } = setup(
     {},
-    { financeiro_recorrente_criar_as: [ok({ id: 4 })] },
+    { financeiro_recorrente_criar_as: [ok({ recorrente: REC_ROW, lancamento: TX_ROW })] },
     { conta_id: "workspace-B", created_by: "u-9" },
   );
   const r = await server.handlers["create_recorrente"]({
     ...REC_BASE, inicio_mes: "2026-11", registrar_primeiro_pago: true, data_primeiro: "2026-11-05",
   });
   assert(!r.isError, r.content[0].text);
+  // closed output: recorrente + lancamento, no user_id/conta_id/created_at, no cliente_id on the lançamento
+  const out = parse(r);
+  assertEquals(Object.keys(out).sort(), ["lancamento", "recorrente"]);
+  assertEquals(Object.keys(out.recorrente).sort(), REC_FIELDS);
+  assertEquals(Object.keys(out.lancamento).sort(), [
+    "categoria", "data", "descricao", "detalhe", "id", "referencia_agendamento", "status", "tipo", "valor",
+  ]);
   assertEquals(rpcArgs(calls, "financeiro_recorrente_criar_as"), {
     p_conta: "workspace-B",
     p_user: "u-9",
@@ -293,9 +329,20 @@ Deno.test("mcp-financeiro-write: create_recorrente calls the RPC with ctx and th
 
 Deno.test("mcp-financeiro-write: create_recorrente defaults inicio_mes to the São Paulo month and skips the first payment", async () => {
   // 01:00Z on Dec 1 is still November 30 in São Paulo
-  const { server, calls } = setup({}, { financeiro_recorrente_criar_as: [ok({ id: 4 })] }, {}, "2026-12-01T01:00:00Z");
+  const { server, calls } = setup(
+    {},
+    { financeiro_recorrente_criar_as: [ok({ recorrente: { ...REC_ROW, inicio: "2026-11-01" }, lancamento: null })] },
+    {},
+    "2026-12-01T01:00:00Z",
+  );
   const r = await server.handlers["create_recorrente"](REC_BASE);
   assert(!r.isError, r.content[0].text);
+  assertEquals(parse(r).lancamento, null);
+  assertEquals(Object.keys(parse(r).recorrente).sort(), REC_FIELDS);
+  // the audit records the RESOLVED month, not the omitted argument
+  const audit = insertPayload(calls, "audit_log") as Record<string, any>;
+  assertEquals(audit.metadata.args.inicio_mes, "2026-11");
+  assertEquals(audit.metadata.args.recorrente_id, 4);
   const a = rpcArgs(calls, "financeiro_recorrente_criar_as")!;
   assertEquals(a.p_inicio, "2026-11-01");
   assertEquals(a.p_registrar_primeiro_pago, false);
@@ -595,7 +642,9 @@ Deno.test("mcp-financeiro-write: cobranca and recorrente audits carry ids only",
   assertEquals(row.resource_id, "8");
   assertEquals(row.metadata.args, { cliente_id: 8, vale_desde: "2026-11-01" });
 
-  const b = setup({}, { financeiro_recorrente_criar_as: [ok({ id: 4, descricao: "SEGREDO", valor: 98765 })] });
+  const b = setup({}, {
+    financeiro_recorrente_criar_as: [ok({ recorrente: { ...REC_ROW, descricao: "SEGREDO", valor: 98765 }, lancamento: null })],
+  });
   await b.server.handlers["create_recorrente"]({ ...REC_BASE, descricao: "SEGREDO", valor: 98765, inicio_mes: "2026-11" });
   const row2 = insertPayload(b.calls, "audit_log") as Record<string, any>;
   assert(!JSON.stringify(row2.metadata).includes("SEGREDO"));
