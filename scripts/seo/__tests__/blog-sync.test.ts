@@ -93,13 +93,23 @@ describe('syncBlogPosts', () => {
         outDir: tmp(),
         fileSlugs: ['meu-post'],
       }),
-    ).rejects.toThrow(/meu-post/);
+    ).rejects.toThrow(/"meu-post".*Despublique o post do banco no Admin \(\/admin\/blog\)/);
   });
 
   test('row with empty sources throws mentioning sources', async () => {
     await expect(
       syncBlogPosts({ ...base, env: prod, fetchImpl: ok([row({ sources: [] })]), outDir: tmp() }),
     ).rejects.toThrow(/sources/);
+  });
+
+  test('invalid row names the slug and how to unblock the deploy, in every environment', async () => {
+    for (const env of [prod, {}]) {
+      await expect(
+        syncBlogPosts({ ...base, env, fetchImpl: ok([row({ title: 'curto' })]), outDir: tmp() }),
+      ).rejects.toThrow(
+        /"meu-post" inválido no banco \(title: .*\)\. Despublique ou edite o post no Admin \(\/admin\/blog\) e rode o deploy de novo/,
+      );
+    }
   });
 
   test('null date: skipped outside production, throws in production', async () => {

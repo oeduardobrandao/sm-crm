@@ -91,7 +91,7 @@ export async function syncBlogPosts(
     }
     if (typeof row.slug === 'string' && opts.fileSlugs.includes(row.slug)) {
       throw new Error(
-        `blog-sync: slug "${row.slug}" exists both as a file post and in the database`,
+        `blog-sync: o slug "${row.slug}" existe como post em arquivo (apps/crm/src/content/blog/) e como post do banco. Despublique o post do banco no Admin (/admin/blog) ou renomeie o arquivo, e rode o deploy de novo.`,
       );
     }
     const body = row.body_md ?? '';
@@ -117,7 +117,9 @@ export async function syncBlogPosts(
       const issues = parsed.error.issues
         .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
         .join('; ');
-      throw new Error(`blog-sync: row "${row.slug}" is invalid: ${issues}`);
+      throw new Error(
+        `blog-sync: post do blog "${row.slug}" inválido no banco (${issues}). Despublique ou edite o post no Admin (/admin/blog) e rode o deploy de novo.`,
+      );
     }
     out.push({ slug: parsed.data.slug, meta: parsed.data, body });
   }
