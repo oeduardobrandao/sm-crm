@@ -35,6 +35,8 @@ export const ADMIN_SCOPE_OPTIONS = [
   { value: 'kb:read', label: 'Artigos de suporte (leitura)' },
   { value: 'kb:write', label: 'Artigos de suporte (escrita)' },
   { value: 'platform:read', label: 'Plataforma: workspaces, planos e dashboard (leitura)' },
+  { value: 'blog:read', label: 'Blog (leitura)' },
+  { value: 'blog:write', label: 'Blog (escrita)' },
 ] as const;
 
 export const ADMIN_READ_PRESET: string[] = [
@@ -42,4 +44,5 @@ export const ADMIN_READ_PRESET: string[] = [
   'popups:read',
   'kb:read',
   'platform:read',
+  'blog:read',
 ];

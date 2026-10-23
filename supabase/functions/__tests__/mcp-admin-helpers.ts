@@ -69,7 +69,7 @@ export function makeFakeDb(responses: Record<string, Resp[]>, rpc: Record<string
 }
 
 export const CTX: AdminMcpContext = {
-  admin_id: "adm-1", user_id: "user-1", scopes: ["banners:read", "banners:write", "popups:read", "popups:write", "kb:read", "kb:write", "platform:read"],
+  admin_id: "adm-1", user_id: "user-1", scopes: ["banners:read", "banners:write", "popups:read", "popups:write", "kb:read", "kb:write", "platform:read", "blog:read", "blog:write"],
   key_id: "oauth:c1",
 };
 

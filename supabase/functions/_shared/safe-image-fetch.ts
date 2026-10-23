@@ -247,6 +247,30 @@ export async function readBodyCapped(
   return { bytes: out, truncated };
 }
 
+/** SSRF gate shared by every outbound fetch to an untrusted URL (images here, blog link
+ * checks in mcp-admin): rejects IP-literal hosts, then requires the name to resolve (A or
+ * AAAA, each bounded by the DNS timeout) and EVERY resolved address to be globally routable. */
+export async function checkPublicHost(
+  deps: Pick<SafeFetchDeps, "resolveDns" | "dnsTimeoutMs">,
+  hostname: string,
+): Promise<"ok" | "ip_literal_host" | "dns_resolution_failed" | "private_address"> {
+  if (isIpLiteralHost(hostname)) return "ip_literal_host";
+  const dnsTimeout = deps.dnsTimeoutMs ?? SAFE_FETCH_DNS_TIMEOUT_MS;
+  const [a, aaaa] = await Promise.allSettled([
+    withDeadline(deps.resolveDns(hostname, "A"), dnsTimeout),
+    withDeadline(deps.resolveDns(hostname, "AAAA"), dnsTimeout),
+  ]);
+  const v4 = a.status === "fulfilled" ? a.value : [];
+  const v6 = aaaa.status === "fulfilled" ? aaaa.value : [];
+  if (v4.length === 0 && v6.length === 0) return "dns_resolution_failed";
+  for (const addr of v4) {
+    const n = parseIpv4AnyNotation(addr);
+    if (n === null || isDisallowedIpv4(n)) return "private_address";
+  }
+  for (const addr of v6) if (isDisallowedIpv6(addr)) return "private_address";
+  return "ok";
+}
+
 export async function fetchImageSafely(
   deps: SafeFetchDeps,
   rawUrl: string,
@@ -261,21 +285,8 @@ export async function fetchImageSafely(
   }
   if (url.username || url.password) return fail("invalid_url");
   if (url.protocol !== "https:") return fail("not_https");
-  if (isIpLiteralHost(url.hostname)) return fail("ip_literal_host");
-
-  const dnsTimeout = deps.dnsTimeoutMs ?? SAFE_FETCH_DNS_TIMEOUT_MS;
-  const [a, aaaa] = await Promise.allSettled([
-    withDeadline(deps.resolveDns(url.hostname, "A"), dnsTimeout),
-    withDeadline(deps.resolveDns(url.hostname, "AAAA"), dnsTimeout),
-  ]);
-  const v4 = a.status === "fulfilled" ? a.value : [];
-  const v6 = aaaa.status === "fulfilled" ? aaaa.value : [];
-  if (v4.length === 0 && v6.length === 0) return fail("dns_resolution_failed");
-  for (const addr of v4) {
-    const n = parseIpv4AnyNotation(addr);
-    if (n === null || isDisallowedIpv4(n)) return fail("private_address");
-  }
-  for (const addr of v6) if (isDisallowedIpv6(addr)) return fail("private_address");
+  const host = await checkPublicHost(deps, url.hostname);
+  if (host !== "ok") return fail(host);
 
   let res: Response;
   try {
