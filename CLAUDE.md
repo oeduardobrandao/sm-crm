@@ -37,7 +37,7 @@ deno test supabase/functions/    # Deno edge-function suite
 npm run check:functions  # deno check over the edge functions (test:functions runs --no-check)
 
 # Lint & format (both enforced in CI)
-npm run lint             # eslint apps/ packages/ (runs in the typecheck-and-test job)
+npm run lint             # eslint apps/ packages/ (runs in the lint-and-typecheck job)
 npm run format           # prettier --write  (auto-fix apps/** and packages/**)
 npm run format:check     # prettier --check  (format-check job gate; run before pushing)
 
@@ -50,14 +50,15 @@ npx supabase db push --linked                   # push migrations to staging
 ### What CI actually runs
 
 `.github/workflows/ci.yml` is the source of truth. It fires on pull requests and
-pushes to `main` and `staging`, with **nine** jobs:
+pushes to `main` and `staging`, with **ten** jobs:
 
 | Job | Runs |
 |---|---|
-| `typecheck-and-test` | `npm run lint`, then `tsc` for **all four** projects (crm, hub, admin, `tsconfig.scripts.json`), then `npm run test:coverage` |
+| `lint-and-typecheck` | `npm run lint`, then `tsc` for **all four** projects (crm, hub, admin, `tsconfig.scripts.json`) |
+| `unit-tests` (4 shards) | `vitest run --shard=N/4 --coverage --reporter=blob`; each shard uploads its blob |
 | `edge-function-tests` | `npm run check:functions` (`deno check` over every `*/index.ts` and `_shared` module), then `npm run test:functions` (Deno) |
 | `entitlement-tests` | `supabase start` + `bash scripts/test-entitlements.sh` — the psql RLS/entitlement suites |
-| `coverage-threshold` | `npm run coverage:check` |
+| `coverage-threshold` | merges the 4 shard blobs (`vitest --merge-reports`, re-reports any failure) and applies the `vitest.coverage.config.ts` floor, same gate as `npm run coverage:check` |
 | `format-check` | `npm run format:check` |
 | `migration-version-guard` | fails on duplicate migration version prefixes |
 | `e2e` | Playwright |

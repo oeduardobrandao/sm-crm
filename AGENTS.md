@@ -41,7 +41,7 @@ npm run lint           # eslint apps/ packages/
 npm run format:check   # prettier — apps/**/*.{ts,tsx} and packages/**/*.{ts,tsx} only
 ```
 
-CI enforces these as separate jobs — `typecheck-and-test`, `edge-function-tests`,
+CI enforces these as separate jobs — `lint-and-typecheck`, `unit-tests`, `edge-function-tests`,
 `coverage-threshold`, `format-check`, `migration-version-guard`. A change that skips
 `format:check` or `lint` fails CI even when it is otherwise correct.
 
