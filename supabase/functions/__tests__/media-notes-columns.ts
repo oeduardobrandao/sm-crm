@@ -1,5 +1,5 @@
 // Real columns of the Feedback em mídia tables and view, copied from
-// supabase/migrations/20261025000001_post_media_notes.sql. The query mock accepts any
+// supabase/migrations/20261026000001_post_media_notes.sql. The query mock accepts any
 // column name, so a handler that selects or filters a column that does not exist
 // (C1: `approval_id` instead of `post_approval_id`) passes every mock test and only
 // fails as a 400 in PostgREST. media-notes-columns_test.ts checks these lists against

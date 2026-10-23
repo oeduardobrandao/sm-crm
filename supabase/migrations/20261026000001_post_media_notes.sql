@@ -1,4 +1,4 @@
--- supabase/migrations/20261025000001_post_media_notes.sql
+-- supabase/migrations/20261026000001_post_media_notes.sql
 -- Feedback em mídia: notas presas a slide, momento e ponto da mídia do post
 -- (spec docs/superpowers/specs/2026-10-22-feedback-em-midia-design.md).
 --

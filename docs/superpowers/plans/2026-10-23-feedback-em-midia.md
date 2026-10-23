@@ -20,7 +20,7 @@
 - Only the agency resolves. A client reply on a resolved note reopens it. A client cannot reply to an internal note.
 - Every plan, no entitlement flag. No client notification of agency replies/resolutions.
 - Agency names in the Hub: team member name (`membros.nome` via `crm_user_id`), fallback `Equipe`.
-- New migrations use version prefixes above `20261024000010` (this plan: `20261025000001`..`20261025000003`); re-check main's tail and renumber before `gh pr create`.
+- New migrations use version prefixes above `20261024000010` (this plan: `20261026000001`..`20261026000003`); re-check main's tail and renumber before `gh pr create`.
 - Composers with unsent text outside a modal call `useUnsavedWork(active)` from `@mesaas/app-lifecycle`; never `useBlocker`.
 - Edge functions: CORS only via `buildCorsHeaders(req)`, generic error messages to clients, `[functions.hub-media-notes] verify_jwt = false` in `supabase/config.toml`.
 - Deploy order (prod and staging): migrations, then functions (`hub-media-notes` with `--no-verify-jwt`, `hub-posts`, `hub-post-history`, `hub-approve`, `mcp`), then merge (merge deploys the frontend immediately).
@@ -39,7 +39,7 @@
 ### Task 1: Schema, view, RLS and the entitlement suite
 
 **Files:**
-- Create: `supabase/migrations/20261025000001_post_media_notes.sql`
+- Create: `supabase/migrations/20261026000001_post_media_notes.sql`
 - Create: `supabase/tests/entitlements/99_post_media_notes.sql`
 
 **Interfaces:**
@@ -78,14 +78,14 @@
 
 - [ ] **Step 4: Run it, expect PASS** — `npx supabase db reset` (local) then `bash scripts/test-entitlements.sh` → `PASS …99_post_media_notes.sql`, no other suite regresses.
 
-- [ ] **Step 5: Commit** — `git add supabase/migrations/20261025000001_post_media_notes.sql supabase/tests/entitlements/99_post_media_notes.sql && git commit -m "feat(db): post_media_notes tables, anchor view and RLS"`
+- [ ] **Step 5: Commit** — `git add supabase/migrations/20261026000001_post_media_notes.sql supabase/tests/entitlements/99_post_media_notes.sql && git commit -m "feat(db): post_media_notes tables, anchor view and RLS"`
 
 ---
 
 ### Task 2: Write RPCs (Hub create/reply, approval with snapshot, team create) and notification link
 
 **Files:**
-- Create: `supabase/migrations/20261025000002_post_media_notes_rpcs.sql`
+- Create: `supabase/migrations/20261026000002_post_media_notes_rpcs.sql`
 - Modify: `supabase/tests/entitlements/99_post_media_notes.sql` (append blocks)
 
 **Interfaces:**
@@ -210,7 +210,7 @@
 ### Task 6: Mensagens RPCs and MCP feedback
 
 **Files:**
-- Create: `supabase/migrations/20261025000003_mensagens_media_notes.sql`
+- Create: `supabase/migrations/20261026000003_mensagens_media_notes.sql`
 - Modify: `supabase/tests/entitlements/99_post_media_notes.sql` (append)
 - Modify: `supabase/functions/mcp/content.ts` (~:446-552), `supabase/functions/mcp/queries.ts` (~:977-1048)
 - Test: `supabase/functions/__tests__/mcp-feedback_test.ts`, `supabase/functions/__tests__/mcp-content_test.ts`
@@ -506,6 +506,6 @@
 
 - [ ] **Step 1: Run every gate** — `npm run lint`, `npm run format:check`, `npx tsc -p apps/crm/tsconfig.json --noEmit`, `npx tsc -p apps/hub/tsconfig.json --noEmit`, `npx tsc -p apps/admin/tsconfig.json --noEmit`, `npx tsc -p tsconfig.scripts.json`, `npm run test`, `npm run check:functions`, `npm run test:functions`, `bash scripts/test-entitlements.sh`. All green. If `test:functions` dirtied `deno.lock` or `node_modules/.deno` appeared, `git checkout deno.lock` / `npm ci`.
 - [ ] **Step 2: Browser check** against local Supabase (migrations applied, functions served): Hub carousel pin + send, video moment + spot in the lightbox, phone width 375px composer sheet, approve-with-open-notes confirm; CRM conversation shows the notes, resolve/reopen, internal pin in the lightbox, replace prompt, approved flag. Screenshot each.
-- [ ] **Step 3: Renumber migrations** if main's tail moved past `20261025000003`.
+- [ ] **Step 3: Renumber migrations** if main's tail moved past `20261026000003`.
 - [ ] **Step 4: Commit** — `git commit -m "docs: hub-media-notes deploy flag"`
 - [ ] **Step 5: Deploy order note in the PR body**: staging then prod: `npx supabase db push --linked`; `npx supabase functions deploy hub-media-notes --no-verify-jwt --use-api`; `hub-posts`, `hub-post-history`, `hub-approve` (all `--no-verify-jwt`), `mcp`; only then merge.

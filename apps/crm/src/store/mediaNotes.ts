@@ -51,7 +51,7 @@ export async function getMediaNotes(postIds: number[]): Promise<MediaNote[]> {
     .select(NOTE_COLUMNS)
     .in('post_id', postIds)
     .order('created_at', { ascending: true });
-  // Frontend deployed before migration 20261025000001: no notes yet, not an error.
+  // Frontend deployed before migration 20261026000001: no notes yet, not an error.
   if (error && isMissingRelationError(error, 'post_media_notes_v')) return [];
   if (error) throw error;
   const rows = (data || []) as Omit<MediaNote, 'replies'>[];

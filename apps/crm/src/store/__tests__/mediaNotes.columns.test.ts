@@ -9,7 +9,7 @@ import { NOTE_COLUMNS, REPLY_COLUMNS } from '../mediaNotes';
 // The CRM reads these relations with explicit column lists, and a wrong name there is
 // a 42703 the drawers would surface only in production. Pin every name to the migration.
 const MIGRATION = readFileSync(
-  path.resolve(__dirname, '../../../../../supabase/migrations/20261025000001_post_media_notes.sql'),
+  path.resolve(__dirname, '../../../../../supabase/migrations/20261026000001_post_media_notes.sql'),
   'utf8',
 );
 

@@ -2,7 +2,7 @@ import { assertEquals } from "./assert.ts";
 import { MEDIA_NOTE_TABLE_COLUMNS, selectedColumns, unknownMediaNoteColumns } from "./media-notes-columns.ts";
 
 const MIGRATION = new URL(
-  "../../migrations/20261025000001_post_media_notes.sql",
+  "../../migrations/20261026000001_post_media_notes.sql",
   import.meta.url,
 ).pathname;
 
@@ -29,7 +29,7 @@ function viewColumns(sql: string): string[] {
     });
 }
 
-Deno.test("media-note column lists match migration 20261025000001", async () => {
+Deno.test("media-note column lists match migration 20261026000001", async () => {
   const sql = await Deno.readTextFile(MIGRATION);
   for (const table of ["post_media_notes", "post_media_note_replies", "post_approval_media_notes"]) {
     assertEquals([...MEDIA_NOTE_TABLE_COLUMNS[table]], tableColumns(sql, table), table);

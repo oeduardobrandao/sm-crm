@@ -1012,7 +1012,7 @@ export async function listPostFeedback(
     if (args.since) q = q.gte("created_at", args.since);
     const { data, error } = await q.order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP);
     // Notes are additive: a failed scan (e.g. this function deployed before migration
-    // 20261025000001) leaves the approvals feed working instead of failing the tool.
+    // 20261026000001) leaves the approvals feed working instead of failing the tool.
     if (error) {
       console.error("[mcp] list_post_feedback note scan failed:", error);
       return [];

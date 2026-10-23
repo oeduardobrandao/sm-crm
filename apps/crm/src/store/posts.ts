@@ -1443,7 +1443,7 @@ export async function getPostApprovals(postIds: number[]): Promise<PostApproval[
       .in('post_id', postIds)
       .order('created_at', { ascending: true });
   let { data, error } = await read('*, post_approval_media_notes(note_id)');
-  // Frontend deployed before migration 20261025000001: keep the conversation, no notes.
+  // Frontend deployed before migration 20261026000001: keep the conversation, no notes.
   if (error && isMissingRelationError(error, 'post_approval_media_notes')) {
     ({ data, error } = await read('*'));
   }

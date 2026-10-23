@@ -211,7 +211,7 @@ Deno.test("listPostFeedback: a post with client notes and no approvals is listed
       assert(!String(c.args[0]).includes("hub_token"), "hub_token never selected");
     }
   }
-  // Every selected/filtered column exists in migration 20261025000001.
+  // Every selected/filtered column exists in migration 20261026000001.
   assertEquals(unknownMediaNoteColumns(asQueryCalls(calls)), []);
 });
 
@@ -229,7 +229,7 @@ Deno.test("listPostFeedback: a failing note scan degrades to approvals only", as
       },
     ],
     post_status_events: [{ data: [], error: null }],
-    // e.g. the function deployed before migration 20261025000001
+    // e.g. the function deployed before migration 20261026000001
     post_media_notes: [{ data: null, error: { code: "PGRST205", message: "relation post_media_notes" } }],
     post_media_notes_v: [{ data: null, error: { code: "PGRST205", message: "relation post_media_notes_v" } }],
   });

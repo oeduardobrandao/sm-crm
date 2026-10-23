@@ -1,4 +1,4 @@
--- supabase/migrations/20261025000003_mensagens_media_notes.sql
+-- supabase/migrations/20261026000003_mensagens_media_notes.sql
 -- Feedback em mídia na caixa de Mensagens (spec
 -- docs/superpowers/specs/2026-10-22-feedback-em-midia-design.md, product
 -- decision 2).

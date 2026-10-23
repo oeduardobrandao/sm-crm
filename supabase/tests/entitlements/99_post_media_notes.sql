@@ -2,7 +2,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Feedback em mídia (migration 20261025000001, spec 2026-10-22-feedback-em-midia-design).
+-- Feedback em mídia (migration 20261026000001, spec 2026-10-22-feedback-em-midia-design).
 -- (grants) privilégios de tabela, coluna, sequência e view, ANTES do
 --   et_grant_hosted_parity (o helper concede ALL em toda sequência de public);
 -- (a) isolamento de leitura entre workspaces;

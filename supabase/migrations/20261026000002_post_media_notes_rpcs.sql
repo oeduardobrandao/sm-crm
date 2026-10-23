@@ -1,4 +1,4 @@
--- supabase/migrations/20261025000002_post_media_notes_rpcs.sql
+-- supabase/migrations/20261026000002_post_media_notes_rpcs.sql
 -- Feedback em mídia: RPCs de escrita (spec
 -- docs/superpowers/specs/2026-10-22-feedback-em-midia-design.md, calls 2, 4, 5, 6).
 --
@@ -266,7 +266,7 @@ GRANT EXECUTE ON FUNCTION record_client_approval_with_notes(bigint, uuid, bigint
 -- SECURITY INVOKER: post, vínculo e arquivo resolvidos sob o RLS de quem chama
 -- (post de outro workspace = post_not_found), e o INSERT passa pela policy
 -- post_media_notes_team_insert. Só nomeia as colunas do GRANT INSERT por coluna
--- de 20261025000001 (nunca status, resolved_*, datas ou hub_token).
+-- de 20261026000001 (nunca status, resolved_*, datas ou hub_token).
 CREATE OR REPLACE FUNCTION create_team_media_note(
   p_post_id   bigint,
   p_link_id   bigint,

@@ -210,7 +210,7 @@ export function createHubPostHistoryHandler(deps: HubPostHistoryHandlerDeps) {
       const counts = new Map<number, number>();
       if (approvalRows.length === 0) return counts;
       try {
-        // Join table (post_approval_id, note_id), migration 20261025000001. Drained by
+        // Join table (post_approval_id, note_id), migration 20261026000001. Drained by
         // pages: the 1000-row PostgREST cap must not silently truncate the counts.
         const ids = approvalRows.map((a) => a.id);
         const snapshots = await fetchAllRows<{ post_approval_id: number }>((from, to) =>

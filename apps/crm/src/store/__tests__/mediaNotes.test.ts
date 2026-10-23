@@ -273,7 +273,7 @@ describe('media notes store', () => {
   });
 
   // Deploy-order hardening: the frontend can reach production before migration
-  // 20261025000001. The drawers must keep the client conversation, minus the notes.
+  // 20261026000001. The drawers must keep the client conversation, minus the notes.
   it('getPostApprovals retries without the embed when the relation is missing', async () => {
     const approval = {
       id: 1,
