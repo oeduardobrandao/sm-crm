@@ -150,9 +150,8 @@ Duas operações do lado legado precisam ser atômicas, então também viram RPC
   na mesma transação. Sem chave de idempotência: uma repetição cria outro modelo, e a descrição da
   ferramenta diz para listar antes de recriar.
 
-Dia do agendado: as três origens usam `least(dia, último dia do mês)`. O CRM hoje só faz isso para
-recorrentes e gera `2026-02-31` para cliente/membro com dia 29 a 31 (a confirmação falha no banco);
-este trabalho corrige `projetarAgendamentos` para limitar as três origens.
+Dia do agendado: as três origens usam `least(dia, último dia do mês)`, como `projetarAgendamentos`
+(corrigido no PR #739 para cliente e membro).
 
 ### Ferramentas
 
@@ -251,8 +250,9 @@ marcando os escopos novos.
 - **Trigger legado.** `_financeiro_v2_legado_trigger` grava `created_by = auth.uid()`
   (`20261027000005:307, 339, 357`), que fica NULL numa escrita legada por service role. Por isso
   `set_cobranca_cliente` usa `financeiro_cliente_salvar_as` sempre que o workspace tem
-  `financeiro_config.seeded_at` preenchido, com ou sem a flag; colunas legadas só quando nunca
-  houve seed. `set_custo_membro` com seed feito e flag desligada grava nas colunas legadas (o
+  `financeiro_config.seeded_at` preenchido e a flag ligada; senão (nunca houve seed, ou seed com a
+  flag desligada) grava nas colunas legadas e aceita `created_by` NULL na versão do trigger (as
+  `_as` checam a flag primeiro, então não servem nesse caso). `set_custo_membro` com seed feito e flag desligada grava nas colunas legadas (o
   acordo é do v2) e aceita `created_by` NULL na versão que o trigger gera.
 - **`set_cobranca_cliente` com v2.** `p_status` não aceita NULL: campos omitidos (status, dia, valor)
   vêm da versão vigente do cliente, lida antes. `vale_desde` padrão: início do período `aberto`; sem

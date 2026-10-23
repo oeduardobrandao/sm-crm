@@ -21,7 +21,10 @@
 - Owner = `workspace_members.role = 'owner'` for the key/grant workspace (`ctx.conta_id`), never `profiles.role`, never `active_workspace_id`.
 - Tool audit metadata: ids, `mes`/`vale_desde`/`inicio`, counts. Never valores, nomes, descrições or acordo jsonb.
 - Error copy for owner gate: `Permission denied: somente o dono do workspace pode usar as ferramentas do Financeiro.`
-- "Mês corrente" and "mês anterior" are computed in `America/Sao_Paulo`.
+- "Mês corrente" and "mês anterior" are computed in `America/Sao_Paulo`: in SQL `(now() AT TIME ZONE 'America/Sao_Paulo')::date`; in Deno from `deps.now?.() ?? new Date().toISOString()` via `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' })`, never `Date#getMonth()`. One helper `mesSaoPaulo(nowIso): { ano, mes, primeiro: 'YYYY-MM-01', anterior: 'YYYY-MM-01' }` in `financeiro.ts` (Task 4) serves every tool.
+- `transacoes.data` is `text` (ISO `YYYY-MM-DD`), not `date` (`20260301_baseline_schema.sql:61`): SQL inserts `to_char(v_data, 'YYYY-MM-DD')`; month filters use `gte 'YYYY-MM-01'` + `lt '<next month>-01'`.
+- Module layout (avoids import cycles): `mcp/register.ts` owns `jsonResult`, `errorResult`, `audit`, `register`, `REGISTERED`; `tools.ts` and `financeiro-tools.ts` both import from it. `memberRole`, `requireOwner`, `McpOwnerError`, `OWNER_ONLY_SCOPES` and `ownerOnlyScopeViolation` live in `_shared/mcp-token.ts` (`mcp-oauth.ts` already imports from it).
+- Deno fake db: `supabase/functions/__tests__/mcp-financeiro-helpers.ts` (Task 3) copies `makeFakeDb` from `__tests__/mcp-admin-helpers.ts` (rpc queues keyed by function name, eq-keyed queues), defaults `effective_plan_feature` to `{ data: true, error: null }` when no queue is given, adds `lt`/`lte`/`like`/`neq`, and exports `fakeServer()` that records `tool(name, desc, shape, handler)`. Tasks 4 to 6 use it.
 
 ## Review Focus
 
@@ -64,13 +67,13 @@
   - `admin_as_denied`: an `admin` with `financeiro: editar` gets an error with SQLSTATE `42501` and message `owner_only` from `financeiro_config_salvar_as`.
   - `rpc_as_ignores_active_workspace`: owner of workspaces A and B with `profiles.active_workspace_id = B`; `financeiro_funcao_salvar_as(A, dono, …)` creates the row in A, none in B.
   - `flags_before_owner`: workspace without `feature_financeiro_v2`, called by a non-owner, raises `feature_disabled:feature_financeiro_v2` (not `owner_only`).
-  - `reabrir_audit_actor`: `financeiro_periodo_fechar_as` then `_reabrir_as` write `audit_log` rows whose actor column equals `dono` (not NULL).
+  - `reabrir_audit_actor`: fixture with a `fechado` period row carrying a non-null `snapshot` (CHECK at `20261027000002:148`); `financeiro_periodo_reabrir_as` first (needs `fechado`), then `financeiro_periodo_fechar_as` (needs `reaberto`); both `audit_log` rows have `actor_user_id = dono`.
   - `rentabilidade_as_explicit_period`: `financeiro_rentabilidade_as(A, dono, <editable inicio>)` returns `seeded = true` while active workspace is B.
 - [ ] **Step 2: Run it, expect failure** (`42883` undefined function).
 - [ ] **Step 3: Write the migration.** For each RPC, take the LAST definition (000004: config, funcao_salvar/excluir, acordo, atribuicoes, entregas; 000005: cliente_salvar, seed; 000006: reabrir, fechar, rentabilidade; 000003: periodos_listar, periodos_editaveis) and:
   - `_core`: body with `v_conta := p_conta`, every `auth.uid()` → `p_user`, nested `financeiro_periodos_editaveis()` → `_financeiro_periodos_editaveis_core(p_conta, p_user)`, flag/permission/role checks removed (they move to the callers); keeps lock, `seeded`, editable-period and `not_found` logic.
   - public: `CREATE OR REPLACE` with the SAME signature, defaults and grants; resolves `get_my_conta_id()`/`auth.uid()`, runs today's checks in today's order (flags, then `has_permission`/`can_see_financials`, then for reabrir/fechar the existing `owner`/`admin` role check), then `RETURN`/`PERFORM` the core.
-  - `_as`: flags (`effective_plan_feature(p_conta, …)`), then `_financeiro_exigir_dono`, then the core.
+  - `_as`: flags (`effective_plan_feature(p_conta, …)`), then `_financeiro_exigir_dono`, then the core. Ruling: the spec's parity `has_permission_for(p_user, p_conta, 'financeiro', 'ver')` is dropped from `_as`; it is always true after the owner check.
   - Grants: `REVOKE ALL … FROM PUBLIC, anon, authenticated; GRANT EXECUTE … TO service_role` for `_as`/`_core`/helper. Self-check `DO` block at the end like `20261027000004:620-640`, covering both groups. Final comment `-- Rollback: docs/superpowers/rollbacks/20261029000002_financeiro_v2_rpc_as.down.sql`.
 - [ ] **Step 4: Write the rollback file**: the original public definitions copied verbatim from their last migration (with their REVOKE/GRANT lines), then `DROP FUNCTION` for every `_as`, `_core` and the helper.
 - [ ] **Step 5: Verify.** `$SB db reset`, run the new suite (all PASS lines), then the full entitlement script (every existing `99_financeiro_v2_*.sql` unchanged and passing). Then apply the rollback (`psql -f docs/superpowers/rollbacks/...down.sql`), rerun the existing `99_financeiro_v2_*.sql` suites (pass) and confirm `\df *_as` is empty. `$SB db reset` again to leave the migration applied.
@@ -81,16 +84,17 @@
 **Files:**
 - Create: `supabase/migrations/20261029000003_financeiro_mcp_lancamentos.sql`
 - Create: `supabase/tests/entitlements/99_financeiro_mcp_lancamentos.sql`
+- Create: `docs/superpowers/rollbacks/20261029000003_financeiro_mcp_lancamentos.down.sql` (DROP both functions; runs BEFORE the 000002 rollback, since these depend on `_financeiro_exigir_dono`)
 
 **Interfaces:**
 - Consumes: `_financeiro_exigir_dono(uuid, uuid)` from Task 1.
 - Produces (service_role only):
-  - `financeiro_agendamento_confirmar_as(p_conta uuid, p_user uuid, p_origem text, p_id bigint) → jsonb` (the inserted `transacoes` row: id, data, descricao, detalhe, categoria, tipo, valor, status, referencia_agendamento)
+  - `financeiro_agendamento_confirmar_as(p_conta uuid, p_user uuid, p_origem text, p_id bigint, p_hoje date DEFAULT NULL) → jsonb` (`p_hoje` NULL = today in São Paulo; tests pin it, same pattern as `financeiro_rolar_periodos(p_hoje)` in 000006:45; the tool never passes it) (the inserted `transacoes` row: id, data, descricao, detalhe, categoria, tipo, valor, status, referencia_agendamento)
   - `financeiro_recorrente_criar_as(p_conta uuid, p_user uuid, p_tipo text, p_descricao text, p_categoria text, p_valor numeric, p_dia int, p_inicio date, p_registrar_primeiro_pago boolean, p_data_primeiro date) → jsonb` (`{ "recorrente": {id, tipo, descricao, categoria, valor, dia, inicio, fim}, "lancamento": {…} | null }`)
   - New error codes: `origem_invalida`, `nao_agendado` (origem not eligible this month), `ja_confirmado`, `valor_indefinido`.
 
 - [ ] **Step 1: Write the failing suite** (PASS blocks):
-  - `confirmar_cliente`: active client with `data_pagamento = 31`, `valor_mensal = 1000`; in a month with 30 days the row's `data` is the 30th; `referencia_agendamento = 'cliente_<id>_<yyyy>_<mm>'`, `detalhe 'Agendamento automático'`, `categoria 'Agendamento'`, `tipo 'entrada'`, `status 'pago'`, `user_id = dono`. (Compute the expected month from `now() AT TIME ZONE 'America/Sao_Paulo'`.)
+  - `confirmar_cliente`: active client with `data_pagamento = 31`, `valor_mensal = 1000`, `p_hoje = '2026-11-15'`: row `data = '2026-11-30'`, `referencia_agendamento = 'cliente_<id>_2026_11'`, `detalhe 'Agendamento automático'`, `categoria 'Agendamento'`, `tipo 'entrada'`, `status 'pago'`, `user_id = dono`. Every confirm test pins `p_hoje`.
   - `confirmar_membro`: `tipo 'saida'`, ref `membro_<id>_…`, valor = `custo_mensal`.
   - `confirmar_recorrente`: template active this month → ref `recorrente_<id>_<yyyy>_<mm>`, `detalhe 'Recorrente'`, categoria from the template.
   - `confirmar_twice`: second call raises `ja_confirmado`; exactly one row with that ref.
@@ -100,16 +104,18 @@
   - `criar_recorrente_atomic`: with `p_registrar_primeiro_pago = true` both rows exist and the lançamento ref is `recorrente_<new id>_<yyyy>_<mm>` of `p_data_primeiro`; with a CHECK-violating `p_dia = 32` neither row exists.
   - `free_plan_denied`: workspace on `free` → `feature_disabled:feature_financial`.
 - [ ] **Step 2: Run, expect failure.**
-- [ ] **Step 3: Write the migration.** Confirm: flags (`feature_financial`), owner, origem lookup filtered by `conta_id = p_conta` (`not_found` otherwise), eligibility rules and day clamp from spec "Confirmar agendamento", `pg_advisory_xact_lock(hashtextextended('agendamento:' || p_conta || ':' || v_ref, 0))`, existence check → `ja_confirmado`, insert. Criar: flags, owner, insert template, optional paid row (`detalhe 'Recorrente'`, `inicio`/`data` from params) in the same function. Grants + self-check block as Task 1.
-- [ ] **Step 4: Verify** suite passes; full entitlement script passes.
+- [ ] **Step 3: Write the migration.** Confirm: flags (`feature_financial`), owner, origem lookup filtered by `conta_id = p_conta` (`not_found` otherwise), eligibility rules and day clamp from spec "Confirmar agendamento", `pg_advisory_xact_lock(hashtextextended('agendamento:' || p_conta::text || ':' || v_ref, 0))`, existence check → `ja_confirmado`, insert. Criar: flags, owner, insert template, optional paid row (`detalhe 'Recorrente'`, `inicio`/`data` from params) in the same function. Grants + self-check block as Task 1.
+- [ ] **Step 4: Verify** suite passes; full entitlement script passes; applying the 000003 rollback drops both functions.
 - [ ] **Step 5: Commit.**
 
 ### Task 3: Role in context + owner gate + existing tools
 
 **Files:**
-- Modify: `supabase/functions/_shared/mcp-token.ts` (McpKeyContext, McpOwnerError, resolveMcpKey)
-- Modify: `supabase/functions/_shared/mcp-oauth.ts` (isWorkspaceMember → also role; resolveOAuthCtx)
-- Modify: `supabase/functions/mcp/tools.ts` (register options, errorResult, audit resource_id, create_client/create_member)
+- Modify: `supabase/functions/_shared/mcp-token.ts` (McpKeyContext, McpOwnerError, requireOwner, memberRole, OWNER_ONLY_SCOPES, ownerOnlyScopeViolation, resolveMcpKey)
+- Modify: `supabase/functions/_shared/mcp-oauth.ts` (isWorkspaceMember via memberRole; resolveOAuthCtx fills role)
+- Create: `supabase/functions/mcp/register.ts` (moved from tools.ts: jsonResult, errorResult, audit, register; plus REGISTERED)
+- Modify: `supabase/functions/mcp/tools.ts` (imports register; create_client/create_member owner-only fields and descriptions)
+- Create: `supabase/functions/__tests__/mcp-financeiro-helpers.ts` (fake db + fakeServer, see Global Constraints)
 - Test: `supabase/functions/__tests__/mcp-financeiro-gate_test.ts` (new); update `mcp-token_test.ts`, `mcp-oauth_test.ts` where they assert resolver output
 
 **Interfaces:**
@@ -117,7 +123,8 @@
   - `McpKeyContext.role?: string | null`
   - `export class McpOwnerError extends Error` (message `owner_only`)
   - `export function requireOwner(ctx: McpKeyContext): void`
-  - `memberRole(db, userId, contaId): Promise<string | null>` in `mcp-oauth.ts` (used by both resolvers; `isWorkspaceMember` becomes `(await memberRole(...)) !== null`)
+  - `memberRole(db, userId, contaId): Promise<string | null>` in `mcp-token.ts` (used by both resolvers; `isWorkspaceMember` in `mcp-oauth.ts` becomes `(await memberRole(...)) !== null`)
+  - `export const OWNER_ONLY_SCOPES = ['financeiro:read', 'financeiro:write'] as const` and `export function ownerOnlyScopeViolation(scopes: string[], role: string | null): boolean` in `mcp-token.ts` (Task 7 consumes; Task 7 only appends the two scopes to `MCP_ALLOWED_SCOPES`)
   - `register(server, deps, name, scope, description, shape, run, auditArgs?, opts?: { ownerOnly?: boolean; feature?: "feature_financial" | "feature_financeiro_v2" })`. With `ownerOnly`: `requireScope`, then `requireOwner`, then `effective_plan_feature` for `feature_financial` and, when `opts.feature === 'feature_financeiro_v2'`, that too (`McpInputError` with the mapped message), then `run`.
   - `export const REGISTERED: Array<{ name: string; scope: string; ownerOnly: boolean }>` (populated by `register`, reset at the start of `registerTools`) for the structural test.
   - Test helper `fakeServer()` (records `tool(name, desc, shape, handler)`) in `supabase/functions/__tests__/mcp-financeiro-helpers.ts`, reused by Tasks 4 to 6.
@@ -127,7 +134,7 @@
   - `demoted creator loses access`: `resolveMcpKey` with a fake db where `workspace_members` returns `role: 'admin'` → `ctx.role === 'admin'`.
   - `oauth resolver fills role`.
   - `feature_financial off refuses before run`.
-  - `create_client: valor_mensal from non-owner refused`, `create_member: custo_mensal/data_pagamento from non-owner refused`, and both accepted for owner (existing behaviour otherwise unchanged).
+  - `create_client: valor_mensal from non-owner refused`, `create_member: custo_mensal/data_pagamento from non-owner refused`, and both accepted for owner (existing behaviour otherwise unchanged). The two tool descriptions gain: `Campos financeiros (valor_mensal / custo_mensal, data_pagamento) só para o dono do workspace.`
   - `audit resource_id from lancamento_id/recorrente_id/membro_id/cliente_id/funcao_id/inicio`.
 - [ ] **Step 2: Run, expect failures.**
 - [ ] **Step 3: Implement.** Role lookup in `resolveMcpKey` uses `ctx.created_by` + `conta_id`; a missing membership yields `role: null` (the key still resolves for non-financeiro tools, matching today).
@@ -150,12 +157,12 @@
   - Read functions in `financeiro.ts`, each `(deps: Deps, args) => Promise<…>`: `listLancamentos`, `listRecorrentes`, `getCobrancas`, `getFinanceiroV2`, `getRentabilidade`, `getClienteVersoes`, `getAcordoVersoes`.
 - Tool schemas (zod), all `financeiro:read`, `ownerOnly`:
   - `list_lancamentos { mes?: /^\d{4}-\d{2}$/, tipo?: 'entrada'|'saida', status?: 'pago'|'agendado', limit?: int 1..500 = 100 }` → `{ lancamentos: [...] }`, order `data desc`. Description says projected agendados are not included and points to `get_cobrancas` + `list_recorrentes`.
-  - `list_recorrentes { incluir_encerrados?: boolean = false }` (active = `fim` null or `>=` this month's 1st).
+  - `list_recorrentes { incluir_encerrados?: boolean = false }` (active = `fim` null or `>=` `mesSaoPaulo().primeiro`).
   - `get_cobrancas {}` → `{ clientes: [{id,nome,status,valor_mensal,data_pagamento}], membros: [{id,nome,custo_mensal,data_pagamento}] }`.
   - `get_financeiro_v2 {}` (`feature: 'feature_financeiro_v2'`) → `{ config: {periodo_dia, meta_margem, seeded}, funcoes: [{id,nome,ordem}], periodos, editaveis }`.
   - `get_rentabilidade { inicio?: DATE_ONLY }` (v2).
   - `get_cliente_versoes { cliente_id: int }`, `get_acordo_versoes { membro_id: int }` (v2): fields per spec, `limit 50`, `tem_contrato = arquivo_path != null`, no `created_by`, no `arquivo_path`; the id is checked to belong to `ctx.conta_id` first (`not_found`).
-- [ ] **Step 1: Failing tests**: `errors table covers every RAISE` (reads `supabase/migrations/20261027*.sql` and `20261029*.sql`, regex `RAISE EXCEPTION '([a-z_:0-9]+)'`, asserts each code is a key); `mapFinanceiroError` for a P0001 code, a 23514 and an unknown error (null); for each read tool, one test asserting the `conta_id` filter (`eq('conta_id', 'workspace-A')`), the output allowlist (no extra keys) and `_as` RPC args `{ p_conta: 'workspace-A', p_user: 'user-1', … }`; `all financeiro tools are ownerOnly` (iterates `REGISTERED`; also re-run in Tasks 5 and 6 automatically).
+- [ ] **Step 1: Failing tests**: `errors table covers every RAISE` (reads `new URL("../../migrations/", import.meta.url)` files matching `20261027*.sql` and `20261029*.sql`, regex `RAISE EXCEPTION '([a-z_:0-9]+)'`, asserts each code is a key); `mapFinanceiroError` for a P0001 code, a 23514 and an unknown error (null); for each read tool, one test asserting the `conta_id` filter (`eq('conta_id', 'workspace-A')`), the output allowlist (no extra keys) and `_as` RPC args `{ p_conta: 'workspace-A', p_user: 'user-1', … }`; `all financeiro tools are ownerOnly` (iterates `REGISTERED`; also re-run in Tasks 5 and 6 automatically).
 - [ ] **Step 2: Run, expect failures.** **Step 3: Implement.** **Step 4: Run** + `npm run check:functions`. **Step 5: Commit.**
 
 ### Task 5: Write tools for lançamentos, recorrentes and cobrança
@@ -171,11 +178,11 @@
   - `update_lancamento { lancamento_id: int, …same fields optional }` (at least one) → updated row; `.eq('id').eq('conta_id')`, zero rows → `not_found`. Does not change `referencia_agendamento`.
   - `delete_lancamento { lancamento_id: int }` → `{ ok: true }`.
   - `confirmar_agendamento { origem: 'cliente'|'membro'|'recorrente', id: int }` → RPC result.
-  - `create_recorrente { tipo, descricao, valor > 0, dia: int 1..31, categoria: enum, inicio_mes: /^\d{4}-\d{2}$/ (default mês corrente), registrar_primeiro_pago?: boolean = false, data_primeiro?: DATE_ONLY (required when registrar_primeiro_pago; must fall in inicio_mes) }`.
+  - `create_recorrente { tipo, descricao, valor > 0, dia: int 1..31, categoria: enum, inicio_mes: /^\d{4}-\d{2}$/ (default `mesSaoPaulo()` month), registrar_primeiro_pago?: boolean = false, data_primeiro?: DATE_ONLY (required when registrar_primeiro_pago; must fall in inicio_mes) }`.
   - `update_recorrente { recorrente_id, descricao?, valor?, dia?, categoria? }`; `encerrar_recorrente { recorrente_id }` → `{ acao: 'removido' | 'encerrado', fim?: 'YYYY-MM-01' }` (rule from spec).
-  - `set_cobranca_cliente { cliente_id, valor_mensal?: number ≥ 0, dia_pagamento?: int 1..31 | null, status?: 'ativo'|'pausado'|'encerrado', vale_desde?: DATE_ONLY }`: seeded workspace → read the current version (latest `vale_desde <= target`) to fill omitted fields, default `vale_desde` per spec, call `financeiro_cliente_salvar_as`; never seeded → update `clientes` legacy columns (`.eq('conta_id')`).
+  - `set_cobranca_cliente { cliente_id, valor_mensal?: number ≥ 0, dia_pagamento?: int 1..31 | null, status?: 'ativo'|'pausado'|'encerrado', vale_desde?: DATE_ONLY }`: seeded AND `feature_financeiro_v2` on → read the current version (latest `vale_desde <= target`) to fill omitted fields, default `vale_desde` per spec, call `financeiro_cliente_salvar_as`; otherwise (never seeded, or seeded with the flag off) → update `clientes` legacy columns (`.eq('conta_id')`), accepting `created_by` NULL in the version `_financeiro_v2_legado_trigger` generates. `vale_desde` is rejected (`McpInputError`) on the legacy path. Ruling: this replaces the spec's "com ou sem a flag", which `_as` (flags first) cannot honour.
   - `set_custo_membro { membro_id, custo_mensal?: number ≥ 0, dia_pagamento?: int 1..31 | null }`: `feature_financeiro_v2` on → `McpInputError('Com o Financeiro v2 ligado, o custo vem do acordo. Use save_acordo.')`; else legacy columns.
-- [ ] **Step 1: Failing tests**: `writes use ctx.conta_id and user_id = created_by` (create_lancamento insert payload); `foreign cliente_id refused` (clientes lookup returns null → `not_found`, no insert call); `update_lancamento zero rows → not_found`; `confirmar passes origem/id to RPC and maps ja_confirmado`; `create_recorrente requires data_primeiro when registrar_primeiro_pago`; `encerrar_recorrente removes when inicio is this month` and `ends on previous month otherwise` (fix the clock via `deps.now`); `cobranca keeps omitted fields` (seeded; current version `{valor 1000, dia 10, status 'ativo'}`, call with only `valor_mensal: 1200` → RPC args `p_dia_pagamento 10, p_status 'ativo'`); `cobranca legacy when never seeded`; `custo_membro refused with v2 on`; `audit has no valor/descricao` (inspect the `audit_log` insert metadata).
+- [ ] **Step 1: Failing tests**: `writes use ctx.conta_id and user_id = created_by` (create_lancamento insert payload); `foreign cliente_id refused` (clientes lookup returns null → `not_found`, no insert call); `update_lancamento zero rows → not_found`; `confirmar passes origem/id to RPC and maps ja_confirmado`; `create_recorrente requires data_primeiro when registrar_primeiro_pago`; `encerrar_recorrente removes when inicio is this month` and `ends on previous month otherwise` (fix the clock via `deps.now`); `cobranca keeps omitted fields` (seeded; current version `{valor 1000, dia 10, status 'ativo'}`, call with only `valor_mensal: 1200` → RPC args `p_dia_pagamento 10, p_status 'ativo'`); `cobranca legacy when never seeded`; `cobranca legacy when seeded but v2 flag off`; `encerrar month boundary` (`now = '2026-12-01T01:00:00Z'`, still November in São Paulo: a template with `inicio '2026-11-01'` is removed, not ended); `custo_membro refused with v2 on`; `audit has no valor/descricao` (inspect the `audit_log` insert metadata).
 - [ ] **Step 2–4: Run fail, implement, run pass** (+ `check:functions`). **Step 5: Commit.**
 
 ### Task 6: Write tools for Financeiro v2
@@ -200,16 +207,16 @@
 ### Task 7: Scopes and issuance (edge + CRM)
 
 **Files:**
-- Modify: `supabase/functions/_shared/mcp-token.ts` (`MCP_ALLOWED_SCOPES` + `export const OWNER_ONLY_SCOPES = ['financeiro:read','financeiro:write']`)
+- Modify: `supabase/functions/_shared/mcp-token.ts` (append the two scopes to `MCP_ALLOWED_SCOPES`; `OWNER_ONLY_SCOPES`/`ownerOnlyScopeViolation` already exist from Task 3)
 - Modify: `supabase/functions/mcp-keys/index.ts`, `supabase/functions/mcp-oauth-consent/index.ts`
 - Modify: `apps/crm/src/lib/mcp-scopes.ts`, `apps/crm/src/pages/oauth/ConsentPage.tsx`, `apps/crm/src/pages/configuracao/mcp/IntegracoesClaudePage.tsx`, `apps/crm/src/pages/configuracao/mcp/IntegracoesClaudePhone.tsx`
-- Modify: `CLAUDE.md` (the `mcp` bullet under Edge functions: financeiro scopes are owner-only; scope change = redeploy `mcp`, `mcp-keys`, `mcp-oauth-consent` + CRM)
+- Modify: `CLAUDE.md` (add an `mcp/` bullet under Edge functions, next to `mcp-admin/`: workspace MCP; `financeiro:*` scopes are owner-only, checked per call; scope change = redeploy `mcp`, `mcp-keys`, `mcp-oauth-consent` + CRM)
 - Test: `supabase/functions/__tests__/mcp-keys-authz_test.ts`, `mcp-oauth-consent-authz_test.ts` (extend); `apps/crm/src/lib/__tests__/mcp-scopes.test.ts`, `apps/crm/src/pages/oauth/__tests__/ConsentPage.test.tsx`, `apps/crm/src/pages/configuracao/mcp/__tests__/IntegracoesClaudePage.test.tsx` (extend)
 
 **Interfaces:**
-- CRM: `SCOPE_OPTIONS` gains `{ value: 'financeiro:read', label: 'Financeiro (leitura, só donos)', ownerOnly: true }` and `{ value: 'financeiro:write', label: 'Financeiro (escrita, só donos)', ownerOnly: true }`; other options get no `ownerOnly`. Not added to `AGENT_PRESET`. Pickers render owner-only options disabled with helper text `Somente o dono do workspace` when the user is not owner of the target workspace (ConsentPage: role from `eligible-workspaces` of the selected workspace; Integracoes pages: role from `useAuth`/membership as those pages already read it).
-- Edge: `mcp-keys` create → if scopes intersect `OWNER_ONLY_SCOPES` and the caller's role in `contaId` is not `owner` → 400 `{ error: 'owner_only_scope' }`. `mcp-oauth-consent` grant save (workspace target) → same check on the chosen `conta_id`.
-- [ ] **Step 1: Failing tests**: edge `admin creating key with financeiro:read → 400 owner_only_scope`, `owner → 200`; consent same; CRM `non-owner sees financeiro scopes disabled`, `owner can tick them`, `AGENT_PRESET has no financeiro scope`; `mcp-scopes mirror` test (existing) updated to the new list.
+- CRM: `SCOPE_OPTIONS` gains `{ value: 'financeiro:read', label: 'Financeiro (leitura, só donos)', ownerOnly: true }` and `{ value: 'financeiro:write', label: 'Financeiro (escrita, só donos)', ownerOnly: true }`; every other entry gets `ownerOnly: false` (the array is `as const`; `IntegracoesClaudePhone.tsx:46` derives `SCOPE_CHECK_OPTIONS` from it). Not added to `AGENT_PRESET`. Pickers render owner-only options disabled with helper text `Somente o dono do workspace` when the user is not owner of the target workspace: ConsentPage uses `w.role` of the selected workspace (already returned by `eligible-workspaces`, `mcp-oauth-consent/index.ts:94-105`); Integracoes pages use `workspaceRole` from `useAuth` (`AuthContext.tsx:158-167`), treating `null`/unresolved as not owner.
+- Edge: `mcp-keys` create → `ownerOnlyScopeViolation(scopes, await memberRole(svc, user.id, contaId))` → 400 `{ error: 'owner_only_scope' }`, before the insert. `mcp-oauth-consent` grant save (workspace target) → same on the chosen `conta_id`, before the upsert.
+- [ ] **Step 1: Failing tests**: edge handlers run `Deno.serve` at import, so (like the existing authz tests) test the pure helper `ownerOnlyScopeViolation` (admin/agent/null + financeiro scope → true; owner → false; no financeiro scope → false) and add source-regex assertions that both `index.ts` files call `ownerOnlyScopeViolation` before their insert/upsert; CRM `non-owner sees financeiro scopes disabled`, `owner can tick them`, `AGENT_PRESET has no financeiro scope`; `mcp-scopes mirror` test (existing) updated to the new list.
 - [ ] **Step 2–4.** Run the four `tsc` projects, `npm run lint`, prettier on touched files, the touched Vitest files and Deno files. **Step 5: Commit.**
 
 ### Task 8: Final gates
