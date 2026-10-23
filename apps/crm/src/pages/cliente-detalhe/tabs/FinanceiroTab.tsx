@@ -214,7 +214,9 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
       </StatCardGrid>
       {!entry && (
         <p className="mb-6 text-sm text-muted-foreground">
-          Este cliente não entra no período atual.
+          {versao?.status === 'encerrado'
+            ? 'Cliente encerrado neste período.'
+            : 'Este cliente não entra no período atual.'}
         </p>
       )}
       {entry && (

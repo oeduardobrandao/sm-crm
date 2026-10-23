@@ -159,6 +159,17 @@ describe('FinanceiroTab with Financeiro v2', () => {
     expect(screen.queryByText('Equipe neste cliente')).not.toBeInTheDocument();
   });
 
+  it('says the client is encerrado when its version in force is', async () => {
+    store.getClienteVersoes.mockResolvedValue([
+      versao({ id: 1, vale_desde: '2026-08-01' }),
+      versao({ id: 2, vale_desde: '2026-10-01', status: 'encerrado' }),
+    ]);
+    renderTab({ ...CLIENTE, id: 999 });
+
+    expect(await screen.findByText('Cliente encerrado neste período.')).toBeVisible();
+    expect(screen.queryByText('Este cliente não entra no período atual.')).not.toBeInTheDocument();
+  });
+
   it('marks a paused client with a badge and a dash margin', async () => {
     const r = structuredClone(planilha) as typeof planilha;
     const c = r.clientes.find((x) => x.cliente_id === 9)!;
