@@ -759,3 +759,251 @@ begin
   raise notice 'PASS 99.8 notification types, grants and realtime';
 end $$;
 rollback;
+
+-- Extra members for 99.9 to 99.11: F (follower), N (unfollowed), X (ex-member with a row).
+create or replace function pg_temp.pd_extra(s jsonb) returns jsonb language plpgsql as $$
+declare
+  v_ws_a uuid := s->>'ws_a';
+  v_f uuid := gen_random_uuid(); v_n uuid := gen_random_uuid(); v_x uuid := gen_random_uuid();
+begin
+  insert into auth.users (id) values (v_f), (v_n), (v_x);
+  insert into workspace_members (user_id, workspace_id, role) values
+    (v_f, v_ws_a, 'agent'), (v_n, v_ws_a, 'agent'), (v_x, v_ws_a, 'agent');
+  update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a where id in (v_f, v_n, v_x);
+  return s || jsonb_build_object('f', v_f, 'n', v_n, 'x', v_x);
+end $$;
+
+-- =====================================================================
+-- 99.9 post_discussion recipients and the mention deep link
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['post_discussao_participantes']);
+do $$
+declare
+  s jsonb := pg_temp.pd_extra(pg_temp.pd_seed());
+  v_ws_a uuid := s->>'ws_a'; v_wf bigint := s->>'wf';
+  v_u uuid := s->>'a'; v_m uuid := s->>'b2'; v_r uuid := s->>'resp';
+  v_f uuid := s->>'f'; v_n uuid := s->>'n'; v_x uuid := s->>'x';
+  v_p1 bigint := s->>'p1'; v_p2 bigint := s->>'p2';
+  v_m_b2 bigint := s->>'m_b2'; v_m_resp bigint := s->>'m_resp';
+  v_users uuid[]; v_link text; v_meta jsonb; v_n_rows int;
+begin
+  insert into post_discussao_participantes (post_id, conta_id, user_id, seguindo) values
+    (v_p1, v_ws_a, v_f, true), (v_p1, v_ws_a, v_n, false), (v_p1, v_ws_a, v_x, true);
+  delete from workspace_members where user_id = v_x and workspace_id = v_ws_a;
+
+  perform pg_temp.pd_as(v_u);
+  perform post_discussao_enviar(v_p1, 'olha isso @[Bia](membro:' || v_m_b2 || ')');
+  reset role;
+
+  select array_agg(user_id order by user_id) into v_users
+    from notifications where type = 'post_discussion' and metadata->>'post_id' = v_p1::text;
+  assert v_users = (select array_agg(u order by u) from unnest(array[v_f, v_r]) u),
+    format('post_discussion must reach F and R only, got %s', v_users);
+
+  select link, metadata into v_link, v_meta
+    from notifications where type = 'post_discussion' and user_id = v_f;
+  assert v_link = '/entregas?drawer=' || v_wf || '&post=' || v_p1 || '&discussao=1',
+    format('post_discussion link, got %s', v_link);
+  assert v_meta->>'post_id' = v_p1::text and v_meta->>'thread_field' = 'geral'
+     and (v_meta->>'count')::int = 1 and jsonb_array_length(v_meta->'authors') = 1
+     and v_meta->>'preview' = 'olha isso @Bia' and v_meta ? 'post_titulo' and v_meta ? 'author_name',
+    format('post_discussion metadata, got %s', v_meta);
+
+  select link into v_link from notifications where type = 'mention' and user_id = v_m;
+  assert v_link = '/entregas?drawer=' || v_wf || '&post=' || v_p1 || '&discussao=1',
+    format('mention link must open the discussion, got %s', v_link);
+
+  -- author and mentioned became participants (following)
+  select count(*) into v_n_rows from post_discussao_participantes
+   where post_id = v_p1 and user_id in (v_u, v_m) and seguindo;
+  assert v_n_rows = 2, format('author and mentioned must become followers, got %s', v_n_rows);
+
+  -- a responsável who also has a following row is notified exactly once
+  update workflow_posts set responsavel_id = v_m_resp where id = v_p2;
+  insert into post_discussao_participantes (post_id, conta_id, user_id, seguindo) values (v_p2, v_ws_a, v_r, true);
+  perform pg_temp.pd_as(v_u);
+  perform post_discussao_enviar(v_p2, 'oi');
+  reset role;
+  select count(*) into v_n_rows from notifications
+   where type = 'post_discussion' and user_id = v_r and metadata->>'post_id' = v_p2::text;
+  assert v_n_rows = 1, format('responsável with a row must get exactly one notification, got %s', v_n_rows);
+
+  raise notice 'PASS 99.9 post_discussion recipients and mention deep link';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 99.10 coalescing
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['post_discussao_participantes']);
+do $$
+declare
+  s jsonb := pg_temp.pd_extra(pg_temp.pd_seed());
+  v_ws_a uuid := s->>'ws_a';
+  v_u uuid := s->>'a'; v_o uuid := s->>'b2'; v_f uuid := s->>'f';
+  v_p1 bigint := s->>'p1'; v_m_resp bigint := s->>'m_resp';
+  v_meta jsonb; v_n int;
+begin
+  insert into post_discussao_participantes (post_id, conta_id, user_id, seguindo) values (v_p1, v_ws_a, v_f, true);
+
+  perform pg_temp.pd_as(v_u);
+  perform post_discussao_enviar(v_p1, 'primeira');
+  perform pg_temp.pd_as(v_o);
+  perform post_discussao_enviar(v_p1, 'segunda');
+  perform post_discussao_enviar(v_p1, 'terceira com @[Rui](membro:' || v_m_resp || ')');
+  reset role;
+
+  select count(*) into v_n from notifications
+   where type = 'post_discussion' and user_id = v_f and read_at is null and dismissed_at is null;
+  assert v_n = 1, format('F must have exactly one unread post_discussion, got %s', v_n);
+  select metadata into v_meta from notifications where type = 'post_discussion' and user_id = v_f;
+  assert v_meta->>'count' = '3', format('count must be 3, got %s', v_meta->>'count');
+  assert jsonb_array_length(v_meta->'authors') = 2, format('authors must be deduplicated (2), got %s', v_meta->'authors');
+  assert jsonb_array_length(v_meta->'authors') <= 3, 'authors must hold at most 3 names';
+  assert v_meta->>'author_name' = 'Bia', format('author_name must be the last author, got %s', v_meta->>'author_name');
+  assert position('@[' in v_meta->>'preview') = 0, format('preview must not carry raw tokens: %s', v_meta->>'preview');
+  assert v_meta->>'preview' = 'terceira com @Rui', format('preview must be the last message, got %s', v_meta->>'preview');
+
+  -- once read, the next message opens a new card
+  update notifications set read_at = now() where type = 'post_discussion' and user_id = v_f;
+  perform pg_temp.pd_as(v_u);
+  perform post_discussao_enviar(v_p1, 'quarta');
+  reset role;
+  select count(*) into v_n from notifications where type = 'post_discussion' and user_id = v_f;
+  assert v_n = 2, format('a read card must not absorb new messages, got %s rows', v_n);
+  select metadata into v_meta from notifications
+   where type = 'post_discussion' and user_id = v_f and read_at is null;
+  assert v_meta->>'count' = '1', format('the new card starts at count 1, got %s', v_meta->>'count');
+
+  raise notice 'PASS 99.10 post_discussion coalescing';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 99.11 edge cases
+-- =====================================================================
+begin;
+select et_grant_hosted_parity(array['post_discussao_participantes']);
+do $$
+declare
+  s jsonb := pg_temp.pd_extra(pg_temp.pd_seed());
+  v_ws_a uuid := s->>'ws_a'; v_cli bigint;
+  v_u uuid := s->>'a'; v_m uuid := s->>'b2'; v_r uuid := s->>'resp'; v_f uuid := s->>'f';
+  v_p1 bigint := s->>'p1'; v_p2 bigint := s->>'p2'; v_p3 bigint := s->>'p3'; v_pa bigint;
+  v_m_b2 bigint := s->>'m_b2'; v_m_resp bigint := s->>'m_resp';
+  v_geral bigint; v_t bigint; v_c post_comments; v_n int; v_link text;
+begin
+  select cliente_id into v_cli from workflow_posts where id = v_p1;
+  insert into workflow_posts (conta_id, cliente_id, status) values (v_ws_a, v_cli, 'rascunho') returning id into v_pa;
+  insert into post_discussao_participantes (post_id, conta_id, user_id, seguindo) values
+    (v_p1, v_ws_a, v_f, true), (v_p2, v_ws_a, v_f, true), (v_pa, v_ws_a, v_f, true);
+
+  -- (a) insert with no JWT (service role / data-import): no notification, no rows
+  perform set_config('request.jwt.claims', '', true);
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by, field)
+    values (v_p1, v_ws_a, '', v_u, 'geral') returning id into v_geral;
+  insert into post_comments (thread_id, author_id, content) values (v_geral, v_u, 'importado');
+  select count(*) into v_n from notifications where type = 'post_discussion';
+  assert v_n = 0, format('insert without auth.uid() must not notify, got %s', v_n);
+  select count(*) into v_n from post_discussao_participantes where user_id = v_u;
+  assert v_n = 0, 'insert without auth.uid() must not create participant rows';
+
+  -- (b) no responsável and no participants: enviar succeeds, nobody is notified
+  perform pg_temp.pd_as(v_u);
+  perform post_discussao_enviar(v_p3, 'sozinho');
+  reset role;
+  select count(*) into v_n from notifications where type = 'post_discussion' and metadata->>'post_id' = v_p3::text;
+  assert v_n = 0, format('lonely post must notify nobody, got %s', v_n);
+
+  -- (c) legacy path: first message of a new anchored thread by direct inserts, with @M
+  perform pg_temp.pd_as(v_u);
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p2, v_ws_a, 'trecho', v_u) returning id into v_t;
+  insert into post_comments (thread_id, author_id, content)
+    values (v_t, v_u, 'veja @[Bia](membro:' || v_m_b2 || ')');
+  reset role;
+  select count(*) into v_n from notifications
+   where type = 'post_discussion' and metadata->>'post_id' = v_p2::text and user_id in (v_f, v_m);
+  assert v_n = 2, format('legacy path must notify F and not exclude M, got %s', v_n);
+  select count(*) into v_n from notifications
+   where type = 'post_discussion' and metadata->>'post_id' = v_p2::text
+     and metadata->>'thread_field' = 'conteudo' and metadata->>'quoted_text' = 'trecho';
+  assert v_n = 2, 'anchored-thread notice must carry thread_field and quoted_text';
+
+  -- (d) an edit that adds @Y creates Y's participant row and no post_discussion
+  select * into v_c from post_comments pc
+   where pc.thread_id = (select id from post_comment_threads where post_id = v_p3 and field = 'geral');
+  select count(*) into v_n from notifications where type = 'post_discussion';
+  perform pg_temp.pd_as(v_u);
+  update post_comments set content = v_c.content || ' @[Rui](membro:' || v_m_resp || ')' where id = v_c.id;
+  reset role;
+  assert exists (select 1 from post_discussao_participantes where post_id = v_p3 and user_id = v_r and seguindo),
+    'an edit adding a mention must create the participant row';
+  assert (select count(*) from notifications where type = 'post_discussion') = v_n,
+    'an edit must not create post_discussion notifications';
+
+  -- (e) avulso post: links without drawer
+  perform pg_temp.pd_as(v_u);
+  perform post_discussao_enviar(v_pa, 'avulso @[Bia](membro:' || v_m_b2 || ')');
+  reset role;
+  select link into v_link from notifications
+   where type = 'post_discussion' and user_id = v_f and metadata->>'post_id' = v_pa::text;
+  assert v_link = '/entregas?post=' || v_pa || '&discussao=1', format('avulso post_discussion link, got %s', v_link);
+  select link into v_link from notifications
+   where type = 'mention' and user_id = v_m and link like '%post=' || v_pa || '&%';
+  assert v_link = '/entregas?post=' || v_pa || '&discussao=1', format('avulso mention link, got %s', v_link);
+
+  raise notice 'PASS 99.11 post_discussion edge cases';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 99.12 backfill of participants from existing threads
+-- =====================================================================
+begin;
+do $$
+declare
+  s jsonb := pg_temp.pd_seed();
+  v_ws_a uuid := s->>'ws_a';
+  v_a uuid := s->>'a'; v_b2 uuid := s->>'b2'; v_resp uuid := s->>'resp';
+  v_p1 bigint := s->>'p1';
+  v_ghost uuid := gen_random_uuid(); v_cli_g bigint; v_pg bigint; v_tg bigint;
+  v_act bigint; v_res bigint; v_max bigint; v_n int; v_ret int;
+begin
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_p1, v_ws_a, 'ativo', v_a) returning id into v_act;
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by, status)
+    values (v_p1, v_ws_a, 'resolvido', v_a, 'resolved') returning id into v_res;
+  insert into post_comments (thread_id, author_id, content) values (v_act, v_a, '1'), (v_act, v_b2, '2');
+  insert into post_comments (thread_id, author_id, content) values (v_res, v_resp, '3');
+  select max(pc.id) into v_max from post_comments pc
+    join post_comment_threads t on t.id = pc.thread_id where t.post_id = v_p1;
+
+  -- orphan post: conta_id with no workspaces row (triggers off only for this seed)
+  set local session_replication_role = replica;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_a, v_ghost, 'G', 'G', '#000') returning id into v_cli_g;
+  insert into workflow_posts (conta_id, cliente_id, status) values (v_ghost, v_cli_g, 'rascunho') returning id into v_pg;
+  insert into post_comment_threads (post_id, conta_id, quoted_text, created_by)
+    values (v_pg, v_ghost, 'fantasma', v_a) returning id into v_tg;
+  insert into post_comments (thread_id, author_id, content) values (v_tg, v_a, 'g');
+  set local session_replication_role = origin;
+
+  delete from post_discussao_participantes;
+  v_ret := post_discussao_backfill_participantes();
+
+  select count(*) into v_n from post_discussao_participantes where post_id = v_p1;
+  assert v_n = 2, format('only the active thread authors get rows, got %s', v_n);
+  assert v_ret = 2, format('backfill must return the rows written, got %s', v_ret);
+  assert not exists (select 1 from post_discussao_participantes where user_id = v_resp),
+    'resolved-thread authors must not get rows';
+  assert (select bool_and(seguindo and last_seen_comment_id = v_max and conta_id = v_ws_a)
+            from post_discussao_participantes where post_id = v_p1),
+    'backfilled rows follow, carry the post conta and start at the post max comment id';
+  assert not exists (select 1 from post_discussao_participantes where post_id = v_pg),
+    'orphan post must be skipped';
+
+  raise notice 'PASS 99.12 participant backfill';
+end $$;
+rollback;
