@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Expand } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { History, Loader2 } from 'lucide-react';
+import { Eye, History, Loader2 } from 'lucide-react';
 import {
   type WorkflowPost,
   type PostApproval,
@@ -16,10 +16,15 @@ import {
   type CaptionAnchorPatch,
   type CommentAnchor,
 } from '../../../store';
-import { PostEditor } from './PostEditor';
+// By path, not through the store barrel: the drawer test harnesses mock '@/store'.
+import { isGeralThread } from '@/store/comments';
+import { PostEditor, type PostEditorHandle } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import { PostProductionSection } from './PostProductionSection';
-import PostCommentSummary from './PostCommentSummary';
+import { DiscussaoEquipe } from '../discussao/DiscussaoEquipe';
+import { DiscutirNoChat } from '../discussao/DiscutirNoChat';
+import { useDiscussao } from '../discussao/useDiscussao';
+import { Badge } from '@/components/ui/badge';
 import { PostMediaGallery } from './PostMediaGallery';
 import { PostClientReferences } from './references/PostClientReferences';
 import { ReferenceViewerDialog } from './references/ReferenceViewerDialog';
@@ -197,6 +202,15 @@ export interface PostEditorBodyProps {
   layout?: 'desktop' | 'phone';
   /** Header, host menu actions and host-level commands for the phone layout. */
   phone?: PhoneEditorChrome;
+  /**
+   * `&discussao=1` deep link, set only for the post the link names. Desktop: scroll to the
+   * team discussion and focus its composer. Phone: open Comentários on Equipe, without
+   * focusing (no keyboard). A counter: acts on mount and whenever it changes to a new
+   * non-zero value (a link to the already-open post), so no remount is needed;
+   * `onDiscussaoFocused` then tells the host it was applied.
+   */
+  focusRequest?: number;
+  onDiscussaoFocused?: () => void;
 }
 
 export function PostEditorBody({
@@ -241,6 +255,8 @@ export function PostEditorBody({
   onProcessAvancar,
   layout = 'desktop',
   phone,
+  focusRequest,
+  onDiscussaoFocused,
 }: PostEditorBodyProps) {
   const isPhone = layout === 'phone' && phone != null;
   // Per-row scheduled-day dots for this post's date picker: same client-wide post list for
@@ -253,6 +269,20 @@ export function PostEditorBody({
 
   const { features } = useWorkspaceLimits();
   const statusRegistry = useStatusRegistry();
+  // Once per post row, shared by the desktop section and the phone tab. Every row mounts
+  // this component, so it only subscribes and fetches while the post is expanded.
+  // Hosts already pass this post's threads; filter anyway, since a foreign comment id would
+  // make post_discussao_marcar_lido raise and widen the realtime filter.
+  const postThreads = useMemo(
+    () => commentThreads.filter((t) => t.post_id === post.id),
+    [commentThreads, post.id],
+  );
+  const discussao = useDiscussao({
+    postId: post.id ?? 0,
+    threads: postThreads,
+    currentUserId: currentUserId ?? '',
+    enabled: isExpanded && post.id != null && !!currentUserId,
+  });
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   // Plataformas por fluxo (P2), dark atrás de feature_multiplatform. Desligada ou
@@ -299,6 +329,8 @@ export function PostEditorBody({
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
   const captionRef = useRef<InstagramCaptionFieldHandle>(null);
+  // The Roteiro editor (phone or desktop, never both): "Ver no texto" on a passage thread.
+  const contentEditorRef = useRef<PostEditorHandle>(null);
   // Campo de colaboradores: "Editar colaboradores" (bloco de erro) foca o input; sem input
   // (travado ou com 3 chips) rola até o campo.
   const collaboratorsInputRef = useRef<HTMLInputElement>(null);
@@ -470,7 +502,19 @@ export function PostEditorBody({
   }, [editSuggestion?.suggested_conteudo]);
 
   // ── Phone layout state (hooks run on every layout; only the phone branch reads them) ──
-  const [phoneTab, setPhoneTab] = useState<PhoneEditorTab>('conteudo');
+  const [phoneTab, setPhoneTab] = useState<PhoneEditorTab>(
+    isPhone && focusRequest ? 'comentarios' : 'conteudo',
+  );
+  // The phone has nothing to scroll or focus: the Comentários tab (and the Equipe pill in
+  // PhoneComments) is the whole deep link, so it is handled as soon as it is applied. The
+  // initial tab above covers the mount; this covers a new link while the editor is open.
+  const onDiscussaoFocusedRef = useRef(onDiscussaoFocused);
+  onDiscussaoFocusedRef.current = onDiscussaoFocused;
+  useEffect(() => {
+    if (!isPhone || !focusRequest) return;
+    setPhoneTab('comentarios');
+    onDiscussaoFocusedRef.current?.();
+  }, [isPhone, focusRequest]);
   // The conversation's anchor chips ask the media gallery to open that item. A nonce makes
   // a second click on the same chip open it again after the lightbox was closed.
   const [mediaFocus, setMediaFocus] = useState<{ linkId: number; nonce: number } | null>(null);
@@ -680,12 +724,13 @@ export function PostEditorBody({
   // ── Phone layout (below 768px): same pieces, four tabs, its own screen ──────────
   if (isPhone && phone) {
     const statusOption = statusRegistry.resolve(post);
-    const activeThreads = commentThreads.filter((t) => t.status === 'active');
+    // The general thread never counts as a passage comment; its unread messages feed the tab.
+    const activeThreads = commentThreads.filter((t) => t.status === 'active' && !isGeralThread(t));
     const captionThreadCount = activeThreads.filter((t) => t.field === 'ig_caption').length;
     const openClientNotes = (conversationNotes?.notes ?? EMPTY_MEDIA_NOTES).filter(
       (n) => n.visibility === 'client' && n.status === 'open',
     ).length;
-    const commentCount = approvals.length + activeThreads.length + openClientNotes;
+    const commentCount = discussao.naoLidas + approvals.length + openClientNotes;
     const paragraphs = (post.conteudo_plain ?? '').split(/\n+/).filter((l) => l.trim()).length;
     const roteiroSummary = editSuggestion
       ? 'Sugestão pendente'
@@ -717,6 +762,16 @@ export function PostEditorBody({
 
     const openThreadFromList = (threadId: number) => {
       const thread = commentThreads.find((t) => t.id === threadId);
+      if (thread?.field === 'conteudo') {
+        setPhoneTab('conteudo');
+        // The Roteiro editor lives in its full-screen text screen (mounted, hidden while
+        // closed); open it, then focus once it is laid out. A pending edit suggestion
+        // replaces the editor, so there is nothing to focus then.
+        if (editSuggestion) return;
+        setRoteiroOpen(true);
+        requestAnimationFrame(() => contentEditorRef.current?.focusThread(threadId));
+        return;
+      }
       if (thread?.field !== 'ig_caption') return;
       if (multiplatform && !currentPlatforms.includes('instagram')) {
         toast.info('Ative o Instagram em Destinos para ver este comentário.');
@@ -759,6 +814,7 @@ export function PostEditorBody({
       </div>
     ) : (
       <PostEditor
+        ref={contentEditorRef}
         key={editorKey}
         variant="phone"
         initialContent={resolvedContent}
@@ -1154,6 +1210,17 @@ export function PostEditorBody({
 
     const comentariosPane = (
       <PhoneComments
+        postId={post.id ?? 0}
+        currentUserId={currentUserId ?? ''}
+        discussao={discussao}
+        chatBridge={
+          post.id != null ? (
+            <DiscutirNoChat
+              variant="sheet"
+              post={{ id: post.id, titulo: post.titulo, workflowId: post.workflow_id ?? null }}
+            />
+          ) : null
+        }
         approvals={approvals}
         notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
         media={postMedia ?? []}
@@ -1167,7 +1234,7 @@ export function PostEditorBody({
         sendingReply={sendingReply}
         onReplyChange={onReplyChange}
         onReplySend={onReplySend}
-        threads={commentThreads}
+        threads={postThreads}
         membros={membros}
         workspaceUsers={workspaceUsers}
         onThreadClick={openThreadFromList}
@@ -1177,6 +1244,7 @@ export function PostEditorBody({
             : null
         }
         active={phoneTab === 'comentarios'}
+        focusRequest={focusRequest}
       />
     );
 
@@ -1548,6 +1616,7 @@ export function PostEditorBody({
         </div>
       ) : (
         <PostEditor
+          ref={contentEditorRef}
           key={editorKey}
           initialContent={resolvedContent}
           onUpdate={(json, plain) => onContentUpdate(stripSignedUrls(json), plain)}
@@ -1658,27 +1727,43 @@ export function PostEditorBody({
         hasInstagramAccount={hasInstagramAccount}
       />
 
-      <PostCommentSummary
-        threads={commentThreads}
-        membros={membros}
-        workspaceUsers={workspaceUsers}
-        onThreadClick={(threadId) => {
-          const thread = commentThreads.find((t) => t.id === threadId);
-          if (thread?.field !== 'ig_caption') return;
-          if (multiplatform) {
-            if (!currentPlatforms.includes('instagram')) {
-              toast.info('Ative o Instagram em Destinos para ver este comentário.');
+      {currentUserId && post.id != null && (
+        <DiscussaoEquipe
+          discussao={discussao}
+          threads={postThreads}
+          membros={membros}
+          workspaceUsers={workspaceUsers}
+          currentUserId={currentUserId}
+          focusRequest={focusRequest}
+          onFocusHandled={onDiscussaoFocused}
+          chatBridge={
+            <DiscutirNoChat
+              variant="popover"
+              post={{ id: post.id, titulo: post.titulo, workflowId: post.workflow_id ?? null }}
+            />
+          }
+          onThreadClick={(threadId) => {
+            const thread = commentThreads.find((t) => t.id === threadId);
+            if (thread?.field === 'conteudo') {
+              contentEditorRef.current?.focusThread(threadId);
               return;
             }
-            setCaptionTab('instagram');
-            // A aba do Instagram pode estar escondida (forceMount + hidden) e o popover
-            // se posiciona pelos retângulos do texto: foca depois de revelar a aba.
-            requestAnimationFrame(() => captionRef.current?.focusThread(threadId));
-            return;
-          }
-          captionRef.current?.focusThread(threadId);
-        }}
-      />
+            if (thread?.field !== 'ig_caption') return;
+            if (multiplatform) {
+              if (!currentPlatforms.includes('instagram')) {
+                toast.info('Ative o Instagram em Destinos para ver este comentário.');
+                return;
+              }
+              setCaptionTab('instagram');
+              // A aba do Instagram pode estar escondida (forceMount + hidden) e o popover
+              // se posiciona pelos retângulos do texto: foca depois de revelar a aba.
+              requestAnimationFrame(() => captionRef.current?.focusThread(threadId));
+              return;
+            }
+            captionRef.current?.focusThread(threadId);
+          }}
+        />
+      )}
 
       <ClientConversation
         approvals={approvals}
@@ -1694,6 +1779,18 @@ export function PostEditorBody({
         onNoteReply={conversationNotes?.onReply ?? noopAsync}
         onNoteStatus={conversationNotes?.onStatus ?? noopAsync}
         onSelectMedia={conversationNotes?.onSelectMedia}
+        headerId={`cliente-conversa-${post.id}`}
+        header={
+          <div className="drawer-client-thread-header">
+            <Eye className="drawer-client-thread-icon h-3.5 w-3.5" aria-hidden="true" />
+            <h3 id={`cliente-conversa-${post.id}`} className="drawer-client-thread-title">
+              Conversa com o cliente
+            </h3>
+            <Badge variant="info" size="sm">
+              O cliente vê
+            </Badge>
+          </div>
+        }
         renderApproval={(a) => (
           <PostApprovalBubble
             approval={a}

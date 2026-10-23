@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useImperativeHandle, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -132,7 +132,26 @@ export const HIGHLIGHT_COLORS = [
   { name: 'Rosa', color: 'pink', cssColor: '#F4DFEB' },
 ] as const;
 
+/** Where a passage thread's popover opens: under the passage, or above it near the bottom. */
+function threadPopoverPosition(rect: DOMRect): { top: number; left: number } {
+  const popoverW = 320;
+  const popoverH = 400;
+  const left = Math.min(rect.left, window.innerWidth - popoverW - 16);
+  const top =
+    rect.bottom + 6 + popoverH > window.innerHeight
+      ? Math.max(8, rect.top - popoverH - 6)
+      : rect.bottom + 6;
+  return { top, left };
+}
+
+export interface PostEditorHandle {
+  /** Opens a passage thread from outside the text (the discussion's "Ver no texto"): selects
+   *  the commented passage, scrolls it into view and opens its popover. */
+  focusThread(threadId: number): void;
+}
+
 interface PostEditorProps {
+  ref?: Ref<PostEditorHandle>;
   initialContent: Record<string, unknown> | null;
   onUpdate: (json: Record<string, unknown>, plain: string) => void;
   disabled?: boolean;
@@ -158,6 +177,7 @@ interface PostEditorProps {
 }
 
 export function PostEditor({
+  ref,
   initialContent,
   onUpdate,
   disabled,
@@ -417,15 +437,7 @@ export function PostEditor({
       if (commentSpan) {
         const threadId = Number(commentSpan.getAttribute('data-thread-id'));
         if (threadId) {
-          const rect = commentSpan.getBoundingClientRect();
-          const popoverW = 320;
-          const popoverH = 400;
-          const left = Math.min(rect.left, window.innerWidth - popoverW - 16);
-          const top =
-            rect.bottom + 6 + popoverH > window.innerHeight
-              ? Math.max(8, rect.top - popoverH - 6)
-              : rect.bottom + 6;
-          setThreadPopoverPos({ top, left });
+          setThreadPopoverPos(threadPopoverPosition(commentSpan.getBoundingClientRect()));
           setActiveThreadId(threadId);
           setCommentAddOpen(false);
         }
@@ -434,6 +446,40 @@ export function PostEditor({
     editorDom.addEventListener('click', handleEditorClick);
     return () => editorDom.removeEventListener('click', handleEditorClick);
   }, [editor, navigate]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusThread(threadId: number) {
+        if (!editor || editor.isDestroyed) return;
+        let from = -1;
+        editor.state.doc.descendants((node, pos) => {
+          const marked = node.marks.some(
+            (m) => m.type.name === 'commentHighlight' && Number(m.attrs.threadId) === threadId,
+          );
+          if (!marked) return;
+          if (from < 0) from = pos;
+        });
+        if (from >= 0) {
+          // A caret at the passage start, without focusing the editor: a focused range
+          // selection would show the formatting bubble and the next keystroke would
+          // replace the commented text. On the phone, focus would also open the keyboard.
+          editor.chain().setTextSelection(from).run();
+        }
+        // An orphaned thread (its passage was deleted) still opens, anchored to the editor.
+        const target =
+          editor.view.dom.querySelector<HTMLElement>(
+            `span.comment-highlight[data-thread-id="${threadId}"]`,
+          ) ?? editor.view.dom;
+        // Instant, not smooth: the popover is fixed and placed from this one rect.
+        target.scrollIntoView?.({ block: 'center' });
+        setThreadPopoverPos(threadPopoverPosition(target.getBoundingClientRect()));
+        setActiveThreadId(threadId);
+        setCommentAddOpen(false);
+      },
+    }),
+    [editor],
+  );
 
   const handleResolveThread = useCallback(
     async (threadId: number) => {

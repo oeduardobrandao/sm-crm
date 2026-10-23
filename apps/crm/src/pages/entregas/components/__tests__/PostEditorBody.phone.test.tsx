@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -37,6 +37,10 @@ vi.mock('@/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store')>()),
   getPostTargets: vi.fn(async () => []),
   getBoardPlatforms: vi.fn(async () => []),
+  // MentionEditor (the Equipe composer of the Comentários tab) loads these for @-search.
+  getMembros: vi.fn(async () => []),
+  getClientes: vi.fn(async () => []),
+  getTarefas: vi.fn(async () => []),
 }));
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
 vi.mock('@/services/inlineImage', () => ({
@@ -46,13 +50,51 @@ vi.mock('@/services/inlineImage', () => ({
   stripSignedUrls: vi.fn((c: unknown) => c),
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
-vi.mock('@/pages/entregas/components/PostEditor', () => ({
-  PostEditor: ({ variant }: { variant?: string }) => (
-    <div data-testid="post-editor-stub" data-variant={variant} />
+const editorMock = vi.hoisted(() => ({ focusThread: vi.fn() }));
+vi.mock('@/pages/entregas/components/PostEditor', async () => {
+  const { useImperativeHandle } = await import('react');
+  return {
+    PostEditor: function PostEditorStub({
+      variant,
+      ref,
+    }: {
+      variant?: string;
+      ref?: import('react').Ref<{ focusThread(id: number): void }>;
+    }) {
+      useImperativeHandle(ref, () => ({ focusThread: editorMock.focusThread }));
+      return <div data-testid="post-editor-stub" data-variant={variant} />;
+    },
+  };
+});
+vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
+// Only the desktop section is stubbed: the phone tab renders the real DiscussaoTimeline.
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/pages/entregas/discussao/DiscussaoEquipe')>()),
+  DiscussaoEquipe: () => null,
+}));
+vi.mock('@/pages/entregas/discussao/DiscutirNoChat', () => ({
+  DiscutirNoChat: ({ variant, post }: { variant: string; post: unknown }) => (
+    <button type="button" data-testid="bridge-stub" data-variant={variant}>
+      {JSON.stringify(post)}
+    </button>
   ),
 }));
-vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
-vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({ default: () => null }));
+const discussaoMock = vi.hoisted(() => ({ naoLidas: 0 }));
+beforeEach(() => {
+  discussaoMock.naoLidas = 0;
+});
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: () => ({
+    participacao: { seguindo: true, lastSeenCommentId: 0, implicito: false },
+    isParticipant: true,
+    naoLidas: discussaoMock.naoLidas,
+    unreadAnchorId: null,
+    send: vi.fn(async () => {}),
+    sending: false,
+    toggleSeguir: vi.fn(async () => {}),
+    sectionRef: vi.fn(),
+  }),
+}));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: ({ variant }: { variant?: string }) => (
     <div data-testid="media-stub" data-variant={variant} />
@@ -106,7 +148,7 @@ import { toast } from 'sonner';
 import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
 import { TIPO_LABELS } from '../../postLabels';
 import type { PhoneEditorChrome } from '../postEditorPhone/types';
-import type { WorkflowPost } from '@/store';
+import type { CommentThreadWithComments, WorkflowPost } from '@/store';
 
 const basePost = {
   id: 42,
@@ -183,14 +225,17 @@ function renderPhone(
     phone,
     ...over,
   };
-  const utils = render(
+  const tree = (extra: Partial<PostEditorBodyProps>) => (
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <PostEditorBody {...props} />
+        <PostEditorBody {...props} {...extra} />
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { ...utils, props, phone };
+  const utils = render(tree({}));
+  /** Re-renders the SAME editor instance with other props (no remount). */
+  const rerenderWith = (extra: Partial<PostEditorBodyProps>) => utils.rerender(tree(extra));
+  return { ...utils, props, phone, rerenderWith };
 }
 
 describe('PostEditorBody, phone layout', () => {
@@ -306,14 +351,226 @@ describe('PostEditorBody, phone layout', () => {
       expect(screen.getByRole('button', { name: /Tentar novamente/ })).toBeInTheDocument();
     });
 
-    it('Comentários tab hides the bar and shows the two threads', async () => {
+    it('discussao=1 deep link opens Comentários on Equipe, reports once, and never focuses', () => {
+      const onDiscussaoFocused = vi.fn();
+      renderPhone({
+        post: { ...basePost, status: 'falha_publicacao' },
+        approvals: [
+          {
+            id: 1,
+            post_id: 42,
+            token: 't',
+            action: 'mensagem',
+            comentario: 'Oi',
+            is_workspace_user: false,
+            created_at: new Date(2026, 9, 21, 10, 0).toISOString(),
+          },
+        ] as never,
+        focusRequest: 1,
+        onDiscussaoFocused,
+      });
+      expect(screen.getByRole('tab', { name: /Comentários/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      // The newest message is the client's, which would open Cliente without the link.
+      expect(screen.getByRole('button', { name: /^Equipe/ })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.getByRole('textbox', { name: 'Mensagem para a equipe' })).toBeVisible();
+      expect(screen.getByRole('textbox', { name: 'Mensagem para a equipe' })).not.toHaveFocus();
+      expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+    });
+
+    it('a new discussao=1 request while the editor is open switches to Comentários', async () => {
+      const user = userEvent.setup();
+      const onDiscussaoFocused = vi.fn();
+      const { rerenderWith } = renderPhone({
+        post: { ...basePost, status: 'falha_publicacao' },
+        onDiscussaoFocused,
+      });
+      expect(screen.getByRole('tab', { name: 'Conteúdo' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await user.click(screen.getByRole('tab', { name: 'Detalhes' }));
+
+      rerenderWith({ focusRequest: 2 });
+
+      expect(screen.getByRole('tab', { name: /Comentários/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+    });
+
+    it('Comentários tab hides the bar and splits into Equipe and Cliente', async () => {
       const user = userEvent.setup();
       renderPhone({ post: { ...basePost, status: 'falha_publicacao' } });
       await user.click(screen.getByRole('tab', { name: /Comentários/ }));
       expect(screen.queryByRole('button', { name: /Tentar novamente/ })).toBeNull();
-      expect(screen.getByRole('radio', { name: /Com o cliente/ })).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('radio', { name: /Equipe/ }));
-      expect(screen.getByText(/Nenhum comentário interno/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Equipe/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Cliente' })).toBeInTheDocument();
+      // Nothing unread and no client message: opens on the team discussion.
+      expect(screen.getByRole('textbox', { name: 'Mensagem para a equipe' })).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Cliente' }));
+      expect(screen.getByText(/Nenhuma mensagem com o cliente/)).toBeVisible();
+      expect(screen.getByPlaceholderText('Responder ao cliente…')).toBeVisible();
+      expect(
+        screen.getByRole('textbox', { name: 'Mensagem para a equipe', hidden: true }),
+      ).not.toBeVisible();
+    });
+
+    describe('Discutir no chat bridge', () => {
+      async function openComentarios() {
+        const user = userEvent.setup();
+        await user.click(screen.getByRole('tab', { name: /Comentários/ }));
+      }
+
+      it('shows the sheet variant with the post when the plan has the team chat', async () => {
+        limitsMock.features = { feature_team_chat: true };
+        renderPhone();
+        await openComentarios();
+        const bridge = screen.getByTestId('bridge-stub');
+        expect(bridge).toHaveAttribute('data-variant', 'sheet');
+        expect(JSON.parse(bridge.textContent ?? '')).toEqual({
+          id: 42,
+          titulo: 'Lançamento outubro',
+          workflowId: 10,
+        });
+      });
+
+      it('sends a null workflowId for a standalone post', async () => {
+        limitsMock.features = { feature_team_chat: true };
+        renderPhone({ post: { ...basePost, workflow_id: null } });
+        await openComentarios();
+        expect(JSON.parse(screen.getByTestId('bridge-stub').textContent ?? '')).toMatchObject({
+          workflowId: null,
+        });
+      });
+
+      it('is absent without the team chat feature', async () => {
+        limitsMock.features = { feature_team_chat: false };
+        renderPhone();
+        await openComentarios();
+        expect(screen.queryByTestId('bridge-stub')).toBeNull();
+      });
+
+      it('is absent for an unsaved post (no id)', async () => {
+        limitsMock.features = { feature_team_chat: true };
+        renderPhone({ post: { ...basePost, id: undefined } });
+        await openComentarios();
+        expect(screen.queryByTestId('bridge-stub')).toBeNull();
+      });
+    });
+
+    it('Comentários tab count is the unread team messages plus the client messages', () => {
+      discussaoMock.naoLidas = 3;
+      renderPhone({
+        approvals: [
+          {
+            id: 1,
+            post_id: 42,
+            token: 't',
+            action: 'mensagem',
+            comentario: 'Oi',
+            is_workspace_user: false,
+            created_at: '2026-10-21T10:00:00Z',
+          },
+          {
+            id: 2,
+            post_id: 42,
+            token: 't',
+            action: 'mensagem',
+            comentario: 'Olá',
+            is_workspace_user: true,
+            created_at: '2026-10-21T11:00:00Z',
+          },
+        ],
+      });
+      expect(screen.getByRole('tab', { name: 'Comentários, 5' })).toBeInTheDocument();
+    });
+
+    it('Ver no texto on a Roteiro thread opens Conteúdo and the Roteiro screen, then focuses it', async () => {
+      const passage = {
+        id: 5,
+        post_id: 42,
+        conta_id: 'ws-1',
+        quoted_text: 'trecho do roteiro',
+        status: 'active',
+        created_by: 'user-1',
+        resolved_by: null,
+        created_at: '2026-10-21T10:00:00Z',
+        resolved_at: null,
+        field: 'conteudo',
+        anchor_start: null,
+        anchor_end: null,
+        orphaned: false,
+        post_comments: [
+          {
+            id: 50,
+            thread_id: 5,
+            author_id: 'user-1',
+            content: 'Ajustar',
+            created_at: '2026-10-21T10:00:00Z',
+            updated_at: null,
+          },
+        ],
+      } as unknown as CommentThreadWithComments;
+      const user = userEvent.setup();
+      renderPhone({ commentThreads: [passage] });
+      await user.click(screen.getByRole('tab', { name: /Comentários/ }));
+      await user.click(screen.getByRole('button', { name: /Ver no texto/ }));
+
+      expect(screen.getByRole('tab', { name: 'Conteúdo' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByRole('group', { name: 'Roteiro e briefing' })).toBeInTheDocument();
+      await waitFor(() => expect(editorMock.focusThread).toHaveBeenCalledWith(5));
+    });
+
+    it('the general thread does not count as a passage comment or as a tab total', () => {
+      const geral = {
+        id: 1,
+        post_id: 42,
+        conta_id: 'ws-1',
+        quoted_text: '',
+        status: 'active',
+        created_by: 'user-1',
+        resolved_by: null,
+        created_at: '2026-10-21T10:00:00Z',
+        resolved_at: null,
+        field: 'geral',
+        anchor_start: null,
+        anchor_end: null,
+        orphaned: false,
+        post_comments: [
+          {
+            id: 9,
+            thread_id: 1,
+            author_id: 'user-2',
+            content: 'Oi equipe',
+            created_at: '2026-10-21T10:00:00Z',
+            updated_at: null,
+          },
+        ],
+      } as unknown as CommentThreadWithComments;
+      const passage = {
+        ...geral,
+        id: 2,
+        field: 'ig_caption',
+        quoted_text: 'trecho',
+        post_comments: [],
+      } as unknown as CommentThreadWithComments;
+      renderPhone({ commentThreads: [geral] });
+      expect(screen.queryByText(/comentário(s)? no texto/)).toBeNull();
+      expect(screen.getByRole('tab', { name: 'Comentários' })).toBeInTheDocument();
+      cleanup();
+      renderPhone({ commentThreads: [geral, passage] });
+      expect(screen.getByText('1 comentário no texto')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Comentários' })).toBeInTheDocument();
     });
   });
 });

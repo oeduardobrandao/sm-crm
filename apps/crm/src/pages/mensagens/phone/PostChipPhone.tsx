@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowUpRight, FileText, Reply } from 'lucide-react';
+import { ArrowUpRight, FileText, MessageSquare, Reply } from 'lucide-react';
 import { ContextMenu, type ContextMenuAction } from '@/components/mobile/ContextMenu';
-import { PostPreviewBody, postChipHref, usePostPreview } from '../components/PostChip';
+import {
+  PostPreviewBody,
+  postChipHref,
+  postDiscussaoHref,
+  usePostPreview,
+} from '../components/PostChip';
 
 interface Props {
   postId: number;
@@ -10,6 +15,8 @@ interface Props {
   titulo: string | null;
   /** Bubbles only (the desktop "Responder" link): sets the composer's reply target. */
   onReply?: () => void;
+  /** Team-chat blocks: the menu gains "Abrir na discussão do post" and the preview the count. */
+  comDiscussao?: boolean;
 }
 
 /**
@@ -18,10 +25,16 @@ interface Props {
  * "Abrir post" / "Responder sobre este post". Preview data loads only while the menu
  * is open, like the desktop card.
  */
-export function PostChipPhone({ postId, workflowId, titulo, onReply }: Props) {
+export function PostChipPhone({
+  postId,
+  workflowId,
+  titulo,
+  onReply,
+  comDiscussao = false,
+}: Props) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const preview = usePostPreview(postId, open);
+  const preview = usePostPreview(postId, open, comDiscussao);
   const href = postChipHref(postId, workflowId);
 
   const actions: ContextMenuAction[] = [
@@ -31,6 +44,14 @@ export function PostChipPhone({ postId, workflowId, titulo, onReply }: Props) {
       onSelect: () => navigate(href),
     },
   ];
+  if (comDiscussao) {
+    const discussaoHref = postDiscussaoHref(postId, workflowId);
+    actions.push({
+      label: 'Abrir na discussão do post',
+      icon: <MessageSquare aria-hidden="true" />,
+      onSelect: () => navigate(discussaoHref),
+    });
+  }
   if (onReply) {
     actions.push({
       label: 'Responder sobre este post',

@@ -89,6 +89,7 @@ import { useWorkflowStageCommands } from '../hooks/useWorkflowStageCommands';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { PhoneKanbanBoard } from '../phone/PhoneKanbanBoard';
+import { usePostDiscussaoNaoLidas } from '../discussao/usePostDiscussaoNaoLidas';
 
 interface KanbanViewBaseProps {
   /** Persistencia das prefs de ordenacao por coluna; opcional para os testes. */
@@ -341,6 +342,7 @@ function SortableCard({
   onDeleteClick,
   onDuplicateClick,
   postsCount,
+  discussaoNaoLidas,
   approvedPostsCount,
   clearedClienteCount,
   revisaoInternaCount,
@@ -357,6 +359,7 @@ function SortableCard({
   onDeleteClick?: () => void;
   onDuplicateClick?: () => void;
   postsCount: number;
+  discussaoNaoLidas?: number;
   approvedPostsCount: number;
   clearedClienteCount: number;
   revisaoInternaCount: number;
@@ -386,6 +389,7 @@ function SortableCard({
         onDeleteClick={onDeleteClick}
         onDuplicateClick={onDuplicateClick}
         postsCount={postsCount}
+        discussaoNaoLidas={discussaoNaoLidas}
         approvedPostsCount={approvedPostsCount}
         clearedClienteCount={clearedClienteCount}
         revisaoInternaCount={revisaoInternaCount}
@@ -408,6 +412,7 @@ function SortablePostCard({
   onDeleteClick,
   onDuplicateClick,
   showPublishDate,
+  discussaoNaoLidas,
 }: {
   entity: PostEntity;
   onClick?: () => void;
@@ -417,6 +422,7 @@ function SortablePostCard({
   onDeleteClick?: () => void;
   onDuplicateClick?: () => void;
   showPublishDate?: boolean;
+  discussaoNaoLidas?: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entity.id,
@@ -444,6 +450,7 @@ function SortablePostCard({
         canRevert={previousStepOf(entity.process) != null}
         forwardLabel={forwardLabelFor(entity.process)}
         showPublishDate={showPublishDate}
+        discussaoNaoLidas={discussaoNaoLidas}
       />
     </div>
   );
@@ -494,6 +501,17 @@ export function KanbanView({
   // Vidro: the column headers drop their inline etapa tints (the CSS paints a neutral header
   // with a coloured dot from --col-tint) and the tabs show template names as typed.
   const vidroShell = useVidroShell();
+  // Discussion badges: ONE batched RPC per board load. Fluxo cards ask by workflow id (the
+  // board knows workflows, not their posts), individual post cards by post id.
+  const discussaoWorkflowIds = useMemo(() => cards.map((c) => c.workflow.id!), [cards]);
+  const discussaoPostIds = useMemo(
+    () => (postEntities ?? EMPTY_POST_ENTITIES).map((e) => e.process.post_id),
+    [postEntities],
+  );
+  const { byPost: discussaoByPost, byWorkflow: discussaoByWorkflow } = usePostDiscussaoNaoLidas({
+    postIds: discussaoPostIds,
+    workflowIds: discussaoWorkflowIds,
+  });
   // Server data is canonical: the board always re-derives from the cards prop,
   // so any edit (título, responsável, prazo…) shows as soon as the refetch
   // lands — no reload needed. Optimistic changes (dnd moves and reorders) live
@@ -1184,6 +1202,7 @@ export function KanbanView({
 
   if (isPhone) {
     const countsFor = (id: number) => ({
+      discussaoNaoLidas: discussaoByWorkflow.get(id),
       postsCount: postsCounts.get(id) ?? 0,
       approvedPostsCount: approvedPostsCounts.get(id) ?? 0,
       clearedClienteCount: clearedClienteCounts.get(id) ?? 0,
@@ -1212,6 +1231,7 @@ export function KanbanView({
           membros={membros}
           onRefresh={onRefresh}
           countsFor={countsFor}
+          discussaoNaoLidasForPost={(postId) => discussaoByPost.get(postId)?.naoLidas ?? 0}
           workflow={{
             open: onCardClick,
             edit: onEditClick,
@@ -1403,6 +1423,9 @@ export function KanbanView({
                               onDuplicatePostClick ? () => onDuplicatePostClick(entity) : undefined
                             }
                             showPublishDate={sortMode === 'publicacao'}
+                            discussaoNaoLidas={
+                              discussaoByPost.get(entity.process.post_id)?.naoLidas
+                            }
                           />
                         </Fragment>
                       );
@@ -1433,6 +1456,7 @@ export function KanbanView({
                               : undefined
                           }
                           postsCount={postsCounts.get(card.workflow.id!) ?? 0}
+                          discussaoNaoLidas={discussaoByWorkflow.get(card.workflow.id!)}
                           approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
                           clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
                           revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
@@ -1531,6 +1555,7 @@ export function KanbanView({
               card={activeEntity.card}
               isDragOverlay
               postsCount={postsCounts.get(activeEntity.card.workflow.id!) ?? 0}
+              discussaoNaoLidas={discussaoByWorkflow.get(activeEntity.card.workflow.id!)}
               approvedPostsCount={approvedPostsCounts.get(activeEntity.card.workflow.id!) ?? 0}
               clearedClienteCount={clearedClienteCounts.get(activeEntity.card.workflow.id!) ?? 0}
               revisaoInternaCount={revisaoInternaCounts.get(activeEntity.card.workflow.id!) ?? 0}
@@ -1542,6 +1567,7 @@ export function KanbanView({
               entity={activeEntity}
               isDragOverlay
               showPublishDate={activeShowsPublishDate}
+              discussaoNaoLidas={discussaoByPost.get(activeEntity.process.post_id)?.naoLidas}
             />
           )}
         </DragOverlay>

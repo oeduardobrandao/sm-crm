@@ -1,13 +1,24 @@
-import { useState } from 'react';
-import { CheckCircle2, RotateCcw, Send } from 'lucide-react';
-import { SegmentedControl, BottomActionBar } from '@/components/mobile';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Bell, BellOff, CheckCircle2, Eye, Lock, RotateCcw, Send } from 'lucide-react';
+import { BottomActionBar } from '@/components/mobile';
+import { MentionEditor } from '@/components/mentions/MentionEditor';
 import type { CommentThreadWithComments, Membro, PostApproval, PostMedia } from '../../../../store';
 import type { MediaNote } from '@/store/mediaNotes';
-import { ClientConversation } from '../mediaNotes/ClientConversation';
 // By path, not through the store barrel: the drawer test harnesses mock '@/store'.
 import type { ReferenceItem } from '@/store/postReferences';
-import PostCommentSummary from '../PostCommentSummary';
+import { DiscussaoTimeline } from '../../discussao/DiscussaoEquipe';
+import type { UseDiscussaoResult } from '../../discussao/useDiscussao';
+import {
+  DISCUSSAO_MAX_CHARS,
+  useDiscussaoComposer,
+  useDiscussaoMessageActions,
+  useMinuteClock,
+  useSeguirToggle,
+  useShowChatBridge,
+} from '../../discussao/useDiscussaoActions';
+import { buildTimeline } from '../../discussao/timeline';
 import { ReferenceChips } from '../references/ReferenceChips';
+import { ClientConversation } from '../mediaNotes/ClientConversation';
 
 type Channel = 'cliente' | 'equipe';
 
@@ -21,9 +32,40 @@ function formatWhen(iso: string): string {
   });
 }
 
+/**
+ * Where the tab opens: Equipe when the team discussion has unread messages, else Cliente
+ * when the newest client-side entry (an approval or a note pinned to the media) came from
+ * the client (not the team), else Equipe.
+ */
+function defaultChannel(
+  naoLidasEquipe: number,
+  approvals: PostApproval[],
+  clientNotes: MediaNote[],
+): Channel {
+  if (naoLidasEquipe > 0) return 'equipe';
+  let newestAt = -Infinity;
+  let newestFromClient = false;
+  const consider = (iso: string, fromClient: boolean) => {
+    const at = new Date(iso).getTime();
+    if (at >= newestAt) {
+      newestAt = at;
+      newestFromClient = fromClient;
+    }
+  };
+  for (const a of approvals) consider(a.created_at, !a.is_workspace_user);
+  for (const n of clientNotes) consider(n.created_at, n.author_kind === 'client');
+  return newestFromClient ? 'cliente' : 'equipe';
+}
+
 interface PhoneCommentsProps {
+  postId: number;
+  currentUserId: string;
+  /** The post's team discussion (the one `useDiscussao` call in PostEditorBody). */
+  discussao: UseDiscussaoResult;
+  /** "Discutir no chat" control; rendered only on plans with the team chat. */
+  chatBridge?: ReactNode;
   approvals: PostApproval[];
-  /** Client notes pinned to the media, and the media they point at. */
+  /** Notes pinned to the media, and the media they point at. Only client notes show here. */
   notes: MediaNote[];
   media: PostMedia[];
   onNoteReply: (noteId: number, body: string) => Promise<void>;
@@ -36,6 +78,7 @@ interface PhoneCommentsProps {
   sendingReply: boolean;
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
+  /** This post's threads (general + passage). */
   threads: CommentThreadWithComments[];
   membros: Membro[];
   workspaceUsers: { id: string; nome: string; avatar_url: string | null }[];
@@ -44,15 +87,25 @@ interface PhoneCommentsProps {
   suggestion?: { when: string; onOpen: () => void } | null;
   /** Only the visible tab owns the bottom bar slot (the composer). */
   active: boolean;
+  /** `&discussao=1` deep link: open on Equipe whatever the unread/participation state says.
+   *  Never focuses the composer: the keyboard must not pop. A counter: acts at mount and
+   *  whenever it changes to a new non-zero value (a link while the editor is open). */
+  focusRequest?: number;
 }
 
 /**
- * Comentários tab (EditorComentarios mockup). "Com o cliente" is the post's approval
- * thread (client messages, team replies, approvals and correction requests) with the
- * same reply command as desktop; "Equipe" is the internal comment threads on the text
- * (the desktop PostCommentSummary, same click behaviour).
+ * Comentários tab. Two audiences behind two pills, never both at once: "Equipe" is the
+ * post's internal discussion (the desktop timeline and composer, nothing here reaches the
+ * client) and "Cliente" is the approval thread with the "Responder ao cliente…" composer.
+ * Both panes stay mounted and only the inactive one is hidden, so a half-typed team
+ * message survives a pill switch; each composer lives inside its pane, so exactly one
+ * is visible at a time.
  */
 export function PhoneComments({
+  postId,
+  currentUserId,
+  discussao,
+  chatBridge,
   approvals,
   notes,
   media,
@@ -72,30 +125,148 @@ export function PhoneComments({
   onThreadClick,
   suggestion,
   active,
+  focusRequest,
 }: PhoneCommentsProps) {
-  const [channel, setChannel] = useState<Channel>('cliente');
+  const naoLidasEquipe = discussao.naoLidas;
+  const clientNotes = useMemo(() => notes.filter((n) => n.visibility === 'client'), [notes]);
+  const openClientNotes = clientNotes.filter((n) => n.status === 'open').length;
+  const [channel, setChannel] = useState<Channel>(() =>
+    focusRequest ? 'equipe' : defaultChannel(naoLidasEquipe, approvals, clientNotes),
+  );
+  // The unread count is only meaningful once the participation has loaded, which is after
+  // mount on a cold cache: decide again exactly once at that point. After that (or after a
+  // tap on a pill) the choice is the user's, so reading the unread messages, which drops
+  // the count to 0, never moves them.
+  const settledRef = useRef(!!focusRequest || discussao.participacao !== undefined);
+  useEffect(() => {
+    if (settledRef.current || discussao.participacao === undefined) return;
+    settledRef.current = true;
+    setChannel(defaultChannel(discussao.naoLidas, approvals, clientNotes));
+  }, [discussao.participacao, discussao.naoLidas, approvals, clientNotes]);
+  useEffect(() => {
+    if (!focusRequest) return;
+    settledRef.current = true;
+    setChannel('equipe');
+  }, [focusRequest]);
+  const pick = (next: Channel) => {
+    settledRef.current = true;
+    setChannel(next);
+  };
   const client = clientName || 'Cliente';
-  const clientNotes = notes.filter((n) => n.visibility === 'client');
-  // One meaning for the count, same as the Comentários tab: approvals plus OPEN client notes.
-  const clientCount = approvals.length + clientNotes.filter((n) => n.status === 'open').length;
-  const openThreads = threads.filter((t) => t.status === 'active').length;
+  const showBridge = useShowChatBridge();
+
+  const now = useMinuteClock();
+  const items = useMemo(
+    () =>
+      buildTimeline({
+        threads,
+        lastSeenCommentId: discussao.unreadAnchorId,
+        currentUserId,
+        now,
+      }),
+    [threads, discussao.unreadAnchorId, currentUserId, now],
+  );
+  const { handleEditMessage, handleDeleteMessage } = useDiscussaoMessageActions();
+  const seguir = useSeguirToggle(discussao);
+  const { draft, setDraft, editorRef, tooLong, canSend, handleSend, handleKeyDown } =
+    useDiscussaoComposer(discussao);
+
+  const novasLabel =
+    naoLidasEquipe > 0 ? ` · ${naoLidasEquipe} ${naoLidasEquipe === 1 ? 'nova' : 'novas'}` : '';
 
   return (
-    <div className="phone-comments">
-      <SegmentedControl
-        aria-label="Conversa"
-        value={channel}
-        onChange={setChannel}
-        options={[
-          {
-            value: 'cliente',
-            label: clientCount > 0 ? `Com o cliente ${clientCount}` : 'Com o cliente',
-          },
-          { value: 'equipe', label: openThreads > 0 ? `Equipe ${openThreads}` : 'Equipe' },
-        ]}
-      />
+    <div className="phone-comments" data-post-id={postId}>
+      <div className="phone-comments__pills" role="group" aria-label="Conversa">
+        <button
+          type="button"
+          className="phone-comments__pill"
+          aria-pressed={channel === 'equipe'}
+          onClick={() => pick('equipe')}
+        >
+          <Lock aria-hidden="true" />
+          Equipe{novasLabel}
+        </button>
+        <button
+          type="button"
+          className="phone-comments__pill"
+          aria-pressed={channel === 'cliente'}
+          onClick={() => pick('cliente')}
+        >
+          <Eye aria-hidden="true" />
+          Cliente{openClientNotes > 0 ? ` · ${openClientNotes} em aberto` : ''}
+        </button>
+      </div>
 
-      {channel === 'cliente' ? (
+      <div className="phone-comments__pane" data-pane="equipe" hidden={channel !== 'equipe'}>
+        <div className="phone-comments__team-note">
+          <span>Só a equipe vê esta conversa.</span>
+          <span className="phone-comments__team-actions">
+            {seguir.ready && (
+              <button
+                type="button"
+                className="phone-comments__icon-btn"
+                aria-label={seguir.following ? 'Seguindo' : 'Seguir'}
+                onClick={seguir.toggle}
+                disabled={seguir.disabled}
+              >
+                {seguir.following ? <Bell aria-hidden="true" /> : <BellOff aria-hidden="true" />}
+              </button>
+            )}
+            {showBridge && chatBridge}
+          </span>
+        </div>
+        {items.length === 0 ? (
+          <p className="phone-comments__empty">
+            Nenhuma mensagem ainda. Escreva para a equipe abaixo.
+          </p>
+        ) : (
+          <DiscussaoTimeline
+            items={items}
+            membros={membros}
+            workspaceUsers={workspaceUsers}
+            currentUserId={currentUserId}
+            onThreadClick={onThreadClick}
+            onEditMessage={handleEditMessage}
+            onDeleteMessage={handleDeleteMessage}
+          />
+        )}
+        {/* The read marker watches the end of the timeline, not the composer: the composer is
+            a fixed bar and always on screen. Seeing the end means the messages were seen. */}
+        <div ref={discussao.sectionRef} className="phone-comments__end" aria-hidden="true" />
+        {tooLong && (
+          <p className="discussao-limit" role="alert">
+            Mensagem muito longa. O limite é de {DISCUSSAO_MAX_CHARS} caracteres.
+          </p>
+        )}
+        {/* Fixed like the client bar: only the visible tab may own the slot, so neither
+            relies on the hidden ancestor staying display: none. */}
+        {active && (
+          <BottomActionBar className="phone-comments__composer">
+            <MentionEditor
+              ref={editorRef}
+              className="phone-comments__editor-input"
+              rootClassName="phone-comments__editor"
+              placeholder="Mensagem para a equipe"
+              value={draft}
+              onValueChange={setDraft}
+              onKeyDown={handleKeyDown}
+            />
+            <button
+              type="button"
+              className="phone-comments__send"
+              aria-label="Enviar mensagem para a equipe"
+              disabled={!canSend}
+              // A tap must not take focus (and the keyboard) away from the editor.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void handleSend()}
+            >
+              <Send aria-hidden="true" />
+            </button>
+          </BottomActionBar>
+        )}
+      </div>
+
+      <div className="phone-comments__pane" data-pane="cliente" hidden={channel !== 'cliente'}>
         <div className="phone-comments__thread" aria-label="Conversa com o cliente" role="log">
           {suggestion && (
             <button
@@ -197,19 +368,7 @@ export function PhoneComments({
             </BottomActionBar>
           )}
         </div>
-      ) : threads.length === 0 ? (
-        <p className="phone-comments__empty">
-          Nenhum comentário interno. Selecione um trecho do roteiro ou da legenda e toque em
-          Comentar.
-        </p>
-      ) : (
-        <PostCommentSummary
-          threads={threads}
-          membros={membros}
-          workspaceUsers={workspaceUsers}
-          onThreadClick={onThreadClick}
-        />
-      )}
+      </div>
     </div>
   );
 }

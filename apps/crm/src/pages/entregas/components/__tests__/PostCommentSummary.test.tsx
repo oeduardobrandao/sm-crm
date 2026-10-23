@@ -63,6 +63,32 @@ describe('PostCommentSummary', () => {
     expect(container.innerHTML).toBe('');
   });
 
+  it('ignores the general discussion thread (count and list)', () => {
+    const geral = makeThread({
+      id: 9,
+      field: 'geral',
+      quoted_text: '',
+      post_comments: [
+        {
+          id: 900,
+          thread_id: 9,
+          author_id: 'user-1',
+          content: 'Mensagem da discussão',
+          created_at: new Date().toISOString(),
+          updated_at: null,
+        },
+      ],
+    });
+    const { container, rerender } = render(
+      <PostCommentSummary threads={[geral]} {...defaultProps} />,
+    );
+    expect(container.innerHTML).toBe('');
+
+    rerender(<PostCommentSummary threads={[makeThread(), geral]} {...defaultProps} />);
+    expect(screen.getByText('(1)')).toBeInTheDocument();
+    expect(screen.queryByText('Mensagem da discussão')).not.toBeInTheDocument();
+  });
+
   it('renders the header with thread count', () => {
     const threads = [makeThread(), makeThread({ id: 2 })];
     render(<PostCommentSummary threads={threads} {...defaultProps} />);

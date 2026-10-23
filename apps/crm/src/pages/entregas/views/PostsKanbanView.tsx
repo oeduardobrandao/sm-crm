@@ -31,10 +31,12 @@ import {
   MessageSquareWarning,
   PencilLine,
   Plus,
+  MessageSquare,
   Route,
   Send,
   ShieldCheck,
 } from 'lucide-react';
+import { usePostDiscussaoNaoLidas } from '../discussao/usePostDiscussaoNaoLidas';
 import { TIPO_ICONS } from '../tipoIcons';
 import { cardAutoScheduleGates, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
@@ -201,11 +203,14 @@ function PostBoardCardContent({
   schedulingEnabled,
   tiktokEnabled,
   multiplatformEnabled,
+  discussaoNaoLidas,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
   processEtapa?: string;
+  /** Mensagens não lidas na discussão do post (só aparece quando > 0). */
+  discussaoNaoLidas?: number;
   /** Próxima aprovação esperada por um avulso (já filtrada por cliente com
    *  agendamento automático). Posts de fluxo derivam isso de `card`. */
   awaitedApproval?: string;
@@ -260,6 +265,17 @@ function PostBoardCardContent({
           {TIPO_LABELS[post.tipo]}
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+          {discussaoNaoLidas != null && discussaoNaoLidas > 0 && (
+            <span
+              className="board-card-discussao-badge"
+              role="img"
+              aria-label={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+              title={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+            >
+              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+              {discussaoNaoLidas}
+            </span>
+          )}
           {getPostPublishState(post) === 'publicando' && (
             <span className="board-post-prazo-pill board-post-publicando">Publicando…</span>
           )}
@@ -381,11 +397,13 @@ const PostBoardCard = memo(function PostBoardCard({
   schedulingEnabled,
   tiktokEnabled,
   multiplatformEnabled,
+  discussaoNaoLidas,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
   openable: boolean;
+  discussaoNaoLidas?: number;
   onPostClick: (post: ActivePost) => void;
   processEtapa?: string;
   awaitedApproval?: string;
@@ -429,6 +447,7 @@ const PostBoardCard = memo(function PostBoardCard({
         schedulingEnabled={schedulingEnabled}
         tiktokEnabled={tiktokEnabled}
         multiplatformEnabled={multiplatformEnabled}
+        discussaoNaoLidas={discussaoNaoLidas}
       />
     </div>
   );
@@ -460,6 +479,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
   schedulingEnabled,
   tiktokEnabled,
   multiplatformEnabled,
+  discussaoNaoLidasByPostId,
 }: {
   option: StatusOption;
   posts: ActivePost[];
@@ -486,6 +506,8 @@ const PostBoardColumn = memo(function PostBoardColumn({
    *  espera (selo "Aguarda aprovação"). Só entram avulsos de clientes com
    *  agendamento automático. */
   awaitedApprovalByPostId?: Map<number, string>;
+  /** post id → mensagens não lidas na discussão (selo do card, só quando > 0). */
+  discussaoNaoLidasByPostId?: Map<number, number>;
   /** Stable callback (spec peça 3) -- same identity guarantee as
    *  onColumnSortChange above. */
   onAutoScheduleClick?: (post: ActivePost) => void;
@@ -625,6 +647,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
                     schedulingEnabled={schedulingEnabled}
                     tiktokEnabled={tiktokEnabled}
                     multiplatformEnabled={multiplatformEnabled}
+                    discussaoNaoLidas={discussaoNaoLidasByPostId?.get(p.id)}
                   />
                 </Fragment>
               ))}
@@ -668,6 +691,15 @@ export function PostsKanbanView({
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
   const qc = useQueryClient();
+  // Discussion badges: ONE batched RPC for every card on the board. The map handed to the
+  // memoized columns only changes identity when the unread data does.
+  const discussaoPostIds = useMemo(() => posts.map((p) => p.id), [posts]);
+  const { byPost: discussaoByPost } = usePostDiscussaoNaoLidas({ postIds: discussaoPostIds });
+  const discussaoNaoLidasByPostId = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const [postId, row] of discussaoByPost) if (row.naoLidas > 0) m.set(postId, row.naoLidas);
+    return m;
+  }, [discussaoByPost]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [dropSlot, setDropSlot] = useState<PostsKanbanHoverSlot | null>(null);
   const [dragHeight, setDragHeight] = useState(120);
@@ -1049,6 +1081,7 @@ export function PostsKanbanView({
       card={post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined}
       processEtapa={processEtapaByPostId?.get(post.id)}
       awaitedApproval={awaitedApprovalByPostId?.get(post.id)}
+      discussaoNaoLidas={discussaoNaoLidasByPostId.get(post.id)}
       onAutoScheduleClick={activeId == null ? () => handleAutoScheduleClick(post) : undefined}
       schedulingEnabled={schedulingEnabled}
       tiktokEnabled={tiktokEnabled}
@@ -1125,6 +1158,7 @@ export function PostsKanbanView({
                 onColumnSortChange={onColumnSortChange}
                 processEtapaByPostId={processEtapaByPostId}
                 awaitedApprovalByPostId={awaitedApprovalByPostId}
+                discussaoNaoLidasByPostId={discussaoNaoLidasByPostId}
                 onAutoScheduleClick={handleAutoScheduleClick}
                 schedulingEnabled={schedulingEnabled}
                 tiktokEnabled={tiktokEnabled}
@@ -1146,6 +1180,7 @@ export function PostsKanbanView({
                 }
                 processEtapa={processEtapaByPostId?.get(activePost.id)}
                 awaitedApproval={awaitedApprovalByPostId?.get(activePost.id)}
+                discussaoNaoLidas={discussaoNaoLidasByPostId.get(activePost.id)}
                 schedulingEnabled={schedulingEnabled}
                 tiktokEnabled={tiktokEnabled}
                 multiplatformEnabled={multiplatformEnabled}

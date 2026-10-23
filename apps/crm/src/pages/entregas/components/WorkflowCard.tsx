@@ -11,6 +11,7 @@ import {
   Trash2,
   Copy,
   CopyPlus,
+  MessageSquare,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -49,6 +50,8 @@ interface WorkflowCardProps {
   onPostsClick?: () => void;
   /** Number of posts associated with this workflow (shown as badge) */
   postsCount?: number;
+  /** Unread discussion messages across the workflow's posts. Badge only when > 0. */
+  discussaoNaoLidas?: number;
   /** Number of posts approved by client */
   approvedPostsCount?: number;
   /** Number of posts that have cleared client approval — approved, scheduled,
@@ -79,6 +82,7 @@ export function WorkflowCard({
   onForwardClick,
   onPostsClick,
   postsCount,
+  discussaoNaoLidas,
   approvedPostsCount,
   clearedClienteCount,
   revisaoInternaCount,
@@ -262,6 +266,17 @@ export function WorkflowCard({
               }}
             >
               ↻
+            </span>
+          )}
+          {discussaoNaoLidas != null && discussaoNaoLidas > 0 && (
+            <span
+              className="board-card-discussao-badge"
+              role="img"
+              aria-label={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+              title={`${discussaoNaoLidas} ${discussaoNaoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`}
+            >
+              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+              {discussaoNaoLidas}
             </span>
           )}
           <button

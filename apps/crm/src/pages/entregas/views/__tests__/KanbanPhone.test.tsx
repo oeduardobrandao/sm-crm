@@ -31,6 +31,7 @@ const store = vi.hoisted(() => ({
   updateWorkflowEtapa: vi.fn(),
   getWorkflowHistory: vi.fn(async () => []),
   isFinalClientApprovalCycle: vi.fn(() => true),
+  getDiscussaoNaoLidas: vi.fn(async () => []),
 }));
 vi.mock('../../../../store', () => store);
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -124,6 +125,20 @@ function baseProps(overrides: Record<string, unknown> = {}) {
 }
 
 describe('KanbanView on phones (one etapa at a time)', () => {
+  it('shows the unread discussion badge on a fluxo card only when its posts have unread messages', async () => {
+    store.getDiscussaoNaoLidas.mockResolvedValueOnce([
+      { postId: 31, workflowId: 3, total: 6, naoLidas: 2 },
+      { postId: 32, workflowId: 3, total: 1, naoLidas: 1 },
+    ]);
+    render(<KanbanView {...(baseProps() as never)} />);
+    const badge = await screen.findByLabelText('3 mensagens novas na discussão');
+    expect(badge).toHaveTextContent('3');
+    expect(store.getDiscussaoNaoLidas).toHaveBeenCalledWith({
+      postIds: [],
+      workflowIds: [1, 2, 3],
+    });
+  });
+
   it('renders only the active etapa, chips switch it, and the template switch lists rows', () => {
     render(<KanbanView {...(baseProps() as never)} />);
     expect(screen.getByTestId('phone-kanban-board')).toBeInTheDocument();

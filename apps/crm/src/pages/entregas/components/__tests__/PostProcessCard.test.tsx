@@ -288,4 +288,11 @@ describe('PostProcessCard: ações do card sob o Vidro', () => {
     expect(forward.style.marginLeft).toBe('auto');
     expect(forward.style.color).toBe('rgb(62, 207, 142)');
   });
+  it('discussaoNaoLidas: selo de mensagens novas só quando > 0', () => {
+    const { unmount } = render(<PostProcessCard entity={makeEntity()} discussaoNaoLidas={4} />);
+    expect(screen.getByLabelText('4 mensagens novas na discussão')).toHaveTextContent('4');
+    unmount();
+    render(<PostProcessCard entity={makeEntity()} discussaoNaoLidas={0} />);
+    expect(screen.queryByLabelText(/na discussão/)).not.toBeInTheDocument();
+  });
 });

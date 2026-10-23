@@ -113,6 +113,7 @@ vi.mock('@/store', () => ({
   replyToPostApproval: vi.fn(),
   completeEtapa: vi.fn(),
   getPostCommentThreads: vi.fn(async () => []),
+  getDiscussaoNaoLidas: vi.fn(async () => []),
   createCommentThread: vi.fn(),
   saveIgCaption: vi.fn(),
   addPostComment: vi.fn(),
@@ -187,9 +188,21 @@ vi.mock('@/pages/entregas/components/PostEditor', () => ({
   // `key`) re-hydrates it. Mirror that here with useState's lazy initializer, captured once
   // per mount, so the suggestion-acceptance race test below can tell "remounted with stale
   // content" apart from "re-rendered with fresh content" the way the real editor would.
-  PostEditor: ({ initialContent }: { initialContent: unknown }) => {
+  PostEditor: ({
+    initialContent,
+    onDeleteComment,
+  }: {
+    initialContent: unknown;
+    onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
+  }) => {
     const [frozenContent] = useState(initialContent);
-    return <div data-testid="post-editor-stub" data-content={JSON.stringify(frozenContent)} />;
+    return (
+      <div data-testid="post-editor-stub" data-content={JSON.stringify(frozenContent)}>
+        <button type="button" onClick={() => void onDeleteComment?.(10, 1)}>
+          delete comment stub
+        </button>
+      </div>
+    );
   },
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
@@ -197,6 +210,37 @@ vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
 }));
 vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
   default: () => <div data-testid="post-comment-summary-stub" />,
+}));
+// The post's team discussion mounts a MentionEditor (needs getMembros on the @/store mock)
+// and useDiscussao opens a realtime channel (this supabase stub has no channel/rpc):
+// stub both, they have their own suites.
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: ({
+    focusRequest,
+    onFocusHandled,
+  }: {
+    focusRequest?: number;
+    onFocusHandled?: () => void;
+  }) => (
+    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!focusRequest)}>
+      <button type="button" onClick={onFocusHandled}>
+        stub focused
+      </button>
+    </div>
+  ),
+  DiscussaoTimeline: () => null,
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: () => ({
+    participacao: undefined,
+    isParticipant: false,
+    naoLidas: 0,
+    unreadAnchorId: null,
+    send: async () => {},
+    sending: false,
+    toggleSeguir: async () => {},
+    sectionRef: () => {},
+  }),
 }));
 vi.mock('@/pages/entregas/components/PostTimelinePopover', () => ({
   PostTimelinePopover: () => <div data-testid="post-timeline-popover-stub" />,
@@ -256,6 +300,10 @@ import {
   movePostsToNewFlow,
   addWorkflowPost,
   sendSelectedPostsToCliente,
+  getPostCommentThreads,
+  getDiscussaoNaoLidas,
+  deleteCommentThread,
+  deletePostComment,
 } from '@/store';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
 
@@ -270,6 +318,8 @@ const mockDetachKeepingProcess = vi.mocked(detachPostsKeepingProcess);
 const mockMoveToNewFlow = vi.mocked(movePostsToNewFlow);
 const mockAddPost = vi.mocked(addWorkflowPost);
 const mockSendSelected = vi.mocked(sendSelectedPostsToCliente);
+const mockGetThreads = vi.mocked(getPostCommentThreads);
+const mockGetNaoLidas = vi.mocked(getDiscussaoNaoLidas);
 
 function renderDrawer(
   qc: QueryClient,
@@ -277,6 +327,8 @@ function renderDrawer(
     onClose?: () => void;
     onRefresh?: () => void;
     initialPostId?: number;
+    focusRequest?: number;
+    onDiscussaoFocused?: () => void;
     onOpenWorkflow?: (workflowId: number) => void;
     onDetachedKeepingProcess?: (postIds: number[]) => void;
     card?: Partial<BoardCard>;
@@ -320,19 +372,27 @@ function renderDrawer(
     ...overrides.card,
   } as unknown as BoardCard;
 
-  return render(
+  const onClose = overrides.onClose ?? vi.fn();
+  const onRefresh = overrides.onRefresh ?? vi.fn();
+  const tree = (o: typeof overrides) => (
     <QueryClientProvider client={qc}>
       <WorkflowDrawer
         card={card}
         membros={[]}
-        onClose={overrides.onClose ?? vi.fn()}
-        onRefresh={overrides.onRefresh ?? vi.fn()}
-        initialPostId={overrides.initialPostId ?? 1}
-        onOpenWorkflow={overrides.onOpenWorkflow}
-        onDetachedKeepingProcess={overrides.onDetachedKeepingProcess}
+        onClose={onClose}
+        onRefresh={onRefresh}
+        initialPostId={o.initialPostId ?? 1}
+        focusRequest={o.focusRequest}
+        onDiscussaoFocused={o.onDiscussaoFocused}
+        onOpenWorkflow={o.onOpenWorkflow}
+        onDetachedKeepingProcess={o.onDetachedKeepingProcess}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const utils = render(tree(overrides));
+  /** Re-renders the SAME drawer instance with other props (no remount). */
+  const rerenderWith = (o: typeof overrides) => utils.rerender(tree({ ...overrides, ...o }));
+  return { ...utils, rerenderWith };
 }
 
 // mockFeatures is set true only inside the "handleDetachedKeepingProcess" describe
@@ -1351,5 +1411,216 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
 
     const body = container.querySelector('.drawer-body')!;
     await waitFor(() => expect(body.scrollTop).toBe(800));
+  });
+});
+
+describe('WorkflowDrawer deleting a comment', () => {
+  const post = {
+    id: 1,
+    workflow_id: 10,
+    titulo: 'Post A',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 0,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+  const thread = (field: string) =>
+    ({
+      id: 1,
+      post_id: 1,
+      field,
+      post_comments: [{ id: 10, thread_id: 1, content: 'x' }],
+    }) as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([post]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  it('deletes only the comment when the last message belongs to the general thread', async () => {
+    mockGetThreads.mockResolvedValue([thread('geral')]);
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deletePostComment)).toHaveBeenCalledWith(10));
+    expect(vi.mocked(deleteCommentThread)).not.toHaveBeenCalled();
+  });
+
+  it('still deletes a passage thread together with its last message', async () => {
+    mockGetThreads.mockResolvedValue([thread('conteudo')]);
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deleteCommentThread)).toHaveBeenCalledWith(1));
+    expect(vi.mocked(deletePostComment)).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowDrawer discussao=1 deep link', () => {
+  const mkPost = (id: number) =>
+    ({
+      id,
+      workflow_id: 10,
+      titulo: `Post ${id}`,
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: id,
+      status: 'rascunho',
+      responsavel_id: null,
+      scheduled_at: null,
+      ig_caption: null,
+      platform: 'instagram',
+    }) as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([mkPost(1), mkPost(2)]);
+    mockGetThreads.mockResolvedValue([]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  const qcNew = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  it('hands the focus request to the linked post only, expanded, and relays the report', async () => {
+    const onDiscussaoFocused = vi.fn();
+    renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1, onDiscussaoFocused });
+    await screen.findByText('Post 2');
+    // Only the linked post is expanded, so it is the only row with a discussion section.
+    const stubs = await screen.findAllByTestId('discussao-equipe-stub');
+    expect(stubs).toHaveLength(1);
+    expect(stubs[0]).toHaveAttribute('data-autofocus', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'stub focused' }));
+    expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-expands a collapsed linked post on a new request, without remounting', async () => {
+    const { rerenderWith } = renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1 });
+    expect(await screen.findAllByTestId('discussao-equipe-stub')).toHaveLength(1);
+
+    // The user collapses the post (its row toggle is the post title).
+    fireEvent.click(screen.getByText('Post 2'));
+    await waitFor(() => expect(screen.queryByTestId('discussao-equipe-stub')).toBeNull());
+
+    rerenderWith({ focusRequest: 2 });
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
+  });
+
+  it('a new request while on Histórico returns to Posts with the post expanded', async () => {
+    const { rerenderWith } = renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1 });
+    await screen.findByTestId('discussao-equipe-stub');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+    expect(await screen.findByTestId('workflow-history-view-stub')).toBeInTheDocument();
+    expect(screen.queryByTestId('discussao-equipe-stub')).toBeNull();
+
+    rerenderWith({ focusRequest: 2 });
+    await waitFor(() => expect(screen.queryByTestId('workflow-history-view-stub')).toBeNull());
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
+  });
+
+  it('does not ask for focus without the flag', async () => {
+    renderDrawer(qcNew(), { initialPostId: 2 });
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'false');
+  });
+});
+
+describe('WorkflowDrawer discussion badge on the post trigger', () => {
+  const post = {
+    id: 1,
+    workflow_id: 10,
+    titulo: 'Post A',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 0,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([post]);
+    mockGetThreads.mockResolvedValue([]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  const renderOne = () =>
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }), {
+      initialPostId: undefined,
+    });
+
+  it('asks the RPC once for the drawer posts', async () => {
+    renderOne();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetNaoLidas).toHaveBeenCalledTimes(1));
+    expect(mockGetNaoLidas).toHaveBeenCalledWith({ postIds: [1], workflowIds: [] });
+  });
+
+  it('shows the unread count with the dot class when the participant has unread messages', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 3 }]);
+    renderOne();
+    const badge = await screen.findByLabelText('3 mensagens novas na discussão');
+    expect(badge).toHaveTextContent('3');
+    expect(badge).toHaveClass('drawer-post-comment-badge--unread');
+  });
+
+  it('shows the plain total, with no dot, when nothing is unread', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 0 }]);
+    renderOne();
+    const badge = await screen.findByLabelText('9 mensagens na discussão');
+    expect(badge).toHaveTextContent('9');
+    expect(badge).not.toHaveClass('drawer-post-comment-badge--unread');
+  });
+
+  it('counts comments, not threads: two threads, five messages', async () => {
+    // Used to show "2" (commentThreads.length); the badge now reports messages (RPC total).
+    mockGetThreads.mockResolvedValue([
+      { id: 1, post_id: 1, comments: [] },
+      { id: 2, post_id: 1, comments: [] },
+    ] as never);
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 5, naoLidas: 0 }]);
+    renderOne();
+    expect(await screen.findByLabelText('5 mensagens na discussão')).toHaveTextContent('5');
+    expect(screen.queryByLabelText('2 mensagens na discussão')).not.toBeInTheDocument();
+  });
+
+  it('shows no badge until the count arrives (threads never stand in as messages)', async () => {
+    mockGetThreads.mockResolvedValue([
+      { id: 1, post_id: 1, field: 'geral', comments: [] },
+      { id: 2, post_id: 1, field: 'conteudo', comments: [] },
+    ] as never);
+    mockGetNaoLidas.mockReturnValue(new Promise(() => {}));
+    renderOne();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/na discussão/)).not.toBeInTheDocument();
+  });
+
+  it('announces the badge to screen readers as an image with its label', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 3 }]);
+    renderOne();
+    expect(
+      await screen.findByRole('img', { name: '3 mensagens novas na discussão' }),
+    ).toHaveTextContent('3');
+  });
+
+  it('shows nothing when there is no discussion and no thread', async () => {
+    renderOne();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetNaoLidas).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/na discussão/)).not.toBeInTheDocument();
   });
 });

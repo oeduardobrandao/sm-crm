@@ -3,6 +3,7 @@ import { MessageSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { CommentThreadWithComments, Membro } from '@/store';
+import { isGeralThread } from '@/store/comments';
 
 interface WorkspaceUser {
   id: string;
@@ -29,11 +30,13 @@ export function resolveAuthorName(
 }
 
 export default function PostCommentSummary({
-  threads,
+  threads: allThreads,
   membros,
   workspaceUsers = [],
   onThreadClick,
 }: PostCommentSummaryProps) {
+  // The general discussion thread has no passage: it is shown by the discussion section.
+  const threads = allThreads.filter((t) => !isGeralThread(t));
   const activeThreads = threads.filter((t) => t.status === 'active');
   const resolvedThreads = threads.filter((t) => t.status === 'resolved');
 

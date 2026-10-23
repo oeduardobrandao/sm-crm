@@ -38,6 +38,12 @@ export interface ClientConversationProps {
   renderApproval?: (approval: PostApproval) => ReactNode;
   /** `none`: the host draws its own reply composer (the phone bottom bar). */
   composer?: 'inline' | 'none';
+  /**
+   * The host's own heading for the thread, in place of the "Comentários" label. With it the
+   * thread is a `<section>` labelled by `headerId` and shows even while it is empty.
+   */
+  header?: ReactNode;
+  headerId?: string;
   className?: string;
 }
 
@@ -65,6 +71,8 @@ export function ClientConversation({
   onSelectMedia,
   renderApproval,
   composer = 'inline',
+  header,
+  headerId,
   className,
 }: ClientConversationProps) {
   const [filter, setFilter] = useState<Filter>('tudo');
@@ -82,13 +90,17 @@ export function ClientConversation({
     return filter === 'midia' || item.note.status === 'open';
   });
 
+  const Thread = header ? 'section' : 'div';
+
   return (
     <div className={`client-conversation${className ? ` ${className}` : ''}`}>
-      {items.length > 0 && (
-        <div className="drawer-approval-thread">
-          <div className="drawer-thread-label">
-            <MessageSquare className="h-3.5 w-3.5" /> Comentários
-          </div>
+      {(header || items.length > 0) && (
+        <Thread className="drawer-approval-thread" aria-labelledby={header ? headerId : undefined}>
+          {header ?? (
+            <div className="drawer-thread-label">
+              <MessageSquare className="h-3.5 w-3.5" /> Comentários
+            </div>
+          )}
 
           {clientNotes.length > 0 && (
             <div
@@ -116,7 +128,7 @@ export function ClientConversation({
             </div>
           )}
 
-          {visible.length === 0 && (
+          {items.length > 0 && visible.length === 0 && (
             <p className="client-conversation__empty">
               {filter === 'abertas'
                 ? 'Nenhum comentário em aberto na mídia.'
@@ -154,7 +166,7 @@ export function ClientConversation({
               </div>
             ),
           )}
-        </div>
+        </Thread>
       )}
 
       {composer === 'inline' && (

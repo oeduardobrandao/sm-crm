@@ -137,12 +137,17 @@ vi.mock('@/services/inlineImage', () => ({
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
   PostEditor: ({
     onUpdate,
+    onDeleteComment,
   }: {
     onUpdate?: (json: Record<string, unknown>, plain: string) => void;
+    onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
   }) => (
     <div data-testid="post-editor-stub">
       <button type="button" onClick={() => onUpdate?.({ type: 'doc' }, 'novo texto')}>
         Editar conteúdo
+      </button>
+      <button type="button" onClick={() => void onDeleteComment?.(10, 1)}>
+        delete comment stub
       </button>
     </div>
   ),
@@ -152,6 +157,37 @@ vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
 }));
 vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
   default: () => <div data-testid="post-comment-summary-stub" />,
+}));
+// The post's team discussion mounts a MentionEditor (needs getMembros on the @/store mock)
+// and useDiscussao opens a realtime channel (this supabase stub has no channel/rpc):
+// stub both, they have their own suites.
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: ({
+    focusRequest,
+    onFocusHandled,
+  }: {
+    focusRequest?: number;
+    onFocusHandled?: () => void;
+  }) => (
+    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!focusRequest)}>
+      <button type="button" onClick={onFocusHandled}>
+        stub focused
+      </button>
+    </div>
+  ),
+  DiscussaoTimeline: () => null,
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: () => ({
+    participacao: undefined,
+    isParticipant: false,
+    naoLidas: 0,
+    unreadAnchorId: null,
+    send: async () => {},
+    sending: false,
+    toggleSeguir: async () => {},
+    sectionRef: () => {},
+  }),
 }));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: () => <div data-testid="post-media-gallery-stub" />,
@@ -202,6 +238,9 @@ import {
   removeWorkflowPost,
   transitionPostProcess,
   resolvePostProcessRascunhoBanner,
+  getPostCommentThreads,
+  deleteCommentThread,
+  deletePostComment,
 } from '@/store';
 import { toast } from 'sonner';
 
@@ -237,7 +276,7 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
   const onClose = vi.fn();
   const onRefresh = vi.fn();
   const onAttached = vi.fn();
-  const utils = render(
+  const tree = (extra: Partial<Record<string, unknown>>) => (
     <MemoryRouter>
       <QueryClientProvider client={qc}>
         <StandalonePostDrawer
@@ -247,11 +286,15 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
           onRefresh={onRefresh}
           onAttached={onAttached}
           {...props}
+          {...extra}
         />
       </QueryClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
-  return { ...utils, onClose, onRefresh, onAttached };
+  const utils = render(tree({}));
+  /** Re-renders the SAME drawer instance with other props (no remount). */
+  const rerenderWith = (extra: Partial<Record<string, unknown>>) => utils.rerender(tree(extra));
+  return { ...utils, onClose, onRefresh, onAttached, rerenderWith };
 }
 
 // ── Fixtures dos comandos do processo individual (Task 7) ────────────────────
@@ -318,6 +361,34 @@ describe('StandalonePostDrawer', () => {
     expect(screen.queryByTestId('property-panel-stub')).not.toBeInTheDocument();
   });
 
+  it('deleting the last message of the general thread removes the comment, never the thread', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.mocked(getPostCommentThreads).mockResolvedValue([
+      {
+        id: 1,
+        post_id: 5,
+        field: 'geral',
+        post_comments: [{ id: 10, thread_id: 1, content: 'x' }],
+      },
+    ] as never);
+    renderDrawer(qc);
+    await waitFor(() => expect(vi.mocked(getPostCommentThreads)).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deletePostComment)).toHaveBeenCalledWith(10));
+    expect(vi.mocked(deleteCommentThread)).not.toHaveBeenCalled();
+  });
+
+  it('discussao=1 deep link: asks the discussion section to focus and relays the report', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onDiscussaoFocused = vi.fn();
+    renderDrawer(qc, { focusRequest: 1, onDiscussaoFocused });
+
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'stub focused' }));
+    expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+  });
+
   describe('aba Calendário', () => {
     it('troca o editor pelo calendário do cliente e volta, marcando a aba ativa', async () => {
       const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -338,6 +409,24 @@ describe('StandalonePostDrawer', () => {
 
       expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
       expect(screen.queryByTestId('calendar-view-stub')).not.toBeInTheDocument();
+    });
+
+    it('discussao=1 deep link com o Calendário aberto volta ao post e pede o foco', async () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { rerenderWith } = renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Calendário' }));
+      expect(screen.getByTestId('calendar-view-stub')).toBeInTheDocument();
+
+      rerenderWith({ focusRequest: 2 });
+
+      expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
+      expect(screen.queryByTestId('calendar-view-stub')).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Post' })).toHaveAttribute('aria-selected', 'true');
+      expect(await screen.findByTestId('discussao-equipe-stub')).toHaveAttribute(
+        'data-autofocus',
+        'true',
+      );
     });
 
     it('escopa a posse nos posts avulsos do cliente (currentWorkflowId null), não num fluxo', async () => {
