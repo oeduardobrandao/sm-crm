@@ -119,6 +119,41 @@ export interface HubPost {
   em_producao?: EmProducaoReason | null;
 }
 
+/** A reply on a media note. Mirrors HubMediaNoteReplyDTO (supabase/functions/_shared). */
+export interface HubMediaNoteReply {
+  id: number;
+  author: 'client' | 'team';
+  author_name: string | null;
+  body: string;
+  created_at: string;
+}
+
+/**
+ * A note pinned to a carousel slide, a video moment and/or a spot on post media.
+ * Mirrors HubMediaNoteDTO. `link_id` is the current `HubPostMedia.id`, null when the
+ * note belongs to a previous version of the media (`is_previous_version`).
+ */
+export interface HubMediaNote {
+  id: number;
+  post_id: number;
+  media_kind: 'image' | 'video';
+  link_id: number | null;
+  /** 0-based. */
+  slide_index: number;
+  is_previous_version: boolean;
+  t_seconds: number | null;
+  /** Both or neither, each 0..1. */
+  x: number | null;
+  y: number | null;
+  author: 'client' | 'team';
+  author_name: string | null;
+  body: string;
+  status: 'open' | 'resolved';
+  resolved_at: string | null;
+  created_at: string;
+  replies: HubMediaNoteReply[];
+}
+
 export interface HubPostProperty {
   post_id: number;
   value: unknown;
@@ -184,11 +219,15 @@ export interface PostHistoryApproval {
   motivo: CorrectionReason | null;
   is_workspace_user: boolean;
   created_at: string;
+  /** Client-visible media notes that were open when this decision was sent. Absent on
+   * stale cached payloads and before the function deploy: treat as 0. */
+  open_note_count?: number;
 }
 
 export interface PostHistoryResponse {
   events: PostHistoryEvent[];
   approvals: PostHistoryApproval[];
+  media_notes: HubMediaNote[];
 }
 
 export interface HubBrand {
@@ -340,6 +379,9 @@ export interface InstagramFeedData {
 export interface HubPostsResponse {
   posts: HubPost[];
   postApprovals: PostApproval[];
+  /** Client-visible media notes for the posts in this response. Absent on stale cached
+   * payloads: treat as []. */
+  mediaNotes: HubMediaNote[];
   propertyValues: HubPostProperty[];
   workflowSelectOptions: HubSelectOption[];
   instagramProfile: InstagramProfile | null;
@@ -403,7 +445,7 @@ export interface HubDashboardResponse {
 }
 
 export interface MensagemFeedItem {
-  source: 'post_feedback' | 'edit_suggestion' | 'mensagem';
+  source: 'post_feedback' | 'edit_suggestion' | 'mensagem' | 'media_note' | 'media_note_reply';
   item_id: number;
   cliente_id: number;
   cliente_nome: string;

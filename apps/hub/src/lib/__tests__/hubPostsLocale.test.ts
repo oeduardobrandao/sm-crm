@@ -84,6 +84,41 @@ describe('hubPosts locale files', () => {
     }
   });
 
+  it('carries the mediaNotes copy in both languages, without em dashes', () => {
+    const keys = flattenKeys(pt);
+    for (const key of [
+      'mediaNotes.title',
+      'mediaNotes.openCount',
+      'mediaNotes.slide',
+      'mediaNotes.point',
+      'mediaNotes.pointInScene',
+      'mediaNotes.previousVersion',
+      'mediaNotes.statusOpen',
+      'mediaNotes.statusResolved',
+      'mediaNotes.comment',
+      'mediaNotes.commentWholeSlide',
+      'mediaNotes.commentAtMoment',
+      'mediaNotes.tapHint',
+      'mediaNotes.composerPoint',
+      'mediaNotes.composerSlide',
+      'mediaNotes.composerMoment',
+      'mediaNotes.composerMomentPoint',
+      'mediaNotes.placeholder',
+      'mediaNotes.send',
+      'mediaNotes.cancel',
+      'mediaNotes.reply',
+      'mediaNotes.sendError',
+      'mediaNotes.approveConfirmTitle',
+      'mediaNotes.approveConfirmBody',
+      'mediaNotes.approveConfirm',
+      'mediaNotes.team',
+    ]) {
+      expect(keys, key).toContain(key);
+    }
+    expect(pt.mediaNotes.title).toBe('Comentários na mídia');
+    expect(JSON.stringify(pt.mediaNotes) + JSON.stringify(en.mediaNotes)).not.toMatch(/—/);
+  });
+
   it('no longer carries the removed fluxo filter keys', () => {
     const keys = flattenKeys(pt);
     expect(keys.filter((k) => /fluxo|avulsas/i.test(k))).toEqual([]);

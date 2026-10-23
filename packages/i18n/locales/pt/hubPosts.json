@@ -268,5 +268,32 @@
       "rateLimited": "Muitas tentativas seguidas. Aguarde um minuto e tente novamente.",
       "generic": "Algo deu errado. Tente novamente."
     }
+  },
+  "mediaNotes": {
+    "title": "Comentários na mídia",
+    "openCount": "{{count}} em aberto",
+    "slide": "Slide {{n}}",
+    "point": "ponto {{n}}",
+    "pointInScene": "ponto na cena",
+    "previousVersion": "versão anterior",
+    "statusOpen": "Em aberto",
+    "statusResolved": "Resolvido",
+    "comment": "Comentar",
+    "commentWholeSlide": "Comentar o slide inteiro",
+    "commentAtMoment": "Comentar em {{time}}",
+    "tapHint": "Toque na imagem para marcar um ponto",
+    "composerPoint": "Comentário no ponto marcado do slide {{n}}",
+    "composerSlide": "Comentário sobre o slide {{n}} inteiro",
+    "composerMoment": "Comentário em {{time}}",
+    "composerMomentPoint": "Comentário em {{time}}, no ponto marcado",
+    "placeholder": "O que você quer mudar aqui?",
+    "send": "Enviar comentário",
+    "cancel": "Cancelar",
+    "reply": "Responder",
+    "sendError": "Não foi possível enviar. Tente novamente.",
+    "approveConfirmTitle": "Você tem {{count}} comentários em aberto",
+    "approveConfirmBody": "Aprovar mesmo assim? Os comentários continuam visíveis para a equipe.",
+    "approveConfirm": "Aprovar mesmo assim",
+    "team": "Equipe"
   }
 }

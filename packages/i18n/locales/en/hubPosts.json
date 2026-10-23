@@ -268,5 +268,32 @@
       "rateLimited": "Too many attempts in a row. Wait a minute and try again.",
       "generic": "Something went wrong. Try again."
     }
+  },
+  "mediaNotes": {
+    "title": "Comments on the media",
+    "openCount": "{{count}} open",
+    "slide": "Slide {{n}}",
+    "point": "spot {{n}}",
+    "pointInScene": "spot in the scene",
+    "previousVersion": "previous version",
+    "statusOpen": "Open",
+    "statusResolved": "Resolved",
+    "comment": "Comment",
+    "commentWholeSlide": "Comment on the whole slide",
+    "commentAtMoment": "Comment at {{time}}",
+    "tapHint": "Tap the image to mark a spot",
+    "composerPoint": "Comment on the marked spot of slide {{n}}",
+    "composerSlide": "Comment on the whole of slide {{n}}",
+    "composerMoment": "Comment at {{time}}",
+    "composerMomentPoint": "Comment at {{time}}, on the marked spot",
+    "placeholder": "What would you like to change here?",
+    "send": "Send comment",
+    "cancel": "Cancel",
+    "reply": "Reply",
+    "sendError": "Could not send. Please try again.",
+    "approveConfirmTitle": "You have {{count}} open comments",
+    "approveConfirmBody": "Approve anyway? The comments stay visible to the team.",
+    "approveConfirm": "Approve anyway",
+    "team": "Team"
   }
 }
