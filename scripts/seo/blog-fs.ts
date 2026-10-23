@@ -25,9 +25,24 @@ export function loadPostsFromDisk(dbDir: string = DB_DIR): BlogPost[] {
         .filter((f) => f.endsWith('.json'))
         .map((f) => {
           const slug = f.replace(/\.json$/, '');
-          const meta = JSON.parse(readFileSync(`${dbDir}/${f}`, 'utf8'));
+          const metaPath = `${dbDir}/${f}`;
+          let meta: unknown;
+          try {
+            meta = JSON.parse(readFileSync(metaPath, 'utf8'));
+          } catch (err) {
+            throw new Error(`blog-fs: ${metaPath} is not valid JSON (${(err as Error).message})`, {
+              cause: err,
+            });
+          }
+          // blog-sync writes both files; prerendering an empty article would ship (and the
+          // Admin's live check would then confirm) a post with no body.
           const bodyPath = `${dbDir}/${slug}.body.md`;
-          return parseDbPost(meta, existsSync(bodyPath) ? readFileSync(bodyPath, 'utf8') : '');
+          if (!existsSync(bodyPath)) {
+            throw new Error(
+              `blog-fs: ${bodyPath} is missing (blog-sync writes it next to ${metaPath}); re-run npm run blog:sync`,
+            );
+          }
+          return parseDbPost(meta, readFileSync(bodyPath, 'utf8'));
         })
     : [];
   const seen = new Set<string>();
