@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import {
   getDiscussaoParticipacao,
+  isGeralThread,
   markDiscussaoLida,
   sendDiscussaoMessage,
   setDiscussaoSeguindo,
@@ -76,10 +77,14 @@ export function useDiscussao({
     return max;
   }, [threads]);
 
+  // Only what the timeline marks as new: the general thread and active passage threads.
+  // A resolved thread collapses into the trailing group with no "novas", so counting its
+  // replies would show an unread count with nothing marked in the list.
   const naoLidas = useMemo(() => {
     if (!isParticipant) return 0;
     let n = 0;
     for (const t of threads) {
+      if (!isGeralThread(t) && t.status !== 'active') continue;
       for (const c of t.post_comments) {
         if (c.id > lastSeen && c.author_id !== currentUserId) n++;
       }

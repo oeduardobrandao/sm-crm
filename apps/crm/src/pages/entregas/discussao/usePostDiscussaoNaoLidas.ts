@@ -63,14 +63,14 @@ export interface DiscussaoTriggerBadge {
 
 /**
  * What the post's collapsed row shows. Unread (participants who follow) wins with a dot;
- * otherwise the discussion total with no dot; threads stand in for the total only until
- * the count arrives. Nothing when there is no discussion and no thread.
+ * otherwise the discussion total with no dot. Nothing until the counts arrive (a thread
+ * count standing in would label threads as messages) and nothing for an empty discussion.
  */
 export function discussaoTriggerBadge(
   stats: Pick<DiscussaoNaoLidas, 'total' | 'naoLidas'> | undefined,
-  threadCount: number,
 ): DiscussaoTriggerBadge | null {
-  const naoLidas = stats?.naoLidas ?? 0;
+  if (!stats) return null;
+  const { naoLidas, total } = stats;
   if (naoLidas > 0) {
     return {
       count: naoLidas,
@@ -78,12 +78,10 @@ export function discussaoTriggerBadge(
       label: `${naoLidas} ${naoLidas === 1 ? 'mensagem nova' : 'mensagens novas'} na discussão`,
     };
   }
-  const total = stats?.total ?? 0;
-  const count = total > 0 ? total : threadCount;
-  if (count <= 0) return null;
+  if (total <= 0) return null;
   return {
-    count,
+    count: total,
     unread: false,
-    label: `${count} ${count === 1 ? 'mensagem' : 'mensagens'} na discussão`,
+    label: `${total} ${total === 1 ? 'mensagem' : 'mensagens'} na discussão`,
   };
 }

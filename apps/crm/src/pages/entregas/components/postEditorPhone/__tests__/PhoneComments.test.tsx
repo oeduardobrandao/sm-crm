@@ -321,6 +321,18 @@ describe('PhoneComments one composer at a time', () => {
     expect(teamComposer()).toBeVisible();
   });
 
+  it('renders neither composer bar while the tab is inactive; the team draft survives', () => {
+    const { props, rerender } = setup();
+    setEditorText(teamComposer(), 'rascunho para a equipe');
+    rerender(<PhoneComments {...props} active={false} />);
+    expect(
+      screen.queryByRole('textbox', { name: 'Mensagem para a equipe', hidden: true }),
+    ).toBeNull();
+    expect(screen.queryByPlaceholderText('Responder ao cliente…')).toBeNull();
+    rerender(<PhoneComments {...props} active />);
+    expect(teamComposer().textContent).toBe('rascunho para a equipe');
+  });
+
   it('does not send the client reply from the team composer or vice versa', async () => {
     const { discussao, props } = setup({ replyText: 'olá cliente' });
     setEditorText(teamComposer(), 'só equipe');

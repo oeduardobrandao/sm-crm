@@ -8810,6 +8810,13 @@ a.mention-chip:hover {
   opacity: 1;
 }
 
+/* Touch tablets run the desktop layout (768-1100px) with no hover to reveal them. */
+@media (hover: none) {
+  .discussao-message-actions {
+    opacity: 1;
+  }
+}
+
 .discussao-icon-btn {
   display: inline-flex;
   align-items: center;

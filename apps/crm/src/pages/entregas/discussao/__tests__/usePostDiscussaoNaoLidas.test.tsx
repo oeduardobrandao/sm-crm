@@ -94,7 +94,7 @@ describe('usePostDiscussaoNaoLidas', () => {
 
 describe('discussaoTriggerBadge', () => {
   it('shows unread with the dot flag and the plural label', () => {
-    expect(discussaoTriggerBadge({ total: 9, naoLidas: 3 }, 2)).toEqual({
+    expect(discussaoTriggerBadge({ total: 9, naoLidas: 3 })).toEqual({
       count: 3,
       unread: true,
       label: '3 mensagens novas na discussão',
@@ -102,24 +102,23 @@ describe('discussaoTriggerBadge', () => {
   });
 
   it('uses the singular for one unread message', () => {
-    expect(discussaoTriggerBadge({ total: 1, naoLidas: 1 }, 1)?.label).toBe(
+    expect(discussaoTriggerBadge({ total: 1, naoLidas: 1 })?.label).toBe(
       '1 mensagem nova na discussão',
     );
   });
 
   it('shows the total without a dot when nothing is unread', () => {
-    expect(discussaoTriggerBadge({ total: 6, naoLidas: 0 }, 2)).toMatchObject({
+    expect(discussaoTriggerBadge({ total: 6, naoLidas: 0 })).toMatchObject({
       count: 6,
       unread: false,
     });
   });
 
-  it('falls back to the thread count until the totals arrive', () => {
-    expect(discussaoTriggerBadge(undefined, 2)).toMatchObject({ count: 2, unread: false });
+  it('renders nothing until the totals arrive (no thread count standing in as messages)', () => {
+    expect(discussaoTriggerBadge(undefined)).toBeNull();
   });
 
-  it('renders nothing with no discussion and no threads', () => {
-    expect(discussaoTriggerBadge(undefined, 0)).toBeNull();
-    expect(discussaoTriggerBadge({ total: 0, naoLidas: 0 }, 0)).toBeNull();
+  it('renders nothing for an empty discussion', () => {
+    expect(discussaoTriggerBadge({ total: 0, naoLidas: 0 })).toBeNull();
   });
 });

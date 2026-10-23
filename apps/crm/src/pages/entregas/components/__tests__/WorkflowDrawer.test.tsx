@@ -1589,14 +1589,24 @@ describe('WorkflowDrawer discussion badge on the post trigger', () => {
     expect(screen.queryByLabelText('2 mensagens na discussão')).not.toBeInTheDocument();
   });
 
-  it('does not count the general thread in the fallback before the count arrives', async () => {
+  it('shows no badge until the count arrives (threads never stand in as messages)', async () => {
     mockGetThreads.mockResolvedValue([
       { id: 1, post_id: 1, field: 'geral', comments: [] },
       { id: 2, post_id: 1, field: 'conteudo', comments: [] },
     ] as never);
+    mockGetNaoLidas.mockReturnValue(new Promise(() => {}));
     renderOne();
-    expect(await screen.findByLabelText('1 mensagem na discussão')).toHaveTextContent('1');
-    expect(screen.queryByLabelText('2 mensagens na discussão')).not.toBeInTheDocument();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/na discussão/)).not.toBeInTheDocument();
+  });
+
+  it('announces the badge to screen readers as an image with its label', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 3 }]);
+    renderOne();
+    expect(
+      await screen.findByRole('img', { name: '3 mensagens novas na discussão' }),
+    ).toHaveTextContent('3');
   });
 
   it('shows nothing when there is no discussion and no thread', async () => {

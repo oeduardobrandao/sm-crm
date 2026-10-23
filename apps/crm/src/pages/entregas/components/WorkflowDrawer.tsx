@@ -1896,10 +1896,7 @@ function SortablePostItem({
   };
 
   const isExternallyVisible = isVisibleToClient(post.status);
-  const discussaoBadge = discussaoTriggerBadge(
-    discussao,
-    commentThreads.filter((t) => !isGeralThread(t)).length,
-  );
+  const discussaoBadge = discussaoTriggerBadge(discussao);
 
   // Publish date shown in the collapsed row: once a post is actually live the real
   // published_at wins, otherwise fall back to the scheduled "Data de postagem".
@@ -2007,6 +2004,7 @@ function SortablePostItem({
             {discussaoBadge && (
               <span
                 className={`drawer-post-comment-badge${discussaoBadge.unread ? ' drawer-post-comment-badge--unread' : ''}`}
+                role="img"
                 title={discussaoBadge.label}
                 aria-label={discussaoBadge.label}
               >

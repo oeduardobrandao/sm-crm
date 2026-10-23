@@ -271,6 +271,25 @@ describe('useDiscussao unread count', () => {
     expect(result.current.naoLidas).toBe(1);
   });
 
+  it('skips resolved passage threads, which the timeline shows without "novas"', async () => {
+    const resolved = {
+      ...thread(20, [comment(5, 20, OTHER), comment(6, 20, OTHER)]),
+      field: 'conteudo' as const,
+      status: 'resolved' as const,
+    };
+    const active = {
+      ...thread(21, [comment(7, 21, OTHER)]),
+      field: 'conteudo' as const,
+    };
+    const { result } = setup(
+      { threads: [thread(10, [comment(4, 10, OTHER)]), resolved, active] },
+      { seguindo: true, last_seen_comment_id: 0, implicito: false },
+    );
+    await waitFor(() => expect(result.current.participacao).toBeDefined());
+    // geral (4) + active passage (7); the resolved thread's 5 and 6 are not counted
+    expect(result.current.naoLidas).toBe(2);
+  });
+
   it('is 0 for a non-participant', async () => {
     const { result } = setup({}, { seguindo: false, last_seen_comment_id: 0, implicito: false });
     await waitFor(() => expect(result.current.participacao).toBeDefined());

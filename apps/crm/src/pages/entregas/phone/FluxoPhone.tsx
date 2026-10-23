@@ -544,6 +544,7 @@ export function FluxoPhonePostRow({
                 {discussaoBadge && (
                   <span
                     className={`drawer-post-comment-badge${discussaoBadge.unread ? ' drawer-post-comment-badge--unread' : ''}`}
+                    role="img"
                     title={discussaoBadge.label}
                     aria-label={discussaoBadge.label}
                   >

@@ -213,28 +213,32 @@ export function PhoneComments({
             Mensagem muito longa. O limite é de {DISCUSSAO_MAX_CHARS} caracteres.
           </p>
         )}
-        <BottomActionBar className="phone-comments__composer">
-          <MentionEditor
-            ref={editorRef}
-            className="phone-comments__editor-input"
-            rootClassName="phone-comments__editor"
-            placeholder="Mensagem para a equipe"
-            value={draft}
-            onValueChange={setDraft}
-            onKeyDown={handleKeyDown}
-          />
-          <button
-            type="button"
-            className="phone-comments__send"
-            aria-label="Enviar mensagem para a equipe"
-            disabled={!canSend}
-            // A tap must not take focus (and the keyboard) away from the editor.
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => void handleSend()}
-          >
-            <Send aria-hidden="true" />
-          </button>
-        </BottomActionBar>
+        {/* Fixed like the client bar: only the visible tab may own the slot, so neither
+            relies on the hidden ancestor staying display: none. */}
+        {active && (
+          <BottomActionBar className="phone-comments__composer">
+            <MentionEditor
+              ref={editorRef}
+              className="phone-comments__editor-input"
+              rootClassName="phone-comments__editor"
+              placeholder="Mensagem para a equipe"
+              value={draft}
+              onValueChange={setDraft}
+              onKeyDown={handleKeyDown}
+            />
+            <button
+              type="button"
+              className="phone-comments__send"
+              aria-label="Enviar mensagem para a equipe"
+              disabled={!canSend}
+              // A tap must not take focus (and the keyboard) away from the editor.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void handleSend()}
+            >
+              <Send aria-hidden="true" />
+            </button>
+          </BottomActionBar>
+        )}
       </div>
 
       <div className="phone-comments__pane" data-pane="cliente" hidden={channel !== 'cliente'}>
