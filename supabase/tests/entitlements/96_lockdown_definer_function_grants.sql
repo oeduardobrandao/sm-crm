@@ -11,6 +11,8 @@
 -- _financeiro_normalizar / _financeiro_encerrar_atribuicoes / _financeiro_v2_legado_trigger
 -- (20261025000005_financeiro_v2_seed_legado.sql) are the seed's cargo matching, the
 -- shared encerrado cutoff and the legacy-capture trigger function on clientes/membros.
+-- financeiro_rolar_periodos (20261025000006_financeiro_v2_periodos_job.sql) is the hourly
+-- pg_cron period close job: it runs across every workspace, never called by a user.
 --
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE
 -- at function-creation time (see _helpers.sql), so `anon`/`authenticated` already
@@ -89,7 +91,8 @@ declare
     'public._financeiro_inicio_editavel(uuid, date)',
     'public._financeiro_normalizar(text)',
     'public._financeiro_encerrar_atribuicoes(uuid, bigint, date)',
-    'public._financeiro_v2_legado_trigger()'
+    'public._financeiro_v2_legado_trigger()',
+    'public.financeiro_rolar_periodos(date)'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
