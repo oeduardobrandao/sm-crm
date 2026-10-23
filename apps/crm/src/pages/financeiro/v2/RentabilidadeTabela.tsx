@@ -37,14 +37,23 @@ export function RentabilidadeTabela({
   onSelect,
 }: RentabilidadeTabelaProps) {
   const brl = (v: number) => formatFinancialBRL(v, access);
-  const celulaFuncao = (c: CelulaFuncao) =>
-    c.aInformar ? (
-      <span className="text-amber-600 dark:text-amber-400">A informar</span>
-    ) : c.valor === 0 ? (
-      '-'
-    ) : (
-      brl(c.valor)
+  // A delivery still to inform does not hide what the função's other members already cost.
+  const celulaFuncao = (c: CelulaFuncao) => {
+    if (c.valor === 0) {
+      return c.aInformar ? (
+        <span className="text-amber-600 dark:text-amber-400">A informar</span>
+      ) : (
+        '-'
+      );
+    }
+    if (!c.aInformar) return brl(c.valor);
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        {brl(c.valor)}
+        <span className="text-[11px] text-amber-600 dark:text-amber-400">a informar</span>
+      </span>
     );
+  };
 
   return (
     <Table className="text-[13px]">

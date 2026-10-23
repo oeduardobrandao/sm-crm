@@ -128,7 +128,7 @@ export default function RentabilidadePage() {
 
   const exportar = () => {
     if (!data) return;
-    downloadCsv(montarCsv(linhas, data.funcoes), nomeArquivoCsv(data.periodo.rotulo));
+    downloadCsv(montarCsv(linhas, data.funcoes, anual), nomeArquivoCsv(data.periodo.rotulo, anual));
   };
 
   const barraPeriodo = (
@@ -141,12 +141,24 @@ export default function RentabilidadePage() {
       />
       {data && status === 'fechado' && <Badge variant="neutral">Fechado</Badge>}
       {data && podeGerirPeriodo && status === 'fechado' && (
-        <Button variant="outline" size="sm" className="mb-0" onClick={() => setAcao('reabrir')}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mb-0"
+          disabled={busy}
+          onClick={() => setAcao('reabrir')}
+        >
           Reabrir período
         </Button>
       )}
       {data && podeGerirPeriodo && status === 'reaberto' && (
-        <Button variant="outline" size="sm" className="mb-0" onClick={() => setAcao('fechar')}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mb-0"
+          disabled={busy}
+          onClick={() => setAcao('fechar')}
+        >
           Fechar período
         </Button>
       )}

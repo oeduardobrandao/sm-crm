@@ -95,9 +95,15 @@ const margemCsv = (m: number | null) =>
  * `csvField`: numbers are written as they are, because its formula guard would turn a
  * negative lucro into text ('-150,00) and its quoting would wrap every decimal comma.
  */
-export function montarCsv(linhas: LinhaRentabilidade[], funcoes: FuncaoFinanceira[]): string {
+export function montarCsv(
+  linhas: LinhaRentabilidade[],
+  funcoes: FuncaoFinanceira[],
+  anual: boolean,
+): string {
   const sep = ';';
-  const header = ['Cliente', 'MRR', 'Custo', 'Lucro', 'Margem', ...funcoes.map((f) => f.nome)]
+  // Same labels as the table headers: the values in `linhas` are already annual when Anual is on.
+  const dinheiro = anual ? ['ARR', 'Custo anual', 'LL anual'] : ['MRR', 'Custo', 'Lucro'];
+  const header = ['Cliente', ...dinheiro, 'Margem', ...funcoes.map((f) => f.nome)]
     .map((h) => csvField(h, sep))
     .join(sep);
   const rows = linhas.map((l) =>
@@ -113,6 +119,15 @@ export function montarCsv(linhas: LinhaRentabilidade[], funcoes: FuncaoFinanceir
   return CSV_BOM + [header, ...rows].join(CSV_EOL) + CSV_EOL;
 }
 
-export function nomeArquivoCsv(rotulo: string): string {
-  return `rentabilidade-${rotulo.trim().replace(/\s+/g, '-')}.csv`;
+/**
+ * `rentabilidade-<rotulo>.csv`, `-anual` before the extension when Anual is on. Characters a
+ * file system rejects (`/ \\ : * ? " < > |`, control characters) and whitespace become `-`.
+ */
+export function nomeArquivoCsv(rotulo: string, anual: boolean): string {
+  const base = rotulo
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\s/\\:*?"<>|\u0000-\u001f]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `rentabilidade-${base}${anual ? '-anual' : ''}.csv`;
 }

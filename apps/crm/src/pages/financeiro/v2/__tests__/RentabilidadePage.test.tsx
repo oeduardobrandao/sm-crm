@@ -253,6 +253,53 @@ describe('RentabilidadePage', () => {
     );
   });
 
+  it('keeps the cost of a função cell that also has a delivery to inform', async () => {
+    const data = structuredClone(planilha);
+    const talitha = data.clientes.find((c) => c.nome === 'Talitha')!;
+    talitha.a_informar = true;
+    // Lia (exclusivo, 550) stays in Videomaker; Rafa delivers for Videomaker too, no quantity yet.
+    talitha.pessoas.push({
+      membro_id: 6,
+      nome: 'Rafa',
+      funcao_id: 1,
+      regra: 'entrega',
+      valor: 0,
+      total: 0,
+      n_clientes: 1,
+      quantidade: null,
+      valor_unitario: 40,
+    });
+    getRentabilidadeMock.mockResolvedValue(data);
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Talitha' });
+    const videomaker = within(linha('Talitha')).getAllByRole('cell')[5];
+    expect(norm(videomaker.textContent)).toContain('R$ 550,00');
+    expect(within(videomaker).getByText('a informar')).toBeInTheDocument();
+    expect(within(videomaker).queryByText('A informar')).not.toBeInTheDocument();
+  });
+
+  it('disables the period action while the write is in flight', async () => {
+    const user = userEvent.setup();
+    getPeriodosMock.mockResolvedValue([periodo('fechado')]);
+    let resolver: () => void = () => {};
+    reabrirPeriodoMock.mockReturnValue(new Promise<void>((r) => (resolver = r)));
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Reabrir período' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Reabrir período?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Reabrir' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Reabrir período' })).toBeDisabled(),
+    );
+    resolver();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Reabrir período' })).toBeEnabled(),
+    );
+    expect(reabrirPeriodoMock).toHaveBeenCalledTimes(1);
+  });
+
   it('masked_without_financials', async () => {
     useAuthMock.mockReturnValue(auth({ canSeeFinancials: false }));
     const { container } = renderPage();
@@ -346,7 +393,11 @@ describe('RentabilidadePage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Anual' }));
     await user.click(screen.getByRole('button', { name: 'Exportar CSV' }));
-    const [anual] = downloadCsvMock.mock.calls[1] as [string, string];
+    const [anual, anualFilename] = downloadCsvMock.mock.calls[1] as [string, string];
+    expect(anualFilename).toBe('rentabilidade-out-2026-anual.csv');
+    expect(anual.replace('\uFEFF', '').split('\r\n')[0]).toBe(
+      'Cliente;ARR;Custo anual;LL anual;Margem;Videomaker;Design;Edição de vídeo;Gestão de projetos;Copy',
+    );
     expect(anual).toContain(
       'Talitha;30000,00;14160,00;15840,00;52,8;6600,00;3120,00;2520,00;1920,00;0,00',
     );
