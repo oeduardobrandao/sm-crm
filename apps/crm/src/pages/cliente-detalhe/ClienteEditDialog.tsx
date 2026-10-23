@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ import {
 import { updateCliente, type Cliente } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { stripFinancialFields } from '@/lib/financialAccess';
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
 
 interface ClienteEditDialogProps {
   cliente: Cliente;
@@ -38,6 +40,10 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
   const { t: tc } = useTranslation();
   const queryClient = useQueryClient();
   const { canSeeFinancials } = useAuth();
+  // With Financeiro v2 the mensalidade lives in the Financeiro tab (versioned), so this
+  // dialog neither shows nor writes valor_mensal / data_pagamento.
+  const { ativo: v2Ativo } = useFinanceiroV2();
+  const v2 = v2Ativo && canSeeFinancials === true;
 
   const [saving, setSaving] = useState(false);
   const [fNome, setFNome] = useState('');
@@ -105,7 +111,7 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
       toast.error(t('detail.nameRequired'));
       return;
     }
-    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
+    const diaPag = !v2 && fDiaPag ? parseInt(fDiaPag, 10) : undefined;
     if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
       toast.error(t('detail.paymentDayRange'));
       return;
@@ -131,10 +137,13 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
         especialidade: fEspecialidade,
         data_aniversario: fAniMes && fAniDia ? `${fAniMes}-${fAniDia}` : null,
       };
-      await updateCliente(
-        cliente.id!,
-        stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']),
-      );
+      const stripped = stripFinancialFields(payload, canSeeFinancials, ['valor_mensal']);
+      // Omit the keys (not undefined): a stale hidden value must not be written through.
+      if (v2) {
+        delete stripped.valor_mensal;
+        delete stripped.data_pagamento;
+      }
+      await updateCliente(cliente.id!, stripped);
       queryClient.invalidateQueries({ queryKey: ['cliente', cliente.id] });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
       onOpenChange(false);
@@ -153,7 +162,11 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent style={{ maxWidth: 600 }} onConfirmClose={() => onOpenChange(false)}>
+      <DialogContent
+        style={{ maxWidth: 600 }}
+        aria-describedby={undefined}
+        onConfirmClose={() => onOpenChange(false)}
+      >
         <DialogHeader>
           <DialogTitle>{t('detail.editClient')}</DialogTitle>
         </DialogHeader>
@@ -174,7 +187,18 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
             <Label>{t('detail.formPlan')}</Label>
             <Input value={fPlano} onChange={(e) => setFPlano(e.target.value)} />
           </div>
-          {canSeeFinancials === true && (
+          {v2 && (
+            <p className="text-sm text-muted-foreground">
+              <Link
+                to={`/clientes/${cliente.id}/financeiro`}
+                className="underline"
+                onClick={() => onOpenChange(false)}
+              >
+                A mensalidade agora fica na aba Financeiro.
+              </Link>
+            </p>
+          )}
+          {!v2 && canSeeFinancials === true && (
             <div className="space-y-1">
               <Label>{t('detail.formMonthlyValue')}</Label>
               <Input type="number" value={fValor} onChange={(e) => setFValor(e.target.value)} />
@@ -186,16 +210,18 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
               <Input value={fNotion} onChange={(e) => setFNotion(e.target.value)} />
             </div>
           )}
-          <div className="space-y-1">
-            <Label>{t('detail.formPaymentDay')}</Label>
-            <Input
-              type="number"
-              min={1}
-              max={31}
-              value={fDiaPag}
-              onChange={(e) => setFDiaPag(e.target.value)}
-            />
-          </div>
+          {!v2 && (
+            <div className="space-y-1">
+              <Label>{t('detail.formPaymentDay')}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                value={fDiaPag}
+                onChange={(e) => setFDiaPag(e.target.value)}
+              />
+            </div>
+          )}
           <div className="space-y-1">
             <Label>{t('detail.formDeliveryDay')}</Label>
             <Input
