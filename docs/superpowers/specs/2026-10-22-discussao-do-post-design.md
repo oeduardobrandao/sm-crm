@@ -321,8 +321,8 @@ o cliente**.
   mensagens na discussão" quando houver, e o link "Abrir na discussão do post" com `&discussao=1`.
   Mensagem que é só o token do post mostra só o bloco (o chip inline some quando o texto, sem o
   token, fica vazio).
-- Vale no `EquipeThread` do desktop e no `EquipeThreadPhone` (no celular, toque abre a prévia
-  como sheet, sem hover). Sem mudança no armazenamento.
+- Vale no `EquipeThread` do desktop e no `EquipeThreadPhone` (no celular, o toque continua
+  abrindo o post; segurar o chip mostra a prévia e o menu traz "Abrir na discussão do post"). Sem mudança no armazenamento.
 
 ### Deep link `&discussao=1`
 
