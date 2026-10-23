@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -63,6 +64,33 @@ function renderDialog(
     </QueryClientProvider>,
   );
   return { invalidate, onOpenChange };
+}
+
+/** Real open state, like FinanceiroTab: the dialog is toggled, never remounted. */
+function Harness({ inicial }: { inicial: Parameters<typeof renderDialog>[0] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Abrir</button>
+      <ClienteMensalidadeDialog
+        clienteId={9}
+        inicial={inicial}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
+function renderHarness(
+  inicial = { valor_mensal: 2500, dia_pagamento: 10 as number | null, status: 'ativo' as const },
+) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <Harness inicial={inicial} />
+    </QueryClientProvider>,
+  );
 }
 
 const valorInput = () => screen.findByRole('spinbutton', { name: 'Valor mensal' });
@@ -171,5 +199,42 @@ describe('ClienteMensalidadeDialog', () => {
     await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
     expect(entitlementMock).toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('starts from the defaults again after cancelling a typed edit and reopening', async () => {
+    const user = userEvent.setup();
+    renderHarness();
+
+    await user.click(screen.getByRole('button', { name: 'Abrir' }));
+    const valor = await valorInput();
+    await user.clear(valor);
+    await user.type(valor, '9999');
+    // Dirty: Cancelar closes the dialog directly (its own handler, no discard prompt).
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Abrir' }));
+    expect(await valorInput()).toHaveValue(2500);
+    expect(store.salvarCliente).not.toHaveBeenCalled();
+  });
+
+  it('closes without a discard prompt on a reopen after a successful save', async () => {
+    const user = userEvent.setup();
+    renderHarness();
+
+    await user.click(screen.getByRole('button', { name: 'Abrir' }));
+    const valor = await valorInput();
+    await user.clear(valor);
+    await user.type(valor, '3000');
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(store.salvarCliente).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // Reopen and close with Escape without touching anything: no "descartar" confirm.
+    await user.click(screen.getByRole('button', { name: 'Abrir' }));
+    await valorInput();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 });

@@ -212,4 +212,13 @@ describe('FinanceiroTab with Financeiro v2', () => {
     expect(await screen.findByText('Total recebido')).toBeVisible();
     expect(screen.queryByText('Equipe neste cliente')).not.toBeInTheDocument();
   });
+
+  it('formats a fractional agency goal with a comma', async () => {
+    const r = structuredClone(planilha) as typeof planilha;
+    r.meta_margem = 55.5;
+    store.getRentabilidade.mockResolvedValue(r);
+    renderTab();
+
+    expect(await screen.findByText('Meta da agência: 55,5%')).toBeVisible();
+  });
 });

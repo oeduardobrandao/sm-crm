@@ -87,9 +87,10 @@ export function ClienteMensalidadeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {editaveis.isSuccess ? (
-        // Mounted only once the periods are known and only while open, so the form's
-        // defaults (including the open period) are fresh on every open.
+      {editaveis.isSuccess && open ? (
+        // Mounted only once the periods are known AND only while open (the query stays
+        // successful from cache after closing, so `isSuccess` alone would keep the form
+        // and its state alive across opens). Each open therefore reads fresh defaults.
         <MensalidadeForm
           clienteId={clienteId}
           inicial={inicial}

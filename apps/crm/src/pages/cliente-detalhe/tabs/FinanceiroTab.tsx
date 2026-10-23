@@ -136,6 +136,7 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
       }
     : { valor_mensal: cliente.valor_mensal ?? 0, dia_pagamento: dia, status: 'ativo' };
 
+  const metaTexto = meta_margem.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
   const money = (v: number) => formatFinancialBRL(v, canSeeFinancials);
   const pausado = entry?.status === 'pausado';
   const pessoas = new Set(entry?.pessoas.map((p) => p.membro_id)).size;
@@ -197,7 +198,7 @@ function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: Re
           sub={
             entry ? (
               <>
-                Meta da agência: {meta_margem}%{' '}
+                Meta da agência: {metaTexto}%{' '}
                 {pausado && (
                   <Badge variant="warning" size="sm">
                     Pausado
