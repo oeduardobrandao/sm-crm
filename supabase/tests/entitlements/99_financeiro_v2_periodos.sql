@@ -523,14 +523,38 @@ create or replace function pg_temp.trava(p_ws uuid, p_mode text) returns boolean
        and l.objid::bigint = (public._financeiro_lock_key(p_ws) & 4294967295))
 $f$;
 do $$
-declare v_ws uuid := pg_temp.novo_ws(); v_leg uuid := pg_temp.novo_ws(); v_seed uuid := pg_temp.novo_ws();
+declare v_leg uuid := pg_temp.novo_ws(); v_seed uuid := pg_temp.novo_ws(); v_ws uuid; v_rpc text; v_sql text;
 begin
-  perform pg_temp.fixture_planilha(v_ws);
-  assert not pg_temp.trava(v_ws, 'ShareLock'), 'lock: held before the write';
-  perform pg_temp.ok(pg_temp.dono(v_ws), format(
-    'select public.financeiro_cliente_salvar(%s, %L, 2800, null, %L)', pg_temp.cid(v_ws, 'Talitha'), '2026-10-01', 'ativo'));
-  assert pg_temp.trava(v_ws, 'ShareLock'), 'lock: cliente_salvar holds no shared advisory lock on the workspace key';
-  assert not pg_temp.trava(v_ws, 'ExclusiveLock'), 'lock: cliente_salvar took it exclusively';
+  -- Each of the 7 write RPCs on its own workspace, with the legacy triggers off: the
+  -- write-through UPDATE of cliente/acordo_salvar would otherwise fire the trigger,
+  -- which takes the same key and would mask a missing lock in the RPC itself.
+  alter table clientes disable trigger trg_financeiro_v2_clientes_legado;
+  alter table membros disable trigger trg_financeiro_v2_membros_legado;
+  foreach v_rpc in array array['config_salvar', 'funcao_salvar', 'funcao_excluir', 'cliente_salvar',
+                               'acordo_salvar', 'atribuicoes_salvar', 'entregas_salvar'] loop
+    v_ws := pg_temp.novo_ws();
+    perform pg_temp.fixture_planilha(v_ws);
+    v_sql := case v_rpc
+      when 'config_salvar' then 'select public.financeiro_config_salvar(15, null)'
+      when 'funcao_salvar' then 'select public.financeiro_funcao_salvar(null, ''Nova'', null)'
+      when 'funcao_excluir' then format('select public.financeiro_funcao_excluir(%s)',
+        (select id from financeiro_funcoes where conta_id = v_ws and nome = 'Copy'))
+      when 'cliente_salvar' then format('select public.financeiro_cliente_salvar(%s, %L, 2800, null, %L)',
+        pg_temp.cid(v_ws, 'Talitha'), '2026-10-01', 'ativo')
+      when 'acordo_salvar' then format('select public.financeiro_acordo_salvar(%s, %L, %L::jsonb)',
+        pg_temp.mid(v_ws, 'Ana'), '2026-10-01', '{"modelo":"mensal_meta","valor":4000}')
+      when 'atribuicoes_salvar' then format('select public.financeiro_atribuicoes_salvar(%L, %L::jsonb)', '2026-10-01',
+        jsonb_build_array(jsonb_build_object('membro_id', pg_temp.mid(v_ws, 'Caio'), 'cliente_id', pg_temp.cid(v_ws, 'Talitha'), 'ativo', true)))
+      when 'entregas_salvar' then format('select public.financeiro_entregas_salvar(%L, %s, %L::jsonb)', '2026-10-01',
+        pg_temp.mid(v_ws, 'Ana'), jsonb_build_array(jsonb_build_object('cliente_id', pg_temp.cid(v_ws, 'Talitha'), 'quantidade', 3)))
+    end;
+    assert not pg_temp.trava(v_ws, 'ShareLock'), 'lock: held before ' || v_rpc;
+    perform pg_temp.ok(pg_temp.dono(v_ws), v_sql);
+    assert pg_temp.trava(v_ws, 'ShareLock'), 'lock: ' || v_rpc || ' holds no shared advisory lock on the workspace key';
+    assert not pg_temp.trava(v_ws, 'ExclusiveLock'), 'lock: ' || v_rpc || ' took it exclusively';
+  end loop;
+  alter table clientes enable trigger trg_financeiro_v2_clientes_legado;
+  alter table membros enable trigger trg_financeiro_v2_membros_legado;
 
   perform pg_temp.fixture_planilha(v_leg);
   assert not pg_temp.trava(v_leg, 'ShareLock'), 'lock: legacy ws held before';
