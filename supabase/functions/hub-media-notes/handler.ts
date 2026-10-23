@@ -29,6 +29,23 @@ function parseBody(raw: unknown): string | null {
   return trimmed.length >= 1 && trimmed.length <= MAX_BODY_LENGTH ? trimmed : null;
 }
 
+// The agency's inbox shows p_comentario as the message text: say it is about the media,
+// and keep a long body to a preview (the full text is on the post).
+const NOTIFICATION_BODY_MAX = 280;
+const NOTIFICATION_PREFIX = {
+  create: "Comentário na mídia: ",
+  reply: "Resposta a um comentário na mídia: ",
+} as const;
+
+export function notificationComentario(op: "create" | "reply", body: string): string {
+  // Code points, not UTF-16 units, so an emoji is never cut in half.
+  const chars = Array.from(body);
+  const preview = chars.length > NOTIFICATION_BODY_MAX
+    ? `${chars.slice(0, NOTIFICATION_BODY_MAX - 1).join("").trimEnd()}…`
+    : body;
+  return NOTIFICATION_PREFIX[op] + preview;
+}
+
 /** RPC raise codes (P0001) arrive in the error message, possibly with context around them. */
 function rpcErrorMessage(error: unknown): string {
   const message = (error as { message?: unknown } | null)?.message;
@@ -158,7 +175,7 @@ export function createHubMediaNotesHandler(deps: HubMediaNotesHandlerDeps) {
         const { error: notifErr } = await db.rpc("create_post_approval_notification", {
           p_post_id: postId,
           p_action: "mensagem",
-          p_comentario: body,
+          p_comentario: notificationComentario(create ? "create" : "reply", body),
         });
         if (notifErr) console.error("[hub-media-notes] notification creation failed:", notifErr);
       }

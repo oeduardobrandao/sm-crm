@@ -1,6 +1,7 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
-import { createHubMediaNotesHandler } from "../hub-media-notes/handler.ts";
+import { createHubMediaNotesHandler, notificationComentario } from "../hub-media-notes/handler.ts";
+import { unknownMediaNoteColumns } from "./media-notes-columns.ts";
 
 const now = () => "2026-10-23T12:00:00.000Z";
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://hub.mesaas.com" });
@@ -56,7 +57,11 @@ Deno.test("hub-media-notes create calls hub_create_media_note with token-derived
   assert(!("p_file_id" in (call.payload as object)), "client never sends a file id");
   const notif = rpcCalls(db, "create_post_approval_notification");
   assertEquals(notif.length, 1);
-  assertEquals(notif[0].payload, { p_post_id: 99, p_action: "mensagem", p_comentario: "Trocar a cor" });
+  assertEquals(notif[0].payload, {
+    p_post_id: 99,
+    p_action: "mensagem",
+    p_comentario: "Comentário na mídia: Trocar a cor",
+  });
 });
 
 Deno.test("hub-media-notes create sends null anchors when omitted", async () => {
@@ -206,7 +211,21 @@ Deno.test("hub-media-notes reply notifies with action mensagem", async () => {
   const lookup = db.calls.find((c) => c.table === "post_media_notes")!;
   assert(lookup.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1"));
   const notif = rpcCalls(db, "create_post_approval_notification");
-  assertEquals(notif[0].payload, { p_post_id: 99, p_action: "mensagem", p_comentario: "Combinado" });
+  assertEquals(notif[0].payload, {
+    p_post_id: 99,
+    p_action: "mensagem",
+    p_comentario: "Resposta a um comentário na mídia: Combinado",
+  });
+  assertEquals(unknownMediaNoteColumns(db.calls), []);
+});
+
+Deno.test("notificationComentario caps a long body at 280 characters without splitting an emoji", () => {
+  const long = "a".repeat(279) + "😀" + "b".repeat(50);
+  const out = notificationComentario("create", long);
+  assertEquals(out, `Comentário na mídia: ${"a".repeat(279)}…`);
+  const emoji = notificationComentario("reply", "x".repeat(278) + "😀😀" + "y");
+  assertEquals(emoji, `Resposta a um comentário na mídia: ${"x".repeat(278)}😀…`);
+  assertEquals(notificationComentario("create", "c".repeat(280)), `Comentário na mídia: ${"c".repeat(280)}`);
 });
 
 Deno.test("hub-media-notes notification failure only logs", async () => {

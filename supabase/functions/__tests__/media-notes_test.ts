@@ -2,6 +2,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { buildHubMediaNotes, loadClientMediaNotes } from "../_shared/media-notes.ts";
+import { unknownMediaNoteColumns } from "./media-notes-columns.ts";
 
 function noteRow(over: Record<string, unknown> = {}): any {
   return {
@@ -145,6 +146,8 @@ Deno.test("loadClientMediaNotes filters visibility client", async () => {
     membrosCall.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "c1"),
     "membros must be scoped to the workspace",
   );
+  // Every selected/filtered column exists in migration 20261025000001.
+  assertEquals(unknownMediaNoteColumns(db.calls), []);
 });
 
 Deno.test("loadClientMediaNotes skips queries for no posts", async () => {

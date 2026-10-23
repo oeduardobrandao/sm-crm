@@ -210,19 +210,21 @@ export function createHubPostHistoryHandler(deps: HubPostHistoryHandlerDeps) {
       const counts = new Map<number, number>();
       if (approvalRows.length === 0) return counts;
       try {
-        // Join table (approval_id, note_id). Drained by pages: the 1000-row PostgREST cap
-        // must not silently truncate the counts.
+        // Join table (post_approval_id, note_id), migration 20261025000001. Drained by
+        // pages: the 1000-row PostgREST cap must not silently truncate the counts.
         const ids = approvalRows.map((a) => a.id);
-        const snapshots = await fetchAllRows<{ approval_id: number }>((from, to) =>
+        const snapshots = await fetchAllRows<{ post_approval_id: number }>((from, to) =>
           db
             .from("post_approval_media_notes")
-            .select("approval_id, note_id")
-            .in("approval_id", ids)
-            .order("approval_id", { ascending: true })
+            .select("post_approval_id, note_id")
+            .in("post_approval_id", ids)
+            .order("post_approval_id", { ascending: true })
             .order("note_id", { ascending: true })
             .range(from, to)
         );
-        for (const row of snapshots) counts.set(row.approval_id, (counts.get(row.approval_id) ?? 0) + 1);
+        for (const row of snapshots) {
+          counts.set(row.post_approval_id, (counts.get(row.post_approval_id) ?? 0) + 1);
+        }
       } catch (err) {
         console.error("[hub-post-history] note snapshots lookup failed:", err);
       }

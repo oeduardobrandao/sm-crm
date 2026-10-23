@@ -238,6 +238,8 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
       const { data: approvalData, error: approvalErr } = await db.rpc("record_client_approval_with_notes", {
         p_post_id: post_id,
         p_conta_id: hubToken.conta_id,
+        // Defense in depth: the RPC also locks by cliente, like the other two Hub RPCs.
+        p_cliente_id: hubToken.cliente_id,
         p_token: token,
         p_action: action,
         p_comentario: approvalComentario,

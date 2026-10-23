@@ -2,6 +2,8 @@ import { assert, assertEquals } from "./assert.ts";
 import { listPostFeedback } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
+import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
+import { unknownMediaNoteColumns } from "./media-notes-columns.ts";
 
 type Resp = { data: unknown; error: unknown };
 type Call = { table: string; method: string; args: unknown[] };
@@ -44,6 +46,16 @@ const CTX: McpKeyContext = {
   key_id: "k1",
   created_by: "u1",
 };
+
+/** The recorder's flat calls in the shared mock's shape, for the column guard. */
+function asQueryCalls(calls: Call[]): QueryCall[] {
+  return calls.filter((c) => c.method !== "from").map((c) => ({
+    table: c.table,
+    operation: "select",
+    selectArgs: c.method === "select" ? [c.args] : [],
+    modifiers: c.method === "select" ? [] : [{ method: c.method, args: c.args }],
+  }));
+}
 
 function has(calls: Call[], table: string, method: string, args: unknown[]): boolean {
   return calls.some(
@@ -198,6 +210,71 @@ Deno.test("listPostFeedback: a post with client notes and no approvals is listed
       assert(!String(c.args[0]).includes("file_id"), "file_id never selected");
       assert(!String(c.args[0]).includes("hub_token"), "hub_token never selected");
     }
+  }
+  // Every selected/filtered column exists in migration 20261025000001.
+  assertEquals(unknownMediaNoteColumns(asQueryCalls(calls)), []);
+});
+
+Deno.test("listPostFeedback: a failing note scan degrades to approvals only", async () => {
+  const { db } = makeFakeDb({
+    post_approvals: [
+      { data: [{ post_id: 123, created_at: "2026-06-02T10:00:00Z" }], error: null },
+      {
+        data: [{
+          post_id: 123, action: "correcao", comentario: "x", is_workspace_user: false,
+          created_at: "2026-06-02T10:00:00Z",
+          workflow_posts: { workflow_id: 55, titulo: "T", status: "correcao_cliente", conta_id: "workspace-A", cliente_id: 7 },
+        }],
+        error: null,
+      },
+    ],
+    post_status_events: [{ data: [], error: null }],
+    // e.g. the function deployed before migration 20261025000001
+    post_media_notes: [{ data: null, error: { code: "PGRST205", message: "relation post_media_notes" } }],
+    post_media_notes_v: [{ data: null, error: { code: "PGRST205", message: "relation post_media_notes_v" } }],
+  });
+  const logged: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => logged.push(args);
+  try {
+    const out = await listPostFeedback({ db, ctx: CTX } as unknown as Deps, {});
+    assertEquals(out.length, 1);
+    assertEquals(out[0].post_id, 123);
+    assertEquals(out[0].feedback.length, 1);
+    assertEquals(out[0].media_notes, []);
+  } finally {
+    console.error = original;
+  }
+  assertEquals(logged.length, 2, "both note reads log their failure");
+});
+
+Deno.test("listPostFeedback: a failing phase-2 note load keeps the feedback", async () => {
+  const { db } = makeFakeDb({
+    post_approvals: [
+      { data: [{ post_id: 123, created_at: "2026-06-02T10:00:00Z" }], error: null },
+      {
+        data: [{
+          post_id: 123, action: "aprovado", comentario: null, is_workspace_user: false,
+          created_at: "2026-06-02T10:00:00Z",
+          workflow_posts: { workflow_id: 55, titulo: "T", status: "aprovado_cliente", conta_id: "workspace-A", cliente_id: 7 },
+        }],
+        error: null,
+      },
+    ],
+    post_status_events: [{ data: [], error: null }],
+    post_media_notes: [{ data: [], error: null }],
+    post_media_notes_v: [{ data: [viewNote({ id: 1, post_id: 123 })], error: null }],
+    post_media_note_replies: [{ data: null, error: { message: "boom" } }],
+  });
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const out = await listPostFeedback({ db, ctx: CTX } as unknown as Deps, {});
+    assertEquals(out.length, 1);
+    assertEquals(out[0].feedback.length, 1);
+    assertEquals(out[0].media_notes, []);
+  } finally {
+    console.error = original;
   }
 });
 

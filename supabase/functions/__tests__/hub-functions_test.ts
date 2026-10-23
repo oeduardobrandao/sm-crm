@@ -3655,7 +3655,7 @@ Deno.test("hub-edit-suggestion still returns a generic 500 for other RPC errors"
   assertEquals((await readJson(response)).error, "Erro ao salvar sugestão.");
 });
 
-Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the token's conta", async () => {
+Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the token's conta and cliente", async () => {
   const db = hubApproveDbForPost();
   db.queue("workflow_posts", "update", { data: null, error: null });
   db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 7, open_note_count: 2 }], error: null });
@@ -3670,6 +3670,7 @@ Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the 
   assertEquals(rpc.payload, {
     p_post_id: 99,
     p_conta_id: "conta-1",
+    p_cliente_id: 14,
     p_token: "hub-123",
     p_action: "aprovado",
     p_comentario: "Ok",

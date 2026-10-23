@@ -1,5 +1,6 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { unknownMediaNoteColumns } from "./media-notes-columns.ts";
 import { createHubPostHistoryHandler, sanitizeHistoryApprovals, sanitizeHistoryEvents } from "../hub-post-history/handler.ts";
 
 const now = () => "2026-09-17T12:00:00.000Z";
@@ -188,7 +189,7 @@ Deno.test("hub-post-history includes media_notes and approvals carry open_note_c
   db.queue("post_status_events", "select", { data: rawEvents, error: null });
   db.queue("post_approvals", "select", { data: rawApprovals, error: null });
   db.queue("post_approval_media_notes", "select", {
-    data: [{ approval_id: 501 }, { approval_id: 501 }],
+    data: [{ post_approval_id: 501, note_id: 1 }, { post_approval_id: 501, note_id: 2 }],
     error: null,
   });
   db.queue("post_media_notes_v", "select", { data: [noteRow()], error: null });
@@ -206,6 +207,9 @@ Deno.test("hub-post-history includes media_notes and approvals carry open_note_c
   const view = db.calls.find((c) => c.table === "post_media_notes_v")!;
   assert(view.modifiers.some((m) => m.method === "eq" && m.args[0] === "visibility" && m.args[1] === "client"));
   assert(view.modifiers.some((m) => m.method === "in" && m.args[0] === "post_id"));
+  // The mock accepts any column name: check every one against the migration's lists.
+  assert(db.calls.some((c) => c.table === "post_approval_media_notes"));
+  assertEquals(unknownMediaNoteColumns(db.calls), []);
 });
 
 Deno.test("hub-post-history never serializes an internal note", async () => {
@@ -269,8 +273,8 @@ Deno.test("hub-post-history counts note snapshots across pages", async () => {
   db.queue(
     "post_approval_media_notes",
     "select",
-    { data: [{ approval_id: 501, note_id: 1 }], error: null },
-    { data: [{ approval_id: 501, note_id: 2 }, { approval_id: 503, note_id: 3 }], error: null },
+    { data: [{ post_approval_id: 501, note_id: 1 }], error: null },
+    { data: [{ post_approval_id: 501, note_id: 2 }, { post_approval_id: 503, note_id: 3 }], error: null },
   );
   const response = await makeHandler(db)(new Request("https://example.test/hub-post-history?token=hub-123&post_id=99"));
   const body = await readJson(response);
@@ -278,4 +282,5 @@ Deno.test("hub-post-history counts note snapshots across pages", async () => {
     body.approvals.map((a: { id: number; open_note_count: number }) => [a.id, a.open_note_count]),
     [[501, 2], [503, 1]],
   );
+  assertEquals(unknownMediaNoteColumns(db.calls), []);
 });

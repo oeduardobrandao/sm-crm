@@ -1011,7 +1011,12 @@ export async function listPostFeedback(
     if (args.client_id !== undefined) q = q.eq("workflow_posts.cliente_id", args.client_id);
     if (args.since) q = q.gte("created_at", args.since);
     const { data, error } = await q.order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP);
-    if (error) throw error;
+    // Notes are additive: a failed scan (e.g. this function deployed before migration
+    // 20261025000001) leaves the approvals feed working instead of failing the tool.
+    if (error) {
+      console.error("[mcp] list_post_feedback note scan failed:", error);
+      return [];
+    }
     return (data ?? []) as any[];
   };
 
@@ -1056,7 +1061,11 @@ export async function listPostFeedback(
   const [{ data: fbData, error: fbErr }, { data: evData, error: evErr }, mediaNotes] = await Promise.all([
     feedbackP,
     eventsP,
-    loadClientMediaNotesForPosts(d, chosenIds),
+    loadClientMediaNotesForPosts(d, chosenIds).catch((e) => {
+      // Same degrade as the scan: the feedback and timeline still answer.
+      console.error("[mcp] list_post_feedback note load failed:", e);
+      return [] as MediaNoteRow[];
+    }),
   ]);
   if (fbErr) throw fbErr;
   if (evErr) throw evErr;
