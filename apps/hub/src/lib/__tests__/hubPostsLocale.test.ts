@@ -112,6 +112,7 @@ describe('hubPosts locale files', () => {
       'mediaNotes.approveConfirmBody',
       'mediaNotes.approveConfirm',
       'mediaNotes.team',
+      'mediaNotes.justNow',
     ]) {
       expect(keys, key).toContain(key);
     }

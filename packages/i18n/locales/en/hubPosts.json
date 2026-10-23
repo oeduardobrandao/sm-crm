@@ -294,6 +294,7 @@
     "approveConfirmTitle": "You have {{count}} open comments",
     "approveConfirmBody": "Approve anyway? The comments stay visible to the team.",
     "approveConfirm": "Approve anyway",
-    "team": "Team"
+    "team": "Team",
+    "justNow": "just now"
   }
 }

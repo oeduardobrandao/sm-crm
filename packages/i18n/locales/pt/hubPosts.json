@@ -294,6 +294,7 @@
     "approveConfirmTitle": "Você tem {{count}} comentários em aberto",
     "approveConfirmBody": "Aprovar mesmo assim? Os comentários continuam visíveis para a equipe.",
     "approveConfirm": "Aprovar mesmo assim",
-    "team": "Equipe"
+    "team": "Equipe",
+    "justNow": "agora"
   }
 }

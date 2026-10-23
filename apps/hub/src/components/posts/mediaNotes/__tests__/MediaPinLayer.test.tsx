@@ -30,6 +30,7 @@ function setup(props: Partial<React.ComponentProps<typeof MediaPinLayer>> = {}) 
   const utils = render(
     <MediaPinLayer
       notes={[]}
+      linkId={100}
       naturalWidth={1080}
       naturalHeight={1350}
       placing
@@ -99,6 +100,58 @@ describe('MediaPinLayer', () => {
     expect(parentDown).toHaveBeenCalled();
   });
 
+  it('a right-click places nothing', () => {
+    const { onPlace } = setup();
+    const btn = screen.getByRole('button', { name: 'Toque na imagem para marcar um ponto' });
+    fireEvent(
+      btn,
+      new MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 200, button: 2 }),
+    );
+    fireEvent(
+      btn,
+      new MouseEvent('pointerup', { bubbles: true, clientX: 200, clientY: 200, button: 2 }),
+    );
+    expect(onPlace).not.toHaveBeenCalled();
+  });
+
+  it('the second finger of a pinch places nothing', () => {
+    const { onPlace } = setup();
+    const btn = screen.getByRole('button', { name: 'Toque na imagem para marcar um ponto' });
+    const secondary = (type: string) => {
+      const ev = new MouseEvent(type, { bubbles: true, clientX: 200, clientY: 200 });
+      Object.defineProperty(ev, 'isPrimary', { value: false });
+      fireEvent(btn, ev);
+    };
+    secondary('pointerdown');
+    secondary('pointerup');
+    expect(onPlace).not.toHaveBeenCalled();
+  });
+
+  it('pointercancel resets, so a later stray pointerup places nothing', () => {
+    const { onPlace } = setup();
+    const btn = screen.getByRole('button', { name: 'Toque na imagem para marcar um ponto' });
+    pointer(btn, 'pointerdown', [200, 200]);
+    pointer(btn, 'pointercancel', [200, 200]);
+    pointer(btn, 'pointerup', [200, 200]);
+    expect(onPlace).not.toHaveBeenCalled();
+  });
+
+  it('keyboard activation (click with detail 0) marks the centre of the media', () => {
+    const { onPlace } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Toque na imagem para marcar um ponto' }), {
+      detail: 0,
+    });
+    expect(onPlace).toHaveBeenCalledWith({ x: 0.5, y: 0.5 });
+  });
+
+  it('a mouse click (detail 1) does not place through the click path', () => {
+    const { onPlace } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Toque na imagem para marcar um ponto' }), {
+      detail: 1,
+    });
+    expect(onPlace).not.toHaveBeenCalled();
+  });
+
   it('not placing renders no capture button', () => {
     setup({ placing: false });
     expect(screen.queryByRole('button')).toBeNull();
@@ -116,6 +169,63 @@ describe('MediaPinLayer', () => {
     expect(screen.getByRole('img', { name: 'Trocar a cor' })).toBeTruthy();
     expect(screen.queryByRole('img', { name: 'Sem ponto' })).toBeNull();
     expect(screen.queryByRole('img', { name: 'Antiga' })).toBeNull();
+  });
+
+  it('pins of another link are not rendered', () => {
+    setup({
+      placing: false,
+      notes: [
+        note({ id: 1, body: 'Neste slide', link_id: 100 }),
+        note({ id: 2, body: 'Outro slide', link_id: 101, slide_index: 1 }),
+      ],
+    });
+    expect(screen.getByRole('img', { name: 'Neste slide' })).toBeTruthy();
+    expect(screen.queryByRole('img', { name: 'Outro slide' })).toBeNull();
+  });
+
+  it('numbers pins per link over the full note set', () => {
+    setup({
+      placing: false,
+      notes: [
+        note({ id: 1, body: 'A', link_id: 101, created_at: '2026-10-23T00:00:00Z' }),
+        note({ id: 2, body: 'B', link_id: 100, created_at: '2026-10-23T00:01:00Z' }),
+        note({ id: 3, body: 'C', link_id: 100, created_at: '2026-10-23T00:02:00Z' }),
+      ],
+    });
+    expect(screen.getByRole('img', { name: 'B' }).textContent).toBe('1');
+    expect(screen.getByRole('img', { name: 'C' }).textContent).toBe('2');
+  });
+
+  it('video pin is hidden outside its moment window and shown inside it', () => {
+    const v = note({ media_kind: 'video', t_seconds: 42, body: 'Na cena' });
+    const { rerender } = setup({ placing: false, notes: [v], currentTime: 10 });
+    expect(screen.queryByRole('img', { name: 'Na cena' })).toBeNull();
+    rerender(
+      <MediaPinLayer
+        notes={[v]}
+        linkId={100}
+        currentTime={42.5}
+        naturalWidth={1080}
+        naturalHeight={1350}
+        placing={false}
+        pending={null}
+        onPlace={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('img', { name: 'Na cena' })).toBeTruthy();
+  });
+
+  it('a video pin with no moment, or no playhead, is always shown', () => {
+    setup({
+      placing: false,
+      notes: [
+        note({ id: 1, media_kind: 'video', t_seconds: null, body: 'Sem tempo' }),
+        note({ id: 2, media_kind: 'video', t_seconds: 42, body: 'Com tempo' }),
+      ],
+      currentTime: 10,
+    });
+    expect(screen.getByRole('img', { name: 'Sem tempo' })).toBeTruthy();
+    expect(screen.queryByRole('img', { name: 'Com tempo' })).toBeNull();
   });
 
   it('positions a pin within the contained image rect', () => {

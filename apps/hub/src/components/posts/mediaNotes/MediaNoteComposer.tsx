@@ -60,12 +60,13 @@ export function MediaNoteComposer({ open, title, onSubmit, onCancel, onOverlayCh
       title={title}
       onRequestClose={(reason) => {
         if (sending) return;
-        // A stray tap on the scrim must not throw away what the client typed.
-        if (reason === 'outside' && body.trim() !== '') return;
+        // A stray tap on the scrim or Escape must not throw away what the client typed;
+        // the Cancel button still closes.
+        if (reason !== 'button' && body.trim() !== '') return;
         onCancel();
       }}
     >
-      <div className="hub-bg-card hub-txt w-full self-end rounded-t-2xl p-4 md:max-w-md md:self-center md:rounded-2xl">
+      <div className="hub-bg-card hub-txt max-h-[85dvh] w-full self-end overflow-y-auto rounded-t-2xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-md md:self-center md:rounded-2xl md:pb-4">
         <p aria-hidden="true" className="mb-2 text-[13px] font-semibold">
           {title}
         </p>
@@ -79,7 +80,7 @@ export function MediaNoteComposer({ open, title, onSubmit, onCancel, onOverlayCh
           className="hub-focus-accent hub-border hub-bg-card hub-txt min-h-[96px] w-full resize-none rounded border px-3 py-2 text-[16px] placeholder:text-[var(--hub-tx3)] focus:outline-none"
         />
         {error && (
-          <p role="alert" className="mt-1.5 text-[12px] text-rose-700">
+          <p role="alert" className="mt-1.5 text-[12px] text-rose-700 dark:text-rose-300">
             {t('mediaNotes.sendError')}
           </p>
         )}

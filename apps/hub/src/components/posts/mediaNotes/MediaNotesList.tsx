@@ -21,14 +21,16 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['minute', 60],
 ];
 
-/** "há 3 horas" / "3 hours ago"; no date-fns in the Hub bundle, Intl does it. */
-function timeAgo(iso: string, lang: string): string {
+/** "há 3 horas" / "3 hours ago"; no date-fns in the Hub bundle, Intl does it.
+ * Under a minute (or a clock-skewed future timestamp) reads as "agora". */
+function timeAgo(iso: string, lang: string, justNow: string): string {
   const seconds = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
+  if (seconds > -60) return justNow;
   const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
   for (const [unit, size] of UNITS) {
     if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
   }
-  return rtf.format(0, 'minute');
+  return rtf.format(-1, 'minute');
 }
 
 function ReplyField({ noteId, onReply }: { noteId: number; onReply: Props['onReply'] }) {
@@ -65,7 +67,7 @@ function ReplyField({ noteId, onReply }: { noteId: number; onReply: Props['onRep
         className="hub-focus-accent hub-border hub-bg-card hub-txt min-h-[60px] w-full resize-none rounded border px-3 py-2 text-[16px] placeholder:text-[var(--hub-tx3)] focus:outline-none"
       />
       {error && (
-        <p role="alert" className="text-[12px] text-rose-700">
+        <p role="alert" className="text-[12px] text-rose-700 dark:text-rose-300">
           {t('mediaNotes.sendError')}
         </p>
       )}
@@ -107,7 +109,9 @@ export function MediaNotesList({ notes, canReply, onJump, onReply }: Props) {
               </StatusPill>
             </div>
             <p className="mt-2 whitespace-pre-wrap text-[13px] hub-txt">{n.body}</p>
-            <p className="mt-0.5 text-[12px] hub-tx3">{timeAgo(n.created_at, lang)}</p>
+            <p className="mt-0.5 text-[12px] hub-tx3">
+              {timeAgo(n.created_at, lang, t('mediaNotes.justNow'))}
+            </p>
             {n.replies.length > 0 && (
               <ul className="mt-2 space-y-2 border-l-2 pl-3 hub-border">
                 {n.replies.map((r) => (
@@ -118,7 +122,9 @@ export function MediaNotesList({ notes, canReply, onJump, onReply }: Props) {
                           ? (r.author_name ?? t('mediaNotes.team'))
                           : t('history.actor.you')}
                       </span>
-                      <span className="text-[12px] hub-tx3">{timeAgo(r.created_at, lang)}</span>
+                      <span className="text-[12px] hub-tx3">
+                        {timeAgo(r.created_at, lang, t('mediaNotes.justNow'))}
+                      </span>
                     </div>
                     <p className="whitespace-pre-wrap text-[12px] hub-tx2">{r.body}</p>
                   </li>

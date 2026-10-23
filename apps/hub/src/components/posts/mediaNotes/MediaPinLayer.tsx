@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   containedRect,
+  isNearMoment,
   pinNumbers,
   toPercentStyle,
   toRelative,
@@ -11,8 +12,13 @@ import { DRAG_INTENT_THRESHOLD_PX, crossedDragThreshold } from '../../../lib/car
 import type { HubMediaNote } from '../../../types';
 
 interface Props {
-  /** Every note of the post: the layer picks the current, spotted ones and numbers them per link. */
+  /** The post's notes (all slides is fine): the layer keeps only those on `linkId`, but
+   * numbers pins over everything it is given so the numbers match MediaNotesList. */
   notes: HubMediaNote[];
+  /** The `HubPostMedia.id` this layer sits on. */
+  linkId: number;
+  /** Video playhead in seconds. When given, a video pin shows only near its own moment. */
+  currentTime?: number;
   naturalWidth: number | null;
   naturalHeight: number | null;
   placing: boolean;
@@ -31,6 +37,8 @@ const PIN_BASE =
  */
 export function MediaPinLayer({
   notes,
+  linkId,
+  currentTime,
   naturalWidth,
   naturalHeight,
   placing,
@@ -62,7 +70,15 @@ export function MediaPinLayer({
 
   const numbers = useMemo(() => pinNumbers(notes, (n) => n.link_id), [notes]);
   const pinned = notes.filter(
-    (n) => !n.is_previous_version && n.link_id !== null && n.x !== null && n.y !== null,
+    (n) =>
+      !n.is_previous_version &&
+      n.link_id === linkId &&
+      n.x !== null &&
+      n.y !== null &&
+      (n.media_kind !== 'video' ||
+        currentTime === undefined ||
+        n.t_seconds === null ||
+        isNearMoment(n.t_seconds, currentTime)),
   );
 
   const localBox: Box = { left: 0, top: 0, width: size.width, height: size.height };
@@ -131,9 +147,12 @@ export function MediaPinLayer({
           className="pointer-events-auto absolute inset-0 cursor-crosshair bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
           // No stopPropagation anywhere: a drag must still reach the carousel's swipe handlers.
           onPointerDown={(e) => {
+            // Only the primary pointer's main button: not a right-click, not a pinch's 2nd finger.
+            if (e.button !== 0 || e.isPrimary === false) return;
             downAt.current = { x: e.clientX, y: e.clientY };
           }}
           onPointerUp={(e) => {
+            if (e.button !== 0 || e.isPrimary === false) return;
             const start = downAt.current;
             downAt.current = null;
             if (!start) return;

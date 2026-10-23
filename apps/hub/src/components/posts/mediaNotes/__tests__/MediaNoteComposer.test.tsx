@@ -41,6 +41,35 @@ describe('MediaNoteComposer', () => {
     expect((field() as HTMLTextAreaElement).value).toBe('Trocar a cor');
   });
 
+  it('toggling open true to false reports the overlay change and blanks the field', () => {
+    const onOverlayChange = vi.fn();
+    const base = { title: 't', onSubmit: vi.fn(), onCancel: vi.fn(), onOverlayChange };
+    const { rerender } = render(<MediaNoteComposer open {...base} />);
+    expect(onOverlayChange).toHaveBeenLastCalledWith(true);
+    fireEvent.change(field(), { target: { value: 'rascunho' } });
+    rerender(<MediaNoteComposer open={false} {...base} />);
+    expect(onOverlayChange).toHaveBeenLastCalledWith(false);
+    rerender(<MediaNoteComposer open {...base} />);
+    expect((field() as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('Escape does not discard typed text, but closes when the field is blank', () => {
+    const { onCancel } = setup();
+    fireEvent.change(field(), { target: { value: 'rascunho' } });
+    fireEvent.keyDown(field(), { key: 'Escape' });
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.change(field(), { target: { value: '' } });
+    fireEvent.keyDown(field(), { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('Cancel still closes when there is text', () => {
+    const { onCancel } = setup();
+    fireEvent.change(field(), { target: { value: 'rascunho' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(onCancel).toHaveBeenCalled();
+  });
+
   it('calls onOverlayChange(true) when open and false on close', () => {
     const onOverlayChange = vi.fn();
     const { unmount } = render(

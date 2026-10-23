@@ -76,6 +76,19 @@ describe('MediaNotesList', () => {
     expect(screen.getByText('Ajustado')).toBeTruthy();
   });
 
+  it('reads "agora" for a note under a minute old and for a future timestamp', () => {
+    setup([
+      note({ id: 1, created_at: new Date(Date.now() - 20_000).toISOString() }),
+      note({ id: 2, created_at: new Date(Date.now() + 60_000).toISOString(), body: 'Futuro' }),
+    ]);
+    expect(screen.getAllByText('agora')).toHaveLength(2);
+  });
+
+  it('reads a relative time for an older note', () => {
+    setup([note({ created_at: new Date(Date.now() - 3 * 3600_000).toISOString() })]);
+    expect(screen.getByText(/3 horas/)).toBeTruthy();
+  });
+
   it('uses the team member name when given', () => {
     setup([
       note({
