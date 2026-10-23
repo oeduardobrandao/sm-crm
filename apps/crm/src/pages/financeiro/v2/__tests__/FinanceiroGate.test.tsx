@@ -57,6 +57,13 @@ vi.mock('../AtribuicaoPage', () => ({
     return <p>Em construção.</p>;
   },
 }));
+// The real Rentabilidade page has its own suite (RentabilidadePage.test.tsx) and needs a
+// full payload; this suite only checks that the route renders it inside the layout.
+vi.mock('../RentabilidadePage', () => ({
+  default: function RentabilidadeStub() {
+    return <p>Em construção.</p>;
+  },
+}));
 
 import FinanceiroGate from '../FinanceiroGate';
 import FinanceiroPage from '../../FinanceiroPage';
