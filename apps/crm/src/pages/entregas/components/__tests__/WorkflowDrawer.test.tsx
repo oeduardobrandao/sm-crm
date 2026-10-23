@@ -1505,6 +1505,20 @@ describe('WorkflowDrawer discussao=1 deep link', () => {
     expect(stub).toHaveAttribute('data-autofocus', 'true');
   });
 
+  it('a new request while on Histórico returns to Posts with the post expanded', async () => {
+    const { rerenderWith } = renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1 });
+    await screen.findByTestId('discussao-equipe-stub');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+    expect(await screen.findByTestId('workflow-history-view-stub')).toBeInTheDocument();
+    expect(screen.queryByTestId('discussao-equipe-stub')).toBeNull();
+
+    rerenderWith({ focusRequest: 2 });
+    await waitFor(() => expect(screen.queryByTestId('workflow-history-view-stub')).toBeNull());
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
+  });
+
   it('does not ask for focus without the flag', async () => {
     renderDrawer(qcNew(), { initialPostId: 2 });
     const stub = await screen.findByTestId('discussao-equipe-stub');

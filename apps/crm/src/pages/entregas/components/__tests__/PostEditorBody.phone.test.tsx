@@ -214,14 +214,17 @@ function renderPhone(
     phone,
     ...over,
   };
-  const utils = render(
+  const tree = (extra: Partial<PostEditorBodyProps>) => (
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <PostEditorBody {...props} />
+        <PostEditorBody {...props} {...extra} />
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { ...utils, props, phone };
+  const utils = render(tree({}));
+  /** Re-renders the SAME editor instance with other props (no remount). */
+  const rerenderWith = (extra: Partial<PostEditorBodyProps>) => utils.rerender(tree(extra));
+  return { ...utils, props, phone, rerenderWith };
 }
 
 describe('PostEditorBody, phone layout', () => {
@@ -366,6 +369,28 @@ describe('PostEditorBody, phone layout', () => {
       );
       expect(screen.getByRole('textbox', { name: 'Mensagem para a equipe' })).toBeVisible();
       expect(screen.getByRole('textbox', { name: 'Mensagem para a equipe' })).not.toHaveFocus();
+      expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+    });
+
+    it('a new discussao=1 request while the editor is open switches to Comentários', async () => {
+      const user = userEvent.setup();
+      const onDiscussaoFocused = vi.fn();
+      const { rerenderWith } = renderPhone({
+        post: { ...basePost, status: 'falha_publicacao' },
+        onDiscussaoFocused,
+      });
+      expect(screen.getByRole('tab', { name: 'Conteúdo' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await user.click(screen.getByRole('tab', { name: 'Detalhes' }));
+
+      rerenderWith({ focusRequest: 2 });
+
+      expect(screen.getByRole('tab', { name: /Comentários/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
       expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
     });
 

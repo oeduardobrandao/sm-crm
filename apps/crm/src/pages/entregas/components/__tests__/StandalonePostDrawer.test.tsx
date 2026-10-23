@@ -268,7 +268,7 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
   const onClose = vi.fn();
   const onRefresh = vi.fn();
   const onAttached = vi.fn();
-  const utils = render(
+  const tree = (extra: Partial<Record<string, unknown>>) => (
     <MemoryRouter>
       <QueryClientProvider client={qc}>
         <StandalonePostDrawer
@@ -278,11 +278,15 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
           onRefresh={onRefresh}
           onAttached={onAttached}
           {...props}
+          {...extra}
         />
       </QueryClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
-  return { ...utils, onClose, onRefresh, onAttached };
+  const utils = render(tree({}));
+  /** Re-renders the SAME drawer instance with other props (no remount). */
+  const rerenderWith = (extra: Partial<Record<string, unknown>>) => utils.rerender(tree(extra));
+  return { ...utils, onClose, onRefresh, onAttached, rerenderWith };
 }
 
 // ── Fixtures dos comandos do processo individual (Task 7) ────────────────────
@@ -397,6 +401,24 @@ describe('StandalonePostDrawer', () => {
 
       expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
       expect(screen.queryByTestId('calendar-view-stub')).not.toBeInTheDocument();
+    });
+
+    it('discussao=1 deep link com o Calendário aberto volta ao post e pede o foco', async () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { rerenderWith } = renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Calendário' }));
+      expect(screen.getByTestId('calendar-view-stub')).toBeInTheDocument();
+
+      rerenderWith({ focusRequest: 2 });
+
+      expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
+      expect(screen.queryByTestId('calendar-view-stub')).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Post' })).toHaveAttribute('aria-selected', 'true');
+      expect(await screen.findByTestId('discussao-equipe-stub')).toHaveAttribute(
+        'data-autofocus',
+        'true',
+      );
     });
 
     it('escopa a posse nos posts avulsos do cliente (currentWorkflowId null), não num fluxo', async () => {

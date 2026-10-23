@@ -257,14 +257,6 @@ export function WorkflowDrawer({
   // Post a deep link, the calendar or "Novo Post" pointed at: once its row is in the DOM the body
   // scrolls so the whole expanded post is visible, not just its trigger row.
   const [scrollTargetId, setScrollTargetId] = useState<number | null>(initialPostId ?? null);
-  // A `&discussao=1` link to the post this drawer already shows (no remount, so the typed
-  // drafts survive): open it again if the user collapsed it and bring it into view; the
-  // row then scrolls to and focuses its discussion. First mount is covered by the seeds.
-  useEffect(() => {
-    if (!focusRequest || initialPostId == null) return;
-    setExpandedId(initialPostId);
-    setScrollTargetId(initialPostId);
-  }, [focusRequest, initialPostId]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
@@ -291,6 +283,17 @@ export function WorkflowDrawer({
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const statusRegistry = useStatusRegistry();
   const [drawerView, setDrawerView] = useState<'posts' | 'calendar' | 'grid' | 'history'>('posts');
+  // A `&discussao=1` link to the post this drawer already shows (no remount, so the typed
+  // drafts survive): back to the Posts view (the request would otherwise stay armed behind
+  // Grade/Calendário/Histórico), open the post again if the user collapsed it and bring it
+  // into view; the row then scrolls to and focuses its discussion. First mount is covered
+  // by the seeds.
+  useEffect(() => {
+    if (!focusRequest || initialPostId == null) return;
+    setDrawerView('posts');
+    setExpandedId(initialPostId);
+    setScrollTargetId(initialPostId);
+  }, [focusRequest, initialPostId]);
   const [isFullscreen, setIsFullscreen] = useState(
     () => localStorage.getItem('workflow-drawer-fullscreen') === '1',
   );
