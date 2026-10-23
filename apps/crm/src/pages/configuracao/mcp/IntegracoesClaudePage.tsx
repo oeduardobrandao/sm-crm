@@ -29,7 +29,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
 import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/mcp-oauth';
-import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
+import { SCOPE_OPTIONS, AGENT_PRESET, OWNER_ONLY_HELP } from '@/lib/mcp-scopes';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   CLIENT_INTRO,
@@ -186,7 +186,9 @@ function CopyField({
 }
 
 export default function IntegracoesClaudePage() {
-  const { can } = useAuth();
+  const { can, workspaceRole } = useAuth();
+  // financeiro:* scopes are owner-only. null (unresolved) counts as not owner.
+  const isWorkspaceOwner = workspaceRole === 'owner';
   // The `configuracoes` tab itself is already gated on `configuracoes:ver`
   // at the tab layer (configTabs.ts, Task 12) -- mirrors that here. Was
   // `role === 'owner' || role === 'admin'`, which a custom role with the
@@ -298,6 +300,7 @@ export default function IntegracoesClaudePage() {
       <IntegracoesClaudePhone
         blocked={!canViewConfig}
         canEdit={canEditConfig}
+        isWorkspaceOwner={isWorkspaceOwner}
         client={client}
         onClientChange={setClient}
         copy={copy}
@@ -610,23 +613,34 @@ export default function IntegracoesClaudePage() {
                   Preset: Agente de conteúdo
                 </button>
               </div>
-              {SCOPE_OPTIONS.map((s) => (
-                <label
-                  key={s.value}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Checkbox
-                    checked={scopes.includes(s.value)}
-                    onCheckedChange={() => toggleScope(s.value)}
-                  />
-                  <span className="text-sm">{s.label}</span>
-                </label>
-              ))}
+              {SCOPE_OPTIONS.map((s) => {
+                const locked = s.ownerOnly && !isWorkspaceOwner;
+                return (
+                  <div key={s.value}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        cursor: locked ? 'not-allowed' : 'pointer',
+                        opacity: locked ? 0.6 : 1,
+                      }}
+                    >
+                      <Checkbox
+                        checked={scopes.includes(s.value)}
+                        disabled={locked}
+                        onCheckedChange={() => toggleScope(s.value)}
+                      />
+                      <span className="text-sm">{s.label}</span>
+                    </label>
+                    {locked && (
+                      <p className="text-xs text-muted-foreground" style={{ marginLeft: '1.5rem' }}>
+                        {OWNER_ONLY_HELP}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="space-y-1">
               <Label>Expiração</Label>

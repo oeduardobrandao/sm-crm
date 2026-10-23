@@ -17,6 +17,7 @@ import {
   validateConsentPayload,
 } from "../_shared/mcp-oauth.ts";
 import { adminScopesFromClaim } from "../_shared/mcp-admin-scopes.ts";
+import { memberRole, ownerOnlyScopeViolation } from "../_shared/mcp-token.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
 import { listAdminMcpGrants, revokeAdminMcpGrant } from "../_shared/admin-mcp-grants.ts";
 
@@ -184,6 +185,11 @@ Deno.serve(async (req) => {
       // The grant can't exceed what the request asked for (when it named MCP scopes).
       const grantScopes = boundGrantScopes(scopes, requestedMcp);
       if (grantScopes.length === 0) return json({ error: "no_scopes_granted" }, 400);
+      // financeiro:* is owner-only: checked against the membership role in the CHOSEN workspace
+      // (workspace_members.role), before anything is persisted. The mcp function re-checks per call.
+      if (ownerOnlyScopeViolation(grantScopes, await memberRole(svc, user.id, contaId))) {
+        return json({ error: "owner_only_scope" }, 400);
+      }
 
       const now = new Date().toISOString();
       const { error } = await svc

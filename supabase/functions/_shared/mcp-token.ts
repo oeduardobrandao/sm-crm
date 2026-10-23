@@ -10,6 +10,8 @@ export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 export const MCP_ALLOWED_SCOPES = [
   "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read", "membros:read",
   "posts:write", "templates:write", "tarefas:write", "clientes:write", "membros:write",
+  // Owner-only (OWNER_ONLY_SCOPES): never in MCP_AGENT_PRESET.
+  "financeiro:read", "financeiro:write",
 ] as const;
 export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
 

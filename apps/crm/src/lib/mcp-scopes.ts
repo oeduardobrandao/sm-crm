@@ -1,19 +1,31 @@
 // MCP permission scopes shown in the CRM — single source of truth for both the API-key page
 // (/configuracao/mcp) and the OAuth consent page (/oauth/consent). Mirror of MCP_ALLOWED_SCOPES
 // in supabase/functions/_shared/mcp-token.ts (can't import across the Deno/Vite boundary).
+// `ownerOnly` mirrors OWNER_ONLY_SCOPES there: the pickers disable those for non-owners and the
+// edge functions (mcp-keys, mcp-oauth-consent, mcp) enforce it.
 export const SCOPE_OPTIONS = [
-  { value: 'clientes:read', label: 'Clientes (leitura)' },
-  { value: 'posts:read', label: 'Posts (leitura)' },
-  { value: 'workflows:read', label: 'Fluxos (leitura)' },
-  { value: 'ideias:read', label: 'Ideias/Pautas (leitura)' },
-  { value: 'tarefas:read', label: 'Tarefas (leitura)' },
-  { value: 'membros:read', label: 'Equipe (leitura)' },
-  { value: 'posts:write', label: 'Posts (escrita)' },
-  { value: 'templates:write', label: 'Modelos (escrita)' },
-  { value: 'tarefas:write', label: 'Tarefas (escrita)' },
-  { value: 'clientes:write', label: 'Clientes (escrita)' },
-  { value: 'membros:write', label: 'Equipe (escrita)' },
+  { value: 'clientes:read', label: 'Clientes (leitura)', ownerOnly: false },
+  { value: 'posts:read', label: 'Posts (leitura)', ownerOnly: false },
+  { value: 'workflows:read', label: 'Fluxos (leitura)', ownerOnly: false },
+  { value: 'ideias:read', label: 'Ideias/Pautas (leitura)', ownerOnly: false },
+  { value: 'tarefas:read', label: 'Tarefas (leitura)', ownerOnly: false },
+  { value: 'membros:read', label: 'Equipe (leitura)', ownerOnly: false },
+  { value: 'posts:write', label: 'Posts (escrita)', ownerOnly: false },
+  { value: 'templates:write', label: 'Modelos (escrita)', ownerOnly: false },
+  { value: 'tarefas:write', label: 'Tarefas (escrita)', ownerOnly: false },
+  { value: 'clientes:write', label: 'Clientes (escrita)', ownerOnly: false },
+  { value: 'membros:write', label: 'Equipe (escrita)', ownerOnly: false },
+  { value: 'financeiro:read', label: 'Financeiro (leitura, só donos)', ownerOnly: true },
+  { value: 'financeiro:write', label: 'Financeiro (escrita, só donos)', ownerOnly: true },
 ] as const;
+
+/** Helper text shown under an owner-only scope the current user cannot tick. */
+export const OWNER_ONLY_HELP = 'Somente o dono do workspace';
+
+/** Whether `scope` (a `SCOPE_OPTIONS` value) is reserved for the workspace owner. */
+export function isOwnerOnlyScope(scope: string): boolean {
+  return SCOPE_OPTIONS.some((s) => s.value === scope && s.ownerOnly);
+}
 
 /** Least-privilege preset for a content agent — read scopes only. Write is opt-in. */
 export const AGENT_PRESET: string[] = [

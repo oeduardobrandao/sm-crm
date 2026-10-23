@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
-import { generateApiKey, validateScopes } from "../_shared/mcp-token.ts";
+import { generateApiKey, memberRole, ownerOnlyScopeViolation, validateScopes } from "../_shared/mcp-token.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -89,6 +89,11 @@ Deno.serve(async (req) => {
       const name = typeof body.name === "string" ? body.name.trim() : "";
       if (!name) return json({ error: "name required" }, 400);
       if (!validateScopes(body.scopes)) return json({ error: "invalid scopes" }, 400);
+      // financeiro:* is owner-only: checked against the membership role in THIS workspace
+      // (workspace_members.role), never profiles.role. The mcp function re-checks on every call.
+      if (ownerOnlyScopeViolation(body.scopes, await memberRole(svc, user.id, contaId))) {
+        return json({ error: "owner_only_scope" }, 400);
+      }
       const expires_at = typeof body.expires_at === "string" ? body.expires_at : null;
 
       const { raw, hash, suffix } = await generateApiKey();

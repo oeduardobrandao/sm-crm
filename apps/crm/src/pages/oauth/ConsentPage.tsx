@@ -12,6 +12,8 @@ import {
   AGENT_PRESET,
   ADMIN_SCOPE_OPTIONS,
   ADMIN_READ_PRESET,
+  OWNER_ONLY_HELP,
+  isOwnerOnlyScope,
 } from '@/lib/mcp-scopes';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -120,9 +122,13 @@ export default function ConsentPage() {
   const scopeOptions = isPlatform ? ADMIN_SCOPE_OPTIONS : SCOPE_OPTIONS;
 
   const selectedWs = workspaces.find((w) => w.id === selected) ?? null;
+  // Owner-only scopes (financeiro:*) are only grantable by the owner of the chosen workspace.
+  // Strip them otherwise, so a request that named them can't submit a grant the server refuses.
+  const isOwnerOfSelected = isPlatform || selectedWs?.role === 'owner';
+  const effectiveScopes = isOwnerOfSelected ? scopes : scopes.filter((s) => !isOwnerOnlyScope(s));
   const canApprove =
     phase === 'consent' &&
-    scopes.length > 0 &&
+    effectiveScopes.length > 0 &&
     (isPlatform || (!!selectedWs && selectedWs.feature_mcp));
 
   const approve = async () => {
@@ -131,15 +137,21 @@ export default function ConsentPage() {
     try {
       await recordOAuthGrant(
         isPlatform
-          ? { authorization_id: authorizationId, target: 'platform', scopes }
-          : { authorization_id: authorizationId, conta_id: selectedWs!.id, scopes },
+          ? { authorization_id: authorizationId, target: 'platform', scopes: effectiveScopes }
+          : {
+              authorization_id: authorizationId,
+              conta_id: selectedWs!.id,
+              scopes: effectiveScopes,
+            },
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       toast.error(
         msg.includes('feature_disabled')
           ? 'O plano deste workspace não inclui a integração MCP.'
-          : 'Não foi possível registrar a autorização.',
+          : msg.includes('owner_only_scope')
+            ? 'As permissões do Financeiro são somente do dono do workspace.'
+            : 'Não foi possível registrar a autorização.',
       );
       setPhase('consent');
       return;
@@ -296,15 +308,26 @@ export default function ConsentPage() {
                 Permissões
               </p>
               <div className="space-y-2">
-                {scopeOptions.map((s) => (
-                  <label key={s.value} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={scopes.includes(s.value)}
-                      onCheckedChange={(c) => toggleScope(s.value, c === true)}
-                    />
-                    {s.label}
-                  </label>
-                ))}
+                {scopeOptions.map((s) => {
+                  const locked = 'ownerOnly' in s && s.ownerOnly && !isOwnerOfSelected;
+                  return (
+                    <div key={s.value}>
+                      <label
+                        className={`flex items-center gap-2 text-sm ${locked ? 'opacity-60' : ''}`}
+                      >
+                        <Checkbox
+                          checked={effectiveScopes.includes(s.value)}
+                          disabled={locked}
+                          onCheckedChange={(c) => toggleScope(s.value, c === true)}
+                        />
+                        {s.label}
+                      </label>
+                      {locked && (
+                        <p className="ml-6 text-xs text-muted-foreground">{OWNER_ONLY_HELP}</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </>
