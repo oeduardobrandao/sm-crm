@@ -381,7 +381,7 @@ export interface HubPostsResponse {
   postApprovals: PostApproval[];
   /** Client-visible media notes for the posts in this response. Absent on stale cached
    * payloads: treat as []. */
-  mediaNotes: HubMediaNote[];
+  mediaNotes?: HubMediaNote[];
   propertyValues: HubPostProperty[];
   workflowSelectOptions: HubSelectOption[];
   instagramProfile: InstagramProfile | null;

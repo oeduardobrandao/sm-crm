@@ -78,12 +78,16 @@ describe('openCountByLink', () => {
 });
 
 describe('canWriteNotes', () => {
-  it.each(['enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'agendado', 'postado'])(
-    'is true for %s',
-    (status) => {
-      expect(canWriteNotes(post({ status: status as HubPost['status'] }))).toBe(true);
-    },
-  );
+  it.each([
+    'enviado_cliente',
+    'aprovado_cliente',
+    'correcao_cliente',
+    'agendado',
+    'postado',
+    'falha_publicacao',
+  ])('is true for %s', (status) => {
+    expect(canWriteNotes(post({ status: status as HubPost['status'] }))).toBe(true);
+  });
 
   it('is false for rascunho and the internal statuses', () => {
     expect(canWriteNotes(post({ status: 'rascunho' }))).toBe(false);
@@ -117,6 +121,12 @@ describe('anchorLabel', () => {
 
   it('labels an unpinned video note with the moment only', () => {
     expect(anchorLabel(note({ media_kind: 'video', t_seconds: 75.9 }), t)).toBe('1:15');
+  });
+
+  it('labels a video note with no moment by its slide position', () => {
+    expect(anchorLabel(note({ media_kind: 'video', slide_index: 1, t_seconds: null }), t)).toBe(
+      'Slide 2',
+    );
   });
 
   it('marks a previous-version note', () => {

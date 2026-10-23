@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import { formatMoment } from '@mesaas/ui/mediaPins/geometry';
 import type { HubMediaNote, HubPost } from '../types';
 
 /** Mirrors hub-approve's HUB_VISIBLE_STATUSES: the statuses a client can see (and so write on). */
@@ -35,12 +36,6 @@ export function canWriteNotes(post: HubPost): boolean {
   return NOTE_WRITABLE_STATUSES.has(post.status) && !post.em_producao;
 }
 
-// TODO(fem): switch to formatMoment from @mesaas/ui/mediaPins/geometry once it lands.
-function formatMoment(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
-
 /**
  * "Slide 3 · ponto 1", "0:42 · ponto na cena", "Slide 2 (versão anterior)".
  * `pointNumber` is the pin's 1-based position among the slide's pinned notes: the note
@@ -53,10 +48,11 @@ export function anchorLabel(
 ): string {
   const pinned = note.x !== null && note.y !== null;
   const parts: string[] = [];
-  if (note.t_seconds !== null) {
+  if (note.media_kind === 'video' && note.t_seconds !== null) {
     parts.push(formatMoment(note.t_seconds));
     if (pinned) parts.push(t('mediaNotes.pointInScene'));
   } else {
+    // An image note, or a video note with no moment: both sit on a slide position.
     parts.push(t('mediaNotes.slide', { n: note.slide_index + 1 }));
     if (pinned && pointNumber !== undefined) parts.push(t('mediaNotes.point', { n: pointNumber }));
   }
