@@ -6,6 +6,9 @@ import type { CommentThreadWithComments, PostComment } from '@/store/comments';
 
 // A postgres_changes stand-in that knows about several tables per channel and keeps an
 // ordered log of channel creation/removal (the shared supabase mock has no generic emit).
+// Like realtime-js 2.x, `channel(topic)` hands back the channel already registered under
+// that topic, a removed channel stays registered (state "leaving") until the leave ack
+// arrives on a later tick, and `subscribe()` only joins a "closed" channel.
 const h = vi.hoisted(() => {
   type Listener = {
     channel: object;
@@ -13,38 +16,63 @@ const h = vi.hoisted(() => {
     filter: { event: string; schema: string; table: string; filter?: string };
     cb: () => void;
   };
+  type FakeChannel = {
+    name: string;
+    state: 'closed' | 'joined' | 'leaving';
+    on: (t: string, filter: Listener['filter'], cb: () => void) => FakeChannel;
+    subscribe: () => FakeChannel;
+  };
   const state = {
     log: [] as string[],
     listeners: [] as Listener[],
+    topics: new Map<string, FakeChannel>(),
     rpc: vi.fn(),
   };
   const supabase = {
     rpc: (name: string, params: Record<string, unknown>) => state.rpc(name, params),
     channel: (name: string) => {
+      const existing = state.topics.get(name);
+      if (existing) {
+        state.log.push(`reuse:${name}`);
+        return existing;
+      }
       state.log.push(`create:${name}`);
       const pending: Listener[] = [];
-      const channel: Record<string, unknown> = {
+      const channel: FakeChannel = {
         name,
-        on(_t: string, filter: Listener['filter'], cb: () => void) {
+        state: 'closed',
+        on(_t, filter, cb) {
           pending.push({ channel, table: filter.table, filter, cb });
           return channel;
         },
         subscribe() {
+          if (channel.state !== 'closed') return channel;
+          channel.state = 'joined';
           state.log.push(`subscribe:${name}`);
           state.listeners.push(...pending);
           return channel;
         },
       };
+      state.topics.set(name, channel);
       return channel;
     },
-    removeChannel: (ch: { name: string }) => {
+    removeChannel: (ch: FakeChannel) => {
       state.log.push(`remove:${ch.name}`);
+      ch.state = 'leaving';
       state.listeners = state.listeners.filter((l) => l.channel !== ch);
-      return Promise.resolve('ok');
+      return new Promise((resolve) =>
+        setTimeout(() => {
+          if (state.topics.get(ch.name) === ch) state.topics.delete(ch.name);
+          resolve('ok');
+        }, 0),
+      );
     },
   };
   return { state, supabase };
 });
+
+const logHas = (re: RegExp) => h.state.log.some((e) => re.test(e));
+const logIndex = (re: RegExp) => h.state.log.findIndex((e) => re.test(e));
 
 vi.mock('@/lib/supabase', () => ({ supabase: h.supabase }));
 
@@ -140,6 +168,7 @@ function setup(
 beforeEach(() => {
   h.state.log.length = 0;
   h.state.listeners = [];
+  h.state.topics.clear();
   h.state.rpc.mockReset();
   h.state.rpc.mockImplementation(async (name: string) => {
     if (name === 'get_post_discussao_participacao') return { data: [participacaoRow], error: null };
@@ -163,7 +192,7 @@ describe('useDiscussao realtime', () => {
       ['post_comment_threads', 'post_id=eq.1'],
       ['post_comments', 'thread_id=in.(10,20)'],
     ]);
-    expect(h.state.log).toContain('create:post-discussao-1');
+    expect(logHas(/^create:post-discussao-1-\d+$/)).toBe(true);
   });
 
   it('subscribes only to the threads table when the post has no threads', () => {
@@ -175,23 +204,20 @@ describe('useDiscussao realtime', () => {
     const { rerender } = setup({ threads: [THREADS[0]] });
     expect(h.state.listeners.at(-1)?.filter.filter).toBe('thread_id=in.(10)');
     rerender({ postId: 1, threads: THREADS });
+    // The old channel is still leaving: the new subscription must be a fresh, joined one.
+    expect(h.state.log.some((e) => e.startsWith('reuse:'))).toBe(false);
     expect(h.state.listeners.at(-1)?.filter.filter).toBe('thread_id=in.(10,20)');
     expect(h.state.listeners.filter((l) => l.table === 'post_comments')).toHaveLength(1);
+    expect(h.state.listeners.filter((l) => l.table === 'post_comment_threads')).toHaveLength(1);
   });
 
   it('removes the previous post channel before creating the next one', () => {
     const { rerender } = setup({ postId: 1 });
     rerender({ postId: 2, threads: THREADS });
-    const log = h.state.log.filter((e) => e.includes('post-discussao'));
-    expect(log.indexOf('remove:post-discussao-1')).toBeGreaterThan(-1);
-    expect(log.indexOf('remove:post-discussao-1')).toBeLessThan(
-      log.indexOf('create:post-discussao-2'),
-    );
-    expect(
-      h.state.listeners.every(
-        (l) => l.filter.filter?.startsWith('post_id=eq.2') || l.table === 'post_comments',
-      ),
-    ).toBe(true);
+    const removed = logIndex(/^remove:post-discussao-1-/);
+    expect(removed).toBeGreaterThan(-1);
+    expect(removed).toBeLessThan(logIndex(/^create:post-discussao-2-/));
+    expect(h.state.listeners.filter((l) => l.table === 'post_comment_threads')).toHaveLength(1);
     expect(h.state.listeners.find((l) => l.table === 'post_comment_threads')?.filter.filter).toBe(
       'post_id=eq.2',
     );
@@ -200,7 +226,7 @@ describe('useDiscussao realtime', () => {
   it('removes the channel on unmount', () => {
     const { unmount } = setup();
     unmount();
-    expect(h.state.log).toContain('remove:post-discussao-1');
+    expect(logHas(/^remove:post-discussao-1-/)).toBe(true);
     expect(h.state.listeners).toHaveLength(0);
   });
 
@@ -244,7 +270,7 @@ describe('useDiscussao unread count', () => {
   });
 
   it('treats the implicit responsible as a participant', async () => {
-    const { result } = setup({}, { seguindo: false, last_seen_comment_id: 0, implicito: true });
+    const { result } = setup({}, { seguindo: true, last_seen_comment_id: 0, implicito: true });
     await waitFor(() => expect(result.current.isParticipant).toBe(true));
     expect(result.current.naoLidas).toBe(4);
   });
@@ -316,6 +342,56 @@ describe('useDiscussao read marker', () => {
     await waitFor(() => expect(result.current.participacao?.lastSeenCommentId).toBe(9));
     expect(result.current.unreadAnchorId).toBe(2);
     expect(result.current.naoLidas).toBe(0);
+  });
+
+  it('does not mark while the document is hidden, and marks once it is visible again', async () => {
+    await mount();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    act(() => liveObserver()?.trigger(1));
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(rpcCalls('post_discussao_marcar_lido')).toHaveLength(0);
+    visibility.mockReturnValue('visible');
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await act(() => vi.advanceTimersByTimeAsync(900));
+    expect(rpcCalls('post_discussao_marcar_lido')).toHaveLength(1);
+    visibility.mockRestore();
+  });
+
+  it('waits for the open-time participation fetch before marking (cached data race)', async () => {
+    qc.setQueryData(['post-discussao-participacao', 1], {
+      seguindo: true,
+      lastSeenCommentId: 2,
+      implicito: false,
+    });
+    let release: (v: unknown) => void = () => {};
+    h.state.rpc.mockImplementation((name: string) => {
+      if (name === 'get_post_discussao_participacao') {
+        return new Promise((resolve) => {
+          release = () => resolve({ data: [participacaoRow], error: null });
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    participacaoRow = { seguindo: true, last_seen_comment_id: 2, implicito: false };
+    const { result } = renderHook(
+      () => useDiscussao({ postId: 1, threads: THREADS, currentUserId: ME }),
+      { wrapper },
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    act(() => result.current.sectionRef(document.createElement('div')));
+    act(() => liveObserver()?.trigger(1));
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(rpcCalls('post_discussao_marcar_lido')).toHaveLength(0);
+    expect(result.current.unreadAnchorId).toBeNull();
+    await act(async () => release(undefined));
+    await waitFor(() => expect(result.current.unreadAnchorId).toBe(2));
+    await act(() => vi.advanceTimersByTimeAsync(900));
+    expect(rpcCalls('post_discussao_marcar_lido')).toHaveLength(1);
   });
 
   it('invalidates participation and unread prefixes after marking', async () => {
@@ -407,10 +483,23 @@ describe('useDiscussao mutations', () => {
   });
 
   it('toggleSeguir unfollows for the implicit responsible (no row, already notified)', async () => {
-    const { result } = setup({}, { seguindo: false, last_seen_comment_id: 0, implicito: true });
+    const { result } = setup({}, { seguindo: true, last_seen_comment_id: 0, implicito: true });
     await waitFor(() => expect(result.current.isParticipant).toBe(true));
     await act(() => result.current.toggleSeguir());
     expect(rpcCalls('post_discussao_seguir')[0][1]).toEqual({ p_post_id: 1, p_seguir: false });
+  });
+});
+
+describe('useDiscussao bystander anchor', () => {
+  it('a bystander who starts following gets the open-time max id as anchor, not 0', async () => {
+    const { result } = setup({}, { seguindo: false, last_seen_comment_id: 0, implicito: false });
+    await waitFor(() => expect(result.current.participacao).toBeDefined());
+    expect(result.current.unreadAnchorId).toBeNull();
+    participacaoRow = { seguindo: true, last_seen_comment_id: 0, implicito: false };
+    await act(() => result.current.toggleSeguir());
+    await waitFor(() => expect(result.current.isParticipant).toBe(true));
+    // Everything loaded when the section opened (max id 9) counts as seen.
+    expect(result.current.unreadAnchorId).toBe(9);
   });
 });
 
@@ -436,9 +525,9 @@ describe('useDiscussao enabled', () => {
     const { result, rerender } = setupEnabled(false);
     rerender({ enabled: true });
     await waitFor(() => expect(result.current.unreadAnchorId).toBe(2));
-    expect(h.state.log).toContain('subscribe:post-discussao-1');
+    expect(logHas(/^subscribe:post-discussao-1-/)).toBe(true);
     rerender({ enabled: false });
-    expect(h.state.log.at(-1)).toBe('remove:post-discussao-1');
+    expect(h.state.log.at(-1)).toMatch(/^remove:post-discussao-1-/);
     expect(result.current.unreadAnchorId).toBeNull();
   });
 });

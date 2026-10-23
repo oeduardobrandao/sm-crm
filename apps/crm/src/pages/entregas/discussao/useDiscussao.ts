@@ -95,11 +95,14 @@ export function useDiscussao({
       return;
     }
     if (!hasFreshParticipacao || !participacao) return;
-    setAnchor((prev) =>
-      prev && prev.postId === postId ? prev : { postId, id: participacao.lastSeenCommentId },
-    );
-  }, [enabled, hasFreshParticipacao, participacao, postId]);
-  const unreadAnchorId = anchor && anchor.postId === postId && isParticipant ? anchor.id : null;
+    // A bystander has no marker (the RPC answers 0). Everything loaded when they opened
+    // counts as seen, so if they follow or write later only newer messages land under
+    // "Não lidas" instead of the whole history.
+    const captured = isParticipant ? participacao.lastSeenCommentId : maxCommentId;
+    setAnchor((prev) => (prev && prev.postId === postId ? prev : { postId, id: captured }));
+  }, [enabled, hasFreshParticipacao, participacao, isParticipant, maxCommentId, postId]);
+  const anchorReady = !!anchor && anchor.postId === postId;
+  const unreadAnchorId = anchorReady && isParticipant ? anchor.id : null;
 
   // ── Realtime ────────────────────────────────────────────────
   const threadIdsKey = useMemo(
@@ -112,13 +115,19 @@ export function useDiscussao({
     [threads],
   );
 
+  // realtime-js reuses a channel whose topic is still in its list, and a channel only
+  // leaves that list on the server's leave ack. Rebuilding under the same topic (the thread
+  // set changed) would get the leaving channel back and its subscribe() would be a no-op,
+  // so every subscription gets its own topic.
+  const channelSeqRef = useRef(0);
   useEffect(() => {
     if (!enabled) return;
     const onChange = () => {
       void qc.invalidateQueries({ queryKey: THREADS_KEY });
       void qc.invalidateQueries({ queryKey: NAO_LIDAS_KEY });
     };
-    let channel = supabase.channel(`post-discussao-${postId}`).on(
+    channelSeqRef.current += 1;
+    let channel = supabase.channel(`post-discussao-${postId}-${channelSeqRef.current}`).on(
       'postgres_changes',
       {
         event: '*',
@@ -182,11 +191,26 @@ export function useDiscussao({
     };
   }, [sectionEl]);
 
+  // A hidden tab stops IntersectionObserver callbacks, so `visible` would stay true while
+  // realtime keeps raising maxCommentId: never mark read while the document is hidden.
+  const [docVisible, setDocVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState === 'visible',
+  );
+  useEffect(() => {
+    const onVisibility = () => setDocVisible(document.visibilityState === 'visible');
+    onVisibility();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
   // Highest id already sent for the post in view; never goes backward within a post.
   const lastSentRef = useRef<{ postId: number; id: number }>({ postId, id: 0 });
   useEffect(() => {
     // Reading must not turn a bystander into a participant: only participants get a marker.
-    if (!enabled || !visible || !isParticipant || maxCommentId <= 0) return;
+    // Waiting for the anchor keeps a mark from racing the open-time participation fetch
+    // (whose answer would otherwise freeze the already-advanced marker as the anchor).
+    if (!enabled || !visible || !docVisible || !anchorReady || !isParticipant) return;
+    if (maxCommentId <= 0) return;
     if (lastSentRef.current.postId !== postId) lastSentRef.current = { postId, id: 0 };
     if (maxCommentId <= Math.max(lastSentRef.current.id, lastSeen)) return;
     const timer = setTimeout(() => {
@@ -204,7 +228,17 @@ export function useDiscussao({
         });
     }, MARK_READ_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [enabled, visible, isParticipant, maxCommentId, lastSeen, postId, qc]);
+  }, [
+    enabled,
+    visible,
+    docVisible,
+    anchorReady,
+    isParticipant,
+    maxCommentId,
+    lastSeen,
+    postId,
+    qc,
+  ]);
 
   // ── Mutations ───────────────────────────────────────────────
   const sendMutation = useMutation({
