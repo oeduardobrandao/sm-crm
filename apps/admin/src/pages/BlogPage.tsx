@@ -64,7 +64,7 @@ function send(id: string, post: BlogPostDetail, c: BlogCommand) {
     case 'approve':
       return approveBlogPost(id, post.revision);
     case 'request':
-      return requestBlogChanges(id, c.note, post.revision);
+      return requestBlogChanges(id, c.note, c.revision);
     case 'reject':
       return rejectBlogPost(id, c.reason || undefined);
     case 'unpublish':
@@ -99,6 +99,8 @@ export default function BlogPage() {
   const [editorConflict, setEditorConflict] = useState(false);
   const [editorDirty, setEditorDirty] = useState(false);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
+  // Bumped by Recarregar so the editor always remounts on the fresh base.
+  const [editorReloads, setEditorReloads] = useState(0);
   const stopEditing = useCallback(() => {
     setEditing(false);
     setEditBase(undefined);
@@ -136,11 +138,12 @@ export default function BlogPage() {
   const listedStatus = listed?.status;
   const listedRevision = listed?.revision;
   useEffect(() => {
-    if (!id || !post || listedStatus === undefined) return;
+    // While editing, the editor's base must not move; its save's revision check catches changes.
+    if (!id || !post || editing || listedStatus === undefined) return;
     if (listedStatus !== post.status || listedRevision !== post.revision) {
       void qc.invalidateQueries({ queryKey: postKey(id) });
     }
-  }, [id, post, listedStatus, listedRevision, qc]);
+  }, [id, post, editing, listedStatus, listedRevision, qc]);
 
   const mutation = useMutation({
     // id and post ride in the variables: a toast's "Tentar de novo" may fire after the admin
@@ -153,9 +156,15 @@ export default function BlogPage() {
   // is in flight sends nothing (mutation.isPending lags a render behind a fast second click).
   const inFlight = useRef(false);
 
-  async function run(c: BlogCommand, target = post): Promise<RunResult> {
+  async function run(c: BlogCommand, explicitTarget?: BlogPostDetail): Promise<RunResult> {
+    // A save goes against the version the editor opened with, never the live detail: a
+    // refetch mid-edit must turn into a 409, not a silent overwrite of newer text.
+    const target = explicitTarget ?? (c.kind === 'update' ? (editBase ?? post) : post);
     if (!target) return 'failed';
-    if (inFlight.current) return 'busy';
+    if (inFlight.current) {
+      toast.error('Aguarde a ação em andamento terminar.');
+      return 'busy';
+    }
     inFlight.current = true;
     setEditorErrors([]);
     try {
@@ -244,6 +253,7 @@ export default function BlogPage() {
     const r = await detail.refetch();
     if (!r.data) return;
     setEditBase(r.data.post);
+    setEditorReloads((n) => n + 1);
     setEditorConflict(false);
     setEditorErrors([]);
   };
@@ -309,6 +319,7 @@ export default function BlogPage() {
       }}
       editorErrors={editorErrors}
       editBase={editBase}
+      editorReloads={editorReloads}
       editorConflict={editorConflict}
       onReloadEditor={() => void reloadEditor()}
       onEditorDirtyChange={setEditorDirty}
@@ -322,7 +333,15 @@ export default function BlogPage() {
     if (id) {
       return (
         <div>
-          <PageHeader title="Post" back={{ to: blogPath(tab), label: 'Blog' }} />
+          <PageHeader
+            title="Post"
+            back={{
+              to: blogPath(tab),
+              label: 'Blog',
+              // Only while a changed draft is open; otherwise the nav bar's own back.
+              onClick: guard ? () => go(blogPath(tab)) : undefined,
+            }}
+          />
           <GlassPanel flush>{detailView}</GlassPanel>
           {discardDialog}
         </div>

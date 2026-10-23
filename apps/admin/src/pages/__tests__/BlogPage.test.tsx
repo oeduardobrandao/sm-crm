@@ -22,8 +22,10 @@ import {
   getBlogPost,
   listBlogPosts,
   requestBlogChanges,
+  retryBlogPublish,
   updateBlogPost,
 } from '../../lib/api';
+import { mockPhone } from '../../__tests__/phone';
 import BlogPage from '../BlogPage';
 import type { BlogPostDetail, BlogPostRow } from '../blog/blog-view';
 
@@ -88,7 +90,7 @@ function renderAt(path: string) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
@@ -98,6 +100,7 @@ function renderAt(path: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...view, qc };
 }
 
 beforeEach(() => {
@@ -346,5 +349,89 @@ describe('BlogPage', () => {
       'noopener,noreferrer',
     );
     open.mockRestore();
+  });
+  it('saves against the revision the editor opened with, even after a refetch', async () => {
+    const { qc } = renderAt(`/admin/blog/${ID1}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar texto' }));
+    fireEvent.change(screen.getByLabelText('Lede'), { target: { value: 'Meu texto.' } });
+    // The Routine rewrites the post while the admin edits; something refetches the detail.
+    vi.mocked(getBlogPost).mockResolvedValue({ post: detail({ revision: 4, lede: 'Da rotina.' }) });
+    await qc.invalidateQueries();
+    await waitFor(() => expect(vi.mocked(getBlogPost).mock.calls.length).toBeGreaterThan(1));
+    expect(screen.getByLabelText('Lede')).toHaveValue('Meu texto.');
+    vi.mocked(updateBlogPost).mockRejectedValueOnce(apiError(409, { error: 'conflict' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(updateBlogPost).toHaveBeenCalledWith(ID1, { lede: 'Meu texto.' }, 3),
+    );
+    expect(
+      await screen.findByText(
+        'Este post mudou enquanto você editava. Copie seu texto e recarregue.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('asks for changes on the revision the note was written against and keeps it on 409', async () => {
+    const { qc } = renderAt(`/admin/blog/${ID1}`);
+    fireEvent.change(await screen.findByLabelText('Nota para a rotina'), {
+      target: { value: 'Troque o título.' },
+    });
+    vi.mocked(getBlogPost).mockResolvedValue({ post: detail({ revision: 4 }) });
+    await qc.invalidateQueries();
+    await waitFor(() => expect(screen.getByText(/revisão 4/)).toBeInTheDocument());
+    vi.mocked(requestBlogChanges).mockRejectedValueOnce(apiError(409, { error: 'conflict' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pedir ajuste' }));
+    await waitFor(() =>
+      expect(requestBlogChanges).toHaveBeenCalledWith(ID1, 'Troque o título.', 3),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Este post mudou enquanto você revisava. Carregamos a versão atual.',
+      ),
+    );
+    expect(screen.getByLabelText('Nota para a rotina')).toHaveValue('Troque o título.');
+  });
+
+  it('asks before the phone back button drops an edited draft', async () => {
+    const restore = mockPhone();
+    try {
+      renderAt(`/admin/blog/${ID1}`);
+      fireEvent.click(await screen.findByRole('button', { name: 'Editar texto' }));
+      fireEvent.change(screen.getByLabelText('Lede'), { target: { value: 'Mudei.' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Voltar para Blog' }));
+      const ask = await screen.findByRole('dialog', { name: 'Descartar alterações?' });
+      fireEvent.click(within(ask).getByRole('button', { name: 'Continuar editando' }));
+      expect(screen.getByLabelText('Lede')).toHaveValue('Mudei.');
+    } finally {
+      restore();
+    }
+  });
+
+  it('tells the admin to wait when a retry fires during another action', async () => {
+    vi.mocked(getBlogPost).mockResolvedValue({ post: detail({ status: 'publicado' }) });
+    vi.mocked(updateBlogPost).mockRejectedValueOnce(
+      apiError(502, { error: 'deploy_hook_failed', saved: true }),
+    );
+    vi.mocked(retryBlogPublish).mockReturnValue(new Promise(() => {}));
+    renderAt(`/admin/blog/${ID1}?tab=publicados`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar texto' }));
+    fireEvent.change(screen.getByLabelText('Lede'), { target: { value: 'Outro.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e publicar' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Texto salvo, mas a publicação não começou.',
+        expect.anything(),
+      ),
+    );
+    const call = vi
+      .mocked(toast.error)
+      .mock.calls.find((c) => c[0] === 'Texto salvo, mas a publicação não começou.')!;
+    const action = (call[1] as { action: { onClick: () => void } }).action;
+    action.onClick();
+    action.onClick();
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Aguarde a ação em andamento terminar.'),
+    );
+    expect(retryBlogPublish).toHaveBeenCalledTimes(1);
   });
 });

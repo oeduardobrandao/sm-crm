@@ -12,8 +12,9 @@ interface PageHeaderProps {
   actions?: ReactNode;
   /** Phone actions (round PhoneIconButtons) in the header row. */
   phoneActions?: ReactNode;
-  /** Pushed screen: desktop back link, phone nav bar. */
-  back?: { to: string; label: string };
+  /** Pushed screen: desktop back link, phone nav bar. `onClick`, when set, replaces the
+   * navigation (e.g. to ask before discarding a draft). */
+  back?: { to: string; label: string; onClick?: () => void };
   /** Under the title: segmented control, chips. */
   children?: ReactNode;
   /** Desktop only: before the title block, e.g. an avatar. */
@@ -83,6 +84,14 @@ export function PageHeader({
       {back && (
         <Link
           to={back.to}
+          onClick={
+            back.onClick
+              ? (e) => {
+                  e.preventDefault();
+                  back.onClick?.();
+                }
+              : undefined
+          }
           className="mb-1.5 inline-flex items-center gap-0.5 text-[15px] text-primary hover:underline"
         >
           <ChevronLeft size={18} aria-hidden="true" />

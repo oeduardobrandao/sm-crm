@@ -37,7 +37,7 @@ const LIVE_BASE = 'https://www.mesaas.com.br/blog/';
 
 export type BlogCommand =
   | { kind: 'approve' }
-  | { kind: 'request'; note: string }
+  | { kind: 'request'; note: string; revision: number }
   | { kind: 'reject'; reason: string }
   | { kind: 'unpublish' }
   | { kind: 'republish' }
@@ -59,6 +59,8 @@ export interface BlogDetailProps {
   editorErrors: string[];
   /** The post as it was when the editor opened (see BlogEditor). */
   editBase: BlogPostDetail | undefined;
+  /** Recarregar count, part of the editor's key. */
+  editorReloads: number;
   editorConflict: boolean;
   onReloadEditor: () => void;
   onEditorDirtyChange: (dirty: boolean) => void;
@@ -130,6 +132,8 @@ function SideSection({ title, children }: { title: string; children: ReactNode }
 export function BlogDetail(p: BlogDetailProps) {
   const uid = useId();
   const [note, setNote] = useState('');
+  // The revision on screen when the admin started the note: the request is about that text.
+  const [noteRevision, setNoteRevision] = useState<number | null>(null);
   const [reason, setReason] = useState('');
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -188,7 +192,7 @@ export function BlogDetail(p: BlogDetailProps) {
       <div className="px-[18px] py-4">
         <BlogEditor
           // Recarregar swaps the base; remount so the form starts from it.
-          key={(p.editBase ?? post).revision}
+          key={`${(p.editBase ?? post).revision}-${(p.editBase ?? post).status}-${p.editorReloads}`}
           post={p.editBase ?? post}
           saving={p.pending}
           errors={p.editorErrors}
@@ -349,7 +353,12 @@ export function BlogDetail(p: BlogDetailProps) {
                 maxLength={NOTE_MAX}
                 rows={4}
                 placeholder="O que a rotina deve mudar na próxima versão"
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next.trim() === '') setNoteRevision(null);
+                  else if (noteRevision === null) setNoteRevision(post.revision);
+                  setNote(next);
+                }}
               />
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className="text-xs tabular-nums text-muted-foreground">
@@ -360,7 +369,18 @@ export function BlogDetail(p: BlogDetailProps) {
                   size="sm"
                   disabled={note.trim() === '' || p.pending}
                   onClick={async () => {
-                    if ((await p.run({ kind: 'request', note: note.trim() })) === 'ok') setNote('');
+                    const result = await p.run({
+                      kind: 'request',
+                      note: note.trim(),
+                      revision: noteRevision ?? post.revision,
+                    });
+                    if (result === 'ok') {
+                      setNote('');
+                      setNoteRevision(null);
+                    } else if (result === 'failed') {
+                      // The note stays; the next send is about the version now on screen.
+                      setNoteRevision(null);
+                    }
                   }}
                 >
                   Pedir ajuste

@@ -6,7 +6,8 @@ import { cn } from '../../lib/utils';
 
 export interface AdminNavBarProps {
   title?: ReactNode;
-  back: { to: string; label: string };
+  /** `onClick`, when set, replaces the back navigation. */
+  back: { to: string; label: string; onClick?: () => void };
   trailing?: ReactNode;
 }
 
@@ -19,7 +20,8 @@ function hasInAppHistory(): boolean {
 export function AdminNavBar({ title, back, trailing }: AdminNavBarProps) {
   const navigate = useNavigate();
   const goBack = () => {
-    if (hasInAppHistory()) navigate(-1);
+    if (back.onClick) back.onClick();
+    else if (hasInAppHistory()) navigate(-1);
     else navigate(back.to, { replace: true });
   };
   return (
