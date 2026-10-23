@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ComponentProps } from 'react';
 import { BrowserRouter } from 'react-router-dom';
@@ -38,8 +38,11 @@ vi.mock('@/store', async (importOriginal) => {
     getMembros: vi.fn(),
     getClientes: vi.fn(),
     getTarefas: vi.fn(),
+    getPostChipPreview: vi.fn(),
+    getDiscussaoNaoLidas: vi.fn(),
   };
 });
+vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn().mockResolvedValue([]) }));
 vi.mock('@/store/posts', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
@@ -56,6 +59,16 @@ beforeEach(async () => {
   (store.getMembros as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (store.getClientes as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (store.getTarefas as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  (store.getPostChipPreview as ReturnType<typeof vi.fn>).mockResolvedValue({
+    id: 7,
+    titulo: 'Post de julho',
+    tipo: 'feed',
+    status: 'aprovado_cliente',
+    scheduled_at: null,
+    workflow_id: 3,
+    workflow_titulo: 'Fluxo de agosto',
+  });
+  (store.getDiscussaoNaoLidas as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   const postsModule = await import('@/store/posts');
   (postsModule.searchPostsForMention as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   mockValidate.mockReturnValue(null);
@@ -385,6 +398,98 @@ describe('EquipeThread', () => {
     await waitFor(() => {
       fireEvent.click(img);
       expect(toast.error).toHaveBeenCalledWith('Não foi possível abrir o arquivo.');
+    });
+  });
+
+  describe('post blocks under a message', () => {
+    const tok = (id: number, wf: number | null, label = `Post ${id}`) =>
+      wf != null ? `@[${label}](post:${id}:${wf})` : `@[${label}](post:${id})`;
+
+    function renderWith(content: string) {
+      const msg: EquipeMensagem = { ...MENSAGENS[0], id: 9, content };
+      return renderThread({ mensagens: makeMensagens({ data: { pages: [[msg]] } }) });
+    }
+
+    it('renders the text with its inline chip and one block below', () => {
+      renderWith(`Olha esse post\n${tok(7, 3, 'Post de julho')}`);
+      const msg = screen.getByTestId('equipe-msg-9');
+      expect(msg).toHaveTextContent('Olha esse post');
+      expect(msg.querySelectorAll('.mention-chip--post')).toHaveLength(1);
+      const blocks = within(screen.getByTestId('post-chips-below'));
+      expect(blocks.getAllByRole('link')).toHaveLength(1);
+      expect(blocks.getByRole('link', { name: 'Post de julho' })).toHaveAttribute(
+        'href',
+        '/entregas?drawer=3&post=7',
+      );
+    });
+
+    it('renders only the block when the message is just the token', () => {
+      renderWith(tok(7, 3, 'Post de julho'));
+      const msg = screen.getByTestId('equipe-msg-9');
+      expect(msg.querySelector('.mention-chip')).toBeNull();
+      expect(msg.querySelector('p')).toBeNull();
+      expect(screen.getAllByTestId('post-chips-below')).toHaveLength(1);
+      expect(screen.getByRole('link', { name: 'Post de julho' })).toBeInTheDocument();
+    });
+
+    it('keeps the text when another kind of mention sits next to the post token', () => {
+      renderWith(`@[Ana](membro:5) ${tok(7, 3)}`);
+      const msg = screen.getByTestId('equipe-msg-9');
+      expect(msg.querySelector('.mention-chip--membro')).not.toBeNull();
+      expect(screen.getByTestId('post-chips-below')).toBeInTheDocument();
+    });
+
+    it('renders inline chips and no blocks above three distinct posts', () => {
+      renderWith(`${tok(1, 3)} ${tok(2, 3)} ${tok(3, 3)} ${tok(4, 3)}`);
+      const msg = screen.getByTestId('equipe-msg-9');
+      expect(msg.querySelectorAll('.mention-chip--post')).toHaveLength(4);
+      expect(screen.queryByTestId('post-chips-below')).not.toBeInTheDocument();
+    });
+
+    it('renders one block for a repeated token and a standalone post link', () => {
+      renderWith(`${tok(7, null, 'Avulso')} de novo ${tok(7, null, 'Avulso')}`);
+      const blocks = within(screen.getByTestId('post-chips-below'));
+      expect(blocks.getAllByRole('link')).toHaveLength(1);
+      expect(blocks.getByRole('link', { name: 'Avulso' })).toHaveAttribute(
+        'href',
+        '/entregas?post=7',
+      );
+    });
+
+    it('shows the discussion count and the discussion link on hover', async () => {
+      const store = await import('@/store');
+      (store.getDiscussaoNaoLidas as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { postId: 7, workflowId: 3, total: 4, naoLidas: 1 },
+      ]);
+      renderWith(`Veja\n${tok(7, 3, 'Post de julho')}`);
+      const chip = within(screen.getByTestId('post-chips-below')).getByRole('link', {
+        name: 'Post de julho',
+      });
+      fireEvent.mouseEnter(chip.parentElement!);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      });
+      const card = await screen.findByTestId('post-hover-preview');
+      await waitFor(() => expect(card).toHaveTextContent('4 mensagens na discussão'));
+      expect(store.getDiscussaoNaoLidas).toHaveBeenCalledWith({ postIds: [7] });
+      expect(
+        within(card).getByRole('link', { name: /Abrir na discussão do post/ }),
+      ).toHaveAttribute('href', '/entregas?drawer=3&post=7&discussao=1');
+    });
+
+    it('hides the count when the post has no discussion yet (no row)', async () => {
+      renderWith(`Veja\n${tok(7, 3, 'Post de julho')}`);
+      const chip = within(screen.getByTestId('post-chips-below')).getByRole('link', {
+        name: 'Post de julho',
+      });
+      fireEvent.mouseEnter(chip.parentElement!);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      });
+      const card = await screen.findByTestId('post-hover-preview');
+      await waitFor(() => expect(card).toHaveTextContent('Fluxo de agosto'));
+      expect(card).not.toHaveTextContent(/mensage(m|ns) na discussão/);
+      expect(card).toHaveTextContent('Abrir na discussão do post');
     });
   });
 });
