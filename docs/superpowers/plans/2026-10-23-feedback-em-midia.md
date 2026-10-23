@@ -51,18 +51,21 @@
   - `post_approval_media_notes(post_approval_id bigint → post_approvals on delete cascade, note_id bigint → post_media_notes on delete cascade, primary key (post_approval_id, note_id))`.
 - Produces view `post_media_notes_v` (`with (security_invoker = true)`): every `post_media_notes` column plus `current_link_id bigint` (the `post_file_links.id` with same `post_id` and `file_id`, else null), `current_slide_index int` (0-based rank of that link by `(sort_order, id)` among the post's links, else null), `is_previous_version boolean` (`current_link_id is null`).
 - Produces triggers: BEFORE UPDATE on notes sets `updated_at`, and on status change sets `resolved_by = auth.uid()`, `resolved_at = now()` (to `'resolved'`) or clears both (to `'open'`); AFTER INSERT on replies with `author_kind = 'client'` sets the parent note `status = 'open'`.
-- RLS (copy the `post_references` shape, `20261011000001:129-183`: tenant policy via `conta_id IN (SELECT public.get_my_conta_id())`, service-role bypass, explicit REVOKE/GRANT on tables and sequences):
-  - authenticated SELECT on all three tables in own workspace.
-  - authenticated INSERT on notes only `author_kind = 'team' AND visibility = 'internal' AND author_user_id = auth.uid()` (restrictive policy). Direct inserts are for completeness; the CRM uses the Task 2 RPC.
-  - authenticated INSERT on replies only `author_kind = 'team' AND author_user_id = auth.uid()`.
-  - authenticated UPDATE on notes: column grant `UPDATE (status)` only.
+- RLS and grants (service-role bypass policy on all three tables; explicit REVOKE ALL from `public, anon, authenticated` then the grants below; `post_references` is SELECT-only, so do NOT copy its grants):
+  - PERMISSIVE SELECT on notes and replies `USING (conta_id IN (SELECT public.get_my_conta_id()))`.
+  - PERMISSIVE SELECT on `post_approval_media_notes` `USING (EXISTS (SELECT 1 FROM post_media_notes n WHERE n.id = note_id AND n.conta_id IN (SELECT public.get_my_conta_id())))` (the table has no `conta_id`; the CRM reads it through a PostgREST embed).
+  - PERMISSIVE INSERT on notes `WITH CHECK (conta_id IN (SELECT public.get_my_conta_id()) AND author_kind = 'team' AND visibility = 'internal' AND author_user_id = auth.uid())`.
+  - PERMISSIVE INSERT on replies `WITH CHECK (conta_id IN (SELECT public.get_my_conta_id()) AND author_kind = 'team' AND author_user_id = auth.uid())`.
+  - PERMISSIVE UPDATE on notes `USING (tenant) WITH CHECK (tenant)`.
+  - Grants: `GRANT SELECT, INSERT ON post_media_notes, post_media_note_replies TO authenticated; GRANT UPDATE (status) ON post_media_notes TO authenticated; GRANT SELECT ON post_approval_media_notes TO authenticated; GRANT USAGE, SELECT ON SEQUENCE post_media_notes_id_seq, post_media_note_replies_id_seq TO authenticated; GRANT SELECT ON post_media_notes_v TO authenticated, service_role`; service_role gets ALL on tables and sequences.
   - No authenticated DELETE anywhere; anon gets nothing.
+- **The column list in `ON DELETE SET NULL (file_id)` is mandatory** (PG15+, already used in this repo). A plain `ON DELETE SET NULL` on the composite FK would try to null `conta_id` (NOT NULL) and from then on block every `DELETE FROM files` in the app (ideias, designs, post_references cleanups). Block (h) is the guard.
 
 - [ ] **Step 1: Write the failing psql suite** `99_post_media_notes.sql` following `99_post_references.sql` (fixtures `pmn_env`, `pmn_post`, `pmn_file`, `pmn_link`, each block `begin; select et_grant_hosted_parity(array['post_media_notes','post_media_note_replies','post_approval_media_notes']); do $$ … $$; rollback;`). Blocks (each ends `raise notice 'PASS …'`):
   - (a) owner of workspace A sees A's notes, sees zero of workspace B's.
-  - (b) authenticated insert of a `client` note fails `insufficient_privilege`/check; insert of an `internal` team note with own uid succeeds.
+  - (b) in one block, as `authenticated`: insert of a `client` note fails with SQLSTATE `42501` (new row violates row-level security) or `23514` (check), asserted by code; insert of an `internal` team note with own uid succeeds AND the row is then visible on re-select (proves INSERT grant, policy and sequence USAGE together); a team reply insert also succeeds.
   - (c) a note with `x` but null `y` violates the check; `t_seconds` on an image violates the check; `author_kind='client', visibility='internal'` violates the check.
-  - (d) authenticated UPDATE of `body` fails; UPDATE `status='resolved'` succeeds and the row then has `resolved_by = <uid>` and `resolved_at` not null; back to `'open'` clears both.
+  - (d) authenticated UPDATE of `body` fails; UPDATE `status='resolved'` affects exactly 1 row (`get diagnostics`) and the row then has `resolved_by = <uid>` and `resolved_at` not null; back to `'open'` clears both; the same UPDATE on workspace B's note affects 0 rows. Authenticated SELECT through the `post_approval_media_notes` embed path sees own rows only.
   - (e) inserting a client reply (as service role) on a resolved note leaves the note `open`.
   - (f) a note whose `file_id` belongs to workspace B but `conta_id` A fails the composite FK.
   - (g) view: note on link at `sort_order` 2 of 3 → `current_slide_index = 2`, `is_previous_version = false`; after `post_file_link_replace`-style `update post_file_links set file_id = <new>` → `is_previous_version = true`, `current_link_id is null`; after reorder the index follows the link.
@@ -89,9 +92,9 @@
 - Produces (all `SECURITY DEFINER`, `SET search_path = public, pg_temp`, `REVOKE ALL … FROM public, anon, authenticated`, `GRANT EXECUTE … TO service_role` unless noted). Every Hub RPC first does `SELECT … FROM workflow_posts WHERE id = p_post_id FOR UPDATE` so all Hub writes and approvals on one post serialize.
   - `hub_create_media_note(p_conta_id uuid, p_cliente_id bigint, p_token text, p_post_id bigint, p_link_id bigint, p_t_seconds numeric, p_x real, p_y real, p_body text) returns bigint` — raises `post_not_found` (post not in conta/cliente), `post_not_visible` (status not in the Hub-visible list), `link_not_on_post` (link missing or on another post), `invalid_anchor` (t on image; t < 0 or > `files.duration_seconds + 1` when duration known; x/y pairing). Resolves `file_id`, `media_kind` from `files.kind`, `slide_index_at_creation` = rank of the link by `(sort_order, id)`. Inserts `author_kind='client', visibility='client', hub_token=p_token`.
   - `hub_add_media_note_reply(p_conta_id uuid, p_cliente_id bigint, p_token text, p_note_id bigint, p_body text) returns bigint` — locks the note's post; raises `note_not_found` if the note is internal, missing, or its post is not the token's; `post_not_visible` as above. Inserts a client reply (Task 1 trigger reopens).
-  - `record_client_approval_with_notes(p_post_id bigint, p_conta_id uuid, p_token text, p_action text, p_comentario text, p_new_status text, p_motivo text default null) returns table(approval_id bigint, open_note_count int)` — locks post; raises `post_not_pending` unless status in `('enviado_cliente','correcao_cliente')` **under the lock**; calls `record_client_approval(p_post_id, p_token, p_action, p_comentario, false, p_new_status, p_motivo)`; inserts into `post_approval_media_notes` every note of the post with `visibility='client' AND status='open'`; returns the approval id and that count.
+  - `record_client_approval_with_notes(p_post_id bigint, p_conta_id uuid, p_token text, p_action text, p_comentario text, p_new_status text, p_motivo text default null) returns table(approval_id bigint, open_note_count int)` — locks post; raises `post_not_found` if `post.conta_id <> p_conta_id`; raises `post_not_pending` unless status in `('enviado_cliente','correcao_cliente')` **under the lock**; calls `record_client_approval(p_post_id, p_token, p_action, p_comentario, false, p_new_status, p_motivo)`; inserts into `post_approval_media_notes` every note of the post with `visibility='client' AND status='open'`; returns the approval id and that count.
   - `create_team_media_note(p_post_id bigint, p_link_id bigint, p_t_seconds numeric, p_x real, p_y real, p_body text) returns bigint` — **SECURITY INVOKER**, granted to `authenticated`; resolves link → file under the caller's RLS, raises `link_not_on_post` / `invalid_anchor` like above, inserts `author_kind='team', visibility='internal', author_user_id=auth.uid()`, `conta_id` from the post.
-- Modifies `create_post_approval_notification` (copy its latest body from `20260830000003_avulso_notifications_folders_views.sql:39-112` verbatim) changing only the link to `CASE WHEN workflow_id IS NULL THEN '/entregas?post=' || p_post_id ELSE '/entregas?drawer=' || workflow_id || '&post=' || p_post_id END`, so note notifications open the post (spec call 5). Keep grants from `20260925000001`.
+- Modifies `create_post_approval_notification` (copy its latest body from `20260830000003_avulso_notifications_folders_views.sql:39-112` verbatim) changing only the link to `CASE WHEN workflow_id IS NULL THEN '/entregas?post=' || p_post_id ELSE '/entregas?drawer=' || workflow_id || '&post=' || p_post_id END`, so note notifications open the post (spec call 5). Keep grants from `20260925000001`. The CRM already parses `drawer` + `post` together (`EntregasPage.tsx:512-530`); no CRM change is needed for this.
 
 - [ ] **Step 1: Append failing blocks** to the suite:
   - (j) `hub_create_media_note` with a link of another post raises `link_not_on_post`; with a token whose cliente differs raises `post_not_found`; on a `rascunho` post raises `post_not_visible`; on `aprovado_cliente` succeeds.
@@ -126,9 +129,10 @@
     body: string; status: "open" | "resolved"; resolved_at: string | null; created_at: string;
     replies: HubMediaNoteReplyDTO[];
   }
-  export function buildHubMediaNotes(notes: NoteViewRow[], replies: ReplyRow[], namesByUserId: Map<string, string>): HubMediaNoteDTO[]
-  export async function loadClientMediaNotes(db: DbClient, contaId: string, postIds: number[]): Promise<HubMediaNoteDTO[]>
+  export function buildHubMediaNotes(notes: NoteViewRow[], replies: ReplyRow[], namesByUserId: Map<string, string>): HubMediaNoteDTO[]  // drops any row whose visibility !== "client" (defense in depth)
+  export async function loadClientMediaNotes(db: { from: (table: string) => any }, contaId: string, postIds: number[]): Promise<HubMediaNoteDTO[]>
   ```
+  (`db` is typed with `from` only because `hub-post-history`'s `DbClient` has no `rpc`.) The query mock is at the repo root, `test/shared/supabaseMock.ts`, imported from `supabase/functions/__tests__/` as `../../../test/shared/supabaseMock.ts`.
   `loadClientMediaNotes` selects `post_media_notes_v` with `.eq("conta_id").in("post_id").eq("visibility","client")` ordered `created_at, id`; replies `.in("note_id")` ordered `created_at, id`; names from `membros` (`crm_user_id, nome`) `.eq("conta_id")`; never selects `hub_token`. Returns `[]` for empty `postIds` without querying.
 
 - [ ] **Step 1: Write failing tests** (`createSupabaseQueryMock` from `test/shared/supabaseMock.ts`):
@@ -193,8 +197,8 @@
 
 - [ ] **Step 1: Write failing tests:**
   - hub-posts: `mediaNotes only for visible posts and only client visibility` (queue a view response; assert the `eq("visibility","client")` modifier and that a note for a non-visible post id is not returned).
-  - hub-posts: `hub-posts payload never contains internal notes` — queue view rows where one has `visibility: "internal"` returned by a misbehaving mock; assert the handler's output excludes it (loader re-filters in memory as defense in depth: add `.filter(n => n.visibility === "client")` in `buildHubMediaNotes` input).
-  - hub-post-history: `media_notes included and approvals carry open_note_count`.
+  - hub-posts: `hub-posts payload never contains internal notes` — queue view rows where one has `visibility: "internal"` returned by a misbehaving mock; assert the handler's output excludes it (Task 3's `buildHubMediaNotes` already drops non-client rows).
+  - hub-post-history: `media_notes included and approvals carry open_note_count`; `hub-post-history never serializes an internal note` (view row with `visibility: "internal"` returned by the mock is absent from the output).
   - hub-approve: `aprovado uses record_client_approval_with_notes` (assert rpc name and `p_conta_id`), `post_not_pending maps to 409`.
 - [ ] **Step 2: Run, expect FAIL** — `deno test … supabase/functions/__tests__/hub-functions_test.ts supabase/functions/__tests__/hub-post-history_test.ts`.
 - [ ] **Step 3: Implement.** Existing hub-approve tests that queue `record_client_approval` move to the new RPC name and row shape `[{ approval_id, open_note_count }]`.
@@ -216,12 +220,12 @@
   - `source 'media_note'`: from `post_media_notes`, `item_id = n.id`, `action = 'nota'`, `content = left(n.body, 280)`, `is_workspace_user = false`, `author_user_id = null`.
   - `source 'media_note_reply'`: from replies joined to client notes, `item_id = r.id`, `action = 'resposta_nota'`, `is_workspace_user = (r.author_kind = 'team')`, `author_user_id = r.author_user_id`.
   - Unread: CRM branch counts client notes and client replies; Hub branch counts team replies on client notes.
-- MCP: `PostFeedbackItem` gains `media_notes: { id; anchor: string; status: "open" | "resolved"; visibility: "client" | "internal"; body; author: "client" | "workspace"; created_at; replies: { body; author; created_at }[] }[]` where `anchor` is `"slide N"` (1-based) plus `" · 0:42"` for videos plus `" · ponto"` when `x` is set, and `" (versão anterior)"` when previous. Internal notes are included (the tool already exposes team-side data, spec call 9). Phase 1 post selection also scans `post_media_notes` so posts with notes but no approvals are eligible.
+- MCP: `PostFeedbackItem` gains `media_notes: { id; anchor: string; status: "open" | "resolved"; body; author: "client" | "workspace"; created_at; replies: { body; author; created_at }[] }[]` where `anchor` is `"slide N"` (1-based) plus `" · 0:42"` for videos plus `" · ponto"` when `x` is set, and `" (versão anterior)"` when previous. **Client notes only** (`visibility = 'client'`): `listPostFeedback` reads only `post_approvals` and `post_status_events`, never internal threads, so by spec call 9 internal notes are excluded. `buildPostFeedback(feedbackRows, statusEvents, mediaNotes = [])` takes the notes as an optional third argument so existing calls compile. Phase 1 post selection also scans `post_media_notes` with `.eq("conta_id", d.ctx.conta_id).eq("visibility","client")` so posts with notes but no approvals are eligible.
 
 - [ ] **Step 1: Failing tests:**
   - psql (o): `get_mensagens_feed(p_conta_id, p_cliente_id)` as service role returns the client note and the team reply on it, and **zero** rows for an internal note and its replies; `get_mensagens_unread` Hub branch counts the team reply (1).
   - deno `mcp-content_test.ts`: `buildPostFeedback includes media notes with anchor labels` (`"slide 3 · ponto"`, `"slide 1 · 0:42 (versão anterior)"`).
-  - deno `mcp-feedback_test.ts`: `post with notes and no approvals is listed`.
+  - deno `mcp-feedback_test.ts`: `post with notes and no approvals is listed`; `internal notes are not returned`.
 - [ ] **Step 2: Run, expect FAIL** — `bash scripts/test-entitlements.sh`; `deno test … supabase/functions/__tests__/mcp-*_test.ts`.
 - [ ] **Step 3: Implement** the migration and MCP changes.
 - [ ] **Step 4: Run, expect PASS** — both commands plus `npm run check:functions`.
@@ -253,7 +257,7 @@
   - `round trip at another size`: relative from box 400×400 rendered back into box 800×600 lands at the image center (`toPercentStyle` gives `left: "50%", top: "50%"`).
   - `pinNumbers numbers per link and skips whole-slide notes`.
   - `formatMoment` cases above; `isNearMoment(42, 42.9)` true, `(42, 43.5)` false.
-- [ ] **Step 2: Run, expect FAIL** — `npx vitest run packages/ui/mediaPins` (if `vitest.config.ts` `include` lacks `packages/**/__tests__/**`, add it in this task).
+- [ ] **Step 2: Run, expect FAIL** — `npx vitest run packages/ui/mediaPins` (`vitest.config.ts` already includes `packages/**/__tests__/**`).
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run, expect PASS.**
 - [ ] **Step 5: Commit** — `git commit -m "feat(ui): media pin geometry helpers"`
@@ -267,7 +271,7 @@
 - Test: `packages/ui/VideoPlayer/__tests__/index.test.tsx`
 
 **Interfaces:**
-- Produces: `VideoPlayerProps` gains `onVideoElement?: (el: HTMLVideoElement | null) => void`, called with the mounted `<video>` and again (null, then the new element) whenever `key={mode}` recreates it. Implement with a callback ref that sets the private `videoRef` and forwards; destructure `ref` out of `rest` so a caller `ref` can no longer override `videoRef`.
+- Produces: `VideoPlayerProps` gains `onVideoElement?: (el: HTMLVideoElement | null) => void`, called with the mounted `<video>` and again (null, then the new element) whenever `key={mode}` recreates it. Implement with a callback ref that sets the private `videoRef` and forwards (`VideoPlayerProps` has no `ref`, so nothing else changes).
 
 - [ ] **Step 1: Failing tests:** `onVideoElement receives the video element`; `onVideoElement fires again after fallback switch` (trigger `onFatalError` path that flips mode to `fallback`, assert two non-null calls with different elements).
 - [ ] **Step 2: Run, expect FAIL** — `npx vitest run packages/ui/VideoPlayer`.
@@ -282,7 +286,8 @@
 **Files:**
 - Modify: `apps/hub/src/types.ts` (add `HubMediaNote`, `HubMediaNoteReply` mirroring Task 3 DTOs; `HubPostsResponse.mediaNotes: HubMediaNote[]`; `PostHistoryResponse.media_notes`; `PostHistoryApproval.open_note_count?: number`; `MensagemFeedItem.source` adds `'media_note' | 'media_note_reply'`)
 - Create: `apps/hub/src/services/mediaNotes.ts`, `apps/hub/src/lib/mediaNotes.ts`
-- Test: `apps/hub/src/services/__tests__/mediaNotes.test.ts`, `apps/hub/src/lib/__tests__/mediaNotes.test.ts`
+- Modify: `apps/hub/src/hooks/useHubPosts.ts` (~:70-77: merge `mediaNotes` from the shell response and the `fetchOlderPosts` pages with the same `mergeById` pattern as `posts`/`postApprovals`, and return it)
+- Test: `apps/hub/src/services/__tests__/mediaNotes.test.ts`, `apps/hub/src/lib/__tests__/mediaNotes.test.ts`, `apps/hub/src/hooks/__tests__/useHubPosts.test.tsx` (add: `older pages contribute their mediaNotes`)
 
 **Interfaces:**
 - Produces:
@@ -317,7 +322,7 @@
 **Interfaces:**
 - `MediaPinLayer({ notes: HubMediaNote[]; naturalWidth: number | null; naturalHeight: number | null; placing: boolean; pending: { x: number; y: number } | null; onPlace(p: { x: number; y: number }): void; onPinClick?(noteId: number): void })` — absolutely fills its parent; measures itself (ResizeObserver) and uses `containedRect`/`toRelative`/`toPercentStyle`; when `placing`, a full-size transparent `<button aria-label={t('mediaNotes.tapHint')}>` captures taps (pointerdown/up distance < 8px, reuse `crossedDragThreshold` from `lib/carouselGesture.ts`; a drag does not place and does not `stopPropagation`, so the carousel still swipes). Pins: open = ink fill + white ring, resolved = light; pending = `+`. Pins are `role="img"` with the note body as label.
 - `MediaNoteComposer({ open; title: string; onSubmit(body: string): Promise<void>; onCancel(): void; onOverlayChange(open: boolean): void })` — renders inside `HubDialog` (bottom sheet on phone, centered on md+), textarea 16px, `useUnsavedWork(body.trim() !== '' || sending)`, inline `sendError` on failure, keeps text on failure.
-- `MediaNotesList({ notes; canReply: boolean; onJump(note): void; onReply(noteId, body): Promise<void> })` — the side list from the mockup: anchor chip (button, calls `onJump`), `formatDistance`-style time, status pill (`HubPill` tones accent/neutral), body, replies (team author `author_name ?? t('mediaNotes.team')`, client "Você"), a reply field when `canReply`.
+- `MediaNotesList({ notes; canReply: boolean; onJump(note): void; onReply(noteId, body): Promise<void> })` — the side list from the mockup: anchor chip (button, calls `onJump`), `formatDistance`-style time, status pill (the Hub's `StatusPill`, `apps/hub/src/components/StatusPill.tsx`), body, replies (team author `author_name ?? t('mediaNotes.team')`, client "Você"), a reply field when `canReply`.
 
 - [ ] **Step 1: Failing tests:**
   - `MediaPinLayer`: `tap places a pin at relative coords` (mock `getBoundingClientRect` 400×400, natural 1080×1350, click at (200,200) → `onPlace({x:0.5,y:0.5})`); `tap in the letterbox places nothing`; `drag beyond 8px places nothing`; `not placing renders no capture button`.
@@ -337,7 +342,7 @@
 - Test: `apps/hub/src/components/posts/__tests__/PostMediaPane.test.tsx`, `apps/hub/src/components/posts/__tests__/PostDetailDialog.mediaNotes.test.tsx` (new file; reuse `renderDialog` setup from `PostDetailDialog.test.tsx`)
 
 **Interfaces:**
-- `PostDetailDialogProps` gains `mediaNotes: HubMediaNote[]` (pages pass `data.mediaNotes ?? []`); after a note/reply succeeds the dialog calls the existing `onApprovalSubmitted()` (which invalidates `hub-posts`).
+- `PostDetailDialogProps` gains `mediaNotes: HubMediaNote[]` (pages pass the merged `mediaNotes` returned by `useHubPosts` from Task 9, so notes of posts loaded via older pages arrive too); after a note/reply succeeds the dialog calls the existing `onApprovalSubmitted()` (which invalidates `hub-posts`).
 - `PostMediaPane` gains `{ notes: HubMediaNote[]; placing: boolean; pending: {x,y}|null; onPlace(linkId: number, p): void; currentIndexChange?(i: number): void }`. When `placing`: slide buttons do not open the lightbox, story tap zones are disabled, `MediaPinLayer` overlays the current image slide. Video slides never enter placing (video notes live in the lightbox, Task 12). Thumbnail dots/slides show `openCountByLink` badges.
 - Dialog behaviour (decision: pin placement is an explicit mode so a plain tap still opens the lightbox):
   - A `Comentar` button over the media (visible when `canWriteNotes(post)` and the current slide is an image and not `media_lost_at`) toggles placing; the hint `tapHint` shows while placing; `Comentar o slide inteiro` beside it opens the composer with no point.
@@ -462,7 +467,7 @@
 - Test: `apps/crm/src/pages/entregas/components/mediaNotes/__tests__/*.test.tsx`, `apps/crm/src/pages/entregas/components/__tests__/PostMediaGallery.test.tsx`
 
 **Interfaces:**
-- `PostMediaGallery` gains `notes?: MediaNote[]` and `onNotesChanged?(): void` (passed from `PostEditorBody`, which receives `notes` from the drawers; `ExpressPostPage`/`ExpressPostPhone` pass nothing and keep today's behaviour).
+- `PostMediaGallery` gains `notes?: MediaNote[]` and `onNotesChanged?(): void` (passed from `PostEditorBody`, which receives `notes` from the drawers). Deliberate v1 scope: `ExpressPostPage`/`ExpressPostPhone` pass nothing (express posts publish immediately and never reach client approval), and the Estúdio/design flows and MCP `set_post_media` get no resolve prompt; their notes still show "versão anterior" correctly through the view.
 - Tiles show an open-note count badge (client + internal, current only).
 - `PostMediaLightbox` gains optional `{ notes?: MediaNote[]; onCreateInternalNote?(input): Promise<void> }`: renders all current pins on that item (client = ink, internal = a distinct outline with `Interno` in its label); a `Nota interna` button enters placing (images: tap places; videos: pause + tap, `t_seconds` from `onVideoElement`), composer title `Nota interna no slide {{n}}`, submit → `createInternalMediaNote`. Reuses `@mesaas/ui/mediaPins/geometry`.
 - `ResolveNotesPrompt({ open, count, onConfirm, onCancel })` — AlertDialog, title `Marcar como resolvidos os {{count}} comentários deste slide?`, confirm `Marcar como resolvidos`, cancel `Agora não`. In the gallery: before replace (`MediaAdjustmentDialog` opens) and before delete/`handleUseAsReelCover`, capture `openNotesOnLink(notes, linkId)`; after the operation succeeds and the list is non-empty, show the prompt; confirm → `setMediaNoteStatus(ids, 'resolved')` then `onNotesChanged()`.
@@ -480,11 +485,11 @@
 
 **Files:**
 - Modify: `apps/crm/src/store/mensagens.ts` (`MensagemFeedItem.source` union), `apps/crm/src/pages/mensagens/mensagensLogic.ts` (`matchesTipo`, `isEventRow`, `eventLabel`, `conversaPreview`), `apps/crm/src/pages/mensagens/components/ConversationThread.tsx`, `apps/crm/src/pages/mensagens/phone/ConversationThreadPhone.tsx`
-- Test: `apps/crm/src/pages/mensagens/__tests__/mensagensLogic.test.ts`, `ConversationThread.test.tsx`
+- Test: `apps/crm/src/pages/mensagens/__tests__/mensagensLogic.test.ts`; Create: `apps/crm/src/pages/mensagens/__tests__/ConversationThread.test.tsx`
 
 **Interfaces:**
 - `media_note` bubbles show the label `Comentário na mídia` above the body and the `PostChip`; `media_note_reply` shows `Resposta a um comentário na mídia`. The `Responder` button on them keeps today's behaviour (reply via `replyToPostApproval` to the post). `conversaPreview` prefixes `Comentário na mídia: `.
-- `matchesTipo`: notes count under the existing "post" filter that already covers `post_feedback`.
+- `matchesTipo` (filters `'todas' | 'mensagens' | 'aprovacoes' | 'sugestoes'`): both note sources match `'todas'` and `'aprovacoes'` (the filter that covers `post_feedback`).
 
 - [ ] **Step 1: Failing tests:** `conversaPreview for media_note`; `ConversationThread renders media_note label and chip`.
 - [ ] **Step 2: Run, expect FAIL** — `npx vitest run apps/crm/src/pages/mensagens`.
