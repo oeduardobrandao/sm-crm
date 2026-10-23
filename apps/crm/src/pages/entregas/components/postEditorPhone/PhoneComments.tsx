@@ -75,7 +75,9 @@ export function PhoneComments({
 }: PhoneCommentsProps) {
   const [channel, setChannel] = useState<Channel>('cliente');
   const client = clientName || 'Cliente';
-  const clientCount = approvals.length + notes.filter((n) => n.visibility === 'client').length;
+  const clientNotes = notes.filter((n) => n.visibility === 'client');
+  // One meaning for the count, same as the Comentários tab: approvals plus OPEN client notes.
+  const clientCount = approvals.length + clientNotes.filter((n) => n.status === 'open').length;
   const openThreads = threads.filter((t) => t.status === 'active').length;
 
   return (
@@ -109,7 +111,7 @@ export function PhoneComments({
               <span className="phone-comments__suggestion-cta">Revisar</span>
             </button>
           )}
-          {approvals.length === 0 && notes.length === 0 && !suggestion && (
+          {approvals.length === 0 && clientNotes.length === 0 && !suggestion && (
             <p className="phone-comments__empty">Nenhuma mensagem com o cliente ainda.</p>
           )}
           <ClientConversation

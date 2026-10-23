@@ -89,6 +89,7 @@ import { PhonePublishChecklist } from './postEditorPhone/PhonePublishChecklist';
 import { PhoneTextScreen } from './postEditorPhone/PhoneTextScreen';
 import { PhoneComments } from './postEditorPhone/PhoneComments';
 import { ClientConversation, type MediaNotesBinding } from './mediaNotes/ClientConversation';
+import { OpenNotesBadge } from './mediaNotes/OpenNotesBadge';
 // By path, not through the store barrel: the drawer test harnesses mock '@/store'.
 import type { MediaNote } from '@/store/mediaNotes';
 import { PhoneSuggestionSheet, PhoneTimelineSheet } from './postEditorPhone/PhoneSheets';
@@ -470,6 +471,16 @@ export function PostEditorBody({
 
   // ── Phone layout state (hooks run on every layout; only the phone branch reads them) ──
   const [phoneTab, setPhoneTab] = useState<PhoneEditorTab>('conteudo');
+  // The conversation's anchor chips ask the media gallery to open that item. A nonce makes
+  // a second click on the same chip open it again after the lightbox was closed.
+  const [mediaFocus, setMediaFocus] = useState<{ linkId: number; nonce: number } | null>(null);
+  const conversationNotes: MediaNotesBinding | undefined = mediaNotes && {
+    ...mediaNotes,
+    onSelectMedia: (linkId) => {
+      setMediaFocus((prev) => ({ linkId, nonce: (prev?.nonce ?? 0) + 1 }));
+      mediaNotes.onSelectMedia?.(linkId);
+    },
+  };
   const [roteiroOpen, setRoteiroOpen] = useState(false);
   const [captionScreenOpen, setCaptionScreenOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -671,7 +682,7 @@ export function PostEditorBody({
     const statusOption = statusRegistry.resolve(post);
     const activeThreads = commentThreads.filter((t) => t.status === 'active');
     const captionThreadCount = activeThreads.filter((t) => t.field === 'ig_caption').length;
-    const openClientNotes = (mediaNotes?.notes ?? EMPTY_MEDIA_NOTES).filter(
+    const openClientNotes = (conversationNotes?.notes ?? EMPTY_MEDIA_NOTES).filter(
       (n) => n.visibility === 'client' && n.status === 'open',
     ).length;
     const commentCount = approvals.length + activeThreads.length + openClientNotes;
@@ -808,6 +819,9 @@ export function PostEditorBody({
             mediaAutocleanedAt={post.media_autocleaned_at}
             instagramPermalink={post.instagram_permalink}
             tiktokPostUrl={post.tiktok_post_url}
+            notes={conversationNotes?.notes}
+            onNotesChanged={conversationNotes?.onChanged}
+            openLinkRequest={mediaFocus}
           />
         </div>
 
@@ -1140,14 +1154,14 @@ export function PostEditorBody({
     const comentariosPane = (
       <PhoneComments
         approvals={approvals}
-        notes={mediaNotes?.notes ?? EMPTY_MEDIA_NOTES}
+        notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
         media={postMedia ?? []}
-        onNoteReply={mediaNotes?.onReply ?? noopAsync}
-        onNoteStatus={mediaNotes?.onStatus ?? noopAsync}
-        onSelectMedia={mediaNotes?.onSelectMedia}
+        onNoteReply={conversationNotes?.onReply ?? noopAsync}
+        onNoteStatus={conversationNotes?.onStatus ?? noopAsync}
+        onSelectMedia={conversationNotes?.onSelectMedia}
         references={references}
         onOpenReference={setViewingReference}
-        clientName={phone.clientName}
+        clientName={conversationNotes?.clientName ?? phone.clientName}
         replyText={replyText}
         sendingReply={sendingReply}
         onReplyChange={onReplyChange}
@@ -1178,6 +1192,12 @@ export function PostEditorBody({
             onStatusChange={(key) => onFieldChange('status', key)}
             statusOpen={statusSheetOpen}
             onStatusOpenChange={setStatusSheetOpen}
+            extra={
+              <OpenNotesBadge
+                approvals={approvals}
+                notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
+              />
+            }
           />
           {phone.banner}
           <PhoneEditorTabs
@@ -1441,6 +1461,9 @@ export function PostEditorBody({
         mediaAutocleanedAt={post.media_autocleaned_at}
         instagramPermalink={post.instagram_permalink}
         tiktokPostUrl={post.tiktok_post_url}
+        notes={conversationNotes?.notes}
+        onNotesChanged={conversationNotes?.onChanged}
+        openLinkRequest={mediaFocus}
       />
 
       {post.id != null && (
@@ -1657,17 +1680,18 @@ export function PostEditorBody({
 
       <ClientConversation
         approvals={approvals}
-        notes={mediaNotes?.notes ?? EMPTY_MEDIA_NOTES}
+        notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
         media={postMedia ?? []}
         workspaceUsers={workspaceUsers}
         membros={membros}
+        clientName={conversationNotes?.clientName}
         replyText={replyText}
         sendingReply={sendingReply}
         onReplyChange={onReplyChange}
         onReplySend={onReplySend}
-        onNoteReply={mediaNotes?.onReply ?? noopAsync}
-        onNoteStatus={mediaNotes?.onStatus ?? noopAsync}
-        onSelectMedia={mediaNotes?.onSelectMedia}
+        onNoteReply={conversationNotes?.onReply ?? noopAsync}
+        onNoteStatus={conversationNotes?.onStatus ?? noopAsync}
+        onSelectMedia={conversationNotes?.onSelectMedia}
         renderApproval={(a) => (
           <PostApprovalBubble
             approval={a}

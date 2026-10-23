@@ -150,7 +150,7 @@ export function MediaNoteCard({
         <button
           type="button"
           className="drawer-reply-btn"
-          aria-label="Enviar resposta"
+          aria-label={`Enviar resposta sobre ${anchor}`}
           disabled={sending || !text.trim()}
           onClick={() => void send()}
         >

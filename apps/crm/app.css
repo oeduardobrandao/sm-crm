@@ -7057,6 +7057,11 @@ body.role-agent input[name='valor_total'] {
   color: #b45309;
 }
 
+[data-theme='dark'] .media-note-card__status--open {
+  /* The warning token clears AA on the dark surface; #b45309 does not. */
+  color: var(--warning);
+}
+
 .media-note-card__status--resolved {
   color: var(--text-muted);
 }
@@ -7116,6 +7121,63 @@ body.role-agent input[name='valor_total'] {
 
 .media-note-card__toggle:hover:not(:disabled) {
   color: var(--text-main);
+}
+
+/* Pins over the media preview (lightbox): ink = client, dashed = internal */
+
+.crm-pin {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #12151a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.crm-pin[data-state='resolved'] {
+  border-color: #12151a;
+  background: rgba(255, 255, 255, 0.85);
+  color: #12151a;
+}
+
+.crm-pin[data-visibility='internal'] {
+  border: 2px dashed #12151a;
+  background: #ffffff;
+  color: #12151a;
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.crm-pin--draft {
+  background: transparent;
+  box-shadow: 0 0 0 2px #12151a;
+}
+
+.phone-media__notes {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #12151a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 /* Reply row */

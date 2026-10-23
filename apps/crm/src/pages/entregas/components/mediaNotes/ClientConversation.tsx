@@ -14,6 +14,10 @@ export interface MediaNotesBinding {
   onStatus: (noteIds: number[], status: 'open' | 'resolved') => Promise<void>;
   /** Selects a media item in the preview (the anchor chip). */
   onSelectMedia?: (linkId: number) => void;
+  /** The client's name, for the author line of their notes. */
+  clientName?: string | null;
+  /** Called after the media area changes notes (resolve prompt, internal note). */
+  onChanged?: () => void | Promise<void>;
 }
 
 export interface ClientConversationProps {

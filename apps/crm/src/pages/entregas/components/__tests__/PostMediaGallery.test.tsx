@@ -28,7 +28,31 @@ vi.mock('../../../../utils/imageJpeg', () => ({
 }));
 
 vi.mock('../PostMediaLightbox', () => ({
-  PostMediaLightbox: () => null,
+  PostMediaLightbox: ({
+    open,
+    initialIndex,
+    onCreateInternalNote,
+  }: {
+    open: boolean;
+    initialIndex: number;
+    onCreateInternalNote?: (input: Record<string, unknown>) => Promise<void>;
+  }) =>
+    open ? (
+      <div data-testid="lightbox-stub" data-index={initialIndex}>
+        <button
+          type="button"
+          onClick={() => void onCreateInternalNote?.({ linkId: 5, x: 0.1, y: 0.2, body: 'n' })}
+        >
+          stub-criar-nota
+        </button>
+      </div>
+    ) : null,
+}));
+
+vi.mock('@/store/mediaNotes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/mediaNotes')>()),
+  setMediaNoteStatus: vi.fn(async () => undefined),
+  createInternalMediaNote: vi.fn(async () => 1),
 }));
 
 vi.mock('../ThumbnailPickerDialog', () => ({
@@ -70,6 +94,8 @@ import type { PostMedia } from '../../../../store';
 import { extractVideoFrame } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../../utils/imageJpeg';
 import { PostMediaGallery } from '../PostMediaGallery';
+import { createInternalMediaNote, setMediaNoteStatus, type MediaNote } from '@/store/mediaNotes';
+import { makeNote } from '../mediaNotes/__tests__/fixtures';
 
 const uploadPostMediaMock = vi.mocked(uploadPostMedia);
 const extractVideoFrameMock = vi.mocked(extractVideoFrame);
@@ -614,5 +640,149 @@ describe('PostMediaGallery Reel cover uploaded as a second file', () => {
       expect(screen.getByRole('button', { name: 'Usar como capa do Reel' })).toBeEnabled(),
     );
     expect(deletePostMedia).not.toHaveBeenCalled();
+  });
+});
+
+describe('PostMediaGallery feedback em mídia', () => {
+  const slide = (id: number, over: Partial<PostMedia> = {}) =>
+    ({ ...makeMedia(1)[0], id, original_filename: `s${id}.jpg`, ...over }) as PostMedia;
+  const notesOn = (linkId: number, n: number, firstId = linkId * 100): MediaNote[] =>
+    Array.from({ length: n }, (_, i) => makeNote({ id: firstId + i, current_link_id: linkId }));
+
+  function renderWithNotes(notes: MediaNote[], onNotesChanged = vi.fn(), extra = {}) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} notes={notes} onNotesChanged={onNotesChanged} {...extra} />
+      </QueryClientProvider>,
+    );
+    return { onNotesChanged };
+  }
+
+  it('tiles carry the count of open notes on that item (client and internal, current only)', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6)]);
+    renderWithNotes([
+      ...notesOn(5, 2),
+      makeNote({ id: 900, current_link_id: 5, visibility: 'internal', author_kind: 'team' }),
+      makeNote({ id: 901, current_link_id: 5, status: 'resolved' }),
+      makeNote({ id: 902, current_link_id: null, is_previous_version: true }),
+    ]);
+    expect(await screen.findByLabelText('3 comentários em aberto')).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/em aberto/)).toHaveLength(1);
+  });
+
+  it('gallery delete with open notes shows prompt and confirm resolves them', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    const { onNotesChanged } = renderWithNotes([...notesOn(5, 2, 10), ...notesOn(6, 1, 20)]);
+
+    fireEvent.click((await screen.findAllByTitle('Remover'))[0]);
+
+    expect(
+      await screen.findByText('Marcar como resolvidos os 2 comentários deste slide?'),
+    ).toBeInTheDocument();
+    expect(deletePostMedia).toHaveBeenCalledWith(5);
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([10, 11], 'resolved'));
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+  });
+
+  it('Agora não leaves the notes open', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    const { onNotesChanged } = renderWithNotes(notesOn(5, 2, 10));
+    fireEvent.click(await screen.findByTitle('Remover'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Agora não' }));
+    await waitFor(() => expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument());
+    expect(setMediaNoteStatus).not.toHaveBeenCalled();
+    expect(onNotesChanged).not.toHaveBeenCalled();
+  });
+
+  it('no prompt when the delete fails', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(deletePostMedia).mockRejectedValue(new Error('falhou'));
+    renderWithNotes(notesOn(5, 2, 10));
+    fireEvent.click(await screen.findByTitle('Remover'));
+    await waitFor(() => expect(deletePostMedia).toHaveBeenCalled());
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+  });
+
+  it('no prompt when there are no open notes on that link', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    renderWithNotes([
+      ...notesOn(6, 2, 20),
+      makeNote({ id: 11, current_link_id: 5, status: 'resolved' }),
+    ]);
+    fireEvent.click((await screen.findAllByTitle('Remover'))[0]);
+    await waitFor(() => expect(deletePostMedia).toHaveBeenCalledWith(5));
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+  });
+
+  it('adjust replace with open notes shows prompt after the save', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    renderWithNotes(notesOn(5, 3, 10));
+    fireEvent.click(await screen.findByTitle('Ajustar proporção'));
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Simular ajuste salvo' }));
+    expect(
+      await screen.findByText('Marcar como resolvidos os 3 comentários deste slide?'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([10, 11, 12], 'resolved'));
+  });
+
+  it('adjust replace without open notes on that link shows no prompt', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6)]);
+    renderWithNotes(notesOn(6, 2, 20));
+    fireEvent.click((await screen.findAllByTitle('Ajustar proporção'))[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Simular ajuste salvo' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+  });
+
+  it('openLinkRequest opens the lightbox on that item (anchor chip)', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6), slide(7)]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} openLinkRequest={null} />
+      </QueryClientProvider>,
+    );
+    await screen.findAllByTitle('Remover');
+    expect(screen.queryByTestId('lightbox-stub')).not.toBeInTheDocument();
+    rerender(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} openLinkRequest={{ linkId: 6, nonce: 1 }} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByTestId('lightbox-stub')).toHaveAttribute('data-index', '1');
+  });
+
+  it('passes internal note creation through with the post id, then refreshes', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onNotesChanged = vi.fn();
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery
+          postId={42}
+          notes={[]}
+          onNotesChanged={onNotesChanged}
+          openLinkRequest={{ linkId: 5, nonce: 1 }}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'stub-criar-nota' }));
+    await waitFor(() =>
+      expect(createInternalMediaNote).toHaveBeenCalledWith({
+        postId: 42,
+        linkId: 5,
+        x: 0.1,
+        y: 0.2,
+        body: 'n',
+      }),
+    );
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
   });
 });

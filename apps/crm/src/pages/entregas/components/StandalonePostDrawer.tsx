@@ -83,6 +83,7 @@ import {
   setMediaNoteStatus,
 } from '@/store/mediaNotes';
 import type { MediaNotesBinding } from './mediaNotes/ClientConversation';
+import { OpenNotesBadge } from './mediaNotes/OpenNotesBadge';
 import { PostTimelinePopover } from './PostTimelinePopover';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
@@ -644,6 +645,8 @@ export function StandalonePostDrawer({
 
   const mediaNotesBinding: MediaNotesBinding = {
     notes: mediaNotes,
+    clientName: post?.cliente_nome,
+    onChanged: refreshMediaNotes,
     onReply: async (noteId, body) => {
       await replyToMediaNote(noteId, body);
       await refreshMediaNotes();
@@ -1123,6 +1126,7 @@ export function StandalonePostDrawer({
                   approvals={approvals}
                   processEvents={processEvents}
                 />
+                <OpenNotesBadge approvals={approvals} notes={mediaNotes} />
                 <CopyPostLinkButton hubUrl={hubUrl} postId={postId} />
                 <CopyLinkButton path={`/entregas?post=${postId}`} label="Copiar link do post" />
                 {canDuplicate && post && (

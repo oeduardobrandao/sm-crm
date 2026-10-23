@@ -148,6 +148,7 @@ import {
   setMediaNoteStatus,
 } from '@/store/mediaNotes';
 import type { MediaNotesBinding } from './mediaNotes/ClientConversation';
+import { OpenNotesBadge } from './mediaNotes/OpenNotesBadge';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { MovePostsToFluxoDialog } from './MovePostsToFluxoDialog';
 import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
@@ -816,6 +817,8 @@ export function WorkflowDrawer({
 
   const mediaNotesFor = (postId: number | undefined): MediaNotesBinding => ({
     notes: mediaNotes.filter((n) => n.post_id === postId),
+    clientName: card.cliente?.nome,
+    onChanged: refreshMediaNotes,
     onReply: async (noteId, body) => {
       await replyToMediaNote(noteId, body);
       await refreshMediaNotes();
@@ -2017,6 +2020,7 @@ function SortablePostItem({
               <span className="drawer-post-date drawer-post-date--empty">A definir</span>
             )}
             <PostStatusChip post={post} registry={statusRegistry} />
+            <OpenNotesBadge approvals={approvals} notes={mediaNotes.notes} />
             {showAutoScheduleBadge && (
               <AutoScheduleBadge
                 onClick={onAutoScheduleClick}

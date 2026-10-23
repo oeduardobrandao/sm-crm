@@ -125,12 +125,21 @@ describe('ClientConversation', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Slide 3 · ponto 1' }));
     expect(props.onSelectMedia).toHaveBeenCalledWith(5);
     expect(screen.getByText('Slide 3 (versão anterior)')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /versão anterior/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Slide .*versão anterior/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('hides the filter and thread when there is nothing yet, keeping the reply box', () => {
     setup({ approvals: [], notes: [] });
     expect(screen.queryByRole('group', { name: 'Filtrar conversa' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Responder ao cliente')).toBeInTheDocument();
+  });
+
+  it('the note send button names its anchor, like the input', async () => {
+    setup({ notes: [note({ id: 7 })] });
+    expect(
+      screen.getByRole('button', { name: 'Enviar resposta sobre Slide 3 · ponto 1' }),
+    ).toBeInTheDocument();
   });
 });
