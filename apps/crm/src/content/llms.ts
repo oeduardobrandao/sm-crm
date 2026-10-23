@@ -3,18 +3,26 @@ import type { BlogPost } from './blog.schema';
 import { canonicalUrl } from './seo-head';
 import { postPath } from './blog';
 
+/** The file is line-oriented: a newline in a title or description (a DB post's
+ * h1, say) would start a line of its own. Collapse every whitespace run. */
+const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
 /** llms.txt (https://llmstxt.org): tells AI crawlers what Mesaas is and where
  * the substantive pages live. Regenerated on every build from the manifest. */
 export function buildLlmsTxt(routes: RouteMeta[], posts: BlogPost[] = []): string {
   const pages = routes
-    .map((r) => `- [${r.title}](${canonicalUrl(r.path)}): ${r.description}`)
+    .map((r) => `- [${oneLine(r.title)}](${canonicalUrl(r.path)}): ${oneLine(r.description)}`)
     .join('\n');
   const blog = posts.length
     ? [
         '',
         '## Blog',
         '',
-        posts.map((p) => `- [${p.h1}](${canonicalUrl(postPath(p))}): ${p.description}`).join('\n'),
+        posts
+          .map(
+            (p) => `- [${oneLine(p.h1)}](${canonicalUrl(postPath(p))}): ${oneLine(p.description)}`,
+          )
+          .join('\n'),
       ]
     : [];
   return [
