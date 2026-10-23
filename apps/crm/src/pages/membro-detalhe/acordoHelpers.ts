@@ -98,3 +98,9 @@ export function useAcordoAtual(membroId: number) {
     isError: rent.isError || versoes.isError,
   };
 }
+
+/** Readable name for a stored contract path (the object name is a uuid). */
+export function contratoRotulo(path: string): string {
+  const ext = /\.([a-z0-9]{2,4})$/i.exec(path)?.[1]?.toLowerCase();
+  return ext ? `Contrato.${ext}` : 'Contrato';
+}

@@ -1,4 +1,5 @@
-import { supabase } from './core';
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
+import { getContaId, supabase } from './core';
 
 // Financeiro v2 (rentabilidade por cliente). The workspace is resolved by the
 // database (RLS + the RPCs), so nothing here passes a conta_id. Types mirror the
@@ -328,4 +329,52 @@ export async function reabrirPeriodo(inicio: string): Promise<void> {
 export async function fecharPeriodo(inicio: string): Promise<void> {
   const { error } = await supabase.rpc('financeiro_periodo_fechar', { p_inicio: inicio });
   if (error) throw error;
+}
+
+// ---- Contrato do acordo (bucket privado `financeiro-acordos`) ----
+
+const CONTRATO_BUCKET = 'financeiro-acordos';
+const CONTRATO_MAX_BYTES = 10 * 1024 * 1024;
+const CONTRATO_URL_SEGUNDOS = 300;
+// Derived from the MIME type, never from the user's file name.
+const CONTRATO_EXTENSAO: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+};
+
+export const CONTRATO_ERRO = 'Envie um PDF ou imagem de até 10 MB.';
+
+/** Null when the file can be uploaded as a contract, otherwise the message to show. */
+export function validarContratoAcordo(file: File): string | null {
+  if (!(file.type in CONTRATO_EXTENSAO) || file.size > CONTRATO_MAX_BYTES) return CONTRATO_ERRO;
+  return null;
+}
+
+async function enviarContratoAcordo(membroId: number, file: File): Promise<string> {
+  const erro = validarContratoAcordo(file);
+  if (erro) throw new Error(erro);
+  const contaId = await getContaId();
+  // The bucket policy requires <conta_id>/<membro_id>/..., so a wrong prefix fails with an RLS error.
+  const path = `${contaId}/${membroId}/${crypto.randomUUID()}.${CONTRATO_EXTENSAO[file.type]}`;
+  // No upsert: the bucket has no UPDATE policy. Replacing a contract uploads a new object.
+  const { error } = await supabase.storage
+    .from(CONTRATO_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (error) throw error;
+  return path;
+}
+
+/** Uploads the signed contract and returns the object path to store as `arquivo_path`. */
+export function uploadContratoAcordo(membroId: number, file: File): Promise<string> {
+  return trackUnsavedWork(enviarContratoAcordo(membroId, file));
+}
+
+/** A short-lived signed url: the bucket is private, there is no public url. */
+export async function urlContratoAcordo(path: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(CONTRATO_BUCKET)
+    .createSignedUrl(path, CONTRATO_URL_SEGUNDOS);
+  if (error) throw error;
+  return data.signedUrl;
 }

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileText, Upload } from 'lucide-react';
 import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -39,6 +40,8 @@ import {
   getFuncoes,
   getPeriodosEditaveis,
   salvarAcordo,
+  uploadContratoAcordo,
+  validarContratoAcordo,
   type AcordoInput,
   type AcordoVersao,
   type Membro,
@@ -46,6 +49,7 @@ import {
 } from '@/store';
 import { PeriodoSelect } from '../financeiro/v2/PeriodoSelect';
 import {
+  contratoRotulo,
   metaPorMes,
   MODELO_DESCRICAO,
   MODELO_LABEL,
@@ -73,6 +77,8 @@ const acordoSchema = z
     vigIni: z.string(),
     vigFim: z.string(),
     valeDesde: z.string().min(1, 'Escolha o período.'),
+    // Object path of the signed contract in the private bucket; '' = none.
+    arquivoPath: z.string(),
   })
   .superRefine((v, ctx) => {
     const issue = (path: string, message: string) =>
@@ -118,6 +124,7 @@ function defaultsFor(
       vigIni: atual.vigencia_inicio ?? '',
       vigFim: atual.vigencia_fim ?? '',
       valeDesde,
+      arquivoPath: atual.arquivo_path ?? '',
     };
   }
   // No acordo yet: start from the member's legacy cost and payment day.
@@ -133,6 +140,7 @@ function defaultsFor(
     vigIni: '',
     vigFim: '',
     valeDesde,
+    arquivoPath: '',
   };
 }
 
@@ -149,6 +157,9 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
   const qc = useQueryClient();
   const { profile } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
+  const inputArquivo = useRef<HTMLInputElement>(null);
 
   const funcoes = useQuery({
     queryKey: ['financeiro-v2', 'funcoes'],
@@ -171,10 +182,14 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
   const metaQtd = useWatch({ control: form.control, name: 'metaQtd' });
   const metaPeriodo = useWatch({ control: form.control, name: 'metaPeriodo' });
   const unidadeAtual = useWatch({ control: form.control, name: 'unidade' });
+  const arquivoPath = useWatch({ control: form.control, name: 'arquivoPath' });
   const { errors, isDirty } = form.formState;
 
   useEffect(() => {
-    if (open) form.reset(defaultsFor(membro, atual, valeDesdePadrao));
+    if (open) {
+      form.reset(defaultsFor(membro, atual, valeDesdePadrao));
+      setErroArquivo(null);
+    }
   }, [form, open, membro, atual, valeDesdePadrao]);
 
   // The unit is free text in the database: keep a stored value outside the four presets.
@@ -187,7 +202,30 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
       ? metaPorMes(Number(metaQtd), metaPeriodo)
       : null;
 
+  const escolherArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Lets the same file be picked again after a rejection.
+    e.target.value = '';
+    if (!file || uploading) return;
+    const invalido = validarContratoAcordo(file);
+    setErroArquivo(invalido);
+    if (invalido) return;
+    setUploading(true);
+    try {
+      const path = await uploadContratoAcordo(membro.id as number, file);
+      form.setValue('arquivoPath', path, { shouldDirty: true });
+    } catch (err) {
+      // The previous path stays in the form.
+      if (!handleEntitlementMutationError(err, profile?.conta_id ?? null)) {
+        toast.error('Não foi possível enviar o arquivo. Tente novamente.');
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const onSubmit = async (v: AcordoFormValues) => {
+    if (uploading || saving) return;
     const input: AcordoInput = {
       funcao_id: v.funcaoId === SEM_FUNCAO ? null : Number(v.funcaoId),
       modelo: v.modelo,
@@ -199,7 +237,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
       dia_pagamento: v.diaPag === '' ? null : Number(v.diaPag),
       vigencia_inicio: v.vigIni || null,
       vigencia_fim: v.vigFim || null,
-      arquivo_path: atual?.arquivo_path ?? null,
+      arquivo_path: v.arquivoPath || null,
     };
     setSaving(true);
     try {
@@ -431,6 +469,57 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
               />
             </div>
 
+            <div className="space-y-2">
+              <p id="acordo-contrato-titulo" className="text-sm font-medium">
+                Contrato assinado
+              </p>
+              <div
+                role="group"
+                aria-labelledby="acordo-contrato-titulo"
+                className="flex flex-wrap items-center gap-3"
+              >
+                <span className="flex min-w-0 items-center gap-2 text-sm">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className={arquivoPath ? 'font-medium' : 'text-muted-foreground'}>
+                    {arquivoPath ? contratoRotulo(arquivoPath) : 'Nenhum arquivo'}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={uploading}
+                  onClick={() => inputArquivo.current?.click()}
+                >
+                  {uploading ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <Upload className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {arquivoPath ? 'Trocar arquivo' : 'Enviar arquivo'}
+                </Button>
+                <input
+                  ref={inputArquivo}
+                  type="file"
+                  hidden
+                  aria-label="Arquivo do contrato"
+                  accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
+                  onChange={escolherArquivo}
+                />
+              </div>
+              {uploading && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  Enviando arquivo...
+                </p>
+              )}
+              {erroArquivo && (
+                <p role="alert" className="text-sm font-medium text-destructive">
+                  {erroArquivo}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">PDF, PNG ou JPG de até 10 MB.</p>
+            </div>
+
             <FormField
               control={form.control}
               name="valeDesde"
@@ -463,7 +552,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving || uploading}>
                 {saving && <Spinner size="sm" />} Salvar
               </Button>
             </DialogFooter>

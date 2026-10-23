@@ -1,12 +1,15 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 import { planilha } from '../../financeiro/v2/__tests__/fixtures/planilha';
 
-const { useAuthMock, store } = vi.hoisted(() => ({
+const { useAuthMock, store, toastMock } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
+  toastMock: { success: vi.fn(), error: vi.fn() },
   store: {
+    urlContratoAcordo: vi.fn(),
     getRentabilidade: vi.fn(),
     getAcordoVersoes: vi.fn(),
     getFuncoes: vi.fn(),
@@ -15,7 +18,7 @@ const { useAuthMock, store } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: toastMock }));
 vi.mock('@/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store')>()),
   ...store,
@@ -124,5 +127,44 @@ describe('AcordoCard', () => {
 
     await screen.findByText('Mensal com meta');
     expect(screen.queryByRole('button', { name: 'Editar acordo' })).not.toBeInTheDocument();
+  });
+
+  it('opens the signed contract url in a new tab from "Abrir"', async () => {
+    const user = userEvent.setup();
+    store.getAcordoVersoes.mockResolvedValue([
+      { ...versao(2, '2026-10-01', 3900), arquivo_path: 'w1/3/abc.pdf' },
+    ]);
+    store.urlContratoAcordo.mockResolvedValue('https://storage/assinada?token=1');
+    const aba = { location: { href: '' }, opener: {} as unknown, close: vi.fn() };
+    const abrir = vi.spyOn(window, 'open').mockReturnValue(aba as unknown as Window);
+    renderCard();
+
+    expect(await screen.findByText('Contrato.pdf')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Abrir' }));
+
+    await waitFor(() => expect(store.urlContratoAcordo).toHaveBeenCalledWith('w1/3/abc.pdf'));
+    // The tab opens synchronously on the click, then is pointed at the signed url.
+    expect(abrir).toHaveBeenCalledWith('', '_blank');
+    await waitFor(() => expect(aba.location.href).toBe('https://storage/assinada?token=1'));
+    expect(aba.opener).toBeNull();
+    abrir.mockRestore();
+  });
+
+  it('closes the blank tab and toasts when the signed url fails', async () => {
+    const user = userEvent.setup();
+    store.getAcordoVersoes.mockResolvedValue([
+      { ...versao(2, '2026-10-01', 3900), arquivo_path: 'w1/3/abc.pdf' },
+    ]);
+    store.urlContratoAcordo.mockRejectedValue(new Error('Object not found'));
+    const aba = { location: { href: '' }, opener: {} as unknown, close: vi.fn() };
+    const abrir = vi.spyOn(window, 'open').mockReturnValue(aba as unknown as Window);
+    renderCard();
+
+    await user.click(await screen.findByRole('button', { name: 'Abrir' }));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+    expect(aba.close).toHaveBeenCalled();
+    expect(aba.location.href).toBe('');
+    abrir.mockRestore();
   });
 });

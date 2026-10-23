@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Pencil } from 'lucide-react';
+import { ExternalLink, Pencil } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/context/AuthContext';
 import { formatFinancialBRL } from '@/lib/financialAccess';
-import { getFuncoes, type AcordoVersao, type Membro } from '@/store';
+import { getFuncoes, urlContratoAcordo, type AcordoVersao, type Membro } from '@/store';
 import { regraTexto } from '../financeiro/v2/format';
 import { AcordoDialog } from './AcordoDialog';
 import {
+  contratoRotulo,
   dataCurta,
   metaPorMes,
   MODELO_LABEL,
@@ -42,6 +44,26 @@ function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode
       <dd className="text-sm font-medium">{children}</dd>
     </div>
   );
+}
+
+/**
+ * Opens a signed (short-lived) contract url in a new tab. The tab is opened
+ * synchronously inside the click so popup blockers allow it, then pointed at the
+ * url once it resolves; `opener` is cut to get noopener semantics.
+ */
+async function abrirContrato(path: string) {
+  const aba = window.open('', '_blank');
+  if (!aba) {
+    toast.error('Seu navegador bloqueou a nova aba. Libere pop-ups para abrir o contrato.');
+    return;
+  }
+  aba.opener = null;
+  try {
+    aba.location.href = await urlContratoAcordo(path);
+  } catch {
+    aba.close();
+    toast.error('Não foi possível abrir o contrato.');
+  }
 }
 
 /** The member's working agreement as of the current period, with its history. */
@@ -101,8 +123,24 @@ export function AcordoCard({ membro }: { membro: Membro }) {
               <Linha rotulo="Limite">até {atual.limite_clientes} clientes</Linha>
             )}
             <Linha rotulo="Vigência">{vigenciaTexto(atual)}</Linha>
-            {/* Task 15 wires the upload and the open link; the path is already stored. */}
-            <Linha rotulo="Contrato">Nenhum arquivo</Linha>
+            <Linha rotulo="Contrato">
+              {atual.arquivo_path ? (
+                <span className="flex flex-wrap items-center gap-2">
+                  {contratoRotulo(atual.arquivo_path)}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void abrirContrato(atual.arquivo_path as string)}
+                  >
+                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                    Abrir
+                  </Button>
+                </span>
+              ) : (
+                'Nenhum arquivo'
+              )}
+            </Linha>
           </dl>
 
           <div style={{ marginTop: 16 }}>

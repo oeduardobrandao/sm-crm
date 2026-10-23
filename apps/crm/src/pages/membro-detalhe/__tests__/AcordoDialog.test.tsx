@@ -16,6 +16,7 @@ const { useAuthMock, store, toastMock } = vi.hoisted(() => ({
     getFuncoes: vi.fn(),
     getPeriodosEditaveis: vi.fn(),
     salvarAcordo: vi.fn(),
+    uploadContratoAcordo: vi.fn(),
   },
 }));
 
@@ -94,6 +95,7 @@ beforeEach(() => {
     },
   ]);
   store.salvarAcordo.mockResolvedValue(undefined);
+  store.uploadContratoAcordo.mockResolvedValue('w1/3/novo.pdf');
 });
 
 /** The period select fills in once the editable periods load. */
@@ -288,5 +290,115 @@ describe('AcordoDialog', () => {
     await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
     expect(toastMock.success).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('rejects_large_file_with_message', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+
+    const grande = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'contrato.pdf', {
+      type: 'application/pdf',
+    });
+    await user.upload(screen.getByLabelText('Arquivo do contrato'), grande);
+
+    expect(await screen.findByText('Envie um PDF ou imagem de até 10 MB.')).toBeVisible();
+    expect(store.uploadContratoAcordo).not.toHaveBeenCalled();
+
+    // The previous path survives the rejected pick.
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(store.salvarAcordo).toHaveBeenCalledWith(
+        3,
+        '2026-10-01',
+        expect.objectContaining({ arquivo_path: 'contratos/ana.pdf' }),
+      ),
+    );
+  });
+
+  it('rejects a file of another type', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    renderDialog();
+    await ready();
+
+    await user.upload(
+      screen.getByLabelText('Arquivo do contrato'),
+      new File(['x'], 'nota.txt', { type: 'text/plain' }),
+    );
+
+    expect(await screen.findByText('Envie um PDF ou imagem de até 10 MB.')).toBeVisible();
+    expect(store.uploadContratoAcordo).not.toHaveBeenCalled();
+  });
+
+  it('upload_sets_arquivo_path', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+
+    expect(screen.getByText('Contrato.pdf')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Trocar arquivo' })).toBeVisible();
+
+    const pdf = new File(['%PDF'], 'novo.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText('Arquivo do contrato'), pdf);
+    await waitFor(() => expect(store.uploadContratoAcordo).toHaveBeenCalledWith(3, pdf));
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(store.salvarAcordo).toHaveBeenCalledWith(
+        3,
+        '2026-10-01',
+        expect.objectContaining({ arquivo_path: 'w1/3/novo.pdf' }),
+      ),
+    );
+  });
+
+  it('offers "Enviar arquivo" when there is no contract yet', async () => {
+    renderDialog({ ...ATUAL, arquivo_path: null });
+    await ready();
+    expect(screen.getByRole('button', { name: 'Enviar arquivo' })).toBeVisible();
+    expect(screen.getByText('Nenhum arquivo')).toBeVisible();
+  });
+
+  it('disables save while uploading and ignores a second submit', async () => {
+    const user = userEvent.setup();
+    let resolver!: (p: string) => void;
+    store.uploadContratoAcordo.mockReturnValue(new Promise<string>((r) => (resolver = r)));
+    renderDialog();
+    await ready();
+
+    await user.upload(
+      screen.getByLabelText('Arquivo do contrato'),
+      new File(['%PDF'], 'novo.pdf', { type: 'application/pdf' }),
+    );
+
+    expect(await screen.findByText('Enviando arquivo...')).toBeVisible();
+    expect(screen.getByRole('button', { name: /Salvar/ })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /Salvar/ }));
+    expect(store.salvarAcordo).not.toHaveBeenCalled();
+
+    resolver('w1/3/novo.pdf');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled());
+  });
+
+  it('toasts and keeps the previous path when the upload fails', async () => {
+    const user = userEvent.setup();
+    store.uploadContratoAcordo.mockRejectedValueOnce(new Error('boom'));
+    renderDialog();
+    await ready();
+
+    await user.upload(
+      screen.getByLabelText('Arquivo do contrato'),
+      new File(['%PDF'], 'novo.pdf', { type: 'application/pdf' }),
+    );
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(store.salvarAcordo).toHaveBeenCalledWith(
+        3,
+        '2026-10-01',
+        expect.objectContaining({ arquivo_path: 'contratos/ana.pdf' }),
+      ),
+    );
   });
 });
