@@ -232,9 +232,26 @@ Deno.test("listPostFeedback: internal notes are not returned", async () => {
   assert(has(calls, "post_media_notes_v", "eq", ["visibility", "client"]));
 });
 
-Deno.test("listPostFeedback: an action filter skips the note scan", async () => {
-  const { db, calls } = makeFakeDb({ post_approvals: [{ data: [], error: null }] });
+Deno.test("listPostFeedback: an action filter skips the note scan but still loads notes of the chosen posts", async () => {
+  const { db, calls } = makeFakeDb({
+    post_approvals: [
+      { data: [{ post_id: 123, created_at: "2026-06-02T10:00:00Z" }], error: null },
+      {
+        data: [{
+          post_id: 123, action: "correcao", comentario: "x", is_workspace_user: false,
+          created_at: "2026-06-02T10:00:00Z",
+          workflow_posts: { workflow_id: 55, titulo: "T", status: "correcao_cliente", conta_id: "workspace-A", cliente_id: 7 },
+        }],
+        error: null,
+      },
+    ],
+    post_status_events: [{ data: [], error: null }],
+    post_media_notes_v: [{ data: [viewNote({ id: 1, post_id: 123 })], error: null }],
+  });
   const deps = { db, ctx: CTX } as unknown as Deps;
-  assertEquals(await listPostFeedback(deps, { action: "correcao" }), []);
-  assert(!calls.some((c) => c.table === "post_media_notes"), "notes carry no action");
+  const out = await listPostFeedback(deps, { action: "correcao" });
+
+  assert(!calls.some((c) => c.table === "post_media_notes"), "notes never qualify a post when filtering by action");
+  assert(has(calls, "post_media_notes_v", "in", ["post_id", [123]]), "notes of the chosen post are still read");
+  assertEquals(out[0].media_notes.map((n: { id: number }) => n.id), [1]);
 });

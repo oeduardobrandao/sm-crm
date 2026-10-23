@@ -996,7 +996,10 @@ export async function listPostFeedback(
   };
 
   // Same tenant + filters for the client-note scan. Notes are not approvals, so an
-  // `action` filter (which only approvals carry) turns the note scan off entirely.
+  // `action` filter (which only approvals carry) turns the note SCAN off: notes never
+  // make a post qualify then. The notes of the posts the approvals picked are still
+  // loaded in phase 2. `since` filters on the note's own created_at only (replies and
+  // later activity on an older note do not requalify it).
   // Internal notes are never read: list_post_feedback is the client-feedback view.
   const scanNotes = async (): Promise<any[]> => {
     if (args.action) return [];
@@ -1053,7 +1056,7 @@ export async function listPostFeedback(
   const [{ data: fbData, error: fbErr }, { data: evData, error: evErr }, mediaNotes] = await Promise.all([
     feedbackP,
     eventsP,
-    loadClientMediaNotesForPosts(d, chosenIds, !!args.action),
+    loadClientMediaNotesForPosts(d, chosenIds),
   ]);
   if (fbErr) throw fbErr;
   if (evErr) throw evErr;
@@ -1092,9 +1095,8 @@ export async function listPostFeedback(
 async function loadClientMediaNotesForPosts(
   d: Deps,
   postIds: number[],
-  skip: boolean,
 ): Promise<MediaNoteRow[]> {
-  if (skip || postIds.length === 0) return [];
+  if (postIds.length === 0) return [];
   const notes = await fetchAllRows<any>((from, to) =>
     d.db.from("post_media_notes_v")
       .select(

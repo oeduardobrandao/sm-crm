@@ -151,7 +151,7 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => listIdeas(deps, a));
 
   register(server, deps, "list_post_feedback", "posts:read",
-    "Lista o feedback dos clientes nos posts (aprovações, correções, mensagens) com a linha do tempo de status.",
+    "Lista o feedback dos clientes nos posts (aprovações, correções, mensagens) com a linha do tempo de status. Inclui os comentários do cliente em slides ou momentos de vídeo específicos (media_notes, com rótulo de posição).",
     {
       post_id: z.number().int().optional(),
       client_id: z.number().int().optional(),
