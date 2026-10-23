@@ -14,6 +14,7 @@ describe('mensagemErroFinanceiro', () => {
     ['nao_configurado', 'O financeiro ainda não foi montado.'],
     ['periodo_invalido', 'Esse período não existe mais. Escolha outro.'],
     ['financial_access_denied', 'Você não tem permissão para alterar o financeiro.'],
+    ['funcao_duplicada', 'Já existe uma função com esse nome.'],
   ])('maps %s', (token, copy) => {
     expect(mensagemErroFinanceiro(pg(token))).toBe(copy);
   });
@@ -29,6 +30,12 @@ describe('mensagemErroFinanceiro', () => {
     expect(mensagemErroFinanceiro(pg('not_found', 'P0002'))).toBe(copy);
     expect(mensagemErroFinanceiro(pg('no data', 'P0002'))).toBe(copy);
     expect(mensagemErroFinanceiro(pg('not_found'))).toBe(copy);
+  });
+
+  it('matches whole tokens only', () => {
+    expect(mensagemErroFinanceiro(pg('membro_not_found'))).toBeNull();
+    expect(mensagemErroFinanceiro(pg('not_found_x'))).toBeNull();
+    expect(mensagemErroFinanceiro(pg('xperiodo_fechado'))).toBeNull();
   });
 
   it('returns null for anything else', () => {
