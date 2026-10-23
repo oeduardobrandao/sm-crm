@@ -15,6 +15,11 @@ vi.mock('../../../api', () => ({
   submitEditSuggestion: vi.fn(),
   fetchPostHistory: fetchPostHistoryMock,
 }));
+vi.mock('../../PostMediaLightbox', () => ({
+  PostMediaLightbox: ({ initialIndex }: { initialIndex: number }) => (
+    <div data-testid="lightbox">lightbox {initialIndex}</div>
+  ),
+}));
 vi.mock('../../../services/mediaNotes', () => ({
   createMediaNote: createMediaNoteMock,
   replyMediaNote: replyMediaNoteMock,
@@ -163,6 +168,12 @@ describe('PostDetailDialog media notes', () => {
     expect(screen.getByRole('button', { name: 'Comentar o slide inteiro' })).toBeInTheDocument();
   });
 
+  it('Comentar is hidden on a lost image slide', () => {
+    renderDialog(post({ media: [{ ...MEDIA, media_lost_at: '2026-08-01T00:00:00Z' }] }));
+    expect(screen.queryByRole('button', { name: 'Comentar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Comentar o slide inteiro' })).toBeNull();
+  });
+
   it('Comentar is hidden on a video slide', () => {
     renderDialog(
       post({
@@ -242,6 +253,9 @@ describe('PostDetailDialog media notes', () => {
   it('cancelling the approve confirmation does not approve', async () => {
     renderDialog(post(), [note()]);
     fireEvent.click(screen.getByRole('button', { name: 'Aprovar' }));
+    expect((await screen.findAllByText('Você tem 1 comentário em aberto')).length).toBeGreaterThan(
+      0,
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
     await waitFor(() => expect(screen.queryByText('Aprovar mesmo assim')).toBeNull());
     expect(submitApprovalMock).not.toHaveBeenCalled();
@@ -261,6 +275,58 @@ describe('PostDetailDialog media notes', () => {
     expect(screen.getByText('Comentários na mídia')).toBeInTheDocument();
     expect(screen.getAllByText('Trocar a cor da fonte').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Slide 1 · ponto 1' })).toBeInTheDocument();
+  });
+
+  it('jumping to an image note moves the pane to its slide', () => {
+    const second = { ...MEDIA, id: 12, sort_order: 1 };
+    renderDialog(post({ media: [MEDIA, second] }), [
+      note({ id: 7, link_id: 12, slide_index: 1, x: null, y: null, body: 'Segundo slide' }),
+    ]);
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Slide 2' }));
+    expect(screen.getByText('2 / 2')).toBeInTheDocument();
+  });
+
+  it('jumping to a video note opens the lightbox at it', () => {
+    const video = {
+      ...MEDIA,
+      id: 12,
+      kind: 'video' as const,
+      thumbnail_url: 'https://cdn/t.jpg',
+      sort_order: 1,
+    };
+    renderDialog(post({ media: [MEDIA, video] }), [
+      note({
+        id: 8,
+        link_id: 12,
+        media_kind: 'video',
+        slide_index: 1,
+        t_seconds: 5,
+        x: null,
+        y: null,
+        body: 'Na cena',
+      }),
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: '0:05' }));
+    expect(screen.getByTestId('lightbox')).toHaveTextContent('lightbox 1');
+  });
+
+  it('approving a post that is no longer pending shows the server message and refetches', async () => {
+    submitApprovalMock.mockRejectedValue(new Error('Post não está mais aguardando aprovação.'));
+    const { onApprovalSubmitted } = renderDialog(post());
+    fireEvent.click(screen.getByRole('button', { name: 'Aprovar' }));
+    expect(await screen.findByText('Post não está mais aguardando aprovação.')).toBeInTheDocument();
+    expect(onApprovalSubmitted).toHaveBeenCalled();
+  });
+
+  it('any other approve failure keeps the generic message and does not refetch', async () => {
+    submitApprovalMock.mockRejectedValue(new Error('HTTP 500'));
+    const { onApprovalSubmitted } = renderDialog(post());
+    fireEvent.click(screen.getByRole('button', { name: 'Aprovar' }));
+    expect(
+      await screen.findByText('Não foi possível enviar. Tente novamente.'),
+    ).toBeInTheDocument();
+    expect(onApprovalSubmitted).not.toHaveBeenCalled();
   });
 
   it('replying sends replyMediaNote then onApprovalSubmitted', async () => {

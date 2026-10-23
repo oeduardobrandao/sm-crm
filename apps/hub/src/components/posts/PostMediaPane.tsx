@@ -192,7 +192,7 @@ export function PostMediaPane({
     );
   }
   function openAt(index: number) {
-    if (placing) return;
+    if (placingHere) return;
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
@@ -271,14 +271,14 @@ export function PostMediaPane({
               <button
                 type="button"
                 onClick={() => goTo(current - 1)}
-                disabled={placing}
+                disabled={placingHere}
                 className="absolute left-0 top-0 w-1/3 h-full z-10"
                 aria-label={t('storyCard.prevAriaLabel', 'Anterior')}
               />
               <button
                 type="button"
                 onClick={() => (current >= media.length - 1 ? openAt(current) : goTo(current + 1))}
-                disabled={placing}
+                disabled={placingHere}
                 className="absolute right-0 top-0 w-1/3 h-full z-10"
                 aria-label={t('storyCard.nextAriaLabel', 'Próximo')}
               />

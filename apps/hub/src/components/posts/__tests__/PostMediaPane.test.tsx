@@ -268,6 +268,47 @@ describe('PostMediaPane', () => {
       expect(screen.queryByRole('button', { name: HINT })).toBeNull();
     });
 
+    it('a video slide stays clickable while placing is on', () => {
+      const onOpenLightbox = vi.fn();
+      render(
+        <PostMediaPane
+          post={post({
+            tipo: 'reels',
+            media: [m(1, { kind: 'video', thumbnail_url: 'https://cdn/t.jpg' })],
+          })}
+          onOpenLightbox={onOpenLightbox}
+          placing
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir mídia 1' }));
+      expect(onOpenLightbox).toHaveBeenCalledWith(0);
+    });
+
+    it('a lost slide stays clickable and story zones stay enabled while placing is on', () => {
+      const onOpenLightbox = vi.fn();
+      const { unmount } = render(
+        <PostMediaPane
+          post={post({ media: [m(1, { media_lost_at: '2026-08-01T00:00:00Z' })] })}
+          onOpenLightbox={onOpenLightbox}
+          placing
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir mídia 1' }));
+      expect(onOpenLightbox).toHaveBeenCalledWith(0);
+      unmount();
+      render(
+        <PostMediaPane
+          post={post({
+            tipo: 'stories',
+            media: [m(1, { kind: 'video', thumbnail_url: 'https://cdn/t.jpg' }), m(2)],
+          })}
+          onOpenLightbox={vi.fn()}
+          placing
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Próximo' })).toBeEnabled();
+    });
+
     it('slide badge shows open count', () => {
       render(
         <PostMediaPane

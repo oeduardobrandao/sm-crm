@@ -31,6 +31,7 @@ import type {
   PostApproval,
 } from '../../types';
 import { submitApproval } from '../../api';
+import { isNoLongerPendingError } from '../../lib/approvalErrors';
 import { createMediaNote, replyMediaNote } from '../../services/mediaNotes';
 import { canWriteNotes, notesForPost, openNoteCount } from '../../lib/mediaNotes';
 import { useEditSuggestion } from '../../hooks/useEditSuggestion';
@@ -562,8 +563,15 @@ function PostDetailContent({
             : 'approved',
         nav.nextPending,
       );
-    } catch {
-      setError(t('posts.submitError', 'Não foi possível enviar. Tente novamente.'));
+    } catch (err) {
+      if (isNoLongerPendingError(err)) {
+        // The team (or another tab) already moved the post on: say so and refetch so the
+        // footer stops offering Aprovar.
+        setError(err.message);
+        onApprovalSubmitted();
+      } else {
+        setError(t('posts.submitError', 'Não foi possível enviar. Tente novamente.'));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -846,7 +854,7 @@ function PostDetailContent({
                     type="button"
                     aria-pressed={placingNow}
                     onClick={() => setPlacing((v) => !v)}
-                    className="min-h-[36px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow aria-pressed:bg-neutral-900 aria-pressed:text-white"
+                    className="min-h-[44px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow aria-pressed:bg-neutral-900 aria-pressed:text-white"
                   >
                     {t('mediaNotes.comment')}
                   </button>
@@ -856,7 +864,7 @@ function PostDetailContent({
                       setPending(null);
                       setComposer({ linkId: slideMedia.id, point: null });
                     }}
-                    className="min-h-[36px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
+                    className="min-h-[44px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
                   >
                     {t('mediaNotes.commentWholeSlide')}
                   </button>
