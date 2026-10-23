@@ -47,7 +47,7 @@ export interface ConfigTab {
  * can never be hidden in the nav yet reachable by typing its address.
  *
  * `permission` mirrors the guard each destination already enforces internally
- * (CobrancaPage is owner-only; IntegracoesClaudePage is owner/admin) — those
+ * (CobrancaPage is owner-only) — those
  * checks stay in place as the real gate; this list only avoids advertising a
  * tab that would render a "no access" screen.
  */
@@ -100,7 +100,9 @@ export const CONFIG_TABS: ConfigTab[] = [
   {
     path: 'mcp',
     label: 'Agentes (MCP)',
-    permission: { module: 'configuracoes', action: 'ver' },
+    // Every member can connect Claude with the scopes their own role allows. The page shows
+    // API keys and everyone's connections only with `configuracoes:ver`.
+    permission: 'all',
     group: 'Avançado',
     icon: Plug,
   },

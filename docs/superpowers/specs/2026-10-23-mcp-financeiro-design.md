@@ -32,7 +32,7 @@ rentabilidade. Anexos de contrato dos acordos (bucket `financeiro-acordos`) fica
   agendados do mês são derivados disso.
 - Mudar o que `list_clients`/`get_client`/`list_members` devolvem. Eles continuam sem campos
   financeiros; valores só aparecem nas ferramentas novas. (Exceção na escrita, abaixo:
-  `create_client`/`create_member` passam a exigir dono para os campos financeiros.)
+  `create_client`/`create_member` seguem a regra do PR #740 para os campos financeiros.)
 - Anexos de contrato, exportação CSV, MCP do Admin.
 
 ## Anti-metas
@@ -77,9 +77,13 @@ rentabilidade. Anexos de contrato dos acordos (bucket `financeiro-acordos`) fica
 (escopo `clientes:write`) e `create_member` aceita `custo_mensal`/`data_pagamento`
 (`membros:write`), gravando por service role, onde `guard_financial_write` sai cedo
 (`20260904000002:244-247`). Ou seja, um não-dono já consegue gravar valores pelo MCP. Esses
-parâmetros passam a exigir `ctx.role === 'owner'`: para outro papel, a ferramenta recusa com
-`McpOwnerError` se algum deles vier preenchido (não ignora em silêncio). A descrição das duas
-ferramentas diz isso.
+parâmetros seguem a regra do PR #740 (decisão do Eduardo ao combinar os dois PRs, 2026-10-23):
+exigem `financeiro:editar` do usuário da conexão OAuth (`ctx.can_write_financials`, resolvido a
+cada requisição); chaves de API, que só quem tem `configuracoes:editar` cria, não mudam. Sem a
+permissão, a ferramenta recusa se algum deles vier preenchido (não ignora em silêncio). A
+descrição das duas ferramentas diz isso. As ferramentas `financeiro:*` continuam só do dono, e na
+tela de consentimento os escopos `financeiro:*` só aparecem habilitados para o dono (o servidor os
+tira de `allowed_scopes` de quem não é dono).
 
 **Barreira das ferramentas de tabela direta.** Lançamentos, recorrentes e as colunas legadas
 (v2 desligado) não passam por RPC: a única barreira de dono é o gate `ownerOnly` do edge, já que

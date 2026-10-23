@@ -268,7 +268,7 @@ Deno.test("mcp-financeiro-gate: oauth resolver fills role", async () => {
     const { db } = makeFakeDb({
       mcp_oauth_grants: [{ data: { conta_id: "workspace-A", scopes: ["financeiro:read"], revoked_at: null }, error: null }],
       workspace_members: [{ data: { role }, error: null }],
-    });
+    }, { has_permission_for: [{ data: true, error: null }, { data: true, error: null }] });
     (db as any).auth.getUser = () => Promise.resolve({ data: { user: { id: "user-1" } }, error: null });
     const ctx = await resolveOAuthCtx(db as any, token, "2026-10-23T12:00:00.000Z");
     assertEquals(ctx?.role, role);
@@ -283,7 +283,11 @@ Deno.test("mcp-financeiro-gate: oauth resolver fills role", async () => {
   assertEquals(await resolveOAuthCtx(db as any, token, "2026-10-23T12:00:00.000Z"), null);
 });
 
-// ---- create_client / create_member owner-only fields ------------------------------------------
+// ---- create_client / create_member financial fields (PR #740 rule) ---------------------------
+// Capped by the caller's own financeiro:editar (ctx.can_write_financials, resolved per OAuth
+// request); workspace API keys leave it unset. Only the financeiro:* tools are owner-only.
+
+const FINANCIAL_WRITE_MSG = "Seu papel não permite editar valores financeiros";
 
 function toolsFor(db: unknown, ctx: Record<string, unknown>) {
   const server = fakeServer();
@@ -291,67 +295,59 @@ function toolsFor(db: unknown, ctx: Record<string, unknown>) {
   return server;
 }
 
-Deno.test("mcp-financeiro-gate: create_client valor_mensal from non-owner refused, accepted for owner", async () => {
-  for (const role of ["admin", "agent", null, undefined]) {
+Deno.test("mcp-financeiro-gate: create_client valor_mensal follows financeiro:editar, not the owner role", async () => {
+  for (const role of ["owner", "admin", "agent"]) {
     const { db, calls } = makeFakeDb({});
-    const res = await toolsFor(db, { role }).handlers["create_client"]({ nome: "Ana", valor_mensal: 1500 });
-    assert(res.isError === true, `role ${String(role)} refused`);
-    assert(errorText(res).includes(OWNER_ONLY_MSG));
+    const res = await toolsFor(db, { role, can_write_financials: false }).handlers["create_client"]({ nome: "Ana", valor_mensal: 1500 });
+    assert(res.isError === true, `role ${role} without financeiro:editar refused`);
+    assert(errorText(res).includes(FINANCIAL_WRITE_MSG));
     assert(!calls.some((c) => c.method === "insert" || c.method === "update"), "nothing written");
   }
-  // Non-owner without the financial field: unchanged behaviour.
-  {
+  for (const ctx of [{ role: "admin", can_write_financials: true }, { role: "agent" }]) {
     const { db, calls } = makeFakeDb({
       clientes: [
         { data: [], error: null },
         { data: { id: 7, nome: "Ana", sigla: "AN", especialidade: null, cor: "#eab308", status: "ativo" }, error: null },
       ],
     });
-    const res = await toolsFor(db, { role: "agent" }).handlers["create_client"]({ nome: "Ana" });
-    assert(!res.isError, "no financial field: allowed for any role");
-    assert(insertPayload(calls, "clientes") !== undefined);
-  }
-  // Owner with the field.
-  {
-    const { db, calls } = makeFakeDb({
-      clientes: [
-        { data: [], error: null },
-        { data: { id: 7, nome: "Ana", sigla: "AN", especialidade: null, cor: "#eab308", status: "ativo" }, error: null },
-      ],
-    });
-    const res = await toolsFor(db, { role: "owner" }).handlers["create_client"]({ nome: "Ana", valor_mensal: 0 });
-    assert(!res.isError, "owner accepted");
+    const res = await toolsFor(db, ctx).handlers["create_client"]({ nome: "Ana", valor_mensal: 0 });
+    assert(!res.isError, `accepted for ${JSON.stringify(ctx)}`);
     assertEquals(insertPayload(calls, "clientes")?.valor_mensal, 0);
+  }
+  {
+    const { db } = makeFakeDb({
+      clientes: [
+        { data: [], error: null },
+        { data: { id: 7, nome: "Ana", sigla: "AN", especialidade: null, cor: "#eab308", status: "ativo" }, error: null },
+      ],
+    });
+    const res = await toolsFor(db, { role: "agent", can_write_financials: false }).handlers["create_client"]({ nome: "Ana" });
+    assert(!res.isError, "no financial field: allowed for any role");
   }
 });
 
-Deno.test("mcp-financeiro-gate: create_member custo_mensal/data_pagamento from non-owner refused, accepted for owner", async () => {
+Deno.test("mcp-financeiro-gate: create_member custo_mensal/data_pagamento follow financeiro:editar", async () => {
   for (const args of [{ custo_mensal: 3000 }, { data_pagamento: 5 }, { custo_mensal: 0 }]) {
     const { db, calls } = makeFakeDb({});
-    const res = await toolsFor(db, { role: "admin" }).handlers["create_member"]({ nome: "João", ...args });
+    const res = await toolsFor(db, { role: "owner", can_write_financials: false }).handlers["create_member"]({ nome: "João", ...args });
     assert(res.isError === true, `refused for ${JSON.stringify(args)}`);
-    assert(errorText(res).includes(OWNER_ONLY_MSG));
+    assert(errorText(res).includes(FINANCIAL_WRITE_MSG));
     assert(!calls.some((c) => c.method === "insert" || c.method === "update"), "nothing written");
   }
   const row = { id: 5, nome: "João", cargo: "", tipo: "clt", data_pagamento: 5, crm_user_id: null, created_at: "2026-08-07" };
   {
     const { db, calls } = makeFakeDb({ membros: [{ data: [], error: null }, { data: row, error: null }] });
-    const res = await toolsFor(db, { role: "owner" }).handlers["create_member"]({ nome: "João", custo_mensal: 3000, data_pagamento: 5 });
-    assert(!res.isError, "owner accepted");
+    const res = await toolsFor(db, { role: "admin", can_write_financials: true }).handlers["create_member"]({ nome: "João", custo_mensal: 3000, data_pagamento: 5 });
+    assert(!res.isError, "financeiro:editar accepted");
     assertEquals(insertPayload(calls, "membros")?.custo_mensal, 3000);
     assertEquals(insertPayload(calls, "membros")?.data_pagamento, 5);
   }
-  {
-    const { db } = makeFakeDb({ membros: [{ data: [], error: null }, { data: row, error: null }] });
-    const res = await toolsFor(db, { role: "agent" }).handlers["create_member"]({ nome: "João" });
-    assert(!res.isError, "no financial field: allowed for any role");
-  }
 });
 
-Deno.test("mcp-financeiro-gate: create_client and create_member descriptions mention the owner-only fields", () => {
+Deno.test("mcp-financeiro-gate: create_client and create_member descriptions name the financeiro:editar rule", () => {
   const { db } = makeFakeDb({});
   const server = toolsFor(db, {});
-  const sentence = "Campos financeiros (valor_mensal / custo_mensal, data_pagamento) só para o dono do workspace.";
+  const sentence = "Campos financeiros (valor_mensal / custo_mensal, data_pagamento) exigem a permissão de editar o Financeiro.";
   assert(server.descriptions["create_client"].includes(sentence), "create_client description");
   assert(server.descriptions["create_member"].includes(sentence), "create_member description");
 });

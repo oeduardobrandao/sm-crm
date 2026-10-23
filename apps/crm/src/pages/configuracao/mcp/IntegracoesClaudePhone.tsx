@@ -17,7 +17,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ConfigPhoneScreen } from '../phone/ConfigPhoneScreen';
 import {
   CLIENT_INTRO,
-  CLIENT_TABS,
+  MANAGER_INTRO,
+  MEMBER_INTRO,
   ChatgptSteps,
   ClaudeKeyNote,
   ClaudeSteps,
@@ -56,11 +57,14 @@ const scopeCheckOptions = (isWorkspaceOwner: boolean) =>
   });
 
 export interface IntegracoesClaudePhoneProps {
-  /** The role can't see Configurações: only the explanation renders. */
-  blocked: boolean;
+  /** `configuracoes:ver`: API keys and every member's connections. Without it, only the
+   *  connector guide and the member's own connections render. */
+  canManage: boolean;
   canEdit: boolean;
   /** Owner of the active workspace (workspaceRole === 'owner'); gates the financeiro:* scopes. */
   isWorkspaceOwner: boolean;
+  /** Assistants offered in the guide (Codex needs an API key, so managers only). */
+  clientTabs: { id: McpClient; label: string }[];
   client: McpClient;
   onClientChange: (client: McpClient) => void;
   copy: CopyFn;
@@ -278,20 +282,18 @@ const STEPS: Record<McpClient, () => ReactNode> = {
 /** Configurações > Agentes (MCP) on phones. Presentational: state and mutations live in
  *  IntegracoesClaudePage. */
 export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
-  const { blocked, canEdit, client, onClientChange, copy, copiedKey, grants, keys, keysLoading } =
-    props;
-
-  if (blocked) {
-    return (
-      <ConfigPhoneScreen title="Agentes (MCP)">
-        <GroupedList aria-label="Acesso">
-          <li className="phone-cell phone-config-block">
-            Apenas proprietários e administradores podem gerenciar as chaves de API.
-          </li>
-        </GroupedList>
-      </ConfigPhoneScreen>
-    );
-  }
+  const {
+    canManage,
+    canEdit,
+    clientTabs,
+    client,
+    onClientChange,
+    copy,
+    copiedKey,
+    grants,
+    keys,
+    keysLoading,
+  } = props;
 
   const Steps = STEPS[client];
   const panelId = `mcp-phone-panel-${client}`;
@@ -302,8 +304,8 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
       title="Agentes (MCP)"
       subtitle={
         <>
-          Conecte Claude, ChatGPT ou Codex para ler clientes, posts e pautas deste workspace.
-          {!canEdit && <span className="phone-mcp-readonly"> Somente leitura.</span>}
+          {canManage ? MANAGER_INTRO : MEMBER_INTRO}
+          {canManage && !canEdit && <span className="phone-mcp-readonly"> Somente leitura.</span>}
         </>
       }
     >
@@ -315,7 +317,7 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
           className="phone-config-segmented"
           value={client}
           onChange={onClientChange}
-          options={CLIENT_TABS.map((t) => ({
+          options={clientTabs.map((t) => ({
             value: t.id,
             label: t.label,
             id: tabId(t.id),
@@ -324,10 +326,12 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
         />
         <div role="tabpanel" id={panelId} aria-labelledby={tabId(client)}>
           <GroupedList
-            aria-label={`Como conectar: ${CLIENT_TABS.find((t) => t.id === client)?.label}`}
+            aria-label={`Como conectar: ${clientTabs.find((t) => t.id === client)?.label}`}
             footer={
               client === 'claude' ? (
-                <ClaudeKeyNote />
+                canManage ? (
+                  <ClaudeKeyNote />
+                ) : undefined
               ) : client === 'codex' ? (
                 <CodexHeadersNote />
               ) : undefined
@@ -370,7 +374,7 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
         </p>
 
         <GroupedList
-          header="Conexões via conector"
+          header={canManage ? 'Conexões via conector' : 'Suas conexões'}
           footer="Conexões OAuth (claude.ai, Claude Desktop, ChatGPT). Desconecte para revogar o acesso na hora."
         >
           {grants.length === 0 ? (
@@ -379,6 +383,7 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
             grants.map((g) => {
               const who = g.connected_by ?? 'Conexão via conector';
               const disconnect = () => props.onRevokeGrant(g);
+              const canDisconnect = canEdit || g.mine;
               return (
                 <MenuRow
                   key={g.id}
@@ -391,13 +396,13 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
                         label: 'Desconectar',
                         icon: <Unplug />,
                         destructive: true,
-                        disabled: !canEdit,
+                        disabled: !canDisconnect,
                         onSelect: disconnect,
                       },
                     ],
                   ]}
                   swipeActions={
-                    canEdit
+                    canDisconnect
                       ? [
                           {
                             label: 'Desconectar',
@@ -414,88 +419,90 @@ export function IntegracoesClaudePhone(props: IntegracoesClaudePhoneProps) {
           )}
         </GroupedList>
 
-        <GroupedList
-          header="Chaves de API"
-          footer={
-            !keysLoading && keys.length === 0
-              ? 'Nenhuma chave ainda. Crie uma para conectar um agente.'
-              : undefined
-          }
-        >
-          <Cell
-            label="Criar chave"
-            icon={<Plus />}
-            className="phone-mcp-action"
-            disabled={!canEdit}
-            onClick={props.onOpenCreate}
-          />
-          {keysLoading && (
-            <li className="phone-cell" aria-hidden="true">
-              <div className="phone-config-skeleton__row">
-                <Skeleton className="h-4 w-1/2" />
-              </div>
-            </li>
-          )}
-          {keys.map((k) => {
-            const meta = [
-              `…${k.token_suffix}`,
-              k.scopes.join(', '),
-              k.last_used_at ? `usada ${fmtDate(k.last_used_at)}` : 'nunca usada',
-              k.expires_at ? `expira ${fmtDate(k.expires_at)}` : null,
-            ]
-              .filter(Boolean)
-              .join(' · ');
-            if (k.revoked_at) {
+        {canManage && (
+          <GroupedList
+            header="Chaves de API"
+            footer={
+              !keysLoading && keys.length === 0
+                ? 'Nenhuma chave ainda. Crie uma para conectar um agente.'
+                : undefined
+            }
+          >
+            <Cell
+              label="Criar chave"
+              icon={<Plus />}
+              className="phone-mcp-action"
+              disabled={!canEdit}
+              onClick={props.onOpenCreate}
+            />
+            {keysLoading && (
+              <li className="phone-cell" aria-hidden="true">
+                <div className="phone-config-skeleton__row">
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              </li>
+            )}
+            {keys.map((k) => {
+              const meta = [
+                `…${k.token_suffix}`,
+                k.scopes.join(', '),
+                k.last_used_at ? `usada ${fmtDate(k.last_used_at)}` : 'nunca usada',
+                k.expires_at ? `expira ${fmtDate(k.expires_at)}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              if (k.revoked_at) {
+                return (
+                  <MenuRow
+                    key={k.id}
+                    label={k.name}
+                    subtitle={meta}
+                    value="revogada"
+                    menuLabel={`Ações da chave ${k.name}`}
+                    sections={[]}
+                    swipeActions={[]}
+                  />
+                );
+              }
+              const connect = () => props.onOpenConnect(k);
+              const revoke = () => props.onRevoke(k);
               return (
                 <MenuRow
                   key={k.id}
                   label={k.name}
                   subtitle={meta}
-                  value="revogada"
                   menuLabel={`Ações da chave ${k.name}`}
-                  sections={[]}
-                  swipeActions={[]}
+                  onTap={connect}
+                  sections={[
+                    [{ label: 'Conectar', icon: <Link2 />, onSelect: connect }],
+                    [
+                      {
+                        label: 'Revogar',
+                        icon: <KeyRound />,
+                        destructive: true,
+                        disabled: !canEdit,
+                        onSelect: revoke,
+                      },
+                    ],
+                  ]}
+                  swipeActions={[
+                    { label: 'Conectar', icon: <Link2 />, tone: 'neutral', onAction: connect },
+                    ...(canEdit
+                      ? [
+                          {
+                            label: 'Revogar',
+                            icon: <KeyRound />,
+                            tone: 'destructive' as const,
+                            onAction: revoke,
+                          },
+                        ]
+                      : []),
+                  ]}
                 />
               );
-            }
-            const connect = () => props.onOpenConnect(k);
-            const revoke = () => props.onRevoke(k);
-            return (
-              <MenuRow
-                key={k.id}
-                label={k.name}
-                subtitle={meta}
-                menuLabel={`Ações da chave ${k.name}`}
-                onTap={connect}
-                sections={[
-                  [{ label: 'Conectar', icon: <Link2 />, onSelect: connect }],
-                  [
-                    {
-                      label: 'Revogar',
-                      icon: <KeyRound />,
-                      destructive: true,
-                      disabled: !canEdit,
-                      onSelect: revoke,
-                    },
-                  ],
-                ]}
-                swipeActions={[
-                  { label: 'Conectar', icon: <Link2 />, tone: 'neutral', onAction: connect },
-                  ...(canEdit
-                    ? [
-                        {
-                          label: 'Revogar',
-                          icon: <KeyRound />,
-                          tone: 'destructive' as const,
-                          onAction: revoke,
-                        },
-                      ]
-                    : []),
-                ]}
-              />
-            );
-          })}
-        </GroupedList>
+            })}
+          </GroupedList>
+        )}
       </FeatureGate>
 
       <KeySheet {...props} />

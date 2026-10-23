@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 import { z } from "npm:zod@3";
-import { McpOwnerError } from "../_shared/mcp-token.ts";
+import { requireFinancialWrite } from "../_shared/mcp-token.ts";
 import { CONTENT_FORMATS, IG_CAPTION_MAX } from "../_shared/platform-registry.ts";
 import {
   createClient,
@@ -42,12 +42,6 @@ const PROPERTY_TYPE = z.enum([
 ]);
 const TASK_STATUS = z.enum(["pendente", "em_andamento", "concluida"]);
 const TIPO_MEMBRO = z.enum(["clt", "freelancer_mensal", "freelancer_demanda"]);
-
-/** Owner-only financial fields on the pre-existing tools: a non-owner sending any of them is refused
- * (never silently ignored). The service role skips guard_financial_write, so this is the barrier. */
-function requireOwnerFor(deps: Deps, ...values: unknown[]): void {
-  if (values.some((v) => v != null) && deps.ctx.role !== "owner") throw new McpOwnerError();
-}
 
 export function registerTools(server: any, deps: Deps): void {
   register(server, deps, "list_clients", "clientes:read",
@@ -289,7 +283,7 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   register(server, deps, "create_client", "clientes:write",
-    "Cria um cliente no workspace. Se já existir um cliente com o mesmo nome, retorna o existente e preenche apenas os campos vazios (already_existed: true, filled_fields). Pensado para importação de outras plataformas. Campos financeiros (valor_mensal / custo_mensal, data_pagamento) só para o dono do workspace.",
+    "Cria um cliente no workspace. Se já existir um cliente com o mesmo nome, retorna o existente e preenche apenas os campos vazios (already_existed: true, filled_fields). Pensado para importação de outras plataformas. Campos financeiros (valor_mensal / custo_mensal, data_pagamento) exigem a permissão de editar o Financeiro.",
     {
       nome: z.string().trim().min(1).max(120),
       email: z.string().trim().max(200).optional(),
@@ -299,7 +293,7 @@ export function registerTools(server: any, deps: Deps): void {
       status: STATUS_CLIENTE.optional(),
     },
     (a) => {
-      requireOwnerFor(deps, a.valor_mensal);
+      requireFinancialWrite(deps.ctx, a, ["valor_mensal"]);
       return createClient(deps, a);
     },
     (a, r) => ({
@@ -317,7 +311,7 @@ export function registerTools(server: any, deps: Deps): void {
     () => listMembers(deps));
 
   register(server, deps, "create_member", "membros:write",
-    "Cria um membro da equipe (roster interno). Não envia convite de login nem e-mail. Se já existir um membro com o mesmo nome, retorna o existente e preenche apenas os campos vazios. Campos financeiros (valor_mensal / custo_mensal, data_pagamento) só para o dono do workspace.",
+    "Cria um membro da equipe (roster interno). Não envia convite de login nem e-mail. Se já existir um membro com o mesmo nome, retorna o existente e preenche apenas os campos vazios. Campos financeiros (valor_mensal / custo_mensal, data_pagamento) exigem a permissão de editar o Financeiro.",
     {
       nome: z.string().trim().min(1).max(120),
       cargo: z.string().trim().max(120).optional(),
@@ -326,7 +320,7 @@ export function registerTools(server: any, deps: Deps): void {
       data_pagamento: z.number().int().min(1).max(31).optional(),
     },
     (a) => {
-      requireOwnerFor(deps, a.custo_mensal, a.data_pagamento);
+      requireFinancialWrite(deps.ctx, a, ["custo_mensal", "data_pagamento"]);
       return createMember(deps, a);
     },
     (a, r) => ({

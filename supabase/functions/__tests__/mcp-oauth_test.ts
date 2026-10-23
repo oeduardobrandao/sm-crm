@@ -4,9 +4,11 @@ import {
   decodeJwtClaim,
   grantActive,
   mcpScopesFromClaim,
+  permittedMcpScopes,
   publicOrigin,
   validateConsentPayload,
 } from "../_shared/mcp-oauth.ts";
+import { MCP_ALLOWED_SCOPES, MCP_SCOPE_PERMISSION } from "../_shared/mcp-token.ts";
 
 function b64url(o: unknown): string {
   return btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -117,4 +119,72 @@ Deno.test("boundGrantScopes intersects only when the request named MCP scopes", 
     "clientes:read",
     "posts:read",
   ]);
+});
+
+// --- permittedMcpScopes: OAuth grants are capped by the user's own role ---
+
+/** Stub service client whose has_permission_for answers from a fixed set of "module:action". */
+function permDb(allowed: string[]) {
+  const calls: Array<Record<string, unknown>> = [];
+  const db = {
+    rpc: (name: string, payload: Record<string, unknown>) => {
+      calls.push({ name, ...payload });
+      return Promise.resolve({
+        data: allowed.includes(`${payload.p_module}:${payload.p_action}`),
+        error: null,
+      });
+    },
+  };
+  // deno-lint-ignore no-explicit-any
+  return { db: db as any, calls };
+}
+
+Deno.test("MCP_SCOPE_PERMISSION maps every allowlisted scope", () => {
+  for (const s of MCP_ALLOWED_SCOPES) assert(s in MCP_SCOPE_PERMISSION, `missing ${s}`);
+});
+
+Deno.test("permittedMcpScopes: default agent role (equipe none, no financeiro) loses membros:* and financeiro:*", async () => {
+  const { db } = permDb([
+    "clientes:ver", "clientes:editar", "entregas:ver", "entregas:editar",
+    "ideias:ver", "ideias:editar", "tarefas:ver", "tarefas:editar",
+  ]);
+  const got = await permittedMcpScopes(db, "u1", "ws-a");
+  assertEquals(
+    got,
+    MCP_ALLOWED_SCOPES.filter((s) => !s.startsWith("membros:") && !s.startsWith("financeiro:")),
+  );
+});
+
+Deno.test("permittedMcpScopes: ver-only role keeps reads, drops writes", async () => {
+  const { db } = permDb(["clientes:ver", "entregas:ver"]);
+  const got = await permittedMcpScopes(db, "u1", "ws-a", [
+    "clientes:read", "clientes:write", "posts:read", "posts:write", "workflows:read",
+  ]);
+  assertEquals(got, ["clientes:read", "posts:read", "workflows:read"]);
+});
+
+Deno.test("permittedMcpScopes: checks each module/action once, against the given workspace", async () => {
+  const { db, calls } = permDb(["entregas:ver"]);
+  await permittedMcpScopes(db, "u1", "ws-a", ["posts:read", "workflows:read", "posts:read"]);
+  assertEquals(calls, [{
+    name: "has_permission_for", p_user: "u1", p_workspace: "ws-a", p_module: "entregas", p_action: "ver",
+  }]);
+});
+
+Deno.test("permittedMcpScopes: non-member / RPC error / unknown scope -> nothing", async () => {
+  assertEquals(await permittedMcpScopes(permDb([]).db, "u1", "ws-a"), []);
+  const failing = { rpc: () => Promise.resolve({ data: null, error: { message: "boom" } }) };
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await permittedMcpScopes(failing as any, "u1", "ws-a", ["posts:read"]), []);
+  assertEquals(await permittedMcpScopes(permDb(["entregas:ver"]).db, "u1", "ws-a", ["designs:write"]), []);
+});
+
+Deno.test("resolveOAuthCtx re-caps the grant by the user's current role on every request", async () => {
+  const src = await Deno.readTextFile(new URL("../_shared/mcp-oauth.ts", import.meta.url));
+  const fn = src.match(/export async function resolveOAuthCtx[\s\S]*?\n\}/)?.[0] ?? "";
+  assert(fn.length > 0, "expected resolveOAuthCtx");
+  assert(/permittedMcpScopes\(db, user\.id, contaId, bounded\)/.test(fn), "scopes must pass through permittedMcpScopes");
+  assert(/hasPermissionFor\(db, user\.id, contaId, "financeiro", "editar"\)/.test(fn), "financial writes follow the user's financeiro:editar");
+  assert(/can_write_financials: canWriteFinancials/.test(fn));
+  assert(/if \(scopes\.length === 0\) return null;/.test(fn), "a grant with no permitted scope must not resolve");
 });

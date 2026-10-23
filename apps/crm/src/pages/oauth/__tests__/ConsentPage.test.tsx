@@ -60,11 +60,35 @@ beforeEach(() => {
     error: null,
   });
   listWorkspaces.mockResolvedValue({
-    workspaces: [{ id: 'conta-1', name: 'Agência X', role: 'owner', feature_mcp: true }],
+    workspaces: [
+      {
+        id: 'conta-1',
+        name: 'Agência X',
+        role: 'owner',
+        feature_mcp: true,
+        allowed_scopes: ALL_SCOPES,
+      },
+    ],
     platform_admin: false,
   });
   recordGrant.mockResolvedValue({ ok: true });
 });
+
+const ALL_SCOPES = [
+  'clientes:read',
+  'posts:read',
+  'workflows:read',
+  'ideias:read',
+  'tarefas:read',
+  'membros:read',
+  'posts:write',
+  'templates:write',
+  'tarefas:write',
+  'clientes:write',
+  'membros:write',
+  'financeiro:read',
+  'financeiro:write',
+];
 
 describe('ConsentPage', () => {
   it('shows the client + workspace and records the grant on approve', async () => {
@@ -114,7 +138,15 @@ describe('ConsentPage', () => {
 
   it('mostra "Administração da plataforma" só para platform admins e envia target platform', async () => {
     listWorkspaces.mockResolvedValue({
-      workspaces: [{ id: 'conta-1', name: 'Agência X', role: 'owner', feature_mcp: true }],
+      workspaces: [
+        {
+          id: 'conta-1',
+          name: 'Agência X',
+          role: 'owner',
+          feature_mcp: true,
+          allowed_scopes: ALL_SCOPES,
+        },
+      ],
       platform_admin: true,
     });
     renderPage();
@@ -169,7 +201,16 @@ describe('ConsentPage', () => {
   describe('financeiro scopes (owner-only)', () => {
     it('non-owner sees financeiro scopes disabled with the owner-only helper text', async () => {
       listWorkspaces.mockResolvedValue({
-        workspaces: [{ id: 'conta-1', name: 'Agência X', role: 'admin', feature_mcp: true }],
+        workspaces: [
+          {
+            id: 'conta-1',
+            name: 'Agência X',
+            role: 'admin',
+            feature_mcp: true,
+            // The server leaves owner-only scopes out of allowed_scopes for a non-owner.
+            allowed_scopes: ALL_SCOPES.filter((s) => !s.startsWith('financeiro:')),
+          },
+        ],
         platform_admin: false,
       });
       renderPage();
@@ -202,7 +243,16 @@ describe('ConsentPage', () => {
         error: null,
       });
       listWorkspaces.mockResolvedValue({
-        workspaces: [{ id: 'conta-1', name: 'Agência X', role: 'admin', feature_mcp: true }],
+        workspaces: [
+          {
+            id: 'conta-1',
+            name: 'Agência X',
+            role: 'admin',
+            feature_mcp: true,
+            // The server leaves owner-only scopes out of allowed_scopes for a non-owner.
+            allowed_scopes: ALL_SCOPES.filter((s) => !s.startsWith('financeiro:')),
+          },
+        ],
         platform_admin: false,
       });
       renderPage();
@@ -212,6 +262,38 @@ describe('ConsentPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
       await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
       expect(recordGrant.mock.calls[0][0].scopes).toEqual(['posts:read']);
+    });
+  });
+
+  it('disables the scopes the role does not allow and never submits them', async () => {
+    listWorkspaces.mockResolvedValue({
+      workspaces: [
+        {
+          id: 'conta-1',
+          name: 'Agência X',
+          role: 'agent',
+          feature_mcp: true,
+          // Default agent role: Equipe is off, so membros:* is not grantable.
+          allowed_scopes: ALL_SCOPES.filter((s) => !s.startsWith('membros:')),
+        },
+      ],
+      platform_admin: false,
+    });
+    renderPage();
+
+    const membros = await screen.findByLabelText('Equipe (leitura)');
+    expect(membros).toBeDisabled();
+    expect(membros).not.toBeChecked();
+    expect(screen.getByLabelText('Equipe (escrita)')).toBeDisabled();
+    expect(screen.getByLabelText('Clientes (leitura)')).toBeChecked();
+    expect(screen.getByText(/não fazem parte do seu papel/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
+    await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+    expect(recordGrant).toHaveBeenCalledWith({
+      authorization_id: 'auth-1',
+      conta_id: 'conta-1',
+      scopes: ['clientes:read', 'posts:read', 'workflows:read', 'ideias:read', 'tarefas:read'],
     });
   });
 });

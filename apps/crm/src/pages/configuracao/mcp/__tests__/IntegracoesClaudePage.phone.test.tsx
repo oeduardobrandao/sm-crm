@@ -87,12 +87,13 @@ describe('IntegracoesClaudePage on phones', () => {
     });
   });
 
-  it('keeps the owner/admin guard inside the phone screen', async () => {
+  it('shows an agent the connector guide and their own connections, without API keys', async () => {
     renderPage('agent');
     expect(screen.getByRole('heading', { level: 1, name: 'Agentes (MCP)' })).toBeInTheDocument();
-    expect(
-      screen.getByText('Apenas proprietários e administradores podem gerenciar as chaves de API.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Suas conexões')).toBeInTheDocument();
+    expect(screen.queryByText('Chaves de API')).toBeNull();
+    const tabs = screen.getByRole('tablist', { name: 'Escolha o assistente' });
+    expect(within(tabs).queryByRole('tab', { name: 'Codex' })).toBeNull();
     expect(svc.listMcpKeys).not.toHaveBeenCalled();
   });
 

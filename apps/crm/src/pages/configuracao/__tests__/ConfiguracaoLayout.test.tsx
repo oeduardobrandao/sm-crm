@@ -148,10 +148,10 @@ describe('ConfiguracaoLayout', () => {
     expect(tabLabels()).toContain('Membros');
   });
 
-  it('renders the Conta tab strip for an agent, who only sees Perfil and Notificações', () => {
+  it('renders the tab strip for an agent, who only sees Perfil, Notificações and Agentes (MCP)', () => {
     setAuth('agent');
     renderAt('/configuracao/perfil');
-    expect(tabLabels()).toEqual(['Perfil', 'Notificações']);
+    expect(tabLabels()).toEqual(['Perfil', 'Notificações', 'Agentes (MCP)']);
     expect(screen.getByText('conteudo perfil')).toBeInTheDocument();
   });
 
@@ -271,7 +271,7 @@ describe('ConfiguracaoLayout', () => {
     // to someone whose real, current-workspace role is agent.
     setAuth('agent', { staleProfileRole: 'owner' });
     renderAt('/configuracao/membros');
-    expect(tabLabels()).toEqual(['Perfil', 'Notificações']);
+    expect(tabLabels()).toEqual(['Perfil', 'Notificações', 'Agentes (MCP)']);
     expect(screen.queryByText('conteudo membros')).not.toBeInTheDocument();
     expect(screen.getByTestId('path')).toHaveTextContent('/configuracao/perfil');
   });
@@ -347,10 +347,11 @@ describe('ConfiguracaoLayout on phones', () => {
   it('lists only the sections the role may open', () => {
     setAuth('agent');
     renderAt('/configuracao');
-    expect(groupNames()).toEqual(['Conta']);
+    expect(groupNames()).toEqual(['Conta', 'Avançado']);
     expect(screen.getAllByRole('link').map((el) => el.getAttribute('href'))).toEqual([
       '/configuracao/perfil',
       '/configuracao/notificacoes',
+      '/configuracao/mcp',
     ]);
   });
 
