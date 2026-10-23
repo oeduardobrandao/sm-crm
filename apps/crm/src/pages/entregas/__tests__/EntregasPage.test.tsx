@@ -652,18 +652,24 @@ vi.mock('../components/WorkflowDrawer', () => ({
     card,
     onClose,
     initialPostId,
+    focusDiscussao,
+    onDiscussaoFocused,
     onOpenWorkflow,
     onDetachedKeepingProcess,
   }: {
     card: { workflow: { titulo: string } };
     onClose: () => void;
     initialPostId?: number;
+    focusDiscussao?: boolean;
+    onDiscussaoFocused?: () => void;
     onOpenWorkflow?: (workflowId: number, seed?: unknown) => void;
     onDetachedKeepingProcess?: (postIds: number[]) => void;
   }) => (
     <div>
       <div>Workflow drawer: {card.workflow.titulo}</div>
       <div data-testid="drawer-initial-post">{initialPostId ?? 'none'}</div>
+      <div data-testid="drawer-focus-discussao">{String(!!focusDiscussao)}</div>
+      <button onClick={onDiscussaoFocused}>Drawer focused discussao</button>
       <button onClick={onClose}>Close drawer</button>
       <button onClick={() => onOpenWorkflow?.(99)}>Move posts to workflow 99</button>
       <button
@@ -692,15 +698,18 @@ vi.mock('../components/WorkflowDrawer', () => ({
 vi.mock('../components/StandalonePostDrawer', () => ({
   StandalonePostDrawer: ({
     postId,
+    focusDiscussao,
     onClose,
     onAttached,
   }: {
     postId: number;
+    focusDiscussao?: boolean;
     onClose: () => void;
     onAttached: (workflowId: number, postId: number) => void;
   }) => (
     <div>
       <div>Standalone drawer: {postId}</div>
+      <div data-testid="standalone-focus-discussao">{String(!!focusDiscussao)}</div>
       <button onClick={onClose}>Close standalone drawer</button>
       <button onClick={() => onAttached(2, postId)}>Attach standalone post to fluxo 2</button>
     </div>
@@ -828,6 +837,9 @@ function DeepLinkProbe() {
     <>
       <button onClick={() => navigate('/entregas?drawer=2&post=5')}>Deep link from search</button>
       <button onClick={() => navigate('/entregas?post=5')}>Deep link to bare post</button>
+      <button onClick={() => navigate('/entregas?drawer=2&post=5&discussao=1')}>
+        Deep link with discussao
+      </button>
     </>
   );
 }
@@ -1390,6 +1402,94 @@ describe('EntregasPage', () => {
 
     expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
     expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+  });
+
+  describe('&discussao=1 deep link', () => {
+    const boardWithFluxo2 = () =>
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+        membros: [{ id: 7, nome: 'Ana' }],
+        templates: [],
+        cards: [
+          makeCard({
+            workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+          }),
+        ],
+        activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+
+    it('asks the workflow drawer to focus the discussion and drops discussao from the URL like post', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5&discussao=1');
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('stops asking once the drawer reports it handled the link', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5&discussao=1');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      fireEvent.click(screen.getByText('Drawer focused discussao'));
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+    });
+
+    it('does not focus the discussion without discussao=1', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&post=5');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+    });
+
+    it('ignores discussao=1 when the link names no post', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas?drawer=2&discussao=1');
+      await screen.findByText('Workflow drawer: Fluxo Profundo');
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('false');
+    });
+
+    it('works for a post avulso (?post= only)', async () => {
+      boardWithFluxo2();
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 5,
+        workflow_id: null,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+      renderPage('/entregas?post=5&discussao=1');
+      expect(await screen.findByText('Standalone drawer: 5')).toBeInTheDocument();
+      expect(screen.getByTestId('standalone-focus-discussao')).toHaveTextContent('true');
+      await waitFor(() => {
+        expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      });
+    });
+
+    it('survives the bare-post hand-off to a workflow drawer', async () => {
+      boardWithFluxo2();
+      mockedGetStandalonePost.mockResolvedValue({
+        id: 5,
+        workflow_id: 2,
+        cliente_nome: 'Clínica Aurora',
+      } as never);
+      renderPage('/entregas?post=5&discussao=1');
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+    });
+
+    it('a link that arrives while already on /entregas works too', async () => {
+      boardWithFluxo2();
+      renderPage('/entregas');
+      fireEvent.click(screen.getByText('Deep link with discussao'));
+      expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-focus-discussao')).toHaveTextContent('true');
+    });
   });
 
   describe('bare ?post= deep link (no ?drawer=)', () => {

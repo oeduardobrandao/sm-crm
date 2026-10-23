@@ -252,6 +252,34 @@ describe('PhoneComments initial pill', () => {
   });
 });
 
+describe('PhoneComments discussao=1 deep link', () => {
+  const clientNewest = [approval(1, true, at(9, 0)), approval(2, false, at(10, 0))];
+
+  it('opens on Equipe even though the newest message is the client, without focusing', () => {
+    setup({ approvals: clientNewest, focusEquipe: true });
+    expect(equipePill()).toHaveAttribute('aria-pressed', 'true');
+    expect(clientePill()).toHaveAttribute('aria-pressed', 'false');
+    // No keyboard on the phone: nothing in the tab takes focus.
+    expect(document.body).toHaveFocus();
+  });
+
+  it('is not overridden when the participation loads after mount', () => {
+    const loading = fakeDiscussao({ participacao: undefined, isParticipant: false });
+    const props = { approvals: clientNewest, focusEquipe: true };
+    const { rerender } = render(<PhoneComments {...build(props, loading)} />, {
+      wrapper: Wrapper,
+    });
+    expect(equipePill()).toHaveAttribute('aria-pressed', 'true');
+    rerender(<PhoneComments {...build(props, fakeDiscussao({ naoLidas: 0 }))} />);
+    expect(equipePill()).toHaveAttribute('aria-pressed', 'true');
+    // The host drops the flag once handled: the pill stays where it is.
+    rerender(
+      <PhoneComments {...build({ approvals: clientNewest }, fakeDiscussao({ naoLidas: 0 }))} />,
+    );
+    expect(equipePill()).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
 describe('PhoneComments one composer at a time', () => {
   it('shows only the team composer on Equipe', () => {
     setup({}, { naoLidas: 1 });

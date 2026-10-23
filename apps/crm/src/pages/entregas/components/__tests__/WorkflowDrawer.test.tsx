@@ -195,7 +195,19 @@ vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
 // and useDiscussao opens a realtime channel (this supabase stub has no channel/rpc):
 // stub both, they have their own suites.
 vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
-  DiscussaoEquipe: () => <div data-testid="discussao-equipe-stub" />,
+  DiscussaoEquipe: ({
+    autoFocus,
+    onAutoFocused,
+  }: {
+    autoFocus?: boolean;
+    onAutoFocused?: () => void;
+  }) => (
+    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!autoFocus)}>
+      <button type="button" onClick={onAutoFocused}>
+        stub focused
+      </button>
+    </div>
+  ),
   DiscussaoTimeline: () => null,
 }));
 vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
@@ -293,6 +305,8 @@ function renderDrawer(
     onClose?: () => void;
     onRefresh?: () => void;
     initialPostId?: number;
+    focusDiscussao?: boolean;
+    onDiscussaoFocused?: () => void;
     onOpenWorkflow?: (workflowId: number) => void;
     onDetachedKeepingProcess?: (postIds: number[]) => void;
     card?: Partial<BoardCard>;
@@ -344,6 +358,8 @@ function renderDrawer(
         onClose={overrides.onClose ?? vi.fn()}
         onRefresh={overrides.onRefresh ?? vi.fn()}
         initialPostId={overrides.initialPostId ?? 1}
+        focusDiscussao={overrides.focusDiscussao}
+        onDiscussaoFocused={overrides.onDiscussaoFocused}
         onOpenWorkflow={overrides.onOpenWorkflow}
         onDetachedKeepingProcess={overrides.onDetachedKeepingProcess}
       />
@@ -1367,6 +1383,51 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
 
     const body = container.querySelector('.drawer-body')!;
     await waitFor(() => expect(body.scrollTop).toBe(800));
+  });
+});
+
+describe('WorkflowDrawer discussao=1 deep link', () => {
+  const mkPost = (id: number) =>
+    ({
+      id,
+      workflow_id: 10,
+      titulo: `Post ${id}`,
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: id,
+      status: 'rascunho',
+      responsavel_id: null,
+      scheduled_at: null,
+      ig_caption: null,
+      platform: 'instagram',
+    }) as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([mkPost(1), mkPost(2)]);
+    mockGetThreads.mockResolvedValue([]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  const qcNew = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  it('hands the focus request to the linked post only, expanded, and relays the report', async () => {
+    const onDiscussaoFocused = vi.fn();
+    renderDrawer(qcNew(), { initialPostId: 2, focusDiscussao: true, onDiscussaoFocused });
+    await screen.findByText('Post 2');
+    // Only the linked post is expanded, so it is the only row with a discussion section.
+    const stubs = await screen.findAllByTestId('discussao-equipe-stub');
+    expect(stubs).toHaveLength(1);
+    expect(stubs[0]).toHaveAttribute('data-autofocus', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'stub focused' }));
+    expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask for focus without the flag', async () => {
+    renderDrawer(qcNew(), { initialPostId: 2 });
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'false');
   });
 });
 

@@ -148,6 +148,8 @@ function setup(
     discussao?: Partial<UseDiscussaoResult>;
     threads?: CommentThreadWithComments[];
     chatBridge?: ReactNode;
+    autoFocus?: boolean;
+    onAutoFocused?: () => void;
   } = {},
 ) {
   const discussao = fakeDiscussao(over.discussao);
@@ -160,6 +162,8 @@ function setup(
     currentUserId: ME,
     onThreadClick,
     chatBridge: over.chatBridge,
+    autoFocus: over.autoFocus,
+    onAutoFocused: over.onAutoFocused,
   };
   const utils = render(<DiscussaoEquipe {...props} />, { wrapper: Wrapper });
   return { ...utils, discussao, onThreadClick, props };
@@ -505,5 +509,36 @@ describe('DiscussaoEquipe own messages', () => {
     expect(screen.queryByTestId('discussao-message-11')).toBeNull();
     expect(document.querySelector('.discussao-timeline')).toBeNull();
     expect(composer()).toBeInTheDocument();
+  });
+});
+
+describe('DiscussaoEquipe discussao=1 deep link', () => {
+  afterEach(() => {
+    // jsdom has no scrollIntoView; the tests below install a spy on the prototype.
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it('scrolls the section into view, focuses the composer and reports once', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const onAutoFocused = vi.fn();
+    const { container } = setup({ autoFocus: true, onAutoFocused });
+    await waitFor(() => expect(onAutoFocused).toHaveBeenCalledTimes(1));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.instances[0]).toBe(container.querySelector('section.discussao'));
+    expect(composer()).toHaveFocus();
+  });
+
+  it('does nothing without autoFocus', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const onAutoFocused = vi.fn();
+    setup({ onAutoFocused });
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(onAutoFocused).not.toHaveBeenCalled();
+    expect(composer()).not.toHaveFocus();
   });
 });

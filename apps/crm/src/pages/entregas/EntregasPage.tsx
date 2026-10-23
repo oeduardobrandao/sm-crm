@@ -287,6 +287,13 @@ export default function EntregasPage() {
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
+  // `&discussao=1` deep link: the post whose team discussion the open drawer must scroll to
+  // and focus. Cleared by the drawer once it handled it, so reopening the post by hand later
+  // does not steal focus again. `discussaoNonce` re-keys the drawers per such link, so a
+  // link to the post that is already open still expands it and runs the focus again.
+  const [discussaoFocusPostId, setDiscussaoFocusPostId] = useState<number | null>(null);
+  const [discussaoNonce, setDiscussaoNonce] = useState(0);
+  const clearDiscussaoFocus = useCallback(() => setDiscussaoFocusPostId(null), []);
   const [newAvulsoOpen, setNewAvulsoOpen] = useState(false);
   // Template pré-vinculado quando NewAvulsoDialog é aberto a partir do "+ Novo ▾"
   // da coluna (spec §3, item "Post individual"). null = fluxo normal do "Post
@@ -507,9 +514,12 @@ export default function EntregasPage() {
      *  é terminal -- mas se ele foi movido para outro fluxo (recurso "mover posts
      *  para outro fluxo"), vale mais uma tentativa nesse fluxo novo. */
     failedWorkflowId?: number;
+    /** `&discussao=1`: after opening the post, land on its team discussion. */
+    focusDiscussao?: boolean;
   } | null>(null);
   const drawerParam = searchParams.get('drawer');
   const postParam = searchParams.get('post');
+  const discussaoParam = searchParams.get('discussao') === '1';
   useEffect(() => {
     // Drop only the transient params — the rest of the query is the shareable view state
     // and must survive. On mount the sync effect below runs in the same commit and wins;
@@ -520,6 +530,7 @@ export default function EntregasPage() {
           const next = new URLSearchParams(prev);
           next.delete('drawer');
           next.delete('post');
+          next.delete('discussao');
           return next;
         },
         { replace: true },
@@ -532,6 +543,7 @@ export default function EntregasPage() {
           workflowId: parsed,
           postId: isNaN(parsedPost) ? null : parsedPost,
           fromUrl: true,
+          focusDiscussao: discussaoParam,
         });
         consumeParams();
       }
@@ -541,11 +553,16 @@ export default function EntregasPage() {
       // asynchronously below via getStandalonePost.
       const parsedPost = parseInt(postParam, 10);
       if (!isNaN(parsedPost)) {
-        setPendingDeepLink({ workflowId: null, postId: parsedPost, fromUrl: true });
+        setPendingDeepLink({
+          workflowId: null,
+          postId: parsedPost,
+          fromUrl: true,
+          focusDiscussao: discussaoParam,
+        });
         consumeParams();
       }
     }
-  }, [drawerParam, postParam, setSearchParams]);
+  }, [drawerParam, postParam, discussaoParam, setSearchParams]);
 
   // Keep the URL in sync with the shareable view state (view + mode + filters),
   // so any Entregas screen can be shared or bookmarked as-is.
@@ -593,6 +610,7 @@ export default function EntregasPage() {
     setDrawerCard(null);
     setDrawerInitialPostId(null);
     setStandalonePostId(null);
+    setDiscussaoFocusPostId(null);
   });
 
   // Remembers the last mode the user actively left one of these three views in,
@@ -617,13 +635,19 @@ export default function EntregasPage() {
 
   useEffect(() => {
     if (pendingDeepLink === null || pendingDeepLink.workflowId == null) return;
-    const { workflowId, postId, fromUrl } = pendingDeepLink;
+    const { workflowId, postId, fromUrl, focusDiscussao } = pendingDeepLink;
     const match = cards.find((c) => c.workflow.id === workflowId);
     if (match) {
       setPendingDeepLink(null);
       setStandalonePostId(null);
       setDrawerInitialPostId(postId);
       setDrawerCard(match);
+      if (focusDiscussao && postId != null) {
+        setDiscussaoFocusPostId(postId);
+        setDiscussaoNonce((n) => n + 1);
+      } else {
+        setDiscussaoFocusPostId(null);
+      }
       return;
     }
     // `onOpenWorkflow` (mover posts, abaixo) reaproveita este mesmo estado para
@@ -650,6 +674,7 @@ export default function EntregasPage() {
         fromUrl: true,
         fromDrawerFallback: true,
         failedWorkflowId: workflowId,
+        focusDiscussao,
       });
       return;
     }
@@ -683,6 +708,12 @@ export default function EntregasPage() {
           setDrawerInitialPostId(null);
           setStandalonePostId(post.id!);
           setPendingDeepLink(null);
+          if (pendingDeepLink.focusDiscussao) {
+            setDiscussaoFocusPostId(post.id!);
+            setDiscussaoNonce((n) => n + 1);
+          } else {
+            setDiscussaoFocusPostId(null);
+          }
         } else if (
           pendingDeepLink.fromDrawerFallback &&
           post.workflow_id === pendingDeepLink.failedWorkflowId
@@ -704,6 +735,7 @@ export default function EntregasPage() {
             fromUrl: true,
             fromDrawerFallback: pendingDeepLink.fromDrawerFallback,
             failedWorkflowId: pendingDeepLink.failedWorkflowId,
+            focusDiscussao: pendingDeepLink.focusDiscussao,
           });
         }
       })
@@ -2261,13 +2293,18 @@ export default function EntregasPage() {
         )}
         {drawerCard && (
           <WorkflowDrawer
-            key={`${drawerCard.workflow.id}:${drawerInitialPostId ?? ''}`}
+            key={`${drawerCard.workflow.id}:${drawerInitialPostId ?? ''}:${discussaoNonce}`}
             card={drawerCard}
             initialPostId={drawerInitialPostId ?? undefined}
+            focusDiscussao={
+              drawerInitialPostId != null && discussaoFocusPostId === drawerInitialPostId
+            }
+            onDiscussaoFocused={clearDiscussaoFocus}
             membros={membros}
             onClose={() => {
               setDrawerCard(null);
               setDrawerInitialPostId(null);
+              setDiscussaoFocusPostId(null);
             }}
             onRefresh={refresh}
             onDetachedKeepingProcess={revealPostProcesses}
@@ -2301,10 +2338,15 @@ export default function EntregasPage() {
         )}
         {standalonePostId != null && (
           <StandalonePostDrawer
-            key={standalonePostId}
+            key={`${standalonePostId}:${discussaoNonce}`}
             postId={standalonePostId}
+            focusDiscussao={discussaoFocusPostId === standalonePostId}
+            onDiscussaoFocused={clearDiscussaoFocus}
             membros={membros}
-            onClose={() => setStandalonePostId(null)}
+            onClose={() => {
+              setStandalonePostId(null);
+              setDiscussaoFocusPostId(null);
+            }}
             onRefresh={refresh}
             onAttached={handlePostAttached}
             onProcessApplied={(id) => revealPostProcesses([id])}

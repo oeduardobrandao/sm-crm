@@ -181,6 +181,11 @@ interface WorkflowDrawerProps {
   onClose: () => void;
   onRefresh: () => void;
   initialPostId?: number;
+  /** `&discussao=1` deep link: after opening `initialPostId`, scroll to its team discussion
+   *  and focus the composer (phone: open Comentários on Equipe, no keyboard). */
+  focusDiscussao?: boolean;
+  /** Fires once `focusDiscussao` has been applied, so the host stops asking. */
+  onDiscussaoFocused?: () => void;
   /** Opens another workflow's drawer (used after moving posts to a new or
    *  existing flow, so the user lands where the posts went). `seed` carries a
    *  freshly created flow's row + etapas so the caller can open its drawer
@@ -203,6 +208,8 @@ export function WorkflowDrawer({
   onClose,
   onRefresh,
   initialPostId,
+  focusDiscussao,
+  onDiscussaoFocused,
   onOpenWorkflow,
   onDetachedKeepingProcess,
 }: WorkflowDrawerProps) {
@@ -1386,6 +1393,8 @@ export function WorkflowDrawer({
                           showAutoScheduleBadge={offerAutoSchedule(post)}
                           onAutoScheduleClick={() => maybeNudge(post)}
                           phoneListMode={isPhone ? phoneListMode : undefined}
+                          focusDiscussao={focusDiscussao && post.id === initialPostId}
+                          onDiscussaoFocused={onDiscussaoFocused}
                         />
                       ))}
                     </div>
@@ -1535,6 +1544,8 @@ export function WorkflowDrawer({
               editorVersion={editorVersions[phoneExpandedPost.id!] ?? 0}
               onAcceptSuggestion={handleAcceptSuggestion}
               onRejectSuggestion={handleRejectSuggestion}
+              focusDiscussao={focusDiscussao && phoneExpandedPost.id === initialPostId}
+              onDiscussaoFocused={onDiscussaoFocused}
             />
           )}
         </PhoneEditorScreen>
@@ -1793,6 +1804,8 @@ interface SortablePostItemProps {
   onAutoScheduleClick: () => void;
   /** Set only on phones (< 768px): the trigger row becomes FluxoPhonePostRow in this mode. */
   phoneListMode?: FluxoPhoneListMode;
+  focusDiscussao?: boolean;
+  onDiscussaoFocused?: () => void;
 }
 
 function SortablePostItem({
@@ -1848,6 +1861,8 @@ function SortablePostItem({
   showAutoScheduleBadge,
   onAutoScheduleClick,
   phoneListMode,
+  focusDiscussao,
+  onDiscussaoFocused,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
@@ -2074,6 +2089,8 @@ function SortablePostItem({
         editorVersion={editorVersion}
         onAcceptSuggestion={onAcceptSuggestion}
         onRejectSuggestion={onRejectSuggestion}
+        focusDiscussao={focusDiscussao}
+        onDiscussaoFocused={onDiscussaoFocused}
       />
     </div>
   );

@@ -101,6 +101,11 @@ import type { PhoneMenuAction } from './postEditorPhone/types';
 
 export interface StandalonePostDrawerProps {
   postId: number;
+  /** `&discussao=1` deep link: scroll to the post's team discussion and focus the composer
+   *  (phone: open Comentários on Equipe, no keyboard). */
+  focusDiscussao?: boolean;
+  /** Fires once `focusDiscussao` has been applied, so the host stops asking. */
+  onDiscussaoFocused?: () => void;
   membros: Membro[];
   onClose: () => void;
   onRefresh: () => void;
@@ -152,6 +157,8 @@ function PostEditorSkeleton() {
  *  fresh. */
 export function StandalonePostDrawer({
   postId,
+  focusDiscussao,
+  onDiscussaoFocused,
   membros,
   onClose,
   onRefresh,
@@ -950,6 +957,8 @@ export function StandalonePostDrawer({
               editorVersion={editorVersion}
               onAcceptSuggestion={handleAcceptSuggestion}
               onRejectSuggestion={handleRejectSuggestion}
+              focusDiscussao={focusDiscussao}
+              onDiscussaoFocused={onDiscussaoFocused}
               onProcessAvancar={
                 target
                   ? () =>
@@ -1192,6 +1201,8 @@ export function StandalonePostDrawer({
                 editorVersion={editorVersion}
                 onAcceptSuggestion={handleAcceptSuggestion}
                 onRejectSuggestion={handleRejectSuggestion}
+                focusDiscussao={focusDiscussao}
+                onDiscussaoFocused={onDiscussaoFocused}
                 onProcessAvancar={
                   target
                     ? () =>

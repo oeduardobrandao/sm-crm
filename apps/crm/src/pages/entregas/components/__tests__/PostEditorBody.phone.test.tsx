@@ -337,6 +337,38 @@ describe('PostEditorBody, phone layout', () => {
       expect(screen.getByRole('button', { name: /Tentar novamente/ })).toBeInTheDocument();
     });
 
+    it('discussao=1 deep link opens Comentários on Equipe, reports once, and never focuses', () => {
+      const onDiscussaoFocused = vi.fn();
+      renderPhone({
+        post: { ...basePost, status: 'falha_publicacao' },
+        approvals: [
+          {
+            id: 1,
+            post_id: 42,
+            token: 't',
+            action: 'mensagem',
+            comentario: 'Oi',
+            is_workspace_user: false,
+            created_at: new Date(2026, 9, 21, 10, 0).toISOString(),
+          },
+        ] as never,
+        focusDiscussao: true,
+        onDiscussaoFocused,
+      });
+      expect(screen.getByRole('tab', { name: /Comentários/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      // The newest message is the client's, which would open Cliente without the link.
+      expect(screen.getByRole('button', { name: /^Equipe/ })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.getByRole('textbox', { name: 'Mensagem para a equipe' })).toBeVisible();
+      expect(screen.getByRole('textbox', { name: 'Mensagem para a equipe' })).not.toHaveFocus();
+      expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+    });
+
     it('Comentários tab hides the bar and splits into Equipe and Cliente', async () => {
       const user = userEvent.setup();
       renderPhone({ post: { ...basePost, status: 'falha_publicacao' } });

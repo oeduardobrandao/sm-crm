@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -426,6 +426,10 @@ export interface DiscussaoEquipeProps {
   onThreadClick: (threadId: number) => void;
   /** "Discutir no chat" control; rendered only on plans with the team chat. */
   chatBridge?: ReactNode;
+  /** Deep link (`&discussao=1`): scroll the section into view and focus the composer. */
+  autoFocus?: boolean;
+  /** Fires once, after `autoFocus` was applied. */
+  onAutoFocused?: () => void;
 }
 
 /**
@@ -440,8 +444,11 @@ export function DiscussaoEquipe({
   currentUserId,
   onThreadClick,
   chatBridge,
+  autoFocus,
+  onAutoFocused,
 }: DiscussaoEquipeProps) {
   const titleId = useId();
+  const sectionRef = useRef<HTMLElement>(null);
   const showBridge = useShowChatBridge();
 
   const now = useMinuteClock();
@@ -462,8 +469,23 @@ export function DiscussaoEquipe({
   const { handleEditMessage, handleDeleteMessage } = useDiscussaoMessageActions();
   const following = seguir.following;
 
+  // Deep link: reveal the section and put the caret in the composer. Next frame, so the
+  // drawer's own "scroll the opened post to the top" (same commit) has already run and
+  // this scroll wins; the editor handle only focuses once its view is mounted.
+  const onAutoFocusedRef = useRef(onAutoFocused);
+  onAutoFocusedRef.current = onAutoFocused;
+  useEffect(() => {
+    if (!autoFocus) return;
+    const frame = requestAnimationFrame(() => {
+      sectionRef.current?.scrollIntoView?.({ block: 'nearest' });
+      editorRef.current?.focus();
+      onAutoFocusedRef.current?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [autoFocus, editorRef]);
+
   return (
-    <section className="discussao" aria-labelledby={titleId}>
+    <section ref={sectionRef} className="discussao" aria-labelledby={titleId}>
       <div className="discussao-header">
         <MessagesSquare className="discussao-header-icon h-4 w-4" aria-hidden="true" />
         <h3 id={titleId} className="discussao-title">

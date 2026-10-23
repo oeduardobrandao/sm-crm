@@ -149,7 +149,19 @@ vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
 // and useDiscussao opens a realtime channel (this supabase stub has no channel/rpc):
 // stub both, they have their own suites.
 vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
-  DiscussaoEquipe: () => <div data-testid="discussao-equipe-stub" />,
+  DiscussaoEquipe: ({
+    autoFocus,
+    onAutoFocused,
+  }: {
+    autoFocus?: boolean;
+    onAutoFocused?: () => void;
+  }) => (
+    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!autoFocus)}>
+      <button type="button" onClick={onAutoFocused}>
+        stub focused
+      </button>
+    </div>
+  ),
   DiscussaoTimeline: () => null,
 }));
 vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
@@ -327,6 +339,17 @@ describe('StandalonePostDrawer', () => {
 
     expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
     expect(screen.queryByTestId('property-panel-stub')).not.toBeInTheDocument();
+  });
+
+  it('discussao=1 deep link: asks the discussion section to focus and relays the report', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onDiscussaoFocused = vi.fn();
+    renderDrawer(qc, { focusDiscussao: true, onDiscussaoFocused });
+
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'stub focused' }));
+    expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
   });
 
   describe('aba Calendário', () => {
