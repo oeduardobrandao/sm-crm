@@ -1315,82 +1315,102 @@ function SortableMediaTile({
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
+      className="group flex min-w-0 cursor-grab touch-none flex-col gap-1 active:cursor-grabbing"
     >
-      {m.media_lost_at ? (
-        <MediaUnavailable size="full" />
-      ) : m.kind === 'image' ? (
-        <OptimizedImage
-          src={m.url ?? ''}
-          alt={m.original_filename}
-          width={m.width ?? undefined}
-          height={m.height ?? undefined}
-          blurDataURL={m.blur_data_url ?? undefined}
-          // Every other reader of this same url is cors-mode (preloader, lightbox,
-          // zip download). Requesting it no-cors here would fetch each image twice
-          // and keep two browser-cache entries for one object.
-          crossOrigin="anonymous"
-          className="w-full h-full object-cover pointer-events-none"
+      <div className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80">
+        {m.media_lost_at ? (
+          <MediaUnavailable size="full" />
+        ) : m.kind === 'image' ? (
+          <OptimizedImage
+            src={m.url ?? ''}
+            alt={m.original_filename}
+            width={m.width ?? undefined}
+            height={m.height ?? undefined}
+            blurDataURL={m.blur_data_url ?? undefined}
+            // Every other reader of this same url is cors-mode (preloader, lightbox,
+            // zip download). Requesting it no-cors here would fetch each image twice
+            // and keep two browser-cache entries for one object.
+            crossOrigin="anonymous"
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        ) : (
+          <video
+            src={m.url ?? undefined}
+            poster={m.thumbnail_url ?? undefined}
+            crossOrigin="anonymous"
+            muted
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        )}
+        <OpenNotesCount
+          count={openNotes}
+          className="absolute left-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-[#12151a] px-1.5 py-0.5 text-[10px] font-bold text-white"
         />
-      ) : (
-        <video
-          src={m.url ?? undefined}
-          poster={m.thumbnail_url ?? undefined}
-          crossOrigin="anonymous"
-          muted
-          className="w-full h-full object-cover pointer-events-none"
-        />
-      )}
-      <OpenNotesCount
-        count={openNotes}
-        className="absolute left-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-[#12151a] px-1.5 py-0.5 text-[10px] font-bold text-white"
-      />
-      {needsAdjustment && (
-        <span
-          className="absolute bottom-1.5 left-1.5 rounded-md bg-amber-100 p-1 text-amber-800"
-          title="Mídia precisa de ajuste"
-        >
-          <AlertTriangle size={14} />
-        </span>
-      )}
-      {!disabled && (
-        <div
-          className="absolute top-1.5 right-1.5 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {onAdjust && (
-            <button
-              type="button"
-              onClick={onAdjust}
-              title="Ajustar proporção"
-              aria-label="Ajustar proporção"
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12151a] text-white hover:bg-black"
-            >
-              <Crop className="h-3 w-3" />
-            </button>
-          )}
-          {onEditThumbnail && (
-            <button
-              type="button"
-              onClick={onEditThumbnail}
-              title="Miniatura do vídeo"
-              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
-            >
-              <ImageIcon className="h-3 w-3" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onDelete}
-            title="Remover"
-            className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-rose-600"
+        {needsAdjustment && (
+          <span
+            className="absolute bottom-1.5 left-1.5 rounded-md bg-amber-100 p-1 text-amber-800"
+            title="Mídia precisa de ajuste"
           >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
-      )}
+            <AlertTriangle size={14} />
+          </span>
+        )}
+        {!disabled && (
+          <div
+            className="absolute top-1.5 right-1.5 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {onAdjust && (
+              <button
+                type="button"
+                onClick={onAdjust}
+                title="Ajustar proporção"
+                aria-label="Ajustar proporção"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12151a] text-white hover:bg-black"
+              >
+                <Crop className="h-3 w-3" />
+              </button>
+            )}
+            {onEditThumbnail && (
+              <button
+                type="button"
+                onClick={onEditThumbnail}
+                title="Miniatura do vídeo"
+                className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
+              >
+                <ImageIcon className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Remover"
+              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-rose-600"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+      </div>
+      <MediaFilename name={m.original_filename} />
     </div>
+  );
+}
+
+/** File name under a tile, so the uploader can check the order without opening each one.
+ *  Long names lose the middle, not the end: the trailing number and extension are what
+ *  tell "slide-9.png" from "slide-10.png". */
+function MediaFilename({ name }: { name: string }) {
+  const tail = name.length > 14 ? name.slice(-8) : '';
+  const head = tail ? name.slice(0, -8) : name;
+  return (
+    <span
+      title={name}
+      className="flex min-w-0 px-0.5 text-[11px] leading-tight text-stone-500 dark:text-stone-400"
+    >
+      <span className="truncate">{head}</span>
+      {tail && <span className="shrink-0 whitespace-pre">{tail}</span>}
+    </span>
   );
 }
 
