@@ -63,3 +63,4 @@ playwright-report/
 .vercel/
 # Synced from the database by scripts/seo/blog-sync.ts
 apps/crm/src/content/blog-db/
+.vitest-reports/

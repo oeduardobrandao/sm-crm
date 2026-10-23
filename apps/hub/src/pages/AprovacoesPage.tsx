@@ -261,6 +261,7 @@ export function AprovacoesPage() {
             currentId={currentId}
             token={token}
             approvals={approvals}
+            mediaNotes={data?.mediaNotes ?? []}
             instagramProfile={instagramProfile}
             workspaceName={bootstrap.workspace.name}
             isAutoPublish={(p) => isAutoPublishActive(data, p.workflow_id, p.id)}

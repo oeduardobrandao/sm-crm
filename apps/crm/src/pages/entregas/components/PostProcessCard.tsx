@@ -132,7 +132,9 @@ export function PostProcessCard({
     fontWeight: 700,
     padding: '0.12rem 0.5rem',
     borderRadius: '999px',
-    minWidth: 0,
+    // Keeps its full width; ellipsizes only when wider than the card alone.
+    flexShrink: 0,
+    maxWidth: '100%',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -314,12 +316,15 @@ export function PostProcessCard({
         </span>
       </div>
 
+      {/* Wraps instead of squeezing: when both pills don't fit, the status chip
+          drops below rather than cutting the deadline off. */}
       <div
         style={{
           display: 'flex',
+          flexWrap: 'wrap',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '0.4rem',
+          gap: '0.35rem 0.4rem',
         }}
       >
         {publicacao ? (
@@ -340,7 +345,7 @@ export function PostProcessCard({
             tipoPrazo={entity.step.tipo_prazo}
           />
         )}
-        <span className="board-card-type-status-chip" style={{ flexShrink: 0 }}>
+        <span style={{ display: 'inline-flex', flexShrink: 0 }}>
           <PostStatusChip post={post} registry={registry} />
         </span>
       </div>

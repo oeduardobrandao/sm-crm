@@ -29,6 +29,17 @@ function isEventRow(m: MensagemFeedItem) {
   return m.source === 'post_feedback' && m.action !== 'mensagem' && !m.content?.trim();
 }
 
+/** Media-note rows read as bubbles with a small label above, never as event rows. */
+function mediaNoteLabel(
+  m: MensagemFeedItem,
+  t: (key: string, defaultValue: string) => string,
+): string | null {
+  if (m.source === 'media_note') return t('mediaNote', 'Comentário na mídia');
+  if (m.source === 'media_note_reply')
+    return t('mediaNoteReply', 'Resposta a um comentário na mídia');
+  return null;
+}
+
 function eventLabel(m: MensagemFeedItem, t: (key: string, defaultValue: string) => string) {
   if (m.source === 'edit_suggestion') {
     return t('events.editSuggestion', 'Você sugeriu edições no texto');
@@ -217,6 +228,11 @@ export function MensagensPage() {
                       : { boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }
                   }
                 >
+                  {mediaNoteLabel(m, t) && (
+                    <div className="mb-1 text-[12px] font-semibold hub-tx3">
+                      {mediaNoteLabel(m, t)}
+                    </div>
+                  )}
                   {m.post_id != null && (
                     <div className="mb-1.5">
                       <HubPostChip

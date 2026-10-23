@@ -64,6 +64,7 @@ vi.mock('jszip', () => ({
 import { deletePostMedia, listPostMedia, reorderPostMedia } from '../../../../services/postMedia';
 import type { PostMedia } from '../../../../store';
 import { PostMediaGallery } from '../PostMediaGallery';
+import { makeNote } from '../mediaNotes/__tests__/fixtures';
 import { installPointerEvent } from '@/components/mobile/__tests__/pointer';
 
 beforeAll(installPointerEvent);
@@ -164,5 +165,30 @@ describe('PostMediaGallery, phone strip', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     act(() => concluir.click());
     expect(await screen.findByText('Adicionar')).toBeInTheDocument();
+  });
+});
+
+describe('PostMediaGallery, phone strip, open notes', () => {
+  it('the tile button announces its open-note count', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([item(1, 'a.jpg', 0), item(2, 'b.jpg', 1)]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <PostMediaGallery
+            postId={42}
+            variant="phone"
+            notes={[
+              makeNote({ id: 1, current_link_id: 2 }),
+              makeNote({ id: 2, current_link_id: 2, visibility: 'internal', author_kind: 'team' }),
+            ]}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(
+      await screen.findByRole('button', { name: /^b\.jpg.*2 comentários em aberto/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^a\.jpg/ })).not.toHaveAccessibleName(/em aberto/);
   });
 });

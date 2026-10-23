@@ -34,8 +34,13 @@ interface HubBriefingHandlerDeps {
 // See the text-answer POST below for why this is not the 30/h action budget.
 const AUTOSAVE_WRITE_MAX = 120;
 const AUTOSAVE_WRITE_WINDOW = 300;
-const AUDIO_WRITE_MAX = 20;
-const AUDIO_WRITE_WINDOW = 3600;
+// Each recording costs 2 writes (presign + finalize), removing one costs 1.
+// 20/h let a client answer ~10 questions by voice and then locked them out for
+// the rest of the hour; real briefings run to dozens of questions (Oct 2026: a
+// client with 192 hit it after 30 min). 60 per 10 min still caps Whisper spend
+// and clears in minutes when hit.
+const AUDIO_WRITE_MAX = 60;
+const AUDIO_WRITE_WINDOW = 600;
 
 export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
   const signGet = (key: string) => deps.signGetUrl(key, 3600);

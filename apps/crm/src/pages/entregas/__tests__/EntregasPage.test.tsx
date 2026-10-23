@@ -6,6 +6,14 @@ import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 // The phone header now carries the shell's help links and bell (PhonePageHeader); their
 // own suites cover them, and they need the KB query and notifications.
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
 vi.mock('@/components/layout/PhoneShellHeader', () => ({
   PhoneShellActions: () => <div data-testid="shell-actions" />,
 }));

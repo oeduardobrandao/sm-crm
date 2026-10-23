@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
+import { pinNumbers } from '@mesaas/ui/mediaPins/geometry';
 import { fetchPostHistory, submitApproval } from '../api';
 import {
   buildHistoryEntries,
@@ -16,7 +17,9 @@ import {
   isPostClientVisible,
   pickPostCardKind,
 } from '../lib/postView';
+import { anchorLabel } from '../lib/mediaNotes';
 import { formatDate } from './PostCard';
+import { StatusPill } from './StatusPill';
 import { TextDiff } from './TextDiff';
 import { ReferenceTiles } from './posts/references/ReferenceTiles';
 import type { ReferenceItem } from '../types/postReferences';
@@ -241,7 +244,34 @@ export function PostHistoryPanel({
           {entry.comentario && (
             <p className="text-[12px] hub-tx2 whitespace-pre-wrap">{entry.comentario}</p>
           )}
+          {entry.openNoteCount > 0 && (
+            <p className="text-[12px] hub-tx3">
+              {t('history.openNotes', '{{count}} comentários na mídia em aberto', {
+                count: entry.openNoteCount,
+              })}
+            </p>
+          )}
           {entry.action === 'correcao' && !entry.byTeam && renderAttached(entry.approvalId)}
+        </li>
+      );
+    }
+    if (entry.kind === 'note') {
+      const open = entry.note.status === 'open';
+      return (
+        <li key={entry.key} className="space-y-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[12px] font-semibold hub-txt">
+              {anchorLabel(entry.note, t, pinNumberOf.get(entry.note.id))}
+            </span>
+            <span className="text-[12px] hub-tx3">{when}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] hub-tx3">{t('history.actor.you', 'Você')}</span>
+            <StatusPill tone={open ? 'accent' : 'neutral'} semantic={open ? 'wait' : 'ok'}>
+              {open ? t('mediaNotes.statusOpen') : t('mediaNotes.statusResolved')}
+            </StatusPill>
+          </div>
+          <p className="text-[12px] hub-tx2 whitespace-pre-wrap">{entry.note.body}</p>
         </li>
       );
     }
@@ -261,6 +291,7 @@ export function PostHistoryPanel({
   const data = load.status === 'ready' ? load.data : null;
   const isTextPost = pickPostCardKind(post) === 'text';
   const entries = data ? buildHistoryEntries(data, { bodyPost: isTextPost }) : [];
+  const pinNumberOf = pinNumbers(data?.media_notes ?? [], (n) => n.link_id);
   const comments = data ? selectComments(data) : [];
   const kpis = data ? computePostKpis(data) : null;
 

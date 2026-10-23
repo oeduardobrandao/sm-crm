@@ -19,6 +19,8 @@ interface PhoneEditorHeaderProps {
   /** Controlled: Detalhes' Status row opens the same list. */
   statusOpen: boolean;
   onStatusOpenChange: (open: boolean) => void;
+  /** Flags next to the status chip (e.g. "Aprovado com 2 comentários em aberto"). */
+  extra?: React.ReactNode;
 }
 
 /**
@@ -35,6 +37,7 @@ export function PhoneEditorHeader({
   onStatusChange,
   statusOpen,
   onStatusOpenChange: setStatusOpen,
+  extra,
 }: PhoneEditorHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -76,6 +79,7 @@ export function PhoneEditorHeader({
           <PostStatusChip post={post} registry={registry} />
           <ChevronDown aria-hidden="true" className="phone-editor-status__chevron" />
         </button>
+        {extra}
         {subtitle && <span className="phone-editor-header__subtitle">{subtitle}</span>}
       </div>
 

@@ -26,5 +26,7 @@
     "placeholderReply": "Reply about the post…",
     "placeholderDefault": "Send a message…"
   },
-  "send": "Send"
+  "send": "Send",
+  "mediaNote": "Media comment",
+  "mediaNoteReply": "Reply to a media comment"
 }

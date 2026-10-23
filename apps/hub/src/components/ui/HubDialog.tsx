@@ -12,6 +12,9 @@ interface HubDialogProps {
   children: ReactNode;
   className?: string;
   overlayClassName?: string;
+  /** Stacking utility for the scrim and content. Default sits under PostMediaLightbox (z-[9005]);
+   * a dialog opened FROM the lightbox passes a higher one. */
+  layerClassName?: string;
 }
 
 /**
@@ -30,6 +33,7 @@ export function HubDialog({
   children,
   className = '',
   overlayClassName = '',
+  layerClassName = 'z-[9000]',
 }: HubDialogProps) {
   // A text-selection drag that starts in the card and ends on the scrim still fires a
   // `click`, dispatched on the common ancestor (this wrapper). Only close when the press
@@ -43,7 +47,7 @@ export function HubDialog({
     <Dialog.Root open={open} onOpenChange={(next) => !next && onRequestClose('button')}>
       <Dialog.Portal container={container}>
         <Dialog.Overlay
-          className={`fixed inset-0 z-[9000] bg-black/70 backdrop-blur-sm ${overlayClassName}`}
+          className={`fixed inset-0 ${layerClassName} bg-black/70 backdrop-blur-sm ${overlayClassName}`}
         />
         <Dialog.Content
           onEscapeKeyDown={(e) => {
@@ -54,7 +58,7 @@ export function HubDialog({
           // never fire. Swallow them and detect scrim clicks on the wrapper below.
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className={`fixed inset-0 z-[9000] focus:outline-none ${className}`}
+          className={`fixed inset-0 ${layerClassName} focus:outline-none ${className}`}
         >
           <Dialog.Title className="sr-only">{title}</Dialog.Title>
           <Dialog.Description className="sr-only">{title}</Dialog.Description>

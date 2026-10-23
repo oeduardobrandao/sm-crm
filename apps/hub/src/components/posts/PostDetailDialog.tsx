@@ -23,8 +23,17 @@ import {
   X,
 } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
-import type { CorrectionReason, HubPost, InstagramProfile, PostApproval } from '../../types';
+import type {
+  CorrectionReason,
+  HubMediaNote,
+  HubPost,
+  InstagramProfile,
+  PostApproval,
+} from '../../types';
 import { submitApproval } from '../../api';
+import { isNoLongerPendingError } from '../../lib/approvalErrors';
+import { createMediaNote, replyMediaNote } from '../../services/mediaNotes';
+import { canWriteNotes, notesForPost, openNoteCount } from '../../lib/mediaNotes';
 import { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import { computePostNavigation, usePostNavigation } from '../../hooks/usePostNavigation';
 import { usePostAdvance, type ConfirmFlash, type SlideDir } from '../../hooks/usePostAdvance';
@@ -41,6 +50,7 @@ import {
 } from '../../lib/postView';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { HubDialog } from '../ui/HubDialog';
+import { HubConfirmDialog } from '../ui/HubConfirmDialog';
 import { formatDate, getPlatformLabel } from '../PostCard';
 import { PostHistoryPanel } from '../PostHistoryPanel';
 import { PostMediaLightbox } from '../PostMediaLightbox';
@@ -48,6 +58,8 @@ import { preloadRichText, RichTextContent } from '../RichTextContent';
 import { SharePostButton } from '../SharePostButton';
 import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
+import { MediaNoteComposer } from './mediaNotes/MediaNoteComposer';
+import { MediaNotesList } from './mediaNotes/MediaNotesList';
 import { InProductionNotice } from './InProductionNotice';
 import { SuggestionDiff } from './SuggestionDiff';
 import { PostReferencesPanel } from './references/PostReferencesPanel';
@@ -66,6 +78,8 @@ interface PostDetailDialogProps {
   currentId: number | null;
   token: string;
   approvals: PostApproval[];
+  /** Client-visible media notes for every post in `posts` (merged across history pages). */
+  mediaNotes: HubMediaNote[];
   instagramProfile: InstagramProfile | null;
   workspaceName?: string;
   isAutoPublish: (post: HubPost) => boolean;
@@ -249,6 +263,7 @@ function PostDetailContent({
   nav,
   token,
   approvals,
+  mediaNotes,
   isAutoPublish,
   onNavigate,
   onApprovalSubmitted,
@@ -306,6 +321,77 @@ function PostDetailContent({
     [],
   );
   const overlayOpen = viewerItem !== null || overlayDepth > 0;
+
+  // Media notes: pin placement is an explicit mode so a plain tap still opens the lightbox.
+  const postNotes = useMemo(() => notesForPost(mediaNotes, post.id), [mediaNotes, post.id]);
+  const noteCount = openNoteCount(postNotes);
+  const [placing, setPlacing] = useState(false);
+  const [pending, setPending] = useState<{ x: number; y: number } | null>(null);
+  const [composer, setComposer] = useState<{
+    linkId: number;
+    point: { x: number; y: number } | null;
+  } | null>(null);
+  const [slideIdx, setSlideIdx] = useState(0);
+  const [jumpTo, setJumpTo] = useState<{ linkId: number; seq: number } | null>(null);
+  const [confirmApprove, setConfirmApprove] = useState(false);
+  // Where the lightbox seeks on open (a video note's moment); a plain open never seeks.
+  const [lightboxSeek, setLightboxSeek] = useState<number | undefined>(undefined);
+  const openLightbox = useCallback((i: number) => {
+    setLightboxSeek(undefined);
+    setLightboxIdx(i);
+  }, []);
+  const slideMedia = post.media[slideIdx];
+  const slideWritable = canWriteNotes(post) && !!slideMedia && !slideMedia.media_lost_at;
+  // Image: pin a spot or the whole slide here. Video: the moment is picked in the lightbox,
+  // so Comentar only opens it on this slide.
+  const canComment = slideWritable && slideMedia.kind === 'image';
+  const canCommentVideo = slideWritable && slideMedia.kind === 'video';
+  const placingNow = placing && canComment;
+  useEffect(() => {
+    if (!confirmApprove) return;
+    handleOverlayChange(true);
+    return () => handleOverlayChange(false);
+  }, [confirmApprove, handleOverlayChange]);
+
+  // One write path for both composers (slide/spot here, moment/spot in the lightbox).
+  async function writeNote(input: {
+    link_id: number;
+    t_seconds?: number;
+    x?: number;
+    y?: number;
+    body: string;
+  }) {
+    await createMediaNote(token, { post_id: post.id, ...input });
+    onApprovalSubmitted();
+  }
+  async function sendNote(body: string) {
+    if (!composer) return;
+    await writeNote({
+      link_id: composer.linkId,
+      ...(composer.point ? { x: composer.point.x, y: composer.point.y } : {}),
+      body,
+    });
+    setComposer(null);
+    setPending(null);
+    setPlacing(false);
+  }
+  async function sendReply(noteId: number, body: string) {
+    await replyMediaNote(token, noteId, body);
+    onApprovalSubmitted();
+  }
+  function jumpToNote(note: HubMediaNote) {
+    const index = post.media.findIndex((mm) => mm.id === note.link_id);
+    if (index < 0) return;
+    if (post.media[index].kind === 'video') {
+      setLightboxSeek(note.t_seconds ?? undefined);
+      setLightboxIdx(index);
+    } else setJumpTo({ linkId: post.media[index].id, seq: Date.now() });
+  }
+  const composerTitle = composer
+    ? composer.point
+      ? t('mediaNotes.composerPoint', { n: slideIdx + 1 })
+      : t('mediaNotes.composerSlide', { n: slideIdx + 1 })
+    : '';
   const waitHintId = useId();
   // Unsent-edit lock for navigation controls: while a save is queued/in flight, through the
   // confirmation hold after an action, and while a reference upload runs (moving would
@@ -497,8 +583,15 @@ function PostDetailContent({
             : 'approved',
         nav.nextPending,
       );
-    } catch {
-      setError(t('posts.submitError', 'Não foi possível enviar. Tente novamente.'));
+    } catch (err) {
+      if (isNoLongerPendingError(err)) {
+        // The team (or another tab) already moved the post on: say so and refetch so the
+        // footer stops offering Aprovar.
+        setError(err.message);
+        onApprovalSubmitted();
+      } else {
+        setError(t('posts.submitError', 'Não foi possível enviar. Tente novamente.'));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -752,7 +845,66 @@ function PostDetailContent({
                 })}
               </span>
             )}
-            <PostMediaPane post={post} onOpenLightbox={setLightboxIdx} priority />
+            <PostMediaPane
+              post={post}
+              onOpenLightbox={openLightbox}
+              priority
+              notes={postNotes}
+              placing={placingNow}
+              pending={pending}
+              onPlace={(linkId, p) => {
+                setPending(p);
+                setComposer({ linkId, point: p });
+              }}
+              currentIndexChange={setSlideIdx}
+              jumpTo={jumpTo}
+            />
+            {/* Phones: centered in the band between the post arrows (left-2/right-2, w-10,
+                at mid-dialog height, near the bottom of the 55svh media) and above the dots;
+                the pair wraps onto two rows when the band is too narrow. The open badge moves
+                to the top there. md+: bottom right, as the arrows sit outside the card. */}
+            {(canComment || canCommentVideo) && !ghost && (
+              <div className="absolute bottom-8 inset-x-14 z-30 flex flex-col items-center gap-1.5 md:inset-x-auto md:right-3 md:bottom-10 md:items-end">
+                {placingNow && (
+                  <p
+                    role="status"
+                    className="rounded-full bg-black/65 px-3 py-1 text-[12px] text-white"
+                  >
+                    {t('mediaNotes.tapHint')}
+                  </p>
+                )}
+                {canCommentVideo ? (
+                  <button
+                    type="button"
+                    onClick={() => openLightbox(slideIdx)}
+                    className="min-h-[44px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
+                  >
+                    {t('mediaNotes.comment')}
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap justify-center gap-1.5 md:justify-end">
+                    <button
+                      type="button"
+                      aria-pressed={placingNow}
+                      onClick={() => setPlacing((v) => !v)}
+                      className="min-h-[44px] whitespace-nowrap rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow aria-pressed:bg-neutral-900 aria-pressed:text-white"
+                    >
+                      {t('mediaNotes.comment')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPending(null);
+                        setComposer({ linkId: slideMedia.id, point: null });
+                      }}
+                      className="min-h-[44px] whitespace-nowrap rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
+                    >
+                      {t('mediaNotes.commentWholeSlide')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -923,6 +1075,24 @@ function PostDetailContent({
                       readingBody
                     )}
                     {autoPublishNote}
+                    {post.media.length > 0 && postNotes.length > 0 && (
+                      <section className="mt-4 space-y-2">
+                        <h3 className="text-[13px] font-semibold hub-txt">
+                          {t('mediaNotes.title')}
+                          {noteCount > 0 && (
+                            <span className="ml-2 font-normal hub-tx3">
+                              {t('mediaNotes.openCount', { count: noteCount })}
+                            </span>
+                          )}
+                        </h3>
+                        <MediaNotesList
+                          notes={postNotes}
+                          canReply={canWriteNotes(post)}
+                          onJump={jumpToNote}
+                          onReply={sendReply}
+                        />
+                      </section>
+                    )}
                   </>
                 )}
               </div>
@@ -981,7 +1151,9 @@ function PostDetailContent({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => submit('aprovado')}
+                        onClick={() =>
+                          noteCount > 0 ? setConfirmApprove(true) : submit('aprovado')
+                        }
                         disabled={
                           submitting ||
                           locked ||
@@ -1030,12 +1202,43 @@ function PostDetailContent({
         </div>
       </div>
 
+      {!ghost && (
+        <MediaNoteComposer
+          open={composer !== null}
+          title={composerTitle}
+          onSubmit={sendNote}
+          onCancel={() => {
+            setComposer(null);
+            setPending(null);
+          }}
+          onOverlayChange={handleOverlayChange}
+        />
+      )}
+      {!ghost && (
+        <HubConfirmDialog
+          open={confirmApprove}
+          title={t('mediaNotes.approveConfirmTitle', { count: noteCount })}
+          description={t('mediaNotes.approveConfirmBody')}
+          confirmLabel={t('mediaNotes.approveConfirm')}
+          cancelLabel={t('mediaNotes.cancel')}
+          onConfirm={() => {
+            setConfirmApprove(false);
+            void submit('aprovado');
+          }}
+          onCancel={() => setConfirmApprove(false)}
+        />
+      )}
       {!ghost && lightboxIdx !== null && post.media.length > 0 && (
         <PostMediaLightbox
           media={post.media}
           initialIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onStaleUrl={onApprovalSubmitted}
+          notes={postNotes}
+          canWrite={canWriteNotes(post)}
+          onCreateNote={writeNote}
+          initialSeek={lightboxSeek}
+          onOverlayChange={handleOverlayChange}
         />
       )}
       {!ghost && viewerItem && (

@@ -26,6 +26,8 @@ interface Props {
   isCarousel?: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  /** The replacement was saved. Unlike `onUpdated`, never called from the failure path. */
+  onReplaced?: () => void;
   /** `phone`: full-screen dark editor (EditorMidia mockup) with Cancelar / Aplicar in the
    *  header and its own history entry, so Back cancels it. Same logic either way. */
   layout?: 'default' | 'phone';
@@ -55,6 +57,7 @@ function MediaAdjustmentDialogBody({
   forStories,
   isCarousel = false,
   onUpdated,
+  onReplaced,
   layout = 'default',
   dismiss,
 }: Props & { dismiss: () => void }) {
@@ -258,6 +261,7 @@ function MediaAdjustmentDialogBody({
       );
       controller.signal.throwIfAborted();
       toast.success('Proporção ajustada. O original foi preservado em Arquivos.');
+      onReplaced?.();
       onUpdated();
       dismiss();
     } catch (e) {

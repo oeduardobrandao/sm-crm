@@ -26,5 +26,7 @@
     "placeholderReply": "Responder sobre o post…",
     "placeholderDefault": "Enviar mensagem…"
   },
-  "send": "Enviar"
+  "send": "Enviar",
+  "mediaNote": "Comentário na mídia",
+  "mediaNoteReply": "Resposta a um comentário na mídia"
 }

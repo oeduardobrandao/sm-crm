@@ -393,6 +393,78 @@ Deno.test("hub-posts never ships team-authored mensagem rows in postApprovals", 
   );
 });
 
+function hubPostsNotesDb(noteRows: Record<string, unknown>[]) {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 99, titulo: "Visível", tipo: "feed", status: "enviado_cliente", ordem: 0, conteudo_plain: "x", scheduled_at: "2026-04-20T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+      { id: 100, titulo: "Rascunho", tipo: "feed", status: "rascunho", ordem: 1, conteudo_plain: "y", scheduled_at: "2026-04-21T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("post_media_notes_v", "select", { data: noteRows, error: null });
+  return db;
+}
+
+const hubNoteRow = (over: Record<string, unknown> = {}) => ({
+  id: 1, post_id: 99, media_kind: "image", slide_index_at_creation: 0, t_seconds: null, x: 0.2, y: 0.4,
+  visibility: "client", author_kind: "client", author_user_id: null, body: "Trocar a cor", status: "open",
+  resolved_at: null, created_at: "2026-04-11T10:00:00.000Z", current_link_id: 41, current_slide_index: 0,
+  is_previous_version: false, ...over,
+});
+
+Deno.test("hub-posts mediaNotes only for visible posts and only client visibility", async () => {
+  const db = hubPostsNotesDb([hubNoteRow({ id: 1, post_id: 99 }), hubNoteRow({ id: 2, post_id: 100 })]);
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+  assertEquals(body.mediaNotes.map((n: { id: number }) => n.id), [1]);
+  const view = db.calls.find((c) => c.table === "post_media_notes_v")!;
+  assert(view.modifiers.some((m) => m.method === "eq" && m.args[0] === "visibility" && m.args[1] === "client"));
+  assert(view.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1"));
+});
+
+Deno.test("hub-posts payload never contains internal notes", async () => {
+  const db = hubPostsNotesDb([
+    hubNoteRow({ id: 1 }),
+    hubNoteRow({ id: 2, visibility: "internal", body: "so equipe" }),
+  ]);
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(body.mediaNotes.map((n: { id: number }) => n.id), [1]);
+  assert(!JSON.stringify(body).includes("so equipe"), "internal note body leaked");
+});
+
+Deno.test("hub-posts still answers with empty mediaNotes when the notes lookup fails", async () => {
+  const db = hubPostsNotesDb([]);
+  db.reset();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 99, titulo: "Visível", tipo: "feed", status: "enviado_cliente", ordem: 0, conteudo_plain: "x", scheduled_at: "2026-04-20T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+    ],
+    error: null,
+  });
+  db.queue("post_media_notes_v", "select", { data: null, error: { message: "boom" } });
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+    const body = await readJson(response);
+    assertEquals(response.status, 200);
+    assertEquals(body.mediaNotes, []);
+    assertEquals(body.posts.length, 1);
+  } finally {
+    console.error = original;
+  }
+});
+
 Deno.test("hub-posts omits signed URLs and returns media_lost_at for a permanently lost file", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {
@@ -1418,8 +1490,8 @@ Deno.test("hub-approve calls notification RPC with comentario for corrections", 
   const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
   assert(rpcCall, "notification RPC should be called for corrections");
   assertEquals(rpcCall.payload, { p_post_id: 99, p_action: "correcao", p_comentario: "Trocar imagem" });
-  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
-  assert(approvalRpc, "record_client_approval should be called");
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(approvalRpc, "record_client_approval_with_notes should be called");
   assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, "midia");
 });
 
@@ -1502,8 +1574,8 @@ Deno.test("hub-approve accepts a correcao without motivo and sends p_motivo: nul
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem" }),
   }));
   assertEquals(response.status, 200);
-  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
-  assert(approvalRpc, "record_client_approval should be called");
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(approvalRpc, "record_client_approval_with_notes should be called");
   assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
 });
 
@@ -1515,8 +1587,8 @@ Deno.test("hub-approve accepts a correcao with no comentario and sends p_comenta
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", motivo: "midia" }),
   }));
   assertEquals(response.status, 200);
-  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
-  assert(approvalRpc, "record_client_approval should be called");
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(approvalRpc, "record_client_approval_with_notes should be called");
   assertEquals((approvalRpc.payload as { p_comentario: unknown }).p_comentario, null);
   const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
   assert(notif);
@@ -1540,7 +1612,7 @@ Deno.test("hub-approve rejects a correcao comentario longer than 4000 characters
   }));
   assertEquals(response.status, 400);
   assertEquals((await readJson(response)).error, "Comentário muito longo.");
-  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes"));
 });
 
 Deno.test("hub-approve rejects an aprovado comentario longer than 4000 characters", async () => {
@@ -1551,7 +1623,7 @@ Deno.test("hub-approve rejects an aprovado comentario longer than 4000 character
   }));
   assertEquals(response.status, 400);
   assertEquals((await readJson(response)).error, "Comentário muito longo.");
-  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes"));
 });
 
 Deno.test("hub-approve trims an aprovado comentario and nulls a blank one", async () => {
@@ -1563,7 +1635,7 @@ Deno.test("hub-approve trims an aprovado comentario and nulls a blank one", asyn
       body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: input }),
     }));
     assertEquals(response.status, 200);
-    const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+    const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
     assert(rpc);
     assertEquals((rpc.payload as { p_comentario: unknown }).p_comentario, expected);
   }
@@ -1577,7 +1649,7 @@ Deno.test("hub-approve sends p_motivo: null for an approval", async () => {
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", motivo: "legenda" }),
   }));
   assertEquals(response.status, 200);
-  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
   assert(approvalRpc);
   assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
 });
@@ -2519,9 +2591,9 @@ Deno.test("hub-approve returns 500 when recording the approval fails", async () 
     data: { id: 99, workflow_id: 7, status: "enviado_cliente", cliente_id: 14, conta_id: "conta-1" },
     error: null,
   });
-  // aprovado/correcao now go through the record_client_approval RPC (atomic
+  // aprovado/correcao now go through the record_client_approval_with_notes RPC (atomic
   // insert + status). A failure there must surface as a 500.
-  db.queueRpc("record_client_approval", { data: null, error: { message: "constraint violation" } });
+  db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "constraint violation" } });
 
   const handler = createHubApproveHandler({
     buildCorsHeaders,
@@ -3583,10 +3655,60 @@ Deno.test("hub-edit-suggestion still returns a generic 500 for other RPC errors"
   assertEquals((await readJson(response)).error, "Erro ao salvar sugestão.");
 });
 
+Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the token's conta and cliente", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 7, open_note_count: 2 }], error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: "Ok" }),
+  }));
+  assertEquals(response.status, 200);
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+  const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(rpc);
+  assertEquals(rpc.payload, {
+    p_post_id: 99,
+    p_conta_id: "conta-1",
+    p_cliente_id: 14,
+    p_token: "hub-123",
+    p_action: "aprovado",
+    p_comentario: "Ok",
+    p_new_status: "aprovado_cliente",
+    p_motivo: null,
+  });
+});
+
+Deno.test("hub-approve maps post_not_found from the approval RPC to 404", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "post_not_found" } });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "x" }),
+  }));
+  assertEquals(response.status, 404);
+  assertEquals((await readJson(response)).error, "Post não encontrado.");
+});
+
+Deno.test("hub-approve maps post_not_pending to 409", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "post_not_pending" } });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 409);
+  assertEquals((await readJson(response)).error, "Post não está mais aguardando aprovação.");
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_post_approval_notification"),
+    false,
+  );
+});
+
 for (const action of ["aprovado", "correcao"] as const) {
   Deno.test(`hub-approve maps pending_suggestion to 409 for ${action}`, async () => {
     const db = hubApproveDbForPost();
-    db.queueRpc("record_client_approval", { data: null, error: { message: "pending_suggestion" } });
+    db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "pending_suggestion" } });
     const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
       method: "POST",
       body: JSON.stringify({ token: "hub-123", post_id: 99, action }),
@@ -3709,7 +3831,7 @@ function correcaoRequest(extra: Record<string, unknown>) {
 
 Deno.test("hub-approve links deduped reference_ids to the new correction", async () => {
   const db = hubApproveDbForPost();
-  db.queueRpc("record_client_approval", { data: 501, error: null });
+  db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 501, open_note_count: 0 }], error: null });
   const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5, 6, 5] }));
   assertEquals(response.status, 200);
   const update = db.calls.find((c: { table: string; operation: string }) =>
@@ -3741,7 +3863,7 @@ Deno.test("hub-approve rejects malformed reference_ids before any DB call", asyn
 Deno.test("hub-approve ignores reference_ids on aprovado and mensagem", async () => {
   for (const action of ["aprovado", "mensagem"]) {
     const db = hubApproveDbForPost();
-    db.queueRpc("record_client_approval", { data: 501, error: null });
+    db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 501, open_note_count: 0 }], error: null });
     const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
       method: "POST",
       body: JSON.stringify({ token: "hub-123", post_id: 99, action, comentario: "ok", reference_ids: "junk" }),
@@ -3757,7 +3879,7 @@ Deno.test("hub-approve ignores reference_ids on aprovado and mensagem", async ()
 
 Deno.test("hub-approve keeps the correction when linking references fails", async () => {
   const db = hubApproveDbForPost();
-  db.queueRpc("record_client_approval", { data: 501, error: null });
+  db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 501, open_note_count: 0 }], error: null });
   db.queue("post_references", "update", { data: null, error: { message: "boom" } });
   const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5] }));
   assertEquals(response.status, 200);
@@ -3765,10 +3887,10 @@ Deno.test("hub-approve keeps the correction when linking references fails", asyn
   assert(db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification"));
 });
 
-Deno.test("hub-approve skips linking references when record_client_approval returns no id", async () => {
-  for (const data of [true, null, "abc", 0]) {
+Deno.test("hub-approve skips linking references when record_client_approval_with_notes returns no id", async () => {
+  for (const data of [true, null, "abc", 0, [], [{ approval_id: 0, open_note_count: 0 }], 501]) {
     const db = hubApproveDbForPost();
-    db.queueRpc("record_client_approval", { data, error: null });
+    db.queueRpc("record_client_approval_with_notes", { data, error: null });
     const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5] }));
     assertEquals(response.status, 200, JSON.stringify(data));
     assertEquals(
@@ -3781,7 +3903,7 @@ Deno.test("hub-approve skips linking references when record_client_approval retu
 
 Deno.test("hub-approve with an empty reference_ids list does not touch post_references", async () => {
   const db = hubApproveDbForPost();
-  db.queueRpc("record_client_approval", { data: 501, error: null });
+  db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 501, open_note_count: 0 }], error: null });
   const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [] }));
   assertEquals(response.status, 200);
   assertEquals(db.calls.find((c: { table: string }) => c.table === "post_references"), undefined);

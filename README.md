@@ -119,8 +119,8 @@ npm run lint           # eslint apps/ packages/
 npm run format:check   # prettier
 ```
 
-Jobs do CI (nove, em `.github/workflows/ci.yml`): `typecheck-and-test`,
-`edge-function-tests`, `entitlement-tests`, `coverage-threshold`, `format-check`,
+Jobs do CI (dez, em `.github/workflows/ci.yml`): `lint-and-typecheck`, `unit-tests` (Vitest em
+4 shards), `edge-function-tests`, `entitlement-tests`, `coverage-threshold` (junta os shards e aplica o piso de cobertura), `format-check`,
 `migration-version-guard`, `e2e`, `e2e-secrets-guard` e `landing-prerender-smoke` (build +
 prerender com `VITE_*` de mentira, conferindo que a landing saiu renderizada no servidor).
 

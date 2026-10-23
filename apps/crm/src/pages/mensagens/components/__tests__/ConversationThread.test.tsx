@@ -123,6 +123,35 @@ describe('ConversationThread', () => {
     expect(bolhas[0]).toHaveTextContent('Trocar a foto');
   });
 
+  it('renders media_note label and chip', () => {
+    const nota: MensagemFeedItem = {
+      ...ITEMS[0],
+      source: 'media_note',
+      item_id: 5,
+      action: 'nota',
+      content: 'Cortar aqui',
+      created_at: '2026-07-30T13:00:00.000Z',
+    };
+    const resposta: MensagemFeedItem = {
+      ...nota,
+      source: 'media_note_reply',
+      item_id: 6,
+      action: 'resposta_nota',
+      content: 'Cortado',
+      is_workspace_user: true,
+      author_name: 'Ana',
+      created_at: '2026-07-30T14:00:00.000Z',
+    };
+    renderThread({ feed: makeFeed({ data: { pages: [[nota, resposta]] } }) });
+    expect(screen.getByText('Comentário na mídia')).toBeInTheDocument();
+    expect(screen.getByText('Resposta a um comentário na mídia')).toBeInTheDocument();
+    expect(screen.getByText('Cortar aqui')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /Post de julho/ })).toHaveLength(2);
+    // Responder keeps today's behaviour: reply to the post.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Responder' })[0]);
+    expect(screen.getByPlaceholderText('Responder sobre o post…')).toBeInTheDocument();
+  });
+
   it('shows a back button only when onBack is provided', () => {
     renderThread();
     expect(

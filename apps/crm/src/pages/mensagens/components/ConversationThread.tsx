@@ -9,7 +9,14 @@ import type { useMensagensData } from '../hooks/useMensagensData';
 import { AutorAvatar, ClienteAvatar } from './Avatars';
 import { PostChip } from './PostChip';
 import { useConversationThread } from '../hooks/useConversationThread';
-import { eventLabel, feedItemKey, formatTime, isEventRow, TIPO_FILTERS } from '../mensagensLogic';
+import {
+  eventLabel,
+  feedItemKey,
+  formatTime,
+  isEventRow,
+  mediaNoteLabel,
+  TIPO_FILTERS,
+} from '../mensagensLogic';
 
 type MensagensData = ReturnType<typeof useMensagensData>;
 
@@ -115,6 +122,7 @@ export function ConversationThread({
         )}
         {itens.map((m) => {
           const daEquipe = m.is_workspace_user;
+          const notaLabel = mediaNoteLabel(m);
           if (isEventRow(m)) {
             return (
               <div
@@ -163,6 +171,11 @@ export function ConversationThread({
                   {daEquipe && (
                     <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
                       {m.author_name ?? 'Equipe'}
+                    </div>
+                  )}
+                  {notaLabel && (
+                    <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
+                      {notaLabel}
                     </div>
                   )}
                   {m.action === 'correcao' && (

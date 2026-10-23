@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Expand } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Eye, Send, History, Loader2 } from 'lucide-react';
+import { Eye, History, Loader2 } from 'lucide-react';
 import {
   type WorkflowPost,
   type PostApproval,
@@ -93,6 +93,10 @@ import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { PhonePublishChecklist } from './postEditorPhone/PhonePublishChecklist';
 import { PhoneTextScreen } from './postEditorPhone/PhoneTextScreen';
 import { PhoneComments } from './postEditorPhone/PhoneComments';
+import { ClientConversation, type MediaNotesBinding } from './mediaNotes/ClientConversation';
+import { OpenNotesBadge } from './mediaNotes/OpenNotesBadge';
+// By path, not through the store barrel: the drawer test harnesses mock '@/store'.
+import type { MediaNote } from '@/store/mediaNotes';
 import { PhoneSuggestionSheet, PhoneTimelineSheet } from './postEditorPhone/PhoneSheets';
 import type { PhoneEditorChrome, PhoneMenuAction } from './postEditorPhone/types';
 
@@ -129,6 +133,8 @@ import type { PhoneEditorChrome, PhoneMenuAction } from './postEditorPhone/types
 // Stable fallback so the per-bubble filter below never sees a new array identity while the
 // references query is disabled (collapsed row) or still loading.
 const EMPTY_REFERENCES: ReferenceItem[] = [];
+const EMPTY_MEDIA_NOTES: MediaNote[] = [];
+const noopAsync = async () => {};
 const COLLABORATORS_CLEARED_NOT_INSTAGRAM =
   'Colaboradores removidos: o post não vai mais para o Instagram.';
 
@@ -144,6 +150,9 @@ export interface PostEditorBodyProps {
   clientePosts: ClientePost[];
   isExpanded: boolean;
   approvals: PostApproval[];
+  /** Client notes pinned to the media (feedback em mídia), with their handlers. Absent:
+   *  the conversation shows approvals only. */
+  mediaNotes?: MediaNotesBinding;
   statusEvents: PostStatusEvent[];
   editSuggestion: PostEditSuggestion | null;
   membros: Membro[];
@@ -213,6 +222,7 @@ export function PostEditorBody({
   clientePosts,
   isExpanded,
   approvals,
+  mediaNotes,
   statusEvents,
   editSuggestion,
   membros,
@@ -505,6 +515,16 @@ export function PostEditorBody({
     setPhoneTab('comentarios');
     onDiscussaoFocusedRef.current?.();
   }, [isPhone, focusRequest]);
+  // The conversation's anchor chips ask the media gallery to open that item. A nonce makes
+  // a second click on the same chip open it again after the lightbox was closed.
+  const [mediaFocus, setMediaFocus] = useState<{ linkId: number; nonce: number } | null>(null);
+  const conversationNotes: MediaNotesBinding | undefined = mediaNotes && {
+    ...mediaNotes,
+    onSelectMedia: (linkId) => {
+      setMediaFocus((prev) => ({ linkId, nonce: (prev?.nonce ?? 0) + 1 }));
+      mediaNotes.onSelectMedia?.(linkId);
+    },
+  };
   const [roteiroOpen, setRoteiroOpen] = useState(false);
   const [captionScreenOpen, setCaptionScreenOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -707,7 +727,10 @@ export function PostEditorBody({
     // The general thread never counts as a passage comment; its unread messages feed the tab.
     const activeThreads = commentThreads.filter((t) => t.status === 'active' && !isGeralThread(t));
     const captionThreadCount = activeThreads.filter((t) => t.field === 'ig_caption').length;
-    const commentCount = discussao.naoLidas + approvals.length;
+    const openClientNotes = (conversationNotes?.notes ?? EMPTY_MEDIA_NOTES).filter(
+      (n) => n.visibility === 'client' && n.status === 'open',
+    ).length;
+    const commentCount = discussao.naoLidas + approvals.length + openClientNotes;
     const paragraphs = (post.conteudo_plain ?? '').split(/\n+/).filter((l) => l.trim()).length;
     const roteiroSummary = editSuggestion
       ? 'Sugestão pendente'
@@ -852,6 +875,10 @@ export function PostEditorBody({
             mediaAutocleanedAt={post.media_autocleaned_at}
             instagramPermalink={post.instagram_permalink}
             tiktokPostUrl={post.tiktok_post_url}
+            notes={conversationNotes?.notes}
+            onNotesChanged={conversationNotes?.onChanged}
+            openLinkRequest={mediaFocus}
+            noteAuthors={{ clientName: conversationNotes?.clientName, membros, workspaceUsers }}
           />
         </div>
 
@@ -1195,9 +1222,14 @@ export function PostEditorBody({
           ) : null
         }
         approvals={approvals}
+        notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
+        media={postMedia ?? []}
+        onNoteReply={conversationNotes?.onReply ?? noopAsync}
+        onNoteStatus={conversationNotes?.onStatus ?? noopAsync}
+        onSelectMedia={conversationNotes?.onSelectMedia}
         references={references}
         onOpenReference={setViewingReference}
-        clientName={phone.clientName}
+        clientName={conversationNotes?.clientName ?? phone.clientName}
         replyText={replyText}
         sendingReply={sendingReply}
         onReplyChange={onReplyChange}
@@ -1229,6 +1261,12 @@ export function PostEditorBody({
             onStatusChange={(key) => onFieldChange('status', key)}
             statusOpen={statusSheetOpen}
             onStatusOpenChange={setStatusSheetOpen}
+            extra={
+              <OpenNotesBadge
+                approvals={approvals}
+                notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
+              />
+            }
           />
           {phone.banner}
           <PhoneEditorTabs
@@ -1492,6 +1530,10 @@ export function PostEditorBody({
         mediaAutocleanedAt={post.media_autocleaned_at}
         instagramPermalink={post.instagram_permalink}
         tiktokPostUrl={post.tiktok_post_url}
+        notes={conversationNotes?.notes}
+        onNotesChanged={conversationNotes?.onChanged}
+        openLinkRequest={mediaFocus}
+        noteAuthors={{ clientName: conversationNotes?.clientName, membros, workspaceUsers }}
       />
 
       {post.id != null && (
@@ -1723,47 +1765,40 @@ export function PostEditorBody({
         />
       )}
 
-      <section className="drawer-approval-thread" aria-labelledby={`cliente-conversa-${post.id}`}>
-        <div className="drawer-client-thread-header">
-          <Eye className="drawer-client-thread-icon h-3.5 w-3.5" aria-hidden="true" />
-          <h3 id={`cliente-conversa-${post.id}`} className="drawer-client-thread-title">
-            Conversa com o cliente
-          </h3>
-          <Badge variant="info" size="sm">
-            O cliente vê
-          </Badge>
-        </div>
-        {approvals.map((a) => (
+      <ClientConversation
+        approvals={approvals}
+        notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
+        media={postMedia ?? []}
+        workspaceUsers={workspaceUsers}
+        membros={membros}
+        clientName={conversationNotes?.clientName}
+        replyText={replyText}
+        sendingReply={sendingReply}
+        onReplyChange={onReplyChange}
+        onReplySend={onReplySend}
+        onNoteReply={conversationNotes?.onReply ?? noopAsync}
+        onNoteStatus={conversationNotes?.onStatus ?? noopAsync}
+        onSelectMedia={conversationNotes?.onSelectMedia}
+        headerId={`cliente-conversa-${post.id}`}
+        header={
+          <div className="drawer-client-thread-header">
+            <Eye className="drawer-client-thread-icon h-3.5 w-3.5" aria-hidden="true" />
+            <h3 id={`cliente-conversa-${post.id}`} className="drawer-client-thread-title">
+              Conversa com o cliente
+            </h3>
+            <Badge variant="info" size="sm">
+              O cliente vê
+            </Badge>
+          </div>
+        }
+        renderApproval={(a) => (
           <PostApprovalBubble
-            key={a.id}
             approval={a}
             references={references.filter((r) => r.post_approval_id === a.id)}
             onOpenReference={setViewingReference}
           />
-        ))}
-      </section>
-
-      <div className="drawer-reply-row">
-        <input
-          className="drawer-input"
-          placeholder="Responder ao cliente…"
-          value={replyText}
-          onChange={(e) => onReplyChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              onReplySend();
-            }
-          }}
-        />
-        <button
-          className="drawer-reply-btn"
-          disabled={sendingReply || !replyText.trim()}
-          onClick={onReplySend}
-        >
-          <Send className="h-3.5 w-3.5" />
-        </button>
-      </div>
+        )}
+      />
 
       {post.id != null && (
         <PostVersionHistorySheet
