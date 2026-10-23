@@ -27,7 +27,7 @@
 - Edge functions: `buildCorsHeaders(req)`, generic errors to clients, every outbound fetch has an `AbortSignal.timeout(...)`, state changes are conditional updates.
 - Reading body serif stack: `Charter, 'Iowan Old Style', Georgia, serif`. No new web fonts.
 - Infographic palette: ground `#f7f5f0`, ink `#12151a`, accent `#ffbf30`; dark: ground `#12151a`, ink `#e8eaf0`, same accent.
-- Migration version prefix above main's tail at PR time (use `20261027000001`…; renumber before `gh pr create` if main moved).
+- Migration version prefix above main's tail at PR time (use `20261028000001`…; renumber before `gh pr create` if main moved).
 - Before pushing: `npm run lint`, `npm run format:check`, the four `tsc` commands, `npm run test`, `npm run check:functions`, `npm run test:functions`.
 
 ## Review Focus
@@ -53,7 +53,7 @@ No code. Gate for everything else.
 ### Task 1: Database: `blog_posts`, RLS, `blog-images` bucket
 
 **Files:**
-- Create: `supabase/migrations/20261027000001_blog_posts.sql`
+- Create: `supabase/migrations/20261028000001_blog_posts.sql`
 - Create: `supabase/tests/entitlements/70_blog_posts.sql`
 
 **Interfaces:**
