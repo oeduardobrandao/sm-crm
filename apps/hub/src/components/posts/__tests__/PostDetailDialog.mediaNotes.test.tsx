@@ -190,15 +190,48 @@ describe('PostDetailDialog media notes', () => {
     expect(screen.queryByRole('button', { name: 'Comentar o slide inteiro' })).toBeNull();
   });
 
-  it('Comentar is hidden on a video slide', () => {
+  it('a video slide offers Comentar (no whole-slide button) and it opens the lightbox there', () => {
     renderDialog(
       post({
         tipo: 'reels',
         media: [{ ...MEDIA, kind: 'video', thumbnail_url: 'https://cdn/t.jpg' }],
       }),
     );
-    expect(screen.queryByRole('button', { name: 'Comentar' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Comentar o slide inteiro' })).toBeNull();
+    const comment = screen.getByRole('button', { name: 'Comentar' });
+    // Not a placing toggle: the moment is picked in the lightbox.
+    expect(comment).not.toHaveAttribute('aria-pressed');
+    fireEvent.click(comment);
+    expect(screen.getByTestId('lightbox')).toHaveTextContent('lightbox 0 seek undefined');
+  });
+
+  it('Comentar on the video slide of a carousel opens the lightbox on that slide', () => {
+    renderDialog(
+      post({
+        media: [
+          MEDIA,
+          { ...MEDIA, id: 12, kind: 'video', thumbnail_url: 'https://cdn/t.jpg', sort_order: 1 },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo slide' }));
+    expect(screen.queryByRole('button', { name: 'Comentar o slide inteiro' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Comentar' }));
+    expect(screen.getByTestId('lightbox')).toHaveTextContent('lightbox 1 seek undefined');
+  });
+
+  it('Comentar is hidden on a lost video slide', () => {
+    const video = { ...MEDIA, kind: 'video' as const, thumbnail_url: 'https://cdn/t.jpg' };
+    renderDialog(
+      post({ tipo: 'reels', media: [{ ...video, media_lost_at: '2026-08-01T00:00:00Z' }] }),
+    );
+    expect(screen.queryByRole('button', { name: 'Comentar' })).toBeNull();
+  });
+
+  it('Comentar is hidden on a video post in production', () => {
+    const video = { ...MEDIA, kind: 'video' as const, thumbnail_url: 'https://cdn/t.jpg' };
+    renderDialog(post({ tipo: 'reels', media: [video], em_producao: 'correcao' }));
+    expect(screen.queryByRole('button', { name: 'Comentar' })).toBeNull();
   });
 
   it('pin then send calls createMediaNote with link id and coords, then onApprovalSubmitted', async () => {

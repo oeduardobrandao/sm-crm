@@ -120,7 +120,9 @@ export function PostMediaPane({
   const openBadge = currentOpen > 0 && (
     <span
       data-testid="slide-open-badge"
-      className="absolute bottom-3 left-3 z-20 rounded-full bg-black/55 text-white text-[12px] px-2 py-0.5"
+      // Phones: under the top counters, clear of the post arrows and the comment buttons
+      // at the bottom of the media. md+: bottom left.
+      className="absolute top-11 left-3 md:top-auto md:bottom-3 z-20 rounded-full bg-black/55 text-white text-[12px] px-2 py-0.5"
     >
       {t('mediaNotes.openCount', { count: currentOpen })}
     </span>

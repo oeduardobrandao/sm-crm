@@ -341,8 +341,11 @@ function PostDetailContent({
     setLightboxIdx(i);
   }, []);
   const slideMedia = post.media[slideIdx];
-  const canComment =
-    canWriteNotes(post) && !!slideMedia && slideMedia.kind === 'image' && !slideMedia.media_lost_at;
+  const slideWritable = canWriteNotes(post) && !!slideMedia && !slideMedia.media_lost_at;
+  // Image: pin a spot or the whole slide here. Video: the moment is picked in the lightbox,
+  // so Comentar only opens it on this slide.
+  const canComment = slideWritable && slideMedia.kind === 'image';
+  const canCommentVideo = slideWritable && slideMedia.kind === 'video';
   const placingNow = placing && canComment;
   useEffect(() => {
     if (!confirmApprove) return;
@@ -856,8 +859,11 @@ function PostDetailContent({
               currentIndexChange={setSlideIdx}
               jumpTo={jumpTo}
             />
-            {canComment && !ghost && (
-              <div className="absolute bottom-10 right-3 z-30 flex flex-col items-end gap-1.5">
+            {/* Phones: centered between the post arrows (which sit at mid-dialog height,
+                near the bottom of the 55svh media) and above the dots; the open badge moves
+                to the top there. md+: bottom right, as the arrows sit outside the card. */}
+            {(canComment || canCommentVideo) && !ghost && (
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-1.5 md:left-auto md:right-3 md:bottom-10 md:translate-x-0 md:items-end">
                 {placingNow && (
                   <p
                     role="status"
@@ -866,26 +872,36 @@ function PostDetailContent({
                     {t('mediaNotes.tapHint')}
                   </p>
                 )}
-                <div className="flex gap-1.5">
+                {canCommentVideo ? (
                   <button
                     type="button"
-                    aria-pressed={placingNow}
-                    onClick={() => setPlacing((v) => !v)}
-                    className="min-h-[44px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow aria-pressed:bg-neutral-900 aria-pressed:text-white"
+                    onClick={() => openLightbox(slideIdx)}
+                    className="min-h-[44px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
                   >
                     {t('mediaNotes.comment')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPending(null);
-                      setComposer({ linkId: slideMedia.id, point: null });
-                    }}
-                    className="min-h-[44px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
-                  >
-                    {t('mediaNotes.commentWholeSlide')}
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      aria-pressed={placingNow}
+                      onClick={() => setPlacing((v) => !v)}
+                      className="min-h-[44px] whitespace-nowrap rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow aria-pressed:bg-neutral-900 aria-pressed:text-white"
+                    >
+                      {t('mediaNotes.comment')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPending(null);
+                        setComposer({ linkId: slideMedia.id, point: null });
+                      }}
+                      className="min-h-[44px] whitespace-nowrap rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
+                    >
+                      {t('mediaNotes.commentWholeSlide')}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
