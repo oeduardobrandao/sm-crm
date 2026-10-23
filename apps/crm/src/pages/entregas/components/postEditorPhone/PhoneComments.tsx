@@ -164,16 +164,17 @@ export function PhoneComments({
         <div className="phone-comments__team-note">
           <span>Só a equipe vê esta conversa.</span>
           <span className="phone-comments__team-actions">
-            <button
-              type="button"
-              className="phone-comments__icon-btn"
-              aria-label={seguir.following ? 'Seguindo' : 'Seguir'}
-              aria-pressed={seguir.following}
-              onClick={seguir.toggle}
-              disabled={seguir.disabled}
-            >
-              {seguir.following ? <Bell aria-hidden="true" /> : <BellOff aria-hidden="true" />}
-            </button>
+            {seguir.ready && (
+              <button
+                type="button"
+                className="phone-comments__icon-btn"
+                aria-label={seguir.following ? 'Seguindo' : 'Seguir'}
+                onClick={seguir.toggle}
+                disabled={seguir.disabled}
+              >
+                {seguir.following ? <Bell aria-hidden="true" /> : <BellOff aria-hidden="true" />}
+              </button>
+            )}
             {showBridge && chatBridge}
           </span>
         </div>
@@ -209,13 +210,14 @@ export function PhoneComments({
             value={draft}
             onValueChange={setDraft}
             onKeyDown={handleKeyDown}
-            disabled={discussao.sending}
           />
           <button
             type="button"
             className="phone-comments__send"
             aria-label="Enviar mensagem para a equipe"
             disabled={!canSend}
+            // A tap must not take focus (and the keyboard) away from the editor.
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => void handleSend()}
           >
             <Send aria-hidden="true" />

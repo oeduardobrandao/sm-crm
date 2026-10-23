@@ -145,6 +145,25 @@ vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
 vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
   default: () => <div data-testid="post-comment-summary-stub" />,
 }));
+// The post's team discussion mounts a MentionEditor (needs getMembros on the @/store mock)
+// and useDiscussao opens a realtime channel (this supabase stub has no channel/rpc):
+// stub both, they have their own suites.
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: () => <div data-testid="discussao-equipe-stub" />,
+  DiscussaoTimeline: () => null,
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: () => ({
+    participacao: undefined,
+    isParticipant: false,
+    naoLidas: 0,
+    unreadAnchorId: null,
+    send: async () => {},
+    sending: false,
+    toggleSeguir: async () => {},
+    sectionRef: () => {},
+  }),
+}));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: () => <div data-testid="post-media-gallery-stub" />,
   hasVideoMissingThumbnail: () => false,

@@ -298,14 +298,24 @@ describe('PhoneComments Equipe pane', () => {
     const { discussao } = setup();
     expect(screen.getByText('Só a equipe vê esta conversa.')).toBeInTheDocument();
     const bell = screen.getByRole('button', { name: 'Seguindo' });
-    expect(bell).toHaveAttribute('aria-pressed', 'true');
+    expect(bell).not.toHaveAttribute('aria-pressed');
     fireEvent.click(bell);
     expect(discussao.toggleSeguir).toHaveBeenCalledTimes(1);
   });
 
   it('labels the bell "Seguir" for someone who does not follow', () => {
     setup({}, { isParticipant: false });
-    expect(screen.getByRole('button', { name: 'Seguir' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Seguir' })).toBeInTheDocument();
+  });
+
+  it('shows no bell until participation loads (no "Seguir" flash for followers)', () => {
+    setup({}, { participacao: undefined, isParticipant: false });
+    expect(screen.queryByRole('button', { name: /^Segui/ })).toBeNull();
+  });
+
+  it('keeps the team editor editable while a send is in flight', () => {
+    setup({}, { sending: true });
+    expect(teamComposer()).toHaveAttribute('contenteditable', 'true');
   });
 
   it('renders the chat bridge slot only on plans with the team chat', () => {

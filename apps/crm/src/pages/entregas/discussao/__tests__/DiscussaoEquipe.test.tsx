@@ -189,7 +189,8 @@ describe('DiscussaoEquipe header', () => {
   it('labels the bell "Seguindo" when following and toggles on click', () => {
     const { discussao } = setup();
     const bell = screen.getByRole('button', { name: 'Seguindo' });
-    expect(bell).toHaveAttribute('aria-pressed', 'true');
+    // The label carries the state; aria-pressed on top would read "Seguindo, pressed".
+    expect(bell).not.toHaveAttribute('aria-pressed');
     fireEvent.click(bell);
     expect(discussao.toggleSeguir).toHaveBeenCalledTimes(1);
   });
@@ -201,7 +202,12 @@ describe('DiscussaoEquipe header', () => {
         participacao: { seguindo: false, lastSeenCommentId: 0, implicito: false },
       },
     });
-    expect(screen.getByRole('button', { name: 'Seguir' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Seguir' })).toBeInTheDocument();
+  });
+
+  it('shows no bell until participation loads (no "Seguir" flash for followers)', () => {
+    setup({ discussao: { participacao: undefined, isParticipant: false } });
+    expect(screen.queryByRole('button', { name: /^Segui/ })).toBeNull();
   });
 
   it('hides the chat bridge without feature_team_chat (and while limits are unknown)', () => {
@@ -311,6 +317,16 @@ describe('DiscussaoEquipe timeline', () => {
     expect(divider.compareDocumentPosition(before) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
+  it('names the separators so assistive tech reads "Não lidas" and the day', () => {
+    setup({ discussao: { unreadAnchorId: 11 } });
+    expect(screen.getByRole('separator', { name: 'Não lidas' })).toBeInTheDocument();
+    const days = screen
+      .getAllByRole('separator')
+      .filter((el) => el !== screen.getByRole('separator', { name: 'Não lidas' }));
+    expect(days.length).toBeGreaterThan(0);
+    for (const d of days) expect(d).toHaveAccessibleName(d.textContent ?? '');
+  });
+
   it('shows no "Não lidas" divider for non-participants (null anchor)', () => {
     setup({ discussao: { unreadAnchorId: null, isParticipant: false } });
     expect(screen.queryByText('Não lidas')).toBeNull();
@@ -318,6 +334,51 @@ describe('DiscussaoEquipe timeline', () => {
 });
 
 describe('DiscussaoEquipe composer', () => {
+  it('keeps the editor editable while a send is in flight', () => {
+    setup({ discussao: { sending: true } });
+    expect(composer()).toHaveAttribute('contenteditable', 'true');
+    expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
+  });
+
+  it('focus stays on the editor after an Enter send', async () => {
+    const { discussao } = setup();
+    act(() => composer().focus());
+    setEditorText(composer(), 'primeira');
+    fireEvent.keyDown(composer(), { key: 'Enter' });
+    await waitFor(() => expect(discussao.send).toHaveBeenCalledWith('primeira'));
+    await waitFor(() => expect(composer().textContent).toBe(''));
+    expect(composer()).toHaveFocus();
+  });
+
+  it('brings focus back to the editor after a send from the button', async () => {
+    const { discussao } = setup();
+    setEditorText(composer(), 'pelo botão');
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+    await waitFor(() => expect(discussao.send).toHaveBeenCalledWith('pelo botão'));
+    await waitFor(() => expect(composer()).toHaveFocus());
+  });
+
+  it('keeps what was typed while the send was in flight', async () => {
+    let finish: () => void = () => {};
+    const { discussao } = setup({
+      discussao: {
+        send: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              finish = resolve;
+            }),
+        ),
+      },
+    });
+    setEditorText(composer(), 'um');
+    fireEvent.keyDown(composer(), { key: 'Enter' });
+    await waitFor(() => expect(discussao.send).toHaveBeenCalledWith('um'));
+    setEditorText(composer(), 'um dois');
+    await act(async () => finish());
+    await waitFor(() => expect(composer().textContent).toBe('dois'));
+  });
+
   it('Enter sends the trimmed text and clears the draft', async () => {
     const { discussao } = setup();
     setEditorText(composer(), '  Revisei tudo.  ');

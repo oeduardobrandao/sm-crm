@@ -47,12 +47,25 @@ export function useDiscussaoComposer(discussao: UseDiscussaoResult) {
 
   useUnsavedWork(trimmed.length > 0 || discussao.sending);
 
+  // The editor stays editable while a send is in flight: flipping contenteditable off would
+  // drop focus, and "Enter envia" is a typing loop. Only the send action is gated.
   const handleSend = async () => {
     if (!canSend) return;
     const text = trimmed;
     try {
       await discussao.send(text);
-      setDraft('');
+      // Clear only what was sent; anything typed during the request stays.
+      setDraft((cur) => {
+        const rest = cur.trimStart();
+        if (rest.trim() === text) return '';
+        return rest.startsWith(text) ? rest.slice(text.length).trimStart() : cur;
+      });
+      // Sending from the button (keyboard) leaves focus on a button that is now disabled,
+      // so it falls to <body>; bring it back to the editor for the next message.
+      if (typeof document !== 'undefined') {
+        const active = document.activeElement;
+        if (!active || active === document.body) editorRef.current?.focus();
+      }
     } catch {
       toast.error(SEND_ERROR);
     }
@@ -83,7 +96,9 @@ export function useSeguirToggle(discussao: UseDiscussaoResult) {
       setBusy(false);
     }
   };
-  return { following, disabled: !discussao.participacao || busy, toggle };
+  // `ready` is false until participation loads: callers hide the bell instead of flashing
+  // "Seguir" to someone who follows.
+  return { following, ready: !!discussao.participacao, disabled: busy, toggle };
 }
 
 /**

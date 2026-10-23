@@ -6935,17 +6935,6 @@ body.role-agent input[name='valor_total'] {
   gap: 0.5rem;
 }
 
-.drawer-thread-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
 .approval-bubble {
   padding: 0.5rem 0.65rem;
   border-radius: 8px;

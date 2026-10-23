@@ -108,7 +108,12 @@ export function DiscussaoTimeline({
         switch (item.kind) {
           case 'day':
             return (
-              <div key={item.key} className="discussao-divider" role="separator">
+              <div
+                key={item.key}
+                className="discussao-divider"
+                role="separator"
+                aria-label={item.label}
+              >
                 <span>{item.label}</span>
               </div>
             );
@@ -118,6 +123,7 @@ export function DiscussaoTimeline({
                 key={item.key}
                 className="discussao-divider discussao-divider--unread"
                 role="separator"
+                aria-label="Não lidas"
               >
                 <span>Não lidas</span>
               </div>
@@ -468,20 +474,21 @@ export function DiscussaoEquipe({
           Só a equipe vê
         </Badge>
         <span className="discussao-header-spacer" />
-        <button
-          type="button"
-          className="discussao-follow"
-          aria-pressed={following}
-          onClick={seguir.toggle}
-          disabled={seguir.disabled}
-        >
-          {following ? (
-            <Bell className="h-3.5 w-3.5" aria-hidden="true" />
-          ) : (
-            <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
-          )}
-          {following ? 'Seguindo' : 'Seguir'}
-        </button>
+        {seguir.ready && (
+          <button
+            type="button"
+            className="discussao-follow"
+            onClick={seguir.toggle}
+            disabled={seguir.disabled}
+          >
+            {following ? (
+              <Bell className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+            {following ? 'Seguindo' : 'Seguir'}
+          </button>
+        )}
         {showBridge && chatBridge}
       </div>
 
@@ -510,12 +517,13 @@ export function DiscussaoEquipe({
             value={draft}
             onValueChange={setDraft}
             onKeyDown={handleKeyDown}
-            disabled={discussao.sending}
           />
           <button
             type="button"
             className="discussao-send"
             aria-label="Enviar"
+            // Clicking must not pull focus out of the editor.
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => void handleSend()}
             disabled={!canSend}
           >
