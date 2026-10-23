@@ -64,6 +64,7 @@ import {
   type CaptionAnchorPatch,
   type CommentAnchor,
 } from '../../../store';
+import { isGeralThread } from '@/store/comments';
 import { supabase } from '@/lib/supabase';
 import { buildUsableTokenMap } from '@/lib/hubTokenMap';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
@@ -616,7 +617,9 @@ export function StandalonePostDrawer({
   const handleDeleteComment = useCallback(
     async (commentId: number, threadId: number) => {
       const thread = commentThreads.find((t) => t.id === threadId);
-      if (thread && thread.post_comments.length <= 1) {
+      // The post's general thread is permanent (the database rejects deleting it): even
+      // with a single message left, only the comment goes.
+      if (thread && !isGeralThread(thread) && thread.post_comments.length <= 1) {
         await deleteCommentThread(threadId);
       } else {
         await deletePostComment(commentId);

@@ -180,9 +180,21 @@ vi.mock('@/pages/entregas/components/PostEditor', () => ({
   // `key`) re-hydrates it. Mirror that here with useState's lazy initializer, captured once
   // per mount, so the suggestion-acceptance race test below can tell "remounted with stale
   // content" apart from "re-rendered with fresh content" the way the real editor would.
-  PostEditor: ({ initialContent }: { initialContent: unknown }) => {
+  PostEditor: ({
+    initialContent,
+    onDeleteComment,
+  }: {
+    initialContent: unknown;
+    onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
+  }) => {
     const [frozenContent] = useState(initialContent);
-    return <div data-testid="post-editor-stub" data-content={JSON.stringify(frozenContent)} />;
+    return (
+      <div data-testid="post-editor-stub" data-content={JSON.stringify(frozenContent)}>
+        <button type="button" onClick={() => void onDeleteComment?.(10, 1)}>
+          delete comment stub
+        </button>
+      </div>
+    );
   },
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
@@ -282,6 +294,8 @@ import {
   sendSelectedPostsToCliente,
   getPostCommentThreads,
   getDiscussaoNaoLidas,
+  deleteCommentThread,
+  deletePostComment,
 } from '@/store';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
 
@@ -1383,6 +1397,54 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
 
     const body = container.querySelector('.drawer-body')!;
     await waitFor(() => expect(body.scrollTop).toBe(800));
+  });
+});
+
+describe('WorkflowDrawer deleting a comment', () => {
+  const post = {
+    id: 1,
+    workflow_id: 10,
+    titulo: 'Post A',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 0,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+  const thread = (field: string) =>
+    ({
+      id: 1,
+      post_id: 1,
+      field,
+      post_comments: [{ id: 10, thread_id: 1, content: 'x' }],
+    }) as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([post]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  it('deletes only the comment when the last message belongs to the general thread', async () => {
+    mockGetThreads.mockResolvedValue([thread('geral')]);
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deletePostComment)).toHaveBeenCalledWith(10));
+    expect(vi.mocked(deleteCommentThread)).not.toHaveBeenCalled();
+  });
+
+  it('still deletes a passage thread together with its last message', async () => {
+    mockGetThreads.mockResolvedValue([thread('conteudo')]);
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deleteCommentThread)).toHaveBeenCalledWith(1));
+    expect(vi.mocked(deletePostComment)).not.toHaveBeenCalled();
   });
 });
 

@@ -129,12 +129,17 @@ vi.mock('@/services/inlineImage', () => ({
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
   PostEditor: ({
     onUpdate,
+    onDeleteComment,
   }: {
     onUpdate?: (json: Record<string, unknown>, plain: string) => void;
+    onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
   }) => (
     <div data-testid="post-editor-stub">
       <button type="button" onClick={() => onUpdate?.({ type: 'doc' }, 'novo texto')}>
         Editar conteúdo
+      </button>
+      <button type="button" onClick={() => void onDeleteComment?.(10, 1)}>
+        delete comment stub
       </button>
     </div>
   ),
@@ -225,6 +230,9 @@ import {
   removeWorkflowPost,
   transitionPostProcess,
   resolvePostProcessRascunhoBanner,
+  getPostCommentThreads,
+  deleteCommentThread,
+  deletePostComment,
 } from '@/store';
 import { toast } from 'sonner';
 
@@ -339,6 +347,23 @@ describe('StandalonePostDrawer', () => {
 
     expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
     expect(screen.queryByTestId('property-panel-stub')).not.toBeInTheDocument();
+  });
+
+  it('deleting the last message of the general thread removes the comment, never the thread', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.mocked(getPostCommentThreads).mockResolvedValue([
+      {
+        id: 1,
+        post_id: 5,
+        field: 'geral',
+        post_comments: [{ id: 10, thread_id: 1, content: 'x' }],
+      },
+    ] as never);
+    renderDrawer(qc);
+    await waitFor(() => expect(vi.mocked(getPostCommentThreads)).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deletePostComment)).toHaveBeenCalledWith(10));
+    expect(vi.mocked(deleteCommentThread)).not.toHaveBeenCalled();
   });
 
   it('discussao=1 deep link: asks the discussion section to focus and relays the report', async () => {

@@ -1036,7 +1036,9 @@ export function WorkflowDrawer({
   const handleDeleteComment = useCallback(
     async (commentId: number, threadId: number) => {
       const thread = commentThreads.find((t) => t.id === threadId);
-      if (thread && thread.post_comments.length <= 1) {
+      // The post's general thread is permanent (the database rejects deleting it): even
+      // with a single message left, only the comment goes.
+      if (thread && !isGeralThread(thread) && thread.post_comments.length <= 1) {
         await deleteCommentThread(threadId);
       } else {
         await deletePostComment(commentId);
