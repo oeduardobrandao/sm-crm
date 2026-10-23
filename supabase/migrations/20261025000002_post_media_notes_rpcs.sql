@@ -22,7 +22,7 @@
 -- Rollback:
 --   drop function hub_create_media_note(uuid, bigint, text, bigint, bigint, numeric, real, real, text),
 --     hub_add_media_note_reply(uuid, bigint, text, bigint, text),
---     record_client_approval_with_notes(bigint, uuid, text, text, text, text, text),
+--     record_client_approval_with_notes(bigint, uuid, bigint, text, text, text, text, text),
 --     create_team_media_note(bigint, bigint, numeric, real, real, text),
 --     _media_note_anchor(bigint, bigint, numeric, real, real);
 --   e recriar create_post_approval_notification com o link de
@@ -197,7 +197,8 @@ GRANT EXECUTE ON FUNCTION hub_add_media_note_reply(uuid, bigint, text, bigint, t
 -- 3. record_client_approval_with_notes
 -- =====================================================================
 -- O snapshot (call 4 do spec) nasce na mesma transação travada da aprovação:
--- trava o post (com a posse no WHERE), revalida o status sob a trava, trava
+-- trava o post (com a posse no WHERE: workspace E cliente do token, como as
+-- outras duas RPCs do Hub; post de outro cliente = post_not_found), revalida o status sob a trava, trava
 -- todas as notas do cliente no post, abertas e resolvidas (um resolver ou
 -- reabrir concorrente do CRM espera o commit ou já está refletido; respostas
 -- do Hub se serializam pela trava do post) e liga ao post_approvals
@@ -206,6 +207,7 @@ GRANT EXECUTE ON FUNCTION hub_add_media_note_reply(uuid, bigint, text, bigint, t
 CREATE OR REPLACE FUNCTION record_client_approval_with_notes(
   p_post_id    bigint,
   p_conta_id   uuid,
+  p_cliente_id bigint,
   p_token      text,
   p_action     text,
   p_comentario text,
@@ -225,7 +227,7 @@ DECLARE
 BEGIN
   SELECT wp.conta_id, wp.status INTO v_conta, v_status
     FROM workflow_posts wp
-   WHERE wp.id = p_post_id AND wp.conta_id = p_conta_id
+   WHERE wp.id = p_post_id AND wp.conta_id = p_conta_id AND wp.cliente_id = p_cliente_id
    FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'post_not_found';
@@ -253,9 +255,9 @@ BEGIN
   RETURN QUERY SELECT v_approval, v_count;
 END;
 $$;
-REVOKE ALL ON FUNCTION record_client_approval_with_notes(bigint, uuid, text, text, text, text, text)
+REVOKE ALL ON FUNCTION record_client_approval_with_notes(bigint, uuid, bigint, text, text, text, text, text)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION record_client_approval_with_notes(bigint, uuid, text, text, text, text, text)
+GRANT EXECUTE ON FUNCTION record_client_approval_with_notes(bigint, uuid, bigint, text, text, text, text, text)
   TO service_role;
 
 -- =====================================================================

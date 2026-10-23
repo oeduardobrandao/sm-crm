@@ -13,7 +13,8 @@
 --    outro post) = versão anterior, rotulada pelo slide_index_at_creation.
 -- 5. triggers: updated_at, resolved_by/resolved_at na troca de status,
 --    nota com arquivo exige o vínculo no post, resposta do cliente reabre a nota
--- 6. RLS e grants: o CRM lê as três tabelas, cria nota interna e resposta da
+-- 6. RLS e grants: o CRM lê as três tabelas (notas e respostas por coluna,
+--    sem hub_token), cria nota interna e resposta da
 --    equipe (INSERT por coluna, sem status/resolved_*/datas/hub_token), e só
 --    troca status. Nota e resposta de cliente entram pelo service
 --    role (edge function do Hub). Ninguém além do service role apaga.
@@ -284,7 +285,15 @@ REVOKE ALL ON post_media_notes, post_media_note_replies, post_approval_media_not
 REVOKE ALL ON SEQUENCE post_media_notes_id_seq, post_media_note_replies_id_seq
   FROM PUBLIC, anon, authenticated;
 
-GRANT SELECT ON post_media_notes, post_media_note_replies TO authenticated;
+-- SELECT por coluna, sem hub_token (credencial do Hub): nem a tabela entrega o
+-- token ao CRM. A view (security_invoker) lê só colunas daqui; as policies de
+-- UPDATE e do EXISTS de post_approval_media_notes leem id/conta_id.
+GRANT SELECT (id, conta_id, post_id, file_id, slide_index_at_creation, media_kind, t_seconds,
+              x, y, visibility, author_kind, author_user_id, body, status, resolved_by,
+              resolved_at, created_at, updated_at)
+  ON post_media_notes TO authenticated;
+GRANT SELECT (id, note_id, conta_id, author_kind, author_user_id, body, created_at)
+  ON post_media_note_replies TO authenticated;
 -- INSERT por coluna: a policy não restringe status, resolved_*, created_at,
 -- updated_at nem hub_token, então a equipe não pode nomeá-los (nota já
 -- resolvida, datas forjadas). id vem da sequência.

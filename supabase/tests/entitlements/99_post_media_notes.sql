@@ -18,7 +18,7 @@
 --   workspace em cascata;
 -- (i) anon sem acesso às três tabelas e à view;
 -- (j) hub_create_media_note; (k) hub_add_media_note_reply;
--- (l) record_client_approval_with_notes e o snapshot; (m) create_team_media_note
+-- (l) record_client_approval_with_notes (posse por workspace e cliente) e o snapshot; (m) create_team_media_note
 --   e grants das RPCs; (n) link da notificação com &post=;
 -- (o) Mensagens: notas e respostas do cliente no feed, nos não lidos e nas
 --   conversas; nota interna e suas respostas nunca aparecem.
@@ -68,6 +68,16 @@ declare v_id bigint;
 begin
   insert into post_file_links (conta_id, post_id, file_id, sort_order)
     values (p_ws, p_post, p_file, p_sort) returning id into v_id;
+  return v_id;
+end $$;
+
+-- Outro cliente no mesmo workspace (para a posse por cliente das RPCs do Hub).
+create or replace function pg_temp.pmn_cliente(p_ws uuid, p_usr uuid)
+returns bigint language plpgsql as $$
+declare v_id bigint;
+begin
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (p_usr, p_ws, 'Outro cliente', 'O', '#111') returning id into v_id;
   return v_id;
 end $$;
 
@@ -126,7 +136,15 @@ do $$
 declare v_t text;
 begin
   foreach v_t in array array['public.post_media_notes', 'public.post_media_note_replies'] loop
-    assert has_table_privilege('authenticated', v_t, 'SELECT'), format('authenticated le %s', v_t);
+    -- SELECT só por coluna (sem hub_token): nada de SELECT de tabela inteira.
+    assert not has_table_privilege('authenticated', v_t, 'SELECT'),
+      format('authenticated sem SELECT de tabela inteira em %s (so por coluna)', v_t);
+    assert has_any_column_privilege('authenticated', v_t, 'SELECT'), format('authenticated le %s', v_t);
+    assert has_column_privilege('authenticated', v_t, 'body', 'SELECT'), format('authenticated le body de %s', v_t);
+    assert has_column_privilege('authenticated', v_t, 'conta_id', 'SELECT'),
+      format('authenticated le conta_id de %s (policies)', v_t);
+    assert not has_column_privilege('authenticated', v_t, 'hub_token', 'SELECT'),
+      format('authenticated nao le hub_token de %s', v_t);
     assert not has_table_privilege('authenticated', v_t, 'INSERT'),
       format('authenticated sem INSERT de tabela inteira em %s (so por coluna)', v_t);
     assert not has_table_privilege('authenticated', v_t, 'DELETE'), format('authenticated nao apaga %s', v_t);
@@ -478,7 +496,13 @@ begin
   update post_media_notes set status = 'resolved' where id = v_note_a;
   get diagnostics v_n = row_count;
   assert v_n = 1, format('resolver deveria afetar 1 linha, afetou %s', v_n);
-  select * into v_row from post_media_notes where id = v_note_a;
+  -- SELECT por coluna: o authenticated não lê hub_token, então nem `select *`.
+  perform pg_temp.pmn_expect(format('select * from post_media_notes where id = %s', v_note_a), '42501');
+  perform pg_temp.pmn_expect(format('select hub_token from post_media_note_replies where note_id = %s', v_note_a),
+    '42501');
+  select n.status, n.resolved_by, n.resolved_at, n.body
+    into v_row.status, v_row.resolved_by, v_row.resolved_at, v_row.body
+    from post_media_notes n where n.id = v_note_a;
   assert v_row.status = 'resolved' and v_row.resolved_by = a.usr and v_row.resolved_at is not null,
     format('resolvida por A, veio by=%s at=%s', v_row.resolved_by, v_row.resolved_at);
   assert v_row.body = 'Troca a cor', 'body intacto';
@@ -487,7 +511,9 @@ begin
   update post_media_notes set status = 'open' where id = v_note_a;
   get diagnostics v_n = row_count;
   assert v_n = 1, 'reabrir afeta 1 linha';
-  select * into v_row from post_media_notes where id = v_note_a;
+  select n.status, n.resolved_by, n.resolved_at
+    into v_row.status, v_row.resolved_by, v_row.resolved_at
+    from post_media_notes n where n.id = v_note_a;
   assert v_row.status = 'open' and v_row.resolved_by is null and v_row.resolved_at is null,
     'reaberta limpa resolved_by e resolved_at';
 
@@ -877,7 +903,7 @@ declare
   v_post bigint; v_post2 bigint; v_post3 bigint; v_other bigint;
   v_file bigint; v_ofile bigint; v_file3 bigint;
   c1 bigint; c2 bigint; c3 bigint; c4 bigint; c5 bigint; i1 bigint; o1 bigint;
-  v_res record; v_ids bigint[];
+  v_res record; v_ids bigint[]; v_ocli bigint;
 begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   a := pg_temp.pmn_env();
@@ -908,14 +934,25 @@ begin
 
   -- workspace errado: post_not_found, nada gravado
   perform pg_temp.pmn_expect_msg(format(
-    'select * from record_client_approval_with_notes(%s, %L::uuid, %L, %L, null, %L)',
-    v_post, b.ws, 'tok', 'aprovado', 'aprovado_cliente'), 'post_not_found');
+    'select * from record_client_approval_with_notes(%s, %L::uuid, %s, %L, %L, null, %L)',
+    v_post, b.ws, b.cli, 'tok', 'aprovado', 'aprovado_cliente'), 'post_not_found');
   perform pg_temp.pmn_expect_msg(format(
-    'select * from record_client_approval_with_notes(%s, %L::uuid, %L, %L, null, %L)',
-    -1, a.ws, 'tok', 'aprovado', 'aprovado_cliente'), 'post_not_found');
+    'select * from record_client_approval_with_notes(%s, %L::uuid, %s, %L, %L, null, %L)',
+    -1, a.ws, a.cli, 'tok', 'aprovado', 'aprovado_cliente'), 'post_not_found');
+  -- workspace certo, cliente errado (outro cliente do mesmo workspace e o de B):
+  -- post_not_found, nada gravado e nenhuma trava tomada
+  v_ocli := pg_temp.pmn_cliente(a.ws, a.usr);
+  perform pg_temp.pmn_expect_msg(format(
+    'select * from record_client_approval_with_notes(%s, %L::uuid, %s, %L, %L, null, %L)',
+    v_post, a.ws, v_ocli, 'tok', 'aprovado', 'aprovado_cliente'), 'post_not_found');
+  perform pg_temp.pmn_expect_msg(format(
+    'select * from record_client_approval_with_notes(%s, %L::uuid, %s, %L, %L, null, %L)',
+    v_post, a.ws, b.cli, 'tok', 'aprovado', 'aprovado_cliente'), 'post_not_found');
+  assert (select xmax::text from post_media_notes where id = c5) = '0', 'cliente errado nao trava notas';
+  assert (select status from workflow_posts where id = v_post) = 'enviado_cliente', 'cliente errado nao muda status';
   assert not exists (select 1 from post_approvals where post_id = v_post), 'nada gravado no post_not_found';
 
-  select * into v_res from record_client_approval_with_notes(v_post, a.ws, 'tok', 'aprovado', null, 'aprovado_cliente');
+  select * into v_res from record_client_approval_with_notes(v_post, a.ws, a.cli, 'tok', 'aprovado', null, 'aprovado_cliente');
   assert v_res.open_note_count = 2, format('2 notas abertas do cliente, veio %s', v_res.open_note_count);
   select array_agg(note_id order by note_id) into v_ids
     from post_approval_media_notes where post_approval_id = v_res.approval_id;
@@ -938,17 +975,17 @@ begin
 
   -- de novo no post já aprovado: post_not_pending
   perform pg_temp.pmn_expect_msg(format(
-    'select * from record_client_approval_with_notes(%s, %L::uuid, %L, %L, null, %L)',
-    v_post, a.ws, 'tok', 'aprovado', 'aprovado_cliente'), 'post_not_pending');
+    'select * from record_client_approval_with_notes(%s, %L::uuid, %s, %L, %L, null, %L)',
+    v_post, a.ws, a.cli, 'tok', 'aprovado', 'aprovado_cliente'), 'post_not_pending');
 
   -- correção sem notas abertas: snapshot vazio, motivo repassado; e de
   -- correcao_cliente o cliente ainda pode aprovar
   v_post2 := pg_temp.pmn_post(a.ws, a.wf);
-  select * into v_res from record_client_approval_with_notes(v_post2, a.ws, 'tok', 'correcao', 'Ajusta', 'correcao_cliente', 'midia');
+  select * into v_res from record_client_approval_with_notes(v_post2, a.ws, a.cli, 'tok', 'correcao', 'Ajusta', 'correcao_cliente', 'midia');
   assert v_res.open_note_count = 0 and v_res.approval_id is not null, 'correcao sem notas';
   assert (select motivo from post_approvals where id = v_res.approval_id) = 'midia', 'motivo repassado';
   assert (select status from workflow_posts where id = v_post2) = 'correcao_cliente', 'post em correcao';
-  select * into v_res from record_client_approval_with_notes(v_post2, a.ws, 'tok', 'aprovado', null, 'aprovado_cliente');
+  select * into v_res from record_client_approval_with_notes(v_post2, a.ws, a.cli, 'tok', 'aprovado', null, 'aprovado_cliente');
   assert v_res.approval_id is not null, 'aprovar a partir de correcao_cliente';
 
   -- sugestão de edição pendente: pending_suggestion do record_client_approval
@@ -960,8 +997,8 @@ begin
   insert into post_edit_suggestions (post_id, conta_id, token, changed_fields, status)
     values (v_post3, a.ws, 'tok', array['legenda'], 'pending');
   perform pg_temp.pmn_expect_msg(format(
-    'select * from record_client_approval_with_notes(%s, %L::uuid, %L, %L, null, %L)',
-    v_post3, a.ws, 'tok', 'aprovado', 'aprovado_cliente'), 'pending_suggestion');
+    'select * from record_client_approval_with_notes(%s, %L::uuid, %s, %L, %L, null, %L)',
+    v_post3, a.ws, a.cli, 'tok', 'aprovado', 'aprovado_cliente'), 'pending_suggestion');
   assert not exists (select 1 from post_approval_media_notes where note_id = c4), 'nenhum snapshot no erro';
   assert not exists (select 1 from post_approvals where post_id = v_post3), 'nenhuma aprovacao no erro';
   assert (select status from workflow_posts where id = v_post3) = 'enviado_cliente', 'status intacto no erro';
@@ -983,7 +1020,7 @@ begin
   foreach v_fn in array array[
     'public.hub_create_media_note(uuid, bigint, text, bigint, bigint, numeric, real, real, text)',
     'public.hub_add_media_note_reply(uuid, bigint, text, bigint, text)',
-    'public.record_client_approval_with_notes(bigint, uuid, text, text, text, text, text)'
+    'public.record_client_approval_with_notes(bigint, uuid, bigint, text, text, text, text, text)'
   ] loop
     assert has_function_privilege('service_role', v_fn, 'EXECUTE'), format('service_role executa %s', v_fn);
     assert not has_function_privilege('authenticated', v_fn, 'EXECUTE'), format('authenticated nao executa %s', v_fn);
@@ -1018,8 +1055,8 @@ begin
   perform pg_temp.pmn_expect(format(
     'select hub_add_media_note_reply(%L::uuid, %s, %L, %s, %L)', a.ws, a.cli, 'tok', 1, 'x'), '42501');
   perform pg_temp.pmn_expect(format(
-    'select * from record_client_approval_with_notes(%s, %L::uuid, %L, %L, null, %L)',
-    v_post_a2, a.ws, 'tok', 'aprovado', 'aprovado_cliente'), '42501');
+    'select * from record_client_approval_with_notes(%s, %L::uuid, %s, %L, %L, null, %L)',
+    v_post_a2, a.ws, a.cli, 'tok', 'aprovado', 'aprovado_cliente'), '42501');
 
   -- post de outro workspace: invisível sob RLS
   v_msg := null;
@@ -1041,13 +1078,14 @@ begin
 
   -- post próprio (até em rascunho): nota interna da equipe
   v_id := create_team_media_note(v_post_a, l_vid, 12.5, 0.25, 0.75, 'Corta aqui');
+  -- Lido como owner: o authenticated não tem SELECT em hub_token (grant por coluna).
+  reset role;
   select * into v_row from post_media_notes where id = v_id;
   assert v_row.author_kind = 'team' and v_row.visibility = 'internal' and v_row.author_user_id = a.usr
      and v_row.hub_token is null and v_row.conta_id = a.ws and v_row.post_id = v_post_a
      and v_row.file_id = v_vid and v_row.media_kind = 'video' and v_row.slide_index_at_creation = 1
      and v_row.t_seconds = 12.5 and v_row.x = 0.25 and v_row.y = 0.75 and v_row.status = 'open',
     'nota interna da equipe gravada';
-  reset role;
 
   raise notice 'PASS 99_post_media_notes (m) create_team_media_note + grants das RPCs';
 end $$;
