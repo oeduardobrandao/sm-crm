@@ -1,25 +1,62 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import './blog.css';
+// After blog.css: the render pieces' rules must win the ties (see its header).
+import '@mesaas/ui/blog/blog-render.css';
 import '../landing/landing-styles';
 import { LandingFooter, LandingHeader, useLandingChrome } from '../landing/LandingChrome';
 import NotFoundPage from '../not-found/NotFoundPage';
-import { BLOG_POSTS, postBySlug } from '@/content/blog.client';
-import { MARKDOWN_COMPONENTS } from '@/content/blog.markdown';
+import { BLOG_POSTS, loadPostBody, postBySlug } from '@/content/blog.client';
 import type { BlogPost } from '@/content/blog.schema';
 import {
-  BLOG_AUTHOR,
   blogPostRouteMeta,
   CATEGORY_LABEL,
-  formatPostDate,
   postPath,
+  postThumb,
   relatedPosts,
 } from '@/content/blog';
 import { blogPostingJsonLd, breadcrumbJsonLd } from '@/content/jsonld';
 import { usePageMetaFor } from '@/lib/usePageMeta';
 import { ArrowRight } from 'lucide-react';
+import { BlogPostArticle, type BodyStatus } from './BlogPostArticle';
+
+/** File posts carry their body; DB posts load it from a lazy chunk. The header
+ * renders at once either way, the body when it arrives. */
+function usePostBody(post: BlogPost): {
+  body: string | null;
+  status: BodyStatus;
+  retry: () => void;
+} {
+  const [loaded, setLoaded] = useState<{ slug: string; body: string } | null>(null);
+  const [failedSlug, setFailedSlug] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (post.body !== null) return;
+    let live = true;
+    loadPostBody(post.slug).then(
+      (body) => {
+        if (live) setLoaded({ slug: post.slug, body });
+      },
+      () => {
+        if (live) setFailedSlug(post.slug);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [post.slug, post.body, attempt]);
+
+  const retry = useCallback(() => {
+    setFailedSlug(null);
+    setAttempt((n) => n + 1);
+  }, []);
+
+  const body = post.body ?? (loaded?.slug === post.slug ? loaded.body : null);
+  const status: BodyStatus =
+    body !== null ? 'ready' : failedSlug === post.slug ? 'error' : 'loading';
+  return { body, status, retry };
+}
 
 function BlogPostView({ post }: { post: BlogPost }) {
   useLandingChrome();
@@ -37,53 +74,33 @@ function BlogPostView({ post }: { post: BlogPost }) {
   );
   usePageMetaFor(meta, jsonLd);
   const related = useMemo(() => relatedPosts(post, BLOG_POSTS), [post]);
+  const { body, status, retry } = usePostBody(post);
 
   return (
     <>
       <LandingHeader variant="subpage" />
       <main id="main-content" tabIndex={-1}>
-        <section className="lp-pad" id="top">
+        <section className="lp-pad blog-post-section" id="top">
           <div className="lp-container">
-            <div className="blog-head">
-              <nav className="blog-crumbs" aria-label="Trilha de navegação">
-                <a href="/">Início</a>
-                <span>·</span>
-                <a href="/blog">Blog</a>
-              </nav>
-              <span className="blog-cat">{CATEGORY_LABEL[post.category]}</span>
-              <h1 className="hero-title" style={{ marginTop: 14 }}>
-                {post.h1}
-              </h1>
-              <p className="blog-lede">{post.description}</p>
-              <div className="blog-meta">
-                <span>
-                  Por {BLOG_AUTHOR.name}, {BLOG_AUTHOR.role}
-                </span>
-                <span>·</span>
-                <span>{formatPostDate(post.date)}</span>
-                <span>·</span>
-                <span>{post.readingMinutes} min de leitura</span>
-              </div>
-            </div>
-            <article className="blog-prose" style={{ marginTop: 40 }}>
-              <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                {post.body ?? ''}
-              </Markdown>
-            </article>
-            <aside className="blog-author">
-              <span className="blog-author-name">{BLOG_AUTHOR.name}</span>
-              <span className="blog-author-role">{BLOG_AUTHOR.role}</span>
-              <p>{BLOG_AUTHOR.bio}</p>
-            </aside>
+            <BlogPostArticle post={post} body={body} status={status} onRetry={retry} />
             {related.length > 0 && (
               <section className="blog-related">
-                <h2>Leia também</h2>
+                <h2>Continue lendo</h2>
                 <ul>
-                  {related.map((r) => (
-                    <li key={r.slug}>
-                      <a href={postPath(r)}>{r.h1}</a>
-                    </li>
-                  ))}
+                  {related.map((r) => {
+                    const thumb = postThumb(r);
+                    return (
+                      <li key={r.slug}>
+                        <a href={postPath(r)} className="blog-next-card">
+                          <span className="blog-next-thumb">
+                            {thumb && <img src={thumb} alt="" loading="lazy" decoding="async" />}
+                          </span>
+                          <span className="blog-next-cat">{CATEGORY_LABEL[r.category]}</span>
+                          <span className="blog-next-title">{r.h1}</span>
+                        </a>
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             )}

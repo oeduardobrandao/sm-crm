@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -7,8 +7,27 @@ vi.mock('@/context/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+// The real posts plus one DB post whose body loads lazily: file posts keep
+// rendering synchronously from the real loader, the DB one goes through the
+// mocked `loadPostBody`.
+const { loadPostBody } = vi.hoisted(() => ({
+  loadPostBody: vi.fn<(slug: string) => Promise<string>>(),
+}));
+vi.mock('@/content/blog.client', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/content/blog.client')>();
+  const { dbPostLazy } = await import('@/content/__tests__/blogDbFixture');
+  const all = [...real.BLOG_POSTS, dbPostLazy()];
+  return {
+    ...real,
+    BLOG_POSTS: all,
+    postBySlug: (slug: string) => all.find((p) => p.slug === slug),
+    loadPostBody,
+  };
+});
+
 import BlogPostPage from '../BlogPostPage';
 import { BLOG_AUTHOR } from '@/content/blog';
+import { DB_POST_BODY, DB_POST_META } from '@/content/__tests__/blogDbFixture';
 
 function renderAt(path: string) {
   return render(
@@ -29,6 +48,14 @@ describe('BlogPostPage', () => {
     // which is unique to the card.
     expect(screen.getByText(BLOG_AUTHOR.bio)).toBeInTheDocument();
     expect(screen.getAllByText(new RegExp(BLOG_AUTHOR.name))).toHaveLength(2);
+  });
+
+  it('renders a file post body synchronously, without the lazy loader', () => {
+    loadPostBody.mockClear();
+    const { container } = renderAt('/blog/mesaas-vs-aprova-post');
+    expect(container.querySelector('.blog-prose h2')).not.toBeNull();
+    expect(container.querySelector('.blog-skeleton')).toBeNull();
+    expect(loadPostBody).not.toHaveBeenCalled();
   });
 
   it('sets the post title and canonical on mount', () => {
@@ -79,5 +106,37 @@ describe('BlogPostPage', () => {
     );
     const after = document.querySelector('script[data-seo="jsonld"]');
     expect(after).toBe(before);
+  });
+});
+
+describe('BlogPostPage, database post', () => {
+  const path = `/blog/${DB_POST_META.slug}`;
+
+  it('shows the header at once, a skeleton, then the loaded body', async () => {
+    loadPostBody.mockReset();
+    loadPostBody.mockResolvedValueOnce(DB_POST_BODY);
+    const { container } = renderAt(path);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(DB_POST_META.h1);
+    expect(container.querySelector('.blog-lede')).toHaveTextContent(DB_POST_META.lede);
+    expect(screen.getAllByText(/Equipe Mesaas/).length).toBeGreaterThan(0);
+    expect(container.querySelector('.blog-skeleton')).not.toBeNull();
+
+    expect(await screen.findByText('Texto de fechamento do artigo.')).toBeInTheDocument();
+    expect(container.querySelector('.blog-skeleton')).toBeNull();
+    expect(loadPostBody).toHaveBeenCalledWith(DB_POST_META.slug);
+    expect(screen.getByText('Tempo médio até a aprovação')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Fontes' })).toBeInTheDocument();
+  });
+
+  it('shows the retry copy when the body fails to load, and retries', async () => {
+    loadPostBody.mockReset();
+    loadPostBody.mockRejectedValueOnce(new Error('chunk failed'));
+    loadPostBody.mockResolvedValueOnce(DB_POST_BODY);
+    renderAt(path);
+
+    expect(await screen.findByText('Não foi possível carregar o artigo.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByText('Texto de fechamento do artigo.')).toBeInTheDocument();
+    expect(loadPostBody).toHaveBeenCalledTimes(2);
   });
 });

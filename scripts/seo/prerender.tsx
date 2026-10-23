@@ -53,7 +53,11 @@ import {
   HERO_MACBOOK_SIZES,
   HERO_MACBOOK_SRCSET,
 } from '../../apps/crm/src/pages/landing/landing-visuals';
-import { renderBlogIndexHtml, renderBlogPostHtml } from '../../apps/crm/src/content/blog.seo';
+import {
+  blogRevisionMetaTag,
+  renderBlogIndexHtml,
+  renderBlogPostHtml,
+} from '../../apps/crm/src/content/blog.seo';
 import { blogPostRouteMeta, postPath } from '../../apps/crm/src/content/blog';
 import {
   blogIndexJsonLd,
@@ -201,11 +205,14 @@ for (const post of posts) {
       { name: post.h1, path: postPath(post) },
     ]),
   ];
+  // DB posts also carry their revision, which the Admin reads back to see
+  // when a published edit is live.
+  const revMeta = blogRevisionMetaTag(post);
   let html = stripBaseMeta(shell);
   html = mustReplace(
     html,
     '</head>',
-    `    ${buildHeadTags(meta, jsonLd)}\n  </head>`,
+    `    ${buildHeadTags(meta, jsonLd)}\n${revMeta ? `    ${revMeta}\n` : ''}  </head>`,
     `${meta.path}:head`,
   );
   html = mustReplace(

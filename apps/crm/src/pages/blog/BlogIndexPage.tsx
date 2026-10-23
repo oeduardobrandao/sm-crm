@@ -31,7 +31,20 @@ export default function BlogIndexPage() {
             </div>
             <div className="blog-list">
               {BLOG_POSTS.map((post) => (
-                <a key={post.slug} href={postPath(post)} className="blog-card">
+                <a
+                  key={post.slug}
+                  href={postPath(post)}
+                  className={`blog-card${post.cover ? ' blog-card--cover' : ''}`}
+                >
+                  {post.cover && (
+                    <img
+                      className="blog-card-thumb"
+                      src={post.cover.url}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
                   <span className="blog-cat">{CATEGORY_LABEL[post.category]}</span>
                   <h2>{post.h1}</h2>
                   <p>{post.description}</p>
