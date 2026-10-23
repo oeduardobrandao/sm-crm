@@ -214,7 +214,9 @@ export function WorkspacesToolbar({
       <div
         id="workspaces-filter-row"
         hidden={!filtersOpen}
-        className="flex flex-wrap items-center gap-2"
+        // `flex` alone beats preflight's [hidden] rule, so the row stayed visible
+        // while space-y-2.5 (which skips [hidden]) dropped its top margin.
+        className={cn('flex-wrap items-center gap-2', filtersOpen ? 'flex' : 'hidden')}
       >
         <FilterSelect
           label="Plano"
