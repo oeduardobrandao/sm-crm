@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -37,6 +37,10 @@ vi.mock('@/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store')>()),
   getPostTargets: vi.fn(async () => []),
   getBoardPlatforms: vi.fn(async () => []),
+  // MentionEditor (the Equipe composer of the Comentários tab) loads these for @-search.
+  getMembros: vi.fn(async () => []),
+  getClientes: vi.fn(async () => []),
+  getTarefas: vi.fn(async () => []),
 }));
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
 vi.mock('@/services/inlineImage', () => ({
@@ -52,7 +56,27 @@ vi.mock('@/pages/entregas/components/PostEditor', () => ({
   ),
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
-vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({ DiscussaoEquipe: () => null }));
+// Only the desktop section is stubbed: the phone tab renders the real DiscussaoTimeline.
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/pages/entregas/discussao/DiscussaoEquipe')>()),
+  DiscussaoEquipe: () => null,
+}));
+const discussaoMock = vi.hoisted(() => ({ naoLidas: 0 }));
+beforeEach(() => {
+  discussaoMock.naoLidas = 0;
+});
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: () => ({
+    participacao: { seguindo: true, lastSeenCommentId: 0, implicito: false },
+    isParticipant: true,
+    naoLidas: discussaoMock.naoLidas,
+    unreadAnchorId: null,
+    send: vi.fn(async () => {}),
+    sending: false,
+    toggleSeguir: vi.fn(async () => {}),
+    sectionRef: vi.fn(),
+  }),
+}));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: ({ variant }: { variant?: string }) => (
     <div data-testid="media-stub" data-variant={variant} />
@@ -106,7 +130,7 @@ import { toast } from 'sonner';
 import { PostEditorBody, type PostEditorBodyProps } from '../PostEditorBody';
 import { TIPO_LABELS } from '../../postLabels';
 import type { PhoneEditorChrome } from '../postEditorPhone/types';
-import type { WorkflowPost } from '@/store';
+import type { CommentThreadWithComments, WorkflowPost } from '@/store';
 
 const basePost = {
   id: 42,
@@ -306,14 +330,90 @@ describe('PostEditorBody, phone layout', () => {
       expect(screen.getByRole('button', { name: /Tentar novamente/ })).toBeInTheDocument();
     });
 
-    it('Comentários tab hides the bar and shows the two threads', async () => {
+    it('Comentários tab hides the bar and splits into Equipe and Cliente', async () => {
       const user = userEvent.setup();
       renderPhone({ post: { ...basePost, status: 'falha_publicacao' } });
       await user.click(screen.getByRole('tab', { name: /Comentários/ }));
       expect(screen.queryByRole('button', { name: /Tentar novamente/ })).toBeNull();
-      expect(screen.getByRole('radio', { name: /Com o cliente/ })).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('radio', { name: /Equipe/ }));
-      expect(screen.getByText(/Nenhum comentário interno/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Equipe/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Cliente' })).toBeInTheDocument();
+      // Nothing unread and no client message: opens on the team discussion.
+      expect(screen.getByRole('textbox', { name: 'Mensagem para a equipe' })).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Cliente' }));
+      expect(screen.getByText(/Nenhuma mensagem com o cliente/)).toBeVisible();
+      expect(screen.getByPlaceholderText('Responder ao cliente…')).toBeVisible();
+      expect(
+        screen.getByRole('textbox', { name: 'Mensagem para a equipe', hidden: true }),
+      ).not.toBeVisible();
+    });
+
+    it('Comentários tab count is the unread team messages plus the client messages', () => {
+      discussaoMock.naoLidas = 3;
+      renderPhone({
+        approvals: [
+          {
+            id: 1,
+            post_id: 42,
+            token: 't',
+            action: 'mensagem',
+            comentario: 'Oi',
+            is_workspace_user: false,
+            created_at: '2026-10-21T10:00:00Z',
+          },
+          {
+            id: 2,
+            post_id: 42,
+            token: 't',
+            action: 'mensagem',
+            comentario: 'Olá',
+            is_workspace_user: true,
+            created_at: '2026-10-21T11:00:00Z',
+          },
+        ],
+      });
+      expect(screen.getByRole('tab', { name: 'Comentários, 5' })).toBeInTheDocument();
+    });
+
+    it('the general thread does not count as a passage comment or as a tab total', () => {
+      const geral = {
+        id: 1,
+        post_id: 42,
+        conta_id: 'ws-1',
+        quoted_text: '',
+        status: 'active',
+        created_by: 'user-1',
+        resolved_by: null,
+        created_at: '2026-10-21T10:00:00Z',
+        resolved_at: null,
+        field: 'geral',
+        anchor_start: null,
+        anchor_end: null,
+        orphaned: false,
+        post_comments: [
+          {
+            id: 9,
+            thread_id: 1,
+            author_id: 'user-2',
+            content: 'Oi equipe',
+            created_at: '2026-10-21T10:00:00Z',
+            updated_at: null,
+          },
+        ],
+      } as unknown as CommentThreadWithComments;
+      const passage = {
+        ...geral,
+        id: 2,
+        field: 'ig_caption',
+        quoted_text: 'trecho',
+        post_comments: [],
+      } as unknown as CommentThreadWithComments;
+      renderPhone({ commentThreads: [geral] });
+      expect(screen.queryByText(/comentário(s)? no texto/)).toBeNull();
+      expect(screen.getByRole('tab', { name: 'Comentários' })).toBeInTheDocument();
+      cleanup();
+      renderPhone({ commentThreads: [geral, passage] });
+      expect(screen.getByText('1 comentário no texto')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Comentários' })).toBeInTheDocument();
     });
   });
 });

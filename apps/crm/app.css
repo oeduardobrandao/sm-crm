@@ -17923,7 +17923,128 @@ button.phone-stat-tile:active {
 }
 
 .phone-comments__composer {
+  align-items: flex-end;
   gap: 8px;
+}
+
+.phone-comments__pills {
+  display: flex;
+  gap: 8px;
+}
+
+.phone-comments__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.phone-comments__pill[aria-pressed='true'] {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+
+.phone-comments__pill svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* Both panes stay mounted; the inactive one is only hidden (its composer is a fixed bar,
+   which an ancestor with display: none hides too). */
+.phone-comments__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.phone-comments__pane[hidden] {
+  display: none;
+}
+
+.phone-comments__team-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+
+.phone-comments__team-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.phone-comments__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  cursor: pointer;
+}
+
+.phone-comments__icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.phone-comments__icon-btn:disabled {
+  opacity: 0.4;
+}
+
+/* Marker for the read position: the end of the timeline, above the fixed composer. */
+.phone-comments__end {
+  height: 1px;
+  margin-top: -14px;
+}
+
+.phone-comments__editor {
+  flex: 1;
+  min-width: 0;
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--phone-separator);
+  border-radius: 20px;
+  background: var(--phone-cell);
+}
+
+.phone-comments__editor-input {
+  min-height: 38px;
+  padding: 9px 14px;
+  box-sizing: border-box;
+  color: var(--phone-label);
+  font-family: inherit;
+  /* 16px keeps iOS from zooming the page when the field is focused. */
+  font-size: 16px;
+  line-height: 20px;
+  outline: none;
+}
+
+/* Edit/delete on own messages are hover-revealed on desktop; a touch screen has no hover. */
+.phone-comments .discussao-message-actions {
+  opacity: 1;
+}
+
+.phone-comments .discussao-icon-btn {
+  width: 32px;
+  height: 32px;
 }
 
 .phone-comments__input {

@@ -16,6 +16,8 @@ import {
   type CaptionAnchorPatch,
   type CommentAnchor,
 } from '../../../store';
+// By path, not through the store barrel: the drawer test harnesses mock '@/store'.
+import { isGeralThread } from '@/store/comments';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import { PostProductionSection } from './PostProductionSection';
@@ -676,9 +678,10 @@ export function PostEditorBody({
   // ── Phone layout (below 768px): same pieces, four tabs, its own screen ──────────
   if (isPhone && phone) {
     const statusOption = statusRegistry.resolve(post);
-    const activeThreads = commentThreads.filter((t) => t.status === 'active');
+    // The general thread never counts as a passage comment; its unread messages feed the tab.
+    const activeThreads = commentThreads.filter((t) => t.status === 'active' && !isGeralThread(t));
     const captionThreadCount = activeThreads.filter((t) => t.field === 'ig_caption').length;
-    const commentCount = approvals.length + activeThreads.length;
+    const commentCount = discussao.naoLidas + approvals.length;
     const paragraphs = (post.conteudo_plain ?? '').split(/\n+/).filter((l) => l.trim()).length;
     const roteiroSummary = editSuggestion
       ? 'Sugestão pendente'
@@ -1143,6 +1146,9 @@ export function PostEditorBody({
 
     const comentariosPane = (
       <PhoneComments
+        postId={post.id ?? 0}
+        currentUserId={currentUserId ?? ''}
+        discussao={discussao}
         approvals={approvals}
         references={references}
         onOpenReference={setViewingReference}
@@ -1151,7 +1157,7 @@ export function PostEditorBody({
         sendingReply={sendingReply}
         onReplyChange={onReplyChange}
         onReplySend={onReplySend}
-        threads={commentThreads}
+        threads={postThreads}
         membros={membros}
         workspaceUsers={workspaceUsers}
         onThreadClick={openThreadFromList}

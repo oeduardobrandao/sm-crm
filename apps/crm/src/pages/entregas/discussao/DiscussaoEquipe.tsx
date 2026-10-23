@@ -1,5 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -19,24 +18,22 @@ import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Badge } from '@/components/ui/badge';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { MentionText } from '@/components/mentions/MentionText';
-import { MentionEditor, type MentionEditorHandle } from '@/components/mentions/MentionEditor';
+import { MentionEditor } from '@/components/mentions/MentionEditor';
 import { stripMentionTokens } from '@/components/mentions/mentionTokens';
-import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
-import {
-  deletePostComment,
-  updatePostComment,
-  type CommentThreadWithComments,
-  type PostComment,
-} from '@/store/comments';
+import type { CommentThreadWithComments, PostComment } from '@/store/comments';
 import type { Membro } from '@/store';
 import { buildTimeline, type TimelineItem } from './timeline';
 import type { UseDiscussaoResult } from './useDiscussao';
+import {
+  DISCUSSAO_MAX_CHARS,
+  useDiscussaoComposer,
+  useDiscussaoMessageActions,
+  useMinuteClock,
+  useSeguirToggle,
+  useShowChatBridge,
+} from './useDiscussaoActions';
 
-/** Same limit as the team chat and `post_discussao_enviar`. */
-export const DISCUSSAO_MAX_CHARS = 4000;
-const NOW_REFRESH_MS = 60_000;
-
-const SEND_ERROR = 'Não foi possível enviar. Tente novamente.';
+export { DISCUSSAO_MAX_CHARS };
 
 export interface DiscussaoWorkspaceUser {
   id: string;
@@ -425,16 +422,6 @@ export interface DiscussaoEquipeProps {
   chatBridge?: ReactNode;
 }
 
-/** Keeps "Hoje"/"Ontem" right across midnight without recomputing on every render. */
-function useMinuteClock(): Date {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), NOW_REFRESH_MS);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
-
 /**
  * "Discussão da equipe" in the expanded post (desktop): the post's internal timeline, the
  * follow bell, the chat bridge slot and the composer. Nothing here is visible to the client.
@@ -448,11 +435,8 @@ export function DiscussaoEquipe({
   onThreadClick,
   chatBridge,
 }: DiscussaoEquipeProps) {
-  const qc = useQueryClient();
   const titleId = useId();
-  const { features, isUnlimited } = useWorkspaceLimits();
-  // Fail-closed like ProtectedRoute: no features loaded = no bridge.
-  const showBridge = isUnlimited || features?.feature_team_chat === true;
+  const showBridge = useShowChatBridge();
 
   const now = useMinuteClock();
   const items = useMemo(
@@ -466,60 +450,11 @@ export function DiscussaoEquipe({
     [threads, discussao.unreadAnchorId, currentUserId, now],
   );
 
-  const [draft, setDraft] = useState('');
-  const editorRef = useRef<MentionEditorHandle>(null);
-  const trimmed = draft.trim();
-  const tooLong = trimmed.length > DISCUSSAO_MAX_CHARS;
-  const canSend = !!trimmed && !tooLong && !discussao.sending;
-
-  useUnsavedWork(trimmed.length > 0 || discussao.sending);
-
-  const handleSend = async () => {
-    if (!canSend) return;
-    const text = trimmed;
-    try {
-      await discussao.send(text);
-      setDraft('');
-    } catch {
-      toast.error(SEND_ERROR);
-    }
-  };
-
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.isComposing) return;
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      void handleSend();
-    }
-  };
-
-  const [togglingSeguir, setTogglingSeguir] = useState(false);
-  const following = discussao.isParticipant;
-  const handleToggleSeguir = async () => {
-    setTogglingSeguir(true);
-    try {
-      await discussao.toggleSeguir();
-    } catch {
-      toast.error('Não foi possível atualizar. Tente novamente.');
-    } finally {
-      setTogglingSeguir(false);
-    }
-  };
-
-  const refreshThreads = () => {
-    void qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
-    void qc.invalidateQueries({ queryKey: ['post-discussao-nao-lidas'] });
-  };
-  // General-thread messages are edited/deleted directly: the thread itself can never be
-  // deleted or resolved (the database rejects it), even when its last message goes.
-  const handleEditMessage = async (comment: PostComment, content: string) => {
-    await updatePostComment(comment.id, content);
-    refreshThreads();
-  };
-  const handleDeleteMessage = async (comment: PostComment) => {
-    await deletePostComment(comment.id);
-    refreshThreads();
-  };
+  const { draft, setDraft, editorRef, tooLong, canSend, handleSend, handleKeyDown } =
+    useDiscussaoComposer(discussao);
+  const seguir = useSeguirToggle(discussao);
+  const { handleEditMessage, handleDeleteMessage } = useDiscussaoMessageActions();
+  const following = seguir.following;
 
   return (
     <section className="discussao" aria-labelledby={titleId}>
@@ -537,8 +472,8 @@ export function DiscussaoEquipe({
           type="button"
           className="discussao-follow"
           aria-pressed={following}
-          onClick={handleToggleSeguir}
-          disabled={!discussao.participacao || togglingSeguir}
+          onClick={seguir.toggle}
+          disabled={seguir.disabled}
         >
           {following ? (
             <Bell className="h-3.5 w-3.5" aria-hidden="true" />
