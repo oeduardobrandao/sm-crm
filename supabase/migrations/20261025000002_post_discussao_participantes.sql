@@ -273,9 +273,10 @@ $$;
 -- Per post of the caller's workspace, selected by post ids and/or fluxo ids (the board
 -- knows fluxos, not post ids); both NULL returns nothing. Only posts with total > 0.
 --   total     = comments in ANY thread of the post;
---   nao_lidas = of those, id > last_seen_comment_id and written by someone else, only for
---               participants who follow (row with seguindo, or the responsável without a
---               row, marker 0). Everyone else gets 0.
+--   nao_lidas = of those, in the general thread or an active passage thread (what the
+--               editor marks as new), id > last_seen_comment_id and written by someone
+--               else, only for participants who follow (row with seguindo, or the
+--               responsável without a row, marker 0). Everyone else gets 0.
 -- A caller with no active workspace membership (removed member) gets no rows.
 CREATE OR REPLACE FUNCTION public.get_post_discussao_nao_lidas(
   p_post_ids     bigint[] DEFAULT NULL,
@@ -322,7 +323,8 @@ AS $$
          p.workflow_id,
          count(pc.id)::int,
          (count(pc.id) FILTER (
-            WHERE e.segue AND pc.id > e.marca AND pc.author_id <> me.uid))::int
+            WHERE e.segue AND pct.status = 'active'
+              AND pc.id > e.marca AND pc.author_id <> me.uid))::int
     FROM posts p
     CROSS JOIN me
     JOIN estado e ON e.post_id = p.id

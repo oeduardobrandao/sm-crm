@@ -672,6 +672,16 @@ begin
   select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(array[v_p1]);
   assert v_total = 4 and v_nl = 2, format('a after marker: expected (4,2), got (%s,%s)', v_total, v_nl);
 
+  -- a resolved passage thread still counts in total but no longer in nao_lidas
+  reset role;
+  update post_comment_threads set status = 'resolved' where id = v_cont;
+  perform pg_temp.pd_as(v_a);
+  select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(array[v_p1]);
+  assert v_total = 4 and v_nl = 1, format('a with c3 resolved: expected (4,1), got (%s,%s)', v_total, v_nl);
+  reset role;
+  update post_comment_threads set status = 'active' where id = v_cont;
+  perform pg_temp.pd_as(v_a);
+
   -- non-participant: total only
   perform pg_temp.pd_as(v_b2);
   select total, nao_lidas into v_total, v_nl from get_post_discussao_nao_lidas(array[v_p1]);
