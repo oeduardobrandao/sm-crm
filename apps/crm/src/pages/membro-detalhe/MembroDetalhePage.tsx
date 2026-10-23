@@ -100,6 +100,16 @@ export default function MembroDetalhePage() {
         : null,
   );
 
+  // Financeiro v2: the member's acordo (where the cost is edited once v2 is on) and the
+  // deliveries of a per-delivery member. Same cards on desktop and phone.
+  const financeiroCards =
+    financeiroV2 && canSeeFinancials === true && membro?.id != null ? (
+      <>
+        <AcordoCard membro={membro} />
+        <EntregasManuaisCard membroId={membro.id} />
+      </>
+    ) : null;
+
   if (isPhone) {
     return (
       <>
@@ -114,6 +124,7 @@ export default function MembroDetalhePage() {
           totalPago={totalPago}
           pendente={pendente}
           onEdit={openEdit}
+          financeiro={financeiroCards}
         />
         <MembroFormDialog
           open={modalOpen}
@@ -245,12 +256,7 @@ export default function MembroDetalhePage() {
             </StatCardGrid>
           )}
 
-          {financeiroV2 && canSeeFinancials === true && membro.id != null && (
-            <>
-              <AcordoCard membro={membro} />
-              <EntregasManuaisCard membroId={membro.id} />
-            </>
-          )}
+          {financeiroCards}
 
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <h3 style={{ marginBottom: 12 }}>Informações</h3>

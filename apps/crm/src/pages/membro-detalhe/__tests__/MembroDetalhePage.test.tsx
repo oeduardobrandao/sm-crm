@@ -260,6 +260,26 @@ describe('MembroDetalhePage financial query gate', () => {
     expect(screen.queryByTestId('entregas-card')).toBeNull();
   });
 
+  it('mounts the acordo cards on phones too (the member form links there to edit the cost)', () => {
+    financeiroV2 = true;
+    setup(true);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Ana Editora' })).toBeInTheDocument();
+    expect(screen.getByTestId('acordo-card')).toBeInTheDocument();
+    expect(screen.getByTestId('entregas-card')).toBeInTheDocument();
+  });
+
+  it('keeps the phone screen as it was with Financeiro v2 off or without financial access', () => {
+    setup(true);
+    expect(screen.queryByTestId('acordo-card')).toBeNull();
+    cleanup();
+
+    financeiroV2 = true;
+    setup(false);
+    expect(screen.queryByTestId('acordo-card')).toBeNull();
+    expect(screen.queryByTestId('entregas-card')).toBeNull();
+  });
+
   it('does not mount the acordo cards without financial access', () => {
     viewport.desktop = true;
     financeiroV2 = true;

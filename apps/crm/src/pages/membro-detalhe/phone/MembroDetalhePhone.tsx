@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Camera, MoreHorizontal } from 'lucide-react';
 import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -33,6 +33,8 @@ export interface MembroDetalhePhoneProps {
   totalPago: number;
   pendente: number;
   onEdit: () => void;
+  /** Financeiro v2 cards (acordo, deliveries), rendered by the page when they apply. */
+  financeiro?: ReactNode;
 }
 
 /**
@@ -52,6 +54,7 @@ export function MembroDetalhePhone({
   totalPago,
   pendente,
   onEdit,
+  financeiro,
 }: MembroDetalhePhoneProps) {
   // A member without an id (never persisted) has no photo target; the hook still needs
   // one, and the editing UI below is only offered when the id exists.
@@ -192,6 +195,8 @@ export function MembroDetalhePhone({
           />
         )}
       </GroupedList>
+
+      {financeiro}
 
       {canEditTeam &&
         (canSeeFinancials === true ? (
