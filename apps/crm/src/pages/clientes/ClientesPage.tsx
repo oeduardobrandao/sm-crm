@@ -896,7 +896,7 @@ export default function ClientesPage() {
                     className="underline"
                     onClick={() => setModalOpen(false)}
                   >
-                    O status agora fica na aba Financeiro.
+                    {t('form.statusNoFinanceiro')}
                   </Link>
                 </p>
               )}

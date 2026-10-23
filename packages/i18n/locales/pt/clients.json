@@ -20,7 +20,8 @@
     "monthlyValue": "Valor Mensal (R$)",
     "notionUrl": "URL do Notion",
     "paymentDay": "Dia de Pagamento (1-31)",
-    "status": "Status"
+    "status": "Status",
+    "statusNoFinanceiro": "O status agora fica na aba Financeiro."
   },
   "deleteConfirm": "Remover este cliente?",
   "toast": {
