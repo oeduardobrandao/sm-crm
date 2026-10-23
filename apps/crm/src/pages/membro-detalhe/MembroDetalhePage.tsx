@@ -22,9 +22,12 @@ import { FotoPessoaEditor } from '@/components/FotoPessoaEditor';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { MembroFormDialog } from '../equipe/MembroFormDialog';
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { AcordoCard } from './AcordoCard';
+import { EntregasManuaisCard } from './EntregasManuaisCard';
 import { MembroDetalhePhone } from './phone/MembroDetalhePhone';
 
 const TIPO_LABEL: Record<string, string> = {
@@ -41,6 +44,7 @@ export default function MembroDetalhePage() {
   const [modalOpen, setModalOpen] = useState(false);
   // Below 768px: a pushed screen with the phone nav bar (PLAN F2d).
   const isPhone = !useIsDesktop(768);
+  const { ativo: financeiroV2 } = useFinanceiroV2();
 
   const { data: membros = [], isLoading: loadingMembros } = useQuery({
     queryKey: ['membros'],
@@ -96,6 +100,16 @@ export default function MembroDetalhePage() {
         : null,
   );
 
+  // Financeiro v2: the member's acordo (where the cost is edited once v2 is on) and the
+  // deliveries of a per-delivery member. Same cards on desktop and phone.
+  const financeiroCards =
+    financeiroV2 && canSeeFinancials === true && membro?.id != null ? (
+      <>
+        <AcordoCard membro={membro} />
+        <EntregasManuaisCard membroId={membro.id} />
+      </>
+    ) : null;
+
   if (isPhone) {
     return (
       <>
@@ -110,6 +124,7 @@ export default function MembroDetalhePage() {
           totalPago={totalPago}
           pendente={pendente}
           onEdit={openEdit}
+          financeiro={financeiroCards}
         />
         <MembroFormDialog
           open={modalOpen}
@@ -240,6 +255,8 @@ export default function MembroDetalhePage() {
               ))}
             </StatCardGrid>
           )}
+
+          {financeiroCards}
 
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <h3 style={{ marginBottom: 12 }}>Informações</h3>

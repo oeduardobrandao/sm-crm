@@ -35,6 +35,10 @@ vi.mock('@/store', async (importOriginal) => ({
 }));
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
+// Financeiro v2 is off in this suite (the v2 tab has its own: FinanceiroTab.v2.test.tsx).
+vi.mock('@/hooks/useFinanceiroV2', () => ({
+  useFinanceiroV2: () => ({ ativo: false, isLoading: false }),
+}));
 
 import { useAuth } from '@/context/AuthContext';
 import FinanceiroTab from '../FinanceiroTab';

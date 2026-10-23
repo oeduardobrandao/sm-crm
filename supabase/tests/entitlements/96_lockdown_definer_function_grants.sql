@@ -4,6 +4,15 @@
 -- Grant-surface assertions for 20260924000001_lockdown_definer_function_grants.sql,
 -- plus the service-role-only helpers/trigger functions/generator added by
 -- 20260925000030_tarefa_series.sql (the last seven entries of the first array).
+-- _financeiro_calcular (20261027000003_financeiro_v2_calculo.sql) is the Financeiro v2
+-- allocation core: called by the read RPCs and the pg_cron close job, never by a user.
+-- _financeiro_sincronizar_legado / _financeiro_inicio_editavel (20261027000004_financeiro_v2_escrita.sql)
+-- are the write RPCs' legacy write-through and "vale a partir de" check.
+-- _financeiro_normalizar / _financeiro_encerrar_atribuicoes / _financeiro_v2_legado_trigger
+-- (20261027000005_financeiro_v2_seed_legado.sql) are the seed's cargo matching, the
+-- shared encerrado cutoff and the legacy-capture trigger function on clientes/membros.
+-- financeiro_rolar_periodos (20261027000006_financeiro_v2_periodos_job.sql) is the hourly
+-- pg_cron period close job: it runs across every workspace, never called by a user.
 --
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE
 -- at function-creation time (see _helpers.sql), so `anon`/`authenticated` already
@@ -76,7 +85,14 @@ declare
     'public.agenda_claim_emails_lembrete(int)',
     'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)',
     'public.rebuild_instagram_automation_contacts(uuid, uuid)',
-    'public.instagram_automation_contact_source(uuid, uuid)'
+    'public.instagram_automation_contact_source(uuid, uuid)',
+    'public._financeiro_calcular(uuid, date)',
+    'public._financeiro_sincronizar_legado(uuid, date)',
+    'public._financeiro_inicio_editavel(uuid, date)',
+    'public._financeiro_normalizar(text)',
+    'public._financeiro_encerrar_atribuicoes(uuid, bigint, date)',
+    'public._financeiro_v2_legado_trigger()',
+    'public.financeiro_rolar_periodos(date)'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down

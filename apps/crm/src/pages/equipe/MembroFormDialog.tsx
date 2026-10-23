@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,6 +48,7 @@ import {
   updateWorkspaceUserRole,
   type Membro,
 } from '@/store';
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { inviteSuccessMessage } from '../configuracao/inviteHelpers';
@@ -84,6 +86,11 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
   // Phone rows follow the dialog primitive, which becomes a sheet only inside the phone
   // shell (PhoneLayoutContext); a dialog rendered elsewhere keeps the desktop fields.
   const { isPhone } = usePhoneLayout();
+  // With Financeiro v2 the cost lives in the member's acordo. Editing an existing member no
+  // longer shows or writes custo_mensal / data_pagamento (a stale hidden value must not be
+  // written back); creating one keeps the fields, the database seeds the first acordo from them.
+  const { ativo: financeiroV2 } = useFinanceiroV2();
+  const custoNoAcordo = financeiroV2 && !!membro;
 
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
@@ -185,12 +192,13 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
     const diaPag = values.diaPag ? parseInt(values.diaPag, 10) : undefined;
     setSaving(true);
     try {
-      const payload: Omit<Membro, 'id' | 'user_id' | 'conta_id' | 'avatar_url'> = {
+      const payload: Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id' | 'avatar_url'>> = {
         nome: values.nome,
         cargo: values.cargo,
         tipo: values.tipo,
-        custo_mensal: values.custo ? Number(values.custo) : null,
-        data_pagamento: diaPag,
+        ...(custoNoAcordo
+          ? {}
+          : { custo_mensal: values.custo ? Number(values.custo) : null, data_pagamento: diaPag }),
       };
       const safePayload = stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']);
       const desiredCrmUser =
@@ -301,7 +309,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                     value={tipo}
                     onChange={(v) => v && form.setValue('tipo', v, { shouldDirty: true })}
                   />
-                  {canSeeFinancials === true && (
+                  {canSeeFinancials === true && !custoNoAcordo && (
                     <FormRow
                       label="Custo Mensal (R$)"
                       error={errors.custo?.message}
@@ -315,17 +323,19 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                       }}
                     />
                   )}
-                  <FormRow
-                    label="Dia de Pagamento (1-31)"
-                    error={errors.diaPag?.message}
-                    input={{
-                      ...form.register('diaPag'),
-                      type: 'number',
-                      inputMode: 'numeric',
-                      min: 1,
-                      max: 31,
-                    }}
-                  />
+                  {!custoNoAcordo && (
+                    <FormRow
+                      label="Dia de Pagamento (1-31)"
+                      error={errors.diaPag?.message}
+                      input={{
+                        ...form.register('diaPag'),
+                        type: 'number',
+                        inputMode: 'numeric',
+                        min: 1,
+                        max: 31,
+                      }}
+                    />
+                  )}
                 </GroupedList>
                 {canManageWorkspace && !!membro && (
                   <GroupedList footer="Vincular um membro a um usuário do workspace permite que ele acesse o CRM e veja suas atribuições.">
@@ -415,7 +425,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                     </FormItem>
                   )}
                 />
-                {canSeeFinancials === true && (
+                {canSeeFinancials === true && !custoNoAcordo && (
                   <FormField
                     control={form.control}
                     name="custo"
@@ -430,19 +440,21 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                     )}
                   />
                 )}
-                <FormField
-                  control={form.control}
-                  name="diaPag"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Dia de Pagamento (1-31)</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={1} max={31} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {!custoNoAcordo && (
+                  <FormField
+                    control={form.control}
+                    name="diaPag"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Dia de Pagamento (1-31)</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={1} max={31} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 {canManageWorkspace && !!membro && (
                   <FormField
                     control={form.control}
@@ -518,6 +530,14 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                   />
                 )}
               </>
+            )}
+            {custoNoAcordo && canSeeFinancials === true && (
+              <p className="text-sm text-muted-foreground">
+                O custo agora fica no acordo da pessoa.{' '}
+                <Link to={`/equipe/${membro?.id}`} className="underline underline-offset-2">
+                  Abrir o acordo
+                </Link>
+              </p>
             )}
             {canManageWorkspace && !membro?.crm_user_id && (
               <InviteSection
