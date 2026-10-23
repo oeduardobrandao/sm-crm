@@ -98,6 +98,9 @@ export function PostMediaLightbox({
   const [duration, setDuration] = useState(0);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [pending, setPending] = useState<{ x: number; y: number } | null>(null);
+  // Placing a spot on a video is a mode the client turns on: otherwise the capture layer would
+  // cover the frame and a tap meant for play would open the composer.
+  const [markingSpot, setMarkingSpot] = useState(false);
   const composerOpenRef = useRef(false);
   composerOpenRef.current = composer !== null;
   const seekRef = useRef<number | undefined>(initialSeek);
@@ -149,12 +152,17 @@ export function PostMediaLightbox({
     // The live clock (the label is throttled to timeupdate): the stored moment and the composer
     // title both come from this one read.
     const live = videoRef.current?.currentTime ?? time;
+    setMarkingSpot(false);
     setPending(point);
     setComposer({ linkId: current.id, t: Math.round(live * 100) / 100, point });
   }
   function closeComposer() {
     setComposer(null);
     setPending(null);
+  }
+  function toggleMarkingSpot() {
+    if (!markingSpot) videoRef.current?.pause();
+    setMarkingSpot(!markingSpot);
   }
   async function submitNote(body: string) {
     if (!composer || !onCreateNote) return;
@@ -172,6 +180,10 @@ export function PostMediaLightbox({
     [media.length],
   );
   const next = useCallback(() => setIdx((i) => (i + 1) % media.length), [media.length]);
+  // The mode belongs to the item it was turned on for.
+  useEffect(() => {
+    setMarkingSpot(false);
+  }, [current?.id]);
 
   // Lock body scroll while open
   useEffect(() => {
@@ -384,7 +396,7 @@ export function PostMediaLightbox({
                   currentTime={time}
                   naturalWidth={current.width}
                   naturalHeight={current.height}
-                  placing={canCreate && composer === null}
+                  placing={canCreate && markingSpot && composer === null}
                   pending={pending}
                   controlsInset={CONTROLS_INSET_PX}
                   onPlace={(p) => startMoment(p)}
@@ -418,13 +430,23 @@ export function PostMediaLightbox({
                 </div>
               )}
               {canCreate && (
-                <button
-                  type="button"
-                  onClick={() => startMoment(null)}
-                  className="self-center rounded-full bg-white/90 px-4 min-h-[44px] text-[13px] font-semibold text-neutral-900"
-                >
-                  {tn('mediaNotes.commentAtMoment', { time: momentLabel })}
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={markingSpot}
+                    onClick={toggleMarkingSpot}
+                    className="rounded-full bg-white/90 px-4 min-h-[44px] text-[13px] font-semibold text-neutral-900 aria-pressed:bg-neutral-900 aria-pressed:text-white aria-pressed:ring-1 aria-pressed:ring-white/60"
+                  >
+                    {tn('mediaNotes.markSpot')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startMoment(null)}
+                    className="rounded-full bg-white/90 px-4 min-h-[44px] text-[13px] font-semibold text-neutral-900"
+                  >
+                    {tn('mediaNotes.commentAtMoment', { time: momentLabel })}
+                  </button>
+                </div>
               )}
             </div>
           ) : (
