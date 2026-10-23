@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  typecheck-and-test:
+  lint-and-typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,8 +38,36 @@ jobs:
       - name: Typecheck scripts
         run: npx tsc -p tsconfig.scripts.json
 
-      - name: Tests with coverage
-        run: npm run test:coverage
+  # The Vitest suite is ~1000 files and overhead-bound (jsdom + setupFiles + module
+  # collect is ~1.6s per file, more than the tests themselves), so it is split across
+  # shards. Each shard records its results and raw coverage as a blob; the
+  # coverage-threshold job merges them and applies the ratchet floor once.
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tests with coverage (shard ${{ matrix.shard }}/4)
+        run: npx vitest run --shard=${{ matrix.shard }}/4 --coverage --coverage.reporter=json --reporter=blob --reporter=dot
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: vitest-blob-${{ matrix.shard }}
+          path: .vitest-reports/
+          include-hidden-files: true
+          retention-days: 1
 
   # The landing (`/`) is server-rendered at build time (scripts/seo/prerender.tsx runs a Vite
   # SSR build of apps/crm/src/entry-server.tsx) and hydrated by main.tsx. Nothing else runs the
@@ -70,7 +98,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    needs: typecheck-and-test
+    needs: [lint-and-typecheck, coverage-threshold]
     timeout-minutes: 15
     env:
       E2E_CRM_EMAIL: ${{ secrets.E2E_CRM_EMAIL }}
@@ -109,7 +137,7 @@ jobs:
 
   # ===========================================================================
   # Backpressure jobs (added 2026-06-03). ADDITIVE ONLY — these do not modify
-  # the typecheck-and-test or e2e jobs above. Each closes a gap where an
+  # the lint-and-typecheck, unit-tests or e2e jobs above. Each closes a gap where an
   # existing guardrail was not actually gating PRs.
   # ===========================================================================
 
@@ -161,10 +189,13 @@ jobs:
             echo "All E2E secrets present — the e2e job will actually run."
           fi
 
-  # Leak 3: coverage was measured (test:coverage) but enforced nothing. This
-  # gates a coverage floor without touching the existing report-only step.
+  # Leak 3: coverage was measured but enforced nothing. This merges the
+  # unit-tests shards' blobs (re-reporting any failed test) and gates the
+  # coverage floor from vitest.coverage.config.ts on the merged result. It used
+  # to re-run the whole suite on its own, doubling CI time for the same numbers.
   coverage-threshold:
     runs-on: ubuntu-latest
+    needs: unit-tests
     steps:
       - uses: actions/checkout@v4
 
@@ -175,8 +206,14 @@ jobs:
 
       - run: npm ci
 
-      - name: Coverage threshold (ratchet floor)
-        run: npm run coverage:check
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vitest-blob-*
+          path: .vitest-reports
+          merge-multiple: true
+
+      - name: Merge shard reports + coverage threshold (ratchet floor)
+        run: npx vitest run --merge-reports --coverage --config vitest.coverage.config.ts --reporter=dot
 
   # Leak 4: prettier format:check was never a CI gate. The whole apps/ and
   # packages/ tree was formatted in this branch, so a full-repo check is now
