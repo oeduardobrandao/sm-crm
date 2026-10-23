@@ -141,10 +141,22 @@ export function WorkflowCard({
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
     >
       {/* Top row: client + recurrent + drag handle */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Wraps instead of squeezing: a long client name keeps one line and the
+          chips drop below it. */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '0.35rem 0.5rem',
+        }}
+      >
         <span
           className="board-card-client"
           style={{
+            minWidth: 0,
+            maxWidth: '100%',
             borderLeft: 'none',
             paddingLeft: 0,
             fontSize: '0.74rem',
@@ -207,7 +219,12 @@ export function WorkflowCard({
                   color: card.cliente.cor || 'var(--text-muted)',
                   opacity: 0.85,
                   fontWeight: 500,
+                  minWidth: 0,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                 }}
+                title={card.cliente.nome}
               >
                 {card.cliente.nome}
               </span>
