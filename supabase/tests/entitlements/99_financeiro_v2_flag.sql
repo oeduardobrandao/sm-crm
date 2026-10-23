@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Financeiro v2 rollout flag (feature_financeiro_v2, 20261025000001). The column
+-- Financeiro v2 rollout flag (feature_financeiro_v2, 20261027000001). The column
 -- is born false on every plan and is switched per workspace through
 -- workspace_plan_overrides.feature_overrides.
 
@@ -27,7 +27,7 @@ begin
 end $$;
 rollback;
 
--- ============ Schema, RLS and grants (20261025000002_financeiro_v2_schema.sql) ============
+-- ============ Schema, RLS and grants (20261027000002_financeiro_v2_schema.sql) ============
 -- Seven tables, SELECT-only for authenticated. A row is readable only when the
 -- workspace has feature_financial AND feature_financeiro_v2 AND the caller
 -- can_see_financials(); every write goes through the RPCs of later tasks.

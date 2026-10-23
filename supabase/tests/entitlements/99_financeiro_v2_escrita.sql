@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Financeiro v2 write RPCs (20261025000004_financeiro_v2_escrita.sql).
+-- Financeiro v2 write RPCs (20261027000004_financeiro_v2_escrita.sql).
 -- Every change is effective-dated ("vale a partir de" = an editable period start)
 -- and the version effective at the current open period is written through to the
 -- legacy columns (clientes.valor_mensal/data_pagamento/status, membros.custo_mensal/

@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- Financeiro v2 private bucket for signed team-agreement contracts
--- (20261025000007_financeiro_v2_arquivos.sql). Path: <conta_id>/<membro_id>/<uuid>.<ext>.
+-- (20261027000007_financeiro_v2_arquivos.sql). Path: <conta_id>/<membro_id>/<uuid>.<ext>.
 -- SELECT needs can_see_financials(), INSERT needs has_permission('financeiro','editar'),
 -- both behind feature_financial + feature_financeiro_v2 and the caller's own conta_id
 -- as first segment; the second segment must be a membros.id of that workspace. There is

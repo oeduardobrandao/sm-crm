@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Financeiro v2 period close job, reopen and close (20261025000006_financeiro_v2_periodos_job.sql).
+-- Financeiro v2 period close job, reopen and close (20261027000006_financeiro_v2_periodos_job.sql).
 -- financeiro_rolar_periodos(p_hoje) closes every ended 'aberto' latest period with a
 -- frozen snapshot, opens the next one and writes the versions effective at the new
 -- open period through to the legacy columns. financeiro_periodo_reabrir /

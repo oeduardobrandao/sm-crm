@@ -13,7 +13,7 @@ SET LOCAL lock_timeout = '5s';
 -- conversion and the MCP. Once a workspace is seeded, the triggers below turn such a
 -- write into a version at the current open period (the latest 'aberto' row), whatever
 -- the flag is, so v2 never drifts from what the old screens show. The v2 write RPCs
--- write the same columns back (_financeiro_sincronizar_legado, 20261025000004); the
+-- write the same columns back (_financeiro_sincronizar_legado, 20261027000004); the
 -- trigger then finds the values equal to the effective version and does nothing.
 -- That compare-and-skip is the loop guard.
 --
@@ -164,7 +164,7 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
-  -- exclusive: the seed creates the first period (same key as the roll, 20261025000006)
+  -- exclusive: the seed creates the first period (same key as the roll, 20261027000006)
   PERFORM pg_advisory_xact_lock(public._financeiro_lock_key(v_conta));
   IF p_periodo_dia IS NULL OR p_periodo_dia NOT BETWEEN 1 AND 28 THEN
     RAISE EXCEPTION 'periodo_dia_invalido' USING ERRCODE = 'P0001';

@@ -18,7 +18,7 @@ SET LOCAL lock_timeout = '5s';
 --   1. feature_financial, 2. feature_financeiro_v2  -> P0001 feature_disabled:<flag>
 --   3. has_permission('financeiro','editar')        -> 42501 financial_access_denied
 --      then pg_advisory_xact_lock_shared(_financeiro_lock_key(conta)): the period roll,
---      reabrir and fechar (20261025000006) and the seed take the same key exclusively,
+--      reabrir and fechar (20261027000006) and the seed take the same key exclusively,
 --      so a write can't pass the editable check against a period that is closing
 --      (the checks below run after the lock, each statement on a fresh snapshot)
 --   4. financeiro_config.seeded_at set               -> P0001 nao_configurado
@@ -49,7 +49,7 @@ $$;
 -- the auth checks (the write RPCs have already run theirs): every reaberto row, the
 -- latest aberto row, and the next two projected starts, which begin at the newest
 -- row's fim (or at the period containing today, Sao Paulo, when there is no row).
--- Keep in step with financeiro_periodos_editaveis() (20261025000003); the suite
+-- Keep in step with financeiro_periodos_editaveis() (20261027000003); the suite
 -- 99_financeiro_v2_escrita checks that the two agree.
 CREATE OR REPLACE FUNCTION public._financeiro_inicio_editavel(p_conta uuid, p_inicio date)
 RETURNS boolean

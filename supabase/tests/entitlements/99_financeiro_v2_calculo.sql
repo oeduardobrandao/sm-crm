@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Financeiro v2 calculation (20261025000003_financeiro_v2_calculo.sql).
+-- Financeiro v2 calculation (20261027000003_financeiro_v2_calculo.sql).
 -- Section 1: period helpers (financeiro_periodo_fim / _inicio_de / _rotulo / _fator).
 -- Later sections (allocation core) are appended below by the following tasks.
 

@@ -19,7 +19,7 @@ SET LOCAL lock_timeout = '5s';
 -- job never closes a reaberto period.
 --
 -- Every path that changes a period's status takes the per-workspace transaction
--- advisory lock _financeiro_lock_key(conta) (20261025000004) exclusively, so a manual
+-- advisory lock _financeiro_lock_key(conta) (20261027000004) exclusively, so a manual
 -- reopen cannot interleave with a roll and two overlapping cron runs cannot open the
 -- same period twice (the (conta_id, inicio) primary key is the backstop). Every v2
 -- write RPC and the legacy trigger take the same key shared before their editable /
@@ -28,7 +28,7 @@ SET LOCAL lock_timeout = '5s';
 -- 55P03 into its own EXCEPTION block instead of stalling the whole job.
 --
 -- Also: financeiro_rentabilidade overlays the row's real status on a returned
--- snapshot (ruling R5); the rest of its body is unchanged from 20261025000003.
+-- snapshot (ruling R5); the rest of its body is unchanged from 20261027000003.
 
 -- ===========================================================================
 -- Close job (service_role / pg_cron only)
@@ -228,7 +228,7 @@ GRANT EXECUTE ON FUNCTION public.financeiro_periodo_fechar(date) TO authenticate
 -- financeiro_rentabilidade: status overlay on a returned snapshot (ruling R5)
 -- ===========================================================================
 
--- Same contract as 20261025000003. The profitability of a period for the caller's
+-- Same contract as 20261027000003. The profitability of a period for the caller's
 -- workspace. p_inicio NULL = the latest period that is not fechado, else the latest
 -- one (and, with no period row at all, the period containing today). A fechado period
 -- returns its snapshot with periodo.status set to the row's status; any other is
@@ -341,6 +341,6 @@ $$;
 
 -- Rollback (by hand, in this order):
 --   1. SELECT cron.unschedule('financeiro-v2-rolar-periodos');
---   2. Re-run the financeiro_rentabilidade definition of 20261025000003.
+--   2. Re-run the financeiro_rentabilidade definition of 20261027000003.
 --   3. DROP FUNCTION financeiro_periodo_reabrir(date), financeiro_periodo_fechar(date),
 --      financeiro_rolar_periodos(date);

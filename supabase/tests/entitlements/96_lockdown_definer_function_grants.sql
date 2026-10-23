@@ -4,14 +4,14 @@
 -- Grant-surface assertions for 20260924000001_lockdown_definer_function_grants.sql,
 -- plus the service-role-only helpers/trigger functions/generator added by
 -- 20260925000030_tarefa_series.sql (the last seven entries of the first array).
--- _financeiro_calcular (20261025000003_financeiro_v2_calculo.sql) is the Financeiro v2
+-- _financeiro_calcular (20261027000003_financeiro_v2_calculo.sql) is the Financeiro v2
 -- allocation core: called by the read RPCs and the pg_cron close job, never by a user.
--- _financeiro_sincronizar_legado / _financeiro_inicio_editavel (20261025000004_financeiro_v2_escrita.sql)
+-- _financeiro_sincronizar_legado / _financeiro_inicio_editavel (20261027000004_financeiro_v2_escrita.sql)
 -- are the write RPCs' legacy write-through and "vale a partir de" check.
 -- _financeiro_normalizar / _financeiro_encerrar_atribuicoes / _financeiro_v2_legado_trigger
--- (20261025000005_financeiro_v2_seed_legado.sql) are the seed's cargo matching, the
+-- (20261027000005_financeiro_v2_seed_legado.sql) are the seed's cargo matching, the
 -- shared encerrado cutoff and the legacy-capture trigger function on clientes/membros.
--- financeiro_rolar_periodos (20261025000006_financeiro_v2_periodos_job.sql) is the hourly
+-- financeiro_rolar_periodos (20261027000006_financeiro_v2_periodos_job.sql) is the hourly
 -- pg_cron period close job: it runs across every workspace, never called by a user.
 --
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE

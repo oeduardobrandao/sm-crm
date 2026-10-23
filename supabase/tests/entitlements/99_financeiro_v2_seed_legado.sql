@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Financeiro v2 seed and legacy capture (20261025000005_financeiro_v2_seed_legado.sql).
+-- Financeiro v2 seed and legacy capture (20261027000005_financeiro_v2_seed_legado.sql).
 -- financeiro_seed ("Montar a partir dos dados atuais") builds v2 from today's
 -- clientes.valor_mensal / membros.custo_mensal in one idempotent step. The triggers
 -- on clientes / membros turn a legacy write (old screens, CSV import, lead
