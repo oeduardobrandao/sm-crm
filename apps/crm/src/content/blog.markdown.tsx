@@ -1,25 +1,16 @@
-/** Component overrides shared by the static mirror (build) and the article
- * page (client), so both render markdown identically. Relative imports only:
- * this module is in the prerender import graph, and it must stay CSS-free. */
-import type { Components } from 'react-markdown';
+/** Compatibility shim: the blog's markdown overrides now live in
+ * packages/ui/blog/markdown.tsx, shared with the Admin preview. Relative
+ * imports only: this module is in the prerender import graph.
+ *
+ * `MARKDOWN_COMPONENTS` has no images or sources, so `img:` figures and
+ * infographic captions need `blogMarkdownComponents(post)` plus
+ * `blogUrlTransform` (or `<BlogMarkdown>`). */
+import { blogMarkdownComponents } from '../../../../packages/ui/blog/markdown';
 
-/** External links get rel="nofollow noopener" (we link to competitors) and
- * open in a new tab; internal links stay plain so the SPA router is free to
- * handle them later. */
-export const MARKDOWN_COMPONENTS: Components = {
-  // `node` is react-markdown's hast AST node, not a DOM attribute — pull it
-  // out so it never gets spread onto the rendered <a> (it would otherwise
-  // serialize as node="[object Object]" on every link).
-  a({ href, children, node: _node, ...props }) {
-    const external = !!href && !href.startsWith('/') && !href.startsWith('#');
-    return (
-      <a
-        href={href}
-        {...(external ? { rel: 'nofollow noopener', target: '_blank' } : {})}
-        {...props}
-      >
-        {children}
-      </a>
-    );
-  },
-};
+export {
+  BlogMarkdown,
+  blogMarkdownComponents,
+  blogUrlTransform,
+} from '../../../../packages/ui/blog/markdown';
+
+export const MARKDOWN_COMPONENTS = blogMarkdownComponents({ images: [] });

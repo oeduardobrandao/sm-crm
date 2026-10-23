@@ -1,0 +1,420 @@
+/* Blog render pieces (packages/ui/blog): infographic, pull quote, body
+ * figures, Fontes and the "No Mesaas" feature block. Public CSS: the CRM blog
+ * page imports it, the Admin preview too. Import it AFTER the page's own blog
+ * stylesheet (apps/crm/src/pages/blog/blog.css): its `.blog-prose blockquote`,
+ * `.blog-prose p`, `.blog-prose ol` and `.blog-prose a` rules tie with some of
+ * these selectors and the later file has to win.
+ *
+ * Palette (spec §4): ground #f7f5f0, ink #12151a, one accent #ffbf30; dark:
+ * ground #12151a, ink #e8eaf0, same accent. No gradients, no shadows-as-depth.
+ * Light values are the defaults; [data-theme='dark'] overrides them. */
+
+.blog-info,
+.blog-pullquote,
+.blog-figure,
+.blog-fontes,
+.blog-feature-cta {
+  --blog-r-ground: #f7f5f0;
+  --blog-r-ink: #12151a;
+  --blog-r-accent: #ffbf30;
+  --blog-r-muted: #4b5563;
+  --blog-r-soft: #374151;
+  --blog-r-track: #e6e2d8;
+  --blog-r-line: rgba(30, 36, 48, 0.12);
+  --blog-r-card: #ffffff;
+  --blog-r-display: -apple-system, 'SF Pro Display', system-ui, sans-serif;
+  --blog-r-text: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+}
+
+[data-theme='dark'] .blog-info,
+[data-theme='dark'] .blog-pullquote,
+[data-theme='dark'] .blog-figure,
+[data-theme='dark'] .blog-fontes,
+[data-theme='dark'] .blog-feature-cta {
+  --blog-r-ground: #12151a;
+  --blog-r-ink: #e8eaf0;
+  --blog-r-muted: #9ca3af;
+  --blog-r-soft: #cbd5e1;
+  --blog-r-track: #252b38;
+  --blog-r-line: rgba(255, 255, 255, 0.1);
+  --blog-r-card: #1a1e26;
+}
+
+/* ---------- Infographic ---------- */
+
+figure.blog-info {
+  margin: 44px 0;
+  padding: clamp(22px, 4vw, 36px);
+  border-radius: 14px;
+  background: var(--blog-r-ground);
+  color: var(--blog-r-ink);
+  border: 1px solid var(--blog-r-line);
+  font-family: var(--blog-r-text);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.blog-info .blog-info__head {
+  margin-bottom: 26px;
+}
+
+.blog-info .blog-info__eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blog-r-muted);
+}
+
+.blog-info .blog-info__title {
+  margin: 6px 0 0;
+  font-family: var(--blog-r-display);
+  font-size: clamp(1.25rem, 2.6vw, 1.6rem);
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--blog-r-ink);
+}
+
+/* Bars */
+.blog-info .blog-info__bars {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.blog-info .blog-info__bar {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blog-info .blog-info__bar-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.blog-info .blog-info__bar-value {
+  font-family: var(--blog-r-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.blog-info .blog-info__track {
+  display: block;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--blog-r-track);
+  overflow: hidden;
+}
+
+.blog-info .blog-info__fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--blog-r-ink);
+}
+
+.blog-info .blog-info__fill--top {
+  background: var(--blog-r-accent);
+}
+
+/* Big numbers */
+.blog-info .blog-info__numbers {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.blog-info .blog-info__number {
+  padding: 22px;
+  border-radius: 12px;
+  background: var(--blog-r-card);
+  border: 1px solid var(--blog-r-line);
+}
+
+.blog-info .blog-info__number:first-child {
+  background: #12151a;
+  border-color: #12151a;
+}
+
+.blog-info .blog-info__number dt {
+  font-family: var(--blog-r-display);
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--blog-r-ink);
+}
+
+.blog-info .blog-info__number dd {
+  margin: 10px 0 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--blog-r-soft);
+}
+
+.blog-info .blog-info__number:first-child dt {
+  color: var(--blog-r-accent);
+}
+
+.blog-info .blog-info__number:first-child dd {
+  color: #cbd5e1;
+}
+
+/* Steps */
+.blog-info .blog-info__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  counter-reset: none;
+}
+
+.blog-info .blog-info__step {
+  margin: 0;
+  padding: 16px 14px;
+  border-radius: 10px;
+  background: var(--blog-r-card);
+  border: 1px solid var(--blog-r-line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.blog-info .blog-info__step-n {
+  font-family: var(--blog-r-display);
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--blog-r-ink);
+}
+
+.blog-info .blog-info__step:nth-child(2) {
+  background: #12151a;
+  border-color: #12151a;
+  color: #ffffff;
+}
+
+.blog-info .blog-info__step:nth-child(2) .blog-info__step-n {
+  color: var(--blog-r-accent);
+}
+
+/* On the dark ground the inverted card would vanish: sink it and ring it. */
+[data-theme='dark'] .blog-info .blog-info__number:first-child,
+[data-theme='dark'] .blog-info .blog-info__step:nth-child(2) {
+  background: #0a0c0f;
+  border-color: rgba(255, 191, 48, 0.4);
+}
+
+/* Caption */
+.blog-info .blog-info__caption {
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid var(--blog-r-line);
+  font-size: 13px;
+  color: var(--blog-r-muted);
+}
+
+.blog-info .blog-info__caption a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.blog-info .blog-info__caption a:hover {
+  color: var(--blog-r-ink);
+}
+
+/* ---------- Pull quote ---------- */
+
+blockquote.blog-pullquote {
+  margin: 40px 0;
+  padding: 0 clamp(0px, 4vw, 32px);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-family: var(--blog-r-display);
+  font-size: clamp(1.35rem, 3vw, 1.6rem);
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  text-align: center;
+  color: var(--blog-r-ink);
+}
+
+blockquote.blog-pullquote::before {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 3px;
+  margin: 0 auto 20px;
+  border-radius: 2px;
+  background: var(--blog-r-accent);
+}
+
+.blog-pullquote.blog-pullquote p {
+  margin: 0;
+}
+
+[data-theme='dark'] blockquote.blog-pullquote {
+  background: none;
+  color: var(--blog-r-ink);
+}
+
+/* ---------- Body figure ---------- */
+
+figure.blog-figure {
+  margin: 40px 0;
+}
+
+.blog-figure.blog-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.blog-figure.blog-figure figcaption {
+  margin-top: 10px;
+  font-family: var(--blog-r-text);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--blog-r-muted);
+}
+
+.blog-figure.blog-figure figcaption a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---------- Fontes ---------- */
+
+section.blog-fontes {
+  margin: 48px 0 0;
+  font-family: var(--blog-r-text);
+}
+
+.blog-fontes.blog-fontes h2 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blog-r-muted);
+}
+
+.blog-fontes.blog-fontes ol {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: decimal;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--blog-r-soft);
+}
+
+.blog-fontes.blog-fontes li {
+  margin-bottom: 8px;
+}
+
+.blog-fontes.blog-fontes a {
+  color: var(--blog-r-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--blog-r-accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Feature CTA ("No Mesaas") ---------- */
+
+/* Dark in both themes; in dark mode a hairline keeps it off the page ground. */
+aside.blog-feature-cta {
+  margin: 40px 0 0;
+  padding: 28px;
+  border-radius: 12px;
+  background: #12151a;
+  color: #e8eaf0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+  font-family: var(--blog-r-text);
+}
+
+[data-theme='dark'] aside.blog-feature-cta {
+  background: #1a1e26;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.blog-feature-cta .blog-feature-cta__text {
+  flex: 1 1 320px;
+}
+
+.blog-feature-cta .blog-feature-cta__eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffbf30;
+}
+
+.blog-feature-cta .blog-feature-cta__title {
+  margin: 6px 0 0;
+  font-family: var(--blog-r-display);
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.blog-feature-cta .blog-feature-cta__frase {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #cbd5e1;
+}
+
+.blog-feature-cta .blog-feature-cta__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #12151a;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.blog-feature-cta .blog-feature-cta__link:hover {
+  background: #ffbf30;
+  color: #12151a;
+}
+
+.blog-feature-cta .blog-feature-cta__link:focus-visible {
+  outline: 2px solid #ffbf30;
+  outline-offset: 2px;
+}
