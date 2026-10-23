@@ -68,6 +68,7 @@ import {
   type MediaNote,
 } from '@/store/mediaNotes';
 import { ResolveNotesPrompt } from './mediaNotes/ResolveNotesPrompt';
+import type { MediaNoteAuthors } from './mediaNotes/MediaNoteCard';
 import { FilePickerModal } from '../../arquivos/components/FilePickerModal';
 import { linkFileToPost, unlinkFileFromPost } from '../../../services/fileService';
 
@@ -98,6 +99,8 @@ interface PostMediaGalleryProps {
   /** A conversation anchor chip asked to see this media item. Open the lightbox on it;
    *  `nonce` makes a repeated request for the same item open it again. */
   openLinkRequest?: { linkId: number; nonce: number } | null;
+  /** Names for the author line in a pin's details. */
+  noteAuthors?: MediaNoteAuthors;
 }
 
 // Mirror of CAROUSEL_MAX_ITEMS in
@@ -133,6 +136,7 @@ export function PostMediaGallery({
   notes,
   onNotesChanged,
   openLinkRequest,
+  noteAuthors,
 }: PostMediaGalleryProps) {
   const phone = variant === 'phone';
   const { t } = useTranslation('posts');
@@ -251,31 +255,39 @@ export function PostMediaGallery({
     return counts;
   }, [notes]);
 
-  // After a slide is replaced or removed, offer to close the client's open notes on it.
-  const [resolvePrompt, setResolvePrompt] = useState<number[] | null>(null);
-  const adjustNoteIds = useRef<number[]>([]);
-  const clientOpenIdsOn = (linkId: number) =>
-    openNotesOnLink(
-      (notes ?? []).filter((n) => n.visibility === 'client'),
-      linkId,
-    ).map((n) => n.id);
-  const offerResolve = (ids: number[]) => {
-    if (ids.length > 0) setResolvePrompt(ids);
+  // After a slide is replaced or removed, offer to close the open notes on it.
+  const [resolvePrompt, setResolvePrompt] = useState<{
+    ids: number[];
+    kind: 'image' | 'video';
+  } | null>(null);
+  const adjustNotes = useRef<{ ids: number[]; kind: 'image' | 'video' }>({
+    ids: [],
+    kind: 'image',
+  });
+  // Every open note on the file, the client's and the team's internal ones: it matches
+  // the tile badge, and none of them points at what was replaced.
+  const openIdsOn = (linkId: number) => openNotesOnLink(notes ?? [], linkId).map((n) => n.id);
+  const offerResolve = (ids: number[], kind: 'image' | 'video') => {
+    if (ids.length > 0) setResolvePrompt({ ids, kind });
   };
   async function confirmResolve() {
-    const ids = resolvePrompt;
+    const ids = resolvePrompt?.ids;
     setResolvePrompt(null);
     if (!ids || ids.length === 0) return;
+    await changeNoteStatus(ids, 'resolved');
+  }
+  /** Resolve / reopen, then refresh. Never surfaces raw RPC / RLS text. */
+  async function changeNoteStatus(ids: number[], status: 'open' | 'resolved') {
     try {
-      await setMediaNoteStatus(ids, 'resolved');
+      await setMediaNoteStatus(ids, status);
       await onNotesChanged?.();
-    } catch (e) {
-      toast.error((e as Error).message);
+    } catch {
+      toast.error('Não foi possível atualizar a nota. Tente novamente.');
     }
   }
   /** Opens the replace/adjust editor, remembering which open notes were on that file. */
   function startAdjust(m: PostMedia) {
-    adjustNoteIds.current = clientOpenIdsOn(m.id);
+    adjustNotes.current = { ids: openIdsOn(m.id), kind: m.kind };
     setAdjustingMedia(m);
   }
   async function handleCreateInternalNote(input: InternalNoteInput) {
@@ -551,7 +563,7 @@ export function PostMediaGallery({
   async function handleUseAsReelCover() {
     if (!reelCover || movingCover) return;
     const { video, image } = reelCover;
-    const openIds = clientOpenIdsOn(image.id);
+    const openIds = openIdsOn(image.id);
     setMovingCover(true);
     try {
       await trackUnsavedWork(
@@ -568,7 +580,7 @@ export function PostMediaGallery({
         })(),
       );
       toast.success(t('mediaGallery.reelCoverMoved'));
-      offerResolve(openIds);
+      offerResolve(openIds, 'image');
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -589,11 +601,12 @@ export function PostMediaGallery({
   }
 
   async function handleDelete(id: number) {
-    const openIds = clientOpenIdsOn(id);
+    const openIds = openIdsOn(id);
+    const kind = media.find((m) => m.id === id)?.kind ?? 'image';
     try {
       await deletePostMedia(id);
       refresh();
-      offerResolve(openIds);
+      offerResolve(openIds, kind);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -1002,11 +1015,14 @@ export function PostMediaGallery({
         }}
         notes={notes}
         onCreateInternalNote={notes !== undefined ? handleCreateInternalNote : undefined}
+        onNoteStatus={notes !== undefined ? changeNoteStatus : undefined}
+        authors={noteAuthors}
       />
 
       <ResolveNotesPrompt
         open={resolvePrompt !== null}
-        count={resolvePrompt?.length ?? 0}
+        count={resolvePrompt?.ids.length ?? 0}
+        kind={resolvePrompt?.kind}
         onConfirm={() => void confirmResolve()}
         onCancel={() => setResolvePrompt(null)}
       />
@@ -1019,9 +1035,12 @@ export function PostMediaGallery({
           isCarousel={isCarousel}
           layout={phone ? 'phone' : 'default'}
           onClose={() => setAdjustingMedia(null)}
+          onReplaced={() => {
+            // Success only: onUpdated also fires after a failed or aborted save.
+            offerResolve(adjustNotes.current.ids, adjustNotes.current.kind);
+            adjustNotes.current = { ids: [], kind: 'image' };
+          }}
           onUpdated={() => {
-            offerResolve(adjustNoteIds.current);
-            adjustNoteIds.current = [];
             refreshWithCovers();
             qc.invalidateQueries({ queryKey: ['workflow-grid'] });
             qc.invalidateQueries({ queryKey: ['automation-production-covers'] });
@@ -1161,7 +1180,7 @@ function PhoneMediaStrip({
                   <button
                     type="button"
                     className="phone-media__tile"
-                    aria-label={`${m.original_filename}${i === 0 ? ' (capa)' : ''}. Toque para ver, segure para mais ações`}
+                    aria-label={`${m.original_filename}${i === 0 ? ' (capa)' : ''}${openNoteLabel(openNoteCounts.get(m.id) ?? 0)}. Toque para ver, segure para mais ações`}
                     onClick={() => onOpen(i)}
                   >
                     <PhoneTileVisual media={m} />
@@ -1371,14 +1390,18 @@ function SortableMediaTile({
 function OpenNotesCount({ count, className }: { count: number; className: string }) {
   if (count <= 0) return null;
   return (
-    <span
-      className={className}
-      aria-label={`${count} ${count === 1 ? 'comentário' : 'comentários'} em aberto`}
-    >
+    <span className={className}>
       <MessageSquare className="h-2.5 w-2.5" aria-hidden="true" />
-      {count}
+      <span aria-hidden="true">{count}</span>
+      <span className="sr-only">{`${count} ${count === 1 ? 'comentário' : 'comentários'} em aberto`}</span>
     </span>
   );
+}
+
+/** ", 2 comentários em aberto" for a tile button's accessible name; empty for none. */
+function openNoteLabel(count: number): string {
+  if (count <= 0) return '';
+  return `, ${count} ${count === 1 ? 'comentário' : 'comentários'} em aberto`;
 }
 
 // Exported helper so WorkflowDrawer can gate the "send to client" button.

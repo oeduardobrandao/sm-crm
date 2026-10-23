@@ -822,6 +822,7 @@ export function PostEditorBody({
             notes={conversationNotes?.notes}
             onNotesChanged={conversationNotes?.onChanged}
             openLinkRequest={mediaFocus}
+            noteAuthors={{ clientName: conversationNotes?.clientName, membros, workspaceUsers }}
           />
         </div>
 
@@ -1464,6 +1465,7 @@ export function PostEditorBody({
         notes={conversationNotes?.notes}
         onNotesChanged={conversationNotes?.onChanged}
         openLinkRequest={mediaFocus}
+        noteAuthors={{ clientName: conversationNotes?.clientName, membros, workspaceUsers }}
       />
 
       {post.id != null && (

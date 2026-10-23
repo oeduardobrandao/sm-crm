@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 import type { PostMedia } from '@/store/posts';
 
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }));
@@ -192,6 +193,129 @@ describe('PostMediaLightbox internal notes', () => {
       />,
     );
     expect(screen.getByLabelText(/^Ponto 1:/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Interno · ponto 2:/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Interno 1:/)).toBeInTheDocument();
+  });
+
+  const internalNote = (over = {}) =>
+    makeNote({
+      id: 20,
+      visibility: 'internal',
+      author_kind: 'team',
+      body: 'Revisar o logo',
+      ...over,
+    });
+
+  it('lists every internal note on the item, whole-slide ones included, with resolve and reopen', async () => {
+    const onNoteStatus = vi.fn().mockResolvedValue(undefined);
+    render(
+      <PostMediaLightbox
+        media={[image]}
+        initialIndex={0}
+        open
+        onOpenChange={vi.fn()}
+        onNoteStatus={onNoteStatus}
+        notes={[
+          internalNote({ id: 20, x: null, y: null, body: 'Nota do slide inteiro' }),
+          internalNote({
+            id: 21,
+            x: 0.4,
+            y: 0.4,
+            status: 'resolved',
+            body: 'Nota resolvida',
+            created_at: '2026-10-22T11:00:00Z',
+          }),
+          internalNote({ id: 22, current_link_id: 6, body: 'Outro slide' }),
+          makeNote({ id: 23, body: 'Nota do cliente' }),
+        ]}
+      />,
+    );
+    const list = screen.getByRole('region', { name: 'Notas internas (2)' });
+    expect(list).toHaveTextContent('Nota do slide inteiro');
+    expect(list).toHaveTextContent('Nota resolvida');
+    expect(list).not.toHaveTextContent('Outro slide');
+    expect(list).not.toHaveTextContent('Nota do cliente');
+
+    await userEvent.click(within(list).getByRole('button', { name: 'Marcar como resolvido' }));
+    expect(onNoteStatus).toHaveBeenCalledWith([20], 'resolved');
+    await userEvent.click(within(list).getByRole('button', { name: 'Reabrir' }));
+    expect(onNoteStatus).toHaveBeenCalledWith([21], 'open');
+  });
+
+  it('has no list when the item has no internal notes', () => {
+    render(
+      <PostMediaLightbox
+        media={[image]}
+        initialIndex={0}
+        open
+        onOpenChange={vi.fn()}
+        notes={[makeNote({ id: 23 })]}
+      />,
+    );
+    expect(screen.queryByRole('region', { name: /Notas internas/ })).not.toBeInTheDocument();
+  });
+
+  async function openComposer(onOpenChange = vi.fn()) {
+    render(
+      <PostMediaLightbox
+        media={[image, image2]}
+        initialIndex={0}
+        open
+        onOpenChange={onOpenChange}
+        notes={[]}
+        onCreateInternalNote={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Nota interna' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Comentar o slide inteiro' }));
+    return onOpenChange;
+  }
+
+  it('Escape does not discard a note being typed', async () => {
+    const onOpenChange = await openComposer();
+    await userEvent.type(screen.getByLabelText('Nota interna'), 'Rascunho');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Nota interna')).toHaveValue('Rascunho');
+  });
+
+  it('Escape still closes when the composer is empty', async () => {
+    const onOpenChange = await openComposer();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('previous and next are ignored while text is present; Cancelar then frees them', async () => {
+    await openComposer();
+    await userEvent.type(screen.getByLabelText('Nota interna'), 'Rascunho');
+    await userEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+    expect(screen.getByText('Nota interna no slide 1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+    expect(screen.getByText('2 / 2')).toBeInTheDocument();
+    expect(screen.queryByText('Nota interna no slide 1')).not.toBeInTheDocument();
+  });
+
+  it('a failing save keeps the draft and shows a pt-BR toast, not the raw error', async () => {
+    const onCreateInternalNote = vi
+      .fn()
+      .mockRejectedValue(new Error('new row violates row-level security policy for table'));
+    render(
+      <PostMediaLightbox
+        media={[image]}
+        initialIndex={0}
+        open
+        onOpenChange={vi.fn()}
+        notes={[]}
+        onCreateInternalNote={onCreateInternalNote}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Nota interna' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Comentar o slide inteiro' }));
+    await userEvent.type(screen.getByLabelText('Nota interna'), 'Texto');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar nota interna' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Não foi possível salvar a nota. Tente novamente.'),
+    );
+    expect(screen.getByLabelText('Nota interna')).toHaveValue('Texto');
   });
 });

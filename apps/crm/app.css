@@ -7125,14 +7125,19 @@ body.role-agent input[name='valor_total'] {
 
 /* Pins over the media preview (lightbox): ink = client, dashed = internal */
 
-.crm-pin {
+.crm-pin-anchor {
   position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.crm-pin {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
-  transform: translate(-50%, -50%);
+  padding: 0;
   border: 2px solid #ffffff;
   border-radius: 999px;
   background: #12151a;
@@ -7141,13 +7146,13 @@ body.role-agent input[name='valor_total'] {
   font-weight: 700;
   line-height: 1;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
-.crm-pin[data-state='resolved'] {
-  border-color: #12151a;
-  background: rgba(255, 255, 255, 0.85);
-  color: #12151a;
+/* While placing, the layer owns the click: pins must not swallow it. */
+.crm-pin-layer--placing .crm-pin {
+  pointer-events: none;
 }
 
 .crm-pin[data-visibility='internal'] {
@@ -7159,9 +7164,80 @@ body.role-agent input[name='valor_total'] {
     0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
+/* Resolved comes after internal and is more specific, so a resolved internal pin reads as
+   resolved: faded, dashed outline kept so it is still told apart from a client pin. */
+.crm-pin[data-state='resolved'] {
+  border-color: #12151a;
+  background: rgba(255, 255, 255, 0.85);
+  color: #12151a;
+}
+
+.crm-pin[data-visibility='internal'][data-state='resolved'] {
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.7),
+    0 1px 4px rgba(0, 0, 0, 0.35);
+  opacity: 0.8;
+}
+
 .crm-pin--draft {
   background: transparent;
   box-shadow: 0 0 0 2px #12151a;
+  pointer-events: none;
+}
+
+.crm-pin-details {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 2;
+  width: 14rem;
+  max-width: 70vw;
+  padding: 0.5rem 0.6rem;
+  transform: translateX(-50%);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #12151a;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: left;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+
+.crm-pin-details__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.7rem;
+  color: #4b5563;
+}
+
+.crm-pin-details__meta strong {
+  color: #12151a;
+}
+
+.crm-pin-details__body {
+  margin: 0 0 0.4rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.crm-pin-details__actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.crm-pin-details__actions button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .phone-media__notes {

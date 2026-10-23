@@ -5,7 +5,7 @@ import type { PostApproval } from '@/store/posts';
 
 /**
  * "Aprovado com N comentários em aberto": the client approved while notes were still open.
- * Shown only when the latest client `aprovado` carries a non-empty snapshot, and N is the
+ * Shown only when the latest client decision is an `aprovado` that carries a non-empty snapshot, and N is the
  * LIVE count of open client notes (so it disappears once the team resolves them all).
  */
 export function OpenNotesBadge({
@@ -15,14 +15,16 @@ export function OpenNotesBadge({
   approvals: PostApproval[];
   notes: MediaNote[];
 }) {
+  // The latest client decision wins: a correction after an approval takes the flag away.
   const latest = approvals
-    .filter((a) => a.action === 'aprovado' && !a.is_workspace_user)
+    .filter((a) => (a.action === 'aprovado' || a.action === 'correcao') && !a.is_workspace_user)
     .reduce<PostApproval | null>((acc, a) => {
       if (!acc) return a;
       const diff = Date.parse(a.created_at) - Date.parse(acc.created_at);
       return diff > 0 || (diff === 0 && a.id > acc.id) ? a : acc;
     }, null);
-  if (!latest || (latest.media_note_ids ?? []).length === 0) return null;
+  if (!latest || latest.action !== 'aprovado' || (latest.media_note_ids ?? []).length === 0)
+    return null;
 
   const open = notes.filter((n) => n.visibility === 'client' && n.status === 'open').length;
   if (open === 0) return null;

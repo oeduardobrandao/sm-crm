@@ -75,4 +75,40 @@ describe('OpenNotesBadge', () => {
     );
     expect(screen.queryByText(/em aberto/)).not.toBeInTheDocument();
   });
+
+  it('is hidden when the latest client decision is a correction', () => {
+    render(
+      <OpenNotesBadge
+        approvals={[
+          makeApproval({ id: 1, media_note_ids: [1], created_at: '2026-10-22T10:00:00Z' }),
+          makeApproval({
+            id: 2,
+            action: 'correcao',
+            media_note_ids: [1],
+            created_at: '2026-10-22T11:00:00Z',
+          }),
+        ]}
+        notes={[makeNote({ id: 1 })]}
+      />,
+    );
+    expect(screen.queryByText(/em aberto/)).not.toBeInTheDocument();
+  });
+
+  it('shows again when the client approves after a correction', () => {
+    render(
+      <OpenNotesBadge
+        approvals={[
+          makeApproval({
+            id: 1,
+            action: 'correcao',
+            media_note_ids: [],
+            created_at: '2026-10-22T10:00:00Z',
+          }),
+          makeApproval({ id: 2, media_note_ids: [1], created_at: '2026-10-22T11:00:00Z' }),
+        ]}
+        notes={[makeNote({ id: 1 })]}
+      />,
+    );
+    expect(screen.getByText('Aprovado com 1 comentário em aberto')).toBeInTheDocument();
+  });
 });

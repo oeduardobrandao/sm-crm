@@ -3,12 +3,14 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ChevronLeft, ChevronRight, Download, MessageSquarePlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
-import { formatMoment } from '@mesaas/ui/mediaPins/geometry';
+import { formatMoment, pinNumbers } from '@mesaas/ui/mediaPins/geometry';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
 import type { PostMedia } from '../../../store';
 import type { MediaNote } from '@/store/mediaNotes';
 import { downloadMedia } from '@/utils/downloadMedia';
 import { CrmPinLayer } from './mediaNotes/CrmPinLayer';
+import type { MediaNoteAuthors } from './mediaNotes/MediaNoteCard';
 
 export interface InternalNoteInput {
   linkId: number;
@@ -27,6 +29,10 @@ interface PostMediaLightboxProps {
   notes?: MediaNote[];
   /** Enables "Nota interna": the team pins a note that never leaves the CRM. */
   onCreateInternalNote?: (input: InternalNoteInput) => Promise<void>;
+  /** Resolve / reopen from a pin's details or from the internal notes list. */
+  onNoteStatus?: (noteIds: number[], status: 'open' | 'resolved') => Promise<void>;
+  /** Names for the author line in a pin's details. */
+  authors?: MediaNoteAuthors;
 }
 
 interface Draft {
@@ -48,6 +54,8 @@ export function PostMediaLightbox({
   onOpenChange,
   notes,
   onCreateInternalNote,
+  onNoteStatus,
+  authors,
 }: PostMediaLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
   const [downloading, setDownloading] = useState(false);
@@ -63,6 +71,10 @@ export function PostMediaLightbox({
   const [imageNatural, setImageNatural] = useState<{ id: number; w: number; h: number } | null>(
     null,
   );
+
+  // A note being typed must not vanish on Escape, an outside click, or prev/next.
+  const hasDraftText = mode === 'composing' && noteBody.trim() !== '';
+  useUnsavedWork(hasDraftText);
 
   const resetNote = () => {
     setMode('idle');
@@ -99,8 +111,14 @@ export function PostMediaLightbox({
 
   const hasMultiple = media.length >= 2;
 
-  const prev = () => setIndex((i) => (i - 1 + media.length) % media.length);
-  const next = () => setIndex((i) => (i + 1) % media.length);
+  const prev = () => {
+    if (hasDraftText) return;
+    setIndex((i) => (i - 1 + media.length) % media.length);
+  };
+  const next = () => {
+    if (hasDraftText) return;
+    setIndex((i) => (i + 1) % media.length);
+  };
 
   // Arrow-key nav only; Esc is handled by Radix Dialog itself.
   useEffect(() => {
@@ -127,7 +145,7 @@ export function PostMediaLightbox({
   const handlePointerUp = (e: React.PointerEvent) => {
     const start = startX.current;
     startX.current = null;
-    if (start == null || !hasMultiple) return;
+    if (start == null || !hasMultiple || hasDraftText) return;
     const dx = e.clientX - start;
     if (Math.abs(dx) < 50) return;
     if (dx < 0) next();
@@ -149,6 +167,23 @@ export function PostMediaLightbox({
       : current.width && current.height
         ? { w: current.width, h: current.height }
         : null;
+
+  // Every internal note on this item, whole-slide ones (no spot) included.
+  const internalNotes = (notes ?? [])
+    .filter(
+      (n) =>
+        n.visibility === 'internal' && !n.is_previous_version && n.current_link_id === current.id,
+    )
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
+  const internalPinNumbers = pinNumbers(internalNotes, (n) => n.current_link_id);
+
+  const changeStatus = async (ids: number[], status: 'open' | 'resolved') => {
+    try {
+      await onNoteStatus?.(ids, status);
+    } catch {
+      toast.error('Não foi possível atualizar a nota. Tente novamente.');
+    }
+  };
 
   const startPlacing = () => {
     // On video the spot belongs to a moment: freeze it.
@@ -176,8 +211,9 @@ export function PostMediaLightbox({
         body,
       });
       resetNote();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao salvar a nota interna');
+    } catch {
+      // The draft stays so nothing typed is lost. Never surface raw RPC / RLS text.
+      toast.error('Não foi possível salvar a nota. Tente novamente.');
     } finally {
       setSavingNote(false);
     }
@@ -194,6 +230,12 @@ export function PostMediaLightbox({
         <DialogPrimitive.Overlay className="fixed inset-0 z-[9005] bg-black/90 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
+          onEscapeKeyDown={(e) => {
+            if (hasDraftText) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (hasDraftText) e.preventDefault();
+          }}
           className="fixed inset-0 z-[9005] flex items-center justify-center focus:outline-none pointer-events-none"
         >
           <DialogPrimitive.Title className="sr-only">
@@ -238,6 +280,8 @@ export function PostMediaLightbox({
                 linkId={current.id}
                 natural={natural}
                 currentTime={isVideo ? videoTime : null}
+                authors={authors}
+                onStatus={onNoteStatus ? changeStatus : undefined}
                 placing={mode === 'placing'}
                 onPlace={place}
                 draft={
@@ -248,6 +292,54 @@ export function PostMediaLightbox({
               />
             )}
           </div>
+
+          {internalNotes.length > 0 && mode === 'idle' && (
+            <section
+              aria-label={`Notas internas (${internalNotes.length})`}
+              className="fixed bottom-16 left-4 max-h-48 w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl bg-white p-2 text-xs text-stone-900 shadow-lg pointer-events-auto"
+            >
+              <h3 className="mb-1 px-1 text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                Notas internas ({internalNotes.length})
+              </h3>
+              <ul className="space-y-1">
+                {internalNotes.map((n) => {
+                  const resolved = n.status === 'resolved';
+                  const spot = internalPinNumbers.get(n.id);
+                  const where =
+                    spot != null
+                      ? `Interno ${spot}`
+                      : n.media_kind === 'video' && n.t_seconds != null
+                        ? `Vídeo ${formatMoment(n.t_seconds)}`
+                        : n.media_kind === 'video'
+                          ? 'Vídeo inteiro'
+                          : 'Slide inteiro';
+                  return (
+                    <li
+                      key={n.id}
+                      className={`rounded-lg border border-stone-200 p-1.5 ${resolved ? 'opacity-70' : ''}`}
+                    >
+                      <p className="flex items-center justify-between gap-2 font-semibold">
+                        <span>{where}</span>
+                        <span className="font-normal text-stone-500">
+                          {resolved ? 'Resolvida' : 'Em aberto'}
+                        </span>
+                      </p>
+                      <p className="whitespace-pre-wrap break-words">{n.body}</p>
+                      {onNoteStatus && (
+                        <button
+                          type="button"
+                          className="mt-1 rounded-md border border-stone-300 px-2 py-0.5 text-[11px] font-semibold hover:bg-stone-100"
+                          onClick={() => void changeStatus([n.id], resolved ? 'open' : 'resolved')}
+                        >
+                          {resolved ? 'Reabrir' : 'Marcar como resolvido'}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
 
           {canNote && mode === 'idle' && (
             <button

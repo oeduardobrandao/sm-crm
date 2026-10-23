@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('sonner', () => ({
@@ -32,10 +33,12 @@ vi.mock('../PostMediaLightbox', () => ({
     open,
     initialIndex,
     onCreateInternalNote,
+    onNoteStatus,
   }: {
     open: boolean;
     initialIndex: number;
     onCreateInternalNote?: (input: Record<string, unknown>) => Promise<void>;
+    onNoteStatus?: (ids: number[], status: 'open' | 'resolved') => Promise<void>;
   }) =>
     open ? (
       <div data-testid="lightbox-stub" data-index={initialIndex}>
@@ -44,6 +47,9 @@ vi.mock('../PostMediaLightbox', () => ({
           onClick={() => void onCreateInternalNote?.({ linkId: 5, x: 0.1, y: 0.2, body: 'n' })}
         >
           stub-criar-nota
+        </button>
+        <button type="button" onClick={() => void onNoteStatus?.([77], 'resolved')}>
+          stub-resolver-nota
         </button>
       </div>
     ) : null,
@@ -478,21 +484,33 @@ vi.mock('../MediaAdjustmentDialog', () => ({
   MediaAdjustmentDialog: ({
     media,
     onUpdated,
+    onReplaced,
     onClose,
   }: {
     media: PostMedia;
     onUpdated: () => void;
+    onReplaced?: () => void;
     onClose: () => void;
   }) => (
     <div role="dialog">
       Editando {media.original_filename}
       <button
         onClick={() => {
+          onReplaced?.();
           onUpdated();
           onClose();
         }}
       >
         Simular ajuste salvo
+      </button>
+      {/* The real dialog also calls onUpdated from its catch once a save was attempted. */}
+      <button
+        onClick={() => {
+          onUpdated();
+          onClose();
+        }}
+      >
+        Simular falha no ajuste
       </button>
     </div>
   ),
@@ -667,8 +685,8 @@ describe('PostMediaGallery feedback em mídia', () => {
       makeNote({ id: 901, current_link_id: 5, status: 'resolved' }),
       makeNote({ id: 902, current_link_id: null, is_previous_version: true }),
     ]);
-    expect(await screen.findByLabelText('3 comentários em aberto')).toBeInTheDocument();
-    expect(screen.getAllByLabelText(/em aberto/)).toHaveLength(1);
+    expect(await screen.findByText('3 comentários em aberto')).toBeInTheDocument();
+    expect(screen.getAllByText(/em aberto/)).toHaveLength(1);
   });
 
   it('gallery delete with open notes shows prompt and confirm resolves them', async () => {
@@ -784,5 +802,143 @@ describe('PostMediaGallery feedback em mídia', () => {
       }),
     );
     await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+  });
+
+  it('adjust: a failed or aborted replace (onUpdated only) does not offer the prompt', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    renderWithNotes(notesOn(5, 3, 10));
+    fireEvent.click(await screen.findByTitle('Ajustar proporção'));
+    fireEvent.click(screen.getByRole('button', { name: 'Simular falha no ajuste' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+  });
+
+  it('the prompt covers every open note on the link, client and internal', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    renderWithNotes([
+      makeNote({ id: 10, current_link_id: 5 }),
+      makeNote({ id: 11, current_link_id: 5, visibility: 'internal', author_kind: 'team' }),
+      makeNote({ id: 12, current_link_id: 5, status: 'resolved' }),
+    ]);
+    fireEvent.click(await screen.findByTitle('Remover'));
+    expect(
+      await screen.findByText('Marcar como resolvidos os 2 comentários deste slide?'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([10, 11], 'resolved'));
+  });
+
+  it('a removed video asks about "deste vídeo" and a single note reads in the singular', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([
+      slide(5, { kind: 'video', original_filename: 'v.mp4', url: 'https://example.test/v.mp4' }),
+    ]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    renderWithNotes([makeNote({ id: 10, current_link_id: 5, media_kind: 'video' })]);
+    fireEvent.click(await screen.findByTitle('Remover'));
+    expect(
+      await screen.findByText('Marcar como resolvido o comentário deste vídeo?'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Marcar como resolvido' })).toBeInTheDocument();
+  });
+
+  it('Reel cover moved: offers to resolve the open notes of the removed image', async () => {
+    const video = slide(50, {
+      kind: 'video',
+      original_filename: 'reel.mp4',
+      url: 'https://example.test/reel.mp4',
+      thumbnail_url: 'https://example.test/reel-thumb.jpg',
+      width: 1080,
+      height: 1920,
+    });
+    const cover = slide(51, { original_filename: 'capa.jpg', width: 1080, height: 1920 });
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['img'], { type: 'image/jpeg' }))),
+    );
+    vi.mocked(updateVideoThumbnail).mockResolvedValue(video);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    const { onNotesChanged } = renderWithNotes([...notesOn(51, 2, 30), ...notesOn(50, 1, 40)]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar como capa do Reel' }));
+    expect(
+      await screen.findByText('Marcar como resolvidos os 2 comentários deste slide?'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([30, 31], 'resolved'));
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+    vi.unstubAllGlobals();
+  });
+
+  it('Reel cover: a failed thumbnail update offers no prompt', async () => {
+    const video = slide(50, {
+      kind: 'video',
+      original_filename: 'reel.mp4',
+      url: 'https://example.test/reel.mp4',
+      thumbnail_url: 'https://example.test/reel-thumb.jpg',
+      width: 1080,
+      height: 1920,
+    });
+    const cover = slide(51, { original_filename: 'capa.jpg', width: 1080, height: 1920 });
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['img'], { type: 'image/jpeg' }))),
+    );
+    vi.mocked(updateVideoThumbnail).mockRejectedValue(new Error('upload failed'));
+    renderWithNotes(notesOn(51, 2, 30));
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar como capa do Reel' }));
+    await waitFor(() => expect(updateVideoThumbnail).toHaveBeenCalled());
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('lightbox status changes go through setMediaNoteStatus, then refresh', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onNotesChanged = vi.fn();
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery
+          postId={42}
+          notes={[]}
+          onNotesChanged={onNotesChanged}
+          openLinkRequest={{ linkId: 5, nonce: 1 }}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'stub-resolver-nota' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([77], 'resolved'));
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+  });
+
+  it('a failing status change shows a pt-BR toast, never the raw error', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(setMediaNoteStatus).mockRejectedValueOnce(
+      new Error('new row violates row-level security policy'),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} notes={[]} openLinkRequest={{ linkId: 5, nonce: 1 }} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'stub-resolver-nota' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(toast.error).toHaveBeenCalledWith('Não foi possível atualizar a nota. Tente novamente.');
+  });
+
+  it('a failing confirm in the resolve prompt shows a pt-BR toast', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    vi.mocked(setMediaNoteStatus).mockRejectedValueOnce(new Error('rls'));
+    renderWithNotes(notesOn(5, 2, 10));
+    fireEvent.click(await screen.findByTitle('Remover'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Não foi possível atualizar a nota. Tente novamente.',
+      ),
+    );
   });
 });
