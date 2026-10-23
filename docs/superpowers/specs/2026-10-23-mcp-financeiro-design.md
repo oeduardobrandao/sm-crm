@@ -252,8 +252,8 @@ marcando os escopos novos.
   (`20261027000005:307, 339, 357`), que fica NULL numa escrita legada por service role. Por isso
   `set_cobranca_cliente` usa `financeiro_cliente_salvar_as` sempre que o workspace tem
   `financeiro_config.seeded_at` preenchido, com ou sem a flag; colunas legadas só quando nunca
-  houve seed. Para `set_custo_membro` com seed e flag desligada, idem via `financeiro_acordo_salvar_as`
-  não se aplica (acordo é do v2): grava legado e aceita `created_by` NULL na versão gerada.
+  houve seed. `set_custo_membro` com seed feito e flag desligada grava nas colunas legadas (o
+  acordo é do v2) e aceita `created_by` NULL na versão que o trigger gera.
 - **`set_cobranca_cliente` com v2.** `p_status` não aceita NULL: campos omitidos (status, dia, valor)
   vêm da versão vigente do cliente, lida antes. `vale_desde` padrão: início do período `aberto`; sem
   período `aberto` (seed feito, job ainda não rodou), o primeiro de `financeiro_periodos_editaveis_as`.
