@@ -121,7 +121,7 @@ export function EquipeNoClienteCard({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-foreground">{pessoa.nome}</span>
-                      {pessoa.regra === 'exclusivo' && (
+                      {pessoa.regra === 'exclusivo' && !pausado && (
                         <Badge variant="info" size="sm">
                           Só este cliente
                         </Badge>

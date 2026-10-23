@@ -228,6 +228,8 @@ describe('EquipeNoClienteCard', () => {
     renderCard({ cliente: pausado });
 
     expect(within(grupo('Videomaker')).getByText('Lia')).toBeVisible();
+    // The split rule is computed over active clients: no "Só este cliente" on a paused one.
+    expect(within(grupo('Videomaker')).queryByText('Só este cliente')).not.toBeInTheDocument();
     expect(within(grupo('Design')).getByText('Ana')).toBeVisible();
     expect(within(grupo('Design')).getByText('Pausado')).toBeVisible();
     expect(within(grupo('Design')).queryByText(/÷ 15 clientes/)).not.toBeInTheDocument();
