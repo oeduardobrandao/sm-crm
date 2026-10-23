@@ -138,34 +138,60 @@ either) without leaving the Hub, and the agency never has to guess.
 1. **New tables, not the internal text threads.** `post_media_notes` (one row per note) and
    `post_media_note_replies`, with an author shape like `post_approvals`: `author_kind
    ('client' | 'team')`, `author_user_id uuid NULL` (team), hub token reference for client
-   rows. A `visibility ('client' | 'internal')` column; internal notes are team-authored only.
+   rows. A `visibility ('client' | 'internal')` column on the note only.
    Reason: client authors have no user id, and internal text threads are anchored by TipTap
    marks / caption offsets, a different model.
+   **Visibility/author matrix, enforced in the database** (CHECK constraints plus the write
+   paths, not only in Hub selects): a client-authored note is always `visibility = 'client'`;
+   a team-created note is always `visibility = 'internal'` (the team does not start
+   client-visible notes in this version, it replies to the client's); replies carry no
+   visibility of their own and always inherit the parent note's; a client reply on an internal
+   note is impossible (the Hub never learns internal note ids, and the write path rejects it).
+   **Tenant-safe anchors:** `post_id` and `file_id` are tied to the row's `conta_id` with
+   composite FKs, following `post_references` (migration `20261011000001`:
+   `(post_id, conta_id) → workflow_posts(id, conta_id)`, `(file_id, conta_id) → files(id,
+   conta_id)`).
 2. **Anchor on the file, not the link.** A note stores `post_id`, `file_id` (the file the
    author was looking at), a `slide_index_at_creation` snapshot, optional `t_seconds`, optional
    `x`, `y` (both or neither, each 0..1, CHECK-constrained), `media_kind`. A note is
    **current** when a link of the same post currently points at that `file_id`; its slide label
    is computed from that link's current `sort_order`, never stored. Otherwise it is "versão
    anterior" and its label uses the snapshot ("era o slide 3"). This survives in-place replace,
-   delete-and-reinsert and reordering without touching any of the media-write paths. If the
-   same file is linked twice in one post, the first by `sort_order` wins.
+   delete-and-reinsert and reordering without touching any of the media-write paths.
+   `post_file_links` is unique on `(post_id, file_id)`, so the match is unambiguous.
+   **The client never sends a file id.** `HubPostMedia.id` is the `post_file_links.id` and the
+   Hub DTO has no `file_id`; it stays that way. The Hub sends the link id it is showing, and the
+   write path resolves it server-side to the file, rejecting a link that is not currently on
+   that authorized post. The read DTO for notes gives the Hub what it needs to place a note
+   (current link id or "versão anterior" with the snapshot label), never raw file ids.
 3. **File lifetime.** `file_id` must not cascade-delete the note when a file is trashed or
    purged: nullable / no cascade, with the note degrading to "versão anterior, mídia removida".
    The builder checks how `files` deletion and `file_deletions` work and picks the FK action.
    The note must not keep a file alive (no `reference_count` bump).
-4. **Correction / approval snapshot.** Mirror how `hub-approve` links `reference_ids` to an
-   approval: when the client sends `correcao` or `aprovado`, the open note ids at that moment
-   are linked to the approval row (a join table). The "2 comentários em aberto: slides 3, 4"
-   line and the "Aprovado com comentários em aberto" flag read that snapshot, not a live count.
-   The CRM flag may additionally show how many are still open now.
-5. **Notification type.** Reuse `post_message` with a link that deep-links to the note, rather
-   than adding a new type (avoids touching every migration that repeats the CHECK list and
-   Mensagens consolidadas). Internal notes do not create client-facing notifications; whether
-   they create team notifications (like `mention`) is left to the builder, default none.
+4. **Correction / approval snapshot.** When the client sends `correcao` or `aprovado`, the
+   note ids that are **open and client-visible** at that moment are linked to the approval row
+   (a join table). Internal notes never enter the snapshot, the Hub warning, or its counts.
+   The snapshot is taken **in the same locked transaction as the approval**
+   (`record_client_approval` or a wrapper RPC that locks the post and its notes), not as a
+   follow-up request the way `hub-approve` links `reference_ids` after the approval commits;
+   otherwise a concurrent reply/reopen makes it wrong. The "2 comentários em aberto: slides 3,
+   4" line and the "Aprovado com comentários em aberto" flag read that snapshot, not a live
+   count. The CRM flag may additionally show how many are still open now.
+5. **Notification type.** Reuse `post_message` through `create_post_approval_notification`,
+   rather than adding a new type (avoids touching every migration that repeats the CHECK list
+   and Mensagens consolidadas). That RPC hardcodes the destination to the post, so the
+   notification **opens the post**, not the note; deep-linking to the note would need an RPC
+   contract change and is out of scope for this version. Internal notes do not create
+   client-facing notifications; whether they create team notifications (like `mention`) is
+   left to the builder, default none.
 6. **Endpoints.** A new hub function (e.g. `hub-media-notes`: create note, reply) with its own
    write rate-limit key, and the notes included in `hub-posts` (or fetched alongside) for the
-   client. CRM reads/writes go through RLS-scoped Supabase calls in `store/` (reply, resolve,
-   reopen, internal note create), like `store/comments.ts`. Resolve is team-only by RLS and by
+   client. Its writes require, besides post/client/workspace ownership from the token, the
+   same client-visible-status gate `hub-approve` applies to `mensagem` (`HUB_VISIBLE_STATUSES`:
+   `enviado_cliente`, `aprovado_cliente`, `correcao_cliente`, `agendado`, `postado`,
+   `falha_publicacao`), so a client can never write on a draft it cannot see. CRM
+   reads/writes go through RLS-scoped Supabase calls in `store/` (reply, resolve, reopen,
+   internal note create), like `store/comments.ts`. Resolve is team-only by RLS and by
    endpoint (the hub endpoint has no resolve action).
 7. **Internal filtering is server-side with a test**: `hub-posts`, `hub-post-history` and the new
    hub endpoint select only `visibility = 'client'`, and a test proves an internal note never
