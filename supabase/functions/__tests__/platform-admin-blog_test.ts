@@ -14,6 +14,7 @@ import {
   handleRetryBlogPublish,
   handleUnpublishBlogPost,
   handleUpdateBlogPost,
+  fetchLivePage,
   parseBlogRevMarker,
 } from "../platform-admin/blog-posts.ts";
 import { fireHook, isDeployHookConfigured } from "../_shared/vercel-deploy-hook.ts";
@@ -544,6 +545,19 @@ Deno.test("rejeitar → rejeitado com motivo opcional; publicado não pode ser r
   assertEquals(row().rejection_reason, "Fora do tema.");
   assertEquals((await handleRejectBlogPost(db, { id: ID2 }, ADMIN, H, deps)).status, 409);
   assertEquals((await handleRejectBlogPost(db, { id: ID, reason: "x".repeat(1001) }, ADMIN, H, deps)).status, 400);
+});
+
+Deno.test("fetchLivePage: GET com timeout e sem seguir redirect; 404 ou erro → null", async () => {
+  let url = "";
+  let init: RequestInit | undefined;
+  const html = await fetchLivePage("meu-post", (u, i) => ((url = u), (init = i), Promise.resolve(new Response(page(4)))));
+  assertEquals(url, "https://www.mesaas.com.br/blog/meu-post");
+  assert(init?.signal instanceof AbortSignal);
+  assertEquals(init?.redirect, "manual");
+  assertEquals(parseBlogRevMarker(html ?? ""), 4);
+  assertEquals(await fetchLivePage("x", () => Promise.resolve(new Response("nf", { status: 404 }))), null);
+  assertEquals(await fetchLivePage("x", () => Promise.resolve(new Response(null, { status: 308 }))), null);
+  assertEquals(await fetchLivePage("x", () => Promise.reject(new DOMException("t", "TimeoutError"))), null);
 });
 
 // ---------------------------------------------------------------------------
