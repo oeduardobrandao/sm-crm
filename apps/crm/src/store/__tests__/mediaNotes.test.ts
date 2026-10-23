@@ -271,4 +271,61 @@ describe('media notes store', () => {
     const call = getCalls('post_approvals', 'select').at(-1)!;
     expect(call.modifiers).toContainEqual({ method: 'in', args: ['post_id', [100]] });
   });
+
+  // Deploy-order hardening: the frontend can reach production before migration
+  // 20261025000001. The drawers must keep the client conversation, minus the notes.
+  it('getPostApprovals retries without the embed when the relation is missing', async () => {
+    const approval = {
+      id: 1,
+      post_id: 100,
+      action: 'correcao',
+      comentario: 'Ajustar',
+      is_workspace_user: false,
+      author_user_id: null,
+      created_at: '2026-10-22',
+    };
+    mockedSupabase.__queueSupabaseResult(
+      'post_approvals',
+      'select',
+      {
+        data: null,
+        error: {
+          code: 'PGRST200',
+          message:
+            "Could not find a relationship between 'post_approvals' and 'post_approval_media_notes' in the schema cache",
+        },
+      },
+      { data: [approval], error: null },
+    );
+
+    const result = await getPostApprovals([100]);
+
+    expect(result).toEqual([{ ...approval, media_note_ids: [] }]);
+    const calls = getCalls('post_approvals', 'select');
+    expect(calls).toHaveLength(2);
+    expect(calls[0].selectArgs[0][0]).toBe('*, post_approval_media_notes(note_id)');
+    expect(calls[1].selectArgs[0][0]).toBe('*');
+    expect(calls[1].modifiers).toContainEqual({ method: 'in', args: ['post_id', [100]] });
+  });
+
+  it('getPostApprovals does not retry on any other error', async () => {
+    mockedSupabase.__queueSupabaseResult('post_approvals', 'select', {
+      data: null,
+      error: { code: '57014', message: 'canceling statement due to statement timeout' },
+    });
+    await expect(getPostApprovals([100])).rejects.toBeTruthy();
+    expect(getCalls('post_approvals', 'select')).toHaveLength(1);
+  });
+
+  it('getMediaNotes answers no notes when the view does not exist yet', async () => {
+    mockedSupabase.__queueSupabaseResult('post_media_notes_v', 'select', {
+      data: null,
+      error: {
+        code: 'PGRST205',
+        message: "Could not find the table 'public.post_media_notes_v' in the schema cache",
+      },
+    });
+    expect(await getMediaNotes([10])).toEqual([]);
+    expect(getCalls('post_media_note_replies')).toHaveLength(0);
+  });
 });

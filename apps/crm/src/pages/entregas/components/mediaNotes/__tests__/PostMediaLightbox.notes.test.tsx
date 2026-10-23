@@ -241,6 +241,60 @@ describe('PostMediaLightbox internal notes', () => {
     expect(onNoteStatus).toHaveBeenCalledWith([21], 'open');
   });
 
+  it('on phones the internal notes start collapsed behind a chip that expands them', async () => {
+    const realMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      ...realMatchMedia(query),
+      matches: query === '(max-width: 768px)',
+    })) as typeof window.matchMedia;
+    try {
+      render(
+        <PostMediaLightbox
+          media={[image]}
+          initialIndex={0}
+          open
+          onOpenChange={vi.fn()}
+          onNoteStatus={vi.fn()}
+          notes={[internalNote({ id: 20, body: 'Revisar o logo' })]}
+        />,
+      );
+      // Collapsed: the media stays clear, only the chip shows.
+      expect(screen.queryByRole('region', { name: 'Notas internas (1)' })).not.toBeInTheDocument();
+      const chip = screen.getByRole('button', { name: 'Notas internas (1)' });
+      expect(chip).toHaveAttribute('aria-expanded', 'false');
+
+      await userEvent.click(chip);
+      expect(chip).toHaveAttribute('aria-expanded', 'true');
+      const list = screen.getByRole('region', { name: 'Notas internas (1)' });
+      expect(list).toHaveTextContent('Revisar o logo');
+      // Capped and scrollable when expanded.
+      expect(list.className).toMatch(/max-h-/);
+      expect(list.className).toMatch(/overflow-y-auto/);
+
+      await userEvent.click(chip);
+      expect(screen.queryByRole('region', { name: 'Notas internas (1)' })).not.toBeInTheDocument();
+    } finally {
+      window.matchMedia = realMatchMedia;
+    }
+  });
+
+  it('on desktop the internal notes start expanded and the chip collapses them', async () => {
+    render(
+      <PostMediaLightbox
+        media={[image]}
+        initialIndex={0}
+        open
+        onOpenChange={vi.fn()}
+        notes={[internalNote({ id: 20, body: 'Revisar o logo' })]}
+      />,
+    );
+    const chip = screen.getByRole('button', { name: 'Notas internas (1)' });
+    expect(chip).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('region', { name: 'Notas internas (1)' })).toBeInTheDocument();
+    await userEvent.click(chip);
+    expect(screen.queryByRole('region', { name: 'Notas internas (1)' })).not.toBeInTheDocument();
+  });
+
   it('has no list when the item has no internal notes', () => {
     render(
       <PostMediaLightbox

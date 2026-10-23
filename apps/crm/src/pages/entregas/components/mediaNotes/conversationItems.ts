@@ -31,7 +31,11 @@ export function formatMediaTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** "Slide 3 · ponto 1" | "0:42" | "Slide 3 (versão anterior)". Pins are numbered per slide/file. */
+/**
+ * "Slide 3 · ponto 1" | "0:42" | "Slide 3 (versão anterior)". Pins are numbered per
+ * slide/file. A previous-version note has no pin on screen (here or in the Hub), so it
+ * never gets a number: the team must not say "ponto 1" to a client who cannot see one.
+ */
 export function noteAnchorLabel(note: MediaNote, notes: MediaNote[], media: PostMedia[]): string {
   const parts: string[] = [];
   if (note.media_kind === 'video') {
@@ -39,17 +43,15 @@ export function noteAnchorLabel(note: MediaNote, notes: MediaNote[], media: Post
   } else {
     parts.push(`Slide ${slideIndexOf(note, media) + 1}`);
   }
-  if (note.x != null && note.y != null) {
+  if (note.x != null && note.y != null && !note.is_previous_version) {
     const sameTarget = notes
       .filter(
         (n) =>
           n.x != null &&
           n.y != null &&
           n.media_kind === note.media_kind &&
-          n.is_previous_version === note.is_previous_version &&
-          (note.is_previous_version
-            ? n.slide_index_at_creation === note.slide_index_at_creation
-            : n.current_link_id === note.current_link_id),
+          !n.is_previous_version &&
+          n.current_link_id === note.current_link_id,
       )
       .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
     const pos = sameTarget.findIndex((n) => n.id === note.id);

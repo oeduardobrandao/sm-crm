@@ -3,6 +3,7 @@ import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
 import { fetchAllPaged, fetchAllPagedByIds } from './paging';
+import { isMissingRelationError } from './missingRelation';
 import { sortByPlatformOrder, type PostTargetSummary } from './postTargets';
 import type { Workflow, WorkflowEtapa } from './workflows';
 
@@ -1435,19 +1436,23 @@ export async function sendPostToCliente(
 
 export async function getPostApprovals(postIds: number[]): Promise<PostApproval[]> {
   if (postIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from('post_approvals')
-    .select('*, post_approval_media_notes(note_id)')
-    .in('post_id', postIds)
-    .order('created_at', { ascending: true });
+  const read = (columns: string) =>
+    supabase
+      .from('post_approvals')
+      .select(columns)
+      .in('post_id', postIds)
+      .order('created_at', { ascending: true });
+  let { data, error } = await read('*, post_approval_media_notes(note_id)');
+  // Frontend deployed before migration 20261025000001: keep the conversation, no notes.
+  if (error && isMissingRelationError(error, 'post_approval_media_notes')) {
+    ({ data, error } = await read('*'));
+  }
   if (error) throw error;
-  return (data || []).map(
-    ({
-      post_approval_media_notes,
-      ...approval
-    }: Omit<PostApproval, 'media_note_ids'> & {
-      post_approval_media_notes?: { note_id: number }[] | null;
-    }) => ({
+  type ApprovalRow = Omit<PostApproval, 'media_note_ids'> & {
+    post_approval_media_notes?: { note_id: number }[] | null;
+  };
+  return ((data || []) as unknown as ApprovalRow[]).map(
+    ({ post_approval_media_notes, ...approval }) => ({
       ...approval,
       media_note_ids: (post_approval_media_notes ?? []).map((link) => link.note_id),
     }),

@@ -128,4 +128,23 @@ describe('noteAnchorLabel', () => {
       ),
     ).toBe('Slide 3 (versão anterior)');
   });
+
+  it('never numbers a pin on a previous version (no pin on screen, same as the Hub)', () => {
+    const prev = (over: Parameters<typeof note>[0]) =>
+      note({
+        current_link_id: null,
+        current_slide_index: null,
+        slide_index_at_creation: 2,
+        is_previous_version: true,
+        x: 0.3,
+        y: 0.4,
+        ...over,
+      });
+    const a = prev({ id: 1, created_at: '2026-10-22T10:00:00Z' });
+    const b = prev({ id: 2, created_at: '2026-10-22T10:05:00Z' });
+    expect(noteAnchorLabel(a, [a, b], media)).toBe('Slide 3 (versão anterior)');
+    expect(noteAnchorLabel(b, [a, b], media)).toBe('Slide 3 (versão anterior)');
+    const video = prev({ id: 3, media_kind: 'video', t_seconds: 42 });
+    expect(noteAnchorLabel(video, [video], media)).toBe('0:42 (versão anterior)');
+  });
 });

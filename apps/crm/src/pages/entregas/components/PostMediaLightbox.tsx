@@ -1,6 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { ChevronLeft, ChevronRight, Download, MessageSquarePlus, X } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Download,
+  MessageSquarePlus,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import { formatMoment, pinNumbers } from '@mesaas/ui/mediaPins/geometry';
@@ -71,6 +79,16 @@ export function PostMediaLightbox({
   const [imageNatural, setImageNatural] = useState<{ id: number; w: number; h: number } | null>(
     null,
   );
+
+  // The internal notes list covers the bottom of the media on a phone: collapsed there by
+  // default behind a chip, expanded on larger screens. Read at mount, never at module scope.
+  const [internalOpen, setInternalOpen] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      typeof window.matchMedia !== 'function' ||
+      !window.matchMedia('(max-width: 768px)').matches,
+  );
+  const internalListId = useId();
 
   // A note being typed must not vanish on Escape, an outside click, or prev/next.
   const hasDraftText = mode === 'composing' && noteBody.trim() !== '';
@@ -286,51 +304,69 @@ export function PostMediaLightbox({
           </div>
 
           {internalNotes.length > 0 && mode === 'idle' && (
-            <section
-              aria-label={`Notas internas (${internalNotes.length})`}
-              className="fixed bottom-16 left-4 max-h-48 w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl bg-white p-2 text-xs text-stone-900 shadow-lg pointer-events-auto"
-            >
-              <h3 className="mb-1 px-1 text-[11px] font-bold uppercase tracking-wide text-stone-500">
-                Notas internas ({internalNotes.length})
-              </h3>
-              <ul className="space-y-1">
-                {internalNotes.map((n) => {
-                  const resolved = n.status === 'resolved';
-                  const spot = internalPinNumbers.get(n.id);
-                  const where =
-                    spot != null
-                      ? `Interno ${spot}`
-                      : n.media_kind === 'video' && n.t_seconds != null
-                        ? `Vídeo ${formatMoment(n.t_seconds)}`
-                        : n.media_kind === 'video'
-                          ? 'Vídeo inteiro'
-                          : 'Slide inteiro';
-                  return (
-                    <li
-                      key={n.id}
-                      className={`rounded-lg border border-stone-200 p-1.5 ${resolved ? 'opacity-70' : ''}`}
-                    >
-                      <p className="flex items-center justify-between gap-2 font-semibold">
-                        <span>{where}</span>
-                        <span className="font-normal text-stone-500">
-                          {resolved ? 'Resolvida' : 'Em aberto'}
-                        </span>
-                      </p>
-                      <p className="whitespace-pre-wrap break-words">{n.body}</p>
-                      {onNoteStatus && (
-                        <button
-                          type="button"
-                          className="mt-1 rounded-md border border-stone-300 px-2 py-0.5 text-[11px] font-semibold hover:bg-stone-100"
-                          onClick={() => void onNoteStatus([n.id], resolved ? 'open' : 'resolved')}
+            <div className="fixed bottom-16 left-4 flex w-72 max-w-[calc(100vw-2rem)] flex-col items-start gap-2 pointer-events-auto">
+              {internalOpen && (
+                <section
+                  id={internalListId}
+                  aria-label={`Notas internas (${internalNotes.length})`}
+                  className="max-h-[min(12rem,40vh)] w-full overflow-y-auto rounded-xl bg-white p-2 text-xs text-stone-900 shadow-lg"
+                >
+                  <ul className="space-y-1">
+                    {internalNotes.map((n) => {
+                      const resolved = n.status === 'resolved';
+                      const spot = internalPinNumbers.get(n.id);
+                      const where =
+                        spot != null
+                          ? `Interno ${spot}`
+                          : n.media_kind === 'video' && n.t_seconds != null
+                            ? `Vídeo ${formatMoment(n.t_seconds)}`
+                            : n.media_kind === 'video'
+                              ? 'Vídeo inteiro'
+                              : 'Slide inteiro';
+                      return (
+                        <li
+                          key={n.id}
+                          className={`rounded-lg border border-stone-200 p-1.5 ${resolved ? 'opacity-70' : ''}`}
                         >
-                          {resolved ? 'Reabrir' : 'Marcar como resolvido'}
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
+                          <p className="flex items-center justify-between gap-2 font-semibold">
+                            <span>{where}</span>
+                            <span className="font-normal text-stone-500">
+                              {resolved ? 'Resolvida' : 'Em aberto'}
+                            </span>
+                          </p>
+                          <p className="whitespace-pre-wrap break-words">{n.body}</p>
+                          {onNoteStatus && (
+                            <button
+                              type="button"
+                              className="mt-1 rounded-md border border-stone-300 px-2 py-0.5 text-[11px] font-semibold hover:bg-stone-100"
+                              onClick={() =>
+                                void onNoteStatus([n.id], resolved ? 'open' : 'resolved')
+                              }
+                            >
+                              {resolved ? 'Reabrir' : 'Marcar como resolvido'}
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+              <button
+                type="button"
+                aria-expanded={internalOpen}
+                aria-controls={internalOpen ? internalListId : undefined}
+                onClick={() => setInternalOpen((v) => !v)}
+                className="min-h-[44px] px-3 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center gap-1.5 text-sm ring-1 ring-white/20"
+              >
+                Notas internas ({internalNotes.length})
+                {internalOpen ? (
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
           )}
 
           {canNote && mode === 'idle' && (
