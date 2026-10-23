@@ -72,8 +72,11 @@ rentabilidade. Anexos de contrato dos acordos (bucket `financeiro-acordos`) fica
    seletores de escopo mostram esses escopos desabilitados para quem não é dono, com a nota
    "Somente o dono do workspace".
 
-Plano: as ferramentas também exigem `feature_financial` (ler `effective_plan_feature`), e as do v2
-exigem `feature_financeiro_v2`; as RPCs já levantam `feature_disabled:*`, que vira mensagem legível.
+Plano: o gate do `register` para `financeiro:*` também confere `feature_financial`
+(`effective_plan_feature`) antes de qualquer consulta, leitura ou escrita, porque o service role
+ignora RLS e uma leitura direta de `transacoes` não passa por trigger nenhum. As ferramentas do v2
+conferem também `feature_financeiro_v2` antes do `run`; as RPCs continuam levantando
+`feature_disabled:*` como segunda barreira.
 
 ### Variantes `_as` das RPCs do v2 (migração nova)
 
@@ -105,13 +108,50 @@ Migração `20261029000002_financeiro_v2_rpc_as.sql`.
   autoverificação no fim da migração, como em 000004:620-640.
 - Comportamento das públicas não muda. As suítes `99_financeiro_v2_*.sql` existentes têm que
   continuar passando sem edição.
+- Rollback: um arquivo `docs/superpowers/rollbacks/20261029000002_financeiro_v2_rpc_as.down.sql`
+  com, nesta ordem: as definições originais das públicas (copiadas da última migração de cada uma),
+  com os grants originais; `DROP FUNCTION` de todas as `_as` e `_core`. Testado localmente
+  (`db reset`, aplicar o down, rodar as suítes `99_financeiro_v2_*.sql` existentes). A migração
+  leva um comentário no fim apontando para ele, como 000006:342.
+
+### RPCs de escrita dos lançamentos (mesma migração)
+
+Duas operações do lado legado precisam ser atômicas, então também viram RPCs service_role only:
+
+- `financeiro_agendamento_confirmar_as(p_conta, p_user, p_origem text, p_id bigint)`: confere dono e
+  `feature_financial`; calcula o agendado **do mês corrente** (America/Sao_Paulo) a partir da
+  origem (`cliente`: ativo e com `data_pagamento`; `membro`: com `data_pagamento`; `recorrente`:
+  ativo no mês), monta a mesma `referencia_agendamento` do CRM, pega
+  `pg_advisory_xact_lock(hashtextextended('agendamento:' || p_conta || ':' || ref, 0))`, recusa com
+  `ja_confirmado` se já existir linha com essa referência no workspace e insere a linha `pago`
+  (descrição, valor, tipo, categoria e detalhe iguais aos da projeção do CRM). Devolve a linha.
+  Só o mês corrente porque é o único que o CRM projeta e, com v2 ligado, as colunas legadas só
+  refletem o período aberto. O CRM não passa por ela (o confirmar do CRM segue sem a trava, como
+  hoje); sem índice único por enquanto, porque prod pode ter duplicatas antigas e isso pediria
+  migração de dados.
+- `financeiro_recorrente_criar_as(p_conta, p_user, p_tipo, p_descricao, p_categoria, p_valor, p_dia,
+  p_inicio, p_registrar_primeiro_pago boolean, p_data_primeiro date)`: cria o modelo e, se pedido,
+  a primeira ocorrência paga com `detalhe 'Recorrente'` e a referência do mês de `p_data_primeiro`,
+  na mesma transação. Sem chave de idempotência: uma repetição cria outro modelo, e a descrição da
+  ferramenta diz para listar antes de recriar.
+
+Dia do agendado: as três origens usam `least(dia, último dia do mês)`. O CRM hoje só faz isso para
+recorrentes e gera `2026-02-31` para cliente/membro com dia 29 a 31 (a confirmação falha no banco);
+este trabalho corrige `projetarAgendamentos` para limitar as três origens.
 
 ### Ferramentas
 
-Todas `ownerOnly`. Datas `YYYY-MM-DD`. Valores em reais (number). Erros de negócio
-(`feature_disabled:*`, `nao_configurado`, `periodo_invalido`, `funcao_duplicada`, `not_found`,
-`owner_only`, `financial_access_denied`, violação de CHECK) viram `McpInputError` com mensagem em
-português; o resto continua "Internal error.".
+Todas `ownerOnly`. Datas `YYYY-MM-DD`. Valores em reais (number). Cada ferramenta declara schema
+zod explícito de entrada e uma lista fechada de campos de saída (nada de `select('*')`).
+
+Erros: uma tabela única em `mcp/financeiro-errors.ts` mapeia todo código que as RPCs levantam para
+português: `feature_disabled:feature_financial`, `feature_disabled:feature_financeiro_v2`,
+`financial_access_denied`, `owner_only`, `nao_configurado`, `not_found`, `periodo_invalido`,
+`periodo_fechado`, `periodo_estado_invalido`, `periodo_dia_invalido`, `funcao_duplicada`,
+`acordo_invalido`, `cliente_encerrado`, `itens_invalidos`, `mudancas_invalidas`,
+`sem_atribuicao`, `ja_confirmado`, além de violação de CHECK (23514) e de FK (23503). Um teste
+Deno extrai os `RAISE EXCEPTION '<código>'` das migrações `20261027*` e `20261029*` e falha se
+algum não estiver na tabela. Fora da tabela continua "Internal error.".
 
 Leitura (`financeiro:read`):
 
@@ -122,7 +162,8 @@ Leitura (`financeiro:read`):
 | `get_cobrancas` | Cobrança cadastrada: clientes (id, nome, status, valor_mensal, data_pagamento) e membros (id, nome, custo_mensal, data_pagamento). É a base dos agendados do mês |
 | `get_financeiro_v2` | Config (periodo_dia, meta_margem, seeded), funções, períodos (`_as` de listar) e editáveis |
 | `get_rentabilidade` | `financeiro_rentabilidade_as(conta, user, inicio)` |
-| `get_versoes` | Versões de um cliente (`financeiro_cliente_versoes`) ou de um acordo de membro (`financeiro_acordo_versoes`) |
+| `get_cliente_versoes` | Versões de um cliente (`cliente_id` obrigatório): vale_desde, valor_mensal, dia_pagamento, status, created_at. Até 50, mais recentes primeiro |
+| `get_acordo_versoes` | Versões do acordo de um membro (`membro_id` obrigatório): vale_desde, funcao_id, tipo e valores do acordo, `tem_contrato` (boolean; o caminho do arquivo não sai). Até 50. `criado_por` não sai em nenhuma das duas |
 
 Escrita (`financeiro:write`):
 
@@ -130,15 +171,15 @@ Escrita (`financeiro:write`):
 |---|---|
 | `create_lancamento` | Insere em `transacoes` (status `pago` ou `agendado`, categoria da lista do CRM) |
 | `update_lancamento` / `delete_lancamento` | Altera / remove por id, sempre filtrando `conta_id` |
-| `confirmar_agendamento` | Materializa o agendado de um mês como `pago`: `origem` `cliente`/`membro`/`recorrente` + id + `mes`. Usa a mesma `referencia_agendamento` do CRM (`cliente_<id>_<aaaa>_<mm>`, `membro_…`, `recorrente_…`), valor/dia/descrição da origem, e recusa se já existir linha com essa referência |
-| `create_recorrente` | Cria modelo (+ opcional `registrar_primeiro_pago`, como o "Repetir todo mês" do CRM) |
+| `confirmar_agendamento` | `origem` (`cliente`/`membro`/`recorrente`) + `id`: materializa como `pago` o agendado do mês corrente via `financeiro_agendamento_confirmar_as` |
+| `create_recorrente` | `financeiro_recorrente_criar_as` (modelo + opcional primeira ocorrência paga, atômico) |
 | `update_recorrente` / `encerrar_recorrente` | Edita; encerra com a mesma regra do CRM (fim = mês anterior, ou apaga se começou neste mês) |
 | `set_cobranca_cliente` | Valor mensal, dia de pagamento, status. Com v2 ligado: `financeiro_cliente_salvar_as` com `vale_desde` (padrão: início do período aberto). Sem v2: colunas legadas |
 | `set_custo_membro` | Custo mensal e dia de pagamento. Com v2 ligado: recusa e indica `save_acordo` (no v2 o custo vem do acordo). Sem v2: colunas legadas |
 | `seed_financeiro_v2` | `financeiro_seed_as` |
 | `save_financeiro_config` | `financeiro_config_salvar_as` |
 | `save_funcao` / `delete_funcao` | `financeiro_funcao_salvar_as` / `_excluir_as` |
-| `save_acordo` | `financeiro_acordo_salvar_as` (mesmo jsonb que o CRM envia) |
+| `save_acordo` | `financeiro_acordo_salvar_as`. A ferramenta tem schema próprio (campos do acordo nomeados e tipados, ausente = não informado) e monta o jsonb que a RPC espera; o plano copia a forma exata de `apps/crm/src/store/financeiroV2.ts` e das validações `acordo_invalido` |
 | `save_atribuicoes` | `financeiro_atribuicoes_salvar_as` |
 | `save_entregas` | `financeiro_entregas_salvar_as` |
 | `fechar_periodo` / `reabrir_periodo` | `_as` correspondentes |
@@ -169,5 +210,6 @@ marcando os escopos novos.
 
 - Escopo da "seção inteira" como descrito acima; anexos de contrato fora.
 - Dono = `workspace_members.role = 'owner'`; admins ficam de fora mesmo com permissão financeira.
-- Sem projeção no servidor; `confirmar_agendamento` cobre a ação de confirmar.
+- Sem projeção no servidor; `confirmar_agendamento` cobre a ação de confirmar, só no mês corrente.
+- Confirmar atômico por trava consultiva, sem índice único (evita migração de dados em prod).
 - `set_custo_membro` recusa com v2 ligado (o custo é do acordo).
