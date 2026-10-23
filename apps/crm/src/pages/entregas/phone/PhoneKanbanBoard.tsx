@@ -68,6 +68,8 @@ export interface PhoneKanbanBoardProps {
   membros: Membro[];
   onRefresh: () => void;
   countsFor: (workflowId: number) => WorkflowCardCounts;
+  /** Unread discussion messages for a post card (by post id). Absent = no badge. */
+  discussaoNaoLidasForPost?: (postId: number) => number;
   workflow: PhoneKanbanWorkflowActions;
   post: PhoneKanbanPostActions;
   onAddWorkflow?: (templateId: number | null) => void;
@@ -140,6 +142,7 @@ export function PhoneKanbanBoard({
   membros,
   onRefresh,
   countsFor,
+  discussaoNaoLidasForPost,
   workflow,
   post,
   onAddWorkflow,
@@ -201,13 +204,19 @@ export function PhoneKanbanBoard({
           onDuplicate={post.duplicate ? () => post.duplicate!(entity) : undefined}
           onDelete={post.remove ? () => post.remove!(entity) : undefined}
           preview={
-            <PhonePostProcessCard entity={entity} preview showPublishDate={showPublishDate} />
+            <PhonePostProcessCard
+              entity={entity}
+              preview
+              showPublishDate={showPublishDate}
+              discussaoNaoLidas={discussaoNaoLidasForPost?.(entity.process.post_id)}
+            />
           }
         >
           {({ triggerProps }) => (
             <PhonePostProcessCard
               entity={entity}
               showPublishDate={showPublishDate}
+              discussaoNaoLidas={discussaoNaoLidasForPost?.(entity.process.post_id)}
               onOpen={post.open ? () => post.open!(entity) : undefined}
               onForward={reorder ? undefined : () => post.forward(entity)}
               forwardLabel={post.forwardLabel(entity)}
@@ -376,6 +385,7 @@ export function PhoneKanbanBoard({
                 entity={activeEntity}
                 preview
                 showPublishDate={showPublishDate}
+                discussaoNaoLidas={discussaoNaoLidasForPost?.(activeEntity.process.post_id)}
               />
             )}
           </DragOverlay>

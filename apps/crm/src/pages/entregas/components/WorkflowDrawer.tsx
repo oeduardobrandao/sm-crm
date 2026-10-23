@@ -97,6 +97,7 @@ import {
   type Membro,
   type PostPropertyValue,
   type CommentThreadWithComments,
+  type DiscussaoNaoLidas,
   type CaptionAnchorPatch,
   type CommentAnchor,
   type PostEditSuggestion,
@@ -108,6 +109,10 @@ import {
   advanceWorkflowFromApproval,
   resolveWorkflowRascunhoBanner,
 } from '../../../store';
+import {
+  discussaoTriggerBadge,
+  usePostDiscussaoNaoLidas,
+} from '../discussao/usePostDiscussaoNaoLidas';
 import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
 import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
 import { AutoScheduleBadge } from './AutoScheduleBadge';
@@ -479,6 +484,9 @@ export function WorkflowDrawer({
     queryFn: () => getPostCommentThreads(postIds),
     enabled: postIds.length > 0,
   });
+
+  // Discussion total / unread per post for the collapsed rows' badge: one RPC for the drawer.
+  const { byPost: discussaoByPost } = usePostDiscussaoNaoLidas({ postIds });
 
   const clienteId = card.workflow.cliente_id;
 
@@ -1329,6 +1337,7 @@ export function WorkflowDrawer({
                           replyText={replyText[post.id!] || ''}
                           sendingReply={sendingReply === post.id}
                           commentThreads={commentThreads.filter((t) => t.post_id === post.id)}
+                          discussao={discussaoByPost.get(post.id!)}
                           currentUserId={user?.id}
                           currentUserRole={role}
                           canManageAutomations={canManageAutomations}
@@ -1737,6 +1746,8 @@ interface SortablePostItemProps {
   replyText: string;
   sendingReply: boolean;
   commentThreads: CommentThreadWithComments[];
+  /** Discussion total and unread count for this post (get_post_discussao_nao_lidas). */
+  discussao?: DiscussaoNaoLidas;
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
   canManageAutomations: boolean;
@@ -1801,6 +1812,7 @@ function SortablePostItem({
   replyText,
   sendingReply,
   commentThreads,
+  discussao,
   currentUserId,
   currentUserRole,
   canManageAutomations,
@@ -1849,6 +1861,7 @@ function SortablePostItem({
   };
 
   const isExternallyVisible = isVisibleToClient(post.status);
+  const discussaoBadge = discussaoTriggerBadge(discussao, commentThreads.length);
 
   // Publish date shown in the collapsed row: once a post is actually live the real
   // published_at wins, otherwise fall back to the scheduled "Data de postagem".
@@ -1874,7 +1887,7 @@ function SortablePostItem({
           hasMedia={hasMedia}
           editSuggestion={editSuggestion}
           referenceCount={referenceCount}
-          commentCount={commentThreads.length}
+          discussaoBadge={discussaoBadge}
           approvals={approvals}
           statusEvents={statusEvents}
           processEvents={processEvents}
@@ -1953,13 +1966,14 @@ function SortablePostItem({
                 {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
               </Badge>
             )}
-            {commentThreads.length > 0 && (
+            {discussaoBadge && (
               <span
-                className="drawer-post-comment-badge"
-                title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}
+                className={`drawer-post-comment-badge${discussaoBadge.unread ? ' drawer-post-comment-badge--unread' : ''}`}
+                title={discussaoBadge.label}
+                aria-label={discussaoBadge.label}
               >
-                <MessageSquare className="h-3 w-3" />
-                {commentThreads.length}
+                <MessageSquare className="h-3 w-3" aria-hidden="true" />
+                {discussaoBadge.count}
               </span>
             )}
           </div>

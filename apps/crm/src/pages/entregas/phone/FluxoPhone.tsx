@@ -44,6 +44,7 @@ import { TIPO_ICONS } from '../tipoIcons';
 import { isEligibleToScheduleNow } from '../autoScheduleNudge';
 import { AutoScheduleBadge } from '../components/AutoScheduleBadge';
 import { PostStatusChip } from '../components/PostStatusChip';
+import type { DiscussaoTriggerBadge } from '../discussao/usePostDiscussaoNaoLidas';
 import { PostTimelineList } from '../components/PostTimelinePopover';
 import { buildPostTimeline } from '../components/postTimeline';
 
@@ -350,7 +351,8 @@ export interface FluxoPhonePostRowProps {
   hasMedia: boolean;
   editSuggestion: PostEditSuggestion | null;
   referenceCount: number;
-  commentCount: number;
+  /** Discussion badge (unread with a dot, else total). Null renders nothing. */
+  discussaoBadge: DiscussaoTriggerBadge | null;
   approvals: PostApproval[];
   statusEvents: PostStatusEvent[];
   processEvents: PostProcessEvent[];
@@ -392,7 +394,7 @@ export function FluxoPhonePostRow({
   hasMedia,
   editSuggestion,
   referenceCount,
-  commentCount,
+  discussaoBadge,
   approvals,
   statusEvents,
   processEvents,
@@ -539,13 +541,14 @@ export function FluxoPhonePostRow({
                     {referenceCount === 1 ? '1 referência' : `${referenceCount} referências`}
                   </Badge>
                 )}
-                {commentCount > 0 && (
+                {discussaoBadge && (
                   <span
-                    className="drawer-post-comment-badge"
-                    title={`${commentCount} ${plural(commentCount, 'comentário', 'comentários')}`}
+                    className={`drawer-post-comment-badge${discussaoBadge.unread ? ' drawer-post-comment-badge--unread' : ''}`}
+                    title={discussaoBadge.label}
+                    aria-label={discussaoBadge.label}
                   >
                     <MessageSquare className="h-3 w-3" aria-hidden="true" />
-                    {commentCount}
+                    {discussaoBadge.count}
                   </span>
                 )}
                 {hasMedia && (

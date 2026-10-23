@@ -5440,6 +5440,26 @@ body.role-agent input[name='valor_total'] {
   background: var(--surface-3);
 }
 
+/* Mensagens não lidas da discussão do post (ou da soma dos posts do fluxo). */
+
+.board-card-discussao-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-main);
+  font-size: 0.65rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.board-card-discussao-badge svg {
+  color: var(--primary-color);
+}
+
 .board-card-drag-handle {
   color: var(--text-muted);
 }
@@ -6306,6 +6326,19 @@ body.role-agent input[name='valor_total'] {
   font-weight: 600;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* Não lidas na discussão (só para quem participa e segue): número em destaque e ponto. */
+.drawer-post-comment-badge--unread {
+  color: var(--text-main);
+}
+
+.drawer-post-comment-badge--unread::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary-color);
 }
 
 .drawer-post-preview {

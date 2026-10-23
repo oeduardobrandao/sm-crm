@@ -279,3 +279,34 @@ describe('WorkflowCard kebab', () => {
     expect(screen.getByText('Copiar link do fluxo')).toBeInTheDocument();
   });
 });
+
+describe('WorkflowCard discussion unread badge', () => {
+  it('shows the unread count of the flow posts when > 0', () => {
+    render(
+      <MemoryRouter>
+        <WorkflowCard card={makeCard(1)} postsCount={5} discussaoNaoLidas={3} />
+      </MemoryRouter>,
+    );
+    const badge = screen.getByLabelText('3 mensagens novas na discussão');
+    expect(badge).toHaveTextContent('3');
+    expect(badge).toHaveClass('board-card-discussao-badge');
+  });
+
+  it('uses the singular for one unread message', () => {
+    render(
+      <MemoryRouter>
+        <WorkflowCard card={makeCard(1)} postsCount={5} discussaoNaoLidas={1} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText('1 mensagem nova na discussão')).toBeInTheDocument();
+  });
+
+  it.each([0, undefined])('shows nothing when unread is %s', (value) => {
+    render(
+      <MemoryRouter>
+        <WorkflowCard card={makeCard(1)} postsCount={5} discussaoNaoLidas={value} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByLabelText(/na discussão/i)).not.toBeInTheDocument();
+  });
+});

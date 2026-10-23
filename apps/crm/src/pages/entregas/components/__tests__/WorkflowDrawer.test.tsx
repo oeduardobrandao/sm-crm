@@ -105,6 +105,7 @@ vi.mock('@/store', () => ({
   replyToPostApproval: vi.fn(),
   completeEtapa: vi.fn(),
   getPostCommentThreads: vi.fn(async () => []),
+  getDiscussaoNaoLidas: vi.fn(async () => []),
   createCommentThread: vi.fn(),
   saveIgCaption: vi.fn(),
   addPostComment: vi.fn(),
@@ -248,6 +249,8 @@ import {
   movePostsToNewFlow,
   addWorkflowPost,
   sendSelectedPostsToCliente,
+  getPostCommentThreads,
+  getDiscussaoNaoLidas,
 } from '@/store';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
 
@@ -262,6 +265,8 @@ const mockDetachKeepingProcess = vi.mocked(detachPostsKeepingProcess);
 const mockMoveToNewFlow = vi.mocked(movePostsToNewFlow);
 const mockAddPost = vi.mocked(addWorkflowPost);
 const mockSendSelected = vi.mocked(sendSelectedPostsToCliente);
+const mockGetThreads = vi.mocked(getPostCommentThreads);
+const mockGetNaoLidas = vi.mocked(getDiscussaoNaoLidas);
 
 function renderDrawer(
   qc: QueryClient,
@@ -1343,5 +1348,76 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
 
     const body = container.querySelector('.drawer-body')!;
     await waitFor(() => expect(body.scrollTop).toBe(800));
+  });
+});
+
+describe('WorkflowDrawer discussion badge on the post trigger', () => {
+  const post = {
+    id: 1,
+    workflow_id: 10,
+    titulo: 'Post A',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 0,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([post]);
+    mockGetThreads.mockResolvedValue([]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  const renderOne = () =>
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }), {
+      initialPostId: undefined,
+    });
+
+  it('asks the RPC once for the drawer posts', async () => {
+    renderOne();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetNaoLidas).toHaveBeenCalledTimes(1));
+    expect(mockGetNaoLidas).toHaveBeenCalledWith({ postIds: [1], workflowIds: [] });
+  });
+
+  it('shows the unread count with the dot class when the participant has unread messages', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 3 }]);
+    renderOne();
+    const badge = await screen.findByLabelText('3 mensagens novas na discussão');
+    expect(badge).toHaveTextContent('3');
+    expect(badge).toHaveClass('drawer-post-comment-badge--unread');
+  });
+
+  it('shows the plain total, with no dot, when nothing is unread', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 0 }]);
+    renderOne();
+    const badge = await screen.findByLabelText('9 mensagens na discussão');
+    expect(badge).toHaveTextContent('9');
+    expect(badge).not.toHaveClass('drawer-post-comment-badge--unread');
+  });
+
+  it('counts comments, not threads: two threads, five messages', async () => {
+    // Used to show "2" (commentThreads.length); the badge now reports messages (RPC total).
+    mockGetThreads.mockResolvedValue([
+      { id: 1, post_id: 1, comments: [] },
+      { id: 2, post_id: 1, comments: [] },
+    ] as never);
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 5, naoLidas: 0 }]);
+    renderOne();
+    expect(await screen.findByLabelText('5 mensagens na discussão')).toHaveTextContent('5');
+    expect(screen.queryByLabelText('2 mensagens na discussão')).not.toBeInTheDocument();
+  });
+
+  it('shows nothing when there is no discussion and no thread', async () => {
+    renderOne();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetNaoLidas).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/na discussão/)).not.toBeInTheDocument();
   });
 });
