@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { planilha } from './fixtures/planilha';
+import { MASKED_BRL } from '@/lib/financialAccess';
 import type { PeriodoFinanceiro, RentabilidadeSeeded } from '@/store/financeiroV2';
 
 // Radix Select needs pointer-capture/scrollIntoView APIs jsdom lacks.
@@ -143,17 +144,100 @@ describe('CustosEquipePage', () => {
 
   it('switches_period', async () => {
     const user = userEvent.setup();
+    const setembro = structuredClone(planilha) as RentabilidadeSeeded;
+    setembro.periodo = { ...PERIODOS[1] };
+    setembro.membros.find((m) => m.membro_id === 3)!.custo = 4100;
+    setembro.totais.custo_total = 12510;
+    store.getRentabilidade.mockImplementation(async (i?: string) =>
+      i === '2026-09-01' ? setembro : planilha,
+    );
     renderPage();
     await screen.findByRole('link', { name: 'Ana' });
     expect(store.getRentabilidade).toHaveBeenCalledWith(undefined);
+    expect(within(linhaDe('Ana')).getByText(/R\$\s3\.900,00/)).toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: 'Período' }));
     await user.click(await screen.findByRole('option', { name: /set 2026/ }));
     expect(store.getRentabilidade).toHaveBeenCalledWith('2026-09-01');
+    expect(await within(linhaDe('Ana')).findByText(/R\$\s4\.100,00/)).toBeInTheDocument();
+    expect(screen.getByText(/R\$\s12\.510,00/)).toBeInTheDocument();
+  });
+
+  it('masks_money_without_financial_access', async () => {
+    useAuthMock.mockReturnValue({ canSeeFinancials: false });
+    const data = structuredClone(planilha) as RentabilidadeSeeded;
+    const lia = data.membros.find((m) => m.membro_id === 2)!;
+    lia.modelo = 'por_entrega';
+    lia.a_informar = true;
+    data.totais.custo_sem_cliente = 550;
+    store.getRentabilidade.mockResolvedValue(data);
+    renderPage();
+    await screen.findByRole('link', { name: 'Ana' });
+    expect(screen.queryByText(/R\$\s\d/)).not.toBeInTheDocument();
+    expect(within(linhaDe('Ana')).getAllByText(MASKED_BRL)).toHaveLength(2);
+    expect(within(screen.getAllByRole('row').at(-1)!).getByText(MASKED_BRL)).toBeInTheDocument();
+    expect(screen.getByText(`Sem cliente: ${MASKED_BRL}`)).toBeInTheDocument();
+    expect(
+      within(linhaDe('Lia')).getByRole('link', { name: 'Entregas a informar' }),
+    ).toHaveAttribute('href', '/equipe/2');
   });
 
   it('shows_an_error_line_when_the_load_fails', async () => {
     store.getRentabilidade.mockRejectedValue(new Error('boom'));
     renderPage();
     expect(await screen.findByText(/Não foi possível carregar/)).toBeInTheDocument();
+  });
+
+  it('keeps_the_picker_after_a_failed_period_switch', async () => {
+    const user = userEvent.setup();
+    store.getRentabilidade.mockImplementation(async (i?: string) => {
+      if (i === '2026-09-01') throw new Error('periodo_invalido');
+      return planilha;
+    });
+    renderPage();
+    await screen.findByRole('link', { name: 'Ana' });
+
+    await user.click(screen.getByRole('combobox', { name: 'Período' }));
+    await user.click(await screen.findByRole('option', { name: /set 2026/ }));
+    expect(await screen.findByText(/Não foi possível carregar/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ana' })).not.toBeInTheDocument();
+
+    // The picker is still usable: choosing the current period brings the table back.
+    await user.click(screen.getByRole('combobox', { name: 'Período' }));
+    await user.click(await screen.findByRole('option', { name: /out 2026/ }));
+    expect(await screen.findByRole('link', { name: 'Ana' })).toBeInTheDocument();
+  });
+
+  it('voltar_ao_periodo_atual_and_tentar_novamente_recover_from_a_failed_switch', async () => {
+    const user = userEvent.setup();
+    let setembroOk = false;
+    store.getRentabilidade.mockImplementation(async (i?: string) => {
+      if (i === '2026-09-01' && !setembroOk) throw new Error('boom');
+      return planilha;
+    });
+    renderPage();
+    await screen.findByRole('link', { name: 'Ana' });
+    await user.click(screen.getByRole('combobox', { name: 'Período' }));
+    await user.click(await screen.findByRole('option', { name: /set 2026/ }));
+    await screen.findByText(/Não foi possível carregar/);
+
+    setembroOk = true;
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByRole('link', { name: 'Ana' })).toBeInTheDocument();
+  });
+
+  it('voltar_ao_periodo_atual_resets_the_period', async () => {
+    const user = userEvent.setup();
+    store.getRentabilidade.mockImplementation(async (i?: string) => {
+      if (i === '2026-09-01') throw new Error('boom');
+      return planilha;
+    });
+    renderPage();
+    await screen.findByRole('link', { name: 'Ana' });
+    await user.click(screen.getByRole('combobox', { name: 'Período' }));
+    await user.click(await screen.findByRole('option', { name: /set 2026/ }));
+    await screen.findByText(/Não foi possível carregar/);
+
+    await user.click(screen.getByRole('button', { name: 'Voltar ao período atual' }));
+    expect(await screen.findByRole('link', { name: 'Ana' })).toBeInTheDocument();
   });
 });

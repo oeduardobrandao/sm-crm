@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -51,10 +52,29 @@ export default function CustosEquipePage() {
 
   const data = rentabilidade.data;
   if (rentabilidade.isError && !data) {
+    // Keep the picker: a failed period must not trap the user on this line.
     return (
-      <p role="alert" className="text-sm text-muted-foreground">
-        Não foi possível carregar os custos da equipe. Tente novamente em instantes.
-      </p>
+      <div className="space-y-4">
+        <PeriodoSelect
+          aria-label="Período"
+          value={inicio}
+          onChange={setInicio}
+          periodos={periodos.data ?? []}
+        />
+        <p role="alert" className="text-sm text-muted-foreground">
+          Não foi possível carregar os custos da equipe. Tente novamente em instantes.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => rentabilidade.refetch()}>
+            Tentar novamente
+          </Button>
+          {inicio !== undefined && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setInicio(undefined)}>
+              Voltar ao período atual
+            </Button>
+          )}
+        </div>
+      </div>
     );
   }
   if (!data) {
