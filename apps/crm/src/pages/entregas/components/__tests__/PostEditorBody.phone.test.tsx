@@ -61,6 +61,13 @@ vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', async (importOriginal) => 
   ...(await importOriginal<typeof import('@/pages/entregas/discussao/DiscussaoEquipe')>()),
   DiscussaoEquipe: () => null,
 }));
+vi.mock('@/pages/entregas/discussao/DiscutirNoChat', () => ({
+  DiscutirNoChat: ({ variant, post }: { variant: string; post: unknown }) => (
+    <button type="button" data-testid="bridge-stub" data-variant={variant}>
+      {JSON.stringify(post)}
+    </button>
+  ),
+}));
 const discussaoMock = vi.hoisted(() => ({ naoLidas: 0 }));
 beforeEach(() => {
   discussaoMock.naoLidas = 0;
@@ -345,6 +352,49 @@ describe('PostEditorBody, phone layout', () => {
       expect(
         screen.getByRole('textbox', { name: 'Mensagem para a equipe', hidden: true }),
       ).not.toBeVisible();
+    });
+
+    describe('Discutir no chat bridge', () => {
+      async function openComentarios() {
+        const user = userEvent.setup();
+        await user.click(screen.getByRole('tab', { name: /Comentários/ }));
+      }
+
+      it('shows the sheet variant with the post when the plan has the team chat', async () => {
+        limitsMock.features = { feature_team_chat: true };
+        renderPhone();
+        await openComentarios();
+        const bridge = screen.getByTestId('bridge-stub');
+        expect(bridge).toHaveAttribute('data-variant', 'sheet');
+        expect(JSON.parse(bridge.textContent ?? '')).toEqual({
+          id: 42,
+          titulo: 'Lançamento outubro',
+          workflowId: 10,
+        });
+      });
+
+      it('sends a null workflowId for a standalone post', async () => {
+        limitsMock.features = { feature_team_chat: true };
+        renderPhone({ post: { ...basePost, workflow_id: null } });
+        await openComentarios();
+        expect(JSON.parse(screen.getByTestId('bridge-stub').textContent ?? '')).toMatchObject({
+          workflowId: null,
+        });
+      });
+
+      it('is absent without the team chat feature', async () => {
+        limitsMock.features = { feature_team_chat: false };
+        renderPhone();
+        await openComentarios();
+        expect(screen.queryByTestId('bridge-stub')).toBeNull();
+      });
+
+      it('is absent for an unsaved post (no id)', async () => {
+        limitsMock.features = { feature_team_chat: true };
+        renderPhone({ post: { ...basePost, id: undefined } });
+        await openComentarios();
+        expect(screen.queryByTestId('bridge-stub')).toBeNull();
+      });
     });
 
     it('Comentários tab count is the unread team messages plus the client messages', () => {

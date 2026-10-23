@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -52,11 +53,17 @@ vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
   },
 }));
 vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
-  DiscussaoEquipe: ({ discussao }: { discussao: unknown }) => (
-    <section
-      data-testid="discussao-stub"
-      data-shared={String(discussao === discussaoMock.result)}
-    />
+  DiscussaoEquipe: ({ discussao, chatBridge }: { discussao: unknown; chatBridge?: ReactNode }) => (
+    <section data-testid="discussao-stub" data-shared={String(discussao === discussaoMock.result)}>
+      {chatBridge}
+    </section>
+  ),
+}));
+vi.mock('@/pages/entregas/discussao/DiscutirNoChat', () => ({
+  DiscutirNoChat: ({ variant, post }: { variant: string; post: unknown }) => (
+    <button type="button" data-testid="bridge-stub" data-variant={variant}>
+      {JSON.stringify(post)}
+    </button>
   ),
 }));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
@@ -679,5 +686,36 @@ describe('PostEditorBody, Discussão da equipe and Conversa com o cliente', () =
     expect(discussaoMock.useDiscussao).toHaveBeenLastCalledWith(
       expect.objectContaining({ enabled: false }),
     );
+  });
+});
+
+describe('PostEditorBody, Discutir no chat bridge (desktop)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('hands the popover bridge and the post to the Discussão da equipe section', () => {
+    renderBody();
+    const bridge = within(screen.getByTestId('discussao-stub')).getByTestId('bridge-stub');
+    expect(bridge).toHaveAttribute('data-variant', 'popover');
+    expect(JSON.parse(bridge.textContent ?? '')).toEqual({
+      id: 42,
+      titulo: 'Post',
+      workflowId: 10,
+    });
+  });
+
+  it('sends a null workflowId for a standalone post', () => {
+    renderBody({ post: { ...basePost, workflow_id: null } });
+    expect(JSON.parse(screen.getByTestId('bridge-stub').textContent ?? '')).toMatchObject({
+      workflowId: null,
+    });
+  });
+
+  it('renders neither the section nor the bridge for an unsaved post', () => {
+    renderBody({ post: { ...basePost, id: undefined } });
+    expect(screen.queryByTestId('discussao-stub')).toBeNull();
+    expect(screen.queryByTestId('bridge-stub')).toBeNull();
   });
 });

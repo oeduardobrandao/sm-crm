@@ -22,6 +22,7 @@ import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import { PostProductionSection } from './PostProductionSection';
 import { DiscussaoEquipe } from '../discussao/DiscussaoEquipe';
+import { DiscutirNoChat } from '../discussao/DiscutirNoChat';
 import { useDiscussao } from '../discussao/useDiscussao';
 import { Badge } from '@/components/ui/badge';
 import { PostMediaGallery } from './PostMediaGallery';
@@ -1149,6 +1150,14 @@ export function PostEditorBody({
         postId={post.id ?? 0}
         currentUserId={currentUserId ?? ''}
         discussao={discussao}
+        chatBridge={
+          post.id != null ? (
+            <DiscutirNoChat
+              variant="sheet"
+              post={{ id: post.id, titulo: post.titulo, workflowId: post.workflow_id ?? null }}
+            />
+          ) : null
+        }
         approvals={approvals}
         references={references}
         onOpenReference={setViewingReference}
@@ -1645,6 +1654,12 @@ export function PostEditorBody({
           membros={membros}
           workspaceUsers={workspaceUsers}
           currentUserId={currentUserId}
+          chatBridge={
+            <DiscutirNoChat
+              variant="popover"
+              post={{ id: post.id, titulo: post.titulo, workflowId: post.workflow_id ?? null }}
+            />
+          }
           onThreadClick={(threadId) => {
             const thread = commentThreads.find((t) => t.id === threadId);
             if (thread?.field !== 'ig_caption') return;
