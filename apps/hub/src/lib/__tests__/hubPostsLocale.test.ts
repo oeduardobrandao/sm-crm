@@ -114,6 +114,7 @@ describe('hubPosts locale files', () => {
       'mediaNotes.approveConfirm',
       'mediaNotes.team',
       'mediaNotes.justNow',
+      'mediaNotes.marker',
     ]) {
       expect(keys, key).toContain(key);
     }

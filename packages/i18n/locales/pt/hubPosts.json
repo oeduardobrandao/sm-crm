@@ -296,6 +296,7 @@
     "approveConfirmBody": "Aprovar mesmo assim? Os comentários continuam visíveis para a equipe.",
     "approveConfirm": "Aprovar mesmo assim",
     "team": "Equipe",
-    "justNow": "agora"
+    "justNow": "agora",
+    "marker": "Comentário em {{time}}"
   }
 }

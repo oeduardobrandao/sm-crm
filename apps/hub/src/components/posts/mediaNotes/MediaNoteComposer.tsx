@@ -11,12 +11,21 @@ interface Props {
   onCancel: () => void;
   /** Tells the parent a modal is up, so it can pause the carousel and video. */
   onOverlayChange: (open: boolean) => void;
+  /** Stacking utility when opened above another layer (the lightbox). */
+  layerClassName?: string;
 }
 
 const MAX_NOTE_LENGTH = 2000;
 
 /** Bottom sheet on phones, centred card on md+. Keeps the text when sending fails. */
-export function MediaNoteComposer({ open, title, onSubmit, onCancel, onOverlayChange }: Props) {
+export function MediaNoteComposer({
+  open,
+  title,
+  onSubmit,
+  onCancel,
+  onOverlayChange,
+  layerClassName,
+}: Props) {
   const { t } = useTranslation('hubPosts');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -58,6 +67,7 @@ export function MediaNoteComposer({ open, title, onSubmit, onCancel, onOverlayCh
     <HubDialog
       open={open}
       title={title}
+      layerClassName={layerClassName}
       onRequestClose={(reason) => {
         if (sending) return;
         // A stray tap on the scrim or Escape must not throw away what the client typed;

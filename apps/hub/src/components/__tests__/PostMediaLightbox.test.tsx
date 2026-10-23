@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostMediaLightbox } from '../PostMediaLightbox';
-import type { HubPostMedia } from '../../types';
+import type { HubMediaNote, HubPostMedia } from '../../types';
 
 // VideoPlayer (packages/ui/VideoPlayer) is the component under test here by
 // proxy -- these tests only need to prove the lightbox wires hlsSrc/src/
@@ -307,5 +307,243 @@ describe('PostMediaLightbox', () => {
     render(<PostMediaLightbox media={media} initialIndex={0} onClose={vi.fn()} />);
     expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
     expect(document.body.querySelector('img')).not.toBeInTheDocument();
+  });
+});
+
+describe('PostMediaLightbox media notes', () => {
+  const HINT = 'Toque na imagem para marcar um ponto';
+  const PH = 'O que você quer mudar aqui?';
+
+  function video(over: Partial<HubPostMedia> = {}) {
+    return makeMedia({
+      id: 5,
+      kind: 'video',
+      mime_type: 'video/mp4',
+      url: 'https://cdn.example.com/v.mp4',
+      width: 1000,
+      height: 1000,
+      ...over,
+    });
+  }
+
+  function note(over: Partial<HubMediaNote> = {}): HubMediaNote {
+    return {
+      id: 1,
+      post_id: 7,
+      media_kind: 'video',
+      link_id: 5,
+      slide_index: 0,
+      is_previous_version: false,
+      t_seconds: 25,
+      x: null,
+      y: null,
+      author: 'client',
+      author_name: null,
+      body: 'Cena',
+      status: 'open',
+      resolved_at: null,
+      created_at: '2026-10-23T00:00:00Z',
+      replies: [],
+      ...over,
+    };
+  }
+
+  /** jsdom's media element has no playback: give the mounted <video> a clock. */
+  function clock() {
+    const el = document.querySelector('video')!;
+    let ct = 0;
+    Object.defineProperty(el, 'currentTime', {
+      configurable: true,
+      get: () => ct,
+      set: (v: number) => {
+        ct = v;
+      },
+    });
+    Object.defineProperty(el, 'duration', { configurable: true, get: () => 100 });
+    fireEvent(el, new Event('loadedmetadata'));
+    return {
+      el,
+      setTime(v: number) {
+        ct = v;
+        fireEvent(el, new Event('timeupdate'));
+      },
+      get time() {
+        return ct;
+      },
+    };
+  }
+
+  const pointer = (el: Element, type: string, x: number, y: number) =>
+    fireEvent(el, new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
+
+  beforeEach(() => {
+    stubCanPlayType('');
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 400,
+      bottom: 400,
+      width: 400,
+      height: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (HTMLMediaElement.prototype as { canPlayType?: unknown }).canPlayType;
+  });
+
+  function renderVideo(props: Partial<React.ComponentProps<typeof PostMediaLightbox>> = {}) {
+    const onCreateNote = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const onOverlayChange = vi.fn();
+    render(
+      <PostMediaLightbox
+        media={[video()]}
+        initialIndex={0}
+        onClose={onClose}
+        notes={[]}
+        canWrite
+        onCreateNote={onCreateNote}
+        onOverlayChange={onOverlayChange}
+        {...props}
+      />,
+    );
+    return { onCreateNote, onClose, onOverlayChange };
+  }
+
+  it('Comentar em pauses and passes current time', async () => {
+    const { onCreateNote } = renderVideo();
+    const c = clock();
+    c.setTime(42);
+    fireEvent.click(screen.getByRole('button', { name: 'Comentar em 0:42' }));
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    fireEvent.change(await screen.findByPlaceholderText(PH), {
+      target: { value: 'Mais contraste' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar comentário' }));
+    await waitFor(() =>
+      expect(onCreateNote).toHaveBeenCalledWith({
+        link_id: 5,
+        t_seconds: 42,
+        body: 'Mais contraste',
+      }),
+    );
+  });
+
+  it('tapping the frame pauses, places a pending pin and comments on the moment and spot', async () => {
+    const { onCreateNote } = renderVideo();
+    const c = clock();
+    c.setTime(42);
+    const capture = screen.getByRole('button', { name: HINT });
+    pointer(capture, 'pointerdown', 200, 100);
+    pointer(capture, 'pointerup', 200, 100);
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    expect(screen.getByTestId('media-pin-pending')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('textbox', { name: 'Comentário em 0:42, no ponto marcado' }),
+    ).toBeInTheDocument();
+    fireEvent.change(await screen.findByPlaceholderText(PH), { target: { value: 'Aqui' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar comentário' }));
+    await waitFor(() =>
+      expect(onCreateNote).toHaveBeenCalledWith({
+        link_id: 5,
+        t_seconds: 42,
+        x: 0.5,
+        y: 0.25,
+        body: 'Aqui',
+      }),
+    );
+  });
+
+  it('marker click seeks', () => {
+    renderVideo({ notes: [note({ t_seconds: 25 })] });
+    const c = clock();
+    fireEvent.click(screen.getByRole('button', { name: 'Comentário em 0:25' }));
+    expect(c.time).toBe(25);
+  });
+
+  it('markers have a tap target of at least 24px and sit at t / duration', () => {
+    renderVideo({ notes: [note({ t_seconds: 25 })] });
+    clock();
+    const marker = screen.getByRole('button', { name: 'Comentário em 0:25' });
+    expect(marker.className).toContain('h-6');
+    expect(marker.style.left).toBe('25%');
+  });
+
+  it('spot pin hidden away from its moment', () => {
+    renderVideo({ notes: [note({ t_seconds: 42, x: 0.5, y: 0.5, body: 'Na cena' })] });
+    const c = clock();
+    c.setTime(10);
+    expect(screen.queryByRole('img', { name: 'Na cena' })).toBeNull();
+    c.setTime(42);
+    expect(screen.getByRole('img', { name: 'Na cena' })).toBeInTheDocument();
+  });
+
+  it('no comment controls when canWrite false', () => {
+    renderVideo({ canWrite: false, notes: [note()] });
+    clock();
+    expect(screen.queryByRole('button', { name: /^Comentar em/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: HINT })).toBeNull();
+    // Reading the existing notes is still allowed.
+    expect(screen.getByRole('button', { name: 'Comentário em 0:25' })).toBeInTheDocument();
+  });
+
+  it('without notes prop renders no note UI', () => {
+    render(<PostMediaLightbox media={[video()]} initialIndex={0} onClose={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Comentar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Comentário em/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: HINT })).toBeNull();
+    expect(document.querySelector('[data-testid="media-pin-layer"]')).toBeNull();
+  });
+
+  it('initialSeek seeks after loadedmetadata', () => {
+    renderVideo({ initialSeek: 30 });
+    const el = document.querySelector('video')!;
+    let ct = 0;
+    Object.defineProperty(el, 'currentTime', {
+      configurable: true,
+      get: () => ct,
+      set: (v: number) => {
+        ct = v;
+      },
+    });
+    expect(ct).toBe(0);
+    fireEvent(el, new Event('loadedmetadata'));
+    expect(ct).toBe(30);
+  });
+
+  it('Escape closes only the composer, and a click inside it does not close the lightbox', async () => {
+    const { onClose, onOverlayChange } = renderVideo();
+    clock();
+    fireEvent.click(screen.getByRole('button', { name: /^Comentar em/ }));
+    const field = await screen.findByPlaceholderText(PH);
+    expect(onOverlayChange).toHaveBeenCalledWith(true);
+    fireEvent.click(field);
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByPlaceholderText(PH)).toBeNull());
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('an image item renders its pins read-only', () => {
+    render(
+      <PostMediaLightbox
+        media={[makeMedia({ id: 3 })]}
+        initialIndex={0}
+        onClose={vi.fn()}
+        notes={[note({ link_id: 3, media_kind: 'image', t_seconds: null, x: 0.5, y: 0.5 })]}
+        canWrite
+        onCreateNote={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('img', { name: 'Cena' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: HINT })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Comentar em/ })).toBeNull();
   });
 });

@@ -16,8 +16,24 @@ vi.mock('../../../api', () => ({
   fetchPostHistory: fetchPostHistoryMock,
 }));
 vi.mock('../../PostMediaLightbox', () => ({
-  PostMediaLightbox: ({ initialIndex }: { initialIndex: number }) => (
-    <div data-testid="lightbox">lightbox {initialIndex}</div>
+  PostMediaLightbox: ({
+    initialIndex,
+    initialSeek,
+    onCreateNote,
+  }: {
+    initialIndex: number;
+    initialSeek?: number;
+    onCreateNote?: (input: { link_id: number; t_seconds: number; body: string }) => Promise<void>;
+  }) => (
+    <div data-testid="lightbox">
+      lightbox {initialIndex} seek {String(initialSeek)}
+      <button
+        type="button"
+        onClick={() => void onCreateNote?.({ link_id: 12, t_seconds: 7, body: 'Do vídeo' })}
+      >
+        stub-create
+      </button>
+    </div>
   ),
 }));
 vi.mock('../../../services/mediaNotes', () => ({
@@ -308,7 +324,37 @@ describe('PostDetailDialog media notes', () => {
       }),
     ]);
     fireEvent.click(screen.getByRole('button', { name: '0:05' }));
-    expect(screen.getByTestId('lightbox')).toHaveTextContent('lightbox 1');
+    expect(screen.getByTestId('lightbox')).toHaveTextContent('lightbox 1 seek 5');
+  });
+
+  it('a plain open of the lightbox does not seek', () => {
+    renderDialog(post());
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir mídia 1' }));
+    expect(screen.getByTestId('lightbox')).toHaveTextContent('seek undefined');
+  });
+
+  it('a moment note made in the lightbox goes through the dialog write path', async () => {
+    const video = {
+      ...MEDIA,
+      id: 12,
+      kind: 'video' as const,
+      thumbnail_url: 'https://cdn/t.jpg',
+      sort_order: 1,
+    };
+    const { onApprovalSubmitted } = renderDialog(post({ media: [MEDIA, video] }), [
+      note({ id: 8, link_id: 12, media_kind: 'video', t_seconds: 5, x: null, y: null }),
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: '0:05' }));
+    fireEvent.click(screen.getByRole('button', { name: 'stub-create' }));
+    await waitFor(() =>
+      expect(createMediaNoteMock).toHaveBeenCalledWith('token-publico', {
+        post_id: 1,
+        link_id: 12,
+        t_seconds: 7,
+        body: 'Do vídeo',
+      }),
+    );
+    await waitFor(() => expect(onApprovalSubmitted).toHaveBeenCalled());
   });
 
   it('approving a post that is no longer pending shows the server message and refetches', async () => {

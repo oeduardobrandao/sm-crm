@@ -25,6 +25,8 @@ interface Props {
   pending: { x: number; y: number } | null;
   onPlace: (p: { x: number; y: number }) => void;
   onPinClick?: (noteId: number) => void;
+  /** Px kept free at the bottom of the capture area, for a video's native controls. */
+  controlsInset?: number;
 }
 
 const PIN_BASE =
@@ -45,6 +47,7 @@ export function MediaPinLayer({
   pending,
   onPlace,
   onPinClick,
+  controlsInset = 0,
 }: Props) {
   const { t } = useTranslation('hubPosts');
   const rootRef = useRef<HTMLDivElement>(null);
@@ -144,7 +147,8 @@ export function MediaPinLayer({
         <button
           type="button"
           aria-label={t('mediaNotes.tapHint')}
-          className="pointer-events-auto absolute inset-0 cursor-crosshair bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          style={{ bottom: controlsInset }}
+          className="pointer-events-auto absolute inset-x-0 top-0 cursor-crosshair bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
           // No stopPropagation anywhere: a drag must still reach the carousel's swipe handlers.
           onPointerDown={(e) => {
             // Only the primary pointer's main button: not a right-click, not a pinch's 2nd finger.

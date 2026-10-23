@@ -334,6 +334,12 @@ function PostDetailContent({
   const [slideIdx, setSlideIdx] = useState(0);
   const [jumpTo, setJumpTo] = useState<{ linkId: number; seq: number } | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
+  // Where the lightbox seeks on open (a video note's moment); a plain open never seeks.
+  const [lightboxSeek, setLightboxSeek] = useState<number | undefined>(undefined);
+  const openLightbox = useCallback((i: number) => {
+    setLightboxSeek(undefined);
+    setLightboxIdx(i);
+  }, []);
   const slideMedia = post.media[slideIdx];
   const canComment =
     canWriteNotes(post) && !!slideMedia && slideMedia.kind === 'image' && !slideMedia.media_lost_at;
@@ -344,10 +350,20 @@ function PostDetailContent({
     return () => handleOverlayChange(false);
   }, [confirmApprove, handleOverlayChange]);
 
+  // One write path for both composers (slide/spot here, moment/spot in the lightbox).
+  async function writeNote(input: {
+    link_id: number;
+    t_seconds?: number;
+    x?: number;
+    y?: number;
+    body: string;
+  }) {
+    await createMediaNote(token, { post_id: post.id, ...input });
+    onApprovalSubmitted();
+  }
   async function sendNote(body: string) {
     if (!composer) return;
-    await createMediaNote(token, {
-      post_id: post.id,
+    await writeNote({
       link_id: composer.linkId,
       ...(composer.point ? { x: composer.point.x, y: composer.point.y } : {}),
       body,
@@ -355,7 +371,6 @@ function PostDetailContent({
     setComposer(null);
     setPending(null);
     setPlacing(false);
-    onApprovalSubmitted();
   }
   async function sendReply(noteId: number, body: string) {
     await replyMediaNote(token, noteId, body);
@@ -364,8 +379,10 @@ function PostDetailContent({
   function jumpToNote(note: HubMediaNote) {
     const index = post.media.findIndex((mm) => mm.id === note.link_id);
     if (index < 0) return;
-    if (post.media[index].kind === 'video') setLightboxIdx(index);
-    else setJumpTo({ linkId: post.media[index].id, seq: Date.now() });
+    if (post.media[index].kind === 'video') {
+      setLightboxSeek(note.t_seconds ?? undefined);
+      setLightboxIdx(index);
+    } else setJumpTo({ linkId: post.media[index].id, seq: Date.now() });
   }
   const composerTitle = composer
     ? composer.point
@@ -827,7 +844,7 @@ function PostDetailContent({
             )}
             <PostMediaPane
               post={post}
-              onOpenLightbox={setLightboxIdx}
+              onOpenLightbox={openLightbox}
               priority
               notes={postNotes}
               placing={placingNow}
@@ -1200,6 +1217,11 @@ function PostDetailContent({
           initialIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onStaleUrl={onApprovalSubmitted}
+          notes={postNotes}
+          canWrite={canWriteNotes(post)}
+          onCreateNote={writeNote}
+          initialSeek={lightboxSeek}
+          onOverlayChange={handleOverlayChange}
         />
       )}
       {!ghost && viewerItem && (
