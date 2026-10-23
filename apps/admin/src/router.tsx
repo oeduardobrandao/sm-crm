@@ -63,6 +63,14 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/PopupsPage')).default }),
       },
       {
+        path: 'blog',
+        lazy: async () => ({ Component: (await import('./pages/BlogPage')).default }),
+      },
+      {
+        path: 'blog/:id',
+        lazy: async () => ({ Component: (await import('./pages/BlogPage')).default }),
+      },
+      {
         path: 'kb-articles',
         lazy: async () => ({ Component: (await import('./pages/KbArticlesPage')).default }),
       },

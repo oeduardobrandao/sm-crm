@@ -135,7 +135,7 @@ describe('ConsentPage', () => {
     expect(recordGrant).toHaveBeenCalledWith({
       authorization_id: 'auth-1',
       target: 'platform',
-      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read', 'kb:write'],
+      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read', 'blog:read', 'kb:write'],
     });
     await waitFor(() => expect(approve).toHaveBeenCalledWith('auth-1'));
   });
@@ -162,7 +162,7 @@ describe('ConsentPage', () => {
     expect(recordGrant).toHaveBeenCalledWith({
       authorization_id: 'auth-1',
       target: 'platform',
-      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read'],
+      scopes: ['banners:read', 'popups:read', 'kb:read', 'platform:read', 'blog:read'],
     });
   });
 });

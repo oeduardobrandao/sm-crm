@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NAV_GROUPS, PHONE_TABS, MAIS_GROUPS, hidesTabBar, isRouteActive } from '../nav-items';
 
 describe('nav-items', () => {
-  it('lists the 11 admin routes once, in four groups', () => {
+  it('lists the 12 admin routes once, in four groups', () => {
     const all = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.to));
     expect(all).toEqual([
       '/admin',
@@ -14,6 +14,7 @@ describe('nav-items', () => {
       '/admin/integrations',
       '/admin/banners',
       '/admin/popups',
+      '/admin/blog',
       '/admin/kb-articles',
       '/admin/kb-videos',
     ]);
@@ -31,7 +32,7 @@ describe('nav-items', () => {
       'Workspaces',
       'Afiliados',
     ]);
-    expect(MAIS_GROUPS.flatMap((g) => g.items).length).toBe(7);
+    expect(MAIS_GROUPS.flatMap((g) => g.items).length).toBe(8);
   });
   it('isRouteActive: Dashboard only on /admin; others on their subtree', () => {
     expect(isRouteActive('/admin', '/admin')).toBe(true);
@@ -39,12 +40,14 @@ describe('nav-items', () => {
     expect(isRouteActive('/admin/workspaces/abc', '/admin/workspaces')).toBe(true);
     expect(isRouteActive('/admin/workspaces-x', '/admin/workspaces')).toBe(false);
   });
-  it('hidesTabBar only on the pushed KB editors', () => {
+  it('hidesTabBar only on the pushed editors and the blog post screen', () => {
     expect(hidesTabBar('/admin/kb-articles/new')).toBe(true);
     expect(hidesTabBar('/admin/kb-articles/123/edit')).toBe(true);
     expect(hidesTabBar('/admin/kb-videos/new')).toBe(true);
     expect(hidesTabBar('/admin/kb-videos/9/edit')).toBe(true);
     expect(hidesTabBar('/admin/kb-articles')).toBe(false);
     expect(hidesTabBar('/admin/workspaces/1')).toBe(false);
+    expect(hidesTabBar('/admin/blog/00000000-0000-4000-8000-000000000001')).toBe(true);
+    expect(hidesTabBar('/admin/blog')).toBe(false);
   });
 });

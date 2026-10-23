@@ -1,5 +1,5 @@
 import { SITE_NAME, SITE_URL, SOCIAL_PROFILES } from './site-meta';
-import { BLOG_AUTHOR, postOgImage, postPath } from './blog';
+import { BLOG_AUTHOR, postAuthor, postOgImage, postPath } from './blog';
 import type { BlogPost } from './blog.schema';
 
 const CONTEXT = 'https://schema.org';
@@ -69,7 +69,11 @@ export function breadcrumbJsonLd(crumbs: Array<{ name: string; path: string }>):
   };
 }
 
-function personAuthor(): object {
+function authorJsonLd(post: BlogPost): object {
+  const author = postAuthor(post);
+  if (author.kind === 'organization') {
+    return { '@type': 'Organization', name: author.name, url: `${SITE_URL}/` };
+  }
   return {
     '@type': 'Person',
     name: BLOG_AUTHOR.name,
@@ -99,8 +103,8 @@ export function blogPostingJsonLd(post: BlogPost): object {
     inLanguage: 'pt-BR',
     mainEntityOfPage: { '@type': 'WebPage', '@id': url },
     url,
-    image: postOgImage(post.slug),
-    author: personAuthor(),
+    image: postOgImage(post),
+    author: authorJsonLd(post),
     publisher: publisher(),
   };
 }

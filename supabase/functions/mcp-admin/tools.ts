@@ -10,7 +10,10 @@ import {
   createBanner, createKbArticle, createPopup, getBanner, getDashboard, getKbArticle, getPopup, getWorkspace,
   listBanners, listKbArticles, listPlans, listPopups, listWorkspaces, updateBanner, updateKbArticle, updatePopup,
 } from "./queries.ts";
-import { uploadKbImage, uploadPopupImage } from "./images.ts";
+import { uploadBlogImage, uploadKbImage, uploadPopupImage } from "./images.ts";
+import { createBlogDraft, getBlogPost, listBlogPosts, updateBlogDraft } from "./blog.ts";
+import { BLOG_CATEGORIES, BLOG_FEATURE_SLUGS, BLOG_LIMITS, BLOG_STATUSES } from "../_shared/blog-rules.ts";
+import { BLOG_DRAFT_LIMITS } from "../_shared/blog-validate.ts";
 
 function jsonResult(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
@@ -26,12 +29,12 @@ function errorResult(e: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }], isError: true };
 }
 
-const ID_KEYS = ["banner_id", "popup_id", "article_id", "workspace_id"];
+const ID_KEYS = ["banner_id", "popup_id", "article_id", "workspace_id", "post_id"];
 
 /** Audit sem payload: ids/filtros dos args + id do resultado (create). */
 function auditArgs(args: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const k of [...ID_KEYS, "slug", "status", "category", "search", "plan_id", "limit", "offset", "filename", "mime_type", "article_slug"]) {
+  for (const k of [...ID_KEYS, "slug", "status", "category", "search", "plan_id", "limit", "offset", "filename", "mime_type", "article_slug", "since_days", "feature_slug"]) {
     if (args[k] !== undefined) out[k] = args[k];
   }
   return out;
@@ -129,6 +132,50 @@ const KB_FIELDS = {
   ),
 };
 
+// Shapes soltos de propósito: o SDK valida o shape ANTES do callback e responde com o erro
+// genérico do zod. Os limites ficam em validateBlogDraft, que devolve uma linha por campo.
+const BLOG_IMAGE = z.object({
+  key: z.string().describe("referenciada no corpo como ![alt](img:<key>); 1 a 40 caracteres a-z, 0-9 e hífen"),
+  url: z.string().describe("url devolvida por upload_blog_image"),
+  alt: z.string().describe("1 a 200 caracteres"),
+  credit: z.string().describe("autor / fonte, 1 a 200 caracteres, obrigatório"),
+  license: z.string().describe("licença de uso, 1 a 120 caracteres, obrigatória"),
+  source_url: z.string().describe("página http(s) de onde a imagem veio"),
+}).passthrough();
+const BLOG_COVER = z.object({
+  url: z.string(), alt: z.string(), credit: z.string(), license: z.string(), source_url: z.string(),
+}).passthrough();
+const BLOG_SOURCE = z.object({
+  title: z.string().describe("1 a 200 caracteres"),
+  publisher: z.string().describe("1 a 120 caracteres"),
+  url: z.string().describe("http(s)"),
+  published_at: z.string().optional().describe("AAAA-MM-DD"),
+}).passthrough();
+const [TITLE_MIN, TITLE_MAX] = BLOG_LIMITS.title;
+const [H1_MIN, H1_MAX] = BLOG_LIMITS.h1;
+const [DESC_MIN, DESC_MAX] = BLOG_LIMITS.description;
+const BLOG_FIELDS = {
+  slug: z.string().describe(`único, letras minúsculas sem acento, números e hífens, ${BLOG_DRAFT_LIMITS.slug[0]} a ${BLOG_DRAFT_LIMITS.slug[1]} caracteres; não pode repetir post do banco nem file_posts`),
+  category: z.string().describe(`uma de: ${BLOG_CATEGORIES.join(", ")}`),
+  title: z.string().describe(`título SEO, ${TITLE_MIN} a ${TITLE_MAX} caracteres`),
+  h1: z.string().describe(`${H1_MIN} a ${H1_MAX} caracteres`),
+  description: z.string().describe(`meta description, ${DESC_MIN} a ${DESC_MAX} caracteres`),
+  lede: z.string().describe(`linha fina abaixo do H1, ${BLOG_DRAFT_LIMITS.lede[0]} a ${BLOG_DRAFT_LIMITS.lede[1]} caracteres`),
+  body_md: z.string().describe(
+    "Corpo em Markdown, até 50000 caracteres. Sem HTML. Links só http(s) sem porta, /caminho ou #âncora (e-mail solto vira link mailto: e é recusado). " +
+      "Imagens só ![alt](img:<key>) com key de images, sozinhas no próprio parágrafo (linha em branco antes e depois); imagem com link [![…](img:…)](…) e imagem por referência são recusadas. " +
+      "Infográfico: bloco ```infografico com JSON (tipo barras, numeros ou etapas; fonte = índice em sources). Não escreva a seção Fontes: ela vem de sources.",
+  ),
+  cover_image: BLOG_COVER.nullable().optional().describe("capa {url, alt, credit, license, source_url}; url de upload_blog_image; null = sem imagem"),
+  images: z.array(BLOG_IMAGE).optional().describe(`imagens do corpo, até ${BLOG_DRAFT_LIMITS.images[1]}, cada uma com credit e license`),
+  sources: z.array(BLOG_SOURCE).describe(`fontes do post, de ${BLOG_DRAFT_LIMITS.sources[0]} a ${BLOG_DRAFT_LIMITS.sources[1]}`),
+  feature_slug: z.string().nullable().optional().describe(`só no post semanal de funcionalidade: ${BLOG_FEATURE_SLUGS.join(", ")}`),
+  topic_reason: z.string().describe(`por que este tema (mostrado no Admin), ${BLOG_DRAFT_LIMITS.topic_reason[0]} a ${BLOG_DRAFT_LIMITS.topic_reason[1]} caracteres`),
+};
+const BLOG_FIELDS_OPTIONAL = Object.fromEntries(
+  Object.entries(BLOG_FIELDS).map(([k, v]) => [k, (v as z.ZodTypeAny).optional()]),
+) as z.ZodRawShape;
+
 export function registerTools(server: any, deps: Deps) {
   // Banners
   register(server, deps, "list_banners", "banners:read", "Lista banners globais do CRM (todos os status por padrão) com contagem de dispensas.",
@@ -177,4 +224,28 @@ export function registerTools(server: any, deps: Deps) {
     { workspace_id: z.string().uuid() }, (a) => getWorkspace(deps, a));
   register(server, deps, "list_plans", "platform:read", "Planos da plataforma com limites, features e quantidade de workspaces.", {}, () => listPlans(deps));
   register(server, deps, "get_dashboard", "platform:read", "Agregados do dashboard do Admin: totais, MRR e trials.", {}, () => getDashboard(deps));
+
+  // Blog (rotina diária). Nenhuma tool aprova, publica ou apaga: isso é só no Admin.
+  register(server, deps, "list_blog_posts", "blog:read",
+    "Lista posts do blog no banco (sem o corpo), mais recentes primeiro, até 200. Devolve também file_posts (posts em arquivo: slug e título, não repita) e feature_slugs (valores aceitos em feature_slug). since_days de 1 a 365.",
+    { status: z.enum(BLOG_STATUSES).optional(), since_days: z.number().int().min(1).max(365).optional() },
+    (a) => listBlogPosts(deps, a));
+  register(server, deps, "get_blog_post", "blog:read", "Post completo do blog (corpo, imagens, fontes, checks, revision_note), para reescrever.",
+    { post_id: z.string().uuid() }, (a) => getBlogPost(deps, a));
+  register(server, deps, "create_blog_draft", "blog:write",
+    `Cria um rascunho do blog (status rascunho, autor Equipe Mesaas). Limites: title ${TITLE_MIN} a ${TITLE_MAX} caracteres, h1 ${H1_MIN} a ${H1_MAX}, description ${DESC_MIN} a ${DESC_MAX}, lede ${BLOG_DRAFT_LIMITS.lede[0]} a ${BLOG_DRAFT_LIMITS.lede[1]}, ao menos 1 fonte, toda imagem com credit e license, imagens só do upload_blog_image. ` +
+      "Erro de validação volta com uma linha por campo e o limite; corrija e tente de novo. Devolve id e os checks automáticos (links, licenças, capa, travessão, títulos parecidos), que não bloqueiam o rascunho.",
+    BLOG_FIELDS, (a) => createBlogDraft(deps, a));
+  register(server, deps, "update_blog_draft", "blog:write",
+    "Edita um rascunho (status rascunho ou ajuste_solicitado). Campos enviados substituem os atuais; images e sources substituem a lista inteira. Mesmos limites de create_blog_draft, checados no post resultante. " +
+      "Depois de uma nota (ajuste_solicitado) o post volta para rascunho marcado como reescrito. Devolve id, status, revision e checks.",
+    { post_id: z.string().uuid(), ...BLOG_FIELDS_OPTIONAL }, (a) => updateBlogDraft(deps, a));
+  register(server, deps, "upload_blog_image", "blog:write",
+    "Baixa no servidor uma imagem (source_url https, até 10 MB, PNG/JPEG/WebP/GIF) e grava no bucket do blog. Só imagens com licença que permita uso: alt (até 200), credit (até 200) e license (até 120) são obrigatórios; page_url é a página da imagem. " +
+      "Devolve url, width e height; use url em cover_image ou em images (com page_url como source_url).",
+    {
+      source_url: z.string().url(), filename: z.string().max(120), mime_type: MIME,
+      alt: z.string(), credit: z.string(), license: z.string(), page_url: z.string(),
+    },
+    (a) => uploadBlogImage(deps, a));
 }

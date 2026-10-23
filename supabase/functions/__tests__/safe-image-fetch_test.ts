@@ -63,3 +63,15 @@ Deno.test("fetchImageSafely: fetch com redirect manual, Accept image/* e signal"
   assertEquals(init?.redirect, "manual");
   assert(init?.signal instanceof AbortSignal);
 });
+
+Deno.test("fetchImageSafely: porta explícita fora do padrão → invalid_url, sem DNS nem fetch", async () => {
+  let touched = 0;
+  const d = deps({
+    resolveDns: async () => { touched++; return ["93.184.216.34"]; },
+    fetchUrl: async () => { touched++; return new Response(PNG); },
+  });
+  assertEquals(await fetchImageSafely(d, "https://cdn.example.com:8443/a.png", OPTS), { ok: false, reason: "invalid_url" });
+  assertEquals(touched, 0);
+  const ok = await fetchImageSafely(deps(), "https://cdn.example.com:443/a.png", OPTS);
+  assert(ok.ok, "porta padrão explícita continua valendo");
+});

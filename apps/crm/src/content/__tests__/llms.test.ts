@@ -39,6 +39,30 @@ describe('buildLlmsTxt', () => {
     expect(txt).not.toContain('Mesaas ou Aprova Post: qual usar na sua agência em 2026');
   });
 
+  test('collapses newlines in titles and descriptions so a post cannot inject lines', () => {
+    const txt = buildLlmsTxt(
+      [{ path: '/', file: 'index.html', title: 'T', description: 'D', lastmod: '2026-07-25' }],
+      [
+        {
+          slug: 'artigo',
+          title: 'Título',
+          h1: 'Primeira linha\n## Injetado\r\n- [mal](https://evil.example)',
+          description: 'Descrição\n\n  em   partes.',
+          date: '2026-07-25',
+          updated: '2026-07-25',
+          category: 'guia',
+          body: '',
+          readingMinutes: 1,
+        },
+      ],
+    );
+    expect(txt).toContain(
+      '- [Primeira linha ## Injetado - [mal](https://evil.example)](https://www.mesaas.com.br/blog/artigo): Descrição em partes.',
+    );
+    expect(txt.split('\n').filter((l) => l.startsWith('## '))).toEqual(['## Páginas', '## Blog']);
+    expect(txt.split('\n').filter((l) => l.startsWith('- ['))).toHaveLength(2);
+  });
+
   test('omits the blog section when there are no posts', () => {
     expect(buildLlmsTxt([])).not.toContain('## Blog');
   });

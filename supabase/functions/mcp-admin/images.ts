@@ -1,5 +1,6 @@
 // Imagens do mcp-admin (spec §7): artigos → bucket público kb-images; popups → R2 sob o
-// workspace pessoal do admin + linha em files (senão o orphan-scan recolhe o objeto).
+// workspace pessoal do admin + linha em files (senão o orphan-scan recolhe o objeto); blog →
+// bucket público blog-images, só por source_url (spec 2026-10-23-blog-automatico §2).
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { fetchImageSafely, type SafeFetchFailReason } from "../_shared/safe-image-fetch.ts";
 import { adminContaId } from "../_shared/admin-popups.ts";
@@ -10,6 +11,7 @@ import type { TiptapNode } from "./markdown.ts";
 export const IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const KB_BUCKET = "kb-images";
+export const BLOG_BUCKET = "blog-images";
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
 const FETCH_TIMEOUT_MS = 20_000;
 const PROBE_BYTES = 64 * 1024;
@@ -95,18 +97,18 @@ export async function fillImageDims(d: Deps, doc: TiptapNode): Promise<TiptapNod
 // Nomes
 // ---------------------------------------------------------------------------
 
-function safeName(filename: string): string {
+export function safeName(filename: string): string {
   const base = filename.replace(/\.[a-z0-9]+$/i, "").normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
   return base || "imagem";
 }
 
-function requireMime(mime: string): string {
+export function requireMime(mime: string): string {
   if (!IMAGE_MIMES.includes(mime)) throw new McpInputError(`mime_type deve ser um de: ${IMAGE_MIMES.join(", ")}`);
   return mime;
 }
 
-async function fetchImage(d: Deps, sourceUrl: string) {
+export async function fetchImage(d: Deps, sourceUrl: string) {
   const r = await fetchImageSafely({ resolveDns: d.resolveDns, fetchUrl: d.fetchUrl }, sourceUrl, {
     maxBytes: MAX_IMAGE_BYTES, timeoutMs: FETCH_TIMEOUT_MS,
   });
@@ -142,6 +144,46 @@ export async function uploadKbImage(
   const { data, error } = await bucket.createSignedUploadUrl(path);
   if (error || !data) throw error ?? new Error("createSignedUploadUrl returned nothing");
   return { path, public_url: publicUrl(path), upload_url: data.signedUrl as string, expires_in: 7200 };
+}
+
+// ---------------------------------------------------------------------------
+// Blog: bucket público blog-images, pasta drafts/<yyyy-mm>/
+// ---------------------------------------------------------------------------
+
+/** Prefixo público do bucket blog-images (a url de toda imagem de post começa com ele). */
+export function blogImageUrlPrefix(d: Deps): string {
+  const probe = d.db.storage.from(BLOG_BUCKET).getPublicUrl("x").data.publicUrl as string;
+  return probe.slice(0, -1);
+}
+
+function requireText(field: string, value: unknown, max: number): string {
+  if (typeof value !== "string" || value.trim() === "") throw new McpInputError(`${field}: não pode ficar vazio.`);
+  if (value.length > max) throw new McpInputError(`${field}: ${value.length} caracteres; máximo de ${max}.`);
+  return value.trim();
+}
+
+export async function uploadBlogImage(
+  d: Deps,
+  args: { source_url: string; filename: string; mime_type: string; alt: string; credit: string; license: string; page_url: string },
+) {
+  requireMime(args.mime_type);
+  requireText("alt", args.alt, 200);
+  requireText("credit", args.credit, 200);
+  requireText("license", args.license, 120);
+  if (typeof args.page_url !== "string" || !/^https?:\/\//i.test(args.page_url) || !URL.canParse(args.page_url)) {
+    throw new McpInputError("page_url: precisa ser a URL http(s) da página onde a imagem foi encontrada.");
+  }
+  const img = await fetchImage(d, args.source_url);
+  const path = `drafts/${d.now().slice(0, 7)}/${d.randomUUID().slice(0, 8)}-${safeName(args.filename)}.${img.ext}`;
+  const bucket = d.db.storage.from(BLOG_BUCKET);
+  const { error } = await bucket.upload(path, img.bytes, { contentType: img.mime, upsert: false });
+  if (error) throw error;
+  const dims = parseImageDims(img.bytes);
+  return {
+    url: bucket.getPublicUrl(path).data.publicUrl as string,
+    width: dims?.width ?? null,
+    height: dims?.height ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------

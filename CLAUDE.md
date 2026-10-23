@@ -124,7 +124,7 @@ Monorepo with npm workspaces:
 - `_shared/cors.ts` -- `buildCorsHeaders(req)` for CORS (never use wildcard `*`)
 - `_shared/audit.ts` -- `insertAuditLog()` for audit trail
 - `_shared/r2.ts` -- Cloudflare R2 storage client (presigned URLs)
-- `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent`: mudar escopo = redeploy dos dois + CRM
+- `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard, rascunhos do blog). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent` e espelhados no CRM (`apps/crm/src/lib/mcp-scopes.ts`) e no Admin (`apps/admin/src/lib/mcp-admin-scopes.ts`): mudar escopo = redeploy dos dois + CRM + Admin
 - Cron functions authenticate via `x-cron-secret` header (not JWT)
 - All other functions verify JWT via `Authorization: Bearer <token>` header
 
@@ -218,6 +218,12 @@ Monorepo with npm workspaces:
   para montar a URL que o Gotenberg imprime. Opcional: sem ela (ou sem
   GOTENBERG_URL / INTERNAL_FUNCTION_SECRET) o export responde 503
   pdf_not_configured; as demais rotas seguem normais
+- `VERCEL_BLOG_DEPLOY_HOOK` -- URL do Deploy Hook da Vercel (branch `main`, produção) que o
+  `platform-admin` dispara ao aprovar, editar ou despublicar um post do blog: o build seguinte
+  roda `blog:sync` e põe o post no ar. Só prod recebe. Opcional, sem default: ausente (staging,
+  local), aprovar responde 503 `publish_unavailable` e o Admin mostra "Publicação indisponível
+  neste ambiente"; o resto do fluxo do blog segue normal. Spec:
+  `docs/superpowers/specs/2026-10-23-blog-automatico-design.md`
 - `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing. Also used (optionally) by billing-downgrade-cron for the switch's leg D enforcement; absent, that leg is skipped with `switchSkipped: true`
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
 - `AFFILIATE_MIN_PAYOUT_CENTS` -- repasse mínimo do programa de afiliados, em centavos
@@ -325,6 +331,13 @@ Monorepo with npm workspaces:
 
 - Programa de afiliados (spec `docs/superpowers/specs/2026-10-10-programa-de-afiliados-design.md`): só pagamentos Stripe geram comissão, via `stripe-webhook`, com percentual e janela de meses por plano em `affiliate_commission_rules` (editável no Admin). O repasse é por Stripe Connect (conta Express do afiliado, transfer mensal do `affiliate-payout-cron`), então o Connect precisa estar ativado na conta Stripe. O endpoint do webhook no painel do Stripe precisa ter `invoice.paid`, `charge.refunded`, `charge.dispute.created` e `charge.dispute.closed` ativos, senão nenhuma comissão é registrada. A atribuição é o trigger `on_auth_user_created_zz_affiliate_referral`, que depende de rodar DEPOIS de `on_auth_user_created_workspace` (ordem alfabética): não renomeie nenhum dos dois sem conferir isso
 - Financeiro v2 (flag `feature_financeiro_v2`, spec `docs/superpowers/specs/2026-10-23-financeiro-rentabilidade-design.md`): as tabelas `financeiro_*` só aceitam escrita pelas RPCs SECURITY DEFINER (`financeiro_*_salvar`, `financeiro_seed`, reabrir/fechar); nunca escreva nelas direto. As RPCs regravam as colunas legadas (`clientes.valor_mensal`/`data_pagamento`/`status`, `membros.custo_mensal`/`data_pagamento`) a partir da versão vigente no período `aberto`, e os triggers `trg_financeiro_v2_*_legado` fazem o caminho inverso: uma escrita legada (CSV, MCP, conversão de lead, telas antigas) vira versão no início do período aberto, com compare-and-skip como trava contra loop. `_financeiro_calcular` é a única função de rateio; `financeiro_rolar_periodos` (pg_cron `29 * * * *`) fecha períodos com snapshot e abre o próximo, e toda escrita v2 pega `pg_advisory_xact_lock_shared(_financeiro_lock_key(conta))` contra o lock exclusivo do job. Com a flag ligada, os formulários legados de cliente não gravam mensalidade, dia de pagamento nem status (isso vai pela aba Financeiro, que pede "Vale a partir de"). Contratos dos acordos ficam no bucket privado `financeiro-acordos` (`<conta_id>/<membro_id>/<uuid>.<ext>`, URL assinada de 300 s, sem UPDATE/DELETE)
+
+- Blog automático (spec `docs/superpowers/specs/2026-10-23-blog-automatico-design.md`, brief da rotina em `docs/routines/blog-diario.md`). Os posts da rotina vivem em `blog_posts` e entram no build por `npm run blog:sync`, que roda antes do `build` no `vercel.json`:
+  - **Regra de rollback:** com algum post do banco no ar, nunca volte o frontend (instant rollback da Vercel ou revert) para antes do deploy que introduziu o `blog-sync`. Um build mais antigo não tem posts do banco e `/blog/:slug` dá 404 para todos eles. Voltar para qualquer deploy posterior é seguro: cada build sincroniza de novo a partir do banco
+  - **Build falhando em `blog:sync`** com post inválido ou slug repetido (arquivo e banco): a mensagem do build nomeia o slug. Despublique ou edite esse post no Admin (`/admin/blog`) e rode o deploy de novo. Enquanto isso todo deploy (inclusive hotfix e preview) segue bloqueado, porque o sync falha fechado
+  - `apps/crm/src/content/blog-db/` é gerado por `npm run blog:sync` (um `.json` por post, gitignored). Não edite nem commite: o próximo sync sobrescreve
+  - Post escrito à mão novo em `apps/crm/src/content/blog/` exige adicionar slug e título em `supabase/functions/_shared/blog-file-posts.ts` (a rotina lê essa lista para não repetir tema nem slug). O teste de paridade `apps/crm/src/content/__tests__/blog-rules-parity.test.ts` falha se faltar
+  - Mudar os escopos `blog:*` (como qualquer escopo do MCP do Admin) = redeploy de `mcp-admin` + `mcp-oauth-consent` + CRM + Admin, e reautorizar o conector com os escopos novos marcados, senão a rotina perde acesso
 
 ## Deployment
 
