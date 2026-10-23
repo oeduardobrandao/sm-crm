@@ -243,3 +243,39 @@ Deno.test("hub-post-history still answers when the notes lookup fails", async ()
     console.error = original;
   }
 });
+
+Deno.test("hub-post-history returns no notes for a post that never reached the client", async () => {
+  const db = createSupabaseQueryMock();
+  queueOwnedPost(db);
+  // Only internal moves: no enviado_cliente event, so the events builder floors everything.
+  db.queue("post_status_events", "select", { data: [rawEvents[0], rawEvents[4]], error: null });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  // The loader would return a client-visible note if it were asked.
+  db.queue("post_media_notes_v", "select", { data: [noteRow()], error: null });
+
+  const response = await makeHandler(db)(new Request("https://example.test/hub-post-history?token=hub-123&post_id=99"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+  assertEquals(body.events, []);
+  assertEquals(body.media_notes, []);
+  assert(!db.calls.some((c) => c.table === "post_media_notes_v"), "notes must not even be queried");
+});
+
+Deno.test("hub-post-history counts note snapshots across pages", async () => {
+  const db = createSupabaseQueryMock();
+  queueOwnedPost(db);
+  db.queue("post_status_events", "select", { data: rawEvents, error: null });
+  db.queue("post_approvals", "select", { data: rawApprovals, error: null });
+  db.queue(
+    "post_approval_media_notes",
+    "select",
+    { data: [{ approval_id: 501, note_id: 1 }], error: null },
+    { data: [{ approval_id: 501, note_id: 2 }, { approval_id: 503, note_id: 3 }], error: null },
+  );
+  const response = await makeHandler(db)(new Request("https://example.test/hub-post-history?token=hub-123&post_id=99"));
+  const body = await readJson(response);
+  assertEquals(
+    body.approvals.map((a: { id: number; open_note_count: number }) => [a.id, a.open_note_count]),
+    [[501, 2], [503, 1]],
+  );
+});

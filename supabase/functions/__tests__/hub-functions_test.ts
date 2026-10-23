@@ -3678,6 +3678,17 @@ Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the 
   });
 });
 
+Deno.test("hub-approve maps post_not_found from the approval RPC to 404", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "post_not_found" } });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "x" }),
+  }));
+  assertEquals(response.status, 404);
+  assertEquals((await readJson(response)).error, "Post não encontrado.");
+});
+
 Deno.test("hub-approve maps post_not_pending to 409", async () => {
   const db = hubApproveDbForPost();
   db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "post_not_pending" } });

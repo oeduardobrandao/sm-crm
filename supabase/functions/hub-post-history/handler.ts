@@ -2,6 +2,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
+import { fetchAllRows } from "../_shared/paginate.ts";
 import { type HubMediaNoteDTO, loadClientMediaNotes } from "../_shared/media-notes.ts";
 
 type DbClient = {
@@ -197,34 +198,53 @@ export function createHubPostHistoryHandler(deps: HubPostHistoryHandlerDeps) {
     }
 
     const approvalRows = (approvals ?? []) as RawApprovalRow[];
+    const historyEvents = sanitizeHistoryEvents((events ?? []) as RawStatusEventRow[]);
 
-    // Per-approval snapshot counts: one extra query over the join table (approval_id, note_id).
-    // The join only ever holds client-visible notes. A failure degrades to 0 counts.
-    const openNoteCounts = new Map<number, number>();
-    if (approvalRows.length > 0) {
-      const { data: snapshots, error: snapshotsError } = await db
-        .from("post_approval_media_notes")
-        .select("approval_id")
-        .in("approval_id", approvalRows.map((a) => a.id));
-      if (snapshotsError) {
-        console.error("[hub-post-history] note snapshots lookup failed:", snapshotsError);
+    // Visibility parity with the events: client-visible notes are only ever client-authored
+    // (team pins are always internal), so they exist only after the post reached the client.
+    // Same temporal floor as the events builder: no enviado_cliente event, no notes. The
+    // ownership check above still applies to everything.
+    const reachedClient = historyEvents.some((e) => e.to_status === "enviado_cliente");
+
+    const loadSnapshotCounts = async (): Promise<Map<number, number>> => {
+      const counts = new Map<number, number>();
+      if (approvalRows.length === 0) return counts;
+      try {
+        // Join table (approval_id, note_id). Drained by pages: the 1000-row PostgREST cap
+        // must not silently truncate the counts.
+        const ids = approvalRows.map((a) => a.id);
+        const snapshots = await fetchAllRows<{ approval_id: number }>((from, to) =>
+          db
+            .from("post_approval_media_notes")
+            .select("approval_id, note_id")
+            .in("approval_id", ids)
+            .order("approval_id", { ascending: true })
+            .order("note_id", { ascending: true })
+            .range(from, to)
+        );
+        for (const row of snapshots) counts.set(row.approval_id, (counts.get(row.approval_id) ?? 0) + 1);
+      } catch (err) {
+        console.error("[hub-post-history] note snapshots lookup failed:", err);
       }
-      for (const row of (snapshots ?? []) as { approval_id: number }[]) {
-        openNoteCounts.set(row.approval_id, (openNoteCounts.get(row.approval_id) ?? 0) + 1);
-      }
-    }
+      return counts;
+    };
 
     // Notes stay visible even when the post is back in production (read-only in the Hub),
-    // so this is not gated on status. Failure degrades to none, like the snapshots above.
-    let mediaNotes: HubMediaNoteDTO[] = [];
-    try {
-      mediaNotes = await loadClientMediaNotes(db, hubToken.conta_id, [postId]);
-    } catch (err) {
-      console.error("[hub-post-history] media notes lookup failed:", err);
-    }
+    // so beyond the floor this is not gated on status. Failures degrade like the snapshots.
+    const loadNotes = async (): Promise<HubMediaNoteDTO[]> => {
+      if (!reachedClient) return [];
+      try {
+        return await loadClientMediaNotes(db, hubToken.conta_id, [postId]);
+      } catch (err) {
+        console.error("[hub-post-history] media notes lookup failed:", err);
+        return [];
+      }
+    };
+
+    const [openNoteCounts, mediaNotes] = await Promise.all([loadSnapshotCounts(), loadNotes()]);
 
     return json({
-      events: sanitizeHistoryEvents((events ?? []) as RawStatusEventRow[]),
+      events: historyEvents,
       approvals: sanitizeHistoryApprovals(approvalRows, openNoteCounts),
       media_notes: mediaNotes,
     });
