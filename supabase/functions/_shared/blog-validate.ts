@@ -70,10 +70,31 @@ function rangeMessage(field: string, value: string, [min, max]: readonly [number
   return `${field}: ${n} caracteres; precisa ter de ${min} a ${max}.`;
 }
 
-/** Link http(s) absoluto, caminho do site (/…) ou âncora (#…). */
-export function isAllowedLinkTarget(target: string): boolean {
-  if (/^#/.test(target)) return true;
-  if (/^\/(?!\/)/.test(target)) return !/[\\]/.test(target);
+const SITE_BASE = "https://site.invalid";
+
+/** Normaliza como o browser (WHATWG) e como sanitizeUrl do CRM / safe-href do blog: tira
+ * tab/CR/LF de qualquer posição, também na forma %09/%0a/%0d, e controles C0 e espaços nas
+ * pontas. Sem isso `/\t/evil.com` passaria como caminho e o browser abriria //evil.com. */
+export function normalizeLinkTarget(target: string): string {
+  return target
+    .replace(/[\t\r\n]|%0[9ad]/gi, "")
+    .replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "");
+}
+
+/** Link http(s) absoluto sem porta, caminho do site (/…) ou âncora (#…), depois de
+ * normalizado. Qualquer caractere de controle restante recusa. */
+export function isAllowedLinkTarget(raw: string): boolean {
+  const target = normalizeLinkTarget(raw);
+  if (/[\u0000-\u001f\u007f]/.test(target)) return false;
+  if (target.startsWith("#")) return true;
+  if (target.startsWith("/")) {
+    if (/\\|%5c/i.test(target) || target.startsWith("//")) return false;
+    try {
+      return new URL(target, SITE_BASE).origin === SITE_BASE;
+    } catch {
+      return false;
+    }
+  }
   if (!/^https?:\/\//i.test(target)) return false;
   try {
     const u = new URL(target);
@@ -178,24 +199,54 @@ type MdNode = {
   children?: MdNode[];
 };
 
+function parseBody(body: string): MdNode | null {
+  try {
+    return fromMarkdown(body, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as unknown as MdNode;
+  } catch (e) {
+    console.error("[blog-validate] markdown parse failed:", e);
+    return null;
+  }
+}
+
+function eachNode(tree: MdNode, visit: (node: MdNode, ancestors: MdNode[]) => void) {
+  const walk = (node: MdNode, ancestors: MdNode[]) => {
+    visit(node, ancestors);
+    const next = [...ancestors, node];
+    for (const child of node.children ?? []) walk(child, next);
+  };
+  walk(tree, []);
+}
+
+/** URLs http(s) de link e definição no corpo (normalizadas, únicas, na ordem), lidas da mesma
+ * árvore que o validador usa. Não filtra: os checks de link do mcp-admin marcam como quebrado
+ * o que o próprio fetch seguro recusar (porta, host privado...). */
+export function collectBodyLinkUrls(body: string): string[] {
+  const tree = parseBody(body);
+  if (!tree) return [];
+  const urls: string[] = [];
+  eachNode(tree, (node) => {
+    if (node.type !== "link" && node.type !== "definition") return;
+    const url = normalizeLinkTarget(node.url ?? "");
+    if (/^https?:\/\//i.test(url)) urls.push(url);
+  });
+  return [...new Set(urls)];
+}
+
 const LINK_MESSAGE = (target: string) =>
-  `body_md: link "${target.slice(0, 80)}" precisa ser http(s), um caminho /… ou uma âncora #….`;
+  `body_md: link "${JSON.stringify(target.slice(0, 80)).slice(1, -1)}" precisa ser http(s), um caminho /… ou uma âncora #….`;
 
 /** Regras do corpo sobre a árvore Markdown (mdast + GFM), a mesma leitura que o renderer
  * faz: colchetes aninhados, code spans e definições dentro de citações ou listas não
  * escapam de uma regex aqui. */
 function bodyErrors(body: string, imageKeys: Set<string> | null, sourcesCount: number | null): string[] {
   const out: string[] = [];
-  let tree: MdNode;
-  try {
-    tree = fromMarkdown(body, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as unknown as MdNode;
-  } catch (e) {
-    console.error("[blog-validate] markdown parse failed:", e);
-    return ["body_md: não foi possível ler o Markdown."];
-  }
+  const tree = parseBody(body);
+  if (!tree) return ["body_md: não foi possível ler o Markdown."];
   let html = false;
   let refImage = false;
-  const walk = (node: MdNode, parent: MdNode | null) => {
+  eachNode(tree, (node, ancestors) => {
+    const parent = ancestors[ancestors.length - 1];
+    const grandparent = ancestors[ancestors.length - 2];
     switch (node.type) {
       case "html":
         html = true;
@@ -211,7 +262,7 @@ function bodyErrors(body: string, imageKeys: Set<string> | null, sourcesCount: n
         const target = node.url ?? "";
         const img = IMG_TARGET.exec(target);
         if (!img) {
-          out.push(`body_md: imagem "${target.slice(0, 80)}" precisa usar img:<key> de uma entrada de images.`);
+          out.push(`body_md: imagem "${JSON.stringify(target.slice(0, 80)).slice(1, -1)}" precisa usar img:<key> de uma entrada de images.`);
           break;
         }
         if (imageKeys && !imageKeys.has(img[1])) out.push(`body_md: imagem img:${img[1]} não existe em images.`);
@@ -219,13 +270,13 @@ function bodyErrors(body: string, imageKeys: Set<string> | null, sourcesCount: n
           (parent.children ?? []).every((c) => c === node || (c.type === "text" && (c.value ?? "").trim() === ""));
         if (!alone) {
           out.push(`body_md: imagem img:${img[1]} precisa ficar sozinha no próprio parágrafo (linha em branco antes e depois).`);
+        } else if (grandparent?.type !== "root" && grandparent?.type !== "blockquote") {
+          out.push(`body_md: imagem img:${img[1]} precisa ficar num parágrafo próprio no nível principal do texto (fora de listas e tabelas).`);
         }
         break;
       }
     }
-    for (const child of node.children ?? []) walk(child, node);
-  };
-  walk(tree, null);
+  });
   if (html) out.unshift("body_md: HTML não é permitido; use só Markdown.");
   if (refImage) out.push("body_md: imagem só no formato ![alt](img:<key>); imagem por referência não é aceita.");
   // Sem sources conhecidos (edição parcial), checa só o formato dos infográficos.

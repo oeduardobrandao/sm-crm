@@ -3,6 +3,7 @@
 // só vira chip vermelho no Admin. Nada aqui lança: um check que não consegue rodar devolve
 // o resultado neutro e loga.
 import { BLOG_FILE_POSTS } from "../_shared/blog-file-posts.ts";
+import { collectBodyLinkUrls } from "../_shared/blog-validate.ts";
 import { checkPublicHost, isAbortError, withDeadline } from "../_shared/safe-image-fetch.ts";
 import type { Deps } from "./deps.ts";
 
@@ -33,8 +34,6 @@ export const SIMILAR_TITLE_WINDOW_DAYS = 60;
 
 type CheckDeps = Pick<Deps, "db" | "now" | "resolveDns" | "fetchUrl">;
 
-const INLINE_HTTP_LINK = /!?\[(?:[^\]\\]|\\.)*\]\(\s*<?(https?:\/\/[^\s)>]+)/gi;
-const REF_HTTP_LINK = /^ {0,3}\[(?:[^\]\\]|\\.)+\]:[ \t]*<?(https?:\/\/[^\s>]+)/gim;
 
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
 const records = (v: unknown): Record<string, unknown>[] =>
@@ -44,9 +43,7 @@ const records = (v: unknown): Record<string, unknown>[] =>
 export function collectLinkUrls(post: BlogCheckPost): string[] {
   const urls: string[] = [];
   for (const s of records(post.sources)) if (typeof s.url === "string") urls.push(s.url);
-  const body = text(post.body_md);
-  for (const m of body.matchAll(INLINE_HTTP_LINK)) urls.push(m[1]);
-  for (const m of body.matchAll(REF_HTTP_LINK)) urls.push(m[1]);
+  urls.push(...collectBodyLinkUrls(text(post.body_md)));
   return [...new Set(urls.filter((u) => /^https?:\/\//i.test(u)))];
 }
 

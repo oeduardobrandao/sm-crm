@@ -7,7 +7,7 @@ import { registerTools } from "../mcp-admin/tools.ts";
 import { createBlogDraft, getBlogPost, listBlogPosts, updateBlogDraft } from "../mcp-admin/blog.ts";
 import { uploadBlogImage } from "../mcp-admin/images.ts";
 import { runBlogChecks, titleSimilarity } from "../mcp-admin/blog-checks.ts";
-import { validateBlogDraft } from "../_shared/blog-validate.ts";
+import { collectBodyLinkUrls, isAllowedLinkTarget, validateBlogDraft } from "../_shared/blog-validate.ts";
 import { BLOG_FILE_POSTS } from "../_shared/blog-file-posts.ts";
 import { BLOG_FEATURE_SLUGS } from "../_shared/blog-rules.ts";
 import { CTX, expectInputError, insertPayload, makeDeps, makeFakeDb, PNG_10x5, updatePayload } from "./mcp-admin-helpers.ts";
@@ -495,4 +495,40 @@ Deno.test("runBlogChecks: link com porta explícita vai para broken sem fetch", 
   const c = await runBlogChecks(deps, checkPost({ sources: [], body_md: "[a](https://site.example.com:8443/x)" }), { linkTimeoutMs: 1000 });
   assertEquals(c.links.broken, ["https://site.example.com:8443/x"]);
   assertEquals(fetched, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Fix round 2: normalização de alvo como o browser, links dos checks pela árvore, imagem em lista
+// ---------------------------------------------------------------------------
+
+Deno.test("alvos com tab/LF/CR (crus, entidade ou %0x) e controles são recusados", () => {
+  bodyRejected("[x](/&#9;/evil.com)", "evil.com");
+  bodyRejected("[x](/&#10;/evil.com)", "evil.com");
+  bodyRejected("[x](/%09/evil.com)", "evil.com");
+  bodyRejected("[x](&#9;javascript:alert(1))", "javascript:alert(1)");
+  bodyRejected("[x](/&#12;/evil.com)", "body_md: link"); // form feed sobrevive à decodificação
+  // CommonMark troca NUL e DEL (crus ou por entidade) por U+FFFD antes da árvore; a regra vale na função.
+  assertEquals(isAllowedLinkTarget("/a\u0000b"), false);
+  assertEquals(isAllowedLinkTarget("/a\u007fb"), false);
+  assertEquals(isAllowedLinkTarget("\u0000/precos"), true);
+  bodyRejected("[x][r]\n\n[r]: /&#9;/evil.com", "evil.com");
+  const ok = validateBlogDraft(draft({ body_md: "[a](/precos) [b](#secao) [c](/blog/x?y=1#z)" }), { partial: false });
+  assert(ok.ok, JSON.stringify(ok));
+});
+
+Deno.test("imagem sozinha dentro de item de lista → recusada; em citação → aceita", () => {
+  bodyRejected("- ![Equipe](img:planejamento)", "nível principal");
+  bodyRejected("1. Passo\n\n   ![Equipe](img:planejamento)", "nível principal");
+  const ok = validateBlogDraft(draft({ body_md: "> ![Equipe](img:planejamento)" }), { partial: false });
+  assert(ok.ok, JSON.stringify(ok));
+});
+
+Deno.test("collectBodyLinkUrls lê a árvore: colchetes aninhados, definição em citação, autolink", () => {
+  const body = [
+    "[a [b] c](https://a.example.com/1)",
+    "> [r]: https://b.example.com/2",
+    "",
+    "Veja www.c.example.com e [rel](/precos) e [dup](https://a.example.com/1).",
+  ].join("\n");
+  assertEquals(collectBodyLinkUrls(body), ["https://a.example.com/1", "https://b.example.com/2", "http://www.c.example.com"]);
 });
