@@ -859,11 +859,12 @@ function PostDetailContent({
               currentIndexChange={setSlideIdx}
               jumpTo={jumpTo}
             />
-            {/* Phones: centered between the post arrows (which sit at mid-dialog height,
-                near the bottom of the 55svh media) and above the dots; the open badge moves
+            {/* Phones: centered in the band between the post arrows (left-2/right-2, w-10,
+                at mid-dialog height, near the bottom of the 55svh media) and above the dots;
+                the pair wraps onto two rows when the band is too narrow. The open badge moves
                 to the top there. md+: bottom right, as the arrows sit outside the card. */}
             {(canComment || canCommentVideo) && !ghost && (
-              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-1.5 md:left-auto md:right-3 md:bottom-10 md:translate-x-0 md:items-end">
+              <div className="absolute bottom-8 inset-x-14 z-30 flex flex-col items-center gap-1.5 md:inset-x-auto md:right-3 md:bottom-10 md:items-end">
                 {placingNow && (
                   <p
                     role="status"
@@ -881,7 +882,7 @@ function PostDetailContent({
                     {t('mediaNotes.comment')}
                   </button>
                 ) : (
-                  <div className="flex gap-1.5">
+                  <div className="flex flex-wrap justify-center gap-1.5 md:justify-end">
                     <button
                       type="button"
                       aria-pressed={placingNow}

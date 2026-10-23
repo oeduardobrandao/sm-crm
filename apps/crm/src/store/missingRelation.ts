@@ -13,8 +13,7 @@ export function isMissingRelationError(error: unknown, relation: string): boolea
   // Every one of these messages names the relation; requiring it keeps a missing
   // OTHER relation (a real bug) from being swallowed.
   if (typeof message !== 'string' || !message.includes(relation)) return false;
-  return (
-    (typeof code === 'string' && MISSING_RELATION_CODES.has(code)) ||
-    /does not exist|could not find|schema cache/i.test(message)
-  );
+  // Codes only, never message text: a wrong column (42703) also says "does not exist"
+  // and names the relation, and swallowing it would hide a broken select.
+  return typeof code === 'string' && MISSING_RELATION_CODES.has(code);
 }

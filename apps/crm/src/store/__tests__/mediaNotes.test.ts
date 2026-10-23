@@ -317,6 +317,28 @@ describe('media notes store', () => {
     expect(getCalls('post_approvals', 'select')).toHaveLength(1);
   });
 
+  // A wrong column also "does not exist" and names the relation; it is a bug, not a
+  // missing migration, so it must surface instead of dropping the notes.
+  it('getPostApprovals does not retry on a wrong embed column (42703)', async () => {
+    mockedSupabase.__queueSupabaseResult('post_approvals', 'select', {
+      data: null,
+      error: {
+        code: '42703',
+        message: 'column post_approval_media_notes_1.noteid does not exist',
+      },
+    });
+    await expect(getPostApprovals([100])).rejects.toBeTruthy();
+    expect(getCalls('post_approvals', 'select')).toHaveLength(1);
+  });
+
+  it('getMediaNotes surfaces a wrong view column (42703)', async () => {
+    mockedSupabase.__queueSupabaseResult('post_media_notes_v', 'select', {
+      data: null,
+      error: { code: '42703', message: 'column post_media_notes_v.nope does not exist' },
+    });
+    await expect(getMediaNotes([10])).rejects.toBeTruthy();
+  });
+
   it('getMediaNotes answers no notes when the view does not exist yet', async () => {
     mockedSupabase.__queueSupabaseResult('post_media_notes_v', 'select', {
       data: null,

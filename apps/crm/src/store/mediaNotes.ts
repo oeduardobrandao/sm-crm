@@ -38,9 +38,9 @@ export interface MediaNote {
 
 // Listas explícitas de colunas: a view e a tabela de respostas carregam `hub_token`
 // (credencial do cliente no Hub), que nunca pode chegar ao CRM. Sem `select('*')`.
-const NOTE_COLUMNS =
+export const NOTE_COLUMNS =
   'id, post_id, media_kind, visibility, author_kind, author_user_id, current_link_id, current_slide_index, slide_index_at_creation, is_previous_version, t_seconds, x, y, body, status, resolved_by, resolved_at, created_at';
-const REPLY_COLUMNS = 'id, note_id, author_kind, author_user_id, body, created_at';
+export const REPLY_COLUMNS = 'id, note_id, author_kind, author_user_id, body, created_at';
 
 export const mediaNotesKey = (postIds: number[]) => ['media-notes', postIds.join(',')] as const;
 
