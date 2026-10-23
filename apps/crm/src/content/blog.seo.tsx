@@ -32,6 +32,9 @@ const FOOTER_NAV =
   '<a href="/precos">Planos e preços</a> · <a href="/sobre">Sobre</a></nav>';
 
 export function renderBlogPostHtml(post: BlogPost, all: BlogPost[]): string {
+  // The static mirror is the crawler's copy of the article: shipping it
+  // without the body would publish an empty page, so a lazy post fails here.
+  if (post.body === null) throw new Error(`blog/${post.slug}: body not loaded for prerender`);
   const related = relatedPosts(post, all);
   return [
     `<nav><a href="/">Início</a> · <a href="/blog">Blog</a></nav>`,

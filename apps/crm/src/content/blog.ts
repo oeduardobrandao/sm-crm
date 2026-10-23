@@ -10,6 +10,9 @@ export const BLOG_INDEX_PATH = '/blog';
 export const CATEGORY_LABEL: Record<BlogPost['category'], string> = {
   comparativo: 'Comparativo',
   guia: 'Guia',
+  noticia: 'Notícia',
+  tendencia: 'Tendência',
+  planejamento: 'Planejamento',
 };
 
 export const BLOG_AUTHOR = {

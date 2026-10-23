@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest';
-import { parsePost, readingMinutes, splitFrontmatter } from '../blog.schema';
+import {
+  parseDbPost,
+  parsePost,
+  readingMinutes,
+  splitFrontmatter,
+  validateInfograficos,
+  extractInfograficos,
+} from '../blog.schema';
 import { blogPostRouteMeta, relatedPosts, sortPosts } from '../blog';
 
 const TITLE = 'Mesaas ou Aprova Post: qual usar na sua agência em 2026';
@@ -65,8 +72,12 @@ describe('parsePost', () => {
     expect(() => parsePost(raw({ title: 'Curto demais' }), 'curto')).toThrow(/curto\.md/);
   });
 
+  test('accepts the news category', () => {
+    expect(parsePost(raw({ category: 'noticia' }), 'x').category).toBe('noticia');
+  });
+
   test('rejects an unknown category', () => {
-    expect(() => parsePost(raw({ category: 'noticia' }), 'x')).toThrow(/x\.md/);
+    expect(() => parsePost(raw({ category: 'ia' }), 'x')).toThrow(/x\.md/);
   });
 
   test('prefixes a missing-frontmatter failure with the file path', () => {
@@ -150,5 +161,196 @@ describe('frontmatter contract strictness', () => {
     expect(parsePost(raw({ date: '2026-07-25', updated: '2026-08-02' }), 'x').updated).toBe(
       '2026-08-02',
     );
+  });
+});
+
+const DB_META = {
+  slug: 'instagram-muda-algoritmo',
+  status: 'publicado',
+  category: 'noticia',
+  title: TITLE,
+  h1: 'O Instagram mudou o algoritmo dos Reels',
+  description: DESC,
+  lede: 'O que muda para quem publica para clientes.',
+  date: '2026-10-20',
+  updated: '2026-10-21',
+  author: 'equipe',
+  cover: {
+    url: 'https://cdn.example.com/capa.jpg',
+    alt: 'Celular com o Instagram aberto',
+    credit: 'Fulano / Unsplash',
+    license: 'Unsplash License',
+    source_url: 'https://unsplash.com/photos/abc',
+  },
+  images: [
+    {
+      key: 'grafico-1',
+      url: 'https://cdn.example.com/grafico.jpg',
+      alt: 'Gráfico de alcance',
+      credit: 'Meta',
+      license: 'Uso editorial',
+      source_url: 'https://about.fb.com/news',
+    },
+  ],
+  sources: [
+    {
+      title: 'Anúncio oficial',
+      publisher: 'Meta',
+      url: 'https://about.fb.com/news/x',
+      published_at: '2026-10-19',
+    },
+  ],
+  featureSlug: 'aprovacao-de-post',
+  revision: 3,
+  readingMinutes: 4,
+};
+
+describe('parseDbPost', () => {
+  test('round-trips a fixture with every field', () => {
+    const post = parseDbPost(DB_META, 'Corpo.');
+    const { status: _status, ...rest } = DB_META;
+    expect(post).toEqual({ ...rest, body: 'Corpo.' });
+  });
+
+  test('keeps a null body (lazy) and defaults updated to date', () => {
+    const { updated: _u, ...meta } = DB_META;
+    const post = parseDbPost(meta, null);
+    expect(post.body).toBeNull();
+    expect(post.updated).toBe('2026-10-20');
+  });
+
+  test.each([
+    ['empty sources', { sources: [] }],
+    ['image without credit', { images: [{ ...DB_META.images[0], credit: '' }] }],
+    ['unknown featureSlug', { featureSlug: 'financeiro' }],
+    ['draft status', { status: 'rascunho' }],
+    ['non-http source url', { sources: [{ ...DB_META.sources[0], url: 'ftp://x.com/a' }] }],
+    ['unknown key', { autor: 'equipe' }],
+    ['zero reading minutes', { readingMinutes: 0 }],
+  ])('rejects %s, naming the slug', (_label, override) => {
+    expect(() => parseDbPost({ ...DB_META, ...override }, 'x')).toThrow(
+      /^blog-db\/instagram-muda-algoritmo:/,
+    );
+  });
+
+  test('names an unknown slug when meta is not an object', () => {
+    expect(() => parseDbPost(null, 'x')).toThrow(/^blog-db\/\(desconhecido\):/);
+  });
+});
+
+function fence(value: unknown): string {
+  return '```infografico\n' + (typeof value === 'string' ? value : JSON.stringify(value)) + '\n```';
+}
+
+const BARRAS = {
+  tipo: 'barras',
+  titulo: 'Alcance por formato',
+  fonte: 1,
+  itens: [
+    { rotulo: 'Reels', valor: 42, exibicao: '42%' },
+    { rotulo: 'Carrossel', valor: 30 },
+  ],
+};
+
+describe('extractInfograficos', () => {
+  test('finds each fence in order, zero-based, tolerating CRLF', () => {
+    const body = `Texto\r\n\r\n${fence(BARRAS)}\r\n\nMais\n\n${fence('{nao e json')}\n`.replace(
+      '```infografico\n',
+      '```infografico  \r\n',
+    );
+    const found = extractInfograficos(body);
+    expect(found.map((f) => f.index)).toEqual([0, 1]);
+    expect(found[0].value).toEqual(BARRAS);
+    expect(found[1].error).toBeDefined();
+  });
+
+  test('ignores an unclosed fence', () => {
+    expect(extractInfograficos('```infografico\n{"tipo": "etapas"}\n')).toEqual([]);
+  });
+
+  test('ignores other code fences', () => {
+    expect(extractInfograficos('```json\n{}\n```')).toEqual([]);
+  });
+});
+
+describe('validateInfograficos', () => {
+  test('accepts a valid barras', () => {
+    expect(validateInfograficos(fence(BARRAS), 2)).toEqual([]);
+  });
+
+  test('accepts valid numeros and etapas', () => {
+    const numeros = {
+      tipo: 'numeros',
+      titulo: 'Em números',
+      fonte: 0,
+      itens: [
+        { valor: '2 bi', legenda: 'usuários ativos' },
+        { valor: '38%', legenda: 'do tempo em Reels' },
+      ],
+    };
+    const etapas = {
+      tipo: 'etapas',
+      titulo: 'Como aprovar',
+      itens: [{ rotulo: 'Envie o link' }, { rotulo: 'Cliente revisa' }, { rotulo: 'Aprovado' }],
+    };
+    expect(validateInfograficos(`${fence(numeros)}\n\n${fence(etapas)}`, 1)).toEqual([]);
+  });
+
+  test('flags fonte outside sources', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, fonte: 3 }), 2)).toEqual([
+      'infografico[0].fonte: índice 3 fora de sources (0..1)',
+    ]);
+  });
+
+  test('indexes the second infographic as [1]', () => {
+    const body = `${fence(BARRAS)}\n\n${fence({ ...BARRAS, fonte: 3 })}`;
+    expect(validateInfograficos(body, 2)).toEqual([
+      'infografico[1].fonte: índice 3 fora de sources (0..1)',
+    ]);
+  });
+
+  test('flags fonte when the post has no sources', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, fonte: 0 }), 0)).toEqual([
+      'infografico[0].fonte: índice 0 fora de sources (nenhuma fonte)',
+    ]);
+  });
+
+  test('flags empty itens', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, itens: [] }), 2)).toEqual([
+      'infografico[0].itens: mínimo de 2 itens',
+    ]);
+  });
+
+  test('flags a text valor on barras', () => {
+    const bad = { ...BARRAS, itens: [{ rotulo: 'Reels', valor: 'dez' }, BARRAS.itens[1]] };
+    expect(validateInfograficos(fence(bad), 2)).toEqual([
+      'infografico[0].itens[0].valor: deve ser número',
+    ]);
+  });
+
+  test('flags invalid JSON inside the fence', () => {
+    expect(validateInfograficos(fence('{"tipo": "barras",'), 2)).toEqual([
+      'infografico[0]: JSON inválido',
+    ]);
+  });
+
+  test('flags an unknown tipo', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, tipo: 'pizza' }), 2)).toEqual([
+      'infografico[0].tipo: deve ser barras, numeros ou etapas',
+    ]);
+  });
+
+  test('flags an unknown key and a too-long title', () => {
+    const bad = { ...BARRAS, titulo: 'x'.repeat(91), cor: 'azul' };
+    expect(validateInfograficos(fence(bad), 2).sort()).toEqual([
+      'infografico[0].titulo: máximo de 90 caracteres',
+      'infografico[0]: chave desconhecida: cor',
+    ]);
+  });
+
+  test('flags a non-integer fonte', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, fonte: 0.5 }), 2)).toEqual([
+      'infografico[0].fonte: deve ser número inteiro',
+    ]);
   });
 });

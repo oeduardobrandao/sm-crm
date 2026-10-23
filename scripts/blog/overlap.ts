@@ -109,6 +109,15 @@ function compare(slugA: string, bodyA: string, slugB: string, bodyB: string): Of
   return offenders;
 }
 
+/** Disk posts always carry their body; a null one means a loader changed
+ * under us, and comparing it as empty would report a false all-clear. */
+function loadPostBodies(): Array<{ slug: string; body: string }> {
+  return loadPostsFromDisk().map((p) => {
+    if (p.body === null) throw new Error(`overlap: ${p.slug} has no body loaded`);
+    return { slug: p.slug, body: p.body };
+  });
+}
+
 function loadCandidate(arg: string): { slug: string; body: string } {
   const path = resolve(arg);
   if (existsSync(path)) {
@@ -116,8 +125,8 @@ function loadCandidate(arg: string): { slug: string; body: string } {
     const { body } = splitFrontmatter(raw);
     return { slug: basename(arg).replace(/\.md$/, ''), body };
   }
-  const post = loadPostsFromDisk().find((p) => p.slug === arg);
-  if (post) return { slug: post.slug, body: post.body };
+  const post = loadPostBodies().find((p) => p.slug === arg);
+  if (post) return post;
   throw new Error(`overlap: no file or published slug matches "${arg}"`);
 }
 
@@ -136,7 +145,7 @@ function report(offenders: Offender[], checked: number): void {
 }
 
 const arg = process.argv[2];
-const posts = loadPostsFromDisk();
+const posts = loadPostBodies();
 
 if (arg) {
   const candidate = loadCandidate(arg);

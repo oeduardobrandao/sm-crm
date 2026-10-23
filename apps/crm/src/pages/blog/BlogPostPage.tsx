@@ -67,7 +67,7 @@ function BlogPostView({ post }: { post: BlogPost }) {
             </div>
             <article className="blog-prose" style={{ marginTop: 40 }}>
               <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                {post.body}
+                {post.body ?? ''}
               </Markdown>
             </article>
             <aside className="blog-author">
