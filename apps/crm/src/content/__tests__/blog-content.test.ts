@@ -1,8 +1,10 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { parsePost } from '../blog.schema';
+import { loadPostsFromDisk } from '../../../../../scripts/seo/blog-fs';
 import { PUBLIC_ROUTES } from '../site-meta';
 
 // Resolved against this file rather than the process cwd: vitest may be invoked
@@ -558,5 +560,45 @@ describe('bypasses found by the whole-branch review', () => {
     'O Doo Studio anuncia geração de imagens com IA nos módulos dele.',
   ])('still allows the plainly competitor-attributed %j', (s) => {
     expect(unshippedClaims(s)).toEqual([]);
+  });
+});
+
+describe('loadPostsFromDisk with database posts', () => {
+  const meta = (slug: string) => ({
+    slug,
+    status: 'publicado',
+    category: 'guia',
+    title: 'Como agendar posts no Instagram sem perder tempo hoje',
+    h1: 'Como agendar posts no Instagram sem perder tempo na rotina',
+    description:
+      'Aprenda a agendar posts no Instagram com um fluxo simples, evitando retrabalho e mantendo a consistência da agência com os clientes.',
+    lede: 'Um fluxo simples.',
+    date: '2026-10-01',
+    author: 'equipe',
+    cover: null,
+    images: [],
+    sources: [{ title: 'Doc', publisher: 'Meta', url: 'https://example.com/a' }],
+    featureSlug: null,
+    revision: 1,
+    readingMinutes: 2,
+  });
+  const fixture = (slugs: string[]) => {
+    const dir = mkdtempSync(join(tmpdir(), 'blogdb-'));
+    for (const s of slugs) {
+      writeFileSync(join(dir, `${s}.json`), JSON.stringify(meta(s)));
+      writeFileSync(join(dir, `${s}.body.md`), `## Corpo de ${s}`);
+    }
+    return dir;
+  };
+
+  test('merges file and database posts', () => {
+    const merged = loadPostsFromDisk(fixture(['post-do-banco']));
+    expect(merged).toHaveLength(files.length + 1);
+    expect(merged.find((p) => p.slug === 'post-do-banco')?.body).toBe('## Corpo de post-do-banco');
+  });
+
+  test('throws on a slug present in both origins', () => {
+    const dup = files[0].replace(/\.md$/, '');
+    expect(() => loadPostsFromDisk(fixture([dup]))).toThrow(new RegExp(dup));
   });
 });

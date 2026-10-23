@@ -101,6 +101,6 @@
       "destination": "/app.html"
     }
   ],
-  "buildCommand": "npm run build && npm run prerender && npm run build:hub && npm run build:admin",
+  "buildCommand": "npm run blog:sync && npm run build && npm run prerender && npm run build:hub && npm run build:admin",
   "outputDirectory": "dist"
 }
