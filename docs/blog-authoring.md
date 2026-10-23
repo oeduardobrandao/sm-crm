@@ -26,7 +26,7 @@ h1: <título da página — 10 a 120 caracteres, pode ser mais longo que o title
 description: <resumo para o Google — 120 a 160 caracteres>
 date: AAAA-MM-DD
 updated: AAAA-MM-DD
-category: comparativo | guia
+category: comparativo | guia | noticia | tendencia | planejamento
 ---
 ```
 
@@ -156,6 +156,11 @@ como molde e o reescreve no caminho, então rodá-lo sozinho falha num checkout
 limpo e falha de novo se você já rodou uma vez. Ele avisa alto quando isso
 acontece (`marker not found: 404.html:body`) — a correção é sempre buildar antes.
 
-Faça commit do `.md` **e** do PNG em `public/og/blog/`. Não há mais nada para
+Adicione o slug e o `title` do post novo em
+`supabase/functions/_shared/blog-file-posts.ts` (a rotina diária do blog lê essa
+lista para não repetir slug nem tema). O teste
+`apps/crm/src/content/__tests__/blog-rules-parity.test.ts` falha se faltar.
+
+Faça commit do `.md`, do PNG em `public/og/blog/` e de `blog-file-posts.ts`. Não há mais nada para
 registrar em `vercel.json`, no `App.tsx` ou no sitemap — tudo isso deriva dos
 arquivos em `content/blog/`.
