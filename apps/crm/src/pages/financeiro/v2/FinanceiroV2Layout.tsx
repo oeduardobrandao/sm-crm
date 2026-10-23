@@ -12,6 +12,7 @@ import OnboardingCard from './OnboardingCard';
 
 const TABS = [
   { to: '/financeiro/rentabilidade', label: 'Rentabilidade' },
+  { to: '/financeiro/atribuicao', label: 'Equipe por cliente' },
   { to: '/financeiro/equipe', label: 'Custos da equipe' },
   { to: '/financeiro/lancamentos', label: 'Lançamentos' },
 ] as const;

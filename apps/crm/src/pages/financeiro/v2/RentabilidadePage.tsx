@@ -2,7 +2,16 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, ChartColumn, Download, Percent, UserX, Users, Wallet } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChartColumn,
+  Download,
+  Percent,
+  UserPlus,
+  UserX,
+  Users,
+  Wallet,
+} from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import {
@@ -211,6 +220,31 @@ export default function RentabilidadePage() {
     linhas[0]?.cliente ??
     null;
 
+  // Right after "Montar" nobody is on a client yet: every row would read 100% margin and
+  // the whole team cost sits in "Sem cliente". Say so and point to the matrix.
+  const semAtribuicao =
+    data.clientes.length > 0 &&
+    data.membros.length > 0 &&
+    data.clientes.every((c) => c.pessoas.length === 0);
+  const avisoAtribuir = semAtribuicao && (
+    <div
+      role="status"
+      aria-label="Equipe sem atribuição"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-sm"
+    >
+      <UserPlus className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        <span className="font-semibold">Ninguém foi atribuído a um cliente ainda.</span> Marque quem
+        atende cada cliente para ver o custo e a margem.
+      </span>
+      <Button asChild size="sm" className="mb-0">
+        <Link to="/financeiro/atribuicao">
+          {can('financeiro', 'editar') === true ? 'Atribuir equipe' : 'Ver equipe por cliente'}
+        </Link>
+      </Button>
+    </div>
+  );
+
   const aviso = data.incompleto && (
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
       <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -246,6 +280,7 @@ export default function RentabilidadePage() {
     return (
       <div className="flex flex-col gap-4">
         {barraPeriodo}
+        {avisoAtribuir}
         {aviso}
         <RentabilidadePhone
           data={data}
@@ -307,6 +342,7 @@ export default function RentabilidadePage() {
         )}
       </StatCardGrid>
 
+      {avisoAtribuir}
       {aviso}
 
       <div className="flex flex-wrap items-center justify-between gap-3">

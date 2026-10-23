@@ -88,6 +88,24 @@ function renderPage() {
   return { ...utils, invalidate };
 }
 
+/** Right after "Montar": funções and acordos exist, nobody is on a client. */
+function semAtribuicao() {
+  const data = structuredClone(planilha);
+  for (const c of data.clientes) {
+    c.pessoas = [];
+    c.custo = 0;
+    c.lucro = c.receita;
+    c.margem = 1;
+    for (const k of Object.keys(c.por_funcao)) c.por_funcao[k] = 0;
+  }
+  data.totais = {
+    ...data.totais,
+    custo_clientes: 0,
+    custo_sem_cliente: data.totais.custo_total,
+  };
+  return data;
+}
+
 /** The <tr> of a client in the desktop table. */
 function linha(nome: string): HTMLElement {
   return screen.getByRole('button', { name: nome }).closest('tr') as HTMLElement;
@@ -138,6 +156,37 @@ describe('RentabilidadePage', () => {
     await screen.findByText('Sem cliente');
     expect(norm(kpi('Sem cliente').textContent)).toContain('R$ 900,00');
     expect(kpi('Sem cliente')).toHaveTextContent('Pessoas sem cliente ou sem função');
+  });
+
+  it('asks to assign the team when nobody is on a client yet (desktop)', async () => {
+    getRentabilidadeMock.mockResolvedValue(semAtribuicao());
+    renderPage();
+
+    const aviso = await screen.findByRole('status', { name: 'Equipe sem atribuição' });
+    expect(aviso).toHaveTextContent('Ninguém foi atribuído a um cliente ainda.');
+    expect(within(aviso).getByRole('link', { name: 'Atribuir equipe' })).toHaveAttribute(
+      'href',
+      '/financeiro/atribuicao',
+    );
+  });
+
+  it('asks to assign the team on phones too', async () => {
+    desktop.value = false;
+    getRentabilidadeMock.mockResolvedValue(semAtribuicao());
+    renderPage();
+
+    const aviso = await screen.findByRole('status', { name: 'Equipe sem atribuição' });
+    expect(within(aviso).getByRole('link', { name: 'Atribuir equipe' })).toHaveAttribute(
+      'href',
+      '/financeiro/atribuicao',
+    );
+  });
+
+  it('does not ask once someone is assigned', async () => {
+    renderPage();
+
+    await screen.findByText('Receita recorrente');
+    expect(screen.queryByRole('status', { name: 'Equipe sem atribuição' })).toBeNull();
   });
 
   it('sorted_by_margin_first_is_tyciana_or_cricia', async () => {

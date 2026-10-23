@@ -21,7 +21,7 @@ export default function OnboardingCard({ canEdit = true }: { canEdit?: boolean }
     try {
       await seedFinanceiro(dia);
       await qc.invalidateQueries({ queryKey: ['financeiro-v2'] });
-      toast.success('Financeiro montado.');
+      toast.success('Financeiro montado. Agora marque quem atende cada cliente.');
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
         avisarErroFinanceiro(e, 'Erro ao montar o financeiro', qc);

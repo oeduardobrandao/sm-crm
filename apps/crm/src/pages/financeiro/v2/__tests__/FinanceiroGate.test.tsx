@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -171,11 +171,19 @@ describe('FinanceiroGate', () => {
     );
   });
 
-  it('renders the assignment page inside the layout without a tab of its own', async () => {
+  it('renders the assignment page inside the layout under its own tab', async () => {
     renderAt('/financeiro/atribuicao');
 
     expect(await screen.findByText('Em construção.')).toBeVisible();
-    expect(screen.getAllByRole('link')).toHaveLength(3);
+    const nav = screen.getByRole('navigation', { name: 'Seções do financeiro' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((l) => l.textContent),
+    ).toEqual(['Rentabilidade', 'Equipe por cliente', 'Custos da equipe', 'Lançamentos']);
+    const tab = within(nav).getByRole('link', { name: 'Equipe por cliente' });
+    expect(tab).toHaveAttribute('href', '/financeiro/atribuicao');
+    expect(tab).toHaveAttribute('aria-current', 'page');
   });
 
   it('lancamentos renders the ledger inside the layout', async () => {
