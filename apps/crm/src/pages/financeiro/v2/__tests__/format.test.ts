@@ -133,6 +133,51 @@ describe('fixture planilha', () => {
     }
   });
 
+  it('por_funcao tem uma chave para cada funcao, nos clientes e nos totais', () => {
+    const ids = planilha.funcoes.map((f) => String(f.id)).sort();
+    expect(Object.keys(totais.por_funcao).sort()).toEqual(ids);
+    for (const c of clientes) expect(Object.keys(c.por_funcao).sort()).toEqual(ids);
+    expect(totais.por_funcao['5']).toBe(0);
+  });
+
+  it('pessoas e membros seguem a ordem do contrato', () => {
+    const ordem = new Map(planilha.funcoes.map((f) => [f.id as number | null, f.ordem]));
+    const rank = (x: { funcao_id: number | null; nome: string }) => [
+      ordem.get(x.funcao_id) ?? Infinity,
+      x.nome,
+    ];
+    const ordenado = <T extends { funcao_id: number | null; nome: string }>(xs: T[]) =>
+      [...xs].sort((a, b) => {
+        const [oa, na] = rank(a) as [number, string];
+        const [ob, nb] = rank(b) as [number, string];
+        return oa - ob || na.localeCompare(nb, 'pt-BR');
+      });
+    expect(membros.map((m) => m.nome)).toEqual(ordenado(membros).map((m) => m.nome));
+    for (const c of clientes) {
+      expect(c.pessoas.map((p) => p.nome)).toEqual(ordenado(c.pessoas).map((p) => p.nome));
+    }
+    expect(clientes.find((c) => c.nome === 'Talitha')?.pessoas.map((p) => p.nome)).toEqual([
+      'Lia',
+      'Ana',
+      'Bruno',
+      'Duda',
+    ]);
+    expect(membros.map((m) => m.nome)).toEqual(['Caio', 'Lia', 'Ana', 'Bruno', 'Duda']);
+    const ordens = planilha.funcoes.map((f) => f.ordem);
+    expect(ordens).toEqual([...ordens].sort((a, b) => a - b));
+  });
+
+  it('dinheiro com 2 casas e margem com 4', () => {
+    const casas = (n: number, d: number) => Math.abs(Math.round(n * 10 ** d) / 10 ** d - n) < 1e-9;
+    for (const c of clientes) {
+      for (const v of [c.receita, c.custo, c.lucro, ...Object.values(c.por_funcao)]) {
+        expect(casas(v, 2)).toBe(true);
+      }
+      expect(casas(c.margem ?? 0, 4)).toBe(true);
+    }
+    expect(casas(totais.margem ?? 0, 4)).toBe(true);
+  });
+
   it('clientes vem ordenados por nome', () => {
     const nomes = clientes.map((c) => c.nome);
     expect(nomes).toEqual([...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR')));

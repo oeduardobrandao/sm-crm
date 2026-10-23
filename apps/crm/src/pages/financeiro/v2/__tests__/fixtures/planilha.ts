@@ -38,13 +38,24 @@ const receitas: Array<[id: number, nome: string, receita: number]> = [
 
 const TALITHA = 9;
 
-const membros: MembroRentabilidade[] = [
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+const ordemDe = (funcaoId: number | null) =>
+  funcoes.find((f) => f.id === funcaoId)?.ordem ?? Number.MAX_SAFE_INTEGER;
+
+// Contract ordering: funcao ordem, members without a funcao last, then name.
+const porFuncaoENome = (a: { funcao_id: number | null; nome: string }, b: typeof a) =>
+  ordemDe(a.funcao_id) - ordemDe(b.funcao_id) || a.nome.localeCompare(b.nome, 'pt-BR');
+
+const membrosBase: MembroRentabilidade[] = [
   membro(1, 'Caio', 1, 'mensal_meta', 2310, 14, null, 165),
   membro(2, 'Lia', 1, 'mensal_meta', 550, 1, null, 550),
   membro(3, 'Ana', 2, 'mensal_meta', 3900, 15, null, 260),
   membro(4, 'Bruno', 3, 'mensal_meta', 3150, 15, null, 210),
   membro(5, 'Duda', 4, 'mensal_limite', 2400, 15, 20, 160),
 ];
+
+const membros = [...membrosBase].sort(porFuncaoENome);
 
 function membro(
   membro_id: number,
@@ -83,20 +94,25 @@ function rateio(m: MembroRentabilidade): PessoaRentabilidade {
   };
 }
 
-const [caio, lia, ana, bruno, duda] = membros;
+const byId = (id: number) => membros.find((m) => m.membro_id === id)!;
+const [caio, lia, ana, bruno, duda] = [1, 2, 3, 4, 5].map(byId);
 
 function cliente(id: number, nome: string, receita: number): ClienteRentabilidade {
   const talitha = id === TALITHA;
   const pessoas: PessoaRentabilidade[] = talitha
     ? [{ ...rateio(lia), regra: 'exclusivo' }, rateio(ana), rateio(bruno), rateio(duda)]
     : [rateio(caio), rateio(ana), rateio(bruno), rateio(duda)];
-  const por_funcao: Record<string, number> = {};
+  pessoas.sort(porFuncaoENome);
+  // A key for every funcao, 0 when the client has no cost there.
+  const por_funcao: Record<string, number> = Object.fromEntries(
+    funcoes.map((f) => [String(f.id), 0]),
+  );
   for (const p of pessoas) {
     const key = String(p.funcao_id);
-    por_funcao[key] = (por_funcao[key] ?? 0) + p.valor;
+    por_funcao[key] = round2((por_funcao[key] ?? 0) + p.valor);
   }
-  const custo = pessoas.reduce((acc, p) => acc + p.valor, 0);
-  const lucro = receita - custo;
+  const custo = round2(pessoas.reduce((acc, p) => acc + p.valor, 0));
+  const lucro = round2(receita - custo);
   return {
     cliente_id: id,
     nome,
@@ -104,7 +120,7 @@ function cliente(id: number, nome: string, receita: number): ClienteRentabilidad
     receita,
     custo,
     lucro,
-    margem: Math.round((lucro / receita) * 10000) / 10000,
+    margem: round4(lucro / receita),
     a_informar: false,
     por_funcao,
     pessoas,
@@ -137,7 +153,7 @@ const planilhaSeeded: RentabilidadeSeeded = {
     custo_total: 12310,
     lucro: 18290,
     margem: 0.5977,
-    por_funcao: { '1': 2860, '2': 3900, '3': 3150, '4': 2400 },
+    por_funcao: { '1': 2860, '2': 3900, '3': 3150, '4': 2400, '5': 0 },
   },
   incompleto: false,
 };
