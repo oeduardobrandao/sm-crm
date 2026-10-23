@@ -50,11 +50,22 @@ vi.mock('@/services/inlineImage', () => ({
   stripSignedUrls: vi.fn((c: unknown) => c),
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
-vi.mock('@/pages/entregas/components/PostEditor', () => ({
-  PostEditor: ({ variant }: { variant?: string }) => (
-    <div data-testid="post-editor-stub" data-variant={variant} />
-  ),
-}));
+const editorMock = vi.hoisted(() => ({ focusThread: vi.fn() }));
+vi.mock('@/pages/entregas/components/PostEditor', async () => {
+  const { useImperativeHandle } = await import('react');
+  return {
+    PostEditor: function PostEditorStub({
+      variant,
+      ref,
+    }: {
+      variant?: string;
+      ref?: import('react').Ref<{ focusThread(id: number): void }>;
+    }) {
+      useImperativeHandle(ref, () => ({ focusThread: editorMock.focusThread }));
+      return <div data-testid="post-editor-stub" data-variant={variant} />;
+    },
+  };
+});
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
 // Only the desktop section is stubbed: the phone tab renders the real DiscussaoTimeline.
 vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', async (importOriginal) => ({
@@ -479,6 +490,45 @@ describe('PostEditorBody, phone layout', () => {
         ],
       });
       expect(screen.getByRole('tab', { name: 'Comentários, 5' })).toBeInTheDocument();
+    });
+
+    it('Ver no texto on a Roteiro thread opens Conteúdo and the Roteiro screen, then focuses it', async () => {
+      const passage = {
+        id: 5,
+        post_id: 42,
+        conta_id: 'ws-1',
+        quoted_text: 'trecho do roteiro',
+        status: 'active',
+        created_by: 'user-1',
+        resolved_by: null,
+        created_at: '2026-10-21T10:00:00Z',
+        resolved_at: null,
+        field: 'conteudo',
+        anchor_start: null,
+        anchor_end: null,
+        orphaned: false,
+        post_comments: [
+          {
+            id: 50,
+            thread_id: 5,
+            author_id: 'user-1',
+            content: 'Ajustar',
+            created_at: '2026-10-21T10:00:00Z',
+            updated_at: null,
+          },
+        ],
+      } as unknown as CommentThreadWithComments;
+      const user = userEvent.setup();
+      renderPhone({ commentThreads: [passage] });
+      await user.click(screen.getByRole('tab', { name: /Comentários/ }));
+      await user.click(screen.getByRole('button', { name: /Ver no texto/ }));
+
+      expect(screen.getByRole('tab', { name: 'Conteúdo' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByRole('group', { name: 'Roteiro e briefing' })).toBeInTheDocument();
+      await waitFor(() => expect(editorMock.focusThread).toHaveBeenCalledWith(5));
     });
 
     it('the general thread does not count as a passage comment or as a tab total', () => {

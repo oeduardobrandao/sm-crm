@@ -40,7 +40,20 @@ vi.mock('@/services/inlineImage', () => ({
   stripSignedUrls: vi.fn((c: unknown) => c),
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
-vi.mock('@/pages/entregas/components/PostEditor', () => ({ PostEditor: () => <div /> }));
+const editorMock = vi.hoisted(() => ({ focusThread: vi.fn() }));
+vi.mock('@/pages/entregas/components/PostEditor', async () => {
+  const { useImperativeHandle } = await import('react');
+  return {
+    PostEditor: function PostEditorStub({
+      ref,
+    }: {
+      ref?: import('react').Ref<{ focusThread(id: number): void }>;
+    }) {
+      useImperativeHandle(ref, () => ({ focusThread: editorMock.focusThread }));
+      return <div />;
+    },
+  };
+});
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({ PropertyPanel: () => null }));
 const discussaoMock = vi.hoisted(() => ({
   result: { marker: 'discussao-result' },
@@ -53,9 +66,20 @@ vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
   },
 }));
 vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
-  DiscussaoEquipe: ({ discussao, chatBridge }: { discussao: unknown; chatBridge?: ReactNode }) => (
+  DiscussaoEquipe: ({
+    discussao,
+    chatBridge,
+    onThreadClick,
+  }: {
+    discussao: unknown;
+    chatBridge?: ReactNode;
+    onThreadClick: (threadId: number) => void;
+  }) => (
     <section data-testid="discussao-stub" data-shared={String(discussao === discussaoMock.result)}>
       {chatBridge}
+      <button type="button" onClick={() => onThreadClick(5)}>
+        stub-ver-no-texto
+      </button>
     </section>
   ),
 }));
@@ -678,6 +702,19 @@ describe('PostEditorBody, Discussão da equipe and Conversa com o cliente', () =
     renderBody({ commentThreads: [mk(1, 42), mk(2, 99)] });
     const args = discussaoMock.useDiscussao.mock.lastCall?.[0] as { threads: { id: number }[] };
     expect(args.threads.map((t) => t.id)).toEqual([1]);
+  });
+
+  it('Ver no texto on a Roteiro thread focuses it in the editor', async () => {
+    const roteiro = {
+      id: 5,
+      post_id: 42,
+      field: 'conteudo',
+      status: 'active',
+      post_comments: [],
+    } as never;
+    renderBody({ commentThreads: [roteiro] });
+    fireEvent.click(screen.getByRole('button', { name: 'stub-ver-no-texto' }));
+    await waitFor(() => expect(editorMock.focusThread).toHaveBeenCalledWith(5));
   });
 
   it('keeps the hook disabled while the post row is collapsed', () => {

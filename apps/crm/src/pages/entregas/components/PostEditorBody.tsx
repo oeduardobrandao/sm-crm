@@ -18,7 +18,7 @@ import {
 } from '../../../store';
 // By path, not through the store barrel: the drawer test harnesses mock '@/store'.
 import { isGeralThread } from '@/store/comments';
-import { PostEditor } from './PostEditor';
+import { PostEditor, type PostEditorHandle } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import { PostProductionSection } from './PostProductionSection';
 import { DiscussaoEquipe } from '../discussao/DiscussaoEquipe';
@@ -319,6 +319,8 @@ export function PostEditorBody({
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
   const captionRef = useRef<InstagramCaptionFieldHandle>(null);
+  // The Roteiro editor (phone or desktop, never both): "Ver no texto" on a passage thread.
+  const contentEditorRef = useRef<PostEditorHandle>(null);
   // Campo de colaboradores: "Editar colaboradores" (bloco de erro) foca o input; sem input
   // (travado ou com 3 chips) rola até o campo.
   const collaboratorsInputRef = useRef<HTMLInputElement>(null);
@@ -737,6 +739,16 @@ export function PostEditorBody({
 
     const openThreadFromList = (threadId: number) => {
       const thread = commentThreads.find((t) => t.id === threadId);
+      if (thread?.field === 'conteudo') {
+        setPhoneTab('conteudo');
+        // The Roteiro editor lives in its full-screen text screen (mounted, hidden while
+        // closed); open it, then focus once it is laid out. A pending edit suggestion
+        // replaces the editor, so there is nothing to focus then.
+        if (editSuggestion) return;
+        setRoteiroOpen(true);
+        requestAnimationFrame(() => contentEditorRef.current?.focusThread(threadId));
+        return;
+      }
       if (thread?.field !== 'ig_caption') return;
       if (multiplatform && !currentPlatforms.includes('instagram')) {
         toast.info('Ative o Instagram em Destinos para ver este comentário.');
@@ -779,6 +791,7 @@ export function PostEditorBody({
       </div>
     ) : (
       <PostEditor
+        ref={contentEditorRef}
         key={editorKey}
         variant="phone"
         initialContent={resolvedContent}
@@ -1561,6 +1574,7 @@ export function PostEditorBody({
         </div>
       ) : (
         <PostEditor
+          ref={contentEditorRef}
           key={editorKey}
           initialContent={resolvedContent}
           onUpdate={(json, plain) => onContentUpdate(stripSignedUrls(json), plain)}
@@ -1688,6 +1702,10 @@ export function PostEditorBody({
           }
           onThreadClick={(threadId) => {
             const thread = commentThreads.find((t) => t.id === threadId);
+            if (thread?.field === 'conteudo') {
+              contentEditorRef.current?.focusThread(threadId);
+              return;
+            }
             if (thread?.field !== 'ig_caption') return;
             if (multiplatform) {
               if (!currentPlatforms.includes('instagram')) {
