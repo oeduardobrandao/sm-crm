@@ -127,7 +127,7 @@ describe('MediaAdjustmentDialog', () => {
   });
 });
 
-async function loadEditableImage(onClose = vi.fn(), onUpdated = vi.fn()) {
+async function loadEditableImage(onClose = vi.fn(), onUpdated = vi.fn(), onReplaced = vi.fn()) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({
@@ -147,13 +147,14 @@ async function loadEditableImage(onClose = vi.fn(), onUpdated = vi.fn()) {
       forStories={false}
       onClose={onClose}
       onUpdated={onUpdated}
+      onReplaced={onReplaced}
     />,
   );
   await waitFor(() => expect(document.querySelector('img[src="blob:preview"]')).toBeTruthy());
   const image = document.querySelector('img[src="blob:preview"]')!;
   Object.defineProperties(image, { naturalWidth: { value: 1080 }, naturalHeight: { value: 1920 } });
   fireEvent.load(image);
-  return { ...view, onClose, onUpdated };
+  return { ...view, onClose, onUpdated, onReplaced };
 }
 
 it('closes and refreshes only after the adjusted file is saved', async () => {
@@ -172,4 +173,20 @@ it('keeps the editor open and offers another attempt when saving fails', async (
   expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao salvar');
   expect(onClose).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'Aplicar ajuste' })).toBeEnabled();
+});
+
+it('onReplaced fires once, only when the replacement was saved', async () => {
+  vi.mocked(replacePostMedia).mockResolvedValue(undefined);
+  const { onReplaced } = await loadEditableImage();
+  fireEvent.click(screen.getByRole('button', { name: 'Aplicar ajuste' }));
+  await waitFor(() => expect(onReplaced).toHaveBeenCalledOnce());
+});
+
+it('a failed save still reconciles the cache (onUpdated) but never reports a replacement', async () => {
+  vi.mocked(replacePostMedia).mockRejectedValue(new Error('Falha ao salvar'));
+  const { onUpdated, onReplaced } = await loadEditableImage();
+  fireEvent.click(screen.getByRole('button', { name: 'Aplicar ajuste' }));
+  await screen.findByRole('alert');
+  expect(onUpdated).toHaveBeenCalled();
+  expect(onReplaced).not.toHaveBeenCalled();
 });

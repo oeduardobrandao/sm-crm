@@ -46,6 +46,7 @@ vi.mock('@/store', async (importOriginal) => ({
 
 import * as comments from '@/store/comments';
 import { PhoneComments } from '../PhoneComments';
+import { makeNote } from '../../mediaNotes/__tests__/fixtures';
 
 const ME = 'user-me';
 const ANA = 'user-ana';
@@ -104,6 +105,8 @@ function approval(id: number, team: boolean, when: string): PostApproval {
     action: 'mensagem',
     comentario: team ? 'Resposta da equipe' : 'Mensagem do cliente',
     is_workspace_user: team,
+    author_user_id: team ? ME : null,
+    media_note_ids: [],
     created_at: when,
   };
 }
@@ -139,6 +142,10 @@ function build(over: Props = {}, discussao: UseDiscussaoResult = fakeDiscussao()
     currentUserId: ME,
     discussao,
     approvals: [],
+    notes: [],
+    media: [],
+    onNoteReply: vi.fn(async () => {}),
+    onNoteStatus: vi.fn(async () => {}),
     references: [],
     onOpenReference: vi.fn(),
     clientName: 'Padaria Sol',
@@ -467,5 +474,55 @@ describe('PhoneComments Cliente pane', () => {
     expect(screen.getByText('Mensagem do cliente', { exact: false })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Sugestão do cliente/ }));
     expect(onOpen).toHaveBeenCalled();
+  });
+});
+
+describe('PhoneComments notes pinned to the media', () => {
+  const internal = (id: number) =>
+    makeNote({ id, visibility: 'internal', author_kind: 'team', body: 'Interna' });
+
+  it('shows the empty state when only internal notes exist', () => {
+    setup({ notes: [internal(1)] });
+    fireEvent.click(clientePill());
+    expect(screen.getByText('Nenhuma mensagem com o cliente ainda.')).toBeInTheDocument();
+  });
+
+  it('hides the empty state when a client note exists, even resolved', () => {
+    setup({ notes: [makeNote({ id: 1, status: 'resolved' })] });
+    fireEvent.click(clientePill());
+    expect(screen.queryByText('Nenhuma mensagem com o cliente ainda.')).not.toBeInTheDocument();
+  });
+
+  it('counts the OPEN client notes on the Cliente pill', () => {
+    setup({
+      approvals: [approval(1, false, at(9, 0))],
+      notes: [
+        makeNote({ id: 1 }),
+        makeNote({ id: 2 }),
+        makeNote({ id: 3, status: 'resolved' }),
+        internal(4),
+      ],
+    });
+    expect(screen.getByRole('button', { name: /^Cliente/ })).toHaveTextContent(
+      'Cliente · 2 em aberto',
+    );
+  });
+
+  it('opens on Cliente when the newest client-side entry is a client note', () => {
+    setup({
+      approvals: [approval(1, true, at(9, 0))],
+      notes: [makeNote({ id: 1, created_at: at(10, 0) })],
+    });
+    expect(screen.getByRole('button', { name: /^Cliente/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('lists the client note in the Cliente pane and never an internal one', () => {
+    setup({ notes: [makeNote({ id: 1, body: 'Trocar a cor' }), internal(2)] });
+    fireEvent.click(screen.getByRole('button', { name: /^Cliente/ }));
+    expect(screen.getByText('Trocar a cor')).toBeInTheDocument();
+    expect(screen.queryByText('Interna')).not.toBeInTheDocument();
   });
 });

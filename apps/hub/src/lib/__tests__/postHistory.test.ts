@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { PostHistoryApproval, PostHistoryEvent, PostHistoryResponse } from '../../types';
+import type {
+  HubMediaNote,
+  PostHistoryApproval,
+  PostHistoryEvent,
+  PostHistoryResponse,
+} from '../../types';
 import {
   buildHistoryEntries,
   computePostKpis,
@@ -453,5 +458,77 @@ describe('formatDuration', () => {
     expect(formatDuration(5 * HOUR)).toBe('5 h');
     expect(formatDuration(47 * HOUR)).toBe('47 h');
     expect(formatDuration(72 * HOUR)).toBe('3 d');
+  });
+});
+
+describe('buildHistoryEntries with media notes', () => {
+  function mnote(id: number, created_at: string, over: Partial<HubMediaNote> = {}): HubMediaNote {
+    return {
+      id,
+      post_id: 7,
+      media_kind: 'image',
+      link_id: 100,
+      slide_index: 0,
+      is_previous_version: false,
+      t_seconds: null,
+      x: null,
+      y: null,
+      author: 'client',
+      author_name: null,
+      body: `nota ${id}`,
+      status: 'open',
+      resolved_at: null,
+      created_at,
+      replies: [],
+      ...over,
+    };
+  }
+
+  it('buildHistoryEntries interleaves notes by time', () => {
+    const entries = buildHistoryEntries({
+      events: [send(1, '2026-09-01T10:00:00.000Z', 'v1')],
+      approvals: [ap({ id: 10, action: 'correcao', created_at: '2026-09-01T11:00:00.000Z' })],
+      media_notes: [mnote(1, '2026-09-01T10:30:00.000Z'), mnote(2, '2026-09-01T12:00:00.000Z')],
+    });
+    expect(entries.map((e) => e.key)).toEqual(['send-1', 'note-1', 'approval-10', 'note-2']);
+    const first = entries[1];
+    expect(first.kind === 'note' && first.note.body).toBe('nota 1');
+  });
+
+  it('places a note between an approval and a status event at the same instant', () => {
+    const at = '2026-09-01T11:00:00.000Z';
+    const entries = buildHistoryEntries({
+      events: [
+        send(1, '2026-09-01T10:00:00.000Z', 'v1'),
+        ev({ id: 2, to_status: 'agendado', created_at: at }),
+      ],
+      approvals: [ap({ id: 10, action: 'aprovado', created_at: at })],
+      media_notes: [mnote(1, at)],
+    });
+    expect(entries.map((e) => e.kind)).toEqual(['send', 'approval', 'note', 'status']);
+  });
+
+  it('works without media_notes (older payload)', () => {
+    const entries = buildHistoryEntries(history([send(1, '2026-09-01T10:00:00.000Z', 'v1')], []));
+    expect(entries.map((e) => e.kind)).toEqual(['send']);
+  });
+
+  it('carries open_note_count onto the approval entry, defaulting to 0', () => {
+    const entries = buildHistoryEntries(
+      history(
+        [],
+        [
+          ap({
+            id: 10,
+            action: 'correcao',
+            created_at: '2026-09-01T11:00:00.000Z',
+            open_note_count: 2,
+          }),
+          ap({ id: 11, action: 'aprovado', created_at: '2026-09-01T12:00:00.000Z' }),
+        ],
+      ),
+    );
+    const counts = entries.map((e) => (e.kind === 'approval' ? e.openNoteCount : null));
+    expect(counts).toEqual([2, 0]);
   });
 });

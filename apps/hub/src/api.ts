@@ -88,7 +88,7 @@ function get<T>(fn: string, params: Record<string, string>): Promise<T> {
   return request<T>(edgeUrl(fn, params), { headers: { apikey: ANON } });
 }
 
-function post<T>(fn: string, body: unknown, signal?: AbortSignal): Promise<T> {
+export function post<T>(fn: string, body: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>(
     `${BASE}/functions/v1/${fn}`,
     {

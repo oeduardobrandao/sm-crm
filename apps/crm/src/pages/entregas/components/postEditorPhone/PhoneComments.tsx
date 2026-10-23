@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Bell, BellOff, CheckCircle2, Eye, Lock, RotateCcw, Send } from 'lucide-react';
 import { BottomActionBar } from '@/components/mobile';
 import { MentionEditor } from '@/components/mentions/MentionEditor';
-import type { CommentThreadWithComments, Membro, PostApproval } from '../../../../store';
+import type { CommentThreadWithComments, Membro, PostApproval, PostMedia } from '../../../../store';
+import type { MediaNote } from '@/store/mediaNotes';
 // By path, not through the store barrel: the drawer test harnesses mock '@/store'.
 import type { ReferenceItem } from '@/store/postReferences';
 import { DiscussaoTimeline } from '../../discussao/DiscussaoEquipe';
@@ -17,6 +18,7 @@ import {
 } from '../../discussao/useDiscussaoActions';
 import { buildTimeline } from '../../discussao/timeline';
 import { ReferenceChips } from '../references/ReferenceChips';
+import { ClientConversation } from '../mediaNotes/ClientConversation';
 
 type Channel = 'cliente' | 'equipe';
 
@@ -32,17 +34,27 @@ function formatWhen(iso: string): string {
 
 /**
  * Where the tab opens: Equipe when the team discussion has unread messages, else Cliente
- * when the newest client-side message came from the client (not the team), else Equipe.
+ * when the newest client-side entry (an approval or a note pinned to the media) came from
+ * the client (not the team), else Equipe.
  */
-function defaultChannel(naoLidasEquipe: number, approvals: PostApproval[]): Channel {
+function defaultChannel(
+  naoLidasEquipe: number,
+  approvals: PostApproval[],
+  clientNotes: MediaNote[],
+): Channel {
   if (naoLidasEquipe > 0) return 'equipe';
-  let newest: PostApproval | null = null;
-  for (const a of approvals) {
-    if (!newest || new Date(a.created_at).getTime() >= new Date(newest.created_at).getTime()) {
-      newest = a;
+  let newestAt = -Infinity;
+  let newestFromClient = false;
+  const consider = (iso: string, fromClient: boolean) => {
+    const at = new Date(iso).getTime();
+    if (at >= newestAt) {
+      newestAt = at;
+      newestFromClient = fromClient;
     }
-  }
-  return newest && !newest.is_workspace_user ? 'cliente' : 'equipe';
+  };
+  for (const a of approvals) consider(a.created_at, !a.is_workspace_user);
+  for (const n of clientNotes) consider(n.created_at, n.author_kind === 'client');
+  return newestFromClient ? 'cliente' : 'equipe';
 }
 
 interface PhoneCommentsProps {
@@ -53,6 +65,12 @@ interface PhoneCommentsProps {
   /** "Discutir no chat" control; rendered only on plans with the team chat. */
   chatBridge?: ReactNode;
   approvals: PostApproval[];
+  /** Notes pinned to the media, and the media they point at. Only client notes show here. */
+  notes: MediaNote[];
+  media: PostMedia[];
+  onNoteReply: (noteId: number, body: string) => Promise<void>;
+  onNoteStatus: (noteIds: number[], status: 'open' | 'resolved') => Promise<void>;
+  onSelectMedia?: (linkId: number) => void;
   references: ReferenceItem[];
   onOpenReference: (item: ReferenceItem) => void;
   clientName?: string | null;
@@ -89,6 +107,11 @@ export function PhoneComments({
   discussao,
   chatBridge,
   approvals,
+  notes,
+  media,
+  onNoteReply,
+  onNoteStatus,
+  onSelectMedia,
   references,
   onOpenReference,
   clientName,
@@ -105,8 +128,10 @@ export function PhoneComments({
   focusRequest,
 }: PhoneCommentsProps) {
   const naoLidasEquipe = discussao.naoLidas;
+  const clientNotes = useMemo(() => notes.filter((n) => n.visibility === 'client'), [notes]);
+  const openClientNotes = clientNotes.filter((n) => n.status === 'open').length;
   const [channel, setChannel] = useState<Channel>(() =>
-    focusRequest ? 'equipe' : defaultChannel(naoLidasEquipe, approvals),
+    focusRequest ? 'equipe' : defaultChannel(naoLidasEquipe, approvals, clientNotes),
   );
   // The unread count is only meaningful once the participation has loaded, which is after
   // mount on a cold cache: decide again exactly once at that point. After that (or after a
@@ -116,8 +141,8 @@ export function PhoneComments({
   useEffect(() => {
     if (settledRef.current || discussao.participacao === undefined) return;
     settledRef.current = true;
-    setChannel(defaultChannel(discussao.naoLidas, approvals));
-  }, [discussao.participacao, discussao.naoLidas, approvals]);
+    setChannel(defaultChannel(discussao.naoLidas, approvals, clientNotes));
+  }, [discussao.participacao, discussao.naoLidas, approvals, clientNotes]);
   useEffect(() => {
     if (!focusRequest) return;
     settledRef.current = true;
@@ -168,7 +193,7 @@ export function PhoneComments({
           onClick={() => pick('cliente')}
         >
           <Eye aria-hidden="true" />
-          Cliente
+          Cliente{openClientNotes > 0 ? ` · ${openClientNotes} em aberto` : ''}
         </button>
       </div>
 
@@ -257,51 +282,65 @@ export function PhoneComments({
               <span className="phone-comments__suggestion-cta">Revisar</span>
             </button>
           )}
-          {approvals.length === 0 && !suggestion && (
+          {approvals.length === 0 && clientNotes.length === 0 && !suggestion && (
             <p className="phone-comments__empty">Nenhuma mensagem com o cliente ainda.</p>
           )}
-          {approvals.map((a) => {
-            const refs = references.filter((r) => r.post_approval_id === a.id);
-            if (a.action === 'aprovado' && !a.is_workspace_user) {
+          <ClientConversation
+            approvals={approvals}
+            notes={notes}
+            media={media}
+            workspaceUsers={workspaceUsers}
+            membros={membros}
+            clientName={client}
+            replyText={replyText}
+            sendingReply={sendingReply}
+            onReplyChange={onReplyChange}
+            onReplySend={onReplySend}
+            onNoteReply={onNoteReply}
+            onNoteStatus={onNoteStatus}
+            onSelectMedia={onSelectMedia}
+            composer="none"
+            className="client-conversation--phone"
+            renderApproval={(a) => {
+              const refs = references.filter((r) => r.post_approval_id === a.id);
+              if (a.action === 'aprovado' && !a.is_workspace_user) {
+                return (
+                  <div className="phone-comments__event">
+                    <span className="phone-comments__meta">{formatWhen(a.created_at)}</span>
+                    <span className="phone-comments__event-label">
+                      <CheckCircle2 aria-hidden="true" /> {client} aprovou o post
+                    </span>
+                    {a.comentario && (
+                      <p className="phone-bubble phone-bubble--client">{a.comentario}</p>
+                    )}
+                  </div>
+                );
+              }
+              const team = a.is_workspace_user;
               return (
-                <div key={a.id} className="phone-comments__event">
-                  <span className="phone-comments__meta">{formatWhen(a.created_at)}</span>
-                  <span className="phone-comments__event-label">
-                    <CheckCircle2 aria-hidden="true" /> {client} aprovou o post
+                <div className={`phone-comments__row${team ? ' phone-comments__row--team' : ''}`}>
+                  <span className="phone-comments__meta">
+                    {team ? 'Equipe' : client}
+                    {a.action === 'correcao' && !team && (
+                      <span className="phone-comments__tag">
+                        <RotateCcw aria-hidden="true" /> Correção solicitada
+                      </span>
+                    )}
+                    {' · '}
+                    {formatWhen(a.created_at)}
                   </span>
                   {a.comentario && (
-                    <p className="phone-bubble phone-bubble--client">{a.comentario}</p>
+                    <p
+                      className={`phone-bubble${team ? ' phone-bubble--team' : ' phone-bubble--client'}`}
+                    >
+                      {a.comentario}
+                    </p>
                   )}
+                  <ReferenceChips references={refs} onOpen={onOpenReference} />
                 </div>
               );
-            }
-            const team = a.is_workspace_user;
-            return (
-              <div
-                key={a.id}
-                className={`phone-comments__row${team ? ' phone-comments__row--team' : ''}`}
-              >
-                <span className="phone-comments__meta">
-                  {team ? 'Equipe' : client}
-                  {a.action === 'correcao' && !team && (
-                    <span className="phone-comments__tag">
-                      <RotateCcw aria-hidden="true" /> Correção solicitada
-                    </span>
-                  )}
-                  {' · '}
-                  {formatWhen(a.created_at)}
-                </span>
-                {a.comentario && (
-                  <p
-                    className={`phone-bubble${team ? ' phone-bubble--team' : ' phone-bubble--client'}`}
-                  >
-                    {a.comentario}
-                  </p>
-                )}
-                <ReferenceChips references={refs} onOpen={onOpenReference} />
-              </div>
-            );
-          })}
+            }}
+          />
           {active && (
             <BottomActionBar className="phone-comments__composer">
               <input

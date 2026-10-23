@@ -2,6 +2,8 @@ import { assert, assertEquals } from "./assert.ts";
 import {
   allowlistClient,
   buildPostFeedback,
+  formatMediaMoment,
+  mediaNoteAnchor,
   buildPropertyDefinitions,
   buildTiptapDoc,
   deriveFormatMeta,
@@ -547,6 +549,7 @@ Deno.test("buildPostFeedback groups, derives author, orders feedback/timeline/po
     latest_feedback_at: "2026-06-03T10:00:00Z",
     feedback: [{ action: "aprovado", comentario: null, author: "client", created_at: "2026-06-03T10:00:00Z" }],
     timeline: [],
+    media_notes: [],
   });
 
   // post 10: feedback newest-first; author derived; timeline oldest->newest
@@ -773,4 +776,79 @@ Deno.test("igAlignedScore: weights present components, renormalizes, small-sampl
     null,
   );
   assertEquals(MIN_SAMPLE, 5);
+});
+
+function noteRow(over: Record<string, unknown> = {}) {
+  return {
+    id: 1, post_id: 10, media_kind: "image" as const, slide_index_at_creation: 0, current_slide_index: 0,
+    is_previous_version: false, t_seconds: null, x: null, visibility: "client" as const,
+    author_kind: "client" as const, body: "Trocar a cor", status: "open" as const,
+    created_at: "2026-06-04T10:00:00Z", replies: [], ...over,
+  };
+}
+
+Deno.test("buildPostFeedback includes media notes with anchor labels", () => {
+  const feedback = [
+    { post_id: 10, titulo: "A", status: "correcao_cliente", cliente_id: 1,
+      action: "correcao", comentario: "x", is_workspace_user: false, created_at: "2026-06-02T10:00:00Z" },
+  ];
+  const out = buildPostFeedback(feedback, [], [
+    noteRow({ id: 1, current_slide_index: 2, x: 0.3, created_at: "2026-06-04T10:00:00Z" }),
+    noteRow({
+      id: 2, media_kind: "video", slide_index_at_creation: 0, current_slide_index: null, is_previous_version: true,
+      t_seconds: 42, author_kind: "team", status: "resolved", created_at: "2026-06-05T10:00:00Z",
+      replies: [
+        { author_kind: "team", body: "Feito", created_at: "2026-06-05T12:00:00Z" },
+        { author_kind: "client", body: "Valeu", created_at: "2026-06-05T11:00:00Z" },
+      ],
+    }),
+  ]);
+  assertEquals(out.length, 1);
+  assertEquals(out[0].media_notes.map((n) => n.anchor), ["slide 3 · ponto", "slide 1 · 0:42 (versão anterior)"]);
+  assertEquals(out[0].media_notes[0], {
+    id: 1, anchor: "slide 3 · ponto", status: "open", body: "Trocar a cor", author: "client",
+    created_at: "2026-06-04T10:00:00Z", replies: [],
+  });
+  assertEquals(out[0].media_notes[1].author, "workspace");
+  assertEquals(out[0].media_notes[1].status, "resolved");
+  assertEquals(out[0].media_notes[1].replies, [
+    { body: "Valeu", author: "client", created_at: "2026-06-05T11:00:00Z" },
+    { body: "Feito", author: "workspace", created_at: "2026-06-05T12:00:00Z" },
+  ]);
+  // Notes and replies count as activity.
+  assertEquals(out[0].latest_feedback_at, "2026-06-05T12:00:00Z");
+  const json = JSON.stringify(out);
+  assert(!json.includes("file_id") && !json.includes("hub_token"), "no file_id or hub_token");
+});
+
+Deno.test("buildPostFeedback drops internal notes even if handed one", () => {
+  const feedback = [
+    { post_id: 10, titulo: "A", status: "enviado_cliente", cliente_id: 1,
+      action: "mensagem", comentario: "oi", is_workspace_user: false, created_at: "2026-06-02T10:00:00Z" },
+  ];
+  const out = buildPostFeedback(feedback, [], [noteRow({ visibility: "internal", body: "so equipe", author_kind: "team" })]);
+  assertEquals(out[0].media_notes, []);
+});
+
+Deno.test("buildPostFeedback lists a post with notes and no approvals via postMeta, skips it without", () => {
+  const meta = new Map([[10, { titulo: "Só nota", status: "enviado_cliente", cliente_id: 4 }]]);
+  const out = buildPostFeedback([], [], [noteRow()], meta);
+  assertEquals(out.length, 1);
+  assertEquals(out[0].titulo, "Só nota");
+  assertEquals(out[0].cliente_id, 4);
+  assertEquals(out[0].feedback, []);
+  assertEquals(out[0].latest_feedback_at, "2026-06-04T10:00:00Z");
+  assertEquals(buildPostFeedback([], [], [noteRow()]), []);
+});
+
+Deno.test("mediaNoteAnchor: 1-based slide, current index wins, m:ss moments, ponto and versão anterior", () => {
+  assertEquals(mediaNoteAnchor(noteRow({ slide_index_at_creation: 5, current_slide_index: 1 })), "slide 2");
+  assertEquals(
+    mediaNoteAnchor(noteRow({ slide_index_at_creation: 4, current_slide_index: null, is_previous_version: true })),
+    "slide 5 (versão anterior)",
+  );
+  assertEquals(mediaNoteAnchor(noteRow({ media_kind: "video", t_seconds: 0 })), "slide 1 · 0:00");
+  assertEquals(mediaNoteAnchor(noteRow({ media_kind: "video", t_seconds: 125.9, x: 0.1 })), "slide 1 · 2:05 · ponto");
+  assertEquals(mediaNoteAnchor(noteRow({ media_kind: "image", t_seconds: 9 })), "slide 1");
+  assertEquals(formatMediaMoment(42), "0:42");
 });

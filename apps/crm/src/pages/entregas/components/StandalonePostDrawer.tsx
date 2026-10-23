@@ -76,6 +76,15 @@ import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../s
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { PostEditorBody } from './PostEditorBody';
+// By path, not through the store barrel: the drawer test harnesses mock '@/store'.
+import {
+  getMediaNotes,
+  mediaNotesKey,
+  replyToMediaNote,
+  setMediaNoteStatus,
+} from '@/store/mediaNotes';
+import type { MediaNotesBinding } from './mediaNotes/ClientConversation';
+import { OpenNotesBadge } from './mediaNotes/OpenNotesBadge';
 import { PostTimelinePopover } from './PostTimelinePopover';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
@@ -197,6 +206,11 @@ export function StandalonePostDrawer({
   const { data: approvals = [] } = useQuery({
     queryKey: ['post-approvals', String(postId)],
     queryFn: () => getPostApprovals([postId]),
+  });
+
+  const { data: mediaNotes = [] } = useQuery({
+    queryKey: mediaNotesKey([postId]),
+    queryFn: () => getMediaNotes([postId]),
   });
 
   const { data: editSuggestions = [] } = useQuery({
@@ -640,6 +654,27 @@ export function StandalonePostDrawer({
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
 
+  const refreshMediaNotes = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['media-notes'] }),
+      qc.invalidateQueries({ queryKey: ['post-approvals'] }),
+    ]);
+  };
+
+  const mediaNotesBinding: MediaNotesBinding = {
+    notes: mediaNotes,
+    clientName: post?.cliente_nome,
+    onChanged: refreshMediaNotes,
+    onReply: async (noteId, body) => {
+      await replyToMediaNote(noteId, body);
+      await refreshMediaNotes();
+    },
+    onStatus: async (noteIds, status) => {
+      await setMediaNoteStatus(noteIds, status);
+      await refreshMediaNotes();
+    },
+  };
+
   const handleReplySend = async () => {
     const text = replyText.trim();
     if (!text) return;
@@ -937,6 +972,7 @@ export function StandalonePostDrawer({
               clientePosts={clientePosts}
               isExpanded
               approvals={approvals}
+              mediaNotes={mediaNotesBinding}
               statusEvents={statusEvents}
               editSuggestion={editSuggestion}
               membros={membros}
@@ -1110,6 +1146,7 @@ export function StandalonePostDrawer({
                   approvals={approvals}
                   processEvents={processEvents}
                 />
+                <OpenNotesBadge approvals={approvals} notes={mediaNotes} />
                 <CopyPostLinkButton hubUrl={hubUrl} postId={postId} />
                 <CopyLinkButton path={`/entregas?post=${postId}`} label="Copiar link do post" />
                 {canDuplicate && post && (
@@ -1181,6 +1218,7 @@ export function StandalonePostDrawer({
                 clientePosts={clientePosts}
                 isExpanded
                 approvals={approvals}
+                mediaNotes={mediaNotesBinding}
                 statusEvents={statusEvents}
                 editSuggestion={editSuggestion}
                 membros={membros}

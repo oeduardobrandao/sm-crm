@@ -6977,6 +6977,315 @@ body.role-agent input[name='valor_total'] {
   line-height: 1.45;
 }
 
+/* Feedback em mídia: client notes in the conversation */
+
+.client-conversation__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.client-conversation__filter {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.client-conversation__filter[aria-pressed='true'] {
+  background: var(--text-main);
+  border-color: var(--text-main);
+  color: var(--bg-color);
+}
+
+.client-conversation__empty {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.client-conversation__approval {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.client-conversation__flag {
+  align-self: flex-start;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(245, 163, 66, 0.18);
+  color: var(--text-main);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.client-conversation__summary {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.client-conversation--phone .drawer-thread-label {
+  display: none;
+}
+
+.media-note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-main);
+  font-size: 0.82rem;
+}
+
+.media-note-card--resolved {
+  opacity: 0.8;
+}
+
+.media-note-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.media-note-card__anchor {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-main);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.media-note-card__anchor--static {
+  cursor: default;
+}
+
+.media-note-card__status {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.media-note-card__status--open {
+  color: #b45309;
+}
+
+[data-theme='dark'] .media-note-card__status--open {
+  /* The warning token clears AA on the dark surface; #b45309 does not. */
+  color: var(--warning);
+}
+
+.media-note-card__status--resolved {
+  color: var(--text-muted);
+}
+
+.media-note-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.media-note-card__body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.media-note-card__replies {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0 0 0 0.6rem;
+  list-style: none;
+  border-left: 2px solid var(--border-color);
+}
+
+.media-note-card__reply--team .media-note-card__meta strong {
+  color: var(--text-main);
+}
+
+.media-note-card__reply-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.media-note-card__reply-row .drawer-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.media-note-card__toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.media-note-card__toggle:hover:not(:disabled) {
+  color: var(--text-main);
+}
+
+/* Pins over the media preview (lightbox): ink = client, dashed = internal */
+
+.crm-pin-anchor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+/* Each anchor is its own stacking context (transform): lift the one with open details so a
+   later sibling's pin cannot paint over the panel. */
+.crm-pin-anchor[data-open='true'] {
+  z-index: 2;
+}
+
+.crm-pin {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #12151a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* While placing, the layer owns the click: pins must not swallow it. */
+.crm-pin-layer--placing .crm-pin {
+  pointer-events: none;
+}
+
+.crm-pin[data-visibility='internal'] {
+  border: 2px dashed #12151a;
+  background: #ffffff;
+  color: #12151a;
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Resolved comes after internal and is more specific, so a resolved internal pin reads as
+   resolved: faded, dashed outline kept so it is still told apart from a client pin. */
+.crm-pin[data-state='resolved'] {
+  border-color: #12151a;
+  background: rgba(255, 255, 255, 0.85);
+  color: #12151a;
+}
+
+.crm-pin[data-visibility='internal'][data-state='resolved'] {
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.7),
+    0 1px 4px rgba(0, 0, 0, 0.35);
+  opacity: 0.8;
+}
+
+.crm-pin--draft {
+  background: transparent;
+  box-shadow: 0 0 0 2px #12151a;
+  pointer-events: none;
+}
+
+.crm-pin-details {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 2;
+  width: 14rem;
+  max-width: 70vw;
+  padding: 0.5rem 0.6rem;
+  transform: translateX(-50%);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #12151a;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: left;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  cursor: default;
+  /* The layer is pointer-events: none outside placing mode; the panel must opt back in. */
+  pointer-events: auto;
+}
+
+.crm-pin-details__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.7rem;
+  color: #4b5563;
+}
+
+.crm-pin-details__meta strong {
+  color: #12151a;
+}
+
+.crm-pin-details__body {
+  margin: 0 0 0.4rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.crm-pin-details__actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.crm-pin-details__actions button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.phone-media__notes {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #12151a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
 /* Reply row */
 
 .drawer-reply-row {

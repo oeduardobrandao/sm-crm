@@ -2,6 +2,8 @@ import { assert, assertEquals } from "./assert.ts";
 import { listPostFeedback } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
+import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
+import { unknownMediaNoteColumns } from "./media-notes-columns.ts";
 
 type Resp = { data: unknown; error: unknown };
 type Call = { table: string; method: string; args: unknown[] };
@@ -15,7 +17,7 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
 
   function recorder(table: string) {
     const rec: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "in", "gte", "order", "limit"]) {
+    for (const m of ["select", "eq", "in", "gte", "order", "limit", "range"]) {
       rec[m] = (...args: unknown[]) => {
         calls.push({ table, method: m, args });
         return rec;
@@ -44,6 +46,16 @@ const CTX: McpKeyContext = {
   key_id: "k1",
   created_by: "u1",
 };
+
+/** The recorder's flat calls in the shared mock's shape, for the column guard. */
+function asQueryCalls(calls: Call[]): QueryCall[] {
+  return calls.filter((c) => c.method !== "from").map((c) => ({
+    table: c.table,
+    operation: "select",
+    selectArgs: c.method === "select" ? [c.args] : [],
+    modifiers: c.method === "select" ? [] : [{ method: c.method, args: c.args }],
+  }));
+}
 
 function has(calls: Call[], table: string, method: string, args: unknown[]): boolean {
   return calls.some(
@@ -147,4 +159,176 @@ Deno.test("listPostFeedback: includes feedback from an avulso post (workflow_id 
   assertEquals(out.length, 1, "avulso feedback row is not dropped");
   assertEquals(out[0].post_id, 456);
   assertEquals(out[0].cliente_id, 12);
+});
+
+function viewNote(over: Record<string, unknown> = {}) {
+  return {
+    id: 1, post_id: 321, media_kind: "image", slide_index_at_creation: 0, current_slide_index: 1,
+    is_previous_version: false, t_seconds: null, x: 0.2, visibility: "client", author_kind: "client",
+    body: "Trocar a cor", status: "open", created_at: "2026-06-06T10:00:00Z", ...over,
+  };
+}
+
+Deno.test("listPostFeedback: a post with client notes and no approvals is listed", async () => {
+  const { db, calls } = makeFakeDb({
+    post_approvals: [{ data: [], error: null }], // phase 1: no approvals at all
+    post_media_notes: [{
+      data: [{
+        post_id: 321, created_at: "2026-06-06T10:00:00Z",
+        workflow_posts: { titulo: "Só nota", status: "enviado_cliente", conta_id: "workspace-A", cliente_id: 7 },
+      }],
+      error: null,
+    }],
+    post_media_notes_v: [{ data: [viewNote()], error: null }],
+    post_media_note_replies: [{
+      data: [{ note_id: 1, author_kind: "team", body: "Feito", created_at: "2026-06-06T11:00:00Z" }],
+      error: null,
+    }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await listPostFeedback(deps, { client_id: 7 });
+
+  assertEquals(out.length, 1);
+  assertEquals(out[0].post_id, 321);
+  assertEquals(out[0].titulo, "Só nota");
+  assertEquals(out[0].cliente_id, 7);
+  assertEquals(out[0].feedback, []);
+  assertEquals(out[0].media_notes.length, 1);
+  assertEquals(out[0].media_notes[0].anchor, "slide 2 · ponto");
+  assertEquals(out[0].media_notes[0].replies, [{ body: "Feito", author: "workspace", created_at: "2026-06-06T11:00:00Z" }]);
+
+  // tenant + visibility on every note read
+  assert(has(calls, "post_media_notes", "eq", ["conta_id", "workspace-A"]), "scan filters conta_id");
+  assert(has(calls, "post_media_notes", "eq", ["visibility", "client"]), "scan filters client visibility");
+  assert(has(calls, "post_media_notes", "eq", ["workflow_posts.cliente_id", 7]), "scan honors client_id");
+  assert(has(calls, "post_media_notes_v", "eq", ["conta_id", "workspace-A"]), "view read filters conta_id");
+  assert(has(calls, "post_media_notes_v", "eq", ["visibility", "client"]), "view read filters client visibility");
+  assert(has(calls, "post_media_notes_v", "in", ["post_id", [321]]), "view read limited to chosen posts");
+  assert(has(calls, "post_media_note_replies", "eq", ["conta_id", "workspace-A"]), "replies filter conta_id");
+  for (const c of calls) {
+    if (c.method === "select") {
+      assert(!String(c.args[0]).includes("file_id"), "file_id never selected");
+      assert(!String(c.args[0]).includes("hub_token"), "hub_token never selected");
+    }
+  }
+  // Every selected/filtered column exists in migration 20261026000001.
+  assertEquals(unknownMediaNoteColumns(asQueryCalls(calls)), []);
+});
+
+Deno.test("listPostFeedback: a failing note scan degrades to approvals only", async () => {
+  const { db } = makeFakeDb({
+    post_approvals: [
+      { data: [{ post_id: 123, created_at: "2026-06-02T10:00:00Z" }], error: null },
+      {
+        data: [{
+          post_id: 123, action: "correcao", comentario: "x", is_workspace_user: false,
+          created_at: "2026-06-02T10:00:00Z",
+          workflow_posts: { workflow_id: 55, titulo: "T", status: "correcao_cliente", conta_id: "workspace-A", cliente_id: 7 },
+        }],
+        error: null,
+      },
+    ],
+    post_status_events: [{ data: [], error: null }],
+    // e.g. the function deployed before migration 20261026000001
+    post_media_notes: [{ data: null, error: { code: "PGRST205", message: "relation post_media_notes" } }],
+    post_media_notes_v: [{ data: null, error: { code: "PGRST205", message: "relation post_media_notes_v" } }],
+  });
+  const logged: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => logged.push(args);
+  try {
+    const out = await listPostFeedback({ db, ctx: CTX } as unknown as Deps, {});
+    assertEquals(out.length, 1);
+    assertEquals(out[0].post_id, 123);
+    assertEquals(out[0].feedback.length, 1);
+    assertEquals(out[0].media_notes, []);
+  } finally {
+    console.error = original;
+  }
+  assertEquals(logged.length, 2, "both note reads log their failure");
+});
+
+Deno.test("listPostFeedback: a failing phase-2 note load keeps the feedback", async () => {
+  const { db } = makeFakeDb({
+    post_approvals: [
+      { data: [{ post_id: 123, created_at: "2026-06-02T10:00:00Z" }], error: null },
+      {
+        data: [{
+          post_id: 123, action: "aprovado", comentario: null, is_workspace_user: false,
+          created_at: "2026-06-02T10:00:00Z",
+          workflow_posts: { workflow_id: 55, titulo: "T", status: "aprovado_cliente", conta_id: "workspace-A", cliente_id: 7 },
+        }],
+        error: null,
+      },
+    ],
+    post_status_events: [{ data: [], error: null }],
+    post_media_notes: [{ data: [], error: null }],
+    post_media_notes_v: [{ data: [viewNote({ id: 1, post_id: 123 })], error: null }],
+    post_media_note_replies: [{ data: null, error: { message: "boom" } }],
+  });
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const out = await listPostFeedback({ db, ctx: CTX } as unknown as Deps, {});
+    assertEquals(out.length, 1);
+    assertEquals(out[0].feedback.length, 1);
+    assertEquals(out[0].media_notes, []);
+  } finally {
+    console.error = original;
+  }
+});
+
+Deno.test("listPostFeedback: internal notes are not returned", async () => {
+  const { db, calls } = makeFakeDb({
+    post_approvals: [
+      { data: [{ post_id: 123, created_at: "2026-06-02T10:00:00Z" }], error: null },
+      {
+        data: [{
+          post_id: 123, action: "correcao", comentario: "x", is_workspace_user: false,
+          created_at: "2026-06-02T10:00:00Z",
+          workflow_posts: { workflow_id: 55, titulo: "T", status: "correcao_cliente", conta_id: "workspace-A", cliente_id: 7 },
+        }],
+        error: null,
+      },
+    ],
+    post_status_events: [{ data: [], error: null }],
+    // a misbehaving store hands back an internal row anyway
+    post_media_notes_v: [{
+      data: [
+        viewNote({ id: 1, post_id: 123 }),
+        viewNote({ id: 2, post_id: 123, visibility: "internal", author_kind: "team", body: "so equipe" }),
+      ],
+      error: null,
+    }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await listPostFeedback(deps, { post_id: 123 });
+
+  assertEquals(out[0].media_notes.map((n: { id: number }) => n.id), [1]);
+  assert(!JSON.stringify(out).includes("so equipe"), "internal body leaked");
+  assert(has(calls, "post_media_notes_v", "eq", ["visibility", "client"]));
+});
+
+Deno.test("listPostFeedback: an action filter skips the note scan but still loads notes of the chosen posts", async () => {
+  const { db, calls } = makeFakeDb({
+    post_approvals: [
+      { data: [{ post_id: 123, created_at: "2026-06-02T10:00:00Z" }], error: null },
+      {
+        data: [{
+          post_id: 123, action: "correcao", comentario: "x", is_workspace_user: false,
+          created_at: "2026-06-02T10:00:00Z",
+          workflow_posts: { workflow_id: 55, titulo: "T", status: "correcao_cliente", conta_id: "workspace-A", cliente_id: 7 },
+        }],
+        error: null,
+      },
+    ],
+    post_status_events: [{ data: [], error: null }],
+    post_media_notes_v: [{ data: [viewNote({ id: 1, post_id: 123 })], error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await listPostFeedback(deps, { action: "correcao" });
+
+  assert(!calls.some((c) => c.table === "post_media_notes"), "notes never qualify a post when filtering by action");
+  assert(has(calls, "post_media_notes_v", "in", ["post_id", [123]]), "notes of the chosen post are still read");
+  assertEquals(out[0].media_notes.map((n: { id: number }) => n.id), [1]);
 });

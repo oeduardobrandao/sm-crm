@@ -11,6 +11,14 @@ import { installPointerEvent } from '@/components/mobile/__tests__/pointer';
 // Leaves are stubbed so only the drawer's phone shell and its wiring are exercised; the
 // kit sheets need a router (useSheetHistory), so renders go through MemoryRouter.
 
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('@/context/AuthContext', () => ({

@@ -98,6 +98,7 @@ function renderDialog(
           currentId={currentId}
           token="token-publico"
           approvals={[]}
+          mediaNotes={[]}
           instagramProfile={null}
           isAutoPublish={() => false}
           onNavigate={onNavigate}
@@ -128,6 +129,7 @@ function ControlledDialog({
           currentId={currentId}
           token="token-publico"
           approvals={[]}
+          mediaNotes={[]}
           instagramProfile={null}
           isAutoPublish={() => false}
           onNavigate={onNavigate}
