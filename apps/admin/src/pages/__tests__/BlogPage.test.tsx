@@ -247,6 +247,18 @@ describe('BlogPage', () => {
       ),
     );
   });
+  it('offers Tentar de novo next to Publicar de novo on a despublicado post', async () => {
+    vi.mocked(getBlogPost).mockResolvedValue({ post: detail({ status: 'despublicado' }) });
+    vi.mocked(retryBlogPublish).mockResolvedValue({ post: row({ status: 'despublicado' }) });
+    renderAt(`/admin/blog/${ID1}?tab=publicados`);
+    expect(await screen.findByRole('button', { name: 'Publicar de novo' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    await waitFor(() => expect(retryBlogPublish).toHaveBeenCalledWith(ID1));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Despublicação disparada de novo.'),
+    );
+  });
+
   it('shows the server-side validation errors of an approve in a toast', async () => {
     vi.mocked(approveBlogPost).mockRejectedValue(
       apiError(400, {

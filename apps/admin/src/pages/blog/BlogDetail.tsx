@@ -29,6 +29,7 @@ import {
   failingChecks,
   formatDateTime,
   isSlowPublish,
+  showsRetry,
   type BlogPostDetail,
   type EditableField,
 } from './blog-view';
@@ -233,7 +234,7 @@ export function BlogDetail(p: BlogDetailProps) {
               Editar texto
             </Button>
           )}
-          {actions.includes('retry') && slow && (
+          {showsRetry(post, p.now) && (
             <Button
               variant="outline"
               onClick={() => void p.run({ kind: 'retry' })}

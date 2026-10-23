@@ -5,6 +5,7 @@ import {
   failingChecks,
   isStale,
   noRecentDraft,
+  showsRetry,
   sortQueue,
   type BlogPostRow,
 } from '../blog-view';
@@ -172,7 +173,26 @@ describe('actionsFor', () => {
     ]);
     expect(actionsFor(row({ status: 'publicando' }))).toEqual(['edit', 'retry']);
     expect(actionsFor(row({ status: 'publicado' }))).toEqual(['edit', 'unpublish']);
-    expect(actionsFor(row({ status: 'despublicado' }))).toEqual(['republish']);
+    expect(actionsFor(row({ status: 'despublicado' }))).toEqual(['retry', 'republish']);
     expect(actionsFor(row({ status: 'rejeitado' }))).toEqual([]);
+  });
+});
+
+describe('showsRetry', () => {
+  it('shows on a publicando row only once it is slow', () => {
+    expect(
+      showsRetry(row({ status: 'publicando', publish_attempt_at: ago(10 * 60_000) }), NOW),
+    ).toBe(false);
+    expect(
+      showsRetry(row({ status: 'publicando', publish_attempt_at: ago(31 * 60_000) }), NOW),
+    ).toBe(true);
+  });
+  it('always shows on a despublicado row (nothing confirms the page left the air)', () => {
+    expect(showsRetry(row({ status: 'despublicado', publish_attempt_at: null }), NOW)).toBe(true);
+  });
+  it('never shows on other statuses', () => {
+    for (const status of ['rascunho', 'ajuste_solicitado', 'publicado', 'rejeitado'] as const) {
+      expect(showsRetry(row({ status, publish_attempt_at: ago(2 * HOUR) }), NOW)).toBe(false);
+    }
   });
 });

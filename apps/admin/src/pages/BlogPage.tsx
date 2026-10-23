@@ -176,7 +176,11 @@ export default function BlogPage() {
       inFlight.current = false;
     }
     toast.success(
-      c.kind === 'update' && isLive(target) ? 'Texto salvo. Publicação iniciada.' : SUCCESS[c.kind],
+      c.kind === 'update' && isLive(target)
+        ? 'Texto salvo. Publicação iniciada.'
+        : c.kind === 'retry' && target.status === 'despublicado'
+          ? 'Despublicação disparada de novo.'
+          : SUCCESS[c.kind],
     );
     if (c.kind === 'update') stopEditing();
     // Mutations return the list columns only (no body): refetch the post instead of using them.

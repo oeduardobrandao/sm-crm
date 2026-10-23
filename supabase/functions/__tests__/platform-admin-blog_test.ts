@@ -528,7 +528,23 @@ Deno.test("despublicar/republicar com hook falhando → status volta e 502", asy
   assertEquals(row(ID2).status, "despublicado");
 });
 
-Deno.test("retry: só publicando; atualiza publish_attempt_at e dispara o hook", async () => {
+Deno.test("retry de despublicado → redispara o build da despublicação, status igual", async () => {
+  const { db, row, tables } = makeDb([
+    post({ status: "despublicado", revision: 2, live_revision: 2, publish_attempt_at: null }),
+  ]);
+  const { deps, hookCalls } = makeDeps();
+  assertEquals((await handleRetryBlogPublish(db, { id: ID }, ADMIN, H, deps)).status, 200);
+  assertEquals(row().status, "despublicado");
+  assertEquals(row().publish_attempt_at, NOW.toISOString());
+  assertEquals(hookCalls.length, 1);
+  assertEquals(tables.audit_log[0].action, "blog.retry");
+  assertEquals(tables.audit_log[0].metadata.from, "despublicado");
+  const failing = makeDeps({ fireHook: () => Promise.resolve(false) }).deps;
+  assertEquals((await handleRetryBlogPublish(db, { id: ID }, ADMIN, H, failing)).status, 502);
+  assertEquals(row().status, "despublicado");
+});
+
+Deno.test("retry: só publicando ou despublicado; atualiza publish_attempt_at e dispara o hook", async () => {
   const { db, row } = makeDb([
     post({ status: "publicando", publish_attempt_at: "2026-10-23T10:00:00Z" }),
     post({ id: ID2 }),

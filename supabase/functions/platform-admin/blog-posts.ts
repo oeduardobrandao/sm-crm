@@ -509,16 +509,20 @@ export async function handleRetryBlogPublish(
 
   const row = await loadRow(svc, id);
   if (!row) return notFound(headers);
-  if (row.status !== "publicando") return conflict(headers);
-  const invalid = invalidRow(svc, row, headers);
-  if (invalid) return invalid;
+  // publicando: o build que põe a revisão no ar. despublicado: o build que tira a página do ar
+  // (se o primeiro falhou, ela segue no ar com o Admin dizendo "despublicado").
+  if (row.status !== "publicando" && row.status !== "despublicado") return conflict(headers);
+  if (row.status === "publicando") {
+    const invalid = invalidRow(svc, row, headers);
+    if (invalid) return invalid;
+  }
 
   // Redisparar para a mesma revisão é idempotente; o status não muda em nenhum caso.
-  const saved = await guardedUpdate(svc, id, { status: "publicando", revision: row.revision }, {
+  const saved = await guardedUpdate(svc, id, { status: row.status, revision: row.revision }, {
     publish_attempt_at: deps.now().toISOString(),
   });
   if (!saved) return conflict(headers);
   if (!(await safeFire(deps))) return hookFailed(headers);
-  await audit(svc, adminUserId, "retry", id, { revision: row.revision });
+  await audit(svc, adminUserId, "retry", id, { from: row.status, revision: row.revision });
   return json({ post: saved }, 200, headers);
 }

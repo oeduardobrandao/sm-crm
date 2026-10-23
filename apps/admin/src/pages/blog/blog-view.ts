@@ -260,10 +260,18 @@ export function actionsFor(row: Pick<BlogPostRow, 'status'>): BlogAction[] {
     case 'publicado':
       return ['edit', 'unpublish'];
     case 'despublicado':
-      return ['republish'];
+      // retry re-fires the unpublish build: the Admin has no signal that the page left the air.
+      return ['retry', 'republish'];
     default:
       return [];
   }
+}
+
+/** "Tentar de novo": a publicando row only once it is slow; a despublicado row always, since
+ * nothing confirms the unpublish build went through (the page may still be live). */
+export function showsRetry(row: BlogPostRow, now: Date): boolean {
+  if (!actionsFor(row).includes('retry')) return false;
+  return row.status === 'despublicado' || isSlowPublish(row, now);
 }
 
 /** Editing a live row republishes it on save. */
