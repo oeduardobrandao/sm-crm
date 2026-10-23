@@ -38,11 +38,8 @@ export function metaPorMes(quantidade: number, periodo: MetaPeriodo): number {
   return Math.round(quantidade * fator);
 }
 
-/** 'arte' -> 'artes', 'gravação' -> 'gravações'; singular when quantidade is 1. */
-export function unidadeComNumero(unidade: string, quantidade: number): string {
-  if (quantidade === 1) return unidade;
-  return unidade.endsWith('ão') ? `${unidade.slice(0, -2)}ões` : `${unidade}s`;
-}
+// Lives with regraTexto (financeiro/v2/format.ts), which pluralises the same way.
+export { unidadeComNumero } from '../financeiro/v2/format';
 
 export function periodoLabel(periodo: MetaPeriodo): string {
   return PERIODO_OPCOES.find((p) => p.value === periodo)?.label ?? periodo;

@@ -113,6 +113,11 @@ describe('regraTexto', () => {
     expect(norm(regraTexto(p, true, 'arte', true))).toBe('2 artes × R$ 45,00');
   });
 
+  it('pluraliza unidades terminadas em "ão" com "ões"', () => {
+    const p = pessoa({ regra: 'entrega', quantidade: 3, valor_unitario: 80 });
+    expect(norm(regraTexto(p, true, 'gravação'))).toBe('3 gravações × R$ 80,00');
+  });
+
   it('mascara o dinheiro sem acesso financeiro', () => {
     expect(regraTexto(pessoa({}), false)).toBe(`${MASKED_BRL} ÷ 15 clientes`);
     expect(regraTexto(pessoa({}), 'unknown')).toBe(`${MASKED_BRL} ÷ 15 clientes`);

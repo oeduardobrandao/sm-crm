@@ -24,10 +24,16 @@ export function anualizar(v: number, anual: boolean): number {
   return anual ? v * 12 : v;
 }
 
+/** 'arte' -> 'artes', 'gravação' -> 'gravações'; singular when quantidade is 1. */
+export function unidadeComNumero(unidade: string, quantidade: number): string {
+  if (quantidade === 1) return unidade;
+  return unidade.endsWith('ão') ? `${unidade.slice(0, -2)}ões` : `${unidade}s`;
+}
+
 /**
  * The one-line "how was this cost computed" text of a pessoa in a client's breakdown.
  * `unidade` (the acordo's unit, e.g. 'arte') is not on PessoaRentabilidade, so the
- * caller passes it; it is pluralised by appending 's' when quantidade !== 1.
+ * caller passes it; it is pluralised by `unidadeComNumero`.
  * `pausado`: the client is paused, so the person is listed (the assignment is kept) but
  * costs it nothing, unless deliveries were entered for it (they still count).
  */
@@ -43,7 +49,7 @@ export function regraTexto(
   }
   if (p.regra === 'entrega') {
     if (p.quantidade === null) return 'A informar';
-    const un = p.quantidade === 1 ? unidade : `${unidade}s`;
+    const un = unidadeComNumero(unidade, p.quantidade);
     return `${p.quantidade} ${un} × ${formatFinancialBRL(p.valor_unitario, access)}`;
   }
   const clientes = p.n_clientes === 1 ? '1 cliente' : `${p.n_clientes} clientes`;
