@@ -25,6 +25,8 @@ interface RentabilidadeTabelaProps {
 }
 
 const NUM = 'text-right tabular-nums whitespace-nowrap';
+// Names wrap at 180px instead of squeezing to fit the role columns.
+const CLIENTE = 'min-w-[180px]';
 
 /**
  * Per-client profitability table: one row per client, one column per função, and a footer
@@ -40,6 +42,13 @@ export function RentabilidadeTabela({
   onSelect,
 }: RentabilidadeTabelaProps) {
   const brl = (v: number) => formatFinancialBRL(v, access);
+  // A função nobody is assigned to adds an empty column; the side panel still lists it.
+  const visiveis = funcoes.filter(
+    (f) =>
+      (total.porFuncao[f.id] ?? 0) > 0 ||
+      linhas.some((l) => l.funcoes.some((c) => c.funcaoId === f.id && c.aInformar)),
+  );
+  const visivel = new Set(visiveis.map((f) => f.id));
   // A delivery still to inform does not hide what the função's other members already cost.
   const celulaFuncao = (c: CelulaFuncao) => {
     if (c.valor === 0) {
@@ -61,24 +70,24 @@ export function RentabilidadeTabela({
   return (
     <Table className="text-[13px]">
       <TableHeader>
-        <TableRow className="border-b-0 hover:bg-transparent">
-          <TableHead colSpan={5} />
-          {funcoes.length > 0 && (
+        {visiveis.length > 0 && (
+          <TableRow className="border-b-0 hover:bg-transparent">
+            <TableHead colSpan={5} className="h-7 !py-1" />
             <TableHead
-              colSpan={funcoes.length}
-              className="h-7 border-l border-border text-center text-[11px] uppercase tracking-wide"
+              colSpan={visiveis.length}
+              className="h-7 !py-1 border-l border-border text-center text-[11px] uppercase tracking-wide"
             >
               Custo por função
             </TableHead>
-          )}
-        </TableRow>
+          </TableRow>
+        )}
         <TableRow>
-          <TableHead>Cliente</TableHead>
+          <TableHead className={CLIENTE}>Cliente</TableHead>
           <TableHead className={NUM}>{anual ? 'ARR' : 'MRR'}</TableHead>
           <TableHead className={NUM}>{anual ? 'Custo anual' : 'Custo mensal'}</TableHead>
           <TableHead className={NUM}>{anual ? 'LL anual' : 'Lucro'}</TableHead>
           <TableHead className={NUM}>Margem</TableHead>
-          {funcoes.map((f, i) => (
+          {visiveis.map((f, i) => (
             <TableHead key={f.id} className={cn(NUM, i === 0 && 'border-l border-border')}>
               {f.nome}
             </TableHead>
@@ -95,13 +104,13 @@ export function RentabilidadeTabela({
               data-state={selecionado ? 'selected' : undefined}
               className={cn(pausado && 'text-muted-foreground')}
             >
-              <TableCell>
+              <TableCell className={CLIENTE}>
                 <span className="flex items-center gap-2">
                   <button
                     type="button"
                     aria-pressed={selecionado}
                     onClick={() => onSelect(l.cliente.cliente_id)}
-                    className="rounded font-semibold hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    className="rounded text-left font-semibold hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                   >
                     {l.cliente.nome}
                   </button>
@@ -125,26 +134,32 @@ export function RentabilidadeTabela({
                   <span className="font-semibold">{formatMargem(l.margem)}</span>
                 </span>
               </TableCell>
-              {l.funcoes.map((c, i) => (
-                <TableCell
-                  key={c.funcaoId}
-                  className={cn(NUM, 'text-muted-foreground', i === 0 && 'border-l border-border')}
-                >
-                  {celulaFuncao(c)}
-                </TableCell>
-              ))}
+              {l.funcoes
+                .filter((c) => visivel.has(c.funcaoId))
+                .map((c, i) => (
+                  <TableCell
+                    key={c.funcaoId}
+                    className={cn(
+                      NUM,
+                      'text-muted-foreground',
+                      i === 0 && 'border-l border-border',
+                    )}
+                  >
+                    {celulaFuncao(c)}
+                  </TableCell>
+                ))}
             </TableRow>
           );
         })}
       </TableBody>
       <TableFooter>
         <TableRow className="font-bold">
-          <TableCell>Total dos clientes</TableCell>
+          <TableCell className={CLIENTE}>Total dos clientes</TableCell>
           <TableCell className={NUM}>{brl(total.receita)}</TableCell>
           <TableCell className={NUM}>{brl(total.custo)}</TableCell>
           <TableCell className={NUM}>{brl(total.lucro)}</TableCell>
           <TableCell className={NUM}>{formatMargem(total.margem)}</TableCell>
-          {funcoes.map((f, i) => (
+          {visiveis.map((f, i) => (
             <TableCell key={f.id} className={cn(NUM, i === 0 && 'border-l border-border')}>
               {total.porFuncao[f.id] ? brl(total.porFuncao[f.id]) : '-'}
             </TableCell>
