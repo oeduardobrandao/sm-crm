@@ -1,6 +1,6 @@
 # Feedback em mídia: comentários presos a slide, momento e ponto
 
-Date: 2026-10-22 · Status: design, awaiting approval
+Date: 2026-10-22 (decisions 2026-10-23) · Status: design, awaiting approval
 Mockups: [Feedback em mídia](https://claude.ai/artifact/WeRBm4DBgqmKgUV9kSd3zb) (private canvas; four
 artboards: Hub carrossel, Hub vídeo, Hub celular, CRM conversa)
 
@@ -88,7 +88,8 @@ either) without leaving the Hub, and the agency never has to guess.
 - "Conversa com o cliente" interleaves status events, client messages, pinned notes and
   correction requests chronologically. Filters: `Tudo` / `Em aberto` / `Na mídia`.
 - Each note: anchor chip (selects the slide in the preview), author, time, status badge,
-  replies, a reply box, `Marcar como resolvido` / `Reabrir`.
+  replies, a reply box labelled so it is plainly client-facing ("Responder ao cliente"),
+  `Marcar como resolvido` / `Reabrir`.
 - The media preview shows the client's pins in place; open pins dark, resolved ones light.
   Thumbnails carry a count of open notes.
 - The team can drop **internal** pins on media from the CRM post editor's media area. They are
@@ -97,7 +98,7 @@ either) without leaving the Hub, and the agency never has to guess.
 **Versions.**
 - When the agency replaces a slide or video, notes made on the old file stay in history
   labelled "Comentário sobre a versão anterior" (Hub and CRM), with their pins **not** moved
-  onto the new file. Where the old file is still viewable, the builder may show it; otherwise
+  onto the new file. They stay open until resolved (product decision 1). Where the old file is still viewable, the builder may show it; otherwise
   the note shows without a media preview.
 
 ## Constraints found in the codebase
@@ -178,8 +179,8 @@ either) without leaving the Hub, and the agency never has to guess.
    4" line and the "Aprovado com comentários em aberto" flag read that snapshot, not a live
    count. The CRM flag may additionally show how many are still open now.
 5. **Notification type.** Reuse `post_message` through `create_post_approval_notification`,
-   rather than adding a new type (avoids touching every migration that repeats the CHECK list
-   and Mensagens consolidadas). That RPC hardcodes the destination to the post, so the
+   rather than adding a new type (avoids touching every migration that repeats the CHECK list;
+   the Mensagens RPCs change anyway for product decision 2). That RPC hardcodes the destination to the post, so the
    notification **opens the post**, not the note; deep-linking to the note would need an RPC
    contract change and is out of scope for this version. Internal notes do not create
    client-facing notifications; whether they create team notifications (like `mention`) is
@@ -203,7 +204,7 @@ either) without leaving the Hub, and the agency never has to guess.
    agents see them. Internal notes included only if the existing tool already exposes internal
    data; otherwise excluded. No new scope.
 10. **All media post types** with images or videos get notes, Stories included.
-11. **Plan gating:** see open questions.
+11. **Plan gating:** none, see product decision 4.
 
 ## Left to the builder
 
@@ -218,13 +219,29 @@ either) without leaving the Hub, and the agency never has to guess.
 - Whether the CRM shows the old file of a "versão anterior" note when it still exists.
 - Indexes, RLS policy shapes, and test layout.
 
-## Open questions (theirs)
+## Product decisions (settled 2026-10-23)
 
-To be settled with the product owner before planning; recorded here with the default that ships
-if nobody objects.
-
-1. Plan gating: every plan, or behind an entitlement? Default: every plan.
-2. Do agency replies and resolutions notify or e-mail the client, or does the client see them
-   on the next visit? Default: next visit only.
-3. Agency names on replies in the Hub: "Agência" (today's rule) or the team member's first
-   name? Default: "Agência".
+1. **Media replaced under a note.** When the agency swaps the file a note is about, the note
+   stays **open**, labelled "versão anterior", and keeps counting toward the open totals. The
+   CRM's own replace flow then offers to resolve the notes on that slot in one click ("Marcar
+   como resolvidos os 2 comentários deste slide?"). Nothing is auto-resolved, and no DB-level
+   media-write path changes; the prompt lives in the CRM UI that performs the replace (the
+   builder finds every CRM entry point that swaps or removes a post's media; non-CRM paths such
+   as MCP `set_post_media` get no prompt).
+2. **Mensagens inbox.** Client notes and their replies appear in the Mensagens inbox, CRM
+   `/mensagens` and the Hub's Mensagens page, including unread counts, via
+   `get_mensagens_feed`, `get_mensagens_unread` and `get_mensagens_conversas`. Internal notes
+   never do: the `visibility = 'client'` filter lives **inside** those RPCs (they are shared
+   by CRM and Hub, and `hub-mensagens` calls them with the service role), with a test proving
+   an internal note never comes back from them. The Hub Mensagens page stays behind its
+   existing `feature_mensagens` gate; the notes themselves on the post are not gated.
+3. **No internal replies inside a client's note.** Every reply in a client note thread goes to
+   the client, and the CRM reply box says so ("Responder ao cliente"). Team coordination uses
+   internal pins or the team chat. Replies have no visibility of their own (see builder's call
+   1).
+4. **Plans.** Every plan; no entitlement flag.
+5. **Client notification of agency replies/resolutions.** None in this version: the client
+   sees replies and "Resolvido" on the next Hub visit.
+6. **Names in the Hub.** Agency replies show the team member's name, falling back to "Equipe",
+   the same as the Hub's Mensagens page does today (`apps/hub/src/pages/MensagensPage.tsx`).
+   (The post history's rule of dropping team rows is unchanged for status events.)
