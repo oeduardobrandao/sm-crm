@@ -36,6 +36,7 @@ import {
   type FuncaoFinanceira,
 } from '@/store';
 import { DiaInicioSelect } from './DiaInicioSelect';
+import { avisarErroFinanceiro } from './erros';
 
 const META_ERRO = 'Informe um número inteiro de 0 a 100.';
 
@@ -50,7 +51,8 @@ function useEscrita() {
       if (sucesso) toast.success(sucesso);
       return true;
     } catch (e) {
-      if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) toast.error(falha);
+      if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
+        avisarErroFinanceiro(e, falha, qc);
       return false;
     }
   };

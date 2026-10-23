@@ -23,6 +23,7 @@ import {
   type MembroRentabilidade,
 } from '@/store';
 import { regraTexto } from '../../financeiro/v2/format';
+import { avisarErroFinanceiro } from '../../financeiro/v2/erros';
 
 interface EquipeNoClienteCardProps {
   cliente: ClienteRentabilidade;
@@ -64,7 +65,7 @@ export function EquipeNoClienteCard({
       toast.success('Equipe atualizada.');
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        toast.error('Erro ao salvar a equipe.');
+        avisarErroFinanceiro(e, 'Erro ao salvar a equipe.', qc);
       }
     } finally {
       setBusy(false);

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,
@@ -13,8 +14,10 @@ interface PeriodoSelectProps {
   /** `inicio` (ISO date) of the selected period. */
   value: string | undefined;
   onChange: (inicio: string) => void;
-  /** Rendered in the given order. Closed ('Fechado') and reopened ('Reaberto') periods get a badge. */
+  /** Closed ('Fechado') and reopened ('Reaberto') periods get a badge. Sorted here by `inicio`. */
   periodos: PeriodoFinanceiro[];
+  /** 'recente' (default) = newest first; 'cronologica' = oldest first. */
+  ordem?: 'recente' | 'cronologica';
   /** The trigger needs an accessible name: pass `aria-label`, or `id` + a `<Label htmlFor>`. */
   id?: string;
   'aria-label'?: string;
@@ -31,19 +34,25 @@ export function PeriodoSelect({
   value,
   onChange,
   periodos,
+  ordem = 'recente',
   id,
   'aria-label': ariaLabel,
   placeholder = 'Período',
   disabled,
   className,
 }: PeriodoSelectProps) {
+  // The RPCs disagree on order (editáveis oldest first, listar newest first): never rely on it.
+  const ordenados = useMemo(() => {
+    const lista = [...periodos].sort((a, b) => a.inicio.localeCompare(b.inicio));
+    return ordem === 'cronologica' ? lista : lista.reverse();
+  }, [periodos, ordem]);
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={ariaLabel} className={cn('w-full sm:w-56', className)}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
-        {periodos.map((p) => (
+        {ordenados.map((p) => (
           <SelectItem key={p.inicio} value={p.inicio}>
             <span className="flex items-center gap-2">
               {p.rotulo}

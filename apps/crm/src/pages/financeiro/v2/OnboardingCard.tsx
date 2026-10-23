@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { seedFinanceiro } from '@/store';
 import { DiaInicioSelect } from './DiaInicioSelect';
+import { avisarErroFinanceiro } from './erros';
 
 /** Shown in place of the v2 screens until the workspace has run the seed. */
 export default function OnboardingCard({ canEdit = true }: { canEdit?: boolean }) {
@@ -23,7 +24,7 @@ export default function OnboardingCard({ canEdit = true }: { canEdit?: boolean }
       toast.success('Financeiro montado.');
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
-        toast.error('Erro ao montar o financeiro');
+        avisarErroFinanceiro(e, 'Erro ao montar o financeiro', qc);
     } finally {
       setBusy(false);
     }

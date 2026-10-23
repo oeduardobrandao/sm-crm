@@ -73,4 +73,35 @@ describe('PeriodoSelect', () => {
 
     expect(onChange).toHaveBeenCalledWith('2026-09-01');
   });
+
+  describe('ordering', () => {
+    const rotulos = async (ordem?: 'recente' | 'cronologica') => {
+      const user = userEvent.setup();
+      render(
+        <PeriodoSelect
+          value="2026-10-01"
+          onChange={() => {}}
+          periodos={PERIODOS}
+          ordem={ordem}
+          aria-label="Período"
+        />,
+      );
+      await user.click(screen.getByRole('combobox', { name: 'Período' }));
+      const opcoes = await screen.findAllByRole('option');
+      return opcoes.map((o) => o.textContent?.replace(/(Fechado|Reaberto)$/, ''));
+    };
+
+    it('lists newest first by default, whatever the input order', async () => {
+      expect(await rotulos()).toEqual(['Nov 2026', 'Out 2026', 'Set 2026', 'Ago 2026']);
+    });
+
+    it('lists oldest first with ordem="cronologica"', async () => {
+      expect(await rotulos('cronologica')).toEqual([
+        'Ago 2026',
+        'Set 2026',
+        'Out 2026',
+        'Nov 2026',
+      ]);
+    });
+  });
 });

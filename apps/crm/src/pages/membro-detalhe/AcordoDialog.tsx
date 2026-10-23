@@ -52,6 +52,8 @@ import {
   PERIODO_OPCOES,
   UNIDADES,
 } from './acordoHelpers';
+import { avisarErroFinanceiro } from '../financeiro/v2/erros';
+import { periodoPadrao } from '../financeiro/v2/periodos';
 
 const MODELOS: ModeloAcordo[] = ['mensal_meta', 'mensal_limite', 'por_entrega'];
 const SEM_FUNCAO = '__none__';
@@ -159,8 +161,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
     enabled: open,
   });
   const periodos = editaveis.data ?? [];
-  const valeDesdePadrao =
-    (periodos.find((p) => p.status === 'aberto') ?? periodos[0])?.inicio ?? '';
+  const valeDesdePadrao = periodoPadrao(periodos)?.inicio ?? '';
 
   const form = useForm<AcordoFormValues>({
     resolver: zodResolver(acordoSchema),
@@ -209,7 +210,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
       onOpenChange(false);
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        toast.error('Erro ao salvar o acordo');
+        avisarErroFinanceiro(e, 'Erro ao salvar o acordo', qc);
       }
     } finally {
       setSaving(false);
@@ -443,6 +444,7 @@ export function AcordoDialog({ open, onOpenChange, membro, atual }: AcordoDialog
                         value={field.value}
                         onChange={field.onChange}
                         periodos={periodos}
+                        ordem="cronologica"
                         className="sm:w-full"
                       />
                     </FormControl>

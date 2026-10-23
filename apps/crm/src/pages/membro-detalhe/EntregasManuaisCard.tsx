@@ -19,6 +19,8 @@ import {
 } from '@/store';
 import { PeriodoSelect } from '../financeiro/v2/PeriodoSelect';
 import { useAcordoAtual } from './acordoHelpers';
+import { avisarErroFinanceiro } from '../financeiro/v2/erros';
+import { periodoPadrao } from '../financeiro/v2/periodos';
 
 /** '' is an empty entry (null); anything else must be a whole number from 0 up. */
 function parseQuantidade(texto: string): number | null | 'invalida' {
@@ -45,7 +47,7 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
   });
   const periodos = editaveis.data ?? [];
   const [escolhido, setEscolhido] = useState<string | undefined>();
-  const inicio = escolhido ?? (periodos.find((p) => p.status === 'aberto') ?? periodos[0])?.inicio;
+  const inicio = escolhido ?? periodoPadrao(periodos)?.inicio;
 
   const rent = useQuery({
     queryKey: ['financeiro-v2', 'rentabilidade', inicio],
@@ -100,7 +102,7 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
       toast.success('Entregas salvas.');
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        toast.error('Erro ao salvar as entregas');
+        avisarErroFinanceiro(e, 'Erro ao salvar as entregas', qc);
       }
     } finally {
       setBusy(false);
@@ -125,6 +127,7 @@ export function EntregasManuaisCard({ membroId }: { membroId: number }) {
             value={inicio}
             onChange={setEscolhido}
             periodos={periodos}
+            ordem="cronologica"
             disabled={busy}
           />
         ) : (

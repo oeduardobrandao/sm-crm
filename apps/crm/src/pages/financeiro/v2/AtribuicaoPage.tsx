@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +20,8 @@ import type {
 } from '@/store/financeiroV2';
 import { formatMargem } from './format';
 import { PeriodoSelect } from './PeriodoSelect';
+import { avisarErroFinanceiro } from './erros';
+import { periodoPadrao } from './periodos';
 
 const chave = (membroId: number, clienteId: number) => `${membroId}:${clienteId}`;
 
@@ -47,7 +48,7 @@ export default function AtribuicaoPage() {
   const periodos = useMemo(() => editaveis.data ?? [], [editaveis.data]);
   // Derived rather than seeded into state: invalidating ['financeiro-v2'] refetches the
   // list too, and an effect-set default would overwrite the user's pick.
-  const padrao = (periodos.find((p) => p.status === 'aberto') ?? periodos[0])?.inicio;
+  const padrao = periodoPadrao(periodos)?.inicio;
   const valeDesde = escolhido && periodos.some((p) => p.inicio === escolhido) ? escolhido : padrao;
   const periodo = periodos.find((p) => p.inicio === valeDesde);
 
@@ -134,6 +135,7 @@ export default function AtribuicaoPage() {
             value={valeDesde ?? ''}
             onChange={setEscolhido}
             periodos={periodos}
+            ordem="cronologica"
             disabled={periodos.length === 0}
           />
           {periodo?.status === 'reaberto' && (
@@ -271,7 +273,7 @@ function Matriz({ data, dataUpdatedAt, valeDesde, podeEditar, access }: MatrizPr
       // handleEntitlementMutationError shows the upgrade toast itself; only fall back to
       // the generic one when the error is not an entitlement denial.
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        toast.error('Não foi possível salvar');
+        avisarErroFinanceiro(e, 'Não foi possível salvar', qc);
       }
       return;
     }

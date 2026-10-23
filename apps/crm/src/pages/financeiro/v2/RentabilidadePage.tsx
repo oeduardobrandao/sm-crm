@@ -32,6 +32,7 @@ import { montarCsv, montarLinhas, nomeArquivoCsv, somarLinhas } from './rentabil
 import { RentabilidadeDetalhe } from './RentabilidadeDetalhe';
 import { RentabilidadePhone } from './RentabilidadePhone';
 import { RentabilidadeTabela } from './RentabilidadeTabela';
+import { avisarErroFinanceiro } from './erros';
 
 type AcaoPeriodo = 'reabrir' | 'fechar';
 
@@ -120,7 +121,7 @@ export default function RentabilidadePage() {
       toast.success(ACAO_COPY[qual].ok);
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
-        toast.error(ACAO_COPY[qual].erro);
+        avisarErroFinanceiro(e, ACAO_COPY[qual].erro, qc);
     } finally {
       setBusy(false);
     }

@@ -31,6 +31,7 @@ import {
   type StatusClienteFinanceiro,
 } from '@/store';
 import { PeriodoSelect } from '../../financeiro/v2/PeriodoSelect';
+import { avisarErroFinanceiro } from '../../financeiro/v2/erros';
 
 const VALOR_ERRO = 'Informe um valor igual ou maior que zero.';
 const DIA_ERRO = 'Informe um dia de 1 a 31.';
@@ -163,7 +164,7 @@ function MensalidadeForm({
       onOpenChange(false);
     } catch (e) {
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null)) {
-        toast.error('Erro ao salvar a mensalidade.');
+        avisarErroFinanceiro(e, 'Erro ao salvar a mensalidade.', qc);
       }
     }
   });
@@ -245,6 +246,7 @@ function MensalidadeForm({
                 value={field.value || undefined}
                 onChange={field.onChange}
                 periodos={periodos}
+                ordem="cronologica"
                 className="sm:w-full"
               />
             )}
