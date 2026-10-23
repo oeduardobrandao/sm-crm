@@ -124,6 +124,14 @@ begin
   -- right workspace, but a membro of another workspace
   v_e := pg_temp.erro(v_dono_a, format(v_ins, v_a || '/' || v_mem_b || '/' || gen_random_uuid() || '.pdf'));
   assert v_e like '42501:%', 'foreign membro id was not an RLS denial: ' || coalesce(v_e, 'NULL');
+  -- the mirror: B's prefix with A's membro is denied from either workspace, on write and read
+  v_e := pg_temp.erro(v_dono_a, format(v_ins, v_b || '/' || v_mem_a || '/' || gen_random_uuid() || '.pdf'));
+  assert v_e like '42501:%', 'mirror path written from A was not an RLS denial: ' || coalesce(v_e, 'NULL');
+  v_e := pg_temp.erro(v_dono_b, format(v_ins, v_b || '/' || v_mem_a || '/' || gen_random_uuid() || '.pdf'));
+  assert v_e like '42501:%', 'mirror path written from B was not an RLS denial: ' || coalesce(v_e, 'NULL');
+  perform pg_temp.objeto(v_b || '/' || v_mem_a || '/' || gen_random_uuid() || '.pdf');
+  assert pg_temp.vistos(v_dono_a) = 1, 'mirror object readable from A';
+  assert pg_temp.vistos(v_dono_b) = 0, 'mirror object readable from B';
   -- a non-uuid first segment is denied, not a cast error
   v_e := pg_temp.erro(v_dono_a, format(v_ins, 'not-a-uuid/' || v_mem_a || '/x.pdf'));
   assert v_e like '42501:%', 'non-uuid prefix must be an RLS denial, got: ' || coalesce(v_e, 'NULL');
