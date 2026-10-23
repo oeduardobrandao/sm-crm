@@ -10,6 +10,10 @@
 -- The storage.objects inserts only fill bucket_id/name (+ owner-less); every other
 -- column is nullable or defaulted in Supabase's storage schema.
 begin;
+-- The avatars policies on storage.objects read workspace_members directly, and every
+-- permissive policy is evaluated on an insert; hosted grants that table to
+-- authenticated, a fresh local/CI stack does not.
+select et_grant_hosted_parity();
 
 -- 'SQLSTATE:message' of the error p_sql raises as p_user (authenticated), or NULL on success
 create or replace function pg_temp.erro(p_user uuid, p_sql text) returns text language plpgsql as $f$
