@@ -159,6 +159,7 @@ Deno.test("hub-media-notes rejects out-of-range and malformed input before any D
     { x: 0.5, y: "0.5" },
     { t_seconds: -1 },
     { t_seconds: "3" },
+    { t_seconds: 1000000 },
     { body: "   " },
     { body: "a".repeat(2001) },
     { body: 42 },
@@ -251,4 +252,39 @@ Deno.test("hub-media-notes CORS preflight returns 200 with buildCorsHeaders", as
   assertEquals(res.status, 200);
   assertEquals(res.headers.get("Access-Control-Allow-Origin"), "https://hub.mesaas.com");
   assertEquals(db.calls.length, 0);
+});
+
+Deno.test("hub-media-notes accepts t_seconds at the numeric(8,2) ceiling", async () => {
+  const { db, handler } = setup();
+  db.queueRpc("hub_create_media_note", { data: 7, error: null });
+  const res = await handler(post({ ...CREATE, t_seconds: 999999.99 }));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("hub-media-notes maps a context-prefixed rpc error code", async () => {
+  const { db, handler } = setup();
+  db.queueRpc("hub_create_media_note", { data: null, error: { message: "ERROR: post_not_visible (P0001)" } });
+  const res = await handler(post(CREATE));
+  assertEquals(res.status, 400);
+  assertEquals((await readJson(res)).error, "Post ainda não foi enviado para o cliente.");
+});
+
+Deno.test("hub-media-notes reply still 200 when note lookup fails", async () => {
+  const { db, handler } = setup();
+  db.queueRpc("hub_add_media_note_reply", { data: 31, error: null });
+  db.queue("post_media_notes", "select", { data: null, error: { message: "lookup boom" } });
+  const original = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    logged.push(args);
+  };
+  try {
+    const res = await handler(post({ token: "hub-123", op: "reply", note_id: 5, body: "Ok" }));
+    assertEquals(res.status, 200);
+    assertEquals(await readJson(res), { ok: true, reply_id: 31 });
+  } finally {
+    console.error = original;
+  }
+  assertEquals(rpcCalls(db, "create_post_approval_notification").length, 0);
+  assert(logged.some((l) => String(l[0]).includes("note lookup failed")), "lookup error must be logged");
 });

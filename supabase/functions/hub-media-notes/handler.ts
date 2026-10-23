@@ -15,6 +15,8 @@ interface HubMediaNotesHandlerDeps {
 }
 
 const MAX_BODY_LENGTH = 2000;
+// post_media_notes.t_seconds is numeric(8,2): anything larger would overflow in the RPC.
+const MAX_T_SECONDS = 999999.99;
 const TOO_MANY = "Muitas tentativas. Aguarde alguns minutos.";
 const INVALID = "Dados inválidos.";
 
@@ -27,8 +29,8 @@ function parseBody(raw: unknown): string | null {
   return trimmed.length >= 1 && trimmed.length <= MAX_BODY_LENGTH ? trimmed : null;
 }
 
-/** RPC raise codes (P0001) arrive as the error message. */
-function rpcErrorCode(error: unknown): string {
+/** RPC raise codes (P0001) arrive in the error message, possibly with context around them. */
+function rpcErrorMessage(error: unknown): string {
   const message = (error as { message?: unknown } | null)?.message;
   return typeof message === "string" ? message : "";
 }
@@ -64,7 +66,7 @@ export function createHubMediaNotesHandler(deps: HubMediaNotesHandlerDeps) {
       const { post_id, link_id, t_seconds, x, y } = payload;
       if (!isPositiveInt(post_id) || !isPositiveInt(link_id)) return json({ error: INVALID }, 400);
       const hasT = t_seconds != null;
-      if (hasT && !(typeof t_seconds === "number" && Number.isFinite(t_seconds) && t_seconds >= 0)) {
+      if (hasT && !(typeof t_seconds === "number" && Number.isFinite(t_seconds) && t_seconds >= 0 && t_seconds <= MAX_T_SECONDS)) {
         return json({ error: INVALID }, 400);
       }
       // A spot needs both coordinates, as fractions of the rendered media box.
@@ -122,12 +124,16 @@ export function createHubMediaNotesHandler(deps: HubMediaNotesHandlerDeps) {
       });
 
     if (error) {
-      const code = rpcErrorCode(error);
-      if (code === "post_not_found" || code === "note_not_found") return json({ error: "Post não encontrado." }, 404);
-      if (code === "post_not_visible") {
+      const message = rpcErrorMessage(error);
+      if (message.includes("post_not_found") || message.includes("note_not_found")) {
+        return json({ error: "Post não encontrado." }, 404);
+      }
+      if (message.includes("post_not_visible")) {
         return json({ error: "Post ainda não foi enviado para o cliente." }, 400);
       }
-      if (code === "link_not_on_post" || code === "invalid_anchor") return json({ error: INVALID }, 400);
+      if (message.includes("link_not_on_post") || message.includes("invalid_anchor")) {
+        return json({ error: INVALID }, 400);
+      }
       console.error("[hub-media-notes] rpc failed:", error);
       return json({ error: "Erro ao salvar comentário." }, 500);
     }
@@ -139,12 +145,13 @@ export function createHubMediaNotesHandler(deps: HubMediaNotesHandlerDeps) {
     try {
       let postId: number | null = create?.postId ?? null;
       if (postId == null) {
-        const { data: row } = await db
+        const { data: row, error: lookupErr } = await db
           .from("post_media_notes")
           .select("post_id")
           .eq("id", noteId)
           .eq("conta_id", hubToken.conta_id)
           .maybeSingle();
+        if (lookupErr) console.error("[hub-media-notes] note lookup failed:", lookupErr);
         postId = typeof row?.post_id === "number" ? row.post_id : null;
       }
       if (postId != null) {
