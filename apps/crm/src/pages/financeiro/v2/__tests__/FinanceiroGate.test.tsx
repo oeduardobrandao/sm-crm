@@ -46,6 +46,11 @@ vi.mock('../../FinanceiroPage', async () => {
   };
 });
 
+// The real page reads a full rentabilidade payload; this suite only checks the shell.
+vi.mock('../CustosEquipePage', () => ({
+  default: () => <p>Custos da equipe (stub)</p>,
+}));
+
 import FinanceiroGate from '../FinanceiroGate';
 import FinanceiroPage from '../../FinanceiroPage';
 import RentabilidadePage from '../RentabilidadePage';
