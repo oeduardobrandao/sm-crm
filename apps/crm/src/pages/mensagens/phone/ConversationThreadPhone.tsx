@@ -10,6 +10,7 @@ import {
   feedItemKey,
   formatTime,
   isEventRow,
+  mediaNoteLabel,
   TIPO_FILTERS,
   type MensagensTipoFilter,
 } from '../mensagensLogic';
@@ -117,6 +118,7 @@ export function ConversationThreadPhone({
             );
           }
           const daEquipe = m.is_workspace_user;
+          const notaLabel = mediaNoteLabel(m);
           return (
             <div
               key={feedItemKey(m)}
@@ -132,6 +134,7 @@ export function ConversationThreadPhone({
                   {daEquipe && (
                     <div className="phone-msg-bubble__author">{m.author_name ?? 'Equipe'}</div>
                   )}
+                  {notaLabel && <div className="phone-msg-bubble__action">{notaLabel}</div>}
                   {m.action === 'correcao' && (
                     <div className="phone-msg-bubble__action">Pediu correção</div>
                   )}
