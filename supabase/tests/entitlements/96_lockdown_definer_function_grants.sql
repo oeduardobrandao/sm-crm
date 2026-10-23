@@ -8,6 +8,9 @@
 -- allocation core: called by the read RPCs and the pg_cron close job, never by a user.
 -- _financeiro_sincronizar_legado / _financeiro_inicio_editavel (20261025000004_financeiro_v2_escrita.sql)
 -- are the write RPCs' legacy write-through and "vale a partir de" check.
+-- _financeiro_normalizar / _financeiro_encerrar_atribuicoes / _financeiro_v2_legado_trigger
+-- (20261025000005_financeiro_v2_seed_legado.sql) are the seed's cargo matching, the
+-- shared encerrado cutoff and the legacy-capture trigger function on clientes/membros.
 --
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE
 -- at function-creation time (see _helpers.sql), so `anon`/`authenticated` already
@@ -83,7 +86,10 @@ declare
     'public.instagram_automation_contact_source(uuid, uuid)',
     'public._financeiro_calcular(uuid, date)',
     'public._financeiro_sincronizar_legado(uuid, date)',
-    'public._financeiro_inicio_editavel(uuid, date)'
+    'public._financeiro_inicio_editavel(uuid, date)',
+    'public._financeiro_normalizar(text)',
+    'public._financeiro_encerrar_atribuicoes(uuid, bigint, date)',
+    'public._financeiro_v2_legado_trigger()'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
