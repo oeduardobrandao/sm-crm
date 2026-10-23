@@ -438,3 +438,61 @@ Deno.test("shapes das tools de blog são soltos: o SDK não barra antes do valid
   const update = z.object(shapes.get("update_blog_draft") as any);
   assert(update.safeParse({ post_id: "00000000-0000-4000-8000-000000000000", h1: "x" }).success);
 });
+
+// ---------------------------------------------------------------------------
+// Fix round 1: corpo lido como árvore Markdown, imagem sozinha, prefixo e porta
+// ---------------------------------------------------------------------------
+
+function bodyRejected(body: string, needle = "body_md:") {
+  const r = validateBlogDraft(draft({ body_md: body }), { partial: false });
+  assert(!r.ok && r.errors.some((e) => e.includes(needle)), `${JSON.stringify(body)} → ${JSON.stringify(r)}`);
+}
+
+Deno.test("links perigosos que escapavam da regex são recusados (árvore mdast)", () => {
+  bodyRejected("[a [b] c](javascript:alert(1))", "javascript:alert(1)");
+  bodyRejected("> [r]: javascript:alert(1)\n\n[clique][r]", "javascript:alert(1)");
+  bodyRejected("- [r]: javascript:alert(1)\n\n[clique][r]", "javascript:alert(1)");
+  bodyRejected("[`]`](javascript:alert(1))", "javascript:alert(1)");
+  bodyRejected("[x](javascript&#58;alert(1))", "javascript:alert(1)");
+  bodyRejected("[x](https://site.example.com:8080/a)", "8080");
+  bodyRejected("Fale com contato@exemplo.com", "mailto:");
+});
+
+Deno.test("HTML e imagem por referência continuam recusados", () => {
+  bodyRejected("Oi <b>forte</b>", "HTML");
+  bodyRejected("![x][r]\n\n[r]: https://a/b.png", "por referência");
+});
+
+Deno.test("imagem precisa ficar sozinha no parágrafo", () => {
+  const msg = "imagem img:planejamento precisa ficar sozinha no próprio parágrafo";
+  bodyRejected("Antes ![Equipe](img:planejamento)", msg);
+  bodyRejected("![Equipe](img:planejamento) depois", msg);
+  bodyRejected("Uma linha\n![Equipe](img:planejamento)\noutra linha", msg);
+  bodyRejected("[![Equipe](img:planejamento)](https://example.com)", msg);
+  const ok = validateBlogDraft(draft({ body_md: "Texto.\n\n![Equipe](img:planejamento)\n\nMais texto." }), { partial: false });
+  assert(ok.ok, JSON.stringify(ok));
+});
+
+Deno.test("url de imagem com ../ ou %2e saindo do bucket → recusada", async () => {
+  for (const url of [
+    `${BUCKET_URL}../kb-images/a.png`,
+    `${BUCKET_URL}drafts/%2e%2e/%2e%2e/kb-images/a.png`,
+    `${BUCKET_URL}./drafts/a.png`,
+    "https://sb:444/storage/v1/object/public/blog-images/a.png",
+  ]) {
+    const d = draft();
+    const images = [{ ...(d.images as Record<string, unknown>[])[0], url }];
+    const { db } = makeFakeDb({});
+    await expectInputError(() => createBlogDraft(makeDeps(db), draft({ images })), "images[0].url");
+  }
+});
+
+Deno.test("runBlogChecks: link com porta explícita vai para broken sem fetch", async () => {
+  let fetched = 0;
+  const deps = makeDeps(makeFakeDb({ blog_posts: [{ data: [], error: null }] }).db, {
+    fetchUrl: async () => { fetched++; return new Response(null, { status: 200 }); },
+  });
+  const c = await runBlogChecks(deps, checkPost({ sources: [], body_md: "[a](https://site.example.com:8443/x)" }), { linkTimeoutMs: 1000 });
+  assertEquals(c.links.broken, ["https://site.example.com:8443/x"]);
+  assertEquals(fetched, 0);
+});

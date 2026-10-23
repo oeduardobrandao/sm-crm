@@ -73,7 +73,12 @@ async function linkAnswers(d: CheckDeps, raw: string, ms: number): Promise<boole
   } catch {
     return false;
   }
-  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return false;
+  // Risco residual aceito: DNS rebinding entre checkPublicHost e o fetch (o fetch do Deno não
+  // permite pinar o IP). Mitigado porque o corpo nunca é lido nem devolvido (só o status),
+  // redirects não são seguidos e porta explícita é recusada.
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || url.port !== "") {
+    return false;
+  }
   if ((await checkPublicHost({ resolveDns: d.resolveDns, dnsTimeoutMs: ms }, url.hostname)) !== "ok") return false;
 
   const head = await request(d, url.toString(), "HEAD", ms);

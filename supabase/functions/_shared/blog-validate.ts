@@ -4,6 +4,9 @@
 // de novo sem adivinhar. Os limites vêm de blog-rules.ts (espelho do modelo do CRM); lede
 // segue o dbPostSchema do CRM (1 a 300).
 import { z } from "npm:zod@3";
+import { fromMarkdown } from "npm:mdast-util-from-markdown@2.0.3";
+import { gfm } from "npm:micromark-extension-gfm@3.0.0";
+import { gfmFromMarkdown } from "npm:mdast-util-gfm@3.1.0";
 import {
   BLOG_CATEGORIES,
   BLOG_FEATURE_SLUGS,
@@ -53,13 +56,6 @@ export interface BlogDraftValidateOptions {
 
 const OPTIONAL: ReadonlySet<BlogDraftField> = new Set(["cover_image", "images", "feature_slug"]);
 
-const HTML_TAG = /<[a-z!\/?]/i;
-/** `[texto](alvo` ou `![alt](alvo`: captura o "!" e o começo do alvo. */
-const INLINE_LINK = /(!?)\[(?:[^\]\\]|\\.)*\]\(\s*<?([^\s)>]*)/g;
-/** Definição de referência: `[r]: alvo`. */
-const REF_DEFINITION = /^ {0,3}\[(?:[^\]\\]|\\.)+\]:[ \t]*<?([^\s>]*)/gm;
-/** Imagem por referência (`![alt][r]` ou `![alt]` sozinho): foge do formato img:. */
-const REF_IMAGE = /!\[(?:[^\]\\]|\\.)*\](?!\()/;
 const IMG_TARGET = /^img:([a-z0-9-]{1,40})$/;
 
 const coverSchema = blogImageSchema.omit({ key: true });
@@ -81,10 +77,29 @@ export function isAllowedLinkTarget(target: string): boolean {
   if (!/^https?:\/\//i.test(target)) return false;
   try {
     const u = new URL(target);
-    return (u.protocol === "http:" || u.protocol === "https:") && !u.username && !u.password;
+    return (u.protocol === "http:" || u.protocol === "https:") && !u.username && !u.password && u.port === "";
   } catch {
     return false;
   }
+}
+
+/** True se `url` fica dentro de `prefix` depois de normalizada: sem credenciais, sem porta,
+ * sem segmentos . / .. (literais ou codificados) e com o href normalizado começando pelo
+ * prefixo. `new URL` resolve "../" sozinho, então a comparação é feita no href resultante. */
+export function isUnderUrlPrefix(url: string, prefix: string): boolean {
+  if (/%2e|%2f|%5c|\\/i.test(url)) return false;
+  let u: URL;
+  let p: URL;
+  try {
+    u = new URL(url);
+    p = new URL(prefix);
+  } catch {
+    return false;
+  }
+  if (u.username || u.password || u.port !== "") return false;
+  const rawPath = url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, "").split(/[?#]/)[0];
+  if (rawPath.split("/").some((seg) => seg === "." || seg === "..")) return false;
+  return u.origin === p.origin && (u.origin + u.pathname).startsWith(p.origin + p.pathname);
 }
 
 type ZodIssueLike = {
@@ -152,37 +167,67 @@ function objectErrors(field: string, schema: z.ZodTypeAny, value: unknown): stri
 function urlPrefixError(field: string, value: unknown, prefix: string | undefined): string | null {
   if (!prefix || !value || typeof value !== "object") return null;
   const url = (value as Record<string, unknown>).url;
-  if (typeof url !== "string" || url.startsWith(prefix)) return null;
+  if (typeof url !== "string" || isUnderUrlPrefix(url, prefix)) return null;
   return `${field}.url: precisa ser a url devolvida por upload_blog_image (bucket blog-images).`;
 }
 
+type MdNode = {
+  type: string;
+  url?: string;
+  value?: string;
+  children?: MdNode[];
+};
+
+const LINK_MESSAGE = (target: string) =>
+  `body_md: link "${target.slice(0, 80)}" precisa ser http(s), um caminho /… ou uma âncora #….`;
+
+/** Regras do corpo sobre a árvore Markdown (mdast + GFM), a mesma leitura que o renderer
+ * faz: colchetes aninhados, code spans e definições dentro de citações ou listas não
+ * escapam de uma regex aqui. */
 function bodyErrors(body: string, imageKeys: Set<string> | null, sourcesCount: number | null): string[] {
   const out: string[] = [];
-  if (HTML_TAG.test(body)) {
-    out.push("body_md: HTML não é permitido (encontrado '<' seguido de tag); use só Markdown.");
+  let tree: MdNode;
+  try {
+    tree = fromMarkdown(body, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as unknown as MdNode;
+  } catch (e) {
+    console.error("[blog-validate] markdown parse failed:", e);
+    return ["body_md: não foi possível ler o Markdown."];
   }
-  if (REF_IMAGE.test(body)) {
-    out.push("body_md: imagem só no formato ![alt](img:<key>); imagem por referência não é aceita.");
-  }
-  for (const m of body.matchAll(INLINE_LINK)) {
-    const [, bang, target] = m;
-    if (bang) {
-      const img = IMG_TARGET.exec(target);
-      if (!img) {
-        out.push(`body_md: imagem "${target.slice(0, 80)}" precisa usar img:<key> de uma entrada de images.`);
-      } else if (imageKeys && !imageKeys.has(img[1])) {
-        out.push(`body_md: imagem img:${img[1]} não existe em images.`);
+  let html = false;
+  let refImage = false;
+  const walk = (node: MdNode, parent: MdNode | null) => {
+    switch (node.type) {
+      case "html":
+        html = true;
+        break;
+      case "imageReference":
+        refImage = true;
+        break;
+      case "link":
+      case "definition":
+        if (!isAllowedLinkTarget(node.url ?? "")) out.push(LINK_MESSAGE(node.url ?? ""));
+        break;
+      case "image": {
+        const target = node.url ?? "";
+        const img = IMG_TARGET.exec(target);
+        if (!img) {
+          out.push(`body_md: imagem "${target.slice(0, 80)}" precisa usar img:<key> de uma entrada de images.`);
+          break;
+        }
+        if (imageKeys && !imageKeys.has(img[1])) out.push(`body_md: imagem img:${img[1]} não existe em images.`);
+        const alone = parent?.type === "paragraph" &&
+          (parent.children ?? []).every((c) => c === node || (c.type === "text" && (c.value ?? "").trim() === ""));
+        if (!alone) {
+          out.push(`body_md: imagem img:${img[1]} precisa ficar sozinha no próprio parágrafo (linha em branco antes e depois).`);
+        }
+        break;
       }
-    } else if (!isAllowedLinkTarget(target)) {
-      out.push(`body_md: link "${target.slice(0, 80)}" precisa ser http(s), um caminho /… ou uma âncora #….`);
     }
-  }
-  for (const m of body.matchAll(REF_DEFINITION)) {
-    const target = m[1];
-    if (!isAllowedLinkTarget(target)) {
-      out.push(`body_md: link "${target.slice(0, 80)}" precisa ser http(s), um caminho /… ou uma âncora #….`);
-    }
-  }
+    for (const child of node.children ?? []) walk(child, node);
+  };
+  walk(tree, null);
+  if (html) out.unshift("body_md: HTML não é permitido; use só Markdown.");
+  if (refImage) out.push("body_md: imagem só no formato ![alt](img:<key>); imagem por referência não é aceita.");
   // Sem sources conhecidos (edição parcial), checa só o formato dos infográficos.
   for (const msg of validateInfograficos(body, sourcesCount ?? Number.MAX_SAFE_INTEGER)) {
     out.push(msg);

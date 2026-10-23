@@ -285,6 +285,8 @@ export async function fetchImageSafely(
   }
   if (url.username || url.password) return fail("invalid_url");
   if (url.protocol !== "https:") return fail("not_https");
+  // Porta explícita fora do padrão: nenhuma imagem legítima precisa, e abre varredura de portas.
+  if (url.port !== "") return fail("invalid_url");
   const host = await checkPublicHost(deps, url.hostname);
   if (host !== "ok") return fail(host);
 

@@ -162,7 +162,8 @@ const BLOG_FIELDS = {
   description: z.string().describe(`meta description, ${DESC_MIN} a ${DESC_MAX} caracteres`),
   lede: z.string().describe(`linha fina abaixo do H1, ${BLOG_DRAFT_LIMITS.lede[0]} a ${BLOG_DRAFT_LIMITS.lede[1]} caracteres`),
   body_md: z.string().describe(
-    "Corpo em Markdown, até 50000 caracteres. Sem HTML. Links só http(s), /caminho ou #âncora. Imagens só ![alt](img:<key>) com key de images. " +
+    "Corpo em Markdown, até 50000 caracteres. Sem HTML. Links só http(s) sem porta, /caminho ou #âncora (e-mail solto vira link mailto: e é recusado). " +
+      "Imagens só ![alt](img:<key>) com key de images, sozinhas no próprio parágrafo (linha em branco antes e depois); imagem com link [![…](img:…)](…) e imagem por referência são recusadas. " +
       "Infográfico: bloco ```infografico com JSON (tipo barras, numeros ou etapas; fonte = índice em sources). Não escreva a seção Fontes: ela vem de sources.",
   ),
   cover_image: BLOG_COVER.nullable().optional().describe("capa {url, alt, credit, license, source_url}; url de upload_blog_image; null = sem imagem"),
