@@ -51,6 +51,10 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
   useParams: () => paramsState,
   useLocation: () => location,
+  // MembroFormDialog links to the acordo when Financeiro v2 is on.
+  Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
+    <a href={to}>{children}</a>
+  ),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -127,6 +131,12 @@ vi.mock('../../../lib/supabase', () => ({
   supabase: { from: vi.fn() },
 }));
 
+// The Financeiro v2 cards have their own tests; here only whether the page mounts them.
+vi.mock('../AcordoCard', () => ({ AcordoCard: () => <div data-testid="acordo-card" /> }));
+vi.mock('../EntregasManuaisCard', () => ({
+  EntregasManuaisCard: () => <div data-testid="entregas-card" />,
+}));
+
 import * as store from '../../../store';
 import * as inviteService from '../../../services/invite';
 import MembroDetalhePage from '../MembroDetalhePage';
@@ -147,6 +157,7 @@ const membro = {
 
 let transacoes: unknown[] = [];
 let membrosLoading = false;
+let financeiroV2 = false;
 
 function setup(
   canSeeFinancials: boolean | 'unknown',
@@ -163,6 +174,7 @@ function setup(
   });
   useWorkspaceLimitsMock.mockReturnValue({
     limits: { max_team_members: 10 },
+    features: financeiroV2 ? { feature_financial: true, feature_financeiro_v2: true } : undefined,
     isLoading: false,
     isUnlimited: false,
   });
@@ -197,6 +209,7 @@ async function openEditFromPhone() {
 describe('MembroDetalhePage financial query gate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    financeiroV2 = false;
     viewport.desktop = false;
     transacoes = [];
   });
@@ -228,6 +241,31 @@ describe('MembroDetalhePage financial query gate', () => {
 
     expect(screen.getByText('Descrição')).toBeTruthy();
     expect(screen.queryByText(/apenas para quem tem acesso financeiro liberado/i)).toBeNull();
+  });
+
+  it('mounts the acordo cards when Financeiro v2 is on and the caller can see financials', () => {
+    viewport.desktop = true;
+    financeiroV2 = true;
+    setup(true);
+
+    expect(screen.getByTestId('acordo-card')).toBeInTheDocument();
+    expect(screen.getByTestId('entregas-card')).toBeInTheDocument();
+  });
+
+  it('leaves the page as it was when Financeiro v2 is off', () => {
+    viewport.desktop = true;
+    setup(true);
+
+    expect(screen.queryByTestId('acordo-card')).toBeNull();
+    expect(screen.queryByTestId('entregas-card')).toBeNull();
+  });
+
+  it('does not mount the acordo cards without financial access', () => {
+    viewport.desktop = true;
+    financeiroV2 = true;
+    setup(false);
+
+    expect(screen.queryByTestId('acordo-card')).toBeNull();
   });
 
   it('lists the transactions as grouped rows on phones', () => {

@@ -1,10 +1,23 @@
+import { useState, type ReactNode } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { FileText, ReceiptText, Wallet, CheckCircle2, Clock } from 'lucide-react';
+import {
+  FileText,
+  ReceiptText,
+  Wallet,
+  CheckCircle2,
+  Clock,
+  Percent,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
   TableBody,
@@ -13,11 +26,25 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getContratos, getTransacoes, formatDate, type Contrato, type Transacao } from '@/store';
+import {
+  getClienteVersoes,
+  getContratos,
+  getRentabilidade,
+  getTransacoes,
+  formatDate,
+  type Cliente,
+  type ClienteVersao,
+  type Contrato,
+  type Transacao,
+} from '@/store';
 import { formatFinancialBRL } from '@/lib/financialAccess';
 import { ClienteFinanceEmptyState } from '../ClienteFinanceEmptyState';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
+import { abaixoDaMeta, formatMargem } from '../../financeiro/v2/format';
+import { EquipeNoClienteCard } from './EquipeNoClienteCard';
+import { ClienteMensalidadeDialog, type MensalidadeInicial } from './ClienteMensalidadeDialog';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import '../phone/clienteDetalhePhone.css';
 
@@ -55,6 +82,158 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`badge ${map[status] ?? 'badge-neutral'}`}>
       {tc(`status.${status}`, { defaultValue: status })}
     </span>
+  );
+}
+
+/** The version in force at `inicio`: the one with the greatest `vale_desde` not after it. */
+function versaoEfetiva(versoes: ClienteVersao[], inicio: string): ClienteVersao | undefined {
+  return versoes
+    .filter((v) => v.vale_desde <= inicio)
+    .reduce<
+      ClienteVersao | undefined
+    >((best, v) => (!best || v.vale_desde > best.vale_desde ? v : best), undefined);
+}
+
+/**
+ * Financeiro v2 replacement for the KPI strip: this client's entry of the current
+ * period's rentabilidade (mensalidade, team cost, profit, margin) plus the team card and the
+ * mensalidade dialog. Before the workspace is seeded it renders `legacy` (today's cards).
+ */
+function FinanceiroV2Section({ cliente, legacy }: { cliente: Cliente; legacy: ReactNode }) {
+  const clienteId = cliente.id!;
+  const { canSeeFinancials, can } = useAuth();
+  const canEdit = can('financeiro', 'editar') === true;
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const rent = useQuery({
+    queryKey: ['financeiro-v2', 'rentabilidade', 'atual'],
+    queryFn: () => getRentabilidade(),
+  });
+  const versoes = useQuery({
+    queryKey: ['financeiro-v2', 'cliente', clienteId],
+    queryFn: () => getClienteVersoes(clienteId),
+  });
+
+  if (rent.isError || versoes.isError) {
+    return (
+      <p role="alert" className="mb-6 text-sm text-destructive">
+        Não foi possível carregar o financeiro deste cliente.
+      </p>
+    );
+  }
+  if (!rent.isSuccess || !versoes.isSuccess) return <Spinner className="mx-auto mb-6" />;
+  if (!rent.data.seeded) return <>{legacy}</>;
+
+  const { periodo, funcoes, membros, meta_margem } = rent.data;
+  const entry = rent.data.clientes.find((c) => c.cliente_id === clienteId);
+  const versao = versaoEfetiva(versoes.data, periodo.inicio);
+  const dia = versao ? versao.dia_pagamento : (cliente.data_pagamento ?? null);
+  const inicial: MensalidadeInicial = versao
+    ? {
+        valor_mensal: versao.valor_mensal,
+        dia_pagamento: versao.dia_pagamento,
+        status: versao.status,
+      }
+    : { valor_mensal: cliente.valor_mensal ?? 0, dia_pagamento: dia, status: 'ativo' };
+
+  const metaTexto = meta_margem.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  const money = (v: number) => formatFinancialBRL(v, canSeeFinancials);
+  const pausado = entry?.status === 'pausado';
+  const pessoas = new Set(entry?.pessoas.map((p) => p.membro_id)).size;
+
+  return (
+    <>
+      <StatCardGrid
+        id="sec-financeiro"
+        className="cliente-finance-kpis"
+        style={{ marginBottom: '1.5rem' }}
+      >
+        <StatCard
+          label="Mensalidade"
+          value={entry ? money(entry.receita) : '-'}
+          sub={dia ? `Vence todo dia ${dia}` : undefined}
+          footNote={
+            canEdit ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDialogOpen(true)}
+                aria-label="Editar mensalidade"
+              >
+                Editar
+              </Button>
+            ) : undefined
+          }
+          icon={Wallet}
+          tone="blue"
+          compactValue
+        />
+        <StatCard
+          label="Custo da equipe"
+          value={entry ? money(entry.custo) : '-'}
+          sub={
+            entry ? `${pessoas} ${pessoas === 1 ? 'pessoa atende' : 'pessoas atendem'}` : undefined
+          }
+          icon={Users}
+          tone="violet"
+          compactValue
+        />
+        <StatCard
+          label="Lucro mensal"
+          value={entry ? money(entry.lucro) : '-'}
+          sub={entry ? `LL anual ${money(entry.lucro * 12)}` : undefined}
+          icon={TrendingUp}
+          tone="green"
+          compactValue
+        />
+        <StatCard
+          label="Margem"
+          value={entry && !pausado ? formatMargem(entry.margem) : '-'}
+          valueColor={
+            entry && !pausado && abaixoDaMeta(entry.margem, meta_margem)
+              ? 'var(--danger-text)'
+              : undefined
+          }
+          sub={
+            entry ? (
+              <>
+                Meta da agência: {metaTexto}%{' '}
+                {pausado && (
+                  <Badge variant="warning" size="sm">
+                    Pausado
+                  </Badge>
+                )}
+              </>
+            ) : undefined
+          }
+          icon={Percent}
+          tone="amber"
+          compactValue
+        />
+      </StatCardGrid>
+      {!entry && (
+        <p className="mb-6 text-sm text-muted-foreground">
+          Este cliente não entra no período atual.
+        </p>
+      )}
+      {entry && (
+        <EquipeNoClienteCard
+          cliente={entry}
+          funcoes={funcoes}
+          membros={membros}
+          periodoInicio={periodo.inicio}
+        />
+      )}
+      {canEdit && (
+        <ClienteMensalidadeDialog
+          clienteId={clienteId}
+          inicial={inicial}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+      )}
+    </>
   );
 }
 
@@ -106,6 +285,9 @@ export default function FinanceiroTab() {
   const { canSeeFinancials } = useAuth();
   const { t } = useTranslation('clients');
   const isPhone = !useIsDesktop(768);
+  const { ativo: v2Ativo } = useFinanceiroV2();
+  // Financeiro v2 needs the same visibility as the legacy cards; otherwise nothing changes.
+  const v2 = v2Ativo && canSeeFinancials === true;
 
   const { data: transacoes } = useQuery({
     queryKey: ['transacoes'],
@@ -164,10 +346,12 @@ export default function FinanceiroTab() {
     </StatCardGrid>
   );
 
+  const header = v2 ? <FinanceiroV2Section cliente={cliente} legacy={kpis} /> : kpis;
+
   if (isPhone) {
     return (
       <>
-        {kpis}
+        {header}
         {contratosCliente.length === 0 ? (
           <section className="phone-cli-finance-empty" aria-label={t('detail.contracts')}>
             <h2 className="phone-group__header">{t('detail.contracts')}</h2>
@@ -229,7 +413,7 @@ export default function FinanceiroTab() {
 
   return (
     <>
-      {kpis}
+      {header}
 
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">

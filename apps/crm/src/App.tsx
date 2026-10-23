@@ -107,6 +107,10 @@ const ClienteHubIdeias = lazy(() => import('./pages/cliente-detalhe/hub/IdeiasPa
 const ClienteArquivosTab = lazy(() => import('./pages/cliente-detalhe/tabs/ArquivosTab'));
 const ClienteFinanceiroTab = lazy(() => import('./pages/cliente-detalhe/tabs/FinanceiroTab'));
 const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage'));
+const FinanceiroGate = lazy(() => import('./pages/financeiro/v2/FinanceiroGate'));
+const RentabilidadePage = lazy(() => import('./pages/financeiro/v2/RentabilidadePage'));
+const CustosEquipePage = lazy(() => import('./pages/financeiro/v2/CustosEquipePage'));
+const AtribuicaoPage = lazy(() => import('./pages/financeiro/v2/AtribuicaoPage'));
 const ContratosPage = lazy(() => import('./pages/contratos/ContratosPage'));
 const LeadsPage = lazy(() => import('./pages/leads/LeadsPage'));
 const EquipePage = lazy(() => import('./pages/equipe/EquipePage'));
@@ -287,7 +291,14 @@ export default function App() {
                       through to the top-level "*" 404 route. */}
                   <Route path="*" element={null} />
                 </Route>
-                <Route path="/financeiro" element={<FinanceiroPage />} />
+                {/* FinanceiroGate owns the index (ledger with the flag off, redirect to
+                    rentabilidade with it on); children only exist with the flag on. */}
+                <Route path="/financeiro" element={<FinanceiroGate />}>
+                  <Route path="rentabilidade" element={<RentabilidadePage />} />
+                  <Route path="equipe" element={<CustosEquipePage />} />
+                  <Route path="atribuicao" element={<AtribuicaoPage />} />
+                  <Route path="lancamentos" element={<FinanceiroPage />} />
+                </Route>
                 <Route path="/contratos" element={<ContratosPage />} />
                 <Route path="/leads" element={<LeadsPage />} />
                 <Route path="/equipe" element={<EquipePage />} />
