@@ -475,29 +475,72 @@ begin
 end $$;
 
 -- rolar_isolates_failures
+-- B (the failing workspace) is the smaller conta_id, so the roll (ORDER BY conta_id)
+-- reaches it before A: A only closes if the loop goes on past B's failure. The
+-- constraint blocks B's successor INSERT, after its UPDATE to fechado succeeded, so B
+-- still aberto with no snapshot proves the partial close was rolled back.
 do $$
-declare v_a uuid := pg_temp.novo_ws(); v_b uuid := pg_temp.novo_ws(); v_tal_b bigint;
+declare v_x uuid := pg_temp.novo_ws(); v_y uuid := pg_temp.novo_ws(); v_a uuid; v_b uuid; v_tal_b bigint;
+  v_oct financeiro_periodos;
 begin
+  v_b := least(v_x, v_y);
+  v_a := greatest(v_x, v_y);
   perform pg_temp.fixture_planilha(v_a);
   perform pg_temp.fixture_planilha(v_b);
   v_tal_b := pg_temp.cid(v_b, 'Talitha');
-  -- B has a Nov version: if the failed workspace's work leaked, its legacy column would move
+  -- B has a Nov version: if the failed workspace's sync leaked, its legacy column would move
   insert into financeiro_cliente_versoes (conta_id, cliente_id, vale_desde, valor_mensal, status)
     values (v_b, v_tal_b, date '2026-11-01', 2800, 'ativo');
-  execute format('alter table financeiro_periodos add constraint t_block check (conta_id <> %L or status <> %L) not valid',
-                 v_b, 'fechado');
+  execute format('alter table financeiro_periodos add constraint t_block check (conta_id <> %L or inicio <> %L) not valid',
+                 v_b, '2026-11-01');
   perform public.financeiro_rolar_periodos(date '2026-11-01');
-  assert (pg_temp.per(v_b, date '2026-10-01')).status = 'aberto', 'isolates: B closed';
-  assert (select count(*) from financeiro_periodos where conta_id = v_b) = 1, 'isolates: B got a new period';
+  v_oct := pg_temp.per(v_b, date '2026-10-01');
+  assert v_oct.status = 'aberto' and v_oct.snapshot is null and v_oct.fechado_em is null,
+    'isolates: B partial close not rolled back ' || row_to_json(v_oct)::text;
+  assert pg_temp.per(v_b, date '2026-11-01') is null
+     and (select count(*) from financeiro_periodos where conta_id = v_b) = 1, 'isolates: B got a Nov row';
   assert (select valor_mensal from clientes where id = v_tal_b) = 2500, 'isolates: B legacy written';
-  assert (pg_temp.per(v_a, date '2026-10-01')).status = 'fechado', 'isolates: A not closed';
+  assert (pg_temp.per(v_a, date '2026-10-01')).status = 'fechado', 'isolates: A (after B) not closed';
   assert (pg_temp.per(v_a, date '2026-11-01')).status = 'aberto', 'isolates: A Nov not opened';
   alter table financeiro_periodos drop constraint t_block;
   -- once the fault is gone the next run catches B up
   perform public.financeiro_rolar_periodos(date '2026-11-01');
   assert (pg_temp.per(v_b, date '2026-10-01')).status = 'fechado', 'isolates: B caught up';
+  assert (pg_temp.per(v_b, date '2026-11-01')).status = 'aberto', 'isolates: B Nov after catch-up';
   assert (select valor_mensal from clientes where id = v_tal_b) = 2800, 'isolates: B legacy after catch-up';
   raise notice 'PASS rolar_isolates_failures';
+end $$;
+
+-- writes_take_shared_lock: v2 writes and the legacy trigger take the workspace key
+-- shared, the seed exclusively (a second session can't be driven from here, so this
+-- pins the lock itself; pg_locks splits a bigint advisory key into classid/objid).
+create or replace function pg_temp.trava(p_ws uuid, p_mode text) returns boolean language sql as $f$
+  select exists (
+    select 1 from pg_locks l
+     where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.granted and l.objsubid = 1
+       and l.mode = p_mode
+       and l.classid::bigint = ((public._financeiro_lock_key(p_ws) >> 32) & 4294967295)
+       and l.objid::bigint = (public._financeiro_lock_key(p_ws) & 4294967295))
+$f$;
+do $$
+declare v_ws uuid := pg_temp.novo_ws(); v_leg uuid := pg_temp.novo_ws(); v_seed uuid := pg_temp.novo_ws();
+begin
+  perform pg_temp.fixture_planilha(v_ws);
+  assert not pg_temp.trava(v_ws, 'ShareLock'), 'lock: held before the write';
+  perform pg_temp.ok(pg_temp.dono(v_ws), format(
+    'select public.financeiro_cliente_salvar(%s, %L, 2800, null, %L)', pg_temp.cid(v_ws, 'Talitha'), '2026-10-01', 'ativo'));
+  assert pg_temp.trava(v_ws, 'ShareLock'), 'lock: cliente_salvar holds no shared advisory lock on the workspace key';
+  assert not pg_temp.trava(v_ws, 'ExclusiveLock'), 'lock: cliente_salvar took it exclusively';
+
+  perform pg_temp.fixture_planilha(v_leg);
+  assert not pg_temp.trava(v_leg, 'ShareLock'), 'lock: legacy ws held before';
+  update clientes set valor_mensal = 2600 where id = pg_temp.cid(v_leg, 'Talitha');
+  assert pg_temp.trava(v_leg, 'ShareLock'), 'lock: legacy trigger holds no shared lock';
+
+  assert not pg_temp.trava(v_seed, 'ExclusiveLock'), 'lock: seed ws held before';
+  perform pg_temp.ok(pg_temp.dono(v_seed), 'select public.financeiro_seed(1)');
+  assert pg_temp.trava(v_seed, 'ExclusiveLock'), 'lock: seed holds no exclusive lock';
+  raise notice 'PASS writes_take_shared_lock';
 end $$;
 
 -- grants: reopen/close are authenticated + service_role and DEFINER; the job is service_role only
@@ -519,6 +562,8 @@ begin
   assert not has_function_privilege('authenticated', v_fn, 'execute'), 'authenticated executes ' || v_fn;
   assert has_function_privilege('service_role', v_fn, 'execute'), 'service_role lost ' || v_fn;
   assert (select prosecdef from pg_proc where oid = v_fn::regprocedure), v_fn || ' is not SECURITY DEFINER';
+  assert (select proconfig from pg_proc where oid = v_fn::regprocedure) @> array['lock_timeout=5s'],
+    v_fn || ' lock_timeout ' || coalesce((select proconfig::text from pg_proc where oid = v_fn::regprocedure), 'null');
   -- the cron job exists, hourly, on its own minute
   assert (select schedule from cron.job where jobname = 'financeiro-v2-rolar-periodos') = '29 * * * *',
     'cron: financeiro-v2-rolar-periodos schedule';

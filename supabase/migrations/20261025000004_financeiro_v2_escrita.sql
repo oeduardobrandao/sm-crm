@@ -17,6 +17,10 @@ SET LOCAL lock_timeout = '5s';
 -- Checks, in this order, in every public write RPC:
 --   1. feature_financial, 2. feature_financeiro_v2  -> P0001 feature_disabled:<flag>
 --   3. has_permission('financeiro','editar')        -> 42501 financial_access_denied
+--      then pg_advisory_xact_lock_shared(_financeiro_lock_key(conta)): the period roll,
+--      reabrir and fechar (20261025000006) and the seed take the same key exclusively,
+--      so a write can't pass the editable check against a period that is closing
+--      (the checks below run after the lock, each statement on a fresh snapshot)
 --   4. financeiro_config.seeded_at set               -> P0001 nao_configurado
 --      (not in financeiro_config_salvar, which may create the row unseeded)
 --   5. the date is an editable start                 -> P0001 periodo_fechado
@@ -27,6 +31,19 @@ SET LOCAL lock_timeout = '5s';
 -- ===========================================================================
 -- Internal helpers (service_role only)
 -- ===========================================================================
+
+-- The per-workspace advisory lock key shared by every path that changes or depends
+-- on the period rows. Exclusive: financeiro_seed, financeiro_rolar_periodos,
+-- financeiro_periodo_reabrir / _fechar. Shared: every v2 write RPC and the legacy
+-- trigger. One definition so the key can't drift between them.
+CREATE OR REPLACE FUNCTION public._financeiro_lock_key(p_conta uuid)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT hashtext('financeiro_rolar:' || p_conta::text)::bigint;
+$$;
 
 -- Is p_inicio one of financeiro_periodos_editaveis() for p_conta? Same rule, without
 -- the auth checks (the write RPCs have already run theirs): every reaberto row, the
@@ -118,6 +135,8 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public._financeiro_lock_key(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public._financeiro_lock_key(uuid) TO service_role;
 REVOKE ALL ON FUNCTION public._financeiro_inicio_editavel(uuid, date) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public._financeiro_sincronizar_legado(uuid, date) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public._financeiro_inicio_editavel(uuid, date) TO service_role;
@@ -150,6 +169,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
 
   INSERT INTO public.financeiro_config AS c (conta_id, periodo_dia, meta_margem)
   VALUES (v_conta, coalesce(p_periodo_dia, 1), coalesce(p_meta_margem, 55))
@@ -183,6 +204,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
   IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c WHERE c.conta_id = v_conta AND c.seeded_at IS NOT NULL) THEN
     RAISE EXCEPTION 'nao_configurado' USING ERRCODE = 'P0001';
   END IF;
@@ -233,6 +256,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
   IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c WHERE c.conta_id = v_conta AND c.seeded_at IS NOT NULL) THEN
     RAISE EXCEPTION 'nao_configurado' USING ERRCODE = 'P0001';
   END IF;
@@ -274,6 +299,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
   IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c WHERE c.conta_id = v_conta AND c.seeded_at IS NOT NULL) THEN
     RAISE EXCEPTION 'nao_configurado' USING ERRCODE = 'P0001';
   END IF;
@@ -336,6 +363,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
   IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c WHERE c.conta_id = v_conta AND c.seeded_at IS NOT NULL) THEN
     RAISE EXCEPTION 'nao_configurado' USING ERRCODE = 'P0001';
   END IF;
@@ -429,6 +458,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
   IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c WHERE c.conta_id = v_conta AND c.seeded_at IS NOT NULL) THEN
     RAISE EXCEPTION 'nao_configurado' USING ERRCODE = 'P0001';
   END IF;
@@ -516,6 +547,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
   IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c WHERE c.conta_id = v_conta AND c.seeded_at IS NOT NULL) THEN
     RAISE EXCEPTION 'nao_configurado' USING ERRCODE = 'P0001';
   END IF;

@@ -18,10 +18,14 @@ SET LOCAL lock_timeout = '5s';
 -- meanwhile, see _financeiro_inicio_editavel) -> fechado with a fresh snapshot. The
 -- job never closes a reaberto period.
 --
--- Every path that changes a period's status takes the same per-workspace transaction
--- advisory lock, so a manual reopen cannot interleave with a roll and two
--- overlapping cron runs cannot open the same period twice (the (conta_id, inicio)
--- primary key is the backstop).
+-- Every path that changes a period's status takes the per-workspace transaction
+-- advisory lock _financeiro_lock_key(conta) (20261025000004) exclusively, so a manual
+-- reopen cannot interleave with a roll and two overlapping cron runs cannot open the
+-- same period twice (the (conta_id, inicio) primary key is the backstop). Every v2
+-- write RPC and the legacy trigger take the same key shared before their editable /
+-- latest-aberto checks, so no write lands a version inside a period that is closing.
+-- The roll carries SET lock_timeout = '5s': a workspace blocked on a lock fails with
+-- 55P03 into its own EXCEPTION block instead of stalling the whole job.
 --
 -- Also: financeiro_rentabilidade overlays the row's real status on a returned
 -- snapshot (ruling R5); the rest of its body is unchanged from 20261025000003.
@@ -44,6 +48,7 @@ LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
 SET search_path = public, pg_temp
+SET lock_timeout = '5s'
 AS $$
 DECLARE
   v_hoje   date := coalesce(p_hoje, (now() AT TIME ZONE 'America/Sao_Paulo')::date);
@@ -58,7 +63,7 @@ BEGIN
     SELECT c.conta_id FROM public.financeiro_config c WHERE c.seeded_at IS NOT NULL ORDER BY c.conta_id
   LOOP
     BEGIN
-      PERFORM pg_advisory_xact_lock(hashtext('financeiro_rolar:' || v_conta::text));
+      PERFORM pg_advisory_xact_lock(public._financeiro_lock_key(v_conta));
 
       SELECT c.periodo_dia INTO v_dia FROM public.financeiro_config c WHERE c.conta_id = v_conta;
       v_dia := coalesce(v_dia, 1);
@@ -140,7 +145,7 @@ BEGIN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
 
-  PERFORM pg_advisory_xact_lock(hashtext('financeiro_rolar:' || v_conta::text));
+  PERFORM pg_advisory_xact_lock(public._financeiro_lock_key(v_conta));
   SELECT p.status INTO v_status FROM public.financeiro_periodos p
    WHERE p.conta_id = v_conta AND p.inicio = p_inicio
    FOR UPDATE;
@@ -191,7 +196,7 @@ BEGIN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
 
-  PERFORM pg_advisory_xact_lock(hashtext('financeiro_rolar:' || v_conta::text));
+  PERFORM pg_advisory_xact_lock(public._financeiro_lock_key(v_conta));
   SELECT p.status INTO v_status FROM public.financeiro_periodos p
    WHERE p.conta_id = v_conta AND p.inicio = p_inicio
    FOR UPDATE;

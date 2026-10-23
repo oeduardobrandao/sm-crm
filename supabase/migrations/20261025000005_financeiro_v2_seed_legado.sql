@@ -100,6 +100,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- shared: serializes against the period roll / reabrir / fechar (exclusive), not other writes
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(v_conta));
   IF NOT EXISTS (SELECT 1 FROM public.financeiro_config c WHERE c.conta_id = v_conta AND c.seeded_at IS NOT NULL) THEN
     RAISE EXCEPTION 'nao_configurado' USING ERRCODE = 'P0001';
   END IF;
@@ -162,6 +164,8 @@ BEGIN
   IF public.has_permission('financeiro', 'editar') IS NOT TRUE THEN
     RAISE EXCEPTION 'financial_access_denied' USING ERRCODE = '42501';
   END IF;
+  -- exclusive: the seed creates the first period (same key as the roll, 20261025000006)
+  PERFORM pg_advisory_xact_lock(public._financeiro_lock_key(v_conta));
   IF p_periodo_dia IS NULL OR p_periodo_dia NOT BETWEEN 1 AND 28 THEN
     RAISE EXCEPTION 'periodo_dia_invalido' USING ERRCODE = 'P0001';
   END IF;
@@ -265,6 +269,10 @@ BEGIN
                   WHERE c.conta_id = NEW.conta_id AND c.seeded_at IS NOT NULL) THEN
     RETURN NULL;
   END IF;
+  -- shared, before reading the latest aberto period: waits for a running roll /
+  -- reabrir / fechar of this workspace (exclusive, same key). Unseeded workspaces
+  -- (most legacy writes) never take it.
+  PERFORM pg_advisory_xact_lock_shared(public._financeiro_lock_key(NEW.conta_id));
   SELECT p.inicio INTO v_inicio FROM public.financeiro_periodos p
    WHERE p.conta_id = NEW.conta_id AND p.status = 'aberto' ORDER BY p.inicio DESC LIMIT 1;
   IF v_inicio IS NULL THEN
